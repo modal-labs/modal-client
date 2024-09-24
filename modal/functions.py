@@ -520,6 +520,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         group_size: Optional[int] = None,  # Experimental: Container Networking
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
+        _experimental_buffer_containers: Optional[int] = None,
     ) -> None:
         """mdmd:hidden"""
         tag = info.get_tag()
@@ -842,6 +843,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     or container_networking,  # Experimental: Container Networking
                     _experimental_group_size=group_size or 0,  # Experimental: Container Networking
                     _experimental_concurrent_cancellations=True,
+                    _experimental_buffer_containers=_experimental_buffer_containers or 0,
                 )
                 assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(
