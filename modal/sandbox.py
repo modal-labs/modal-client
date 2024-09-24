@@ -1,12 +1,12 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
-from typing import TYPE_CHECKING, Dict, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Optional, Sequence, Tuple, Union
 
 from google.protobuf.message import Message
+from grpclib import GRPCError, Status
 
 from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
-from modal.exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError
 from modal.volume import _Volume
 from modal_proto import api_pb2
 
@@ -19,13 +19,13 @@ from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
-from .exception import deprecation_warning
+from .exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError, deprecation_warning
 from .gpu import GPU_T
 from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
-from .object import _Object
+from .object import _get_environment_name, _Object
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 
@@ -48,6 +48,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     _stderr: _StreamReader
     _stdin: _StreamWriter
     _task_id: Optional[str] = None
+    _tunnels: Optional[List[api_pb2.TunnelData]] = None
 
     @staticmethod
     def _new(
@@ -64,10 +65,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         memory: Optional[Union[int, Tuple[int, int]]] = None,
         network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         block_network: bool = False,
+        cidr_allowlist: Optional[Sequence[str]] = None,
         volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
         pty_info: Optional[api_pb2.PTYInfo] = None,
+        encrypted_ports: Sequence[int] = [],
+        unencrypted_ports: Sequence[int] = [],
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
-        _experimental_gpus: Sequence[GPU_T] = [],
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -109,6 +112,27 @@ class _Sandbox(_Object, type_prefix="sb"):
                 for path, volume in validated_volumes
             ]
 
+            open_ports = [api_pb2.PortSpec(port=port, unencrypted=False) for port in encrypted_ports]
+            open_ports.extend([api_pb2.PortSpec(port=port, unencrypted=True) for port in unencrypted_ports])
+
+            if block_network:
+                # If the network is blocked, cidr_allowlist is invalid as we don't allow any network access.
+                if cidr_allowlist is not None:
+                    raise InvalidError("`cidr_allowlist` cannot be used when `block_network` is enabled")
+                network_access = api_pb2.NetworkAccess(
+                    network_access_type=api_pb2.NetworkAccess.NetworkAccessType.BLOCKED,
+                )
+            elif cidr_allowlist is None:
+                # If the allowlist is empty, we allow all network access.
+                network_access = api_pb2.NetworkAccess(
+                    network_access_type=api_pb2.NetworkAccess.NetworkAccessType.OPEN,
+                )
+            else:
+                network_access = api_pb2.NetworkAccess(
+                    network_access_type=api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST,
+                    allowed_cidrs=cidr_allowlist,
+                )
+
             ephemeral_disk = None  # Ephemeral disk requests not supported on Sandboxes.
             definition = api_pb2.Sandbox(
                 entrypoint_args=entrypoint_args,
@@ -123,22 +147,20 @@ class _Sandbox(_Object, type_prefix="sb"):
                 cloud_provider=parse_cloud_provider(cloud) if cloud else None,
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
                 runtime_debug=config.get("function_runtime_debug"),
-                block_network=block_network,
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 volume_mounts=volume_mounts,
                 pty_info=pty_info,
                 scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
-                _experimental_resources=[
-                    convert_fn_config_to_resources_config(
-                        cpu=cpu, memory=memory, gpu=_experimental_gpu, ephemeral_disk=ephemeral_disk
-                    )
-                    for _experimental_gpu in _experimental_gpus
-                ],
                 worker_id=config.get("worker_id"),
+                i6pn_enabled=config.get("i6pn_enabled"),
+                open_ports=api_pb2.PortSpecs(ports=open_ports),
+                network_access=network_access,
             )
 
             # Note - `resolver.app_id` will be `None` for app-less sandboxes
-            create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
+            create_req = api_pb2.SandboxCreateRequest(
+                app_id=resolver.app_id, definition=definition, environment_name=resolver.environment_name
+            )
             create_resp = await retry_transient_errors(resolver.client.stub.SandboxCreate, create_req)
 
             sandbox_id = create_resp.sandbox_id
@@ -165,18 +187,30 @@ class _Sandbox(_Object, type_prefix="sb"):
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: Optional[Union[int, Tuple[int, int]]] = None,
         block_network: bool = False,  # Whether to block network access
+        # List of CIDRs the sandbox is allowed to access. If None, all CIDRs are allowed.
+        cidr_allowlist: Optional[Sequence[str]] = None,
         volumes: Dict[
             Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
         pty_info: Optional[api_pb2.PTYInfo] = None,
+        # List of ports to tunnel into the sandbox. Encrypted ports are tunneled with TLS.
+        encrypted_ports: Sequence[int] = [],
+        # List of ports to tunnel into the sandbox without encryption.
+        unencrypted_ports: Sequence[int] = [],
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
-        _experimental_gpus: Sequence[GPU_T] = [],
     ) -> "_Sandbox":
-        if environment_name is None:
-            environment_name = config.get("environment")
+        from .app import _App
+
+        environment_name = _get_environment_name(environment_name)
+
+        # If there are no entrypoint args, we'll sleep forever so that the sandbox will stay
+        # alive long enough for the user to interact with it.
+        if len(entrypoint_args) == 0:
+            max_sleep_time = 60 * 60 * 24 * 2  # 2 days is plenty since workers roll every 24h
+            entrypoint_args = ("sleep", str(max_sleep_time))
 
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
@@ -193,17 +227,44 @@ class _Sandbox(_Object, type_prefix="sb"):
             memory=memory,
             network_file_systems=network_file_systems,
             block_network=block_network,
+            cidr_allowlist=cidr_allowlist,
             volumes=volumes,
             pty_info=pty_info,
+            encrypted_ports=encrypted_ports,
+            unencrypted_ports=unencrypted_ports,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
-            _experimental_gpus=_experimental_gpus,
         )
-        if client is None:
-            if app:
-                client = app._client
-            else:
-                client = await _Client.from_env()
-        app_id: Optional[str] = app.app_id if app else None
+
+        app_id: Optional[str] = None
+        app_client: Optional[_Client] = None
+
+        if app is not None:
+            if app.app_id is None:
+                raise ValueError(
+                    "App has not been initialized yet. To create an App lazily, use `App.lookup`: \n"
+                    "app = modal.App.lookup('my-app', create_if_missing=True)\n"
+                    "modal.Sandbox.create('echo', 'hi', app=app)\n"
+                    "In order to initialize an existing `App` object, refer to our docs: https://modal.com/docs/guide/apps"
+                )
+
+            app_id = app.app_id
+            app_client = app._client
+        elif _App._container_app is not None:
+            app_id = _App._container_app.app_id
+            app_client = _App._container_app.client
+        else:
+            deprecation_warning(
+                (2024, 9, 14),
+                "Creating a `Sandbox` without an `App` is deprecated.\n"
+                "You may pass in an `App` object, or reference one by name with `App.lookup`:\n"
+                "```\n"
+                "app = modal.App.lookup('my-app', create_if_missing=True)\n"
+                "modal.Sandbox.create('echo', 'hi', app=app)\n"
+                "```",
+            )
+
+        client = client or app_client or await _Client.from_env()
+
         resolver = Resolver(client, environment_name=environment_name, app_id=app_id)
         await resolver.load(obj)
         return obj
@@ -231,6 +292,24 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return obj
 
+    async def set_tags(self, tags: Dict[str, str], *, client: Optional[_Client] = None):
+        """Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in `Sandbox.list`."""
+        environment_name = _get_environment_name()
+        if client is None:
+            client = await _Client.from_env()
+
+        tags_list = [api_pb2.SandboxTag(tag_name=name, tag_value=value) for name, value in tags.items()]
+
+        req = api_pb2.SandboxTagsSetRequest(
+            environment_name=environment_name,
+            sandbox_id=self.object_id,
+            tags=tags_list,
+        )
+        try:
+            await retry_transient_errors(client.stub.SandboxTagsSet, req)
+        except GRPCError as exc:
+            raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
+
     # Live handle methods
 
     async def wait(self, raise_on_termination: bool = True):
@@ -247,6 +326,28 @@ class _Sandbox(_Object, type_prefix="sb"):
                 elif resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED and raise_on_termination:
                     raise SandboxTerminatedError()
                 break
+
+    async def tunnels(self, timeout: int = 50) -> List[api_pb2.TunnelData]:
+        """Get tunnel metadata for the sandbox.
+
+        Raises `SandboxTimeoutError` if the tunnels are not available after the timeout.
+
+        Returns a list of `TunnelData` objects, which contain the tunnel metadata.
+        """
+
+        if self._tunnels:
+            return self._tunnels
+
+        req = api_pb2.SandboxGetTunnelsRequest(sandbox_id=self.object_id, timeout=timeout)
+        resp = await retry_transient_errors(self._client.stub.SandboxGetTunnels, req)
+
+        # If we couldn't get the tunnels in time, report the timeout.
+        if resp.result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
+            raise SandboxTimeoutError()
+
+        # Otherwise, we got the tunnels and can report the result.
+        self._tunnels = resp.tunnels
+        return resp.tunnels
 
     async def terminate(self):
         """Terminate Sandbox execution.
@@ -287,7 +388,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         **Usage**
 
         ```python
-        sandbox = modal.Sandbox.create("sleep", "infinity")
+        app = modal.App.lookup("my-app", create_if_missing=True)
+
+        sandbox = modal.Sandbox.create("sleep", "infinity", app=app)
 
         process = sandbox.exec("bash", "-c", "for i in $(seq 1 10); do echo foo $i; sleep 0.5; done")
 
@@ -346,6 +449,45 @@ class _Sandbox(_Object, type_prefix="sb"):
             return 137
         else:
             return self._result.exitcode
+
+    @staticmethod
+    async def list(
+        *, app_id: Optional[str] = None, tags: Optional[Dict[str, str]] = None, client: Optional[_Client] = None
+    ) -> AsyncGenerator["_Sandbox", None]:
+        """List all sandboxes for the current environment or app ID (if specified). If tags are specified, only
+        sandboxes that have at least those tags are returned. Returns an iterator over `Sandbox` objects."""
+        before_timestamp = None
+        environment_name = _get_environment_name()
+        if client is None:
+            client = await _Client.from_env()
+
+        tags_list = [api_pb2.SandboxTag(tag_name=name, tag_value=value) for name, value in tags.items()] if tags else []
+
+        while True:
+            req = api_pb2.SandboxListRequest(
+                app_id=app_id,
+                before_timestamp=before_timestamp,
+                environment_name=environment_name,
+                include_finished=False,
+                tags=tags_list,
+            )
+
+            # Fetches a batch of sandboxes.
+            try:
+                resp = await retry_transient_errors(client.stub.SandboxList, req)
+            except GRPCError as exc:
+                raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
+
+            if not resp.sandboxes:
+                return
+
+            for sandbox_info in resp.sandboxes:
+                obj = _Sandbox._new_hydrated(sandbox_info.id, client, None)
+                obj._result = sandbox_info.task_info.result
+                yield obj
+
+            # Fetch the next batch starting from the end of the current one.
+            before_timestamp = resp.sandboxes[-1].created_at
 
 
 Sandbox = synchronize_api(_Sandbox)

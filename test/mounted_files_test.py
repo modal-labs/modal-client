@@ -12,7 +12,7 @@ from modal import Mount
 from modal.mount import get_auto_mounts
 
 from . import helpers
-from .supports.skip import skip_windows
+from .supports.skip import skip_old_py, skip_windows
 
 
 @pytest.fixture
@@ -311,6 +311,7 @@ def test_mount_dedupe_explicit(servicer, test_dir, server_url_env):
 
 
 @skip_windows("pip-installed pdm seems somewhat broken on windows")
+@skip_old_py("some weird issues w/ pdm and Python 3.9", min_version=(3, 10, 0))
 def test_pdm_cache_automount_exclude(tmp_path, monkeypatch, supports_dir, servicer, server_url_env):
     # check that `pdm`'s cached packages are not included in automounts
     project_dir = Path(__file__).parent.parent

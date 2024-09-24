@@ -8,6 +8,7 @@ from pathlib import Path
 
 from modal import App, Image, Mount, NetworkFileSystem, Sandbox, Secret
 from modal.exception import DeprecationError, InvalidError
+from modal_proto import api_pb2
 
 app = App()
 
@@ -187,8 +188,13 @@ def test_app_sandbox(client, servicer):
             sb = app.spawn_sandbox(
                 "bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret], mounts=[mount]
             )
-            assert sb.stdout.read() == "hi\n"
-            assert sb.stderr.read() == "bye\n"
+
+        sb = Sandbox.create(
+            "bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret], mounts=[mount], app=app
+        )
+        sb.wait()
+        assert sb.stderr.read() == "bye\n"
+        assert sb.stdout.read() == "hi\n"
 
 
 @skip_non_linux
@@ -218,3 +224,85 @@ def test_sandbox_exec_wait(client, servicer):
     assert time.time() - t0 > 0.2
 
     assert cp.poll() == 42
+
+
+@skip_non_linux
+def test_sandbox_on_app_lookup(client, servicer):
+    app = App.lookup("my-app", create_if_missing=True, client=client)
+    sb = Sandbox.create("echo", "hi", app=app)
+    sb.wait()
+    assert sb.stdout.read() == "hi\n"
+    assert servicer.sandbox_app_id == app.app_id
+
+
+@skip_non_linux
+def test_sandbox_list_env(client, servicer):
+    sb = Sandbox.create("bash", "-c", "sleep 10000", client=client)
+    assert len(list(Sandbox.list(client=client))) == 1
+    sb.terminate()
+    assert not list(Sandbox.list(client=client))
+
+
+@skip_non_linux
+def test_sandbox_list_app(client, servicer):
+    image = Image.debian_slim().pip_install("xyz")
+    secret = Secret.from_dict({"FOO": "bar"})
+    mount = Mount.from_local_file(__file__, "/xyz")
+
+    with app.run(client):
+        # Create sandbox
+        sb = Sandbox.create("bash", "-c", "sleep 10000", image=image, secrets=[secret], mounts=[mount], app=app)
+        assert len(list(Sandbox.list(app_id=app.app_id, client=client))) == 1
+        sb.terminate()
+        assert not list(Sandbox.list(app_id=app.app_id, client=client))
+
+
+@skip_non_linux
+def test_sandbox_list_tags(client, servicer):
+    sb = Sandbox.create("bash", "-c", "sleep 10000", client=client)
+    sb.set_tags({"foo": "bar", "baz": "qux"}, client=client)
+    assert len(list(Sandbox.list(tags={"foo": "bar"}, client=client))) == 1
+    assert not list(Sandbox.list(tags={"foo": "notbar"}, client=client))
+    sb.terminate()
+    assert not list(Sandbox.list(tags={"baz": "qux"}, client=client))
+
+
+@skip_non_linux
+def test_sandbox_network_access(client, servicer):
+    with pytest.raises(InvalidError):
+        Sandbox.create("echo", "test", block_network=True, cidr_allowlist=["10.0.0.0/8"], client=client, app=app)
+
+    # Test that blocking works
+    sb = Sandbox.create("echo", "test", block_network=True, client=client, app=app)
+    assert (
+        servicer.sandbox_defs[0].network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.BLOCKED
+    )
+    assert len(servicer.sandbox_defs[0].network_access.allowed_cidrs) == 0
+    sb.terminate()
+
+    # Test that allowlisting works
+    sb = Sandbox.create("echo", "test", block_network=False, cidr_allowlist=["10.0.0.0/8"], client=client, app=app)
+    assert (
+        servicer.sandbox_defs[1].network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST
+    )
+    assert len(servicer.sandbox_defs[1].network_access.allowed_cidrs) == 1
+    assert servicer.sandbox_defs[1].network_access.allowed_cidrs[0] == "10.0.0.0/8"
+    sb.terminate()
+
+    # Test that no rules means allow all
+    sb = Sandbox.create("echo", "test", block_network=False, client=client, app=app)
+    assert servicer.sandbox_defs[2].network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.OPEN
+    assert len(servicer.sandbox_defs[2].network_access.allowed_cidrs) == 0
+    sb.terminate()
+
+
+@skip_non_linux
+def test_sandbox_no_entrypoint(client, servicer):
+    sb = Sandbox.create(client=client, app=app)
+
+    p = sb.exec("echo", "hi")
+    p.wait()
+    assert p.returncode == 0
+    assert p.stdout.read() == "hi\n"
+
+    sb.terminate()

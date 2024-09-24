@@ -26,12 +26,18 @@ def main():
         if config.get("traceback"):
             raise
 
+        assert exc.__cause__  # We should always raise this class from another error
         tb = reduce_traceback_to_user_code(exc.__cause__.__traceback__, exc.user_source)
         sys.excepthook(type(exc.__cause__), exc.__cause__, tb)
         sys.exit(1)
 
     except Exception as exc:
-        if config.get("traceback"):
+        if (
+            # User has asked to alway see full tracebacks
+            config.get("traceback")
+            # The exception message is empty, so we need to provide _some_ actionable information
+            or not str(exc)
+        ):
             raise
 
         from grpclib import GRPCError, Status
@@ -65,6 +71,8 @@ def main():
         else:
             title = "Error"
             content = str(exc)
+            if notes := getattr(exc, "__notes__", []):
+                content = f"{content}\n\nNote: {' ' .join(notes)}"
 
         console = Console(stderr=True)
         panel = Panel(Text(content), title=title, title_align="left", border_style="red")

@@ -10,11 +10,111 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.123 (2024-09-18)
+
+Sandboxes can now be created without an entrypoint command. If they are created like this, they will stay alive up until their set timeout. This is useful if you want to keep a long-lived sandbox and execute code in it later.
+
+
+
+### 0.64.119 (2024-09-17)
+
+- Sandboxes now have a `cidr_allowlist` argument, enabling controlled access to certain IP ranges. When not used (and with `block_network=False`), the sandbox process will have open network access.
+
+
+
+### 0.64.118 (2024-09-17)
+
+Introduce an experimental API to allow users to set the input concurrency for a container locally.
+
+
+
+### 0.64.112 (2024-09-15)
+
+- Creating sandboxes without an associated `App` is deprecated. If you are spawning a `Sandbox` outside a Modal container, you can lookup an `App` by name to attach to the `Sandbox`:
+
+```python
+app = modal.App.lookup('my-app', create_if_missing=True)
+modal.Sandbox.create('echo', 'hi', app=app)
+```
+
+
+
+### 0.64.109 (2024-09-13)
+
+App handles can now be looked up by name with `modal.App.lookup(name)`. This can be useful for associating sandboxes with apps:
+
+```python
+app = modal.App.lookup("my-app", create_if_missing=True)
+modal.Sandbox.create("echo", "hi", app=app)
+```
+
+
+
+### 0.64.100 (2024-09-11)
+
+* Default timeout for `modal.Image.run_function` is now 1 hour. Previously it was 24 hours.
+
+
+
+### 0.64.99 (2024-09-11)
+
+* Fixes an issue that could cause containers using `enable_memory_snapshot=True` on Python 3.9 and below to shut down prematurely
+
+
+### 0.64.97 (2024-09-11)
+
+* Adds support for [ASGI lifespan protocol](https://asgi.readthedocs.io/en/latest/specs/lifespan.html): 
+
+    ```python
+    @app.function()
+    @modal.asgi_app()
+    def func():
+        from fastapi import FastAPI, Request
+
+        def lifespan(wapp: FastAPI):
+            print("Starting")
+            yield {"foo": "bar"}
+            print("Shutting down")
+
+        web_app = FastAPI(lifespan=lifespan)
+
+        @web_app.get("/")
+        def get_state(request: Request):
+            return {"message": f"This is the state: {request.state.foo}"}
+
+        return web_app
+    ```
+
+    which enables support for `gradio>=v4` amongst other libraries using lifespans
+
+### 0.64.87 (2024-09-05)
+
+Sandboxes now support port tunneling. Ports can be exposed via the `open_ports` argument, and a list of active tunnels can be retrieved via the `.tunnels()` method.
+
+
+
 ### 0.64.67 (2024-08-30)
 
 - Fix a regression in `modal launch` behavior not showing progress output when starting the container.
 
 
+### 0.64.48 (2024-08-21)
+
+- Introduces new dataclass-style syntax for class parameterization (see updated [docs](https://modal.com/docs/guide/parameterized-functions))
+
+    ```python
+    @app.cls()
+    class MyCls:
+        param_a: str = modal.parameter()
+
+    MyCls(param_a="hello")  # synthesized constructor
+    ```
+    
+- The new syntax enforces types (`str` or `int` for now) on all parameters
+
+- *When the new syntax is used*, any web endpoints (`web_endpoint`, `asgi_app`, `wsgi_app` or `web_server`) on the app will now also support parameterization through the use of query parameters matching the parameter names, e.g. `https://myfunc.modal.run/?param_a="hello` in the above example.
+
+- The old explicit `__init__` constructor syntax is still allowed, but could be deprecated in the future and doesn't work with web endpoint parameterization
 
 ### 0.64.38 (2024-08-16)
 
@@ -33,6 +133,9 @@ We appreciate your patience while we speedily work towards a stable release of t
     Accordingly, the explicit `--name` option has been deprecated. Providing a name that can be confused with an App ID will also now raise an error.
 
 
+### 0.64.32 (2024-08-16)
+
+- Updated type stubs using generics to allow static type inferrence for functions calls, e.g. `function.remote(...)`.
 
 ### 0.64.26 (2024-08-15)
 
@@ -44,7 +147,7 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 - Added support for dynamic batching. Functions or class methods decorated with `@modal.batched` will now automatically batch their invocations together, up to a specified `max_batch_size`.  The batch will wait for a maximum of `wait_ms` for more invocations after the first invocation is made. See guide for more details.
 
-    ```
+    ```python
     @app.function()
     @modal.batched(max_batch_size=4, wait_ms=1000)
     async def batched_multiply(xs: list[int], ys: list[int]) -> list[int]:
@@ -58,7 +161,7 @@ We appreciate your patience while we speedily work towards a stable release of t
     ```
 
     The batched function is called with individual inputs:
-    ```
+    ```python
     await batched_multiply.remote.aio(2, 3)
     ```
 
@@ -422,10 +525,10 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 - Added `Dict.delete` and `Queue.delete` as API methods for deleting named storage objects:
 
-    ```
+    ```python
     import modal
     modal.Queue.delete("my-job-queue")
-   ```
+    ```
 - Deprecated invoking `Volume.delete` as an instance method; it should now be invoked as a static method with the name of  the Volume to delete, as with the other methods.
 
 

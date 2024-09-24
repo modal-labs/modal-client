@@ -4,6 +4,7 @@ import contextlib
 import platform
 import socket
 import time
+import typing
 import urllib.parse
 import uuid
 from typing import (
@@ -17,6 +18,8 @@ from typing import (
 import grpclib.client
 import grpclib.config
 import grpclib.events
+import grpclib.protocol
+import grpclib.stream
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
@@ -29,6 +32,8 @@ from .logger import logger
 RequestType = TypeVar("RequestType", bound=Message)
 ResponseType = TypeVar("ResponseType", bound=Message)
 
+if typing.TYPE_CHECKING:
+    import modal.client
 
 # Monkey patches grpclib to have a Modal User Agent header.
 grpclib.client.USER_AGENT = "modal-client/{version} ({sys}; {py}/{py_ver})'".format(
@@ -55,9 +60,6 @@ class Subchannel:
             return not self.protocol.handler.connection_lost  # type: ignore
         return True
 
-
-_SendType = TypeVar("_SendType")
-_RecvType = TypeVar("_RecvType")
 
 RETRYABLE_GRPC_STATUS_CODES = [
     Status.DEADLINE_EXCEEDED,
@@ -111,20 +113,22 @@ def create_channel(
     return channel
 
 
+if typing.TYPE_CHECKING:
+    import modal.client
+
+
 async def unary_stream(
-    method: grpclib.client.UnaryStreamMethod[_SendType, _RecvType],
-    request: _SendType,
+    method: "modal.client.UnaryStreamWrapper[RequestType, ResponseType]",
+    request: RequestType,
     metadata: Optional[Any] = None,
-) -> AsyncIterator[_RecvType]:
-    """Helper for making a unary-streaming gRPC request."""
-    async with method.open(metadata=metadata) as stream:
-        await stream.send_message(request, end=True)
-        async for item in stream:
-            yield item
+) -> AsyncIterator[ResponseType]:
+    # TODO: remove this, since we have a method now
+    async for item in method.unary_stream(request, metadata):
+        yield item
 
 
 async def retry_transient_errors(
-    fn: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType],
+    fn: "modal.client.UnaryUnaryWrapper[RequestType, ResponseType]",
     *args,
     base_delay: float = 0.1,
     max_delay: float = 1,

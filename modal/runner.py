@@ -4,7 +4,7 @@ import dataclasses
 import os
 import time
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Coroutine, Dict, List, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Dict, List, Optional, TypeVar
 
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
@@ -27,7 +27,7 @@ from .exception import (
     InvalidError,
     RemoteError,
     _CliUserExecutionError,
-    deprecation_warning,
+    deprecation_error,
 )
 from .execution_context import is_local
 from .object import _Object
@@ -57,7 +57,7 @@ async def _init_local_app_existing(client: _Client, existing_app_id: str) -> Run
     obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
     app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
     object_ids = {item.tag: item.object.object_id for item in obj_resp.items}
-    return RunningApp(existing_app_id, app_page_url=app_page_url, tag_to_object_id=object_ids)
+    return RunningApp(existing_app_id, app_page_url=app_page_url, tag_to_object_id=object_ids, client=client)
 
 
 async def _init_local_app_new(
@@ -73,10 +73,14 @@ async def _init_local_app_new(
         app_state=app_state,
     )
     app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
-    app_page_url = app_resp.app_logs_url
     logger.debug(f"Created new app with id {app_resp.app_id}")
     return RunningApp(
-        app_resp.app_id, app_page_url=app_page_url, environment_name=environment_name, interactive=interactive
+        app_resp.app_id,
+        client=client,
+        app_page_url=app_resp.app_page_url,
+        app_logs_url=app_resp.app_logs_url,
+        environment_name=environment_name,
+        interactive=interactive,
     )
 
 
@@ -275,7 +279,9 @@ async def _run_app(
                 output_mgr.update_app_page_url(running_app.app_page_url)
 
             # Start logs loop
-            logs_loop = tc.create_task(get_app_logs_loop(client, output_mgr, running_app.app_id))
+            logs_loop = tc.create_task(
+                get_app_logs_loop(client, output_mgr, app_id=running_app.app_id, app_logs_url=running_app.app_logs_url)
+            )
 
         exc_info: Optional[BaseException] = None
         try:
@@ -389,6 +395,8 @@ class DeployResult:
     """Dataclass representing the result of deploying an app."""
 
     app_id: str
+    app_page_url: str
+    app_logs_url: str
 
 
 async def _deploy_app(
@@ -478,7 +486,9 @@ async def _deploy_app(
         t = time.time() - t0
         output_mgr.print(step_completed(f"App deployed in {t:.3f}s! 🎉"))
         output_mgr.print(f"\nView Deployment: [magenta]{app_url}[/magenta]")
-    return DeployResult(app_id=running_app.app_id)
+    return DeployResult(
+        app_id=running_app.app_id, app_page_url=running_app.app_page_url, app_logs_url=running_app.app_logs_url
+    )
 
 
 async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str = "", **kwargs: Any) -> None:
@@ -524,20 +534,18 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
                 raise
 
 
-def _run_stub(*args: Any, **kwargs: Any) -> AsyncGenerator[_App, None]:
+def _run_stub(*args: Any, **kwargs: Any):
     """mdmd:hidden
     `run_stub` has been renamed to `run_app` and is deprecated. Please update your code.
     """
-    deprecation_warning(
+    deprecation_error(
         (2024, 5, 1), "`run_stub` has been renamed to `run_app` and is deprecated. Please update your code."
     )
-    return _run_app(*args, **kwargs)
 
 
-def _deploy_stub(*args: Any, **kwargs: Any) -> Coroutine[Any, Any, DeployResult]:
+def _deploy_stub(*args: Any, **kwargs: Any):
     """`deploy_stub` has been renamed to `deploy_app` and is deprecated. Please update your code."""
-    deprecation_warning((2024, 5, 1), str(_deploy_stub.__doc__))
-    return _deploy_app(*args, **kwargs)
+    deprecation_error((2024, 5, 1), str(_deploy_stub.__doc__))
 
 
 run_app = synchronize_api(_run_app)

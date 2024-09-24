@@ -5,6 +5,7 @@ import typing
 from typing import (
     Any,
     Callable,
+    Coroutine,
     Dict,
     Iterable,
     List,
@@ -18,7 +19,7 @@ import typing_extensions
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.function_utils import method_has_params
+from ._utils.function_utils import callable_has_non_self_non_default_params, callable_has_non_self_params
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import _Function
@@ -34,6 +35,7 @@ class _PartialFunctionFlags(enum.IntFlag):
     ENTER_POST_SNAPSHOT: int = 8
     EXIT: int = 16
     BATCHED: int = 32
+    GROUPED: int = 64  # Experimental: Container Networking
 
     @staticmethod
     def all() -> int:
@@ -41,13 +43,14 @@ class _PartialFunctionFlags(enum.IntFlag):
 
 
 P = typing_extensions.ParamSpec("P")
-R = typing_extensions.TypeVar("R", covariant=True)
+ReturnType = typing_extensions.TypeVar("ReturnType", covariant=True)
+OriginalReturnType = typing_extensions.TypeVar("OriginalReturnType", covariant=True)
 
 
-class _PartialFunction(typing.Generic[P, R]):
+class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     """Intermediate function, produced by @enter, @build, @method, @web_endpoint, or @batched"""
 
-    raw_f: Callable[P, R]
+    raw_f: Callable[P, ReturnType]
     flags: _PartialFunctionFlags
     webhook_config: Optional[api_pb2.WebhookConfig]
     is_generator: Optional[bool]
@@ -55,17 +58,19 @@ class _PartialFunction(typing.Generic[P, R]):
     batch_max_size: Optional[int]
     batch_wait_ms: Optional[int]
     force_build: bool
+    group_size: Optional[int]  # Experimental: Container Networking
     build_timeout: Optional[int]
 
     def __init__(
         self,
-        raw_f: Callable[P, R],
+        raw_f: Callable[P, ReturnType],
         flags: _PartialFunctionFlags,
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         is_generator: Optional[bool] = None,
         keep_warm: Optional[int] = None,
         batch_max_size: Optional[int] = None,
         batch_wait_ms: Optional[int] = None,
+        group_size: Optional[int] = None,  # Experimental: Container Networking
         force_build: bool = False,
         build_timeout: Optional[int] = None,
     ):
@@ -77,10 +82,11 @@ class _PartialFunction(typing.Generic[P, R]):
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
         self.batch_max_size = batch_max_size
         self.batch_wait_ms = batch_wait_ms
+        self.group_size = group_size  # Experimental: Container Networking
         self.force_build = force_build
         self.build_timeout = build_timeout
 
-    def __get__(self, obj, objtype=None) -> _Function[P, R]:
+    def __get__(self, obj, objtype=None) -> _Function[P, ReturnType, OriginalReturnType]:
         k = self.raw_f.__name__
         if obj:  # accessing the method on an instance of a class, e.g. `MyClass().fun``
             if hasattr(obj, "_modal_functions"):
@@ -170,6 +176,29 @@ def _find_callables_for_obj(user_obj: Any, flags: int) -> Dict[str, Callable[...
     return {k: pf.raw_f.__get__(user_obj) for k, pf in _find_partial_methods_for_user_cls(user_cls, flags).items()}
 
 
+class _MethodDecoratorType:
+    @typing.overload
+    def __call__(
+        self, func: PartialFunction[typing_extensions.Concatenate[Any, P], ReturnType, OriginalReturnType]
+    ) -> PartialFunction[P, ReturnType, OriginalReturnType]:
+        ...
+
+    @typing.overload
+    def __call__(
+        self, func: Callable[typing_extensions.Concatenate[Any, P], Coroutine[Any, Any, ReturnType]]
+    ) -> PartialFunction[P, ReturnType, Coroutine[Any, Any, ReturnType]]:
+        ...
+
+    @typing.overload
+    def __call__(
+        self, func: Callable[typing_extensions.Concatenate[Any, P], ReturnType]
+    ) -> PartialFunction[P, ReturnType, ReturnType]:
+        ...
+
+    def __call__(self, func):
+        ...
+
+
 def _method(
     _warn_parentheses_missing=None,
     *,
@@ -177,7 +206,8 @@ def _method(
     # a [sync/async] generator object
     is_generator: Optional[bool] = None,
     keep_warm: Optional[int] = None,  # Deprecated: Use keep_warm on @app.cls() instead
-) -> Callable[[Callable[typing_extensions.Concatenate[Any, P], R]], _PartialFunction[P, R]]:
+) -> _MethodDecoratorType:
+    # TODO(elias): fix support for coroutine type unwrapping for methods (static typing)
     """Decorator for methods that should be transformed into a Modal Function registered against this class's app.
 
     **Usage:**
@@ -191,7 +221,7 @@ def _method(
             ...
     ```
     """
-    if _warn_parentheses_missing:
+    if _warn_parentheses_missing is not None:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@method()`.")
 
     if keep_warm is not None:
@@ -246,7 +276,7 @@ def _web_endpoint(
     custom_domains: Optional[
         Iterable[str]
     ] = None,  # Create an endpoint using a custom domain fully-qualified domain name (FQDN).
-) -> Callable[[Callable[P, R]], _PartialFunction[P, R]]:
+) -> Callable[[Callable[P, ReturnType]], _PartialFunction[P, ReturnType, ReturnType]]:
     """Register a basic web endpoint with this application.
 
     This is the simple way to create a web endpoint on Modal. The function
@@ -264,7 +294,7 @@ def _web_endpoint(
     if isinstance(_warn_parentheses_missing, str):
         # Probably passing the method string as a positional argument.
         raise InvalidError('Positional arguments are not allowed. Suggestion: `@web_endpoint(method="GET")`.')
-    elif _warn_parentheses_missing:
+    elif _warn_parentheses_missing is not None:
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@web_endpoint()`."
         )
@@ -334,12 +364,24 @@ def _asgi_app(
     """
     if isinstance(_warn_parentheses_missing, str):
         raise InvalidError('Positional arguments are not allowed. Suggestion: `@asgi_app(label="foo")`.')
-    elif _warn_parentheses_missing:
+    elif _warn_parentheses_missing is not None:
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@asgi_app()`."
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+        if callable_has_non_self_params(raw_f):
+            if callable_has_non_self_non_default_params(raw_f):
+                raise InvalidError(
+                    f"ASGI app function {raw_f.__name__} can't have parameters. See https://modal.com/docs/guide/webhooks#asgi."
+                )
+            else:
+                deprecation_warning(
+                    (2024, 9, 4),
+                    f"ASGI app function {raw_f.__name__} has default parameters, but shouldn't have any parameters - "
+                    f"Modal will drop support for default parameters in a future release.",
+                )
+
         if not wait_for_response:
             deprecation_warning(
                 (2024, 5, 13),
@@ -394,12 +436,24 @@ def _wsgi_app(
     """
     if isinstance(_warn_parentheses_missing, str):
         raise InvalidError('Positional arguments are not allowed. Suggestion: `@wsgi_app(label="foo")`.')
-    elif _warn_parentheses_missing:
+    elif _warn_parentheses_missing is not None:
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@wsgi_app()`."
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+        if callable_has_non_self_params(raw_f):
+            if callable_has_non_self_non_default_params(raw_f):
+                raise InvalidError(
+                    f"WSGI app function {raw_f.__name__} can't have parameters. See https://modal.com/docs/guide/webhooks#wsgi."
+                )
+            else:
+                deprecation_warning(
+                    (2024, 9, 4),
+                    f"WSGI app function {raw_f.__name__} has default parameters, but shouldn't have any parameters - "
+                    f"Modal will drop support for default parameters in a future release.",
+                )
+
         if not wait_for_response:
             deprecation_warning(
                 (2024, 5, 13),
@@ -508,7 +562,7 @@ def _build(
             LlamaTokenizer.from_pretrained(base_model)
     ```
     """
-    if _warn_parentheses_missing:
+    if _warn_parentheses_missing is not None:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@build()`.")
 
     def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
@@ -531,7 +585,7 @@ def _enter(
     """Decorator for methods which should be executed when a new container is started.
 
     See the [lifeycle function guide](https://modal.com/docs/guide/lifecycle-functions#enter) for more information."""
-    if _warn_parentheses_missing:
+    if _warn_parentheses_missing is not None:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@enter()`.")
 
     if snap:
@@ -561,14 +615,14 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
     """Decorator for methods which should be executed when a container is about to exit.
 
     See the [lifeycle function guide](https://modal.com/docs/guide/lifecycle-functions#exit) for more information."""
-    if _warn_parentheses_missing:
+    if _warn_parentheses_missing is not None:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@exit()`.")
 
     def wrapper(f: ExitHandlerType) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
             _disallow_wrapping_method(f, "exit")
 
-        if method_has_params(f):
+        if callable_has_non_self_params(f):
             message = (
                 "Support for decorating parameterized methods with `@exit` has been deprecated."
                 " Please update your code by removing the parameters."
@@ -601,7 +655,7 @@ def _batched(
 
     See the [dynamic batching guide](https://modal.com/docs/guide/dynamic-batching) for more information.
     """
-    if _warn_parentheses_missing:
+    if _warn_parentheses_missing is not None:
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@batched()`."
         )

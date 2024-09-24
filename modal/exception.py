@@ -90,6 +90,10 @@ class DeserializationError(Error):
     """Raised to provide more context when an error is encountered during deserialization."""
 
 
+class SerializationError(Error):
+    """Raised to provide more context when an error is encountered during serialization."""
+
+
 class RequestSizeError(Error):
     """Raised when an operation produces a gRPC request that is rejected by the server for being too large."""
 
@@ -205,4 +209,8 @@ class InputCancellation(BaseException):
 
 
 class ModuleNotMountable(Exception):
+    pass
+
+
+class ClientClosed(Error):
     pass

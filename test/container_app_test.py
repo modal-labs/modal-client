@@ -1,8 +1,9 @@
 # Copyright Modal Labs 2022
-import asyncio
+import importlib
 import json
 import os
 import pytest
+import time
 from typing import Dict
 from unittest import mock
 
@@ -10,8 +11,9 @@ from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 
 from modal import App, interact
-from modal._container_io_manager import ContainerIOManager, _ContainerIOManager
-from modal.client import _Client
+from modal._container_io_manager import ContainerIOManager
+from modal._utils.async_utils import synchronize_api
+from modal._utils.grpc_utils import retry_transient_errors
 from modal.exception import InvalidError
 from modal.running_app import RunningApp
 from modal_proto import api_pb2
@@ -69,34 +71,73 @@ async def test_container_snapshot_restore(container_client, tmpdir, servicer):
         os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
     ):
         io_manager.memory_snapshot()
-        # In-memory Client instance should have update credentials, not old credentials
+        # In-memory Client instance should have updated credentials, not old credentials
         assert old_client.credentials == ("ta-i-am-restored", "ts-i-am-restored")
 
 
-@pytest.mark.asyncio
-async def test_container_snapshot_restore_heartbeats(tmpdir, servicer):
-    client = _Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret"))
-    async with client as async_client:
-        io_manager = _ContainerIOManager(api_pb2.ContainerArguments(), async_client)
-        restore_path = temp_restore_path(tmpdir)
+def square(x):
+    pass
 
-        # Ensure that heartbeats only run after the snapshot
-        heartbeat_interval_secs = 0.01
-        async with io_manager.heartbeats(True):
-            with mock.patch.dict(
-                os.environ,
-                {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr},
-            ):
-                with mock.patch("modal.runner.HEARTBEAT_INTERVAL", heartbeat_interval_secs):
-                    await asyncio.sleep(heartbeat_interval_secs * 2)
-                    assert not list(
-                        filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests)
-                    )
-                    await io_manager.memory_snapshot()
-                    await asyncio.sleep(heartbeat_interval_secs * 2)
-                    assert list(
-                        filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests)
-                    )
+
+@synchronize_api
+async def stop_app(client, app_id):
+    # helper to ensur we run the rpc from the synchronicity loop - otherwise we can run into weird deadlocks
+    return await retry_transient_errors(client.stub.AppStop, api_pb2.AppStopRequest(app_id=app_id))
+
+
+@pytest.mark.asyncio
+async def test_container_snapshot_reference_capture(container_client, tmpdir, servicer, client):
+    app = App()
+    from modal import Function
+    from modal.runner import deploy_app
+
+    app.function()(square)
+    app_name = "my-app"
+    app_id = deploy_app(app, app_name, client=container_client).app_id
+    f = Function.lookup(app_name, "square", client=container_client)
+    assert f.object_id == "fu-1"
+    await f.remote.aio()
+    assert f.object_id == "fu-1"
+    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    restore_path = temp_restore_path(tmpdir)
+    with mock.patch.dict(
+        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
+    ):
+        io_manager.memory_snapshot()
+
+    # Stop the App, invalidating the fu- ID stored in `f`.
+    stop_app(client, app_id)
+    # After snapshot-restore the previously looked-up Function should get refreshed and have the
+    # new fu- ID. ie. the ID should not be stale and invalid.
+    new_app_id = deploy_app(app, app_name, client=client).app_id
+    assert new_app_id != app_id
+    await f.remote.aio()
+    assert f.object_id == "fu-2"
+    # Purposefully break FunctionGet to check the hydration is cached.
+    del servicer.app_objects[new_app_id]
+    await f.remote.aio()  # remote call succeeds because it didn't re-hydrate Function
+    assert f.object_id == "fu-2"
+
+
+def test_container_snapshot_restore_heartbeats(tmpdir, servicer, container_client):
+    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    restore_path = temp_restore_path(tmpdir)
+
+    # Ensure that heartbeats only run after the snapshot
+    heartbeat_interval_secs = 0.01
+    with io_manager.heartbeats(True):
+        with mock.patch.dict(
+            os.environ,
+            {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr},
+        ):
+            with mock.patch("modal.runner.HEARTBEAT_INTERVAL", heartbeat_interval_secs):
+                time.sleep(heartbeat_interval_secs * 2)
+                assert not list(
+                    filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests)
+                )
+                io_manager.memory_snapshot()
+                time.sleep(heartbeat_interval_secs * 2)
+                assert list(filter(lambda req: isinstance(req, api_pb2.ContainerHeartbeatRequest), servicer.requests))
 
 
 @pytest.mark.asyncio
@@ -159,6 +200,8 @@ async def test_container_snapshot_patching(fake_torch_module, container_client, 
     # bring fake torch into scope and call the utility fn
     import torch
 
+    importlib.reload(torch)  # make sure we get our fake torch
+
     assert torch.cuda.device_count() == 0
 
     # Write out a restore file so that snapshot+restore will complete
@@ -167,8 +210,6 @@ async def test_container_snapshot_patching(fake_torch_module, container_client, 
         os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
     ):
         io_manager.memory_snapshot()
-        import torch
-
         assert torch.cuda.device_count() == 2
 
 
@@ -178,9 +219,11 @@ async def test_container_snapshot_patching_err(weird_torch_module, container_cli
     restore_path = temp_restore_path(tmpdir)
 
     # bring weird torch into scope and call the utility fn
-    import torch as trch
+    import torch
 
-    assert trch.IM_WEIRD == 42
+    importlib.reload(torch)
+
+    assert torch.IM_WEIRD == 42
 
     with mock.patch.dict(
         os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}

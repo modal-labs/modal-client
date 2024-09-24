@@ -19,7 +19,7 @@ from ..config import config, logger
 from ..exception import ExecutionError, FunctionTimeoutError, InvalidError, RemoteError
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
 from .blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
-from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES, unary_stream
+from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 
 
 class FunctionInfoType(Enum):
@@ -57,6 +57,15 @@ def entrypoint_only_package_mount_condition(entrypoint_file):
 
 def is_global_object(object_qual_name: str):
     return "<locals>" not in object_qual_name.split(".")
+
+
+def is_method_fn(object_qual_name: str):
+    # methods have names like Cls.foo.
+    if "<locals>" in object_qual_name:
+        # functions can be nested in multiple local scopes.
+        rest = object_qual_name.split("<locals>.")[-1]
+        return len(rest.split(".")) > 1
+    return len(object_qual_name.split(".")) > 1
 
 
 def is_top_level_function(f: Callable) -> bool:
@@ -320,16 +329,28 @@ class FunctionInfo:
         return True
 
 
-def method_has_params(f: Callable[..., Any]) -> bool:
-    """Return True if a method (bound or unbound) has parameters other than self.
+def callable_has_non_self_params(f: Callable[..., Any]) -> bool:
+    """Return True if a callable (function, bound method, or unbound method) has parameters other than self.
 
-    Used for deprecation of @exit() parameters.
+    Used to ensure that @exit(), @asgi_app, and @wsgi_app functions don't have parameters.
     """
-    num_params = len(inspect.signature(f).parameters)
-    if hasattr(f, "__self__"):
-        return num_params > 0
-    else:
-        return num_params > 1
+    return any(param.name != "self" for param in inspect.signature(f).parameters.values())
+
+
+def callable_has_non_self_non_default_params(f: Callable[..., Any]) -> bool:
+    """Return True if a callable (function, bound method, or unbound method) has non-default parameters other than self.
+
+    Used for deprecation of default parameters in @asgi_app and @wsgi_app functions.
+    """
+    for param in inspect.signature(f).parameters.values():
+        if param.name == "self":
+            continue
+
+        if param.default != inspect.Parameter.empty:
+            continue
+
+        return True
+    return False
 
 
 async def _stream_function_call_data(
@@ -352,7 +373,7 @@ async def _stream_function_call_data(
     while True:
         req = api_pb2.FunctionCallGetDataRequest(function_call_id=function_call_id, last_index=last_index)
         try:
-            async for chunk in unary_stream(stub_fn, req):
+            async for chunk in stub_fn.unary_stream(req):
                 if chunk.index <= last_index:
                     continue
                 if chunk.data_blob_id:

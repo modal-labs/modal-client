@@ -192,6 +192,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.volume_reloads: Dict[str, int] = defaultdict(lambda: 0)
 
         self.sandbox_defs = []
+        self.sandbox_app_id = None
         self.sandbox: asyncio.subprocess.Process = None
         self.sandbox_result: Optional[api_pb2.GenericResult] = None
 
@@ -292,8 +293,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
         app_id = f"ap-{self.n_apps}"
         self.app_state_history[app_id].append(api_pb2.APP_STATE_INITIALIZING)
         await stream.send_message(
-            api_pb2.AppCreateResponse(app_id=app_id, app_logs_url="https://modaltest.com/apps/ap-123")
+            api_pb2.AppCreateResponse(app_id=app_id, app_page_url="https://modaltest.com/apps/ap-123")
         )
+
+    async def AppGetOrCreate(self, stream):
+        request: api_pb2.AppGetOrCreateRequest = await stream.recv_message()
+        self.requests.append(request)
+
+        await stream.send_message(api_pb2.AppGetOrCreateResponse(app_id="ap-123"))
 
     async def AppClientDisconnect(self, stream):
         request: api_pb2.AppClientDisconnectRequest = await stream.recv_message()
@@ -313,11 +320,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
             last_entry_id = "1"
         else:
             last_entry_id = str(int(request.last_entry_id) + 1)
-        await asyncio.sleep(0.5)
-        log = api_pb2.TaskLogs(data=f"hello, world ({last_entry_id})\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)
-        await stream.send_message(api_pb2.TaskLogsBatch(entry_id=last_entry_id, items=[log]))
-        if self.done:
-            await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
+        for _ in range(50):
+            await asyncio.sleep(0.5)
+            log = api_pb2.TaskLogs(
+                data=f"hello, world ({last_entry_id})\n", file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT
+            )
+            await stream.send_message(api_pb2.TaskLogsBatch(entry_id=last_entry_id, items=[log]))
+            last_entry_id = str(int(last_entry_id) + 1)
+            if self.done:
+                await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
+                return
 
     async def AppGetObjects(self, stream):
         request: api_pb2.AppGetObjectsRequest = await stream.recv_message()
@@ -1137,6 +1149,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             values = [q.pop(0)]
         else:
             values = []
+            await asyncio.sleep(request.timeout)
         await stream.send_message(api_pb2.QueueGetResponse(values=values))
 
     async def QueueLen(self, stream):
@@ -1181,6 +1194,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             stdin=asyncio.subprocess.PIPE,
         )
 
+        self.sandbox_app_id = request.app_id
         self.sandbox_defs.append(request.definition)
 
         await stream.send_message(api_pb2.SandboxCreateResponse(sandbox_id="sb-123"))
@@ -1223,8 +1237,41 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.sandbox_result = result
         await stream.send_message(api_pb2.SandboxWaitResponse(result=result))
 
+    async def SandboxList(self, stream):
+        request: api_pb2.SandboxListRequest = await stream.recv_message()
+        if self.sandbox.returncode or request.before_timestamp == 1:
+            await stream.send_message(api_pb2.SandboxListResponse(sandboxes=[]))
+            return
+
+        if request.app_id and request.app_id != self.sandbox_app_id:
+            await stream.send_message(api_pb2.SandboxListResponse(sandboxes=[]))
+            return
+
+        for tag in request.tags:
+            if self.sandbox_tags.get(tag.tag_name) != tag.tag_value:
+                await stream.send_message(api_pb2.SandboxListResponse(sandboxes=[]))
+                return
+
+        await stream.send_message(
+            api_pb2.SandboxListResponse(
+                sandboxes=[
+                    api_pb2.SandboxInfo(
+                        id="sb-123", created_at=1, task_info=api_pb2.TaskInfo(result=self.sandbox_result)
+                    )
+                ]
+            )
+        )
+
+    async def SandboxTagsSet(self, stream):
+        request: api_pb2.SandboxTagsSetRequest = await stream.recv_message()
+        self.sandbox_tags = {tag.tag_name: tag.tag_value for tag in request.tags}
+        await stream.send_message(Empty())
+
     async def SandboxTerminate(self, stream):
-        self.sandbox.terminate()
+        try:
+            self.sandbox.terminate()
+        except ProcessLookupError:
+            pass
         await stream.send_message(api_pb2.SandboxTerminateResponse())
 
     async def SandboxGetTaskId(self, stream):
@@ -1351,7 +1398,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def TaskResult(self, stream):
         request: api_pb2.TaskResultRequest = await stream.recv_message()
-        self.task_result = request.result
+        if self.task_result is None:
+            self.task_result = request.result
         await stream.send_message(Empty())
 
     ### Token flow
@@ -1731,16 +1779,6 @@ def mock_dir_factory():
             shutil.rmtree(root_dir, ignore_errors=True)
 
     return mock_dir
-
-
-@pytest.fixture(autouse=True)
-def reset_sys_modules():
-    # Needed since some tests will import dynamic modules
-    backup = sys.modules.copy()
-    try:
-        yield
-    finally:
-        sys.modules = backup
 
 
 @pytest.fixture(autouse=True)
