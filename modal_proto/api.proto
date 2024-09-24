@@ -924,6 +924,21 @@ message DomainListResponse {
   repeated Domain domains = 1;
 }
 
+// Environment-scoped configuration, with workspace-level defaults.
+// Note that we use MergeFrom to combine workspace / environment config,
+// which will *append* any repeated fields!
+message EnvironmentConfig {
+  string image_builder_version = 1;
+}
+
+message EnvironmentConfigGetRequest {
+  string name = 1;
+}
+
+message EnvironmentConfigGetResponse {
+  EnvironmentConfig config = 1;
+}
+
 message EnvironmentCreateRequest {
   string name = 1 [ (modal.options.audit_target_attr) = true ];
 }
