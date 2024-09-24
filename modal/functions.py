@@ -277,7 +277,7 @@ class _FunctionSpec:
     secrets: Sequence[_Secret]
     network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem]
     volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]
-    gpu: GPU_T
+    gpus: Union[GPU_T, Sequence[GPU_T]]  # TODO(irfansharif): Somehow assert that it's the first kind, in sandboxes
     cloud: Optional[str]
     cpu: Optional[float]
     memory: Optional[Union[int, Tuple[int, int]]]
@@ -490,7 +490,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         secrets: Sequence[_Secret] = (),
         schedule: Optional[Schedule] = None,
         is_generator=False,
-        gpu: GPU_T = None,
+        gpu: Union[GPU_T, Sequence[GPU_T]] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         mounts: Collection[_Mount] = (),
         network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
@@ -586,7 +586,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         function_spec = _FunctionSpec(
             mounts=all_mounts,
             secrets=secrets,
-            gpu=gpu,
+            gpus=gpu,
             network_file_systems=network_file_systems,
             volumes=volumes,
             image=image,
@@ -792,6 +792,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         raise Exception(f"Dependency {dep} isn't hydrated")
                     object_dependencies.append(api_pb2.ObjectDependency(object_id=dep.object_id))
 
+                function_data: Optional[api_pb2.FunctionData] = None
+                function_definition: Optional[api_pb2.Function] = None
+
                 # Create function remotely
                 function_definition = api_pb2.Function(
                     module_name=info.module_name or "",
@@ -803,9 +806,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     function_serialized=function_serialized or b"",
                     class_serialized=class_serialized or b"",
                     function_type=function_type,
-                    resources=convert_fn_config_to_resources_config(
-                        cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
-                    ),
                     webhook_config=webhook_config,
                     shared_volume_mounts=network_file_system_mount_protos(
                         validated_network_file_systems, allow_cross_region_volumes
@@ -845,10 +845,62 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     _experimental_concurrent_cancellations=True,
                     _experimental_buffer_containers=_experimental_buffer_containers or 0,
                 )
+
+                if isinstance(gpu, Sequence) and not isinstance(gpu, str):
+                    function_data = api_pb2.FunctionData(
+                        module_name=function_definition.module_name,
+                        function_name=function_definition.function_name,
+                        function_type=function_definition.function_type,
+                        warm_pool_size=function_definition.warm_pool_size,
+                        concurrency_limit=function_definition.concurrency_limit,
+                        task_idle_timeout_secs=function_definition.task_idle_timeout_secs,
+                        worker_id=function_definition.worker_id,
+                        timeout_secs=function_definition.timeout_secs,
+                        web_url=function_definition.web_url,
+                        web_url_info=function_definition.web_url_info,
+                        webhook_config=function_definition.webhook_config,
+                        custom_domain_info=function_definition.custom_domain_info,
+                        is_class=function_definition.is_class,
+                        class_parameter_info=function_definition.class_parameter_info,
+                        is_method=function_definition.is_method,
+                        use_function_id=function_definition.use_function_id,
+                        use_method_name=function_definition.use_method_name,
+                        _experimental_group_size=function_definition._experimental_group_size,
+                    )
+
+                    ranked_functions = []
+                    for rank, _gpu in enumerate(gpu):
+                        function_definition_copy = api_pb2.Function()
+                        function_definition_copy.CopyFrom(function_definition)
+
+                        function_definition_copy.resources.CopyFrom(
+                            convert_fn_config_to_resources_config(
+                                cpu=cpu, memory=memory, gpu=_gpu, ephemeral_disk=ephemeral_disk
+                            ),
+                        )
+                        ranked_function = api_pb2.FunctionData.RankedFunction(
+                            rank=rank,
+                            function=function_definition_copy,
+                        )
+                        ranked_functions.append(ranked_function)
+                    function_data.ranked_functions.extend(ranked_functions)
+                    function_definition = None  # function_definition is not used in this case
+                else:
+                    # TODO(irfansharif): Assert on this specific type once
+                    # we get rid of python 3.8.
+                    #   assert isinstance(gpu, GPU_T)  # includes the case where gpu==None case
+                    function_definition.resources.CopyFrom(
+                        convert_fn_config_to_resources_config(
+                            cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
+                        ),  # type: ignore
+                    )
+
                 assert resolver.app_id
+                assert (function_definition is None) != (function_data is None)  # xor
                 request = api_pb2.FunctionCreateRequest(
                     app_id=resolver.app_id,
                     function=function_definition,
+                    function_data=function_data,
                     schedule=schedule.proto_message if schedule is not None else None,
                     existing_function_id=existing_object_id or "",
                     defer_updates=True,
@@ -885,9 +937,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # Used to check whether we should rebuild an image using run_function
         # Plaintext source and arg definition for the function, so it's part of the image
         # hash. We can't use the cloudpickle hash because it's not very stable.
+        if isinstance(gpu, Sequence) and not isinstance(gpu, str):
+            gpus: Sequence[GPU_T] = gpu
+        else:
+            gpus: Sequence[GPU_T] = [gpu]
         obj._build_args = dict(  # See get_build_def
             secrets=repr(secrets),
-            gpu_config=repr(parse_gpu_config(gpu)),
+            gpu_config=repr([parse_gpu_config(_gpu) for _gpu in gpus]),
             mounts=repr(mounts),
             network_file_systems=repr(network_file_systems),
         )
@@ -1124,7 +1180,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
-        assert self._function_name
+        assert self._function_name, f"Function name must be set before metadata can be retrieved for {self}"
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
             function_type=(
