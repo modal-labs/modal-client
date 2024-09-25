@@ -277,7 +277,7 @@ class _FunctionSpec:
     secrets: Sequence[_Secret]
     network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem]
     volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]
-    gpus: Union[GPU_T, Sequence[GPU_T]]  # TODO(irfansharif): Somehow assert that it's the first kind, in sandboxes
+    gpus: Union[GPU_T, List[GPU_T]]  # TODO(irfansharif): Somehow assert that it's the first kind, in sandboxes
     cloud: Optional[str]
     cpu: Optional[float]
     memory: Optional[Union[int, Tuple[int, int]]]
@@ -490,7 +490,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         secrets: Sequence[_Secret] = (),
         schedule: Optional[Schedule] = None,
         is_generator=False,
-        gpu: Union[GPU_T, Sequence[GPU_T]] = None,
+        gpu: Union[GPU_T, List[GPU_T]] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         mounts: Collection[_Mount] = (),
         network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
@@ -844,7 +844,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     _experimental_buffer_containers=_experimental_buffer_containers or 0,
                 )
 
-                if isinstance(gpu, Sequence) and not isinstance(gpu, str):
+                if isinstance(gpu, list):
                     function_data = api_pb2.FunctionData(
                         module_name=function_definition.module_name,
                         function_name=function_definition.function_name,
@@ -935,10 +935,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # Used to check whether we should rebuild an image using run_function
         # Plaintext source and arg definition for the function, so it's part of the image
         # hash. We can't use the cloudpickle hash because it's not very stable.
-        if isinstance(gpu, Sequence) and not isinstance(gpu, str):
-            gpus: Sequence[GPU_T] = gpu
-        else:
-            gpus: Sequence[GPU_T] = [gpu]
+        gpus: List[GPU_T] = gpu if isinstance(gpu, list) else [gpu]
         obj._build_args = dict(  # See get_build_def
             secrets=repr(secrets),
             gpu_config=repr([parse_gpu_config(_gpu) for _gpu in gpus]),

@@ -306,3 +306,9 @@ def test_sandbox_no_entrypoint(client, servicer):
     assert p.stdout.read() == "hi\n"
 
     sb.terminate()
+
+
+@skip_non_linux
+def test_sandbox_gpu_fallbacks_support(client, servicer):
+    with pytest.raises(InvalidError, match="do not support"):
+        Sandbox.create(client=client, gpu=["t4", "a100"])  # type: ignore
