@@ -61,6 +61,32 @@ def disable_app_run_warning(monkeypatch):
     monkeypatch.setenv("MODAL_DISABLE_APP_RUN_OUTPUT_WARNING", "1")
 
 
+class FunctionsRegistry:
+    def __init__(self):
+        self._functions: Dict[str, api_pb2.Function] = {}
+        self._functions_data: Dict[str, api_pb2.FunctionData] = {}
+
+    def __getitem__(self, key):
+        if key in self._functions:
+            return self._functions[key]
+        return self._functions_data[key]
+
+    def __setitem__(self, key, value):
+        if isinstance(value, api_pb2.FunctionData):
+            self._functions_data[key] = value
+        else:
+            self._functions[key] = value
+
+    def __len__(self):
+        return len(self._functions) + len(self._functions_data)
+
+    def values(self):
+        return list(self._functions.values()) + list(self._functions_data.values())
+
+    def items(self):
+        return list(self._functions.items()) + list(self._functions_data.items())
+
+
 @patch_mock_servicer
 class MockClientServicer(api_grpc.ModalClientBase):
     # TODO(erikbern): add more annotations
@@ -154,7 +180,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.precreated_functions = set()
 
-        self.app_functions: Dict[str, api_pb2.Function] = {}
+        self.app_functions: FunctionsRegistry = FunctionsRegistry()
         self.bound_functions: Dict[Tuple[str, bytes], str] = {}
         self.function_params: Dict[str, Tuple[Tuple, Dict[str, Any]]] = {}
         self.function_options: Dict[str, api_pb2.FunctionOptions] = {}
@@ -340,7 +366,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
             for object_id in object_ids.values():
                 if object_id.startswith("fu-"):
                     definition = self.app_functions[object_id]
-                    unindexed_object_ids |= {obj.object_id for obj in definition.object_dependencies}
+                    if isinstance(definition, api_pb2.FunctionData):
+                        for ranked_fn in definition.ranked_functions:
+                            unindexed_object_ids |= {obj.object_id for obj in ranked_fn.function.object_dependencies}
+                    else:
+                        unindexed_object_ids |= {obj.object_id for obj in definition.object_dependencies}
             objects += [(None, object_id) for object_id in unindexed_object_ids]
             # TODO(michael) This perpetuates a hack! The container_test tests rely on hardcoded unindexed_object_ids
             # but we now look those up dynamically from the indexed objects in (the real) AppGetObjects. But the
@@ -835,22 +865,36 @@ class MockClientServicer(api_grpc.ModalClientBase):
             function_id = f"fu-{self.n_functions}"
         if request.schedule:
             self.function2schedule[function_id] = request.schedule
-        function = api_pb2.Function()
-        function.CopyFrom(request.function)
-        if function.webhook_config.type:
-            function.web_url = "http://xyz.internal"
 
-        self.app_functions[function_id] = function
+        function: Optional[api_pb2.Function] = None
+        function_data: Optional[api_pb2.FunctionData] = None
+
+        if len(request.function_data.ranked_functions) > 0:
+            function_data = api_pb2.FunctionData()
+            function_data.CopyFrom(request.function_data)
+            if function_data.webhook_config.type:
+                function_data.web_url = "http://xyz.internal"
+        else:
+            assert request.function
+            function = api_pb2.Function()
+            function.CopyFrom(request.function)
+            if function.webhook_config.type:
+                function.web_url = "http://xyz.internal"
+
+        assert (function is None) != (function_data is None)
+        function_defn = function or function_data
+        self.app_functions[function_id] = function_defn
+
         await stream.send_message(
             api_pb2.FunctionCreateResponse(
                 function_id=function_id,
                 function=function,
                 handle_metadata=api_pb2.FunctionHandleMetadata(
-                    function_name=function.function_name,
-                    function_type=function.function_type,
-                    web_url=function.web_url,
-                    use_function_id=function.use_function_id or function_id,
-                    use_method_name=function.use_method_name,
+                    function_name=function_defn.function_name,
+                    function_type=function_defn.function_type,
+                    web_url=function_defn.web_url,
+                    use_function_id=function_defn.use_function_id or function_id,
+                    use_method_name=function_defn.use_method_name,
                     definition_id=f"de-{self.n_functions}",
                 ),
             )
@@ -998,7 +1042,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def FunctionUpdateSchedulingParams(self, stream):
         req: api_pb2.FunctionUpdateSchedulingParamsRequest = await stream.recv_message()
         # update function definition
-        self.app_functions[req.function_id].warm_pool_size = req.warm_pool_size_override  # hacky
+        fn_definition = self.app_functions[req.function_id]
+        assert isinstance(fn_definition, api_pb2.Function)
+        fn_definition.warm_pool_size = req.warm_pool_size_override  # hacky
+
         await stream.send_message(api_pb2.FunctionUpdateSchedulingParamsResponse())
 
     ### Image

@@ -50,6 +50,14 @@ async def delay_async(t):
 
 
 @app.function()
+async def async_cancel_doesnt_reraise(t):
+    try:
+        await asyncio.sleep(t)
+    except asyncio.CancelledError:
+        pass
+
+
+@app.function()
 async def square_async(x):
     await asyncio.sleep(SLEEP_DELAY)
     return x * x

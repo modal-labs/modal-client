@@ -615,7 +615,9 @@ class _App:
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
-        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
+        gpu: Union[
+            GPU_T, List[GPU_T]
+        ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),  # Modal Mounts added to the container
         network_file_systems: Dict[
@@ -656,7 +658,6 @@ class _App:
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         # Parameters below here are experimental. Use with caution!
-        _experimental_boost: None = None,  # Deprecated: lower latency function execution is now default.
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
@@ -672,11 +673,6 @@ class _App:
         if interactive:
             deprecation_error(
                 (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
-            )
-
-        if _experimental_boost is not None:
-            deprecation_warning(
-                (2024, 7, 23), "`_experimental_boost` is now always-on. This argument is no longer needed."
             )
 
         if image is None:
@@ -830,7 +826,6 @@ class _App:
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
-                _experimental_boost=_experimental_boost,
                 _experimental_buffer_containers=_experimental_buffer_containers,
                 container_networking=container_networking,  # Experimental: Container Networking
                 group_size=group_size,  # Experimental: Container Networking
@@ -854,7 +849,9 @@ class _App:
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
-        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
+        gpu: Union[
+            GPU_T, List[GPU_T]
+        ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
         network_file_systems: Dict[
@@ -887,7 +884,6 @@ class _App:
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         # Parameters below here are experimental. Use with caution!
-        _experimental_boost: None = None,  # Deprecated: lower latency function execution is now default.
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
@@ -899,11 +895,6 @@ class _App:
         if interactive:
             deprecation_error(
                 (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
-            )
-
-        if _experimental_boost is not None:
-            deprecation_warning(
-                (2024, 7, 23), "`_experimental_boost` is now always-on. This argument is no longer needed."
             )
 
         if image is None:
@@ -969,7 +960,6 @@ class _App:
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
-                _experimental_boost=_experimental_boost,
                 # class service function, so the following attributes which relate to
                 # the callable itself are invalid and set to defaults:
                 webhook_config=None,

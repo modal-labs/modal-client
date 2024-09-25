@@ -1530,7 +1530,9 @@ class _Image(_Object, type_prefix="im"):
         self,
         raw_f: Callable[..., Any],
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
-        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
+        gpu: Union[
+            GPU_T, List[GPU_T]
+        ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
         mounts: Sequence[_Mount] = (),  # Mounts attached to the function
         volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},  # Volume mount paths
         network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},  # NFS mount paths
