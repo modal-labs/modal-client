@@ -844,6 +844,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     _experimental_group_size=group_size or 0,  # Experimental: Container Networking
                     _experimental_concurrent_cancellations=True,
                     _experimental_buffer_containers=_experimental_buffer_containers or 0,
+                    _experimental_vprox_id=config.get("vprox_id"),
                 )
                 assert resolver.app_id
                 request = api_pb2.FunctionCreateRequest(
