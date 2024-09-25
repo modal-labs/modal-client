@@ -1100,6 +1100,8 @@ message Function {
   bool untrusted = 68;
 
   uint32 _experimental_buffer_containers = 69;
+
+  optional string _experimental_vprox_id = 70;
 }
 
 message FunctionBindParamsRequest {
