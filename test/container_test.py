@@ -1730,6 +1730,30 @@ def test_cancellation_stops_subset_of_async_concurrent_inputs(servicer):
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
+def test_sigint_concurrent_async_cancel_doesnt_reraise(servicer):
+    with servicer.input_lockstep() as input_lock:
+        container_process = _run_container_process(
+            servicer,
+            "test.supports.functions",
+            "async_cancel_doesnt_reraise",
+            inputs=[("", (1,), {})] * 2,  # two inputs
+            allow_concurrent_inputs=2,
+        )
+        input_lock.wait()
+        input_lock.wait()
+
+    time.sleep(0.05)  # let the container get and start processing the input
+    container_process.send_signal(signal.SIGINT)
+    # container should exit soon!
+    exit_code = container_process.wait(5)
+    container_stderr = container_process.stderr.read().decode("utf8")
+    assert "Traceback" not in container_stderr
+    # TODO (elias): Make some assertions regarding what kind of output is recorded (if any) is recorded for these inputs
+    assert exit_code == 0  # container should exit gracefully
+
+
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
 def test_cancellation_stops_task_with_concurrent_inputs(servicer):
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
