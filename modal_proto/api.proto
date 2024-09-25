@@ -2485,6 +2485,7 @@ service ModalClient {
   rpc DomainList(DomainListRequest) returns (DomainListResponse);
 
   // Environments
+  rpc EnvironmentConfigGet(EnvironmentConfigGetRequest) returns (EnvironmentConfigGetResponse);
   rpc EnvironmentCreate(EnvironmentCreateRequest) returns (google.protobuf.Empty);
   rpc EnvironmentDelete(EnvironmentDeleteRequest) returns (google.protobuf.Empty);
   rpc EnvironmentList(google.protobuf.Empty) returns (EnvironmentListResponse);
