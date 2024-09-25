@@ -85,6 +85,12 @@ class _Sandbox(_Object, type_prefix="sb"):
                 raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
             scheduler_placement = SchedulerPlacement(region=region)
 
+        if isinstance(gpu, list):
+            raise InvalidError(
+                "Sandboxes do not support configuring a list of GPUs. "
+                "Specify a single GPU configuration, e.g. gpu='a10g'"
+            )
+
         # Validate volumes
         validated_volumes = validate_volumes(volumes)
         cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
