@@ -932,9 +932,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._is_method = False
         obj._spec = function_spec  # needed for modal shell
 
-        # Used to check whether we should rebuild an image using run_function
-        # Plaintext source and arg definition for the function, so it's part of the image
-        # hash. We can't use the cloudpickle hash because it's not very stable.
+        # Used to check whether we should rebuild a modal.Image which uses `run_function`.
         gpus: List[GPU_T] = gpu if isinstance(gpu, list) else [gpu]
         obj._build_args = dict(  # See get_build_def
             secrets=repr(secrets),
@@ -942,6 +940,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             mounts=repr(mounts),
             network_file_systems=repr(network_file_systems),
         )
+        # these key are excluded if empty to avoid rebuilds on client upgrade
+        if volumes:
+            obj._build_args["volumes"] = repr(volumes)
+        if cloud or scheduler_placement:
+            obj._build_args["cloud"] = repr(cloud)
+            obj._build_args["scheduler_placement"] = repr(scheduler_placement)
 
         return obj
 
@@ -1140,6 +1144,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     def get_build_def(self) -> str:
         """mdmd:hidden"""
+        # Plaintext source and arg definition for the function, so it's part of the image
+        # hash. We can't use the cloudpickle hash because it's not very stable.
         assert hasattr(self, "_raw_f") and hasattr(self, "_build_args")
         return f"{inspect.getsource(self._raw_f)}\n{repr(self._build_args)}"
 
