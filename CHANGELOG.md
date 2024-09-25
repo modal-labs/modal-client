@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.139 (2024-09-25)
+
+- The deprecated `_experimental_boost` argument is now removed. (Deprecated in late July.)
+
+
+
 ### 0.64.123 (2024-09-18)
 
 Sandboxes can now be created without an entrypoint command. If they are created like this, they will stay alive up until their set timeout. This is useful if you want to keep a long-lived sandbox and execute code in it later.
