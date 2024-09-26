@@ -1716,6 +1716,18 @@ message ProxyInfo {
   int32 remote_port = 4;
 }
 
+message ProxyIpGetOrCreateRequest {
+  optional proxy_ip = 1;
+}
+
+message ProxyIpGetOrCreateResponse {
+  proxy_ip = 1;
+}
+
+message ProxyIpDeleteRequest {
+  proxy_ip = 1;
+}
+
 message QueueClearRequest {
   string queue_id = 1;
   bytes partition_key = 2;
@@ -2525,6 +2537,8 @@ service ModalClient {
 
   // Proxies
   rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);
+  rpc ProxyIpGetOrCreate(ProxyIpGetOrCreateRequest) returns (ProxyIpGetOrCreateResponse);
+  rpc ProxyIpDelete(ProxyIpDeleteRequest) returns (google.protobuf.Empty);
 
   // Queues
   rpc QueueClear(QueueClearRequest) returns (google.protobuf.Empty);
