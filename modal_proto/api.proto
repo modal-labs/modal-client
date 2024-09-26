@@ -166,6 +166,13 @@ enum ProgressType {
   FUNCTION_QUEUED = 1;  // TODO(erikbern): needs_prefix
 }
 
+enum ProxyIpStatus {
+  PROXY_IP_STATUS_UNSPECIFIED = 0;
+  PROXY_IP_STATUS_CREATING = 1;
+  PROXY_IP_STATUS_ONLINE = 2;
+  PROXY_IP_STATUS_TERMINATED = 3;
+}
+
 enum RateLimitInterval {
   RATE_LIMIT_INTERVAL_UNSPECIFIED = 0;
   RATE_LIMIT_INTERVAL_SECOND = 1;
@@ -1714,7 +1721,19 @@ message ProxyInfo {
   string proxy_key = 2;
   string remote_addr = 3;
   int32 remote_port = 4;
-  optional string vprox_node_id = 5;
+}
+
+message ProxyIpDeleteRequest {
+  string proxy_ip = 1;
+}
+
+message ProxyIpGetOrCreateRequest {
+  optional string proxy_ip = 1;
+}
+
+message ProxyIpGetOrCreateResponse {
+  string proxy_ip = 1;
+  ProxyIpStatus status = 2;
 }
 
 message QueueClearRequest {
@@ -2524,8 +2543,12 @@ service ModalClient {
   rpc MountGetOrCreate(MountGetOrCreateRequest) returns (MountGetOrCreateResponse);
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
 
-  // Proxies
+  // Proxies (legacy)
   rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);
+
+  // Proxy IPs
+  rpc ProxyIpDelete(ProxyIpDeleteRequest) returns (google.protobuf.Empty);
+  rpc ProxyIpGetOrCreate(ProxyIpGetOrCreateRequest) returns (ProxyIpGetOrCreateResponse);
 
   // Queues
   rpc QueueClear(QueueClearRequest) returns (google.protobuf.Empty);
