@@ -1716,15 +1716,15 @@ message ProxyInfo {
   int32 remote_port = 4;
 }
 
+message ProxyIpDeleteRequest {
+  proxy_ip = 1;
+}
+
 message ProxyIpGetOrCreateRequest {
   optional proxy_ip = 1;
 }
 
 message ProxyIpGetOrCreateResponse {
-  proxy_ip = 1;
-}
-
-message ProxyIpDeleteRequest {
   proxy_ip = 1;
 }
 
@@ -2535,10 +2535,12 @@ service ModalClient {
   rpc MountGetOrCreate(MountGetOrCreateRequest) returns (MountGetOrCreateResponse);
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
 
-  // Proxies
+  // Proxies (legacy)
   rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);
-  rpc ProxyIpGetOrCreate(ProxyIpGetOrCreateRequest) returns (ProxyIpGetOrCreateResponse);
+
+  // Proxy IPs
   rpc ProxyIpDelete(ProxyIpDeleteRequest) returns (google.protobuf.Empty);
+  rpc ProxyIpGetOrCreate(ProxyIpGetOrCreateRequest) returns (ProxyIpGetOrCreateResponse);
 
   // Queues
   rpc QueueClear(QueueClearRequest) returns (google.protobuf.Empty);
