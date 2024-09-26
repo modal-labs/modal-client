@@ -382,6 +382,11 @@ def _asgi_app(
                     f"Modal will drop support for default parameters in a future release.",
                 )
 
+        if inspect.iscoroutinefunction(raw_f):
+            raise InvalidError(
+                f"ASGI app function {raw_f.__name__} is an async function. Only sync Python functions are supported."
+            )
+
         if not wait_for_response:
             deprecation_warning(
                 (2024, 5, 13),
@@ -453,6 +458,11 @@ def _wsgi_app(
                     f"WSGI app function {raw_f.__name__} has default parameters, but shouldn't have any parameters - "
                     f"Modal will drop support for default parameters in a future release.",
                 )
+
+        if inspect.iscoroutinefunction(raw_f):
+            raise InvalidError(
+                f"ASGI app function {raw_f.__name__} is an async function. Only sync Python functions are supported."
+            )
 
         if not wait_for_response:
             deprecation_warning(
