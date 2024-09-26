@@ -417,11 +417,11 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
     wrapped_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType]
     client: _Client
 
-    def __init__(self, _wrapped_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType], client: _Client):
-        # we pass in the _wrapped_method here to get the correct static types
+    def __init__(self, wrapped_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType], client: _Client):
+        # we pass in the wrapped_method here to get the correct static types
         # but don't use the reference directly, see `def wrapped_method` below
-        self._wrapped_full_name = _wrapped_method.name
-        self._wrapped_method_name = _wrapped_method.name.rsplit("/", 1)[1]
+        self._wrapped_full_name = wrapped_method.name
+        self._wrapped_method_name = wrapped_method.name.rsplit("/", 1)[1]
         self.client = client
 
     @property
@@ -442,14 +442,18 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
     wrapped_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType]
 
     def __init__(self, wrapped_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType], client: _Client):
-        self.wrapped_method = wrapped_method
+        self._wrapped_full_name = wrapped_method.name
+        self._wrapped_method_name = wrapped_method.name.rsplit("/", 1)[1]
         self.client = client
+
+    @property
+    def name(self) -> str:
+        return self._wrapped_full_name
 
     async def unary_stream(
         self,
         request,
         metadata: Optional[Any] = None,
     ):
-        await self.reset_on_pid_change()
         async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
             yield response
