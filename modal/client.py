@@ -357,9 +357,14 @@ class _Client:
 
     async def _reset_on_pid_change(self):
         if self._owner_pid and self._owner_pid != os.getpid():
-            assert self._authenticated
-            await self._close()
+            # not calling .close() since that would also interact with stale resources
+            # just reset the internal state
+            self._channel = None
             self._stub = None
+            self._grpclib_stub = None
+            self._owner_pid = None
+
+            self.set_env_client(None)
             # TODO(elias): reset _cancellation_context in case ?
             await self._open()
             # intentionally not doing self._init since we should already be authenticated etc.
