@@ -118,10 +118,6 @@ class _Object:
         # the object_id is already provided by other means
         return
 
-    def _init_from_other(self, other: O):
-        # Transient use case, see Dict, Queue, and SharedVolume
-        self._init(other._rep, other._load, other._is_another_app, other._preload)
-
     def _validate_is_hydrated(self: O):
         if not self._is_hydrated:
             object_type = self.__class__.__name__.strip("_")

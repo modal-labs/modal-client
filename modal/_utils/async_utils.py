@@ -15,7 +15,6 @@ from ..exception import InvalidError
 from .logger import logger
 
 synchronizer = synchronicity.Synchronizer()
-# atexit.register(synchronizer.close)
 
 
 def synchronize_api(obj, target_module=None):
