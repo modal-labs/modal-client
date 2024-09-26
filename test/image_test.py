@@ -1157,8 +1157,9 @@ async def test_logs(servicer, client):
     assert logs == ["build starting\n", "build finished\n"]
 
 
-def test_add_local_python_packages():
-    image = Image.debian_slim().add_local_python_packages("pkg_a")
+def test_add_local_python_packages(client, servicer):
+    deb = Image.debian_slim()
+    image = deb.add_local_python_packages("pkg_a")
 
     _image = synchronizer._translate_in(image)
     mount_layer = _image._mounts
@@ -1176,3 +1177,15 @@ def test_add_local_python_packages():
 
     image_non_mount = image.run_commands("echo 'hello'")
     assert synchronizer._translate_in(image_non_mount)._mounts == ()  # mounts don't transfer for non-mount operations
+
+    # make sure that the run_commands instroduce a new layer that copies the mount
+    app = App()
+
+    app.function(serialized=True, image=image)(lambda: None)
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        for i, layer in enumerate(layers):
+            print("Layer", i)
+            print(layer)
+        commands = [layer.dockerfile_commands for layer in layers]
+        context_files = [[(f.filename, f.data) for f in layer.context_files] for layer in layers]

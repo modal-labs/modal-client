@@ -290,7 +290,7 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,
         # For internal use only.
         _namespace: int = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        _mounts: Sequence[_Mount] = (),
+        _mounts: Sequence[_Mount] = (),  # used for "soft/lazy" layers
     ):
         if base_images is None:
             base_images = {}
@@ -326,12 +326,25 @@ class _Image(_Object, type_prefix="im"):
             else:
                 dockerfile = dockerfile_function(builder_version)
 
-            if not dockerfile.commands and not build_function:
+            if not dockerfile.commands and not build_function and not _mounts:
                 raise InvalidError(
                     "No commands were provided for the image — have you tried using modal.Image.debian_slim()?"
                 )
-            if dockerfile.commands and build_function:
-                raise InvalidError("Cannot provide both a build function and Dockerfile commands!")
+            if bool(dockerfile.commands) + bool(build_function) + bool(_mounts) > 1:
+                raise InvalidError(
+                    "Cannot provide multiple of: build function, Dockerfile commands and lazy mounts in the same image layer!"
+                )
+
+            if _mounts:
+                if len(base_images) > 1:
+                    raise InvalidError("Mount can't be used directly on multiple base images")
+
+                # for building purposes, this image should be the same as the base image, until
+                # another non-mount layer is added on top of it
+                base_image = list(base_images.values())[0]
+                soft_layer_image = base_image.clone()
+                soft_layer_image._mounts = _mounts
+                return soft_layer_image
 
             base_images_pb2s = [
                 api_pb2.BaseImage(
@@ -463,7 +476,6 @@ class _Image(_Object, type_prefix="im"):
         rep = "Image()"
         obj = _Image._from_loader(_load, rep, deps=_deps)
         obj.force_build = force_build
-        obj._mounts = _mounts
         return obj
 
     def extend(self, **kwargs) -> "_Image":
@@ -1724,9 +1736,8 @@ class _Image(_Object, type_prefix="im"):
                 if task_log.data:
                     yield task_log.data
 
-    def _split_mounts(self) -> Tuple["_Image", Sequence[_Mount]]:
-        if self._mounts:
-            assert not self.dockerfile_commands
+    def _layers(self) -> typing.Tuple["_Image"]:
+        pass
 
 
 Image = synchronize_api(_Image)
