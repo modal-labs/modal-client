@@ -135,6 +135,10 @@ class _Client:
         return self._closed
 
     @property
+    def authenticated(self):
+        return self._authenticated
+
+    @property
     def stub(self) -> modal_api_grpc.ModalClientModal:
         """mdmd:hidden"""
         assert self._stub
@@ -452,5 +456,5 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
         request,
         metadata: Optional[Any] = None,
     ):
-        async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
+        async for response in self.client._call_stream(self._wrapped_method_name, request, metadata=metadata):
             yield response
