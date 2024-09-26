@@ -1714,7 +1714,6 @@ message ProxyInfo {
   string proxy_key = 2;
   string remote_addr = 3;
   int32 remote_port = 4;
-  optional string vprox_node_id = 5;
 }
 
 message QueueClearRequest {
