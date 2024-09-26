@@ -1724,15 +1724,15 @@ message ProxyInfo {
 }
 
 message ProxyIpDeleteRequest {
-  proxy_ip = 1;
+  string proxy_ip = 1;
 }
 
 message ProxyIpGetOrCreateRequest {
-  optional proxy_ip = 1;
+  optional string proxy_ip = 1;
 }
 
 message ProxyIpGetOrCreateResponse {
-  proxy_ip = 1;
+  string proxy_ip = 1;
   ProxyIpStatus status = 2;
 }
 
