@@ -166,6 +166,13 @@ enum ProgressType {
   FUNCTION_QUEUED = 1;  // TODO(erikbern): needs_prefix
 }
 
+enum ProxyIpStatus {
+  PROXY_IP_UNSPECIFIED = 0;
+  PROXY_IP_CREATING = 1;
+  PROXY_IP_ONLINE = 2;
+  PROXY_IP_TERMINATED = 3;
+}
+
 enum RateLimitInterval {
   RATE_LIMIT_INTERVAL_UNSPECIFIED = 0;
   RATE_LIMIT_INTERVAL_SECOND = 1;
@@ -1726,6 +1733,7 @@ message ProxyIpGetOrCreateRequest {
 
 message ProxyIpGetOrCreateResponse {
   proxy_ip = 1;
+  ProxyIpStatus status = 2;
 }
 
 message QueueClearRequest {
