@@ -44,7 +44,7 @@ def set_local_input_concurrency(concurrency: int):
     _ContainerIOManager.set_input_concurrency(concurrency)
 
 
-# START Experimental: Container Networking
+# START Experimental: Grouped functions
 
 
 class _GroupedFunctionCall(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type_prefix="gc"):
@@ -171,4 +171,4 @@ def _networked(func):
     return wrapper
 
 
-# END Experimental: Container Networking
+# END Experimental: Grouped functions
