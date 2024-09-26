@@ -351,22 +351,19 @@ class _Client:
             logger.warning(f"RPC request to {readable_method} made outside of task context")
             return await coro
 
-    async def reset_on_pid_change(self):
+    async def _reset_on_pid_change(self):
         if self._owner_pid and self._owner_pid != os.getpid():
+            assert self._authenticated
             await self._close()
             self._stub = None
-            # TODO(elias): reset _cancellation_context?
+            # TODO(elias): reset _cancellation_context in case ?
             await self._open()
-            try:
-                await self._init()
-            except BaseException:
-                await self._close()
-                raise
+            # intentionally not doing self._init since we should already be authenticated etc.
 
     async def _get_grpclib_method(self, method_name: str) -> Any:
         # safely get grcplib method that is bound to a valid channel
         # This prevents usage of stale methods across forks of processes
-        await self.reset_on_pid_change()
+        await self._reset_on_pid_change()
         return getattr(self._grpclib_stub, method_name)
 
     @synchronizer.nowrap
