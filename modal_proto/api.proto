@@ -1101,7 +1101,7 @@ message Function {
 
   uint32 _experimental_buffer_containers = 69;
 
-  optional string _experimental_vprox_id = 70;
+  optional string _experimental_proxy_ip = 70;
 }
 
 message FunctionBindParamsRequest {
