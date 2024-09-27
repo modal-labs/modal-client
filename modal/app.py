@@ -655,6 +655,7 @@ class _App:
         # Maximum number of inputs a container should handle before shutting down.
         # With `max_inputs = 1`, containers will be single-use.
         max_inputs: Optional[int] = None,
+        i6pn: Optional[bool] = None,  # Whether to enable IPv6 container networking within the region.
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         # Parameters below here are experimental. Use with caution!
@@ -711,12 +712,9 @@ class _App:
                         "        ...\n"
                         "```\n"
                     )
-                # START Experimental: Container Networking
-                group_size = f.group_size
-                container_networking = f.flags & _PartialFunctionFlags.GROUPED
-                if container_networking:
-                    serialized = True
-                # END Experimental: Container Networking
+                i6pn_enabled = i6pn or (f.flags & _PartialFunctionFlags.GROUPED)
+                group_size = f.group_size  # Experimental: Grouped functions
+
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
                 webhook_config = f.webhook_config
@@ -763,10 +761,8 @@ class _App:
                 batch_wait_ms = None
                 raw_f = f
 
-                # START Experimental: Container Networking
-                group_size = None
-                container_networking = False
-                # END Experimental: Container Networking
+                group_size = None  # Experimental: Grouped functions
+                i6pn_enabled = False
 
             if info.function_name.endswith(".app"):
                 warnings.warn(
@@ -782,19 +778,6 @@ class _App:
                 if scheduler_placement:
                     raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
                 scheduler_placement = SchedulerPlacement(region=region)
-
-            # START Experimental: Container Networking
-
-            if container_networking and not _experimental_scheduler_placement:
-                zone = "us-east-1f"
-                scheduler_placement = SchedulerPlacement(zone=zone)
-                logger.warning(f"Experimental Container Networking: Defaulting to zone {zone}")
-
-            if container_networking and not cloud:
-                cloud = "aws"
-                logger.warning(f"Experimental Container Networking: Defaulting to cloud {cloud}")
-
-            # END Experimental: Container Networking
 
             function = _Function.from_args(
                 info,
@@ -829,16 +812,17 @@ class _App:
                 scheduler_placement=scheduler_placement,
                 _experimental_buffer_containers=_experimental_buffer_containers,
                 _experimental_proxy_ip=_experimental_proxy_ip,
-                container_networking=container_networking,  # Experimental: Container Networking
-                group_size=group_size,  # Experimental: Container Networking
+                i6pn_enabled=i6pn_enabled,
+                group_size=group_size,  # Experimental: Grouped functions
             )
 
             self._add_function(function, webhook_config is not None)
 
-            # START Experimental: Container Networking
-            if container_networking:
+            # Experimental: Grouped functions
+            if group_size is not None:
+                if group_size <= 0:
+                    raise InvalidError("Group size must be positive")
                 function = _GroupedFunction(function, group_size)
-            # END Experimental: Container Networking
 
             return function
 
