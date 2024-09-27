@@ -35,7 +35,7 @@ class _PartialFunctionFlags(enum.IntFlag):
     ENTER_POST_SNAPSHOT: int = 8
     EXIT: int = 16
     BATCHED: int = 32
-    GROUPED: int = 64  # Experimental: Container Networking
+    GROUPED: int = 64  # Experimental: Grouped functions
 
     @staticmethod
     def all() -> int:
@@ -58,7 +58,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     batch_max_size: Optional[int]
     batch_wait_ms: Optional[int]
     force_build: bool
-    group_size: Optional[int]  # Experimental: Container Networking
+    group_size: Optional[int]  # Experimental: Grouped functions
     build_timeout: Optional[int]
 
     def __init__(
@@ -70,7 +70,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         keep_warm: Optional[int] = None,
         batch_max_size: Optional[int] = None,
         batch_wait_ms: Optional[int] = None,
-        group_size: Optional[int] = None,  # Experimental: Container Networking
+        group_size: Optional[int] = None,  # Experimental: Grouped functions
         force_build: bool = False,
         build_timeout: Optional[int] = None,
     ):
@@ -82,7 +82,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
         self.batch_max_size = batch_max_size
         self.batch_wait_ms = batch_wait_ms
-        self.group_size = group_size  # Experimental: Container Networking
+        self.group_size = group_size  # Experimental: Grouped functions
         self.force_build = force_build
         self.build_timeout = build_timeout
 
