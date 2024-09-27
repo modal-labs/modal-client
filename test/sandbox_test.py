@@ -10,15 +10,19 @@ from modal import App, Image, Mount, NetworkFileSystem, Sandbox, Secret
 from modal.exception import DeprecationError, InvalidError
 from modal_proto import api_pb2
 
-app = App()
-
-
 skip_non_linux = pytest.mark.skipif(platform.system() != "Linux", reason="sandbox mock uses subprocess")
 
 
+@pytest.fixture
+def app(client):
+    app = App()
+    with app.run(client):
+        yield app
+
+
 @skip_non_linux
-def test_sandbox(client, servicer):
-    sb = Sandbox.create("bash", "-c", "echo bye >&2 && sleep 1 && echo hi && exit 42", timeout=600, client=client)
+def test_sandbox(app, servicer):
+    sb = Sandbox.create("bash", "-c", "echo bye >&2 && sleep 1 && echo hi && exit 42", timeout=600, app=app)
 
     assert sb.poll() is None
 
@@ -38,10 +42,10 @@ def test_sandbox(client, servicer):
 
 
 @skip_non_linux
-def test_sandbox_mount(client, servicer, tmpdir):
+def test_sandbox_mount(app, servicer, tmpdir):
     tmpdir.join("a.py").write(b"foo")
 
-    sb = Sandbox.create("echo", "hi", mounts=[Mount.from_local_dir(Path(tmpdir), remote_path="/m")], client=client)
+    sb = Sandbox.create("echo", "hi", mounts=[Mount.from_local_dir(Path(tmpdir), remote_path="/m")], app=app)
     sb.wait()
 
     sha = hashlib.sha256(b"foo").hexdigest()
@@ -49,10 +53,10 @@ def test_sandbox_mount(client, servicer, tmpdir):
 
 
 @skip_non_linux
-def test_sandbox_image(client, servicer, tmpdir):
+def test_sandbox_image(app, servicer, tmpdir):
     tmpdir.join("a.py").write(b"foo")
 
-    sb = Sandbox.create("echo", "hi", image=Image.debian_slim().pip_install("foo", "bar", "potato"), client=client)
+    sb = Sandbox.create("echo", "hi", image=Image.debian_slim().pip_install("foo", "bar", "potato"), app=app)
     sb.wait()
 
     idx = max(servicer.images.keys())
@@ -62,27 +66,27 @@ def test_sandbox_image(client, servicer, tmpdir):
 
 
 @skip_non_linux
-def test_sandbox_secret(client, servicer, tmpdir):
-    sb = Sandbox.create("echo", "$FOO", secrets=[Secret.from_dict({"FOO": "BAR"})], client=client)
+def test_sandbox_secret(app, servicer, tmpdir):
+    sb = Sandbox.create("echo", "$FOO", secrets=[Secret.from_dict({"FOO": "BAR"})], app=app)
     sb.wait()
 
     assert len(servicer.sandbox_defs[0].secret_ids) == 1
 
 
 @skip_non_linux
-def test_sandbox_nfs(client, servicer, tmpdir):
+def test_sandbox_nfs(client, app, servicer, tmpdir):
     with NetworkFileSystem.ephemeral(client=client) as nfs:
         with pytest.raises(InvalidError):
-            Sandbox.create("echo", "foo > /cache/a.txt", network_file_systems={"/": nfs}, client=client)
+            Sandbox.create("echo", "foo > /cache/a.txt", network_file_systems={"/": nfs}, app=app)
 
-        Sandbox.create("echo", "foo > /cache/a.txt", network_file_systems={"/cache": nfs}, client=client)
+        Sandbox.create("echo", "foo > /cache/a.txt", network_file_systems={"/cache": nfs}, app=app)
 
     assert len(servicer.sandbox_defs[0].nfs_mounts) == 1
 
 
 @skip_non_linux
-def test_sandbox_from_id(client, servicer):
-    sb = Sandbox.create("bash", "-c", "echo foo && exit 42", timeout=600, client=client)
+def test_sandbox_from_id(app, client, servicer):
+    sb = Sandbox.create("bash", "-c", "echo foo && exit 42", timeout=600, app=app)
     sb.wait()
 
     sb2 = Sandbox.from_id(sb.object_id, client=client)
@@ -91,8 +95,8 @@ def test_sandbox_from_id(client, servicer):
 
 
 @skip_non_linux
-def test_sandbox_terminate(client, servicer):
-    sb = Sandbox.create("bash", "-c", "sleep 10000", client=client)
+def test_sandbox_terminate(app, servicer):
+    sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
     sb.terminate()
 
     assert sb.returncode != 0
@@ -100,8 +104,8 @@ def test_sandbox_terminate(client, servicer):
 
 @skip_non_linux
 @pytest.mark.asyncio
-async def test_sandbox_stdin_async(client, servicer):
-    sb = await Sandbox.create.aio("bash", "-c", "while read line; do echo $line; done && exit 13", client=client)
+async def test_sandbox_stdin_async(app, servicer):
+    sb = await Sandbox.create.aio("bash", "-c", "while read line; do echo $line; done && exit 13", app=app)
 
     sb.stdin.write(b"foo\n")
     sb.stdin.write(b"bar\n")
@@ -117,8 +121,8 @@ async def test_sandbox_stdin_async(client, servicer):
 
 
 @skip_non_linux
-def test_sandbox_stdin(client, servicer):
-    sb = Sandbox.create("bash", "-c", "while read line; do echo $line; done && exit 13", client=client)
+def test_sandbox_stdin(app, servicer):
+    sb = Sandbox.create("bash", "-c", "while read line; do echo $line; done && exit 13", app=app)
 
     sb.stdin.write(b"foo\n")
     sb.stdin.write(b"bar\n")
@@ -134,15 +138,15 @@ def test_sandbox_stdin(client, servicer):
 
 
 @skip_non_linux
-def test_sandbox_stdin_invalid_write(client, servicer):
-    sb = Sandbox.create("bash", "-c", "echo foo", client=client)
+def test_sandbox_stdin_invalid_write(app, servicer):
+    sb = Sandbox.create("bash", "-c", "echo foo", app=app)
     with pytest.raises(TypeError):
         sb.stdin.write("foo\n")  # type: ignore
 
 
 @skip_non_linux
-def test_sandbox_stdin_write_after_eof(client, servicer):
-    sb = Sandbox.create("bash", "-c", "echo foo", client=client)
+def test_sandbox_stdin_write_after_eof(app, servicer):
+    sb = Sandbox.create("bash", "-c", "echo foo", app=app)
     sb.stdin.write_eof()
     with pytest.raises(EOFError):
         sb.stdin.write(b"foo")
@@ -150,8 +154,8 @@ def test_sandbox_stdin_write_after_eof(client, servicer):
 
 @skip_non_linux
 @pytest.mark.asyncio
-async def test_sandbox_async_for(client, servicer):
-    sb = await Sandbox.create.aio("bash", "-c", "echo hello && echo world && echo bye >&2", client=client)
+async def test_sandbox_async_for(app, servicer):
+    sb = await Sandbox.create.aio("bash", "-c", "echo hello && echo world && echo bye >&2", app=app)
 
     out = ""
 
@@ -182,6 +186,7 @@ def test_app_sandbox(client, servicer):
     secret = Secret.from_dict({"FOO": "bar"})
     mount = Mount.from_local_file(__file__, "/xyz")
 
+    app = App()
     with app.run(client):
         # Create sandbox
         with pytest.warns(DeprecationError):
@@ -198,8 +203,8 @@ def test_app_sandbox(client, servicer):
 
 
 @skip_non_linux
-def test_sandbox_exec(client, servicer):
-    sb = Sandbox.create("sleep", "infinity", client=client)
+def test_sandbox_exec(app, servicer):
+    sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("bash", "-c", "while read line; do echo $line; done")
 
@@ -212,8 +217,8 @@ def test_sandbox_exec(client, servicer):
 
 
 @skip_non_linux
-def test_sandbox_exec_wait(client, servicer):
-    sb = Sandbox.create("sleep", "infinity", client=client)
+def test_sandbox_exec_wait(app, servicer):
+    sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("bash", "-c", "sleep 0.5 && exit 42")
 
@@ -236,8 +241,8 @@ def test_sandbox_on_app_lookup(client, servicer):
 
 
 @skip_non_linux
-def test_sandbox_list_env(client, servicer):
-    sb = Sandbox.create("bash", "-c", "sleep 10000", client=client)
+def test_sandbox_list_env(app, client, servicer):
+    sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
     assert len(list(Sandbox.list(client=client))) == 1
     sb.terminate()
     assert not list(Sandbox.list(client=client))
@@ -249,6 +254,8 @@ def test_sandbox_list_app(client, servicer):
     secret = Secret.from_dict({"FOO": "bar"})
     mount = Mount.from_local_file(__file__, "/xyz")
 
+    app = App()
+
     with app.run(client):
         # Create sandbox
         sb = Sandbox.create("bash", "-c", "sleep 10000", image=image, secrets=[secret], mounts=[mount], app=app)
@@ -258,8 +265,8 @@ def test_sandbox_list_app(client, servicer):
 
 
 @skip_non_linux
-def test_sandbox_list_tags(client, servicer):
-    sb = Sandbox.create("bash", "-c", "sleep 10000", client=client)
+def test_sandbox_list_tags(app, client, servicer):
+    sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
     sb.set_tags({"foo": "bar", "baz": "qux"}, client=client)
     assert len(list(Sandbox.list(tags={"foo": "bar"}, client=client))) == 1
     assert not list(Sandbox.list(tags={"foo": "notbar"}, client=client))
@@ -268,12 +275,12 @@ def test_sandbox_list_tags(client, servicer):
 
 
 @skip_non_linux
-def test_sandbox_network_access(client, servicer):
+def test_sandbox_network_access(app, servicer):
     with pytest.raises(InvalidError):
-        Sandbox.create("echo", "test", block_network=True, cidr_allowlist=["10.0.0.0/8"], client=client, app=app)
+        Sandbox.create("echo", "test", block_network=True, cidr_allowlist=["10.0.0.0/8"], app=app)
 
     # Test that blocking works
-    sb = Sandbox.create("echo", "test", block_network=True, client=client, app=app)
+    sb = Sandbox.create("echo", "test", block_network=True, app=app)
     assert (
         servicer.sandbox_defs[0].network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.BLOCKED
     )
@@ -281,7 +288,7 @@ def test_sandbox_network_access(client, servicer):
     sb.terminate()
 
     # Test that allowlisting works
-    sb = Sandbox.create("echo", "test", block_network=False, cidr_allowlist=["10.0.0.0/8"], client=client, app=app)
+    sb = Sandbox.create("echo", "test", block_network=False, cidr_allowlist=["10.0.0.0/8"], app=app)
     assert (
         servicer.sandbox_defs[1].network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.ALLOWLIST
     )
@@ -290,15 +297,15 @@ def test_sandbox_network_access(client, servicer):
     sb.terminate()
 
     # Test that no rules means allow all
-    sb = Sandbox.create("echo", "test", block_network=False, client=client, app=app)
+    sb = Sandbox.create("echo", "test", block_network=False, app=app)
     assert servicer.sandbox_defs[2].network_access.network_access_type == api_pb2.NetworkAccess.NetworkAccessType.OPEN
     assert len(servicer.sandbox_defs[2].network_access.allowed_cidrs) == 0
     sb.terminate()
 
 
 @skip_non_linux
-def test_sandbox_no_entrypoint(client, servicer):
-    sb = Sandbox.create(client=client, app=app)
+def test_sandbox_no_entrypoint(app, servicer):
+    sb = Sandbox.create(app=app)
 
     p = sb.exec("echo", "hi")
     p.wait()
