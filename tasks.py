@@ -171,6 +171,9 @@ def check_copyright(ctx, fix=False):
                 and "protoc_plugin" not in root
                 # third-party code (i.e., in a local venv) has a different copyright
                 and "/site-packages/" not in root
+                and "/build/" not in root
+                and "/.venv/" not in root
+                and not re.search(r"/venv[0-9]*/", root)
             )
         ]
         for fn in fns:
