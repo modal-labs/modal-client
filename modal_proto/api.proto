@@ -1240,8 +1240,8 @@ message FunctionExtended {
   // storage level, we can get rid of this union type and replace with access
   // that expects FunctionData only.
   oneof function_extended {
-      Function function_singleton = 2;
-      FunctionData function_data = 3;
+    Function function_singleton = 2;
+    FunctionData function_data = 3;
   }
 }
 
