@@ -762,7 +762,7 @@ class _App:
                 raw_f = f
 
                 group_size = None  # Experimental: Grouped functions
-                i6pn_enabled = False
+                i6pn_enabled = i6pn
 
             if info.function_name.endswith(".app"):
                 warnings.warn(
