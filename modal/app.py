@@ -1106,6 +1106,11 @@ class _App:
                     if log.data:
                         yield log.data
 
+    @classmethod
+    def _reset_container_app(cls):
+        """Only used for tests."""
+        cls._container_app = None
+
 
 App = synchronize_api(_App)
 
