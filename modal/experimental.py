@@ -80,6 +80,7 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
     def __init__(self, f: _Function, size: int):
         self.f = synchronize_api(f)
         self.size = size
+        self._client = None
 
     def remote(self, *args: P.args, **kwargs: P.kwargs) -> List[ReturnType]:
         """
@@ -90,7 +91,7 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
 
     def spawn(self, *args: P.args, **kwargs: P.kwargs) -> _GroupedFunctionCall:
         worker_handles: List[FunctionCall] = []
-        with modal.Queue.ephemeral() as q:
+        with modal.Queue.ephemeral(client=self.client) as q:
             for i in range(self.size):
                 handle = self.f.spawn(*args, **kwargs, modal_rank=i, modal_size=self.size, modal_q=q)
                 worker_handles.append(handle)
@@ -100,11 +101,19 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
     def get_raw_f(self) -> Callable[..., Any]:
         return self.get_raw_f()
 
-    def __getattr__(self, name):
-        def unsupported_method(*args, **kwargs):
-            raise NotImplementedError(f"Grouped function does not support the '{name}' method")
+    # def __getattr__(self, name):
+    #     def unsupported_method(*args, **kwargs):
+    #         raise NotImplementedError(f"Grouped function does not support the '{name}' method")
 
-        return unsupported_method
+    #     return unsupported_method
+
+    @property
+    def client(self):
+        return self._client
+
+    @client.setter
+    def client(self, value):
+        self._client = value
 
 
 def grouped(size: int):
