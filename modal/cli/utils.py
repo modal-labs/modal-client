@@ -1,13 +1,13 @@
 # Copyright Modal Labs 2022
 import asyncio
 from datetime import datetime
+from json import dumps
 from typing import Optional, Sequence, Union
 
 import typer
 from click import UsageError
 from grpclib import GRPCError, Status
 from rich.console import Console
-from rich.json import JSON
 from rich.table import Column, Table
 from rich.text import Text
 
@@ -88,7 +88,7 @@ def display_table(
     console = Console()
     if json:
         json_data = [{col_to_str(col): _plain(row[i]) for i, col in enumerate(columns)} for row in rows]
-        console.print(JSON.from_data(json_data))
+        console.print_json(dumps(json_data))
     else:
         table = Table(*columns, title=title)
         for row in rows:
