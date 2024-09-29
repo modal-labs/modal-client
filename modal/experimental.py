@@ -55,16 +55,28 @@ class _GroupedFunctionCall(typing.Generic[P, ReturnType, OriginalReturnType], _O
 
     def get(self, *args: P.args, **kwargs: P.kwargs) -> List[ReturnType]:
         """Get the result of a grouped function call."""
-        output: List[ReturnType] = []
-        for handle in self.handles:
-            output.append(handle.get())
+        output: List[ReturnType] = [None] * len(self.handles)
+        finished_handles = set()
+        for i, handle in enumerate(self.handles):
+            if len(finished_handles) == len(self.handles):
+                break
+            elif handle in finished_handles:
+                continue
+
+            try:
+                r = handle.get()
+                assert output[i] is None
+                output[i] = r
+                finished_handles.add(handle)
+            except TimeoutError:
+                pass
         return output
 
-    def __getattr__(self, name):
-        def unsupported_method(*args, **kwargs):
-            raise NotImplementedError(f"Grouped function does not support the '{name}' method")
+    # def __getattr__(self, name):
+    #     def unsupported_method(*args, **kwargs):
+    #         raise NotImplementedError(f"Grouped function does not support the '{name}' method")
 
-        return unsupported_method
+    #     return unsupported_method
 
     def cancel(
         self,
