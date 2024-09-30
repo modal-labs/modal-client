@@ -287,12 +287,6 @@ class _Image(_Object, type_prefix="im"):
     force_build: bool
     inside_exceptions: List[Exception]
 
-    # Use a cache for the builder version associated with each environment so we only need to look
-    # it up from the server once. This feels pretty messy; I think that ideally we would assocaite
-    # an Environment object with an App at the time that we creat the App? But currently the way we
-    # manage state during App setup is fairly complex and error prone.
-    _builder_versions: Dict[Optional[str], ImageBuilderVersion] = {}
-
     def _initialize_from_empty(self):
         self.inside_exceptions = []
 
