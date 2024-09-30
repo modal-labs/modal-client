@@ -6,9 +6,11 @@ import os
 import platform
 import pytest
 import re
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import traceback
 from pickle import dumps
 from typing import List
@@ -18,6 +20,7 @@ import click
 import click.testing
 import toml
 
+from modal._utils.grpc_testing import InterceptionContext
 from modal.cli.entry_point import entrypoint_cli
 from modal.exception import InvalidError
 from modal_proto import api_pb2
@@ -957,3 +960,70 @@ def test_update_environment_name_valid(servicer, set_env_client, name, set_name)
 
 def test_call_update_environment_suffix(servicer, set_env_client):
     _run(["environment", "update", "main", "--set-web-suffix", "_"])
+
+
+def _run_subprocess(cli_cmd: list[str]) -> subprocess.Popen:
+    p = subprocess.Popen(
+        [sys.executable, "-m", "modal"] + cli_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf8"
+    )
+    return p
+
+
+@pytest.mark.timeout(5)
+def test_keyboard_interrupt_during_app_load(servicer, server_url_env, supports_dir):
+    ctx: InterceptionContext
+    creating_function = threading.Event()
+
+    async def stalling_function_create(servicer, req):
+        creating_function.set()
+        await asyncio.sleep(10)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("FunctionCreate", stalling_function_create)
+
+        p = _run_subprocess(["run", f"{supports_dir / 'functions.py'}::square", "--x", "10"])
+        creating_function.wait()
+        p.send_signal(signal.SIGINT)
+        out, err = p.communicate(timeout=1)
+        print(out)
+        assert "Traceback" not in err
+
+
+@pytest.mark.timeout(5)
+def test_keyboard_interrupt_during_app_run(servicer, server_url_env, supports_dir):
+    ctx: InterceptionContext
+    waiting_for_output = threading.Event()
+
+    async def stalling_function_get_output(servicer, req):
+        waiting_for_output.set()
+        await asyncio.sleep(10)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("FunctionGetOutputs", stalling_function_get_output)
+
+        p = _run_subprocess(["run", f"{supports_dir / 'functions.py'}::square", "--x", "10"])
+        waiting_for_output.wait()
+        p.send_signal(signal.SIGINT)
+        out, err = p.communicate(timeout=1)
+        print(err)
+        assert "Traceback" not in err
+
+
+@pytest.mark.timeout(5)
+def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, supports_dir):
+    ctx: InterceptionContext
+    waiting_for_output = threading.Event()
+
+    async def stalling_function_get_output(servicer, req):
+        waiting_for_output.set()
+        await asyncio.sleep(10)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("FunctionGetOutputs", stalling_function_get_output)
+
+        p = _run_subprocess(["run", "--detach", f"{supports_dir / 'functions.py'}::square", "--x", "10"])
+        waiting_for_output.wait()
+        p.send_signal(signal.SIGINT)
+        out, err = p.communicate(timeout=1)
+        print(err)
+        assert "Traceback" not in err
