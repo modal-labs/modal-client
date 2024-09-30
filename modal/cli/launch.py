@@ -24,7 +24,6 @@ launch_cli = Typer(
     """,
 )
 
-
 def _launch_program(name: str, filename: str, args: Dict[str, Any]) -> None:
     os.environ["MODAL_LAUNCH_ARGS"] = json.dumps(args)
 
@@ -55,6 +54,7 @@ def jupyter(
     timeout: int = 3600,
     image: str = "ubuntu:22.04",
     add_python: Optional[str] = "3.11",
+    no_python: Optional[bool] = False,
     mount: Optional[str] = None,  # Create a `modal.Mount` from a local directory.
     volume: Optional[str] = None,  # Attach a persisted `modal.Volume` by name (creating if missing).
 ):
@@ -64,7 +64,7 @@ def jupyter(
         "gpu": gpu,
         "timeout": timeout,
         "image": image,
-        "add_python": add_python,
+        "add_python": None if no_python else add_python,
         "mount": mount,
         "volume": volume,
     }
