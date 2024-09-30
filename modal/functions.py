@@ -61,6 +61,7 @@ from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from .config import config
 from .exception import (
+    ClientClosed,
     ExecutionError,
     InvalidError,
     NotFoundError,
@@ -1268,7 +1269,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         )
         try:
             return await invocation.run_function()
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, ClientClosed):
             # this can happen if the user terminates a program, triggering a cancellation cascade
             if not self._mute_cancellation:
                 raise
