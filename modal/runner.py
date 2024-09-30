@@ -513,7 +513,7 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
     modal shell script.py --cmd /bin/bash
     ```
 
-    When calling programmatically, `kwargs` will are passed to `Sandbox.create()`.
+    When calling programmatically, `kwargs` are passed to `Sandbox.create()`.
     """
 
     client = await _Client.from_env()
