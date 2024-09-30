@@ -33,6 +33,7 @@ from .execution_context import is_local
 from .object import _get_environment_name, _Object
 from .running_app import RunningApp
 from .sandbox import _Sandbox
+from .secret import _Secret
 
 if TYPE_CHECKING:
     from .app import _App
@@ -527,7 +528,7 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
             sandbox = await _Sandbox.create(
                 "sleep",
                 "100000",
-                secrets=[modal.Secret.from_dict(sandbox_env)],
+                secrets=[_Secret.from_dict(sandbox_env)],
                 app=_app,
                 **kwargs,
             )
