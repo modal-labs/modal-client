@@ -24,6 +24,7 @@ launch_cli = Typer(
     """,
 )
 
+
 def _launch_program(name: str, filename: str, args: Dict[str, Any]) -> None:
     os.environ["MODAL_LAUNCH_ARGS"] = json.dumps(args)
 
