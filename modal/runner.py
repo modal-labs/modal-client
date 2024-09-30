@@ -30,7 +30,7 @@ from .exception import (
     deprecation_error,
 )
 from .execution_context import is_local
-from .object import _Object
+from .object import _get_environment_name, _Object
 from .running_app import RunningApp
 from .sandbox import _Sandbox
 
@@ -512,14 +512,25 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
     modal shell script.py --cmd /bin/bash
     ```
 
-    **kwargs will be passed into spawn_sandbox().
+    When calling programmatically, `kwargs` will are passed to `Sandbox.create()`.
     """
 
     client = await _Client.from_env()
     async with _run_app(_app, client=client, environment_name=environment_name):
         sandbox_cmds = cmds if len(cmds) > 0 else ["/bin/bash"]
+        sandbox_env = {
+            "MODAL_TOKEN_ID": config["token_id"],
+            "MODAL_TOKEN_SECRET": config["token_secret"],
+            "MODAL_ENVIRONMENT": _get_environment_name(),
+        }
         with OutputManager.enable_output():  # show any image build logs
-            sandbox = await _Sandbox.create("sleep", "100000", app=_app, **kwargs)
+            sandbox = await _Sandbox.create(
+                "sleep",
+                "100000",
+                secrets=[modal.Secret.from_dict(sandbox_env)],
+                app=_app,
+                **kwargs,
+            )
 
         container_process = await sandbox.exec(*sandbox_cmds, pty_info=get_pty_info(shell=True))
         try:
