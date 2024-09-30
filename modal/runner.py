@@ -524,12 +524,13 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
             "MODAL_TOKEN_SECRET": config["token_secret"],
             "MODAL_ENVIRONMENT": _get_environment_name(),
         }
+        secrets = kwargs.pop("secrets", []) + [_Secret.from_dict(sandbox_env)]
         with OutputManager.enable_output():  # show any image build logs
             sandbox = await _Sandbox.create(
                 "sleep",
                 "100000",
-                secrets=[_Secret.from_dict(sandbox_env)],
                 app=_app,
+                secrets=secrets,
                 **kwargs,
             )
 
