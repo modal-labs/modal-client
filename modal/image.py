@@ -264,11 +264,16 @@ class _Image(_Object, type_prefix="im"):
 
     force_build: bool
     inside_exceptions: List[Exception]
-    _mounts: Sequence[_Mount]
+    _mounts: Optional[Sequence[_Mount]]
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
-        self._mounts = ()
+        self._mounts = None
+
+    def _initialize_from_other(self, other):
+        # used by .clone()
+        self.inside_exceptions = other.inside_exceptions
+        self._mounts = other._mounts.copy() if other._mounts is not None else None
 
     def _hydrate_metadata(self, message: Optional[Message]):
         env_image_id = config.get("image_id")
@@ -339,11 +344,12 @@ class _Image(_Object, type_prefix="im"):
                 if len(base_images) > 1:
                     raise InvalidError("Mount can't be used directly on multiple base images")
 
+                print("MOUNT LAYER", _mounts)
                 # for building purposes, this image should be the same as the base image, until
                 # another non-mount layer is added on top of it
                 base_image = list(base_images.values())[0]
                 soft_layer_image = base_image.clone()
-                soft_layer_image._mounts = _mounts
+                soft_layer_image._mounts.append(_mounts)
                 return soft_layer_image
 
             base_images_pb2s = [
