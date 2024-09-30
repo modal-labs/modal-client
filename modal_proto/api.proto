@@ -677,7 +677,7 @@ message ClientHeartbeatRequest {
 
 message ClientHelloResponse {
   string warning = 1;
-  string image_builder_version = 2;
+  string image_builder_version = 2;  // Deprecated, no longer used in client
 }
 
 message CloudBucketMount {
@@ -932,27 +932,21 @@ message DomainListResponse {
   repeated Domain domains = 1;
 }
 
-// Environment-scoped configuration, with workspace-level defaults.
-// Note that we use MergeFrom to combine workspace / environment config,
-// which will *append* any repeated fields!
-message EnvironmentConfig {
-  string image_builder_version = 1;
-}
-
-message EnvironmentConfigGetRequest {
-  string name = 1;
-}
-
-message EnvironmentConfigGetResponse {
-  EnvironmentConfig config = 1;
-}
-
 message EnvironmentCreateRequest {
   string name = 1 [ (modal.options.audit_target_attr) = true ];
 }
 
 message EnvironmentDeleteRequest {
   string name = 1 [ (modal.options.audit_target_attr) = true ];
+}
+message EnvironmentGetOrCreateRequest {
+  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  ObjectCreationType object_creation_type = 2;
+}
+
+message EnvironmentGetOrCreateResponse {
+  string environment_id = 1;
+  EnvironmentMetadata metadata = 2;
 }
 
 message EnvironmentListItem {
@@ -964,6 +958,19 @@ message EnvironmentListItem {
 
 message EnvironmentListResponse {
   repeated EnvironmentListItem items = 2;
+}
+
+message EnvironmentMetadata{
+  string name = 1;
+  EnvironmentSettings settings = 2;
+}
+
+// Environment-scoped settings, with workspace-level defaults.
+// Note that we use MergeFrom to combine workspace / environment settings,
+// which will *append* any `repeated` fields!
+message EnvironmentSettings {
+  string image_builder_version = 1;
+  string webhook_suffix = 2;
 }
 
 message EnvironmentUpdateRequest {
@@ -2507,9 +2514,9 @@ service ModalClient {
   rpc DomainList(DomainListRequest) returns (DomainListResponse);
 
   // Environments
-  rpc EnvironmentConfigGet(EnvironmentConfigGetRequest) returns (EnvironmentConfigGetResponse);
   rpc EnvironmentCreate(EnvironmentCreateRequest) returns (google.protobuf.Empty);
   rpc EnvironmentDelete(EnvironmentDeleteRequest) returns (google.protobuf.Empty);
+  rpc EnvironmentGetOrCreate(EnvironmentGetOrCreateRequest) returns (EnvironmentGetOrCreateResponse);
   rpc EnvironmentList(google.protobuf.Empty) returns (EnvironmentListResponse);
   rpc EnvironmentUpdate(EnvironmentUpdateRequest) returns (EnvironmentListItem);
 
