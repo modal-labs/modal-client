@@ -39,7 +39,7 @@ if typing.TYPE_CHECKING:
 
 
 # This is used for both type checking and runtime validation
-ImageBuilderVersion = Literal["2023.12", "2024.04"]
+ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10"]
 
 # Note: we also define supported Python versions via logic at the top of the package __init__.py
 # so that we fail fast / clearly in unsupported containers. Additionally, we enumerate the supported
