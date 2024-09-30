@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Optional, Sequence
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
+from modal._tunnel import Tunnel
 from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from modal.volume import _Volume
 from modal_proto import api_pb2
@@ -48,7 +49,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     _stderr: _StreamReader
     _stdin: _StreamWriter
     _task_id: Optional[str] = None
-    _tunnels: Optional[List[api_pb2.TunnelData]] = None
+    _tunnels: Optional[Dict[int, Tunnel]] = None
 
     @staticmethod
     def _new(
@@ -332,12 +333,14 @@ class _Sandbox(_Object, type_prefix="sb"):
                     raise SandboxTerminatedError()
                 break
 
-    async def tunnels(self, timeout: int = 50) -> List[api_pb2.TunnelData]:
+    async def tunnels(self, timeout: int = 50) -> Dict[int, Tunnel]:
         """Get tunnel metadata for the sandbox.
 
         Raises `SandboxTimeoutError` if the tunnels are not available after the timeout.
 
-        Returns a list of `TunnelData` objects, which contain the tunnel metadata.
+        Returns a dictionary of `Tunnel` objects which are keyed by the container port.
+
+        NOTE: Previous to client v0.64.152, this returned a list of `TunnelData` objects.
         """
 
         if self._tunnels:
@@ -351,8 +354,11 @@ class _Sandbox(_Object, type_prefix="sb"):
             raise SandboxTimeoutError()
 
         # Otherwise, we got the tunnels and can report the result.
-        self._tunnels = resp.tunnels
-        return resp.tunnels
+        self._tunnels = {
+            t.container_port: Tunnel(t.host, t.port, t.unencrypted_host, t.unencrypted_port) for t in resp.tunnels
+        }
+
+        return self._tunnels
 
     async def terminate(self):
         """Terminate Sandbox execution.
