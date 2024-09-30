@@ -446,6 +446,21 @@ def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
     assert captured_out == [(1, shell_prompt), (1, expected_output)]
 
 
+@skip_windows("modal shell is not supported on Windows.")
+def test_shell_preserve_token(servicer, set_env_client, mock_shell_pty, monkeypatch):
+    monkeypatch.setenv("MODAL_TOKEN_ID", "my-token-id")
+
+    fake_stdin, captured_out = mock_shell_pty
+    shell_prompt = servicer.shell_prompt.encode("utf-8")
+
+    fake_stdin.clear()
+    fake_stdin.extend([b'echo "$MODAL_TOKEN_ID"\n', b"exit\n"])
+    _run(["shell"])
+
+    expected_output = b"my-token-id\n"
+    assert captured_out == [(1, shell_prompt), (1, expected_output)]
+
+
 def test_shell_unsuported_cmds_fails_on_windows(servicer, set_env_client, mock_shell_pty):
     expected_exit_code = 1 if platform.system() == "Windows" else 0
     res = _run(["shell"], expected_exit_code=expected_exit_code)
