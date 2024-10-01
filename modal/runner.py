@@ -3,6 +3,7 @@ import asyncio
 import dataclasses
 import os
 import time
+import typing
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Dict, List, Optional, TypeVar
 
@@ -64,14 +65,14 @@ async def _init_local_app_existing(client: _Client, existing_app_id: str) -> Run
 async def _init_local_app_new(
     client: _Client,
     description: str,
-    app_state: int,
+    app_state: int,  # ValueType
     environment_name: str = "",
     interactive: bool = False,
 ) -> RunningApp:
     app_req = api_pb2.AppCreateRequest(
         description=description,
         environment_name=environment_name,
-        app_state=app_state,
+        app_state=app_state,  # type: ignore
     )
     app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
     logger.debug(f"Created new app with id {app_resp.app_id}")
@@ -218,6 +219,30 @@ async def _disconnect(
     logger.debug("App disconnected")
 
 
+async def _status_based_disconnect(client: _Client, app_id: str, exc_info: Optional[BaseException] = None):
+    """Disconnect local session of a running app, sending relevant metadata
+
+    exc_info: Exception if an exception caused the disconnect
+    """
+    if isinstance(exc_info, (KeyboardInterrupt, asyncio.CancelledError)):
+        reason = api_pb2.APP_DISCONNECT_REASON_KEYBOARD_INTERRUPT
+    elif exc_info is not None:
+        if traceback_contains_remote_call(exc_info.__traceback__):
+            reason = api_pb2.APP_DISCONNECT_REASON_REMOTE_EXCEPTION
+        else:
+            reason = api_pb2.APP_DISCONNECT_REASON_LOCAL_EXCEPTION
+    else:
+        reason = api_pb2.APP_DISCONNECT_REASON_ENTRYPOINT_COMPLETED
+    if isinstance(exc_info, _CliUserExecutionError):
+        exc_str = repr(exc_info.__cause__)
+    elif exc_info:
+        exc_str = repr(exc_info)
+    else:
+        exc_str = ""
+
+    await _disconnect(client, app_id, reason, exc_str)
+
+
 @asynccontextmanager
 async def _run_app(
     app: _App,
@@ -229,7 +254,7 @@ async def _run_app(
 ) -> AsyncGenerator[_App, None]:
     """mdmd:hidden"""
     if environment_name is None:
-        environment_name = config.get("environment")
+        environment_name = typing.cast(str, config.get("environment"))
 
     if not is_local():
         raise InvalidError(
@@ -258,18 +283,22 @@ async def _run_app(
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
     running_app: RunningApp = await _init_local_app_new(
         client,
-        app.description,
-        environment_name=environment_name,
+        app.description or "",
+        environment_name=environment_name or "",
         app_state=app_state,
         interactive=interactive,
     )
-    async with app._set_local_app(client, running_app), TaskContext(grace=config["logs_timeout"]) as tc:
+
+    logs_timeout = config["logs_timeout"]
+    async with app._set_local_app(client, running_app), TaskContext(grace=logs_timeout) as tc:
         # Start heartbeats loop to keep the client alive
         # we don't log heartbeat exceptions in detached mode
         # as losing the local connection will not affect the running app
-        tc.infinite_loop(
-            lambda: _heartbeat(client, running_app.app_id), sleep=HEARTBEAT_INTERVAL, log_exception=not detach
-        )
+        def heartbeat():
+            return _heartbeat(client, running_app.app_id)
+
+        tc.infinite_loop(heartbeat, sleep=HEARTBEAT_INTERVAL, log_exception=not detach)
+        logs_loop: Optional[asyncio.Task] = None
 
         if output_mgr := OutputManager.get():
             with output_mgr.make_live(step_progress("Initializing...")):
@@ -277,21 +306,29 @@ async def _run_app(
                     f"Initialized. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
                 )
                 output_mgr.print(step_completed(initialized_msg))
-                output_mgr.update_app_page_url(running_app.app_page_url)
+                output_mgr.update_app_page_url(running_app.app_page_url or "ERROR:NO_APP_PAGE")
 
             # Start logs loop
             logs_loop = tc.create_task(
                 get_app_logs_loop(client, output_mgr, app_id=running_app.app_id, app_logs_url=running_app.app_logs_url)
             )
 
-        exc_info: Optional[BaseException] = None
         try:
             # Create all members
             await _create_all_objects(client, running_app, app._indexed_objects, environment_name)
 
             # Publish the app
             await _publish_app(client, running_app, app_state, app._indexed_objects)
+        except asyncio.CancelledError as e:
+            # this typically happens on sigint/ctrl-C during setup (they KeyboardInterrupt happens in the main thread)
+            if output_mgr := OutputManager.get():
+                output_mgr.print("Aborting app initialization...\n")
 
+            await _status_based_disconnect(client, running_app.app_id, e)
+            app._uncreate_all_objects()
+            raise
+
+        try:
             # Show logs from dynamically created images.
             # TODO: better way to do this
             if output_mgr := OutputManager.get():
@@ -304,11 +341,7 @@ async def _run_app(
             else:
                 yield app
         except KeyboardInterrupt as e:
-            exc_info = e
-            # mute cancellation errors on all function handles to prevent exception spam
-            for obj in app.registered_functions.values():
-                obj._set_mute_cancellation(True)
-
+            # this happens only if sigint comes in during the yield block above
             if detach:
                 if output_mgr := OutputManager.get():
                     output_mgr.print(step_completed("Shutting down Modal client."))
@@ -317,41 +350,43 @@ async def _run_app(
                         f"[magenta]{running_app.app_page_url}[/magenta]"
                         ""
                     )
+                if logs_loop:
                     logs_loop.cancel()
+                await _status_based_disconnect(client, running_app.app_id, e)
             else:
                 if output_mgr := OutputManager.get():
+                    output_mgr.print(
+                        "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
+                    )
+                await _status_based_disconnect(client, running_app.app_id, e)
+                if logs_loop:
+                    try:
+                        await asyncio.wait_for(logs_loop, timeout=logs_timeout)
+                    except asyncio.TimeoutError:
+                        logger.warning("Timed out waiting for final app logs.")
+
+                if output_mgr:
                     output_mgr.print(
                         step_completed(
                             "App aborted. "
                             f"[grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
                         )
                     )
-                    output_mgr.print(
-                        "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
-                    )
+            return
         except BaseException as e:
-            exc_info = e
-            raise e
+            # TODO: unexpected error - log something?
+            await _status_based_disconnect(client, running_app.app_id, e)
+            raise
         finally:
-            if isinstance(exc_info, KeyboardInterrupt):
-                reason = api_pb2.APP_DISCONNECT_REASON_KEYBOARD_INTERRUPT
-            elif exc_info is not None:
-                if traceback_contains_remote_call(exc_info.__traceback__):
-                    reason = api_pb2.APP_DISCONNECT_REASON_REMOTE_EXCEPTION
-                else:
-                    reason = api_pb2.APP_DISCONNECT_REASON_LOCAL_EXCEPTION
-            else:
-                reason = api_pb2.APP_DISCONNECT_REASON_ENTRYPOINT_COMPLETED
-
-            if isinstance(exc_info, _CliUserExecutionError):
-                exc_str = repr(exc_info.__cause__)
-            elif exc_info:
-                exc_str = repr(exc_info)
-            else:
-                exc_str = ""
-
-            await _disconnect(client, running_app.app_id, reason, exc_str)
             app._uncreate_all_objects()
+
+        # successful completion!
+        await _status_based_disconnect(client, running_app.app_id, exc_info=None)
+        if logs_loop:
+            try:
+                await asyncio.wait_for(logs_loop, timeout=logs_timeout)
+            except asyncio.TimeoutError:
+                logger.warning("Timed out waiting for final app logs.")
 
     if output_mgr := OutputManager.get():
         output_mgr.print(
@@ -430,7 +465,7 @@ async def _deploy_app(
       referred to and used by other apps.
     """
     if environment_name is None:
-        environment_name = config.get("environment")
+        environment_name = typing.cast(str, config.get("environment"))
 
     name = name or app.name
     if not name:
@@ -464,7 +499,10 @@ async def _deploy_app(
 
     async with TaskContext(0) as tc:
         # Start heartbeats loop to keep the client alive
-        tc.infinite_loop(lambda: _heartbeat(client, running_app.app_id), sleep=HEARTBEAT_INTERVAL)
+        def heartbeat():
+            return _heartbeat(client, running_app.app_id)
+
+        tc.infinite_loop(heartbeat, sleep=HEARTBEAT_INTERVAL)
 
         try:
             # Create all members
@@ -488,7 +526,9 @@ async def _deploy_app(
         output_mgr.print(step_completed(f"App deployed in {t:.3f}s! 🎉"))
         output_mgr.print(f"\nView Deployment: [magenta]{app_url}[/magenta]")
     return DeployResult(
-        app_id=running_app.app_id, app_page_url=running_app.app_page_url, app_logs_url=running_app.app_logs_url
+        app_id=running_app.app_id,
+        app_page_url=running_app.app_page_url,
+        app_logs_url=running_app.app_logs_url,  # type: ignore
     )
 
 
