@@ -619,13 +619,6 @@ async def get_app_logs_loop(
     while True:
         try:
             await _get_logs()
-        except asyncio.CancelledError:
-            view_logs_url = app_logs_url if app_logs_url else "https://modal.com/logs/"
-            output_mgr.print(
-                f"[red]Timed out waiting for logs. "
-                f"[grey70]View logs at [underline]{view_logs_url}[/underline] for remaining output.[/grey70]"
-            )
-            raise
         except (GRPCError, StreamTerminatedError, socket.gaierror, AttributeError) as exc:
             if isinstance(exc, GRPCError):
                 if exc.status in RETRYABLE_GRPC_STATUS_CODES:

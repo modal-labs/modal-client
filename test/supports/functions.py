@@ -28,7 +28,7 @@ app = App()
 
 
 @app.function()
-def square(x):
+def square(x: int):
     return x * x
 
 
