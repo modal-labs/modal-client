@@ -71,6 +71,54 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
         return inspect.Signature(constructor_parameters)
 
 
+class _RemoteObj:
+    def __init__(self, remote_cls: "_RemoteCls", param_args: Tuple, param_kwargs: Dict[str, Any]):
+        self._remote_cls = remote_cls
+        self._args = param_args
+        self._kwargs = param_kwargs
+        self._obj: Optional["_Obj"] = None
+
+    async def _get_obj(self) -> "_Obj":
+        if not self._obj:
+            cls = await self._remote_cls._get_cls()
+            self._obj = cls(*self._args, **self._kwargs)
+        return self._obj
+
+    async def keep_warm(self, warm_pool_size: int) -> None:
+        return await self._get_cls().keep_warm(warm_pool_size)
+
+    def __getattr__(self, name) -> _Function:
+        async def _load(method: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+            obj = await self._get_obj()
+            obj_method = getattr(obj, name)
+            await obj_method.resolve()
+            # return obj_method
+            method._hydrate_from_other(obj_method)  # needed?
+            # return method
+
+        return _Function._from_loader(_load, f"MaybeRemoteMethod({name})", hydrate_lazily=True)
+
+
+RemoteObj = synchronize_api(_RemoteObj)
+
+
+class _RemoteCls:
+    def __init__(self, cls: "_Cls"):
+        self._cls = cls
+
+    async def _get_cls(self) -> "_Obj":
+        await self._cls.resolve()
+        return self._cls
+
+    def __call__(self, *args, **kwargs) -> _RemoteObj:
+        return _RemoteObj(self, param_args=args, param_kwargs=kwargs)
+
+    # TODO: with_options()
+
+
+RemoteCls = synchronize_api(_RemoteCls)
+
+
 class _Obj:
     """An instance of a `Cls`, i.e. `Cls("foo", 42)` returns an `Obj`.
 
@@ -423,9 +471,7 @@ class _Cls(_Object, type_prefix="cs"):
             obj._hydrate(response.class_id, resolver.client, response.handle_metadata)
 
         rep = f"Ref({app_name})"
-        cls = cls._from_loader(_load_remote, rep, is_another_app=True)
-        cls._from_other_workspace = bool(workspace is not None)
-        return cls
+        return _RemoteCls(cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True))
 
     def with_options(
         self: "_Cls",
