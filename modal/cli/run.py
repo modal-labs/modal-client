@@ -157,24 +157,27 @@ def _get_click_command_for_function(app: App, function_tag):
     @click.pass_context
     def f(ctx, **kwargs):
         show_progress: bool = ctx.obj["show_progress"]
-        with enable_output(show_progress):
-            with run_app(
-                app,
-                detach=ctx.obj["detach"],
-                environment_name=ctx.obj["env"],
-                interactive=ctx.obj["interactive"],
-            ):
-                if cls is None:
-                    function.remote(**kwargs)
-                else:
-                    # unpool class and method arguments
-                    # TODO(erikbern): this code is a bit hacky
-                    cls_kwargs = {k: kwargs[k] for k in cls_signature}
-                    fun_kwargs = {k: kwargs[k] for k in fun_signature}
+        try:
+            with enable_output(show_progress):
+                with run_app(
+                    app,
+                    detach=ctx.obj["detach"],
+                    environment_name=ctx.obj["env"],
+                    interactive=ctx.obj["interactive"],
+                ):
+                    if cls is None:
+                        function.remote(**kwargs)
+                    else:
+                        # unpool class and method arguments
+                        # TODO(erikbern): this code is a bit hacky
+                        cls_kwargs = {k: kwargs[k] for k in cls_signature}
+                        fun_kwargs = {k: kwargs[k] for k in fun_signature}
 
-                    instance = cls(**cls_kwargs)
-                    method: Function = getattr(instance, method_name)
-                    method.remote(**fun_kwargs)
+                        instance = cls(**cls_kwargs)
+                        method: Function = getattr(instance, method_name)
+                        method.remote(**fun_kwargs)
+        except KeyboardInterrupt:
+            pass  # handled within run_app
 
     with_click_options = _add_click_options(f, signature)
     return click.command(with_click_options)
@@ -194,19 +197,22 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
 
         show_progress: bool = ctx.obj["show_progress"]
         with enable_output(show_progress):
-            with run_app(
-                app,
-                detach=ctx.obj["detach"],
-                environment_name=ctx.obj["env"],
-                interactive=ctx.obj["interactive"],
-            ):
-                try:
-                    if isasync:
-                        asyncio.run(func(*args, **kwargs))
-                    else:
-                        func(*args, **kwargs)
-                except Exception as exc:
-                    raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
+            try:
+                with run_app(
+                    app,
+                    detach=ctx.obj["detach"],
+                    environment_name=ctx.obj["env"],
+                    interactive=ctx.obj["interactive"],
+                ):
+                    try:
+                        if isasync:
+                            asyncio.run(func(*args, **kwargs))
+                        else:
+                            func(*args, **kwargs)
+                    except Exception as exc:
+                        raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
+            except KeyboardInterrupt:
+                pass  # KeyboardInterrupts are handled within run_app and/or function
 
     with_click_options = _add_click_options(f, _get_signature(func))
     return click.command(with_click_options)
@@ -292,8 +298,11 @@ def deploy(
     if name is None:
         name = app.name
 
-    with enable_output():
-        res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
+    try:
+        with enable_output():
+            res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
+    except KeyboardInterrupt:
+        return
 
     if stream_logs:
         stream_app_logs(app_id=res.app_id, app_logs_url=res.app_logs_url)
