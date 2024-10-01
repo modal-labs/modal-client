@@ -13,7 +13,7 @@ from synchronicity.async_wrap import asynccontextmanager
 import modal_proto.api_pb2
 from modal_proto import api_pb2
 
-from ._output import OutputManager, get_app_logs_loop, step_completed, step_progress
+from ._output import get_app_logs_loop, step_completed, step_progress
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._traceback import traceback_contains_remote_call
@@ -32,6 +32,7 @@ from .exception import (
 )
 from .execution_context import is_local
 from .object import _get_environment_name, _Object
+from .output import _get_output_manager, enable_output
 from .running_app import RunningApp
 from .sandbox import _Sandbox
 from .secret import _Secret
@@ -300,7 +301,7 @@ async def _run_app(
         tc.infinite_loop(heartbeat, sleep=HEARTBEAT_INTERVAL, log_exception=not detach)
         logs_loop: Optional[asyncio.Task] = None
 
-        if output_mgr := OutputManager.get():
+        if output_mgr := _get_output_manager():
             with output_mgr.make_live(step_progress("Initializing...")):
                 initialized_msg = (
                     f"Initialized. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
@@ -321,7 +322,7 @@ async def _run_app(
             await _publish_app(client, running_app, app_state, app._indexed_objects)
         except asyncio.CancelledError as e:
             # this typically happens on sigint/ctrl-C during setup (they KeyboardInterrupt happens in the main thread)
-            if output_mgr := OutputManager.get():
+            if output_mgr := _get_output_manager():
                 output_mgr.print("Aborting app initialization...\n")
 
             await _status_based_disconnect(client, running_app.app_id, e)
@@ -331,11 +332,11 @@ async def _run_app(
         try:
             # Show logs from dynamically created images.
             # TODO: better way to do this
-            if output_mgr := OutputManager.get():
+            if output_mgr := _get_output_manager():
                 output_mgr.enable_image_logs()
 
             # Yield to context
-            if output_mgr := OutputManager.get():
+            if output_mgr := _get_output_manager():
                 with output_mgr.show_status_spinner():
                     yield app
             else:
@@ -343,7 +344,7 @@ async def _run_app(
         except KeyboardInterrupt as e:
             # this happens only if sigint comes in during the yield block above
             if detach:
-                if output_mgr := OutputManager.get():
+                if output_mgr := _get_output_manager():
                     output_mgr.print(step_completed("Shutting down Modal client."))
                     output_mgr.print(
                         "The detached app keeps running. You can track its progress at: "
@@ -354,7 +355,7 @@ async def _run_app(
                     logs_loop.cancel()
                 await _status_based_disconnect(client, running_app.app_id, e)
             else:
-                if output_mgr := OutputManager.get():
+                if output_mgr := _get_output_manager():
                     output_mgr.print(
                         "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
                     )
@@ -388,7 +389,7 @@ async def _run_app(
             except asyncio.TimeoutError:
                 logger.warning("Timed out waiting for final app logs.")
 
-    if output_mgr := OutputManager.get():
+    if output_mgr := _get_output_manager():
         output_mgr.print(
             step_completed(
                 f"App completed. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
@@ -521,7 +522,7 @@ async def _deploy_app(
             await _disconnect(client, running_app.app_id, reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
             raise e
 
-    if output_mgr := OutputManager.get():
+    if output_mgr := _get_output_manager():
         t = time.time() - t0
         output_mgr.print(step_completed(f"App deployed in {t:.3f}s! 🎉"))
         output_mgr.print(f"\nView Deployment: [magenta]{app_url}[/magenta]")
@@ -565,7 +566,7 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
             "MODAL_ENVIRONMENT": _get_environment_name(),
         }
         secrets = kwargs.pop("secrets", []) + [_Secret.from_dict(sandbox_env)]
-        with OutputManager.enable_output():  # show any image build logs
+        with enable_output():  # show any image build logs
             sandbox = await _Sandbox.create(
                 "sleep",
                 "100000",

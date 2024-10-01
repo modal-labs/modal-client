@@ -157,9 +157,10 @@ class Resolver:
     @contextlib.contextmanager
     def display(self):
         # TODO(erikbern): get rid of this wrapper
-        from ._output import OutputManager, step_completed
+        from ._output import step_completed
+        from .output import _get_output_manager
 
-        if output_mgr := OutputManager.get():
+        if output_mgr := _get_output_manager():
             with output_mgr.make_live(self._tree):
                 yield
             self._tree.label = step_completed("Created objects.")
