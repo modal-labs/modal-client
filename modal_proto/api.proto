@@ -1731,6 +1731,11 @@ message ProxyInfo {
   int32 remote_port = 4;
 }
 
+message ProxyIp {
+  string proxy_ip = 1;
+  ProxyIpStatus status = 2;
+}
+
 message ProxyIpDeleteRequest {
   string proxy_ip = 1;
 }
@@ -1742,6 +1747,10 @@ message ProxyIpGetOrCreateRequest {
 message ProxyIpGetOrCreateResponse {
   string proxy_ip = 1;
   ProxyIpStatus status = 2;
+}
+
+message ProxyIpListResponse {
+  repeated ProxyIp proxy_ips = 1;
 }
 
 message QueueClearRequest {
@@ -2557,6 +2566,7 @@ service ModalClient {
   // Proxy IPs
   rpc ProxyIpDelete(ProxyIpDeleteRequest) returns (google.protobuf.Empty);
   rpc ProxyIpGetOrCreate(ProxyIpGetOrCreateRequest) returns (ProxyIpGetOrCreateResponse);
+  rpc ProxyIpList(google.protobuf.Empty) returns (ProxyIpListResponse);
 
   // Queues
   rpc QueueClear(QueueClearRequest) returns (google.protobuf.Empty);
