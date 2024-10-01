@@ -8,9 +8,9 @@ from typing import Any, Dict, Optional
 
 from typer import Typer
 
-from .._output import enable_output
 from ..app import App
 from ..exception import _CliUserExecutionError
+from ..output import enable_output
 from ..runner import run_app
 from .import_refs import import_function
 
