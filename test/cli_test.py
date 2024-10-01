@@ -982,7 +982,7 @@ def test_keyboard_interrupt_during_app_load(servicer, server_url_env, supports_d
     with servicer.intercept() as ctx:
         ctx.set_responder("FunctionCreate", stalling_function_create)
 
-        p = _run_subprocess(["run", f"{supports_dir / 'functions.py'}::square", "--x", "10"])
+        p = _run_subprocess(["run", f"{supports_dir / 'hello.py'}::hello"])
         creating_function.wait()
         p.send_signal(signal.SIGINT)
         out, err = p.communicate(timeout=1)
@@ -1002,7 +1002,7 @@ def test_keyboard_interrupt_during_app_run(servicer, server_url_env, supports_di
     with servicer.intercept() as ctx:
         ctx.set_responder("FunctionGetOutputs", stalling_function_get_output)
 
-        p = _run_subprocess(["run", f"{supports_dir / 'functions.py'}::square", "--x", "10"])
+        p = _run_subprocess(["run", f"{supports_dir / 'hello.py'}::hello"])
         waiting_for_output.wait()
         p.send_signal(signal.SIGINT)
         out, err = p.communicate(timeout=1)
@@ -1022,7 +1022,7 @@ def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, supp
     with servicer.intercept() as ctx:
         ctx.set_responder("FunctionGetOutputs", stalling_function_get_output)
 
-        p = _run_subprocess(["run", "--detach", f"{supports_dir / 'functions.py'}::square", "--x", "10"])
+        p = _run_subprocess(["run", "--detach", f"{supports_dir / 'hello.py'}::hello"])
         waiting_for_output.wait()
         p.send_signal(signal.SIGINT)
         out, err = p.communicate(timeout=1)
