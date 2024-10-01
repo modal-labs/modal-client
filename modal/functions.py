@@ -1087,7 +1087,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Ref({app_name})"
-        return cls._from_loader(_load_remote, rep, is_another_app=True)
+        return cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
     async def lookup(
