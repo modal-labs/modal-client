@@ -52,7 +52,6 @@ from .partial_function import (
 )
 from .proxy import _Proxy
 from .retries import Retries
-from .runner import _run_app
 from .running_app import RunningApp
 from .sandbox import _Sandbox
 from .schedule import Schedule
@@ -440,6 +439,7 @@ class _App:
         If you don't want output, and you want to to suppress this warning,
         use `app.run(..., show_progress=False)`.
         """
+        from .runner import _run_app  # Defer import of runner.py, which imports a lot from Rich
 
         # See Github discussion here: https://github.com/modal-labs/modal-client/pull/2030#issuecomment-2237266186
 
