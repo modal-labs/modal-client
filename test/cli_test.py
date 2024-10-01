@@ -970,7 +970,6 @@ def _run_subprocess(cli_cmd: List[str]) -> subprocess.Popen:
 
 
 @pytest.mark.timeout(5)
-@pytest.mark.skip("not fixed yet!")
 def test_keyboard_interrupt_during_app_load(servicer, server_url_env, supports_dir):
     ctx: InterceptionContext
     creating_function = threading.Event()
@@ -988,6 +987,7 @@ def test_keyboard_interrupt_during_app_load(servicer, server_url_env, supports_d
         out, err = p.communicate(timeout=1)
         print(out)
         assert "Traceback" not in err
+        assert "Aborting app initialization..." in out
 
 
 @pytest.mark.timeout(5)
@@ -1006,7 +1006,7 @@ def test_keyboard_interrupt_during_app_run(servicer, server_url_env, supports_di
         waiting_for_output.wait()
         p.send_signal(signal.SIGINT)
         out, err = p.communicate(timeout=1)
-        print(err)
+        assert "App aborted. View run at https://modaltest.com/apps/ap-123" in out
         assert "Traceback" not in err
 
 
@@ -1026,5 +1026,7 @@ def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, supp
         waiting_for_output.wait()
         p.send_signal(signal.SIGINT)
         out, err = p.communicate(timeout=1)
-        print(err)
+        print(out)
+        assert "Shutting down Modal client." in out
+        assert "The detached app keeps running. You can track its progress at:" in out
         assert "Traceback" not in err

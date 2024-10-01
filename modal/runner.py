@@ -293,9 +293,10 @@ async def _run_app(
         # Start heartbeats loop to keep the client alive
         # we don't log heartbeat exceptions in detached mode
         # as losing the local connection will not affect the running app
-        tc.infinite_loop(
-            lambda: _heartbeat(client, running_app.app_id), sleep=HEARTBEAT_INTERVAL, log_exception=not detach
-        )
+        def heartbeat():
+            return _heartbeat(client, running_app.app_id)
+
+        tc.infinite_loop(heartbeat, sleep=HEARTBEAT_INTERVAL, log_exception=not detach)
         logs_loop: Optional[asyncio.Task] = None
 
         if output_mgr := OutputManager.get():
@@ -351,7 +352,6 @@ async def _run_app(
                 if logs_loop:
                     logs_loop.cancel()
                 await _status_based_disconnect(client, running_app.app_id, e)
-                return
             else:
                 if output_mgr := OutputManager.get():
                     output_mgr.print(
@@ -371,6 +371,7 @@ async def _run_app(
                             f"[grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
                         )
                     )
+            return
         except BaseException as e:
             # TODO: unexpected error - log something?
             await _status_based_disconnect(client, running_app.app_id, e)
@@ -378,7 +379,14 @@ async def _run_app(
         finally:
             app._uncreate_all_objects()
 
-    await _status_based_disconnect(client, running_app.app_id, exc_info=None)
+        # successful completion!
+        await _status_based_disconnect(client, running_app.app_id, exc_info=None)
+        if logs_loop:
+            try:
+                await asyncio.wait_for(logs_loop, timeout=logs_timeout)
+            except asyncio.TimeoutError:
+                logger.warning("Timed out waiting for final app logs.")
+
     if output_mgr := OutputManager.get():
         output_mgr.print(
             step_completed(
@@ -490,7 +498,10 @@ async def _deploy_app(
 
     async with TaskContext(0) as tc:
         # Start heartbeats loop to keep the client alive
-        tc.infinite_loop(lambda: _heartbeat(client, running_app.app_id), sleep=HEARTBEAT_INTERVAL)
+        def heartbeat():
+            return _heartbeat(client, running_app.app_id)
+
+        tc.infinite_loop(heartbeat, sleep=HEARTBEAT_INTERVAL)
 
         try:
             # Create all members
@@ -514,7 +525,9 @@ async def _deploy_app(
         output_mgr.print(step_completed(f"App deployed in {t:.3f}s! 🎉"))
         output_mgr.print(f"\nView Deployment: [magenta]{app_url}[/magenta]")
     return DeployResult(
-        app_id=running_app.app_id, app_page_url=running_app.app_page_url, app_logs_url=running_app.app_logs_url
+        app_id=running_app.app_id,
+        app_page_url=running_app.app_page_url,
+        app_logs_url=running_app.app_logs_url,  # type: ignore
     )
 
 
