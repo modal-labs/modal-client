@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2024
 """Pattern matching library ported from https://github.com/moby/patternmatcher.
 
 This is the same pattern-matching logic used by Docker, except it is written in
@@ -11,7 +12,7 @@ then asking it whether file paths match any of its patterns.
 import enum
 import os
 import re
-from typing import List, TextIO
+from typing import List, Optional, TextIO
 
 escape_chars = frozenset(".+()|{}$")
 
@@ -32,7 +33,7 @@ class Pattern:
         self.match_type = MatchType.UNKNOWN
         self.cleaned_pattern = ""
         self.dirs: List[str] = []
-        self.regexp: re.Pattern | None = None
+        self.regexp: Optional[re.Pattern] = None
         self.exclusion = False
 
     def __str__(self) -> str:

@@ -1,9 +1,12 @@
+# Copyright Modal Labs 2024
 """Tests for pattern_matcher.py.
 
 These are ported from the original patternmatcher Go library.
 """
 
 import contextlib
+import os.path
+import platform
 import pytest
 
 from modal._utils.pattern_matcher import PatternMatcher
@@ -255,5 +258,12 @@ def test_match():
     ]
 
     for pattern, text, expected, error in match_tests:
+        if platform.system() == "Windows":
+            if "\\" in pattern:
+                # No escape allowed on Windows.
+                continue
+            pattern = os.path.normpath(pattern)
+            text = os.path.normpath(text)
+
         with pytest.raises(error) if error else contextlib.nullcontext():
             assert PatternMatcher([pattern]).matches(text) is expected
