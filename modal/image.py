@@ -39,7 +39,7 @@ if typing.TYPE_CHECKING:
 
 
 # This is used for both type checking and runtime validation
-ImageBuilderVersion = Literal["2023.12", "2024.04"]
+ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10"]
 
 # Note: we also define supported Python versions via logic at the top of the package __init__.py
 # so that we fail fast / clearly in unsupported containers. Additionally, we enumerate the supported
@@ -100,6 +100,13 @@ def _dockerhub_python_version(builder_version: ImageBuilderVersion, python_versi
             "3.9": "19",
             "3.8": "19",
         },
+        "2024.10": {
+            "3.12": "6",
+            "3.11": "10",
+            "3.10": "15",
+            "3.9": "20",
+            "3.8": "20",
+        },
     }
     python_series = "{0}.{1}".format(*components)
     micro_version = latest_micro_version[builder_version][python_series]
@@ -108,7 +115,7 @@ def _dockerhub_python_version(builder_version: ImageBuilderVersion, python_versi
 
 
 def _dockerhub_debian_codename(builder_version: ImageBuilderVersion) -> str:
-    return {"2023.12": "bullseye", "2024.04": "bookworm"}[builder_version]
+    return {"2023.12": "bullseye", "2024.04": "bookworm", "2024.10": "bookworm"}[builder_version]
 
 
 def _get_modal_requirements_path(builder_version: ImageBuilderVersion, python_version: Optional[str] = None) -> str:
@@ -1133,7 +1140,7 @@ class _Image(_Object, type_prefix="im"):
             if version == "2023.12" and python_version is None:
                 python_version = "3.9"  # Backcompat for old hardcoded default param
             validated_python_version = _validate_python_version(python_version)
-            micromamba_version = {"2023.12": "1.3.1", "2024.04": "1.5.8"}[version]
+            micromamba_version = {"2023.12": "1.3.1", "2024.04": "1.5.8", "2024.10": "1.5.10"}[version]
             debian_codename = _dockerhub_debian_codename(version)
             tag = f"mambaorg/micromamba:{micromamba_version}-{debian_codename}-slim"
             setup_commands = [

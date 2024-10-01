@@ -77,12 +77,13 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        # TODO matrix over image builder version too? Maybe only min/max Python?
     steps:
       - uses: actions/checkout@v3
 
       - name: Install dependencies
         run: |
-          pip install -r modal/requirements/2024.04.txt
+          pip install -r modal/requirements/2024.10.txt
           pip install synchronicity
 
       - name: Compile protos
