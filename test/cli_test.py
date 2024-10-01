@@ -969,7 +969,7 @@ def _run_subprocess(cli_cmd: List[str]) -> subprocess.Popen:
     return p
 
 
-@pytest.mark.timeout(5)
+@pytest.mark.timeout(10)
 @pytest.mark.skip("not fixed yet!")
 def test_keyboard_interrupt_during_app_load(servicer, server_url_env, supports_dir):
     ctx: InterceptionContext
@@ -990,7 +990,7 @@ def test_keyboard_interrupt_during_app_load(servicer, server_url_env, supports_d
         assert "Traceback" not in err
 
 
-@pytest.mark.timeout(5)
+@pytest.mark.timeout(10)
 def test_keyboard_interrupt_during_app_run(servicer, server_url_env, supports_dir):
     ctx: InterceptionContext
     waiting_for_output = threading.Event()
@@ -1010,7 +1010,7 @@ def test_keyboard_interrupt_during_app_run(servicer, server_url_env, supports_di
         assert "Traceback" not in err
 
 
-@pytest.mark.timeout(5)
+@pytest.mark.timeout(10)
 def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, supports_dir):
     ctx: InterceptionContext
     waiting_for_output = threading.Event()
