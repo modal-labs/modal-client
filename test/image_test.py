@@ -431,6 +431,18 @@ def test_dockerhub_install(builder_version, servicer, client):
         assert any("FROM gisops/valhalla:latest" in cmd for cmd in layers[0].dockerfile_commands)
         assert any("RUN apt-get update" in cmd for cmd in layers[0].dockerfile_commands)
 
+        assert any("modal" in cmd for layer in layers for cmd in layer.dockerfile_commands)
+
+
+def test_from_registry_no_modal_reqs(builder_version, servicer, client):
+    app = App(image=Image.from_registry("gisops/valhalla:latest", skip_modal_requirements=True))
+    app.function()(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(app.image.object_id, servicer)
+
+        assert all("modal" not in cmd for layer in layers for cmd in layer.dockerfile_commands)
+
 
 def test_ecr_install(builder_version, servicer, client):
     image_tag = "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry:latest"
