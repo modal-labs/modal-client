@@ -11,7 +11,7 @@ then asking it whether file paths match any of its patterns.
 import enum
 import os
 import re
-from typing import TextIO
+from typing import List, TextIO
 
 escape_chars = frozenset(".+()|{}$")
 
@@ -31,7 +31,7 @@ class Pattern:
         """Initialize a new Pattern instance."""
         self.match_type = MatchType.UNKNOWN
         self.cleaned_pattern = ""
-        self.dirs: list[str] = []
+        self.dirs: List[str] = []
         self.regexp: re.Pattern | None = None
         self.exclusion = False
 
@@ -150,7 +150,7 @@ class Pattern:
 class PatternMatcher:
     """Allows checking paths against a list of patterns."""
 
-    def __init__(self, patterns: list[str]) -> None:
+    def __init__(self, patterns: List[str]) -> None:
         """Initialize a new PatternMatcher instance.
 
         Args:
@@ -159,7 +159,7 @@ class PatternMatcher:
         Raises:
             ValueError: If an illegal exclusion pattern is provided.
         """
-        self.patterns: list[Pattern] = []
+        self.patterns: List[Pattern] = []
         self.exclusions = False
         for pattern in patterns:
             pattern = pattern.strip()
@@ -216,7 +216,7 @@ class PatternMatcher:
         return matched
 
 
-def read_ignorefile(reader: TextIO) -> list[str]:
+def read_ignorefile(reader: TextIO) -> List[str]:
     """Read an ignore file from a reader and return the list of file patterns to
     ignore, applying the following rules:
 
@@ -240,7 +240,7 @@ def read_ignorefile(reader: TextIO) -> list[str]:
     if reader is None:
         return []
 
-    excludes: list[str] = []
+    excludes: List[str] = []
 
     for line in reader:
         pattern = line.rstrip("\n\r")
