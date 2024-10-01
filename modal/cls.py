@@ -89,12 +89,11 @@ class _RemoteObj:
 
     def __getattr__(self, name) -> _Function:
         async def _load(method: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+            # haxx
             obj = await self._get_obj()
             obj_method = getattr(obj, name)
             await obj_method.resolve()
-            # return obj_method
-            method._hydrate_from_other(obj_method)  # needed?
-            # return method
+            method._hydrate_from_other(obj_method)
 
         return _Function._from_loader(_load, f"MaybeRemoteMethod({name})", hydrate_lazily=True)
 
