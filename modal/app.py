@@ -27,7 +27,6 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal_proto import api_pb2
 
 from ._ipython import is_notebook
-from ._output import OutputManager
 from ._utils.async_utils import synchronize_api
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
 from ._utils.grpc_utils import retry_transient_errors
@@ -44,6 +43,7 @@ from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .object import _get_environment_name, _Object
+from .output import _get_output_manager, enable_output
 from .partial_function import (
     PartialFunction,
     _find_partial_methods_for_user_cls,
@@ -447,23 +447,23 @@ class _App:
 
         if "MODAL_DISABLE_APP_RUN_OUTPUT_WARNING" not in os.environ:
             if show_progress is None:
-                if OutputManager.get() is None:
+                if _get_output_manager() is None:
                     deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
                     auto_enable_output = True
             elif show_progress is True:
-                if OutputManager.get() is None:
+                if _get_output_manager() is None:
                     deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
                     auto_enable_output = True
                 else:
                     deprecation_warning((2024, 7, 18), "`show_progress=True` is deprecated and no longer needed.")
             elif show_progress is False:
-                if OutputManager.get() is not None:
+                if _get_output_manager() is not None:
                     deprecation_warning(
                         (2024, 7, 18), "`show_progress=False` will have no effect since output is enabled."
                     )
 
         if auto_enable_output:
-            with OutputManager.enable_output():
+            with enable_output():
                 async with _run_app(self, client=client, detach=detach, interactive=interactive):
                     yield self
         else:

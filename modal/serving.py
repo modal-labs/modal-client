@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, AsyncGenerator, Optional, Set, TypeVar
 from synchronicity import Interface
 from synchronicity.async_wrap import asynccontextmanager
 
-from ._output import OutputManager
 from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
 from ._utils.logger import logger
 from ._watcher import watch
@@ -17,6 +16,7 @@ from .cli.import_refs import import_app
 from .client import _Client
 from .config import config
 from .exception import deprecation_error
+from .output import _get_output_manager
 from .runner import _run_app, serve_update
 
 if TYPE_CHECKING:
@@ -52,10 +52,10 @@ async def _terminate(proc: Optional[SpawnProcess], timeout: float = 5.0):
         proc.terminate()
         await asyncify(proc.join)(timeout)
         if proc.exitcode is not None:
-            if output_mgr := OutputManager.get():
+            if output_mgr := _get_output_manager():
                 output_mgr.print(f"Serve process {proc.pid} terminated")
         else:
-            if output_mgr := OutputManager.get():
+            if output_mgr := _get_output_manager():
                 output_mgr.print(f"[red]Serve process {proc.pid} didn't terminate after {timeout}s, killing it[/red]")
             proc.kill()
     except ProcessLookupError:
@@ -74,7 +74,7 @@ async def _run_watch_loop(
         " This can hopefully be fixed in a future version of Modal."
 
     if unsupported_msg:
-        if output_mgr := OutputManager.get():
+        if output_mgr := _get_output_manager():
             async for _ in watcher:
                 output_mgr.print(unsupported_msg)
     else:
