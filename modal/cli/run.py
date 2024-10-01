@@ -212,7 +212,7 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
                     except Exception as exc:
                         raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
             except KeyboardInterrupt:
-                pass  # KeyboardInterrupts are handled within run_app and/or function
+                pass  # handled within run_app
 
     with_click_options = _add_click_options(f, _get_signature(func))
     return click.command(with_click_options)
