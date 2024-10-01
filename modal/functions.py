@@ -33,7 +33,6 @@ from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
 from ._location import parse_cloud_provider
-from ._output import OutputManager
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
@@ -73,6 +72,7 @@ from .image import _Image
 from .mount import _get_client_mount, _Mount, get_auto_mounts
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import _get_environment_name, _Object, live_method, live_method_gen
+from .output import _get_output_manager
 from .parallel_map import (
     _for_each_async,
     _for_each_sync,
@@ -1236,7 +1236,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             raise InvalidError("A generator function cannot be called with `.map(...)`.")
 
         assert self._function_name
-        if output_mgr := OutputManager.get():
+        if output_mgr := _get_output_manager():
             count_update_callback = output_mgr.function_progress_callback(self._function_name, total=None)
         else:
             count_update_callback = None

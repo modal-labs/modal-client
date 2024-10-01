@@ -16,7 +16,6 @@ from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal_proto import api_pb2
 
-from ._output import OutputManager
 from ._resolver import Resolver
 from ._serialization import serialize
 from ._utils.async_utils import synchronize_api
@@ -30,6 +29,7 @@ from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
 from .object import _Object, live_method_gen
+from .output import _get_output_manager
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 from .volume import _Volume
@@ -429,12 +429,12 @@ class _Image(_Object, type_prefix="im"):
                     for task_log in response.task_logs:
                         if task_log.task_progress.pos or task_log.task_progress.len:
                             assert task_log.task_progress.progress_type == api_pb2.IMAGE_SNAPSHOT_UPLOAD
-                            if output_mgr := OutputManager.get():
+                            if output_mgr := _get_output_manager():
                                 output_mgr.update_snapshot_progress(image_id, task_log.task_progress)
                         elif task_log.data:
-                            if output_mgr := OutputManager.get():
+                            if output_mgr := _get_output_manager():
                                 await output_mgr.put_log_content(task_log)
-                if output_mgr := OutputManager.get():
+                if output_mgr := _get_output_manager():
                     output_mgr.flush_lines()
 
             # Handle up to n exceptions while fetching logs
