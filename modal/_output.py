@@ -182,9 +182,11 @@ class OutputManager:
 
     @classmethod
     @contextlib.contextmanager
-    def enable_output(cls, show_progress: bool = True) -> Generator[None, None, None]:
+    def enable_output(
+        cls, show_progress: bool = True, stdout: Optional[io.TextIOWrapper] = None
+    ) -> Generator[None, None, None]:
         if show_progress:
-            cls._instance = OutputManager()
+            cls._instance = OutputManager(stdout=stdout)
         try:
             yield
         finally:
@@ -707,7 +709,7 @@ class FunctionCreationStatus:
 
 
 @contextlib.contextmanager
-def enable_output(show_progress: bool = True) -> Generator[None, None, None]:
+def enable_output(show_progress: bool = True, stdout: Optional[io.TextIOWrapper] = None) -> Generator[None, None, None]:
     """Context manager that enable output when using the Python SDK.
 
     This will print to stdout and stderr things such as
@@ -723,5 +725,5 @@ def enable_output(show_progress: bool = True) -> Generator[None, None, None]:
             ...
     ```
     """
-    with OutputManager.enable_output(show_progress):
+    with OutputManager.enable_output(show_progress, stdout=stdout):
         yield
