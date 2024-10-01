@@ -3,8 +3,6 @@ import asyncio
 import platform
 from typing import Optional
 
-from rich.console import Console
-
 from modal_proto import api_pb2
 
 from ._utils.async_utils import TaskContext, synchronize_api
@@ -90,6 +88,8 @@ class _ContainerProcess:
                 return self._returncode
 
     async def attach(self, *, pty: bool):
+        from rich.console import Console  # Defer import to avoid needing rich in a container
+
         if platform.system() == "Windows":
             print("interactive exec is not currently supported on Windows.")
             return

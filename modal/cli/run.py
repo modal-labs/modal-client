@@ -17,13 +17,13 @@ from rich.console import Console
 from typing_extensions import TypedDict
 
 from .. import Cls
-from .._output import enable_output
 from ..app import App, LocalEntrypoint
 from ..config import config
 from ..environments import ensure_env
 from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
 from ..functions import Function, _FunctionSpec
 from ..image import Image
+from ..output import enable_output
 from ..runner import deploy_app, interactive_shell, run_app
 from ..serving import serve_app
 from ..volume import Volume

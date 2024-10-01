@@ -29,12 +29,10 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
 
-from modal._output import FunctionCreationStatus
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
 from ._location import parse_cloud_provider
-from ._output import OutputManager
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
@@ -354,6 +352,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
         async def _load(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+            from modal._output import FunctionCreationStatus  # Defer import to avoid needing in container
+
             function_definition = api_pb2.Function(
                 function_name=full_name,
                 webhook_config=partial_function.webhook_config,
@@ -730,6 +730,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            from modal._output import FunctionCreationStatus  # Defer import to avoid needing in container
+
             assert resolver.client and resolver.client.stub
             with FunctionCreationStatus(resolver, tag) as function_creation_status:
                 if is_generator:
@@ -1238,6 +1240,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         _SynchronizedQueue is used instead of asyncio.Queue so that the main thread can put
         items in the queue safely.
         """
+        from ._output import OutputManager  # TODO defer import to avoid needing in container (think harder?)
+
         self._check_no_web_url("map")
         if self._is_generator:
             raise InvalidError("A generator function cannot be called with `.map(...)`.")

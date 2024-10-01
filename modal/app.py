@@ -27,7 +27,6 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal_proto import api_pb2
 
 from ._ipython import is_notebook
-from ._output import OutputManager
 from ._utils.async_utils import synchronize_api
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
 from ._utils.grpc_utils import retry_transient_errors
@@ -52,7 +51,6 @@ from .partial_function import (
 )
 from .proxy import _Proxy
 from .retries import Retries
-from .runner import _run_app
 from .running_app import RunningApp
 from .sandbox import _Sandbox
 from .schedule import Schedule
@@ -440,6 +438,8 @@ class _App:
         If you don't want output, and you want to to suppress this warning,
         use `app.run(..., show_progress=False)`.
         """
+        from ._output import OutputManager  # Deferred to avoid a rich dependency in the container
+        from .runner import _run_app  # Deferred to avoid a rich dependency in the container
 
         # See Github discussion here: https://github.com/modal-labs/modal-client/pull/2030#issuecomment-2237266186
 
