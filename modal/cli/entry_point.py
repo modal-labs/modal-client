@@ -8,7 +8,7 @@ from rich.rule import Rule
 
 from modal._utils.async_utils import synchronizer
 
-from . import run
+from . import app, run
 from .app import app_cli
 from .config import config_cli
 from .container import container_cli
@@ -105,6 +105,9 @@ entrypoint_cli_typer.add_typer(config_cli, rich_help_panel="Configuration")
 entrypoint_cli_typer.add_typer(environment_cli, rich_help_panel="Configuration")
 entrypoint_cli_typer.add_typer(profile_cli, rich_help_panel="Configuration")
 entrypoint_cli_typer.add_typer(token_cli, rich_help_panel="Configuration")
+
+# Web
+entrypoint_cli_typer.command("dashboard", help="Open the Modal web dashboard")(app.dashboard)
 
 # Hide setup from help as it's redundant with modal token new, but nicer for onboarding
 entrypoint_cli_typer.command("setup", help="Bootstrap Modal's configuration.", rich_help_panel="Onboarding")(setup)

@@ -8,12 +8,14 @@ from click import UsageError
 from rich.table import Column
 from rich.text import Text
 from typer import Argument
+from typing_extensions import Annotated
 
 from modal._utils.async_utils import synchronizer
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.exception import deprecation_warning
 from modal.object import _get_environment_name
+from modal.token_flow import _open_url
 from modal_proto import api_pb2
 
 from .utils import ENV_OPTION, display_table, get_app_id_from_name, stream_app_logs, timestamp_to_local
@@ -247,3 +249,54 @@ async def history(
 
     rows = sorted(rows, key=lambda x: int(str(x[0])[1:]), reverse=True)
     display_table(columns, rows, json)
+
+
+@synchronizer.create_blocking
+async def dashboard(
+    *,
+    app_identifier: Annotated[Optional[str], typer.Argument(help="App name or ID")] = None,
+    env: Optional[str] = ENV_OPTION,
+):
+    """Open the Modal dashboard in the web default browser.
+
+    **Examples:**
+
+    Open the dashboard:
+
+    ```
+    modal dashboard
+    ```
+
+    Open the App dashboard based on an app ID:
+
+    ```
+    modal dashboard ap-123456
+    ```
+
+    Open the App dashboard based on its name:
+
+    ```
+    modal dashboard my-app
+    ```
+
+    """
+    env = ensure_env(env)
+    client = await _Client.from_env()
+    resp = await client.stub.WebDashboardLookup(
+        api_pb2.WebDashboardLookupRequest(
+            app_identifier=app_identifier if app_identifier else None,
+            namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+            environment_name=env,
+        )
+    )
+
+    if _open_url(resp.url):
+        rich.print(
+            "The web browser should have opened for you to access your app's dashboard.\n"
+            "If it didn't, please copy this URL into your web browser manually:\n"
+        )
+    else:
+        rich.print(
+            "[red]Was not able to launch web browser[/red]\n" "Please go to this URL manually to view the dashboard:\n"
+        )
+    rich.print(f"[link={resp.url}]{resp.url}[/link]\n")
