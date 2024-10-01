@@ -985,6 +985,7 @@ def _run_subprocess(cli_cmd: List[str]) -> subprocess.Popen:
 
 
 @pytest.mark.timeout(10)
+@skip_windows("no sigint on windows")
 def test_keyboard_interrupt_during_app_load(servicer, server_url_env, supports_dir):
     ctx: InterceptionContext
     creating_function = threading.Event()
@@ -1006,6 +1007,7 @@ def test_keyboard_interrupt_during_app_load(servicer, server_url_env, supports_d
 
 
 @pytest.mark.timeout(10)
+@skip_windows("no sigint on windows")
 def test_keyboard_interrupt_during_app_run(servicer, server_url_env, supports_dir):
     ctx: InterceptionContext
     waiting_for_output = threading.Event()
@@ -1026,6 +1028,7 @@ def test_keyboard_interrupt_during_app_run(servicer, server_url_env, supports_di
 
 
 @pytest.mark.timeout(10)
+@skip_windows("no sigint on windows")
 def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, supports_dir):
     ctx: InterceptionContext
     waiting_for_output = threading.Event()
