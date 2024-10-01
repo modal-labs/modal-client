@@ -71,19 +71,19 @@ jobs:
         run: pytest -v --markdown-docs -m markdown-docs modal
 
   container-dependencies:
-    name: Check minimal container dependencies for ${{ matrix.python-version }}
+    name: Check minimal container dependencies for ${{ matrix.python-version }} / ${{ matrix.image-builder-version }}
     runs-on: ubuntu-20.04
     timeout-minutes: 4
     strategy:
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
-        # TODO matrix over image builder version too? Maybe only min/max Python?
+        image-builder-version: ["2024.04", "2024.10"]
+        python-version: ["3.8", "3.12"]
     steps:
       - uses: actions/checkout@v3
 
       - name: Install dependencies
         run: |
-          pip install -r modal/requirements/2024.10.txt
+          pip install -r modal/requirements/${{ matrix.image-builder-version }}.txt
           pip install synchronicity
 
       - name: Compile protos
