@@ -680,15 +680,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Dict
 
-    async def DictCreate(self, stream):
-        request: api_pb2.DictCreateRequest = await stream.recv_message()
-        if request.existing_dict_id:
-            dict_id = request.existing_dict_id
-        else:
-            dict_id = f"di-{len(self.dicts)}"
-            self.dicts[dict_id] = {}
-        await stream.send_message(api_pb2.DictCreateResponse(dict_id=dict_id))
-
     async def DictGetOrCreate(self, stream):
         request: api_pb2.DictGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, request.namespace, request.environment_name)
@@ -1146,15 +1137,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 self.queue[request.partition_key] = []
         await stream.send_message(Empty())
 
-    async def QueueCreate(self, stream):
-        request: api_pb2.QueueCreateRequest = await stream.recv_message()
-        if request.existing_queue_id:
-            queue_id = request.existing_queue_id
-        else:
-            self.n_queues += 1
-            queue_id = f"qu-{self.n_queues}"
-        await stream.send_message(api_pb2.QueueCreateResponse(queue_id=queue_id))
-
     async def QueueGetOrCreate(self, stream):
         request: api_pb2.QueueGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, request.namespace, request.environment_name)
@@ -1375,11 +1357,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Network File System (née Shared volume)
 
-    async def SharedVolumeCreate(self, stream):
-        nfs_id = f"sv-{len(self.nfs_files)}"
-        self.nfs_files[nfs_id] = {}
-        await stream.send_message(api_pb2.SharedVolumeCreateResponse(shared_volume_id=nfs_id))
-
     async def SharedVolumeGetOrCreate(self, stream):
         request: api_pb2.SharedVolumeGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, request.namespace, request.environment_name)
@@ -1482,14 +1459,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.TunnelStopResponse(exists=True))
 
     ### Volume
-
-    async def VolumeCreate(self, stream):
-        req = await stream.recv_message()
-        self.requests.append(req)
-        self.volume_counter += 1
-        volume_id = f"vo-{self.volume_counter}"
-        self.volume_files[volume_id] = {}
-        await stream.send_message(api_pb2.VolumeCreateResponse(volume_id=volume_id))
 
     async def VolumeGetOrCreate(self, stream):
         request: api_pb2.VolumeGetOrCreateRequest = await stream.recv_message()
