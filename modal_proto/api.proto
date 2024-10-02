@@ -1584,17 +1584,6 @@ message InputInfo {
   bool task_first_input = 7;
 }
 
-message MountBuildRequest {
-  string app_id = 2 [ (modal.options.audit_target_attr) = true ];
-  string existing_mount_id = 3;
-  repeated MountFile files = 4;
-}
-
-message MountBuildResponse {
-  string mount_id = 1;
-  MountHandleMetadata handle_metadata = 2;
-}
-
 message MountFile {
   string filename = 1;
   string sha256_hex = 3; // SHA-256 checksum of the file.
