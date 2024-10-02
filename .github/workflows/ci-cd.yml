@@ -96,7 +96,9 @@ jobs:
           deactivate
 
       - name: Check entrypoint import
-        run: python -c 'import modal._container_entrypoint; import fastapi'
+        run: |
+          python -c 'import modal._container_entrypoint'
+          if [ "${{ matrix.image-builder-version }}" == "2024.04" ]; then python -c 'import fastapi'; fi
 
   publish-base-images:
     name: |
