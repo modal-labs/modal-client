@@ -823,6 +823,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     warm_pool_size=keep_warm or 0,
                     runtime=config.get("function_runtime"),
                     runtime_debug=config.get("function_runtime_debug"),
+                    runtime_perf_record=config.get("runtime_perf_record"),
                     app_name=app_name,
                     is_builder_function=is_builder_function,
                     target_concurrent_inputs=allow_concurrent_inputs or 0,
