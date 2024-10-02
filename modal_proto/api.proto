@@ -658,23 +658,6 @@ message ClassParameterValue {
   }
 }
 
-message ClientCreateRequest {
-  ClientType client_type = 1  [ (modal.options.audit_target_attr) = true ];
-  string version = 2;
-}
-
-message ClientCreateResponse {
-  string client_id = 1;
-  string error = 2;
-  string deprecation_warning = 3;
-}
-
-message ClientHeartbeatRequest {
-  string client_id = 1;
-  string current_input_id = 3;
-  double current_input_started_at = 4;
-}
-
 message ClientHelloResponse {
   string warning = 1;
   string image_builder_version = 2;  // Deprecated, no longer used in client
@@ -2453,8 +2436,6 @@ service ModalClient {
   rpc ClassGet(ClassGetRequest) returns (ClassGetResponse);
 
   // Clients
-  rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
-  rpc ClientHeartbeat(ClientHeartbeatRequest) returns (google.protobuf.Empty);
   rpc ClientHello(google.protobuf.Empty) returns (ClientHelloResponse);
 
   // Container
