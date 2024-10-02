@@ -816,16 +816,6 @@ message DictContentsRequest {
   bool values = 3;
 }
 
-message DictCreateRequest {  // Will be superseded by DictGetOrCreateRequest
-  repeated DictEntry data = 1;
-  string app_id = 2  [ (modal.options.audit_target_attr) = true ];
-  string existing_dict_id = 3;
-}
-
-message DictCreateResponse {  // Will be superseded by DictGetOrCreateResponse
-  string dict_id = 1;
-}
-
 message DictDeleteRequest {
   string dict_id = 1;
 }
@@ -1761,15 +1751,6 @@ message QueueClearRequest {
   bool all_partitions = 3;
 }
 
-message QueueCreateRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
-  string existing_queue_id = 2;
-}
-
-message QueueCreateResponse {
-  string queue_id = 1;
-}
-
 message QueueDeleteRequest {
   string queue_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
@@ -2106,15 +2087,6 @@ message SecretListResponse {
   string environment_name = 2; // the environment that was listed (useful when relying on "default" logic)
 }
 
-message SharedVolumeCreateRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
-  CloudProvider cloud_provider = 2;
-}
-
-message SharedVolumeCreateResponse {
-  string shared_volume_id = 1;
-}
-
 message SharedVolumeGetFileRequest {
   string shared_volume_id = 1;
   string path = 2;
@@ -2336,16 +2308,6 @@ message VolumeCopyFilesRequest {
   bool recursive = 4;
 }
 
-message VolumeCreateRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
-  VolumeFsVersion version = 2;
-}
-
-message VolumeCreateResponse {
-  string volume_id = 1;
-  VolumeFsVersion version = 2;
-}
-
 message VolumeDeleteRequest {
   string volume_id = 1;
   string environment_name = 2 [deprecated=true];
@@ -2509,7 +2471,6 @@ service ModalClient {
   rpc DictClear(DictClearRequest) returns (google.protobuf.Empty);
   rpc DictContains(DictContainsRequest) returns (DictContainsResponse);
   rpc DictContents(DictContentsRequest) returns (stream DictEntry);
-  rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);  // Will be superseded by DictGetOrCreate
   rpc DictDelete(DictDeleteRequest) returns (google.protobuf.Empty);
   rpc DictGet(DictGetRequest) returns (DictGetResponse);
   rpc DictGetOrCreate(DictGetOrCreateRequest) returns (DictGetOrCreateResponse);
@@ -2558,7 +2519,6 @@ service ModalClient {
   rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
 
   // Mounts
-  rpc MountBuild(MountBuildRequest) returns (MountBuildResponse);
   rpc MountGetOrCreate(MountGetOrCreateRequest) returns (MountGetOrCreateResponse);
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
 
@@ -2572,7 +2532,6 @@ service ModalClient {
 
   // Queues
   rpc QueueClear(QueueClearRequest) returns (google.protobuf.Empty);
-  rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
   rpc QueueDelete(QueueDeleteRequest) returns (google.protobuf.Empty);
   rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
   rpc QueueGetOrCreate(QueueGetOrCreateRequest) returns (QueueGetOrCreateResponse);
@@ -2594,12 +2553,10 @@ service ModalClient {
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
 
   // Secrets
-  rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);  // Not used by client anymore
   rpc SecretGetOrCreate(SecretGetOrCreateRequest) returns (SecretGetOrCreateResponse);
   rpc SecretList(SecretListRequest) returns (SecretListResponse);
 
   // SharedVolumes
-  rpc SharedVolumeCreate(SharedVolumeCreateRequest) returns (SharedVolumeCreateResponse);
   rpc SharedVolumeGetFile(SharedVolumeGetFileRequest) returns (SharedVolumeGetFileResponse);
   rpc SharedVolumeGetOrCreate(SharedVolumeGetOrCreateRequest) returns (SharedVolumeGetOrCreateResponse);
   rpc SharedVolumeHeartbeat(SharedVolumeHeartbeatRequest) returns (google.protobuf.Empty);
@@ -2625,7 +2582,6 @@ service ModalClient {
   // Volumes
   rpc VolumeCommit(VolumeCommitRequest) returns (VolumeCommitResponse);
   rpc VolumeCopyFiles(VolumeCopyFilesRequest) returns (google.protobuf.Empty);
-  rpc VolumeCreate(VolumeCreateRequest) returns (VolumeCreateResponse);
   rpc VolumeDelete(VolumeDeleteRequest) returns (google.protobuf.Empty);
   rpc VolumeGetFile(VolumeGetFileRequest) returns (VolumeGetFileResponse);
   rpc VolumeGetOrCreate(VolumeGetOrCreateRequest) returns (VolumeGetOrCreateResponse);
