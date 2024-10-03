@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.168 (2024-10-03)
+
+- The `Image.conda`, `Image.conda_install`, and `Image.conda_update_from_environment` methods are now fully deprecated. We recommend using `micromamba` (via `Image.micromamba` and `Image.micromamba_install`) instead, or manually installing and using conda with `Image.run_commands` when strictly necessary.
+
+
+
 ### 0.64.153 (2024-09-30)
 
 - **Breaking Change:** `Sandbox.tunnels()` now returns a `Dict` rather than a `List`. This dict is keyed by the container's port, and it returns a `Tunnel` object just like `modal.forward` does.
