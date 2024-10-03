@@ -1700,6 +1700,7 @@ message ProxyInfo {
 message ProxyIp {
   string proxy_ip = 1;
   ProxyIpStatus status = 2;
+  double created_at = 3;
 }
 
 message ProxyIpDeleteRequest {
