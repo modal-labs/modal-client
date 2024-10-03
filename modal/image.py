@@ -9,7 +9,21 @@ import warnings
 from dataclasses import dataclass
 from inspect import isfunction
 from pathlib import Path, PurePosixPath
-from typing import Any, AsyncGenerator, Callable, Dict, List, Literal, Optional, Sequence, Set, Tuple, Union, get_args
+from typing import (
+    Any,
+    AsyncGenerator,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+    cast,
+    get_args,
+)
 
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
@@ -24,6 +38,7 @@ from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
+from .environments import _get_environment_cached
 from .exception import InvalidError, NotFoundError, RemoteError, VersionError, deprecation_error, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
@@ -207,20 +222,20 @@ def _make_pip_install_args(
     return args
 
 
-def _get_image_builder_version(client_version: str) -> ImageBuilderVersion:
-    if config_version := config.get("image_builder_version"):
-        version = config_version
+def _get_image_builder_version(server_version: ImageBuilderVersion) -> ImageBuilderVersion:
+    if local_config_version := config.get("image_builder_version"):
+        version = local_config_version
         if (env_var := "MODAL_IMAGE_BUILDER_VERSION") in os.environ:
             version_source = f" (based on your `{env_var}` environment variable)"
         else:
             version_source = f" (based on your local config file at `{user_config_path}`)"
     else:
-        version = client_version
         version_source = ""
+        version = server_version
 
     supported_versions: Set[ImageBuilderVersion] = set(get_args(ImageBuilderVersion))
     if version not in supported_versions:
-        if config_version is not None:
+        if local_config_version is not None:
             update_suggestion = "or remove your local configuration"
         elif version < min(supported_versions):
             update_suggestion = "your image builder version using the Modal dashboard"
@@ -323,7 +338,10 @@ class _Image(_Object, type_prefix="im"):
             return deps
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
-            builder_version = _get_image_builder_version(resolver.client.image_builder_version)
+            environment = await _get_environment_cached(resolver.environment_name or "", resolver.client)
+            # A bit hacky,but assume that the environment provides a valid builder version
+            image_builder_version = cast(ImageBuilderVersion, environment._settings.image_builder_version)
+            builder_version = _get_image_builder_version(image_builder_version)
 
             if dockerfile_function is None:
                 dockerfile = DockerfileSpec(commands=[], context_files={})
