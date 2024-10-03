@@ -102,10 +102,7 @@ def _dockerhub_python_version(builder_version: ImageBuilderVersion, python_versi
     # Otherwise, use the same series, but a specific micro version, corresponding to the latest
     # available from https://hub.docker.com/_/python at the time of each image builder release.
     # This allows us to publish one pre-built debian-slim image per Python series.
-    with open("requirements/base-images.json", "r") as f:
-        base_image_config = json.load(f)
-
-    python_versions = base_image_config["python_version"][builder_version]
+    python_versions = _base_image_versions("python", builder_version)
     series_to_micro_version = dict(tuple(v.rsplit(".", 1)) for v in python_versions)
     python_series_requested = "{0}.{1}".format(*version_components)
     micro_version = series_to_micro_version[python_series_requested]
@@ -113,7 +110,15 @@ def _dockerhub_python_version(builder_version: ImageBuilderVersion, python_versi
 
 
 def _dockerhub_debian_codename(builder_version: ImageBuilderVersion) -> str:
-    return {"2023.12": "bullseye", "2024.04": "bookworm", "2024.10": "bookworm"}[builder_version]
+    # Separate function as it's easier to mock in tests :/
+    return _base_image_versions("debian", builder_version)
+
+
+def _base_image_versions(image_type: str, builder_version: ImageBuilderVersion) -> Any:
+    modal_path = Path(modal.__path__[0])
+    with open(modal_path / "requirements" / "base-images.json", "r") as f:
+        data = json.load(f)
+    return data[image_type][builder_version]
 
 
 def _get_modal_requirements_path(builder_version: ImageBuilderVersion, python_version: Optional[str] = None) -> str:
@@ -1005,7 +1010,7 @@ class _Image(_Object, type_prefix="im"):
             if version == "2023.12" and python_version is None:
                 python_version = "3.9"  # Backcompat for old hardcoded default param
             validated_python_version = _validate_python_version(python_version)
-            micromamba_version = {"2023.12": "1.3.1", "2024.04": "1.5.8", "2024.10": "1.5.10"}[version]
+            micromamba_version = _base_image_versions("micromamba", version)
             debian_codename = _dockerhub_debian_codename(version)
             tag = f"mambaorg/micromamba:{micromamba_version}-{debian_codename}-slim"
             setup_commands = [
