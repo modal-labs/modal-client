@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2024
 import asyncio
+import time
 import typing
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Set, Tuple
@@ -174,6 +175,7 @@ async def _map_invocation(
                 timeout=OUTPUTS_TIMEOUT,
                 last_entry_id=last_entry_id,
                 clear_on_success=False,
+                requested_at=time.time(),
             )
             response = await retry_transient_errors(
                 client.stub.FunctionGetOutputs,
@@ -208,6 +210,7 @@ async def _map_invocation(
                 timeout=0,
                 last_entry_id="0-0",
                 clear_on_success=True,
+                requested_at=time.time(),
             )
             await retry_transient_errors(client.stub.FunctionGetOutputs, request)
 
