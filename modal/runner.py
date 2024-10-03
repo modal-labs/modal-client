@@ -23,6 +23,7 @@ from ._utils.name_utils import check_object_name, is_valid_tag
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .cls import _Cls
 from .config import config, logger
+from .environments import _get_environment_cached
 from .exception import (
     ExecutionError,
     InteractiveTimeoutError,
@@ -56,10 +57,14 @@ async def _heartbeat(client: _Client, app_id: str) -> None:
     await retry_transient_errors(client.stub.AppHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT)
 
 
-async def _init_local_app_existing(client: _Client, existing_app_id: str) -> RunningApp:
+async def _init_local_app_existing(client: _Client, existing_app_id: str, environment_name: str) -> RunningApp:
     # Get all the objects first
     obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
-    obj_resp = await retry_transient_errors(client.stub.AppGetObjects, obj_req)
+    obj_resp, _ = await asyncio.gather(
+        retry_transient_errors(client.stub.AppGetObjects, obj_req),
+        # Cache the environment associated with the app now as we will use it later
+        _get_environment_cached(environment_name, client),
+    )
     app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
     object_ids = {item.tag: item.object.object_id for item in obj_resp.items}
     return RunningApp(existing_app_id, app_page_url=app_page_url, tag_to_object_id=object_ids, client=client)
@@ -77,7 +82,11 @@ async def _init_local_app_new(
         environment_name=environment_name,
         app_state=app_state,  # type: ignore
     )
-    app_resp = await retry_transient_errors(client.stub.AppCreate, app_req)
+    app_resp, _ = await asyncio.gather(
+        retry_transient_errors(client.stub.AppCreate, app_req),
+        # Cache the environment associated with the app now as we will use it later
+        _get_environment_cached(environment_name, client),
+    )
     logger.debug(f"Created new app with id {app_resp.app_id}")
     return RunningApp(
         app_resp.app_id,
@@ -106,7 +115,7 @@ async def _init_local_app_from_name(
 
     # Grab the app
     if existing_app_id is not None:
-        return await _init_local_app_existing(client, existing_app_id)
+        return await _init_local_app_existing(client, existing_app_id, environment_name)
     else:
         return await _init_local_app_new(
             client, name, api_pb2.APP_STATE_INITIALIZING, environment_name=environment_name
@@ -408,7 +417,7 @@ async def _serve_update(
     # Used by child process to reinitialize a served app
     client = await _Client.from_env()
     try:
-        running_app: RunningApp = await _init_local_app_existing(client, existing_app_id)
+        running_app: RunningApp = await _init_local_app_existing(client, existing_app_id, environment_name)
 
         # Create objects
         await _create_all_objects(

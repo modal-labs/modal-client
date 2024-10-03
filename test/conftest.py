@@ -166,6 +166,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.heartbeat_status_code = None
         self.n_apps = 0
         self.classes = {}
+        self.environments = {"main": "en-1"}
 
         self.task_result = None
 
@@ -595,7 +596,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.requests.append(request)
         self.client_create_metadata = stream.metadata
         client_version = stream.metadata["x-modal-client-version"]
-        image_builder_version = max(get_args(ImageBuilderVersion))
         warning = ""
         assert stream.user_agent.startswith(f"modal-client/{__version__} ")
         if stream.metadata.get("x-modal-token-id") == "bad":
@@ -608,7 +608,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await asyncio.sleep(60)
         elif pkg_resources.parse_version(client_version) < pkg_resources.parse_version(__version__):
             raise GRPCError(Status.FAILED_PRECONDITION, "Old client")
-        resp = api_pb2.ClientHelloResponse(warning=warning, image_builder_version=image_builder_version)
+        resp = api_pb2.ClientHelloResponse(warning=warning)
         await stream.send_message(resp)
 
     # Container
@@ -747,6 +747,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def EnvironmentUpdate(self, stream):
         await stream.send_message(api_pb2.EnvironmentListItem())
+
+    async def EnvironmentGetOrCreate(self, stream):
+        request: api_pb2.EnvironmentGetOrCreateRequest = await stream.recv_message()
+        name = request.deployment_name
+        if name in self.environments:
+            environment_id = self.environments[name]
+        else:
+            environment_id = f"en-{len(self.environments) + 1}"
+            self.environments[name] = environment_id
+        image_builder_version = max(get_args(ImageBuilderVersion))
+        settings = api_pb2.EnvironmentSettings(image_builder_version=image_builder_version)
+        metadata = api_pb2.EnvironmentMetadata(name=name, settings=settings)
+        await stream.send_message(
+            api_pb2.EnvironmentGetOrCreateResponse(environment_id=environment_id, metadata=metadata)
+        )
 
     ### Function
 

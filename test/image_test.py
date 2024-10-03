@@ -10,7 +10,7 @@ from tempfile import NamedTemporaryFile
 from typing import List, Literal, get_args
 from unittest import mock
 
-from modal import App, Image, Mount, Secret, build, gpu, method
+from modal import App, Image, Mount, Secret, build, environments, gpu, method
 from modal._serialization import serialize
 from modal.client import Client
 from modal.exception import DeprecationError, InvalidError, VersionError
@@ -68,6 +68,13 @@ def builder_version(request, server_url_env, modal_config):
     with modal_config():
         with mock.patch("test.conftest.ImageBuilderVersion", Literal[version]):  # type: ignore
             yield version
+
+
+@pytest.fixture(autouse=True)
+def clear_environment_cache():
+    # Clear the environment cache so we can mock the server returning different image builder versions
+    # Alternatively could rewrite some of those tests to use different environments?
+    environments.ENVIRONMENT_CACHE.clear()
 
 
 def test_python_version_validation():
