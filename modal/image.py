@@ -984,85 +984,9 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
-    def conda(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
-        """
-        DEPRECATED A Conda base image, using miniconda3.
-
-        This constructor has been deprecated in favor of [`Image.micromamba()`](/docs/reference/modal.Image#micromamba),
-        which can be used with [`micromamba_install`](/docs/reference/modal.Image#micromamba_install).
-        Images will build faster and more reliably with `micromamba`.
-        """
-        msg = (
-            "The `Image.conda` constructor has deprecated in favor of the faster and more reliable `Image.micromamba`."
-        )
-        deprecation_warning((2024, 5, 2), msg)
-
-        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            nonlocal python_version
-            if version == "2023.12" and python_version is None:
-                python_version = "3.9"  # Backcompat for old hardcoded default param
-            validated_python_version = _validate_python_version(python_version)
-            debian_codename = _dockerhub_debian_codename(version)
-            requirements_path = _get_modal_requirements_path(version, python_version)
-            context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
-
-            # Doesn't use the official continuumio/miniconda3 image as a base. That image has maintenance
-            # issues (https://github.com/ContinuumIO/docker-images/issues) and building our own is more flexible.
-            conda_install_script = "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
-            commands = [
-                f"FROM debian:{debian_codename}",  # the -slim images lack files required by Conda.
-                # Temporarily add utility packages for conda installation.
-                "RUN apt-get --quiet update && apt-get --quiet --yes install curl bzip2 \\",
-                f"&& curl --silent --show-error --location {conda_install_script} --output /tmp/miniconda.sh \\",
-                # Install miniconda to a filesystem location on the $PATH of Modal container tasks.
-                # -b = install in batch mode w/o manual intervention.
-                # -f = allow install prefix to already exist.
-                # -p = the install prefix location.
-                "&& bash /tmp/miniconda.sh -bfp /usr/local \\ ",
-                "&& rm -rf /tmp/miniconda.sh",
-                # Biggest and most stable community-led Conda channel.
-                "RUN conda config --add channels conda-forge \\ ",
-                # softlinking can put conda in a broken state, surfacing error on uninstall like:
-                # `No such device or address: '/usr/local/lib/libz.so' -> '/usr/local/lib/libz.so.c~'`
-                "&& conda config --set allow_softlinks false \\ ",
-                # Install requested Python version from conda-forge channel; base debian image has only 3.7.
-                f"&& conda install --yes --channel conda-forge python={validated_python_version} \\ ",
-                "&& conda update conda \\ ",
-                # Remove now unneeded packages and files.
-                "&& apt-get --quiet --yes remove curl bzip2 \\ ",
-                "&& apt-get --quiet --yes autoremove \\ ",
-                "&& apt-get autoclean \\ ",
-                "&& rm -rf /var/lib/apt/lists/* /var/log/dpkg.log \\ ",
-                "&& conda clean --all --yes",
-                # Setup .bashrc for conda.
-                "RUN conda init bash --verbose",
-                f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
-                # .bashrc is explicitly sourced because RUN is a non-login shell and doesn't run bash.
-                "RUN . /root/.bashrc && conda activate base \\ ",
-                # Ensure that packaging tools are up to date and install client dependenices
-                f"&& python -m pip install --upgrade {'pip' if version == '2023.12' else 'pip wheel uv'} \\ ",
-                f"&& python -m {_get_modal_requirements_command(version)}",
-            ]
-            if version > "2023.12":
-                commands.append(f"RUN rm {CONTAINER_REQUIREMENTS_PATH}")
-            return DockerfileSpec(commands=commands, context_files=context_files)
-
-        base = _Image._from_args(
-            dockerfile_function=build_dockerfile,
-            force_build=force_build,
-            _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
-        )
-
-        return base.dockerfile_commands(
-            [
-                "ENV CONDA_EXE=/usr/local/bin/conda",
-                "ENV CONDA_PREFIX=/usr/local",
-                "ENV CONDA_PROMPT_MODIFIER=(base)",
-                "ENV CONDA_SHLVL=1",
-                "ENV CONDA_PYTHON_EXE=/usr/local/bin/python",
-                "ENV CONDA_DEFAULT_ENV=base",
-            ]
-        )
+    def conda(python_version: Optional[str] = None, force_build: bool = False):
+        """DEPRECATED: Removed in favor of the faster and more reliable `Image.micromamba` constructor."""
+        deprecation_error((2024, 5, 2), _Image.conda.__doc__ or "")
 
     def conda_install(
         self,
@@ -1071,42 +995,9 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
-    ) -> "_Image":
-        """DEPRECATED Install additional packages using Conda.
-
-        Deprecated in favor of [`micromamba_install`](/docs/reference/modal.Image#micromamba_install),
-        which should be used with the [`Image.micromamba()`](/docs/reference/modal.Image#micromamba) constructor.
-        Images will build faster and more reliably with `micromamba`.
-        """
-
-        msg = (
-            "The `Image.conda_install` method has deprecated in favor of the faster "
-            "and more reliable `Image.micromamba_install`."
-        )
-        deprecation_warning((2024, 5, 2), msg)
-
-        pkgs = _flatten_str_args("conda_install", "packages", packages)
-        if not pkgs:
-            return self
-
-        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
-            channel_args = "".join(f" -c {channel}" for channel in channels)
-
-            commands = [
-                "FROM base",
-                f"RUN conda install {package_args}{channel_args} --yes \\ ",
-                "&& conda clean --yes --index-cache --tarballs --tempfiles --logfiles",
-            ]
-            return DockerfileSpec(commands=commands, context_files={})
-
-        return _Image._from_args(
-            base_images={"base": self},
-            dockerfile_function=build_dockerfile,
-            force_build=self.force_build or force_build,
-            secrets=secrets,
-            gpu_config=parse_gpu_config(gpu),
-        )
+    ):
+        """DEPRECATED: Removed in favor of the faster and more reliable `Image.micromamba_install` method."""
+        deprecation_error((2024, 5, 2), _Image.conda_install.__doc__ or "")
 
     def conda_update_from_environment(
         self,
@@ -1115,36 +1006,9 @@ class _Image(_Object, type_prefix="im"):
         *,
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
-    ) -> "_Image":
-        """DEPRECATED Update a Conda environment using dependencies from a given environment.yml file.
-
-        This method has been deprecated in favor of the faster and more reliable `Image.micromamba_install`
-        method and its `spec_file` parameter.
-        """
-        msg = (
-            "The `Image.conda_install_update_from_environment` method has deprecated in favor of the faster"
-            " and more reliable `Image.micromamba_install` and its `spec_file` parameter."
-        )
-        deprecation_warning((2024, 5, 2), msg)
-
-        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            context_files = {"/environment.yml": os.path.expanduser(environment_yml)}
-
-            commands = [
-                "FROM base",
-                "COPY /environment.yml /environment.yml",
-                "RUN conda env update --name base -f /environment.yml \\ ",
-                "&& conda clean --yes --index-cache --tarballs --tempfiles --logfiles",
-            ]
-            return DockerfileSpec(commands=commands, context_files=context_files)
-
-        return _Image._from_args(
-            base_images={"base": self},
-            dockerfile_function=build_dockerfile,
-            force_build=self.force_build or force_build,
-            secrets=secrets,
-            gpu_config=parse_gpu_config(gpu),
-        )
+    ):
+        """DEPRECATED: Removed in favor of the `Image.micromamba_install` method (using the `spec_file` parameter)."""
+        deprecation_warning((2024, 5, 2), _Image.conda_update_from_environment.__doc__ or "")
 
     @staticmethod
     def micromamba(
