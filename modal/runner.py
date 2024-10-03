@@ -178,8 +178,8 @@ async def _publish_app(
     def filter_values(full_dict: Dict[str, V], condition: Callable[[V], bool]) -> Dict[str, V]:
         return {k: v for k, v in full_dict.items() if condition(v)}
 
-    function_ids = filter_values(running_app.tag_to_object_id, _Function.is_id_type)
-    class_ids = filter_values(running_app.tag_to_object_id, _Cls.is_id_type)
+    function_ids = filter_values(running_app.tag_to_object_id, _Function._is_id_type)
+    class_ids = filter_values(running_app.tag_to_object_id, _Cls._is_id_type)
 
     function_objs = filter_values(indexed_objects, lambda v: v.object_id in function_ids.values())
     definition_ids = {obj.object_id: obj._get_metadata().definition_id for obj in function_objs.values()}  # type: ignore

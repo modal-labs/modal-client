@@ -157,7 +157,7 @@ class _Object:
         return obj
 
     @classmethod
-    def get_type_from_id(cls: Type[O], object_id: str) -> Type[O]:
+    def _get_type_from_id(cls: Type[O], object_id: str) -> Type[O]:
         parts = object_id.split("-")
         if len(parts) != 2:
             raise InvalidError(f"Object id {object_id} has no dash in it")
@@ -167,8 +167,8 @@ class _Object:
         return cls._prefix_to_type[prefix]
 
     @classmethod
-    def is_id_type(cls: Type[O], object_id) -> bool:
-        return cls.get_type_from_id(object_id) == cls
+    def _is_id_type(cls: Type[O], object_id) -> bool:
+        return cls._get_type_from_id(object_id) == cls
 
     @classmethod
     def _new_hydrated(
@@ -181,7 +181,7 @@ class _Object:
             obj_cls = cls
         else:
             # This is called on the base class, e.g. Handle.from_id
-            obj_cls = cls.get_type_from_id(object_id)
+            obj_cls = cls._get_type_from_id(object_id)
 
         # Instantiate provider
         obj = _Object.__new__(obj_cls)

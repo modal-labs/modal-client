@@ -31,8 +31,8 @@ def test_constructor():
 
 
 def test_types():
-    assert _Object.get_type_from_id("di-123") == _Dict
-    assert _Dict.is_id_type("di-123")
-    assert not _Dict.is_id_type("qu-123")
-    assert _Queue.is_id_type("qu-123")
-    assert not _Queue.is_id_type("di-123")
+    assert _Object._get_type_from_id("di-123") == _Dict
+    assert _Dict._is_id_type("di-123")
+    assert not _Dict._is_id_type("qu-123")
+    assert _Queue._is_id_type("qu-123")
+    assert not _Queue._is_id_type("di-123")
