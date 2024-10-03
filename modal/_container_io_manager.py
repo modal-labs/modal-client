@@ -994,10 +994,6 @@ class _ContainerIOManager:
             raise e
 
     @property
-    def target_concurrency(self) -> int:
-        return self._target_concurrency
-
-    @property
     def max_concurrency(self) -> int:
         return self._max_concurrency
 
