@@ -21,6 +21,7 @@ from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name, is_valid_tag
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
+from .cls import _Cls
 from .config import config, logger
 from .exception import (
     ExecutionError,
@@ -31,6 +32,7 @@ from .exception import (
     deprecation_error,
 )
 from .execution_context import is_local
+from .functions import _Function
 from .object import _get_environment_name, _Object
 from .output import _get_output_manager, enable_output
 from .running_app import RunningApp
@@ -176,9 +178,8 @@ async def _publish_app(
     def filter_values(full_dict: Dict[str, V], condition: Callable[[V], bool]) -> Dict[str, V]:
         return {k: v for k, v in full_dict.items() if condition(v)}
 
-    # The entity prefixes are defined in the monorepo; is there any way to share them here?
-    function_ids = filter_values(running_app.tag_to_object_id, lambda v: v.startswith("fu-"))
-    class_ids = filter_values(running_app.tag_to_object_id, lambda v: v.startswith("cs-"))
+    function_ids = filter_values(running_app.tag_to_object_id, _Function._is_id_type)
+    class_ids = filter_values(running_app.tag_to_object_id, _Cls._is_id_type)
 
     function_objs = filter_values(indexed_objects, lambda v: v.object_id in function_ids.values())
     definition_ids = {obj.object_id: obj._get_metadata().definition_id for obj in function_objs.values()}  # type: ignore
