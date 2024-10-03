@@ -157,6 +157,20 @@ class _Object:
         return obj
 
     @classmethod
+    def _get_type_from_id(cls: Type[O], object_id: str) -> Type[O]:
+        parts = object_id.split("-")
+        if len(parts) != 2:
+            raise InvalidError(f"Object id {object_id} has no dash in it")
+        prefix = parts[0]
+        if prefix not in cls._prefix_to_type:
+            raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
+        return cls._prefix_to_type[prefix]
+
+    @classmethod
+    def _is_id_type(cls: Type[O], object_id) -> bool:
+        return cls._get_type_from_id(object_id) == cls
+
+    @classmethod
     def _new_hydrated(
         cls: Type[O], object_id: str, client: _Client, handle_metadata: Optional[Message], is_another_app: bool = False
     ) -> O:
@@ -164,18 +178,12 @@ class _Object:
             # This is called directly on a subclass, e.g. Secret.from_id
             if not object_id.startswith(cls._type_prefix + "-"):
                 raise InvalidError(f"Object {object_id} does not start with {cls._type_prefix}")
-            prefix = cls._type_prefix
+            obj_cls = cls
         else:
             # This is called on the base class, e.g. Handle.from_id
-            parts = object_id.split("-")
-            if len(parts) != 2:
-                raise InvalidError(f"Object id {object_id} has no dash in it")
-            prefix = parts[0]
-            if prefix not in cls._prefix_to_type:
-                raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
+            obj_cls = cls._get_type_from_id(object_id)
 
         # Instantiate provider
-        obj_cls = cls._prefix_to_type[prefix]
         obj = _Object.__new__(obj_cls)
         rep = f"Object({object_id})"  # TODO(erikbern): dumb
         obj._init(rep, is_another_app=is_another_app)
