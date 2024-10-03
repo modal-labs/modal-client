@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import contextlib
+import json
 import os
 import re
 import shlex
@@ -92,41 +93,23 @@ def _validate_python_version(version: Optional[str], allow_micro_granularity: bo
 
 def _dockerhub_python_version(builder_version: ImageBuilderVersion, python_version: Optional[str] = None) -> str:
     python_version = _validate_python_version(python_version)
-    components = python_version.split(".")
+    version_components = python_version.split(".")
 
     # When user specifies a full Python version, use that
-    if len(components) > 2:
+    if len(version_components) > 2:
         return python_version
 
     # Otherwise, use the same series, but a specific micro version, corresponding to the latest
     # available from https://hub.docker.com/_/python at the time of each image builder release.
-    latest_micro_version = {
-        "2023.12": {
-            "3.12": "1",
-            "3.11": "0",
-            "3.10": "8",
-            "3.9": "15",
-            "3.8": "15",
-        },
-        "2024.04": {
-            "3.12": "2",
-            "3.11": "8",
-            "3.10": "14",
-            "3.9": "19",
-            "3.8": "19",
-        },
-        "2024.10": {
-            "3.12": "6",
-            "3.11": "10",
-            "3.10": "15",
-            "3.9": "20",
-            "3.8": "20",
-        },
-    }
-    python_series = "{0}.{1}".format(*components)
-    micro_version = latest_micro_version[builder_version][python_series]
-    python_version = f"{python_series}.{micro_version}"
-    return python_version
+    # This allows us to publish one pre-built debian-slim image per Python series.
+    with open("requirements/base-images.json", "r") as f:
+        base_image_config = json.load(f)
+
+    python_versions = base_image_config["python_version"][builder_version]
+    series_to_micro_version = dict(tuple(v.rsplit(".", 1)) for v in python_versions)
+    python_series_requested = "{0}.{1}".format(*version_components)
+    micro_version = series_to_micro_version[python_series_requested]
+    return f"{python_series_requested}.{micro_version}"
 
 
 def _dockerhub_debian_codename(builder_version: ImageBuilderVersion) -> str:
