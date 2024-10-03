@@ -1294,6 +1294,7 @@ message FunctionGetOutputsRequest {
   float timeout = 3;
   string last_entry_id = 6;
   bool clear_on_success = 7; // expires *any* remaining outputs soon after this call, not just the returned ones
+  double requested_at = 8; // Used for waypoints.
 }
 
 message FunctionGetOutputsResponse {
@@ -1426,6 +1427,7 @@ message FunctionPutOutputsItem {
 
 message FunctionPutOutputsRequest {
   repeated FunctionPutOutputsItem outputs = 4;
+  double requested_at = 5; // Used for waypoints.
 }
 
 message FunctionRetryPolicy {
