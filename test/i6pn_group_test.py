@@ -39,12 +39,21 @@ def test_experimental_group(servicer, client):
         assert fn3.i6pn_enabled is True
 
 
-def test_spawn_experimental_group(client, servicer):
+def test_spawn_experimental_group(client, servicer, monkeypatch):
     # We need to set a custom function body here since grouped function's kwargs
     # aren't compatible with the default servicer function body.
     @servicer.function_body
     def grouped_func(*args, **kwargs):
         return sum(args)
+
+    # At least for now, grouped functions rely on modal.Queue.ephemeral, which
+    # needs to be monkeypatched to use the right client.
+    original_queue_ephemeral = modal.Queue.ephemeral
+
+    def mock_queue_ephemeral(*args, **kwargs):
+        return original_queue_ephemeral(*args, client=client, **kwargs)
+
+    monkeypatch.setattr("modal.Queue.ephemeral", mock_queue_ephemeral)
 
     with app.run(client=client):
         assert f1.remote(2, 4) == [6] * 2
