@@ -479,16 +479,15 @@ class _Mount(_Object, type_prefix="mo"):
 
             raise modal.exception.MountUploadTimeoutError(f"Mounting of {file_spec.source_description} timed out")
 
-        # Create the asynchronous iterable for file specs.
-        file_specs = _Mount._get_files(self._entries)
-
         # Upload files, or check if they already exist.
         n_concurrent_uploads = 512
 
         files: List[api_pb2.MountFile] = []
-        with aclosing(async_map(file_specs, _put_file, concurrency=n_concurrent_uploads)) as stream:
+        async with aclosing(
+            async_map(_Mount._get_files(self._entries), _put_file, concurrency=n_concurrent_uploads)
+        ) as stream:
             async for file in stream:
-                await files.append(file)
+                files.append(file)
 
         if not files:
             logger.warning(f"Mount of '{message_label}' is empty.")
