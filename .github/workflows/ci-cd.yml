@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false # run all variants across python versions/os to completion
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
         os: ["ubuntu-20.04"]
         proto-version: ["latest"]
         include:
@@ -77,7 +77,7 @@ jobs:
     strategy:
       matrix:
         image-builder-version: ["2024.04", "2024.10"]
-        python-version: ["3.8", "3.12"]
+        python-version: ["3.8", "3.13"]
     steps:
       - uses: actions/checkout@v3
 
@@ -113,7 +113,7 @@ jobs:
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
     strategy:
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
         image-builder-version: ["2023.12", "2024.04"]
         image-name: ["debian_slim", "micromamba"]
 
