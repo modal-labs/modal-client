@@ -2037,6 +2037,7 @@ message SecretListItem {
   double created_at = 2;
   double last_used_at = 3;
   string environment_name = 4;
+  string secret_id = 5;
 }
 
 message SecretListRequest {
