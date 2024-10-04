@@ -61,39 +61,47 @@ ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10"]
 # so that we fail fast / clearly in unsupported containers. Additionally, we enumerate the supported
 # Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
 # Consider consolidating these multiple sources of truth?
-SUPPORTED_PYTHON_SERIES: List[str] = ["3.8", "3.9", "3.10", "3.11", "3.12"]
+SUPPORTED_PYTHON_SERIES: Dict[ImageBuilderVersion, List[str]] = {
+    "2024.10": ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"],
+    "2024.04": ["3.8", "3.9", "3.10", "3.11", "3.12"],
+    "2023.12": ["3.8", "3.9", "3.10", "3.11", "3.12"],
+}
 
 LOCAL_REQUIREMENTS_DIR = Path(__file__).parent / "requirements"
 CONTAINER_REQUIREMENTS_PATH = "/modal_requirements.txt"
 
 
-def _validate_python_version(version: Optional[str], allow_micro_granularity: bool = True) -> str:
-    if version is None:
+def _validate_python_version(
+    python_version: Optional[str], builder_version: ImageBuilderVersion, allow_micro_granularity: bool = True
+) -> str:
+    if python_version is None:
         # If Python version is unspecified, match the local version, up to the minor component
-        version = series_version = "{0}.{1}".format(*sys.version_info)
-    elif not isinstance(version, str):
-        raise InvalidError(f"Python version must be specified as a string, not {type(version).__name__}")
-    elif not re.match(r"^3(?:\.\d{1,2}){1,2}$", version):
-        raise InvalidError(f"Invalid Python version: {version!r}")
+        python_version = series_version = "{0}.{1}".format(*sys.version_info)
+    elif not isinstance(python_version, str):
+        raise InvalidError(f"Python version must be specified as a string, not {type(python_version).__name__}")
+    elif not re.match(r"^3(?:\.\d{1,2}){1,2}(rc\d*)?$", python_version):
+        raise InvalidError(f"Invalid Python version: {python_version!r}")
     else:
-        components = version.split(".")
+        components = python_version.split(".")
         if len(components) == 3 and not allow_micro_granularity:
             raise InvalidError(
                 "Python version must be specified as 'major.minor' for this interface;"
-                f" micro-level specification ({version!r}) is not valid."
+                f" micro-level specification ({python_version!r}) is not valid."
             )
         series_version = "{0}.{1}".format(*components)
 
-    if series_version not in SUPPORTED_PYTHON_SERIES:
+    supported_series = SUPPORTED_PYTHON_SERIES[builder_version]
+    if series_version not in supported_series:
         raise InvalidError(
-            f"Unsupported Python version: {version!r}."
-            f" Modal supports versions in the following series: {SUPPORTED_PYTHON_SERIES!r}."
+            f"Unsupported Python version: {python_version!r}."
+            f" When using the {builder_version!r} Image builder, Modal supports the following series:"
+            f" {supported_series!r}."
         )
-    return version
+    return python_version
 
 
 def _dockerhub_python_version(builder_version: ImageBuilderVersion, python_version: Optional[str] = None) -> str:
-    python_version = _validate_python_version(python_version)
+    python_version = _validate_python_version(python_version, builder_version)
     version_components = python_version.split(".")
 
     # When user specifies a full Python version, use that
@@ -1001,9 +1009,15 @@ class _Image(_Object, type_prefix="im"):
             nonlocal python_version
             if version == "2023.12" and python_version is None:
                 python_version = "3.9"  # Backcompat for old hardcoded default param
+<<<<<<< HEAD
             validated_python_version = _validate_python_version(python_version)
             micromamba_version = _base_image_config("micromamba", version)
             debian_codename = _base_image_config("debian", version)
+=======
+            validated_python_version = _validate_python_version(python_version, version)
+            micromamba_version = _base_image_versions("micromamba", version)
+            debian_codename = _dockerhub_debian_codename(version)
+>>>>>>> e0ff40f4 (Image updates to support Python 3.13)
             tag = f"mambaorg/micromamba:{micromamba_version}-{debian_codename}-slim"
             setup_commands = [
                 'SHELL ["/usr/local/bin/_dockerfile_shell.sh"]',
@@ -1071,7 +1085,7 @@ class _Image(_Object, type_prefix="im"):
     ) -> List[str]:
         add_python_commands: List[str] = []
         if add_python:
-            _validate_python_version(add_python, allow_micro_granularity=False)
+            _validate_python_version(add_python, builder_version, allow_micro_granularity=False)
             add_python_commands = [
                 "COPY /python/. /usr/local",
                 "RUN ln -s /usr/local/bin/python3 /usr/local/bin/python",
