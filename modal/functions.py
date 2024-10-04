@@ -160,6 +160,7 @@ class _Invocation:
                 timeout=backend_timeout,
                 last_entry_id="0-0",
                 clear_on_success=clear_on_success,
+                requested_at=time.time(),
             )
             response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
