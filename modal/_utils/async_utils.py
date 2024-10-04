@@ -292,13 +292,7 @@ class _WarnIfGeneratorIsNotConsumed:
 
     async def asend(self, value):
         self.iterated = True
-        try:
-            return await self.gen.asend(value)
-        except asyncio.CancelledError:
-            print("asend was cancelled!")
-            await self.gen.aclose()
-            print(f"gen {self.gen} was cancelled!")
-            raise
+        return await self.gen.asend(value)
 
     def __repr__(self):
         return repr(self.gen)
@@ -464,8 +458,7 @@ def run_generator_sync(
                 else:
                     next_yield = runner.run(gen.asend(next_send))  # type: ignore[arg-type]
             except KeyboardInterrupt as e:
-                print("Raising keyboard interrupt")
-                raise e from None  # already handled internally by the Runner - don't send into the generator!
+                raise e from None
             except StopAsyncIteration:
                 break
             try:
@@ -473,5 +466,3 @@ def run_generator_sync(
                 exc = None
             except BaseException as err:
                 exc = err
-        print("leaving runner")
-    print("left runner")

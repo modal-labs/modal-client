@@ -250,13 +250,10 @@ async def _map_invocation(
         assert len(received_outputs) == 0
 
     response_gen = stream.merge(drain_input_generator(), pump_inputs(), poll_outputs())
-    try:
-        async with response_gen.stream() as streamer:
-            async for response in streamer:
-                if response is not None:
-                    yield response.value
-    finally:
-        print("Cancelled _map_invocation")
+    async with response_gen.stream() as streamer:
+        async for response in streamer:
+            if response is not None:
+                yield response.value
 
 
 @warn_if_generator_is_not_consumed(function_name="Function.map")
@@ -367,8 +364,11 @@ def _for_each_sync(self, *input_iterators, kwargs={}, ignore_exceptions: bool = 
     """
     # TODO(erikbern): it would be better if this is more like a map_spawn that immediately exits
     # rather than iterating over the result
-    for _ in self.map(*input_iterators, kwargs=kwargs, order_outputs=False, return_exceptions=ignore_exceptions):
-        pass
+    try:
+        for _ in self.map(*input_iterators, kwargs=kwargs, order_outputs=False, return_exceptions=ignore_exceptions):
+            pass
+    except KeyboardInterrupt as e:
+        raise e from None
 
 
 async def _for_each_async(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
