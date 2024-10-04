@@ -7,6 +7,7 @@ import dataclasses
 import datetime
 import hashlib
 import inspect
+import numbers
 import os
 import platform
 import pytest
@@ -238,7 +239,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         @self.function_body
         def default_function_body(*args, **kwargs):
-            return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
+            return sum(arg**2 for arg in args if isinstance(arg, numbers.Number)) + sum(
+                value**2 for key, value in kwargs.items() if isinstance(value, numbers.Number)
+            )
 
     def function_body(self, func):
         """Decorator for setting the function that will be called for any FunctionGetOutputs calls"""

@@ -16,7 +16,7 @@ from ._utils.async_utils import (
 from .exception import (
     InvalidError,
 )
-from .functions import FunctionCall, OriginalReturnType, P, ReturnType, _Function
+from .functions import Function, FunctionCall, OriginalReturnType, P, ReturnType, _Function
 from .object import _Object
 from .partial_function import _PartialFunction, _PartialFunctionFlags
 
@@ -97,14 +97,17 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
         handler: _GroupedFunctionCall = _GroupedFunctionCall(worker_handles)
         return handler
 
-    def get_raw_f(self) -> Callable[..., Any]:
-        return self.get_raw_f()
+    def get_underlying_function(self) -> Function:
+        return self.f
 
     def __getattr__(self, name):
         def unsupported_method(*args, **kwargs):
             raise NotImplementedError(f"Grouped function does not support the '{name}' method")
 
         return unsupported_method
+
+
+GroupedFunction = synchronize_api(_GroupedFunction)
 
 
 def grouped(size: int):
