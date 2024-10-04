@@ -4,6 +4,7 @@ import textwrap
 import time
 import typing
 import warnings
+from contextlib import aclosing
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import (
@@ -1246,15 +1247,18 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         else:
             count_update_callback = None
 
-        async for item in _map_invocation(
-            self,  # type: ignore
-            input_queue,
-            self._client,
-            order_outputs,
-            return_exceptions,
-            count_update_callback,
-        ):
-            yield item
+        async with aclosing(
+            _map_invocation(
+                self,  # type: ignore
+                input_queue,
+                self._client,
+                order_outputs,
+                return_exceptions,
+                count_update_callback,
+            )
+        ) as stream:
+            async for item in stream:
+                yield item
 
     async def _call_function(self, args, kwargs) -> ReturnType:
         invocation = await _Invocation.create(

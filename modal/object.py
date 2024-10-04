@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import uuid
+from contextlib import aclosing
 from functools import wraps
 from typing import Awaitable, Callable, ClassVar, Dict, Hashable, List, Optional, Sequence, Type, TypeVar
 
@@ -252,7 +253,8 @@ def live_method_gen(method):
     @wraps(method)
     async def wrapped(self, *args, **kwargs):
         await self.resolve()
-        async for item in method(self, *args, **kwargs):
-            yield item
+        async with aclosing(method(self, *args, **kwargs)) as stream:
+            async for item in stream:
+                yield item
 
     return wrapped
