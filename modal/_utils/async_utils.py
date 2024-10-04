@@ -487,10 +487,12 @@ async def aclosing(gen: AsyncGenerator[T, None]) -> AsyncGenerator[AsyncGenerato
 
 
 async def async_map(
-    input: AsyncIterator[T], async_mapper_func: Callable[[T], Awaitable[V]], concurrency: int
+    input: AsyncIterator[T], async_mapper_func: Callable[[T], Awaitable[V]], concurrency: int, in_order: bool = False
 ) -> AsyncIterator[V]:
     input_queue: asyncio.Queue[T] = asyncio.Queue(maxsize=concurrency)
     results_queue: asyncio.Queue[V] = asyncio.Queue()
+
+    # TODO: figure out how to return in order
 
     async def producer():
         async for item in input:

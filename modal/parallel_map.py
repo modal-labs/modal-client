@@ -12,7 +12,6 @@ from modal._utils.async_utils import (
     aclosing,
     async_map,
     async_merge,
-    awaitable_to_aiter,
     queue_batch_iterator,
     synchronize_api,
     synchronizer,
@@ -115,15 +114,8 @@ async def _map_invocation(
 
     async def drain_input_generator():
         # Parallelize uploading blobs
-        inputer_iterator = input_iter()  # use aclosing here
-
         async with aclosing(
-            async_map(
-                inputer_iterator,
-                create_input,  # type: ignore[reportArgumentType]
-                in_order=True,
-                concurrency=BLOB_MAX_PARALLELISM,
-            )
+            async_map(input_iter(), create_input, concurrency=BLOB_MAX_PARALLELISM, in_order=True)
         ) as stream:
             async for item in stream:
                 await input_queue.put(item)
@@ -232,19 +224,14 @@ async def _map_invocation(
         return (item.idx, output)
 
     async def poll_outputs():
-        outputs_fetched = async_map(
-            awaitable_to_aiter(get_all_outputs_and_clean_up()),
-            fetch_output,
-            in_order=True,
-            concurrency=BLOB_MAX_PARALLELISM,
-        )
-
         # map to store out-of-order outputs received
         received_outputs = {}
         output_idx = 0
 
-        async with outputs_fetched.stream() as streamer:
-            async for idx, output in streamer:
+        async with aclosing(
+            async_map(get_all_outputs_and_clean_up(), fetch_output, concurrency=BLOB_MAX_PARALLELISM, in_order=True)
+        ) as stream:
+            async for idx, output in stream:
                 count_update()
                 if not order_outputs:
                     yield _OutputValue(output)
@@ -258,10 +245,8 @@ async def _map_invocation(
 
         assert len(received_outputs) == 0
 
-    response_gen = async_merge(drain_input_generator(), pump_inputs(), poll_outputs())
-
-    async with response_gen.stream() as streamer:
-        async for response in streamer:
+    async with aclosing(async_merge(drain_input_generator(), pump_inputs(), poll_outputs())) as stream:
+        async for response in stream:
             if response is not None:
                 yield response.value
 
@@ -398,8 +383,8 @@ async def _starmap_async(
 
     async def feed_queue():
         # This runs in a main thread event loop, so it doesn't block the synchronizer loop
-        async with aclosing(input_iterator) as streamer:
-            async for args in streamer:
+        async with aclosing(input_iterator) as stream:
+            async for args in stream:
                 await raw_input_queue.put.aio((args, kwargs))
         await raw_input_queue.put.aio(None)  # end-of-input sentinel
 

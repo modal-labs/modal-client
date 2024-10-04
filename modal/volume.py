@@ -586,8 +586,8 @@ class _VolumeUploadContextManager:
             # Upload files
             files: List[api_pb2.MountFile] = []
             async with aclosing(async_map(files_stream, self._upload_file, concurrency=20)) as stream:
-                for item in stream:
-                    await files.append(item)
+                async for item in stream:
+                    files.append(item)
             self._progress_cb(complete=True)
 
             request = api_pb2.VolumePutFilesRequest(
