@@ -491,8 +491,8 @@ async def async_map(
 ) -> AsyncIterator[V]:
     input_queue: asyncio.Queue[T] = asyncio.Queue(maxsize=concurrency)
     results_queue: asyncio.Queue[V] = asyncio.Queue()
-
     # TODO: figure out how to return in order
+    new_result_event = asyncio.Event()
 
     async def producer():
         async for item in input:
@@ -503,10 +503,13 @@ async def async_map(
             item = await input_queue.get()
             result = await async_mapper_func(item)
             await results_queue.put(result)
+            new_result_event.set()
             input_queue.task_done()
 
     producer_task = asyncio.create_task(producer())
     worker_tasks = [asyncio.create_task(worker()) for _ in range(concurrency)]
+
+    wait_for_results_task = asyncio.create_task(new_result_event.wait())
 
     async def complete_map():
         await producer_task
@@ -516,14 +519,21 @@ async def async_map(
 
     try:
         while True:
-            await asyncio.wait([complete_map_task, producer_task, *worker_tasks], return_when=asyncio.FIRST_COMPLETED)
+            await asyncio.wait(
+                [complete_map_task, producer_task, *worker_tasks, wait_for_results_task],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
             if complete_map_task.done():
                 while not results_queue.empty():
                     yield await results_queue.get()
                 break
 
-            while not results_queue.empty():
-                yield await results_queue.get()
+            if new_result_event.is_set():
+                while not results_queue.empty():
+                    yield await results_queue.get()
+                new_result_event.clear()
+
     finally:
         for task in [producer_task, complete_map_task, *worker_tasks]:
             task.cancel()

@@ -5,6 +5,7 @@ import typing
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Set, Tuple
 
+from aiostream import stream
 from grpclib import GRPCError, Status
 
 from modal._utils.async_utils import (
@@ -332,10 +333,10 @@ async def _map_async(
 
     async def feed_queue():
         # This runs in a main thread event loop, so it doesn't block the synchronizer loop
-        # async with aclosing(*[aiostream.stream.iterate(it) for it in input_iterators]) as streamer:
-        #     async for args in streamer:
-        #         await raw_input_queue.put.aio((args, kwargs))
-        # TODO
+        async with stream.zip(*[stream.iterate(it) for it in input_iterators]).stream() as streamer:
+            async for args in streamer:
+                await raw_input_queue.put.aio((args, kwargs))
+
         await raw_input_queue.put.aio(None)  # end-of-input sentinel
 
     feed_input_task = asyncio.create_task(feed_queue())
@@ -383,9 +384,15 @@ async def _starmap_async(
 
     async def feed_queue():
         # This runs in a main thread event loop, so it doesn't block the synchronizer loop
-        async with aclosing(input_iterator) as stream:
-            async for args in stream:
+
+        if isinstance(input_iterator, typing.AsyncIterable):
+            async with aclosing(input_iterator) as stream:
+                async for args in stream:
+                    await raw_input_queue.put.aio((args, kwargs))
+        else:
+            for args in input_iterator:
                 await raw_input_queue.put.aio((args, kwargs))
+
         await raw_input_queue.put.aio(None)  # end-of-input sentinel
 
     feed_input_task = asyncio.create_task(feed_queue())
