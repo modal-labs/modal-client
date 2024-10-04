@@ -33,12 +33,6 @@ def foo(p, q):
 
 
 @app.function()
-@modal.experimental.grouped(size=4)
-def grouped_foo(p, q):
-    return p + q + 11
-
-
-@app.function()
 async def async_foo(p, q):
     return p + q + 12
 
@@ -999,15 +993,3 @@ def test_spawn_extended_feature_flag(client, servicer, monkeypatch, feature_flag
     else:
         expected_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY
     assert function_map.function_call_invocation_type == expected_invocation_type
-
-
-def test_spawn_grouped_function(client):
-    with app.run(client=client):
-        # modal_rank ranges from 0..3
-        # modal_size = 4
-        # servicer sums the squares of all arguments: 2**2 + 4**2 + modal_rank**2 + modal_size**2
-        #
-        # This test was written while grouped functions were still experimental.
-        # If this test fails because the output values are incorrect, it is most
-        # likely OK to just update the expected output values.
-        assert grouped_foo.remote(2, 4) == [36, 37, 40, 45]
