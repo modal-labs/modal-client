@@ -110,11 +110,6 @@ def _dockerhub_python_version(builder_version: ImageBuilderVersion, python_versi
     return f"{python_series_requested}.{micro_version}"
 
 
-def _dockerhub_debian_codename(builder_version: ImageBuilderVersion) -> str:
-    # Separate function as it's easier to mock in tests :/
-    return _base_image_config("debian", builder_version)
-
-
 def _base_image_config(group: str, builder_version: ImageBuilderVersion) -> Any:
     with open(LOCAL_REQUIREMENTS_DIR / "base-images.json", "r") as f:
         data = json.load(f)
@@ -1006,7 +1001,7 @@ class _Image(_Object, type_prefix="im"):
                 python_version = "3.9"  # Backcompat for old hardcoded default param
             validated_python_version = _validate_python_version(python_version)
             micromamba_version = _base_image_config("micromamba", version)
-            debian_codename = _dockerhub_debian_codename(version)
+            debian_codename = _base_image_config("debian", version)
             tag = f"mambaorg/micromamba:{micromamba_version}-{debian_codename}-slim"
             setup_commands = [
                 'SHELL ["/usr/local/bin/_dockerfile_shell.sh"]',
@@ -1339,7 +1334,7 @@ class _Image(_Object, type_prefix="im"):
             requirements_path = _get_modal_requirements_path(version, python_version)
             context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
             full_python_version = _dockerhub_python_version(version, python_version)
-            debian_codename = _dockerhub_debian_codename(version)
+            debian_codename = _base_image_config("debian", version)
 
             commands = [
                 f"FROM python:{full_python_version}-slim-{debian_codename}",
