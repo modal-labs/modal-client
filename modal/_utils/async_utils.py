@@ -12,11 +12,13 @@ from typing import (
     AsyncIterator,
     Awaitable,
     Callable,
+    Iterable,
     Iterator,
     List,
     Optional,
     Set,
     TypeVar,
+    Union,
     cast,
 )
 
@@ -479,11 +481,22 @@ def run_generator_sync(
 
 
 @asynccontextmanager
-async def aclosing(gen: AsyncGenerator[T, None]) -> AsyncGenerator[AsyncGenerator[T, None], None]:
+async def aclosing(
+    gen: Union[AsyncGenerator[T, None], Iterable[T]],
+) -> AsyncGenerator[AsyncGenerator[T, None], None]:
+    def iter_to_agen(gen: Iterable[T]) -> AsyncGenerator[T, None]:
+        async def agen():
+            for item in gen:
+                yield item
+
+        return agen()
+
+    agen = iter_to_agen(gen) if not isinstance(gen, AsyncGenerator) else gen
+
     try:
-        yield gen
+        yield agen
     finally:
-        await gen.aclose()
+        await agen.aclose()
 
 
 async def async_map(
