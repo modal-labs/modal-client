@@ -63,6 +63,7 @@ ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10"]
 # Consider consolidating these multiple sources of truth?
 SUPPORTED_PYTHON_SERIES: Set[str] = {"3.8", "3.9", "3.10", "3.11", "3.12"}
 
+LOCAL_REQUIREMENTS_DIR = Path(__file__).parent / "requirements"
 CONTAINER_REQUIREMENTS_PATH = "/modal_requirements.txt"
 
 
@@ -102,7 +103,7 @@ def _dockerhub_python_version(builder_version: ImageBuilderVersion, python_versi
     # Otherwise, use the same series, but a specific micro version, corresponding to the latest
     # available from https://hub.docker.com/_/python at the time of each image builder release.
     # This allows us to publish one pre-built debian-slim image per Python series.
-    python_versions = _base_image_versions("python", builder_version)
+    python_versions = _base_image_config("python", builder_version)
     series_to_micro_version = dict(tuple(v.rsplit(".", 1)) for v in python_versions)
     python_series_requested = "{0}.{1}".format(*version_components)
     micro_version = series_to_micro_version[python_series_requested]
@@ -111,22 +112,16 @@ def _dockerhub_python_version(builder_version: ImageBuilderVersion, python_versi
 
 def _dockerhub_debian_codename(builder_version: ImageBuilderVersion) -> str:
     # Separate function as it's easier to mock in tests :/
-    return _base_image_versions("debian", builder_version)
+    return _base_image_config("debian", builder_version)
 
 
-def _base_image_versions(image_type: str, builder_version: ImageBuilderVersion) -> Any:
-    modal_path = Path(modal.__path__[0])
-    with open(modal_path / "requirements" / "base-images.json", "r") as f:
+def _base_image_config(group: str, builder_version: ImageBuilderVersion) -> Any:
+    with open(LOCAL_REQUIREMENTS_DIR / "base-images.json", "r") as f:
         data = json.load(f)
-    return data[image_type][builder_version]
+    return data[group][builder_version]
 
 
 def _get_modal_requirements_path(builder_version: ImageBuilderVersion, python_version: Optional[str] = None) -> str:
-    # Locate Modal client requirements data
-    import modal
-
-    modal_path = Path(modal.__path__[0])
-
     # When we added Python 3.12 support, we needed to update a few dependencies but did not yet
     # support versioned builds, so we put them in a separate 3.12-specific requirements file.
     # When the python_version is not specified in the Image API, we fall back to the local version.
@@ -136,7 +131,7 @@ def _get_modal_requirements_path(builder_version: ImageBuilderVersion, python_ve
     python_version = python_version or sys.version
     suffix = ".312" if builder_version == "2023.12" and python_version.startswith("3.12") else ""
 
-    return str(modal_path / "requirements" / f"{builder_version}{suffix}.txt")
+    return str(LOCAL_REQUIREMENTS_DIR / f"{builder_version}{suffix}.txt")
 
 
 def _get_modal_requirements_command(version: ImageBuilderVersion) -> str:
@@ -1010,7 +1005,7 @@ class _Image(_Object, type_prefix="im"):
             if version == "2023.12" and python_version is None:
                 python_version = "3.9"  # Backcompat for old hardcoded default param
             validated_python_version = _validate_python_version(python_version)
-            micromamba_version = _base_image_versions("micromamba", version)
+            micromamba_version = _base_image_config("micromamba", version)
             debian_codename = _dockerhub_debian_codename(version)
             tag = f"mambaorg/micromamba:{micromamba_version}-{debian_codename}-slim"
             setup_commands = [
@@ -1088,7 +1083,7 @@ class _Image(_Object, type_prefix="im"):
 
         modal_requirements_commands = [
             f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
-            f"RUN python -m pip install --upgrade {'pip' if builder_version == '2023.12' else 'pip wheel uv'}",
+            f"RUN python -m pip install --upgrade {_base_image_config('package_tools', builder_version)}",
             f"RUN python -m {_get_modal_requirements_command(builder_version)}",
         ]
         if builder_version > "2023.12":
@@ -1351,7 +1346,7 @@ class _Image(_Object, type_prefix="im"):
                 f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
                 "RUN apt-get update",
                 "RUN apt-get install -y gcc gfortran build-essential",
-                f"RUN pip install --upgrade {'pip' if version == '2023.12' else 'pip wheel uv'}",
+                f"RUN pip install --upgrade {_base_image_config('package_tools', version)}",
                 f"RUN {_get_modal_requirements_command(version)}",
                 # Set debian front-end to non-interactive to avoid users getting stuck with input prompts.
                 "RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections",
