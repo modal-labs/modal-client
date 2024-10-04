@@ -337,18 +337,19 @@ async def test_async_map():
         await asyncio.sleep(0.1)  # Simulate some async work
         return x * 2
 
-    # regular consume all ite
     async for item in async_map(foo(), mapper, concurrency=3):
         result.append(item)
+
     assert sorted(result) == [2, 4, 6]
     assert states == ["enter", "exit"]
 
     result.clear()
     states.clear()
 
-    async for item in async_map(foo(), mapper, concurrency=3):
-        break
-    assert sorted(result) == []
+    async with aclosing(async_map(foo(), mapper, concurrency=3)) as stream:
+        async for item in stream:
+            break
+    assert result == []
     assert states == ["enter", "exit"]
 
 
@@ -366,6 +367,7 @@ async def test_awaitable_to_aiter():
 
 @pytest.mark.asyncio
 async def test_async_merge():
+    result = []
     states = []
 
     async def gen1():
@@ -397,7 +399,6 @@ async def test_async_merge():
         finally:
             states.append("gen3 exit")
 
-    result = []
     async for item in async_merge(gen1(), gen2(), gen3()):
         result.append(item)
 

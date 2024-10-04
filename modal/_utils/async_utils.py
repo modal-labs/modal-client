@@ -6,7 +6,19 @@ import inspect
 import time
 import typing
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, AsyncIterator, Awaitable, Callable, Iterator, List, Optional, Set, TypeVar, cast
+from typing import (
+    Any,
+    AsyncGenerator,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    TypeVar,
+    cast,
+)
 
 import synchronicity
 from typing_extensions import ParamSpec
@@ -479,66 +491,74 @@ async def async_map(
 ) -> AsyncIterator[V]:
     input_queue: asyncio.Queue[T] = asyncio.Queue(maxsize=concurrency)
     results_queue: asyncio.Queue[V] = asyncio.Queue()
-    end_sentinel = object(T)
 
     async def producer():
         async for item in input:
             await input_queue.put(item)
-        for _ in range(concurrency):
-            await input_queue.put(end_sentinel)
 
     async def worker():
         while True:
             item = await input_queue.get()
-            if item is end_sentinel:
-                break
             result = await async_mapper_func(item)
             await results_queue.put(result)
+            input_queue.task_done()
 
     producer_task = asyncio.create_task(producer())
     worker_tasks = [asyncio.create_task(worker()) for _ in range(concurrency)]
 
+    async def complete_map():
+        await producer_task
+        await input_queue.join()
+
+    complete_map_task = asyncio.create_task(complete_map())
+
     try:
         while True:
-            if results_queue.empty():
-                if producer_task.done() and all(t.done() for t in worker_tasks):
-                    break
-                await asyncio.sleep(0.01)  # Small delay to avoid busy waiting
-            else:
+            await asyncio.wait([complete_map_task, producer_task, *worker_tasks], return_when=asyncio.FIRST_COMPLETED)
+            if complete_map_task.done():
+                while not results_queue.empty():
+                    yield await results_queue.get()
+                break
+
+            while not results_queue.empty():
                 yield await results_queue.get()
     finally:
-        producer_task.cancel()
-        for task in worker_tasks:
+        for task in [producer_task, complete_map_task, *worker_tasks]:
             task.cancel()
-        await asyncio.gather(producer_task, *worker_tasks, return_exceptions=True)
+        await asyncio.gather(producer_task, complete_map_task, *worker_tasks, return_exceptions=True)
 
 
 async def async_merge(input: AsyncIterator[T], *more_inputs: AsyncIterator[T]) -> AsyncIterator[T]:
     queue: asyncio.Queue[T] = asyncio.Queue()
     inputs = [input] + list(more_inputs)
-    end_sentinel = object(T)
 
     async def producer(iterator: AsyncIterator[T]):
-        try:
-            async for item in iterator:
-                await queue.put(item)
-        finally:
-            await queue.put(end_sentinel)
+        async for item in iterator:
+            await queue.put(item)
 
     tasks = [asyncio.create_task(producer(it)) for it in inputs]
 
-    try:
-        active_inputs = len(inputs)
-        while active_inputs > 0:
-            item = await queue.get()
-            if item is end_sentinel:
-                active_inputs -= 1
-            else:
-                yield item
-    finally:
+    async def complete_merge():
         for task in tasks:
+            await task
+        await queue.join()
+
+    complete_merge_task = asyncio.create_task(complete_merge())
+
+    try:
+        while True:
+            await asyncio.wait([complete_merge_task, *tasks], return_when=asyncio.FIRST_COMPLETED)
+            if complete_merge_task.done():
+                break
+
+            while not queue.empty():
+                yield await queue.get()
+                queue.task_done()
+
+    finally:
+        for task in [complete_merge_task, *tasks]:
             task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        await asyncio.gather(complete_merge_task, *tasks, return_exceptions=True)
 
 
 async def awaitable_to_aiter(awaitable: Awaitable[T]) -> AsyncIterator[T]:

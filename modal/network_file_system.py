@@ -12,7 +12,7 @@ import modal
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
-from ._utils.async_utils import TaskContext, async_map, synchronize_api
+from ._utils.async_utils import TaskContext, aclosing, async_map, synchronize_api
 from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.hash_utils import get_sha256_hex
@@ -343,11 +343,16 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 yield subpath, PurePosixPath(remote_path, relpath_str)
 
         transfer_paths = gen_transfers()
-        await async_map(
-            transfer_paths,
-            lambda paths: self.add_local_file(paths[0], paths[1], progress_cb),
-            concurrency=20,
-        )
+
+        with aclosing(
+            async_map(
+                transfer_paths,
+                lambda paths: self.add_local_file(paths[0], paths[1], progress_cb),
+                concurrency=20,
+            )
+        ) as stream:
+            async for item in stream:
+                await item
 
     @live_method
     async def listdir(self, path: str) -> List[FileEntry]:

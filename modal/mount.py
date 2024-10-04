@@ -19,7 +19,7 @@ from modal_proto import api_pb2
 from modal_version import __version__
 
 from ._resolver import Resolver
-from ._utils.async_utils import async_map, synchronize_api
+from ._utils.async_utils import aclosing, async_map, synchronize_api
 from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
@@ -484,8 +484,11 @@ class _Mount(_Object, type_prefix="mo"):
 
         # Upload files, or check if they already exist.
         n_concurrent_uploads = 512
-        uploads_stream = async_map(file_specs, _put_file, concurrency=n_concurrent_uploads)
-        files: List[api_pb2.MountFile] = [await file for file in uploads_stream]
+
+        files: List[api_pb2.MountFile] = []
+        with aclosing(async_map(file_specs, _put_file, concurrency=n_concurrent_uploads)) as stream:
+            async for file in stream:
+                await files.append(file)
 
         if not files:
             logger.warning(f"Mount of '{message_label}' is empty.")

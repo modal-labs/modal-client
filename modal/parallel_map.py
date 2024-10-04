@@ -117,14 +117,15 @@ async def _map_invocation(
         # Parallelize uploading blobs
         inputer_iterator = input_iter()  # use aclosing here
 
-        proto_input_stream = async_map(
-            inputer_iterator,
-            create_input,  # type: ignore[reportArgumentType]
-            in_order=True,
-            concurrency=BLOB_MAX_PARALLELISM,
-        )
-        async with proto_input_stream.stream() as streamer:
-            async for item in streamer:
+        with aclosing(
+            async_map(
+                inputer_iterator,
+                create_input,  # type: ignore[reportArgumentType]
+                in_order=True,
+                concurrency=BLOB_MAX_PARALLELISM,
+            )
+        ) as stream:
+            async for item in stream:
                 await input_queue.put(item)
 
         # close queue iterator

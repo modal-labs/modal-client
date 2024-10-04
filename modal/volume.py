@@ -33,7 +33,7 @@ from modal.exception import InvalidError, VolumeUploadTimeoutError, deprecation_
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
-from ._utils.async_utils import TaskContext, async_map, asyncnullcontext, synchronize_api
+from ._utils.async_utils import TaskContext, aclosing, async_map, asyncnullcontext, synchronize_api
 from ._utils.blob_utils import (
     FileUploadSpec,
     blob_iter,
@@ -584,8 +584,10 @@ class _VolumeUploadContextManager:
             # Compute checksums
             files_stream = gen_file_upload_specs()
             # Upload files
-            uploads_stream = async_map(files_stream, self._upload_file, concurrency=20)
-            files: List[api_pb2.MountFile] = [await file for file in uploads_stream]
+            files: List[api_pb2.MountFile] = []
+            with aclosing(async_map(files_stream, self._upload_file, concurrency=20)) as stream:
+                for item in stream:
+                    await files.append(item)
             self._progress_cb(complete=True)
 
             request = api_pb2.VolumePutFilesRequest(
