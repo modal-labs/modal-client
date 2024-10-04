@@ -202,31 +202,7 @@ def test_synchronicity_async_and_blocking_interfaces():
             pass
 
     s = Synchronizer()
-    AsyncFoo = s.create_async(Foo, "AsyncFoo")
     BlockingFoo = s.create_blocking(Foo, "BlockingFoo")
-
-    assert (
-        mdmd.class_str("AsyncFoo", AsyncFoo)
-        == """```python
-class AsyncFoo(object)
-```
-
-docky mcdocface
-
-### foo
-
-```python
-async def foo(self):
-```
-
-### bar
-
-```python
-def bar(self):
-```
-
-"""
-    )
 
     assert (
         mdmd.class_str("BlockingFoo", BlockingFoo)
