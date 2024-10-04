@@ -344,7 +344,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
 
         transfer_paths = gen_transfers()
 
-        with aclosing(
+        async with aclosing(
             async_map(
                 transfer_paths,
                 lambda paths: self.add_local_file(paths[0], paths[1], progress_cb),

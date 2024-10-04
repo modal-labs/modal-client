@@ -117,7 +117,7 @@ async def _map_invocation(
         # Parallelize uploading blobs
         inputer_iterator = input_iter()  # use aclosing here
 
-        with aclosing(
+        async with aclosing(
             async_map(
                 inputer_iterator,
                 create_input,  # type: ignore[reportArgumentType]
