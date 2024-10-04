@@ -51,7 +51,9 @@ def test_spawn_experimental_group(client, servicer, monkeypatch):
     original_queue_ephemeral = modal.Queue.ephemeral
 
     def mock_queue_ephemeral(*args, **kwargs):
-        return original_queue_ephemeral(*args, client=client, **kwargs)
+        if "client" not in kwargs:
+            kwargs["client"] = client
+        return original_queue_ephemeral(*args, **kwargs)
 
     monkeypatch.setattr("modal.Queue.ephemeral", mock_queue_ephemeral)
 
