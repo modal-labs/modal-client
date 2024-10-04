@@ -16,6 +16,7 @@ from .logger import logger
 
 T = TypeVar("T")
 V = TypeVar("V")
+P = ParamSpec("P")
 
 
 synchronizer = synchronicity.Synchronizer()
@@ -390,10 +391,6 @@ def on_shutdown(coro):
     _shutdown_tasks.append(asyncio.create_task(wrapper()))
 
 
-T = TypeVar("T")
-P = ParamSpec("P")
-
-
 def asyncify(f: Callable[P, T]) -> Callable[P, typing.Coroutine[None, None, T]]:
     """Convert a blocking function into one that runs in the current loop's executor."""
 
@@ -482,7 +479,7 @@ async def async_map(
 ) -> AsyncIterator[V]:
     input_queue: asyncio.Queue[T] = asyncio.Queue(maxsize=concurrency)
     results_queue: asyncio.Queue[V] = asyncio.Queue()
-    end_sentinel = object()
+    end_sentinel = object(T)
 
     async def producer():
         async for item in input:
@@ -517,9 +514,9 @@ async def async_map(
 
 
 async def async_merge(input: AsyncIterator[T], *more_inputs: AsyncIterator[T]) -> AsyncIterator[T]:
-    queue = asyncio.Queue()
+    queue: asyncio.Queue[T] = asyncio.Queue()
     inputs = [input] + list(more_inputs)
-    end_sentinel = object()
+    end_sentinel = object(T)
 
     async def producer(iterator: AsyncIterator[T]):
         try:
