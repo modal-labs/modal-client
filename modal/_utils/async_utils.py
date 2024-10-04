@@ -6,13 +6,17 @@ import inspect
 import time
 import typing
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Awaitable, Callable, Iterator, List, Optional, Set, TypeVar, cast
+from typing import Any, AsyncGenerator, AsyncIterator, Awaitable, Callable, Iterator, List, Optional, Set, TypeVar, cast
 
 import synchronicity
 from typing_extensions import ParamSpec
 
 from ..exception import InvalidError
 from .logger import logger
+
+T = TypeVar("T")
+V = TypeVar("V")
+
 
 synchronizer = synchronicity.Synchronizer()
 
@@ -463,3 +467,83 @@ def run_generator_sync(
         except BaseException as err:
             exc = err
     loop.close()
+
+
+@asynccontextmanager
+async def aclosing(gen: AsyncGenerator[T, None]) -> AsyncGenerator[AsyncGenerator[T, None], None]:
+    try:
+        yield gen
+    finally:
+        await gen.aclose()
+
+
+async def async_map(
+    input: AsyncIterator[T], async_mapper_func: Callable[[T], Awaitable[V]], concurrency: int
+) -> AsyncIterator[V]:
+    input_queue: asyncio.Queue[T] = asyncio.Queue(maxsize=concurrency)
+    results_queue: asyncio.Queue[V] = asyncio.Queue()
+    end_sentinel = object()
+
+    async def producer():
+        async for item in input:
+            await input_queue.put(item)
+        for _ in range(concurrency):
+            await input_queue.put(end_sentinel)
+
+    async def worker():
+        while True:
+            item = await input_queue.get()
+            if item is end_sentinel:
+                break
+            result = await async_mapper_func(item)
+            await results_queue.put(result)
+
+    producer_task = asyncio.create_task(producer())
+    worker_tasks = [asyncio.create_task(worker()) for _ in range(concurrency)]
+
+    try:
+        while True:
+            if results_queue.empty():
+                if producer_task.done() and all(t.done() for t in worker_tasks):
+                    break
+                await asyncio.sleep(0.01)  # Small delay to avoid busy waiting
+            else:
+                yield await results_queue.get()
+    finally:
+        producer_task.cancel()
+        for task in worker_tasks:
+            task.cancel()
+        await asyncio.gather(producer_task, *worker_tasks, return_exceptions=True)
+
+
+async def async_merge(input: AsyncIterator[T], *more_inputs: AsyncIterator[T]) -> AsyncIterator[T]:
+    queue = asyncio.Queue()
+    inputs = [input] + list(more_inputs)
+    end_sentinel = object()
+
+    async def producer(iterator: AsyncIterator[T]):
+        try:
+            async for item in iterator:
+                await queue.put(item)
+        finally:
+            await queue.put(end_sentinel)
+
+    tasks = [asyncio.create_task(producer(it)) for it in inputs]
+
+    try:
+        active_inputs = len(inputs)
+        while active_inputs > 0:
+            item = await queue.get()
+            if item is end_sentinel:
+                active_inputs -= 1
+            else:
+                yield item
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def awaitable_to_aiter(awaitable: Awaitable[T]) -> AsyncIterator[T]:
+    result = await awaitable
+    yield result

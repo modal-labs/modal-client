@@ -25,7 +25,6 @@ from typing import (
     Union,
 )
 
-import aiostream
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -34,7 +33,7 @@ from modal.exception import InvalidError, VolumeUploadTimeoutError, deprecation_
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
-from ._utils.async_utils import TaskContext, asyncnullcontext, synchronize_api
+from ._utils.async_utils import TaskContext, async_map, asyncnullcontext, synchronize_api
 from ._utils.blob_utils import (
     FileUploadSpec,
     blob_iter,
@@ -583,10 +582,10 @@ class _VolumeUploadContextManager:
                         yield await fut
 
             # Compute checksums
-            files_stream = aiostream.stream.iterate(gen_file_upload_specs())
+            files_stream = gen_file_upload_specs()
             # Upload files
-            uploads_stream = aiostream.stream.map(files_stream, self._upload_file, task_limit=20)
-            files: List[api_pb2.MountFile] = await aiostream.stream.list(uploads_stream)
+            uploads_stream = async_map(files_stream, self._upload_file, concurrency=20)
+            files: List[api_pb2.MountFile] = [await file for file in uploads_stream]
             self._progress_cb(complete=True)
 
             request = api_pb2.VolumePutFilesRequest(

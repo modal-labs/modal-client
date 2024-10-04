@@ -5,7 +5,6 @@ import time
 from pathlib import Path, PurePosixPath
 from typing import Any, AsyncIterator, BinaryIO, Callable, List, Optional, Tuple, Type, Union
 
-import aiostream
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -13,7 +12,7 @@ import modal
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
-from ._utils.async_utils import TaskContext, synchronize_api
+from ._utils.async_utils import TaskContext, async_map, synchronize_api
 from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.hash_utils import get_sha256_hex
@@ -343,11 +342,11 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 relpath_str = subpath.relative_to(_local_path).as_posix()
                 yield subpath, PurePosixPath(remote_path, relpath_str)
 
-        transfer_paths = aiostream.stream.iterate(gen_transfers())
-        await aiostream.stream.map(
+        transfer_paths = gen_transfers()
+        await async_map(
             transfer_paths,
-            aiostream.async_(lambda paths: self.add_local_file(paths[0], paths[1], progress_cb)),
-            task_limit=20,
+            lambda paths: self.add_local_file(paths[0], paths[1], progress_cb),
+            concurrency=20,
         )
 
     @live_method
