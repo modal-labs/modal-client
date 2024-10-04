@@ -46,16 +46,5 @@ def test_spawn_experimental_group(client, servicer, monkeypatch):
     def grouped_func(*args, **kwargs):
         return sum(args)
 
-    # At least for now, grouped functions rely on modal.Queue.ephemeral, which
-    # needs to be monkeypatched to use the right client.
-    original_queue_ephemeral = modal.Queue.ephemeral
-
-    def mock_queue_ephemeral(*args, **kwargs):
-        if "client" not in kwargs:
-            kwargs["client"] = client
-        return original_queue_ephemeral(*args, **kwargs)
-
-    monkeypatch.setattr("modal.Queue.ephemeral", mock_queue_ephemeral)
-
     with app.run(client=client):
         assert f1.remote(2, 4) == [6] * 2
