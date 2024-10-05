@@ -2018,6 +2018,10 @@ message SecretCreateResponse {  // Not used by client anymore
   string secret_id = 1;
 }
 
+message SecretDeleteRequest {
+  string secret_id = 1;
+}
+
 message SecretGetOrCreateRequest {
   string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
@@ -2512,6 +2516,7 @@ service ModalClient {
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
 
   // Secrets
+  rpc SecretDelete(SecretDeleteRequest) returns (google.protobuf.Empty);
   rpc SecretGetOrCreate(SecretGetOrCreateRequest) returns (SecretGetOrCreateResponse);
   rpc SecretList(SecretListRequest) returns (SecretListResponse);
 
