@@ -238,12 +238,12 @@ def test_synchronicity_constructors():
             """constructy mcconstructorface"""
 
     s = Synchronizer()
-    AsyncFoo = s.create_async(Foo, "AsyncFoo")
+    BlockingFoo = s.create_blocking(Foo, "BlockingFoo")
 
     assert (
-        mdmd.class_str("AsyncFoo", AsyncFoo)
+        mdmd.class_str("BlockingFoo", BlockingFoo)
         == """```python
-class AsyncFoo(object)
+class BlockingFoo(object)
 ```
 
 docky mcdocface
