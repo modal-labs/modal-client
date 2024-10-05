@@ -52,6 +52,7 @@ from .cls import Cls, Obj
 from .config import logger
 from .exception import ExecutionError, InputCancellation, InvalidError, deprecation_warning
 from .execution_context import _set_current_context_ids
+from .experimental import GroupedFunction
 from .functions import Function, _Function
 from .partial_function import (
     _find_callables_for_obj,
@@ -543,6 +544,8 @@ def import_single_function_service(
             # This is a function
             cls = None
             f = getattr(module, qual_name)
+            if isinstance(f, GroupedFunction):
+                f = f.get_underlying_function()
             if isinstance(f, Function):
                 function = synchronizer._translate_in(f)
                 user_defined_callable = function.get_raw_f()
