@@ -37,3 +37,19 @@ def test_experimental_group(servicer, client):
         fn3 = servicer.app_functions["fu-3"]  # f3
         assert not fn3._experimental_group_size
         assert fn3.i6pn_enabled is True
+
+
+def test_spawn_experimental_group(client, servicer, monkeypatch):
+    # We need to set a custom function body here since grouped function's kwargs
+    # aren't compatible with the default servicer function body.
+    @servicer.function_body
+    def grouped_func(*args, **kwargs):
+        return sum(args)
+
+    with app.run(client=client):
+        # Needed for type checker to be happy. This isn't the best solution, but
+        # the feature is experimental anyway...
+        assert isinstance(f1, modal.experimental.GroupedFunction)
+        f1.client = client
+
+        assert f1.remote(2, 4) == [6] * 2
