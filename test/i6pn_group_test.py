@@ -47,5 +47,6 @@ def test_spawn_experimental_group(client, servicer, monkeypatch):
         return sum(args)
 
     with app.run(client=client):
-        f1.client = client
+        # the typing here is hard to fix, plus it's experimental anyway...
+        f1.client = client  # type: ignore
         assert f1.remote(2, 4) == [6] * 2
