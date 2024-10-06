@@ -870,8 +870,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             self.n_functions += 1
             function_id = f"fu-{self.n_functions}"
-        if request.schedule:
-            self.function2schedule[function_id] = request.schedule
 
         function: Optional[api_pb2.Function] = None
         function_data: Optional[api_pb2.FunctionData] = None
@@ -890,7 +888,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         assert (function is None) != (function_data is None)
         function_defn = function or function_data
+        assert function_defn
         self.app_functions[function_id] = function_defn
+
+        if function_defn.schedule:
+            self.function2schedule[function_id] = function_defn.schedule
 
         await stream.send_message(
             api_pb2.FunctionCreateResponse(
