@@ -2,7 +2,6 @@
 import asyncio
 import time
 import typing
-from contextlib import aclosing
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Set, Tuple
 
@@ -11,6 +10,7 @@ from grpclib import GRPCError, Status
 
 from modal._utils.async_utils import (
     AsyncOrSyncIterable,
+    aclosing,
     queue_batch_iterator,
     synchronize_api,
     synchronizer,
