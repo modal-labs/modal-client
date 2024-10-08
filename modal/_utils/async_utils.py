@@ -466,3 +466,14 @@ def run_generator_sync(
                 exc = None
             except BaseException as err:
                 exc = err
+
+
+@asynccontextmanager
+async def aclosing(agen: AsyncGenerator[T, None]) -> AsyncGenerator[AsyncGenerator[T, None], None]:
+    # ensure aclose is called asynchronously after context manager is closed
+    # call to ensure cleanup after stateful generators since they can't
+    # always be cleaned up by garbage collection
+    try:
+        yield agen
+    finally:
+        await agen.aclose()

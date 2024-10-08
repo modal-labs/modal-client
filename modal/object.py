@@ -1,10 +1,11 @@
 # Copyright Modal Labs 2022
 import uuid
-from contextlib import aclosing
 from functools import wraps
 from typing import Awaitable, Callable, ClassVar, Dict, Hashable, List, Optional, Sequence, Type, TypeVar
 
 from google.protobuf.message import Message
+
+from modal._utils.async_utils import aclosing
 
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api

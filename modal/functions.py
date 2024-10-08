@@ -4,7 +4,6 @@ import textwrap
 import time
 import typing
 import warnings
-from contextlib import aclosing
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import (
@@ -29,6 +28,7 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
 
+from modal._utils.async_utils import aclosing
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
