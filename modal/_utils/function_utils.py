@@ -16,7 +16,7 @@ from modal_proto import api_pb2
 from .._serialization import deserialize, deserialize_data_format, serialize
 from .._traceback import append_modal_tb
 from ..config import config, logger
-from ..exception import ExecutionError, FunctionTimeoutError, InvalidError, RemoteError
+from ..exception import DeserializationError, ExecutionError, FunctionTimeoutError, InvalidError, RemoteError
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
 from .blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
@@ -441,14 +441,21 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
         if data:
             try:
                 exc = deserialize(data, client)
-            except Exception as deser_exc:
+            except DeserializationError as deser_exc:
                 raise ExecutionError(
                     "Could not deserialize remote exception due to local error:\n"
                     + f"{deser_exc}\n"
                     + "This can happen if your local environment does not have the remote exception definitions.\n"
                     + "Here is the remote traceback:\n"
                     + f"{result.traceback}"
-                )
+                ) from deser_exc.__cause__
+            except Exception as exc:
+                raise ExecutionError(
+                    "Could not deserialize remote exception due to local error:\n"
+                    + f"{exc}\n"
+                    + "Here is the remote traceback:\n"
+                    + f"{result.traceback}"
+                ) from exc
             if not isinstance(exc, BaseException):
                 raise ExecutionError(f"Got remote exception of incorrect type {type(exc)}")
 
@@ -470,7 +477,7 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
             "Could not deserialize result due to error:\n"
             f"{deser_exc}\n"
             "This can happen if your local environment does not have a module that was used to construct the result. \n"
-        )
+        ) from deser_exc
 
 
 async def _create_input(
