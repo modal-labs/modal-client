@@ -28,6 +28,7 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
 
+from modal._utils.async_utils import aclosing
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
@@ -1246,15 +1247,18 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         else:
             count_update_callback = None
 
-        async for item in _map_invocation(
-            self,  # type: ignore
-            input_queue,
-            self._client,
-            order_outputs,
-            return_exceptions,
-            count_update_callback,
-        ):
-            yield item
+        async with aclosing(
+            _map_invocation(
+                self,  # type: ignore
+                input_queue,
+                self._client,
+                order_outputs,
+                return_exceptions,
+                count_update_callback,
+            )
+        ) as stream:
+            async for item in stream:
+                yield item
 
     async def _call_function(self, args, kwargs) -> ReturnType:
         invocation = await _Invocation.create(
