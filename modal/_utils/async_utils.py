@@ -504,8 +504,10 @@ async def async_map(
 ) -> AsyncIterator[V]:
     input_queue: asyncio.Queue[T] = asyncio.Queue(maxsize=concurrency)
     results_queue: asyncio.Queue[V] = asyncio.Queue()
+    exception_queue: asyncio.Queue[Exception] = asyncio.Queue()
     # TODO: figure out how to return in order
     new_result_event = asyncio.Event()
+    new_exception_event = asyncio.Event()
 
     async def producer():
         async for item in input:
@@ -513,16 +515,25 @@ async def async_map(
 
     async def worker():
         while True:
-            item = await input_queue.get()
-            result = await async_mapper_func(item)
-            await results_queue.put(result)
-            new_result_event.set()
-            input_queue.task_done()
+            try:
+                item = await input_queue.get()
+                if asyncio.iscoroutinefunction(async_mapper_func):
+                    result = await async_mapper_func(item)
+                else:
+                    result = async_mapper_func(item)
+                await results_queue.put(result)
+                new_result_event.set()
+            except Exception as e:
+                await exception_queue.put(e)
+                new_exception_event.set()
+            finally:
+                input_queue.task_done()
 
     producer_task = asyncio.create_task(producer())
     worker_tasks = [asyncio.create_task(worker()) for _ in range(concurrency)]
 
     wait_for_results_task = asyncio.create_task(new_result_event.wait())
+    wait_for_exceptions_task = asyncio.create_task(new_exception_event.wait())
 
     async def complete_map():
         await producer_task
@@ -532,10 +543,14 @@ async def async_map(
 
     try:
         while True:
-            await asyncio.wait(
-                [complete_map_task, producer_task, *worker_tasks, wait_for_results_task],
+            done, _ = await asyncio.wait(
+                [complete_map_task, producer_task, *worker_tasks, wait_for_results_task, wait_for_exceptions_task],
                 return_when=asyncio.FIRST_COMPLETED,
             )
+
+            finished_workers = done & set(worker_tasks)
+            for finished_worker in finished_workers:
+                await finished_worker
 
             if complete_map_task.done():
                 while not results_queue.empty():
@@ -546,6 +561,10 @@ async def async_map(
                 while not results_queue.empty():
                     yield await results_queue.get()
                 new_result_event.clear()
+
+            if new_exception_event.is_set():
+                exception = await exception_queue.get()
+                raise exception
 
     finally:
         for task in [producer_task, complete_map_task, *worker_tasks]:
@@ -577,13 +596,15 @@ async def async_merge(input: AsyncIterator[T], *more_inputs: AsyncIterator[T]) -
                 break
 
             while not queue.empty():
-                yield await queue.get()
+                result = await queue.get()
+                if isinstance(result, Exception):
+                    raise result
+                yield result
                 queue.task_done()
-
     finally:
         for task in [complete_merge_task, *tasks]:
             task.cancel()
-        await asyncio.gather(complete_merge_task, *tasks, return_exceptions=True)
+        await asyncio.gather(complete_merge_task, *tasks, return_exceptions=False)
 
 
 async def awaitable_to_aiter(awaitable: Awaitable[T]) -> AsyncIterator[T]:
