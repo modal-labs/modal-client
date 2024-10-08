@@ -459,3 +459,77 @@ def deserialize_proto_params(
         python_params[schema_param.name] = python_value
 
     return python_params
+
+
+class PayloadHandler:
+    _handlers = []  # list of (type, ParameterType, PayloadHandler)
+
+    def __init_subclass__(cls, t, e):
+        PayloadHandler._handlers.append((t, e, cls()))
+
+    def serialize(self, python_value: Any) -> api_pb2.PayloadValue:
+        for t, e, c in PayloadHandler._handlers:
+            if isinstance(python_value, t):
+                return c.serialize(python_value)
+        else:
+            raise RuntimeError(f"can't serialize type {type(python_value)}")
+
+    def deserialize(self, pv: api_pb2.PayloadValue) -> Any:
+        for t, e, c in PayloadHandler._handlers:
+            if pv.type == e:
+                return c.deserialize(pv)
+        else:
+            raise RuntimeError(f"can't deserialize type {pv.type}")
+
+
+payload_handler = PayloadHandler()
+
+
+class StringPayloadHandler(PayloadHandler, t=str, e=api_pb2.PARAM_TYPE_STRING):
+    def serialize(self, python_value: str) -> api_pb2.PayloadValue:
+        return api_pb2.PayloadValue(type=api_pb2.PARAM_TYPE_STRING, str_value=python_value)
+
+    def deserialize(self, value: api_pb2.PayloadValue) -> str:
+        return value.str_value
+
+
+class IntPayloadHandler(PayloadHandler, t=int, e=api_pb2.PARAM_TYPE_INT):
+    def serialize(self, python_value: int) -> api_pb2.PayloadValue:
+        return api_pb2.PayloadValue(type=api_pb2.PARAM_TYPE_INT, int_value=python_value)
+
+    def deserialize(self, value: api_pb2.PayloadValue) -> int:
+        return value.int_value
+
+
+class BoolPayloadHandler(PayloadHandler, t=bool, e=api_pb2.PARAM_TYPE_BOOL):
+    def serialize(self, python_value: bool) -> api_pb2.PayloadValue:
+        return api_pb2.PayloadValue(type=api_pb2.PARAM_TYPE_BOOL, bool_value=python_value)
+
+    def deserialize(self, value: api_pb2.PayloadValue) -> bool:
+        return value.bool_value
+
+
+class FloatPayloadHandler(PayloadHandler, t=float, e=api_pb2.PARAM_TYPE_FLOAT):
+    def serialize(self, python_value: float) -> api_pb2.PayloadValue:
+        return api_pb2.PayloadValue(type=api_pb2.PARAM_TYPE_FLOAT, float_value=python_value)
+
+    def deserialize(self, value: api_pb2.PayloadValue) -> float:
+        return value.float_value
+
+
+class BytesPayloadHandler(PayloadHandler, t=bytes, e=api_pb2.PARAM_TYPE_BYTES):
+    def serialize(self, python_value: bytes) -> api_pb2.PayloadValue:
+        return api_pb2.PayloadValue(type=api_pb2.PARAM_TYPE_BYTES, bytes_value=python_value)
+
+    def deserialize(self, value: api_pb2.PayloadValue) -> bytes:
+        return value.bytes_value
+
+
+NoneType = type(None)
+
+class NonePayloadHandler(PayloadHandler, t=NoneType, e=api_pb2.PARAM_TYPE_NONE):
+    def serialize(self, python_value: NoneType) -> api_pb2.PayloadValue:
+        return api_pb2.PayloadValue(type=api_pb2.PARAM_TYPE_NONE)
+
+    def deserialize(self, value: api_pb2.PayloadValue) -> NoneType:
+        return None

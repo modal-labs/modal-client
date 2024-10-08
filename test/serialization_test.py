@@ -7,6 +7,7 @@ from modal._serialization import (
     deserialize,
     deserialize_data_format,
     deserialize_proto_params,
+    payload_handler,
     serialize,
     serialize_data_format,
     serialize_proto_params,
@@ -88,3 +89,47 @@ def test_proto_serde_failure_incomplete_params():
         deserialize_proto_params(encoded_params, [api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_STRING)])
 
     # TODO: add test for incorrect types
+
+
+def test_payload_value_str():
+    pv = payload_handler.serialize("hello")
+    assert isinstance(pv, api_pb2.PayloadValue)
+    s = payload_handler.deserialize(pv)
+    assert s == "hello"
+
+
+def test_payload_value_int():
+    pv = payload_handler.serialize(4242)
+    assert isinstance(pv, api_pb2.PayloadValue)
+    i = payload_handler.deserialize(pv)
+    assert i == 4242
+
+
+def test_payload_value_bool():
+    pv = payload_handler.serialize(True)
+    assert isinstance(pv, api_pb2.PayloadValue)
+    b = payload_handler.deserialize(pv)
+    assert b == True
+
+
+def test_payload_value_float():
+    pv = payload_handler.serialize(4242.0)
+    assert isinstance(pv, api_pb2.PayloadValue)
+    f = payload_handler.deserialize(pv)
+    assert f == 4242.0
+
+
+def test_payload_value_bytes():
+    pv = payload_handler.serialize(b"foo")
+    assert isinstance(pv, api_pb2.PayloadValue)
+    b = payload_handler.deserialize(pv)
+    assert b == b"foo"
+
+
+def test_payload_value_none():
+    pv = payload_handler.serialize(None)
+    assert isinstance(pv, api_pb2.PayloadValue)
+    n = payload_handler.deserialize(pv)
+    assert n is None
+
+
