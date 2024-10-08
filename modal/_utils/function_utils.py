@@ -484,7 +484,6 @@ async def _create_input(
     if method_name is None:
         method_name = ""  # proto compatible
 
-    # TODO(erikbern): this is horrible, we put protobuf-serialized data inside protobuf
     args_serialized = serialize_data_format([args, kwargs], api_pb2.DATA_FORMAT_PAYLOAD_VALUE)
 
     if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:

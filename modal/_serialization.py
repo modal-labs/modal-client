@@ -350,6 +350,7 @@ def serialize_data_format(obj: Any, data_format: int) -> bytes:
         assert isinstance(obj, api_pb2.GeneratorDone)
         return obj.SerializeToString(deterministic=True)
     elif data_format == api_pb2.DATA_FORMAT_PAYLOAD_VALUE:
+        # TODO(erikbern): this is horrible, we put protobuf-serialized data inside protobuf
         pv = payload_handler.serialize(obj)
         return pv.SerializeToString()
     else:
@@ -364,6 +365,7 @@ def deserialize_data_format(s: bytes, data_format: int, client) -> Any:
     elif data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE:
         return api_pb2.GeneratorDone.FromString(s)
     elif data_format == api_pb2.DATA_FORMAT_PAYLOAD_VALUE:
+        # TODO(erikbern): horrible double-unwrapping of protobuf serialization
         pv = api_pb2.PayloadValue()
         pv.ParseFromString(s)
         return payload_handler.deserialize(pv, client)
