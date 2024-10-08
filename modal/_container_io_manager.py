@@ -33,7 +33,7 @@ from synchronicity.async_wrap import asynccontextmanager
 import modal_proto.api_pb2
 from modal_proto import api_pb2
 
-from ._serialization import deserialize, serialize, serialize_data_format, payload_handler
+from ._serialization import deserialize, serialize, serialize_data_format, deserialize_data_format
 from ._traceback import extract_traceback, print_exception
 from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
@@ -124,21 +124,7 @@ class IOContext:
         assert all(method_name == input.method_name for input in function_inputs)
         finalized_function = finalized_functions[method_name]
         # TODO(cathy) Performance decrease if we deserialize function_inputs later
-        deserialized_args = []
-        for input in function_inputs:
-            if not input.args:
-                args = ((), {})
-            elif input.data_format == api_pb2.DATA_FORMAT_PICKLE:
-                args = deserialize(input.args, client)
-            elif input.data_format == api_pb2.DATA_FORMAT_PAYLOAD_VALUE:
-                # TODO(erikbern): unpack horrible double-serialized protobuf
-                pv = api_pb2.PayloadValue()
-                pv.ParseFromString(input.args)
-                args = payload_handler.deserialize(pv)
-            else:
-                raise Exception("cannot deserialize input")
-
-            deserialized_args.append(args)
+        deserialized_args = [deserialize_data_format(input.args, input.data_format, client) if input.args else ((), {}) for input in function_inputs]
 
         return cls(input_ids, function_call_ids, finalized_function, deserialized_args, is_batched)
 

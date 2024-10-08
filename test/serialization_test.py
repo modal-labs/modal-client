@@ -91,59 +91,59 @@ def test_proto_serde_failure_incomplete_params():
     # TODO: add test for incorrect types
 
 
-def test_payload_value_str():
+def test_payload_value_str(client):
     pv = payload_handler.serialize("hello")
     assert isinstance(pv, api_pb2.PayloadValue)
-    s = payload_handler.deserialize(pv)
+    s = payload_handler.deserialize(pv, client)
     assert s == "hello"
 
 
-def test_payload_value_int():
+def test_payload_value_int(client):
     pv = payload_handler.serialize(4242)
     assert isinstance(pv, api_pb2.PayloadValue)
-    i = payload_handler.deserialize(pv)
+    i = payload_handler.deserialize(pv, client)
     assert i == 4242
 
 
-def test_payload_value_bool():
+def test_payload_value_bool(client):
     pv = payload_handler.serialize(True)
     assert isinstance(pv, api_pb2.PayloadValue)
-    b = payload_handler.deserialize(pv)
+    b = payload_handler.deserialize(pv, client)
     assert b == True
 
 
-def test_payload_value_float():
+def test_payload_value_float(client):
     pv = payload_handler.serialize(4242.0)
     assert isinstance(pv, api_pb2.PayloadValue)
-    f = payload_handler.deserialize(pv)
+    f = payload_handler.deserialize(pv, client)
     assert f == 4242.0
 
 
-def test_payload_value_bytes():
+def test_payload_value_bytes(client):
     pv = payload_handler.serialize(b"foo")
     assert isinstance(pv, api_pb2.PayloadValue)
-    b = payload_handler.deserialize(pv)
+    b = payload_handler.deserialize(pv, client)
     assert b == b"foo"
 
 
-def test_payload_value_none():
+def test_payload_value_none(client):
     pv = payload_handler.serialize(None)
     assert isinstance(pv, api_pb2.PayloadValue)
-    n = payload_handler.deserialize(pv)
+    n = payload_handler.deserialize(pv, client)
     assert n is None
 
 
-def test_payload_value_list():
+def test_payload_value_list(client):
     pv = payload_handler.serialize(["foo", 123])
     assert isinstance(pv, api_pb2.PayloadValue)
-    l = payload_handler.deserialize(pv)
+    l = payload_handler.deserialize(pv, client)
     assert l == ["foo", 123]
 
 
-def test_payload_value_dict():
+def test_payload_value_dict(client):
     pv = payload_handler.serialize({"foo": "bar", "baz": 123})
     assert isinstance(pv, api_pb2.PayloadValue)
-    d = payload_handler.deserialize(pv)
+    d = payload_handler.deserialize(pv, client)
     assert d == {"foo": "bar", "baz": 123}
 
 
@@ -151,9 +151,9 @@ class C:
     ...
 
 
-def test_payload_value_pickle():
+def test_payload_value_pickle(client):
     c = C()
     pv = payload_handler.serialize(c)
     assert isinstance(pv, api_pb2.PayloadValue)
-    o = payload_handler.deserialize(pv)
+    o = payload_handler.deserialize(pv, client)
     assert isinstance(o, C)
