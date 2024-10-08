@@ -554,3 +554,11 @@ class DictPayloadHandler(PayloadHandler, t=dict, e=api_pb2.PARAM_TYPE_DICT):
     def deserialize(self, value: api_pb2.PayloadValue) -> dict:
         values: list = [payload_handler.deserialize(value) for value in value.dict_value.values]
         return dict(zip(value.dict_value.keys, values))
+
+
+class PicklePayloadHandler(PayloadHandler, t=object, e=api_pb2.PARAM_TYPE_PICKLE):
+    def serialize(self, python_value: Any) -> api_pb2.PayloadValue:
+        return api_pb2.PayloadValue(type=api_pb2.PARAM_TYPE_PICKLE, pickle_value=pickle.dumps(python_value))
+
+    def deserialize(self, value: api_pb2.PayloadValue) -> Any:
+        return pickle.loads(value.pickle_value)

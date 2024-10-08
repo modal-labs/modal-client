@@ -146,3 +146,14 @@ def test_payload_value_dict():
     d = payload_handler.deserialize(pv)
     assert d == {"foo": "bar", "baz": 123}
 
+
+class C:
+    ...
+
+
+def test_payload_value_pickle():
+    c = C()
+    pv = payload_handler.serialize(c)
+    assert isinstance(pv, api_pb2.PayloadValue)
+    o = payload_handler.deserialize(pv)
+    assert isinstance(o, C)
