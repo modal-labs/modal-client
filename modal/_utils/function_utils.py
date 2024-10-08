@@ -13,7 +13,7 @@ from synchronicity.exceptions import UserCodeException
 import modal_proto
 from modal_proto import api_pb2
 
-from .._serialization import deserialize, deserialize_data_format, serialize
+from .._serialization import deserialize, deserialize_data_format, serialize, payload_handler
 from .._traceback import append_modal_tb
 from ..config import config, logger
 from ..exception import ExecutionError, FunctionTimeoutError, InvalidError, RemoteError
@@ -484,7 +484,11 @@ async def _create_input(
     if method_name is None:
         method_name = ""  # proto compatible
 
-    args_serialized = serialize((args, kwargs))
+    # args_serialized = serialize((args, kwargs))
+
+    # TODO(erikbern): this is horrible, we put protobuf-serialized data inside protobuf
+    pv: api_pb2.PayloadValue = payload_handler.serialize([args, kwargs])  # use list not tuple
+    args_serialized: bytes = pv.SerializeToString()
 
     if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:
         args_blob_id = await blob_upload(args_serialized, client.stub)
@@ -492,7 +496,7 @@ async def _create_input(
         return api_pb2.FunctionPutInputsItem(
             input=api_pb2.FunctionInput(
                 args_blob_id=args_blob_id,
-                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                data_format=api_pb2.DATA_FORMAT_PAYLOAD_VALUE,
                 method_name=method_name,
             ),
             idx=idx,
@@ -501,7 +505,7 @@ async def _create_input(
         return api_pb2.FunctionPutInputsItem(
             input=api_pb2.FunctionInput(
                 args=args_serialized,
-                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                data_format=api_pb2.DATA_FORMAT_PAYLOAD_VALUE,
                 method_name=method_name,
             ),
             idx=idx,
