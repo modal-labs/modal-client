@@ -349,6 +349,9 @@ def serialize_data_format(obj: Any, data_format: int) -> bytes:
     elif data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE:
         assert isinstance(obj, api_pb2.GeneratorDone)
         return obj.SerializeToString(deterministic=True)
+    elif data_format == api_pb2.DATA_FORMAT_PAYLOAD_VALUE:
+        pv = payload_handler.serialize(obj)
+        return pv.SerializeToString()
     else:
         raise InvalidError(f"Unknown data format {data_format!r}")
 
@@ -360,6 +363,10 @@ def deserialize_data_format(s: bytes, data_format: int, client) -> Any:
         return _deserialize_asgi(api_pb2.Asgi.FromString(s))
     elif data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE:
         return api_pb2.GeneratorDone.FromString(s)
+    elif data_format == api_pb2.DATA_FORMAT_PAYLOAD_VALUE:
+        pv = api_pb2.PayloadValue()
+        pv.ParseFromString(s)
+        return payload_handler.deserialize(pv)
     else:
         raise InvalidError(f"Unknown data format {data_format!r}")
 

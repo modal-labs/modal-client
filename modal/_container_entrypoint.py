@@ -147,7 +147,7 @@ class ImportedFunction(Service):
                     callable=self._user_defined_callable,
                     is_async=is_async,
                     is_generator=is_generator,
-                    data_format=api_pb2.DATA_FORMAT_PICKLE,
+                    data_format=api_pb2.DATA_FORMAT_PAYLOAD_VALUE,
                 )
             }
 
@@ -195,7 +195,7 @@ class ImportedClass(Service):
                     callable=bound_func,
                     is_async=is_async,
                     is_generator=is_generator,
-                    data_format=api_pb2.DATA_FORMAT_PICKLE,
+                    data_format=api_pb2.DATA_FORMAT_PAYLOAD_VALUE,
                 )
             else:
                 web_callable, lifespan_manager = construct_webhook_callable(
