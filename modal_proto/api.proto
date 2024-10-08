@@ -159,6 +159,13 @@ enum ParameterType {
   PARAM_TYPE_UNSPECIFIED = 0;
   PARAM_TYPE_STRING = 1;
   PARAM_TYPE_INT = 2;
+  PARAM_TYPE_BOOL = 3;
+  PARAM_TYPE_FLOAT = 4;
+  PARAM_TYPE_BYTES = 5;
+  PARAM_TYPE_LIST = 6;
+  PARAM_TYPE_DICT = 7;
+  PARAM_TYPE_NONE = 8;
+  PARAM_TYPE_PICKLE = 9;
 }
 
 enum ProgressType {
@@ -2564,4 +2571,28 @@ service ModalClient {
 
   // Workspaces
   rpc WorkspaceNameLookup(google.protobuf.Empty) returns (WorkspaceNameLookupResponse);
+}
+
+message PayloadValue {
+  // TODO(erikbern): Merge with ClassParameterValue
+  ParameterType type = 1;
+  oneof default_oneof {
+    string str_value = 2;
+    int64 int_value = 3;
+    bool bool_value = 4;
+    float float_value = 5;
+    bytes bytes_value = 6;
+    PayloadListValue list_value = 7;
+    PayloadDictValue dict_value = 8;
+    bytes pickle_value = 9;
+  }
+}
+
+message PayloadListValue {
+  repeated PayloadValue items = 1;
+}
+
+message PayloadDictValue {
+  repeated string keys = 1;
+  repeated PayloadValue values = 2;
 }
