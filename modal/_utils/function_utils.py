@@ -449,13 +449,13 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
                     + "Here is the remote traceback:\n"
                     + f"{result.traceback}"
                 ) from deser_exc.__cause__
-            except Exception as exc:
+            except Exception as deser_exc:
                 raise ExecutionError(
                     "Could not deserialize remote exception due to local error:\n"
-                    + f"{exc}\n"
+                    + f"{deser_exc}\n"
                     + "Here is the remote traceback:\n"
                     + f"{result.traceback}"
-                ) from exc
+                ) from deser_exc
             if not isinstance(exc, BaseException):
                 raise ExecutionError(f"Got remote exception of incorrect type {type(exc)}")
 
