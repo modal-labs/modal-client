@@ -2,6 +2,7 @@
 import asyncio
 from typing import TYPE_CHECKING, AsyncIterator, Literal, Optional, Tuple, Union
 
+from grpclib import Status
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal_proto import api_pb2
@@ -251,21 +252,27 @@ class _StreamWriter:
         self._buffer.clear()
         index = self.get_next_index()
 
-        if self._object_type == "sandbox":
-            await retry_transient_errors(
-                self._client.stub.SandboxStdinWrite,
-                api_pb2.SandboxStdinWriteRequest(
-                    sandbox_id=self._object_id, index=index, eof=self._is_closed, input=data
-                ),
-            )
-        else:
-            await retry_transient_errors(
-                self._client.stub.ContainerExecPutInput,
-                api_pb2.ContainerExecPutInputRequest(
-                    exec_id=self._object_id,
-                    input=api_pb2.RuntimeInputMessage(message=data, message_index=index, eof=self._is_closed),
-                ),
-            )
+        try:
+            if self._object_type == "sandbox":
+                await retry_transient_errors(
+                    self._client.stub.SandboxStdinWrite,
+                    api_pb2.SandboxStdinWriteRequest(
+                        sandbox_id=self._object_id, index=index, eof=self._is_closed, input=data
+                    ),
+                )
+            else:
+                await retry_transient_errors(
+                    self._client.stub.ContainerExecPutInput,
+                    api_pb2.ContainerExecPutInputRequest(
+                        exec_id=self._object_id,
+                        input=api_pb2.RuntimeInputMessage(message=data, message_index=index, eof=self._is_closed),
+                    ),
+                )
+        except GRPCError as exc:
+            if exc.status == Status.FAILED_PRECONDITION:
+                raise EOFError("Stdin is closed. Cannot write to it.")
+            else:
+                raise exc
 
 
 StreamReader = synchronize_api(_StreamReader)
