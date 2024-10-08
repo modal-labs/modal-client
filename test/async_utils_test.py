@@ -5,12 +5,17 @@ import logging
 import os
 import platform
 import pytest
+import time
 
 from synchronicity import Synchronizer
 
 from modal._utils import async_utils
 from modal._utils.async_utils import (
     TaskContext,
+    aclosing,
+    async_map,
+    async_merge,
+    awaitable_to_aiter,
     queue_batch_iterator,
     retry,
     synchronize_api,
@@ -283,3 +288,185 @@ def test_synchronize_api_blocking_name():
     myfunc = synchronize_api(_myfunc)
     assert myfunc.__name__ == "myfunc"
     assert myfunc() == "bar"
+
+
+@pytest.mark.asyncio
+async def test_aclosing():
+    result = []
+    states = []
+
+    async def foo():
+        states.append("enter")
+        try:
+            yield 1
+            yield 2
+        finally:
+            states.append("exit")
+
+    async with aclosing(foo()) as stream:
+        async for it in stream:
+            result.append(it)
+
+    assert sorted(result) == [1, 2]
+    assert states == ["enter", "exit"]
+
+    states.clear()
+    result.clear()
+    async with aclosing(foo()) as stream:
+        async for it in stream:
+            break
+
+    assert result == []
+    assert states == ["enter", "exit"]
+
+
+@pytest.mark.asyncio
+async def test_async_map():
+    result = []
+    states = []
+
+    async def foo():
+        states.append("enter")
+        try:
+            yield 1
+            yield 2
+            yield 3
+        finally:
+            states.append("exit")
+
+    async def mapper(x):
+        await asyncio.sleep(0.1)  # Simulate some async work
+        return x * 2
+
+    async for item in async_map(foo(), mapper, concurrency=3):
+        result.append(item)
+
+    assert sorted(result) == [2, 4, 6]
+    assert states == ["enter", "exit"]
+
+    result.clear()
+    states.clear()
+
+    async with aclosing(async_map(foo(), mapper, concurrency=3)) as stream:
+        async for item in stream:
+            break
+    assert result == []
+    assert states == ["enter", "exit"]
+
+
+@pytest.mark.asyncio
+async def test_async_map_slow():
+    async def slow_square(x):
+        await asyncio.sleep(0.1)  # Simulate a task that takes 0.1 seconds
+        return x * x
+
+    async def input_generator():
+        for i in range(5):
+            yield i
+
+    start_time = time.time()
+    results = []
+
+    async with aclosing(async_map(input_generator(), slow_square, concurrency=1)) as stream:
+        async for result in stream:
+            results.append(result)
+            elapsed = time.time() - start_time
+            # Check if we're getting a result roughly every 0.1 seconds
+            assert abs(elapsed - 0.1 * len(results)) < 0.05, f"Unexpected timing for result {len(results)}"
+
+    assert results == [0, 1, 4, 9, 16]
+    total_elapsed = time.time() - start_time
+    assert 0.45 < total_elapsed < 0.55, f"Unexpected total time: {total_elapsed}"
+
+
+@pytest.mark.asyncio
+async def test_async_map_fast():
+    async def slow_square(x):
+        await asyncio.sleep(0.1)  # Simulate a task that takes 0.1 seconds
+        return x * x
+
+    async def input_generator():
+        for i in range(5):
+            yield i
+
+    start_time = time.time()
+    results = []
+
+    async with aclosing(async_map(input_generator(), slow_square, concurrency=5)) as stream:
+        async for result in stream:
+            results.append(result)
+            elapsed = time.time() - start_time
+            # Check if we're getting a result roughly every 0.1 seconds
+            assert abs(elapsed - 0.1) < 0.05, f"Unexpected timing for result {len(results)}"
+
+    assert results == [0, 1, 4, 9, 16]
+    total_elapsed = time.time() - start_time
+    assert 0.05 < total_elapsed < 0.15, f"Unexpected total time: {total_elapsed}"
+
+
+@pytest.mark.asyncio
+async def test_awaitable_to_aiter():
+    async def foo():
+        await asyncio.sleep(0.1)
+        return 42
+
+    result = []
+    async for item in awaitable_to_aiter(foo()):
+        result.append(item)
+    assert result == [await foo()]
+
+
+@pytest.mark.asyncio
+async def test_async_merge():
+    result = []
+    states = []
+
+    async def gen1():
+        states.append("gen1 enter")
+        try:
+            await asyncio.sleep(0.1)
+            yield 1
+            await asyncio.sleep(0.1)
+            yield 4
+        finally:
+            states.append("gen1 exit")
+
+    async def gen2():
+        states.append("gen2 enter")
+        try:
+            await asyncio.sleep(0.05)
+            yield 2
+            await asyncio.sleep(0.15)
+            yield 5
+        finally:
+            states.append("gen2 exit")
+
+    async def gen3():
+        states.append("gen3 enter")
+        try:
+            yield 3
+            await asyncio.sleep(0.2)
+            yield 6
+        finally:
+            states.append("gen3 exit")
+
+    async for item in async_merge(gen1(), gen2(), gen3()):
+        result.append(item)
+
+    # Wait a bit to ensure all generators have finished
+    await asyncio.sleep(0.3)
+
+    assert sorted(result) == [1, 2, 3, 4, 5, 6]
+    assert sorted(states) == ["gen1 enter", "gen1 exit", "gen2 enter", "gen2 exit", "gen3 enter", "gen3 exit"]
+
+    result.clear()
+    states.clear()
+
+    async for item in async_merge(gen1(), gen2(), gen3()):
+        break
+
+    # Wait a bit to ensure all generators have finished
+    await asyncio.sleep(0.3)
+
+    assert result == []
+    assert sorted(states) == ["gen1 enter", "gen1 exit", "gen2 enter", "gen2 exit", "gen3 enter", "gen3 exit"]
