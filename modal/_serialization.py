@@ -533,3 +533,24 @@ class NonePayloadHandler(PayloadHandler, t=NoneType, e=api_pb2.PARAM_TYPE_NONE):
 
     def deserialize(self, value: api_pb2.PayloadValue) -> NoneType:
         return None
+
+
+class ListPayloadHandler(PayloadHandler, t=list, e=api_pb2.PARAM_TYPE_LIST):
+    def serialize(self, python_value: list) -> api_pb2.PayloadValue:
+        items: list[api_pb2.PayloadValue] = [payload_handler.serialize(v) for v in python_value]
+        return api_pb2.PayloadValue(type=api_pb2.PARAM_TYPE_LIST, list_value=api_pb2.PayloadListValue(items=items))
+
+    def deserialize(self, value: api_pb2.PayloadValue) -> list:
+        return [payload_handler.deserialize(item) for item in value.list_value.items]
+
+
+class DictPayloadHandler(PayloadHandler, t=dict, e=api_pb2.PARAM_TYPE_DICT):
+    def serialize(self, python_value: dict) -> api_pb2.PayloadValue:
+        keys: list[str] = list(python_value.keys())
+        assert all(isinstance(k, str) for k in keys)
+        values: list[api_pb2.PayloadValue] = [payload_handler.serialize(v) for v in python_value.values()]
+        return api_pb2.PayloadValue(type=api_pb2.PARAM_TYPE_DICT, dict_value=api_pb2.PayloadDictValue(keys=keys, values=values))
+
+    def deserialize(self, value: api_pb2.PayloadValue) -> dict:
+        values: list = [payload_handler.deserialize(value) for value in value.dict_value.values]
+        return dict(zip(value.dict_value.keys, values))

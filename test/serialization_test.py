@@ -133,3 +133,16 @@ def test_payload_value_none():
     assert n is None
 
 
+def test_payload_value_list():
+    pv = payload_handler.serialize(["foo", 123])
+    assert isinstance(pv, api_pb2.PayloadValue)
+    l = payload_handler.deserialize(pv)
+    assert l == ["foo", 123]
+
+
+def test_payload_value_dict():
+    pv = payload_handler.serialize({"foo": "bar", "baz": 123})
+    assert isinstance(pv, api_pb2.PayloadValue)
+    d = payload_handler.deserialize(pv)
+    assert d == {"foo": "bar", "baz": 123}
+
