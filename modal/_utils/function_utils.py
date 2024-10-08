@@ -13,7 +13,7 @@ from synchronicity.exceptions import UserCodeException
 import modal_proto
 from modal_proto import api_pb2
 
-from .._serialization import deserialize, deserialize_data_format, serialize, payload_handler
+from .._serialization import deserialize, deserialize_data_format, serialize_data_format, payload_handler
 from .._traceback import append_modal_tb
 from ..config import config, logger
 from ..exception import ExecutionError, FunctionTimeoutError, InvalidError, RemoteError
@@ -484,11 +484,8 @@ async def _create_input(
     if method_name is None:
         method_name = ""  # proto compatible
 
-    # args_serialized = serialize((args, kwargs))
-
     # TODO(erikbern): this is horrible, we put protobuf-serialized data inside protobuf
-    pv: api_pb2.PayloadValue = payload_handler.serialize([args, kwargs])  # use list not tuple
-    args_serialized: bytes = pv.SerializeToString()
+    args_serialized = serialize_data_format([args, kwargs], api_pb2.DATA_FORMAT_PAYLOAD_VALUE)
 
     if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:
         args_blob_id = await blob_upload(args_serialized, client.stub)
