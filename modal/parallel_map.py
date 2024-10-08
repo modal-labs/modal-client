@@ -385,8 +385,12 @@ async def _starmap_async(
     async def feed_queue():
         # This runs in a main thread event loop, so it doesn't block the synchronizer loop
 
-        async with aclosing(input_iterator) as stream:
-            async for args in stream:
+        if isinstance(input_iterator, typing.AsyncIterable):
+            async with aclosing(input_iterator) as stream:
+                async for args in stream:
+                    await raw_input_queue.put.aio((args, kwargs))
+        else:
+            for args in input_iterator:
                 await raw_input_queue.put.aio((args, kwargs))
 
         await raw_input_queue.put.aio(None)  # end-of-input sentinel
