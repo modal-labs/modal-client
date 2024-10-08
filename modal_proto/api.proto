@@ -352,20 +352,6 @@ message AppListResponse {
   repeated AppListItem apps = 1;
 }
 
-message AppLookupObjectRequest {
-  DeploymentNamespace namespace = 2;
-  string app_name = 3;
-  string object_tag = 4;
-  string object_id = 5;
-  string object_entity = 6;
-  string environment_name = 7;
-}
-
-message AppLookupObjectResponse {
-  Object object = 6;
-  string app_id = 7;
-}
-
 message AppLookupRequest {
   string app_name = 2;
   string environment_name = 3;
@@ -1092,6 +1078,9 @@ message Function {
   optional string _experimental_proxy_ip = 70;
 
   bool runtime_perf_record = 71; // For internal debugging use only.
+
+  Schedule schedule = 72;
+
 }
 
 message FunctionBindParamsRequest {
@@ -1154,7 +1143,7 @@ message FunctionCallPutDataRequest {
 message FunctionCreateRequest {
   Function function = 1;
   string app_id = 2  [ (modal.options.audit_target_attr) = true ];
-  Schedule schedule = 6;
+  Schedule schedule = 6; // Deprecated: now passed in the Function definition
   string existing_function_id = 7;
   // This flag tells the server to avoid doing updates in FunctionCreate that should now
   // be done in AppPublish. Provides a smoother migration onto atomic deployments with 0.64,
@@ -1205,15 +1194,18 @@ message FunctionData {
   string use_function_id = 16; // used for methods
   string use_method_name = 17; // used for methods
 
-  // When the function is a "grouped" one, this records the # of tasks we want
-  // to schedule in tandem.
-  uint32 _experimental_group_size = 19;
-
   message RankedFunction {
     uint32 rank = 1;
     Function function = 2;
   }
   repeated RankedFunction ranked_functions = 18;
+
+  // When the function is a "grouped" one, this records the # of tasks we want
+  // to schedule in tandem.
+  uint32 _experimental_group_size = 19;
+
+  Schedule schedule = 20;
+
 }
 
 message FunctionExtended {
@@ -2032,6 +2024,10 @@ message SecretCreateResponse {  // Not used by client anymore
   string secret_id = 1;
 }
 
+message SecretDeleteRequest {
+  string secret_id = 1;
+}
+
 message SecretGetOrCreateRequest {
   string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
@@ -2051,6 +2047,7 @@ message SecretListItem {
   double created_at = 2;
   double last_used_at = 3;
   string environment_name = 4;
+  string secret_id = 5;
 }
 
 message SecretListRequest {
@@ -2413,7 +2410,6 @@ service ModalClient {
   rpc AppHeartbeat(AppHeartbeatRequest) returns (google.protobuf.Empty);
   rpc AppList(AppListRequest) returns (AppListResponse);
   rpc AppLookup(AppLookupRequest) returns (AppLookupResponse);
-  rpc AppLookupObject(AppLookupObjectRequest) returns (AppLookupObjectResponse);
   rpc AppPublish(AppPublishRequest) returns (AppPublishResponse);
   rpc AppRollback(AppRollbackRequest) returns (google.protobuf.Empty);
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
@@ -2526,6 +2522,7 @@ service ModalClient {
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
 
   // Secrets
+  rpc SecretDelete(SecretDeleteRequest) returns (google.protobuf.Empty);
   rpc SecretGetOrCreate(SecretGetOrCreateRequest) returns (SecretGetOrCreateResponse);
   rpc SecretList(SecretListRequest) returns (SecretListResponse);
 

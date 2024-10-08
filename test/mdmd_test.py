@@ -1,14 +1,9 @@
 # Copyright Modal Labs 2023
 import importlib
 import os
-import pytest
-import sys
 from enum import IntEnum
 
 from modal_docs.mdmd import mdmd
-
-# Skipping a few tests on 3.7 - doesn't matter since we don't generate docs on 3.7
-skip_37 = pytest.mark.skipif(sys.version_info < (3, 8), reason="Requires Python 3.8")
 
 
 def test_simple_function():
@@ -59,7 +54,6 @@ def foo(a: str, *args, **kwargs):
     )
 
 
-@skip_37
 def test_function_has_docstring():
     def foo():
         """short description
@@ -163,7 +157,6 @@ def test_class_with_baseclass_includes_base_methods():
     assert "def foo(self):" in out
 
 
-@skip_37
 def test_module(monkeypatch):
     test_data_dir = os.path.join(os.path.dirname(__file__), "mdmd_data")
     monkeypatch.chdir(test_data_dir)
@@ -202,31 +195,7 @@ def test_synchronicity_async_and_blocking_interfaces():
             pass
 
     s = Synchronizer()
-    AsyncFoo = s.create_async(Foo, "AsyncFoo")
     BlockingFoo = s.create_blocking(Foo, "BlockingFoo")
-
-    assert (
-        mdmd.class_str("AsyncFoo", AsyncFoo)
-        == """```python
-class AsyncFoo(object)
-```
-
-docky mcdocface
-
-### foo
-
-```python
-async def foo(self):
-```
-
-### bar
-
-```python
-def bar(self):
-```
-
-"""
-    )
 
     assert (
         mdmd.class_str("BlockingFoo", BlockingFoo)
@@ -262,12 +231,12 @@ def test_synchronicity_constructors():
             """constructy mcconstructorface"""
 
     s = Synchronizer()
-    AsyncFoo = s.create_async(Foo, "AsyncFoo")
+    BlockingFoo = s.create_blocking(Foo, "BlockingFoo")
 
     assert (
-        mdmd.class_str("AsyncFoo", AsyncFoo)
+        mdmd.class_str("BlockingFoo", BlockingFoo)
         == """```python
-class AsyncFoo(object)
+class BlockingFoo(object)
 ```
 
 docky mcdocface
