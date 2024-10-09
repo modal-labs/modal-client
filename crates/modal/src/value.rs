@@ -16,7 +16,6 @@ pub enum Value {
 impl Value {
     pub(crate) fn from_proto(value: schema::PayloadValue) -> Option<Self> {
         match value.default_oneof {
-            None => None,
             Some(payload_value::DefaultOneof::StrValue(v)) => Some(Value::String(v)),
             Some(payload_value::DefaultOneof::IntValue(v)) => Some(Value::Integer(v)),
             Some(payload_value::DefaultOneof::BoolValue(v)) => Some(Value::Boolean(v)),
@@ -31,7 +30,7 @@ impl Value {
             }
             Some(payload_value::DefaultOneof::DictValue(dict)) => {
                 let len = dict.keys.len();
-                let pairs = dict.keys.into_iter().zip(dict.values.into_iter());
+                let pairs = dict.keys.into_iter().zip(dict.values);
                 let mut vec = Vec::with_capacity(len);
 
                 for (k, v) in pairs {
@@ -40,7 +39,7 @@ impl Value {
 
                 Some(Value::Dict(vec))
             }
-            Some(payload_value::DefaultOneof::PickleValue(_)) => None,
+            Some(payload_value::DefaultOneof::PickleValue(_)) | None => None,
         }
     }
 }
@@ -69,7 +68,7 @@ impl Value {
                 default_oneof: Some(payload_value::DefaultOneof::BytesValue(v)),
             },
             Value::List(v) => {
-                let items = v.into_iter().map(|v| v.into_proto()).collect();
+                let items = v.into_iter().map(Value::into_proto).collect();
                 schema::PayloadValue {
                     r#type: schema::ParameterType::ParamTypeList as i32,
                     default_oneof: Some(payload_value::DefaultOneof::ListValue(

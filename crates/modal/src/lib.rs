@@ -1,5 +1,8 @@
+#![deny(clippy::all)]
+
 // Internal API
 mod auth;
+#[allow(clippy::all)]
 mod schema;
 
 // Public API

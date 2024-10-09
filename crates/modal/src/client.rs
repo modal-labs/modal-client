@@ -44,7 +44,7 @@ impl Client {
         let workspace = if let Some(w) = workspace {
             Some((
                 "x-modal-workspace",
-                metadata::MetadataValue::from_str(w.as_ref())?,
+                metadata::MetadataValue::from_str(w)?,
             ))
         } else {
             None
