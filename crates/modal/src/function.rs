@@ -22,7 +22,7 @@ impl Function {
 }
 
 impl Function {
-    pub async fn call(&mut self, args: arguments::CombinedArgs) -> anyhow::Result<()> {
+    pub async fn call(&mut self, args: arguments::CombinedArgs) -> anyhow::Result<value::Value> {
         let args: value::Value = args.into();
         let input = schema::FunctionPutInputsItem {
             idx: 0,
@@ -77,16 +77,28 @@ impl Function {
             .into_iter()
             .next()
             .expect("exactly one output from function");
-        // TODO: handle other cases
-        assert_eq!(schema::DataFormat::PayloadValue as i32, output.data_format);
-        let result = output.result.unwrap();
+        let result = output.result.unwrap_or_default();
         if result.status == generic_result::GenericStatus::Success as i32 {
-            // TODO: parse result
-            Ok(())
+            // TODO: handle other cases
+            assert_eq!(schema::DataFormat::PayloadValue as i32, output.data_format);
+            match result.data_oneof {
+                Some(generic_result::DataOneof::Data(bytes)) => {
+                    let proto = schema::PayloadValue::decode(&*bytes)?;
+                    Ok(value::Value::from_proto(proto)
+                        .ok_or_else(|| anyhow::anyhow!("could not decode response proto"))?)
+                }
+                other => Err(anyhow::anyhow!(
+                    "could not decode response proto: {:?}",
+                    other
+                )),
+            }
         } else {
             let status = generic_result::GenericStatus::try_from(result.status)
                 .unwrap_or(generic_result::GenericStatus::Unspecified);
-            Err(anyhow::anyhow!("function call failed, status: {status:?}"))
+            let exception = result.exception;
+            Err(anyhow::anyhow!(
+                "function call failed, status: {status:?}\nexception: {exception}"
+            ))
         }
     }
 }

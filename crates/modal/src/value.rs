@@ -14,6 +14,46 @@ pub enum Value {
 }
 
 impl Value {
+    pub(crate) fn from_proto(value: schema::PayloadValue) -> Option<Self> {
+        // StrValue(::prost::alloc::string::String),
+        // IntValue(i64),
+        // BoolValue(bool),
+        // FloatValue(f32),
+        // BytesValue(::prost::bytes::Bytes),
+        // ListValue(super::PayloadListValue),
+        // DictValue(super::PayloadDictValue),
+        // PickleValue(::prost::bytes::Bytes),
+        match value.default_oneof {
+            None => None,
+            Some(payload_value::DefaultOneof::StrValue(v)) => Some(Value::String(v)),
+            Some(payload_value::DefaultOneof::IntValue(v)) => Some(Value::Integer(v)),
+            Some(payload_value::DefaultOneof::BoolValue(v)) => Some(Value::Boolean(v)),
+            Some(payload_value::DefaultOneof::FloatValue(v)) => Some(Value::Float(v)),
+            Some(payload_value::DefaultOneof::BytesValue(v)) => Some(Value::Bytes(v)),
+            Some(payload_value::DefaultOneof::ListValue(list)) => {
+                let mut vec = Vec::with_capacity(list.items.len());
+                for item in list.items {
+                    vec.push(Value::from_proto(item)?);
+                }
+                Some(Value::List(vec))
+            }
+            Some(payload_value::DefaultOneof::DictValue(dict)) => {
+                let len = dict.keys.len();
+                let pairs = dict.keys.into_iter().zip(dict.values.into_iter());
+                let mut vec = Vec::with_capacity(len);
+
+                for (k, v) in pairs {
+                    vec.push((k.into(), Value::from_proto(v)?));
+                }
+
+                Some(Value::Dict(vec))
+            }
+            Some(payload_value::DefaultOneof::PickleValue(_)) => None,
+        }
+    }
+}
+
+impl Value {
     pub fn into_proto(self) -> schema::PayloadValue {
         match self {
             Value::String(v) => schema::PayloadValue {
@@ -49,7 +89,7 @@ impl Value {
                 let keys = v.iter().map(|(k, _)| k.clone().into_owned()).collect();
                 let values = v.into_iter().map(|(_, v)| v.into_proto()).collect();
                 schema::PayloadValue {
-                    r#type: schema::ParameterType::ParamTypeList as i32,
+                    r#type: schema::ParameterType::ParamTypeDict as i32,
                     default_oneof: Some(payload_value::DefaultOneof::DictValue(
                         schema::PayloadDictValue { keys, values },
                     )),
