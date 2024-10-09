@@ -339,7 +339,7 @@ def shell(
         ),
         metavar="FUNC_REF",
     ),
-    cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
+    cmd: str = typer.Option("/bin/bash", "-c", "--cmd", help="Command to run inside the Modal image."),
     env: str = ENV_OPTION,
     image: Optional[str] = typer.Option(
         default=None, help="Container image tag for inside the shell (if not using FUNC_REF)."
