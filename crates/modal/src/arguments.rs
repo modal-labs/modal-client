@@ -112,8 +112,6 @@ macro_rules! args {
 
 #[macro_export]
 macro_rules! args_builder {
-    // TODO: can probably combine the "New"/"Last" cases
-
     // New kwarg case (rest starts with ident=expr)
     (rest: [$new_key:ident = $new_value:expr $(,$($rest:tt)*)?],
      saw_kwarg: $_:expr, // Allow kwargs any time
