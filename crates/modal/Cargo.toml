@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.89"
-bytes = "1.7.2"
+bytes = { version = "1.7.2", features = ["serde"] }
 prost = "0.13.3"
 serde = { version = "1.0.210", features = ["serde_derive"] }
 tokio = { version = "1.40.0", features = ["rt-multi-thread", "macros"] }

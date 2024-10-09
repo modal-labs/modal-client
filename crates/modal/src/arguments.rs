@@ -1,55 +1,41 @@
-use crate::schema;
-use crate::schema::payload_value;
+use crate::value;
 use std::borrow;
 
 #[derive(Clone, Debug)]
-pub struct CombinedArgs<'k> {
+pub struct CombinedArgs {
     pub args: Args,
-    pub kwargs: Kwargs<'k>,
+    pub kwargs: Kwargs,
 }
 
 #[derive(Clone, Debug)]
-pub struct Args(Vec<schema::PayloadValue>);
+pub struct Args(Vec<value::Value>);
 
 #[derive(Clone, Debug)]
-pub struct Kwargs<'k>(Vec<(borrow::Cow<'k, str>, schema::PayloadValue)>);
+pub struct Kwargs(Vec<(borrow::Cow<'static, str>, value::Value)>);
 
-impl<'k> CombinedArgs<'k> {
-    pub fn new(args: Args, kwargs: Kwargs<'k>) -> Self {
+impl CombinedArgs {
+    pub fn new(args: Args, kwargs: Kwargs) -> Self {
         Self { args, kwargs }
     }
 }
 
 impl Args {
-    pub fn from_slice(slice: &[schema::PayloadValue]) -> Self {
+    pub fn from_slice(slice: &[value::Value]) -> Self {
         Self(slice.to_vec())
     }
 
-    pub fn into_list_value(self) -> schema::PayloadValue {
-        let items = self.0;
-        schema::PayloadValue {
-            r#type: schema::ParameterType::ParamTypeList as i32,
-            default_oneof: Some(payload_value::DefaultOneof::ListValue(
-                schema::PayloadListValue { items },
-            )),
-        }
+    pub fn into_list_value(self) -> value::Value {
+        value::Value::List(self.0)
     }
 }
 
-impl<'k> Kwargs<'k> {
-    pub fn from_slice(slice: &[(borrow::Cow<'k, str>, schema::PayloadValue)]) -> Self {
+impl Kwargs {
+    pub fn from_slice(slice: &[(borrow::Cow<'static, str>, value::Value)]) -> Self {
         Self(slice.to_vec())
     }
 
-    pub fn into_dict_value(self) -> schema::PayloadValue {
-        let keys = self.0.iter().map(|(k, _)| k.clone().into_owned()).collect();
-        let values = self.0.into_iter().map(|(_, v)| v.into()).collect();
-        schema::PayloadValue {
-            r#type: schema::ParameterType::ParamTypeDict as i32,
-            default_oneof: Some(payload_value::DefaultOneof::DictValue(
-                schema::PayloadDictValue { keys, values },
-            )),
-        }
+    pub fn into_dict_value(self) -> value::Value {
+        value::Value::Dict(self.0)
     }
 }
 

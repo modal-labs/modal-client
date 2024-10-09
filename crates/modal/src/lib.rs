@@ -1,7 +1,7 @@
 // Internal API
 mod auth;
-mod payload_value_impls;
 mod schema;
+mod value;
 
 // Public API
 pub mod arguments;

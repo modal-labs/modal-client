@@ -1,6 +1,7 @@
 use crate::schema::function_input;
-use crate::{arguments, auth, schema};
+use crate::{arguments, auth, schema, value};
 use prost::Message;
+use schema::generic_result;
 use std::time;
 
 #[derive(Clone, Debug)]
@@ -21,11 +22,8 @@ impl Function {
 }
 
 impl Function {
-    pub async fn call<'k>(
-        &mut self,
-        args: arguments::CombinedArgs<'k>,
-    ) -> anyhow::Result<()> {
-        let args: schema::PayloadValue = args.into();
+    pub async fn call(&mut self, args: arguments::CombinedArgs) -> anyhow::Result<()> {
+        let args: value::Value = args.into();
         let input = schema::FunctionPutInputsItem {
             idx: 0,
             input: Some(schema::FunctionInput {
@@ -33,7 +31,7 @@ impl Function {
                 data_format: schema::DataFormat::PayloadValue as i32,
                 method_name: None,
                 args_oneof: Some(function_input::ArgsOneof::Args(
-                    args.encode_to_vec().into(),
+                    args.into_proto().encode_to_vec().into(),
                 )),
             }),
         };
@@ -50,10 +48,10 @@ impl Function {
             })
             .await?
             .into_inner();
-        dbg!(&func_map);
 
-        let fibs = Fibonacci::new();
-        for (attempt, fib) in fibs.enumerate() {
+        let mut fibs = Fibonacci::new();
+        let func_outputs = loop {
+            let fib = fibs.next().expect("fibonacci sequence is infinite");
             let func_outputs = self
                 .client
                 .function_get_outputs(schema::FunctionGetOutputsRequest {
@@ -66,15 +64,30 @@ impl Function {
                 })
                 .await?
                 .into_inner();
-            dbg!(&attempt, &func_outputs);
 
             if func_outputs.num_unfinished_inputs == 0 {
-                break;
+                break func_outputs;
             }
 
             tokio::time::sleep(time::Duration::from_millis(10 * fib)).await;
+        };
+
+        let output = func_outputs
+            .outputs
+            .into_iter()
+            .next()
+            .expect("exactly one output from function");
+        // TODO: handle other cases
+        assert_eq!(schema::DataFormat::PayloadValue as i32, output.data_format);
+        let result = output.result.unwrap();
+        if result.status == generic_result::GenericStatus::Success as i32 {
+            // TODO: parse result
+            Ok(())
+        } else {
+            let status = generic_result::GenericStatus::try_from(result.status)
+                .unwrap_or(generic_result::GenericStatus::Unspecified);
+            Err(anyhow::anyhow!("function call failed, status: {status:?}"))
         }
-        Ok(())
     }
 }
 
