@@ -1,6 +1,7 @@
 use crate::schema::function_input;
 use crate::{arguments, auth, schema};
 use prost::Message;
+use std::time;
 
 #[derive(Clone, Debug)]
 pub struct Function {
@@ -32,17 +33,40 @@ impl Function {
                 )),
             }),
         };
-        self.client
+
+        let func_map = self
+            .client
             .function_map(schema::FunctionMapRequest {
                 function_id: self.id.clone(),
-                parent_input_id: "".to_owned(),
-                return_exceptions: false,
                 function_call_type: schema::FunctionCallType::Unary as i32,
                 pipelined_inputs: vec![input],
-                function_call_invocation_type: schema::FunctionCallInvocationType::Unspecified
+                function_call_invocation_type: schema::FunctionCallInvocationType::SyncLegacy
                     as i32,
+                ..Default::default()
             })
-            .await?;
+            .await?
+            .into_inner();
+        dbg!(&func_map);
+
+        loop {
+            let func_outputs = self
+                .client
+                .function_get_outputs(schema::FunctionGetOutputsRequest {
+                    function_call_id: func_map.function_call_id.clone(),
+                    last_entry_id: "0-0".to_owned(),
+                    requested_at: time::SystemTime::now().duration_since(time::UNIX_EPOCH)?.as_secs_f64(),
+                    ..Default::default()
+                })
+                .await?
+                .into_inner();
+            dbg!(&func_outputs);
+
+            if func_outputs.num_unfinished_inputs == 0 {
+                break;
+            }
+
+            tokio::time::sleep(time::Duration::from_secs(1)).await;
+        }
         Ok(())
     }
 }

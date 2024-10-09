@@ -9,6 +9,7 @@ async fn main() -> anyhow::Result<()> {
     let mut func = client
         .lookup_function("main", "example-lifecycle-web", "hello")
         .await?;
-    func.call(args!["hi", 1, true], kwargs! {foo=3, bar=4}).await?;
+    func.call(args!["hi", 1, true], kwargs! {foo=3, bar=4})
+        .await?;
     Ok(())
 }
