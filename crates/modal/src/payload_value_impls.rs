@@ -150,8 +150,20 @@ impl From<arguments::Args> for schema::PayloadValue {
     }
 }
 
-impl From<arguments::Kwargs> for schema::PayloadValue {
-    fn from(value: arguments::Kwargs) -> Self {
+impl<'k> From<arguments::Kwargs<'k>> for schema::PayloadValue {
+    fn from(value: arguments::Kwargs<'k>) -> Self {
         value.into_dict_value()
+    }
+}
+
+impl<'k> From<arguments::CombinedArgs<'k>> for schema::PayloadValue {
+    fn from(value: arguments::CombinedArgs<'k>) -> Self {
+        let items = vec![value.args.into_list_value(), value.kwargs.into_dict_value()];
+        schema::PayloadValue {
+            r#type: schema::ParameterType::ParamTypeList as i32,
+            default_oneof: Some(payload_value::DefaultOneof::ListValue(
+                schema::PayloadListValue { items },
+            )),
+        }
     }
 }

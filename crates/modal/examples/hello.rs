@@ -1,5 +1,4 @@
 use modal::args;
-use modal::kwargs;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -9,7 +8,7 @@ async fn main() -> anyhow::Result<()> {
     let mut func = client
         .lookup_function("main", "example-lifecycle-web", "hello")
         .await?;
-    func.call(args!["hi", 1, true], kwargs! {foo=3, bar=4})
+    func.call(args!["hi", 1, true, foo=3, bar=4])
         .await?;
     Ok(())
 }

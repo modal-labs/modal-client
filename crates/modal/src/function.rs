@@ -23,11 +23,9 @@ impl Function {
 impl Function {
     pub async fn call<'k>(
         &mut self,
-        args: arguments::Args,
-        kwargs: arguments::Kwargs<'k>,
+        args: arguments::CombinedArgs<'k>,
     ) -> anyhow::Result<()> {
-        let combined: schema::PayloadValue =
-            vec![args.into_list_value(), kwargs.into_dict_value()].into();
+        let args: schema::PayloadValue = args.into();
         let input = schema::FunctionPutInputsItem {
             idx: 0,
             input: Some(schema::FunctionInput {
@@ -35,7 +33,7 @@ impl Function {
                 data_format: schema::DataFormat::PayloadValue as i32,
                 method_name: None,
                 args_oneof: Some(function_input::ArgsOneof::Args(
-                    combined.encode_to_vec().into(),
+                    args.encode_to_vec().into(),
                 )),
             }),
         };
