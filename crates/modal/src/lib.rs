@@ -6,6 +6,7 @@ mod schema;
 pub mod arguments;
 pub mod client;
 pub mod config;
+pub mod error;
 pub mod function;
 pub mod value;
 

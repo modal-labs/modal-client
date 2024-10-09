@@ -1,5 +1,6 @@
 use crate::auth;
 use crate::config;
+use crate::error;
 use crate::function;
 use crate::schema;
 use crate::schema::modal_client_client;
@@ -12,7 +13,10 @@ pub struct Client {
 }
 
 impl Client {
-    pub async fn connect(config: config::Config, workspace: Option<&str>) -> anyhow::Result<Self> {
+    pub async fn connect(
+        config: config::Config,
+        workspace: Option<&str>,
+    ) -> Result<Self, error::Error> {
         use std::str::FromStr as _;
 
         let client_id;
@@ -65,7 +69,7 @@ impl Client {
         environment: &str,
         app: &str,
         name: &str,
-    ) -> anyhow::Result<function::Function> {
+    ) -> Result<function::Function, error::Error> {
         let fn_get = self
             .client
             .function_get(schema::FunctionGetRequest {

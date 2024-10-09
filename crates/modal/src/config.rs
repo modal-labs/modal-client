@@ -1,3 +1,4 @@
+use crate::error;
 use std::{collections, env, fs, path};
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -13,10 +14,9 @@ pub struct Config {
 type Configs = collections::HashMap<String, Config>;
 
 impl Config {
-    pub fn load() -> anyhow::Result<Self> {
-        let home_dir = path::PathBuf::from(
-            env::var_os("HOME").ok_or(anyhow::anyhow!("HOME env var not set!"))?,
-        );
+    pub fn load() -> Result<Self, error::Error> {
+        let home_dir =
+            path::PathBuf::from(env::var_os("HOME").ok_or(error::Error::HomeEnvVarNotSet)?);
         let contents = fs::read_to_string(home_dir.join(".modal.toml"))?;
         let configs: Configs = toml::from_str(&contents)?;
 
@@ -25,6 +25,6 @@ impl Config {
                 return Ok(config);
             }
         }
-        anyhow::bail!("no active config found");
+        Err(error::Error::NoActiveConfigFound)
     }
 }

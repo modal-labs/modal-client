@@ -1,5 +1,5 @@
 use crate::schema::function_input;
-use crate::{arguments, auth, schema, value};
+use crate::{arguments, auth, error, schema, value};
 use schema::generic_result;
 use std::time;
 
@@ -21,7 +21,10 @@ impl Function {
 }
 
 impl Function {
-    pub async fn call(&mut self, args: arguments::CombinedArgs) -> anyhow::Result<value::Value> {
+    pub async fn call(
+        &mut self,
+        args: arguments::CombinedArgs,
+    ) -> Result<value::Value, error::Error> {
         use prost::Message as _;
 
         let args: value::Value = args.into();
@@ -60,6 +63,7 @@ impl Function {
                     requested_at: time::SystemTime::now()
                         .duration_since(time::UNIX_EPOCH)?
                         .as_secs_f64(),
+                    timeout: fib as f32,
                     ..Default::default()
                 })
                 .await?
@@ -68,8 +72,6 @@ impl Function {
             if func_outputs.num_unfinished_inputs == 0 {
                 break func_outputs;
             }
-
-            tokio::time::sleep(time::Duration::from_millis(10 * fib)).await;
         };
 
         let output = func_outputs
@@ -84,21 +86,18 @@ impl Function {
             match result.data_oneof {
                 Some(generic_result::DataOneof::Data(bytes)) => {
                     let proto = schema::PayloadValue::decode(&*bytes)?;
-                    Ok(value::Value::from_proto(proto)
-                        .ok_or_else(|| anyhow::anyhow!("could not decode response proto"))?)
+                    let value = value::Value::from_proto(proto)
+                        .ok_or(error::Error::UnsupportedValueEncoding)?;
+                    Ok(value)
                 }
-                other => Err(anyhow::anyhow!(
-                    "could not decode response proto: {:?}",
-                    other
-                )),
+                _ => Err(error::Error::UnsupportedValueEncoding),
             }
         } else {
             let status = generic_result::GenericStatus::try_from(result.status)
-                .unwrap_or(generic_result::GenericStatus::Unspecified);
-            let exception = result.exception;
-            Err(anyhow::anyhow!(
-                "function call failed, status: {status:?}\nexception: {exception}"
-            ))
+                .unwrap_or(generic_result::GenericStatus::Unspecified)
+                .into();
+            let message = result.exception;
+            Err(error::Error::Call { status, message })
         }
     }
 }
