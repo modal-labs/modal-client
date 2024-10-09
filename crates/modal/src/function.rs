@@ -42,8 +42,7 @@ impl Function {
                 function_id: self.id.clone(),
                 function_call_type: schema::FunctionCallType::Unary as i32,
                 pipelined_inputs: vec![input],
-                function_call_invocation_type: schema::FunctionCallInvocationType::SyncLegacy
-                    as i32,
+                function_call_invocation_type: schema::FunctionCallInvocationType::Async as i32,
                 ..Default::default()
             })
             .await?
