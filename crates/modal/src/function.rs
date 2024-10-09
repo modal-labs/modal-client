@@ -1,6 +1,5 @@
 use crate::schema::function_input;
 use crate::{arguments, auth, schema, value};
-use prost::Message;
 use schema::generic_result;
 use std::time;
 
@@ -23,6 +22,8 @@ impl Function {
 
 impl Function {
     pub async fn call(&mut self, args: arguments::CombinedArgs) -> anyhow::Result<value::Value> {
+        use prost::Message as _;
+
         let args: value::Value = args.into();
         let input = schema::FunctionPutInputsItem {
             idx: 0,
