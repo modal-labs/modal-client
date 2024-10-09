@@ -1,5 +1,5 @@
-use crate::schema;
 use crate::schema::payload_value;
+use crate::{arguments, schema};
 
 macro_rules! impl_payload_value_int {
     ($int_ty:ty) => {
@@ -141,5 +141,17 @@ where
                 schema::PayloadDictValue { keys, values },
             )),
         }
+    }
+}
+
+impl From<arguments::Args> for schema::PayloadValue {
+    fn from(value: arguments::Args) -> Self {
+        value.into_list_value()
+    }
+}
+
+impl From<arguments::Kwargs> for schema::PayloadValue {
+    fn from(value: arguments::Kwargs) -> Self {
+        value.into_dict_value()
     }
 }

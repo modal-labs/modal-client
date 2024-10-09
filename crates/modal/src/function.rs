@@ -26,10 +26,8 @@ impl Function {
         args: arguments::Args,
         kwargs: arguments::Kwargs<'k>,
     ) -> anyhow::Result<()> {
-        // TODO: discuss how we want to encode args + kwargs... list of [list, dict]?
-        let args = args.into_list_value().encode_to_vec().into();
-        let kwargs = kwargs.into_dict_value();
-        let combined: schema::PayloadValue = vec![args, kwargs].into();
+        let combined: schema::PayloadValue =
+            vec![args.into_list_value(), kwargs.into_dict_value()].into();
         let input = schema::FunctionPutInputsItem {
             idx: 0,
             input: Some(schema::FunctionInput {
