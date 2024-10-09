@@ -15,14 +15,6 @@ pub enum Value {
 
 impl Value {
     pub(crate) fn from_proto(value: schema::PayloadValue) -> Option<Self> {
-        // StrValue(::prost::alloc::string::String),
-        // IntValue(i64),
-        // BoolValue(bool),
-        // FloatValue(f32),
-        // BytesValue(::prost::bytes::Bytes),
-        // ListValue(super::PayloadListValue),
-        // DictValue(super::PayloadDictValue),
-        // PickleValue(::prost::bytes::Bytes),
         match value.default_oneof {
             None => None,
             Some(payload_value::DefaultOneof::StrValue(v)) => Some(Value::String(v)),
