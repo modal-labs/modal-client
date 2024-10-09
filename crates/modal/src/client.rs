@@ -76,14 +76,14 @@ impl Client {
             })
             .await?
             .into_inner();
-        if let Some(metadata) = fn_get.handle_metadata {
-            // TODO: support other kinds of functions
-            assert!(!metadata.is_method);
-            assert_eq!(
-                schema::function::FunctionType::Function as i32,
-                metadata.function_type
-            );
-        }
+
+        let metadata = fn_get.handle_metadata.unwrap_or_default();
+        // TODO: support other kinds of functions
+        assert!(!metadata.is_method);
+        assert_eq!(
+            schema::function::FunctionType::Function as i32,
+            metadata.function_type
+        );
 
         let client = self.client.clone();
         let id = fn_get.function_id;
