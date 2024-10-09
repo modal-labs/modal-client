@@ -125,10 +125,10 @@ impl_payload_value_ints!(u8, u16, u32, u64, i8, i16, i32, i64);
 
 impl<A> From<&A> for Value
 where
-    A: Into<Value>,
+    A: Into<Value> + Clone,
 {
     fn from(value: &A) -> Self {
-        value.into()
+        value.clone().into()
     }
 }
 impl From<&str> for Value {
@@ -172,7 +172,7 @@ where
 
 impl<A> From<&[A]> for Value
 where
-    A: Into<Value>,
+    A: Into<Value> + Clone,
 {
     fn from(value: &[A]) -> Self {
         let items = value.iter().map(Into::into).collect();
@@ -198,7 +198,7 @@ where
 impl<K, A> From<&[(K, A)]> for Value
 where
     K: ToOwned<Owned = String>,
-    A: Into<Value>,
+    A: Into<Value> + Clone,
 {
     fn from(value: &[(K, A)]) -> Self {
         Value::Dict(
@@ -224,7 +224,8 @@ impl From<arguments::Kwargs> for Value {
 
 impl From<arguments::CombinedArgs> for Value {
     fn from(value: arguments::CombinedArgs) -> Self {
-        let items = vec![value.args.into_list_value(), value.kwargs.into_dict_value()];
+        let (args, kwargs) = value.into_parts();
+        let items = vec![args.into_list_value(), kwargs.into_dict_value()];
         Value::List(items)
     }
 }
