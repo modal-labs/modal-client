@@ -34,6 +34,21 @@ impl<'k> Kwargs<'k> {
         let kwargs = slice.to_vec();
         Self { kwargs }
     }
+
+    pub fn into_dict_value(self) -> schema::PayloadValue {
+        let keys = self
+            .kwargs
+            .iter()
+            .map(|(k, _)| k.clone().into_owned())
+            .collect();
+        let values = self.kwargs.into_iter().map(|(_, v)| v.into()).collect();
+        schema::PayloadValue {
+            r#type: schema::ParameterType::ParamTypeDict as i32,
+            default_oneof: Some(payload_value::DefaultOneof::DictValue(
+                schema::PayloadDictValue { keys, values },
+            )),
+        }
+    }
 }
 
 #[macro_export]

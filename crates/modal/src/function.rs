@@ -9,6 +9,11 @@ pub struct Function {
     client: auth::AuthedClient,
 }
 
+struct Fibonacci {
+    a: u64,
+    b: u64,
+}
+
 impl Function {
     pub fn new(id: String, client: auth::AuthedClient) -> Self {
         Self { id, client }
@@ -22,6 +27,9 @@ impl Function {
         kwargs: arguments::Kwargs<'k>,
     ) -> anyhow::Result<()> {
         // TODO: discuss how we want to encode args + kwargs... list of [list, dict]?
+        let args = args.into_list_value().encode_to_vec().into();
+        let kwargs = kwargs.into_dict_value();
+        let combined: schema::PayloadValue = vec![args, kwargs].into();
         let input = schema::FunctionPutInputsItem {
             idx: 0,
             input: Some(schema::FunctionInput {
@@ -29,7 +37,7 @@ impl Function {
                 data_format: schema::DataFormat::PayloadValue as i32,
                 method_name: None,
                 args_oneof: Some(function_input::ArgsOneof::Args(
-                    args.into_list_value().encode_to_vec().into(),
+                    combined.encode_to_vec().into(),
                 )),
             }),
         };
@@ -48,25 +56,44 @@ impl Function {
             .into_inner();
         dbg!(&func_map);
 
-        loop {
+        let fibs = Fibonacci::new();
+        for (attempt, fib) in fibs.enumerate() {
             let func_outputs = self
                 .client
                 .function_get_outputs(schema::FunctionGetOutputsRequest {
                     function_call_id: func_map.function_call_id.clone(),
                     last_entry_id: "0-0".to_owned(),
-                    requested_at: time::SystemTime::now().duration_since(time::UNIX_EPOCH)?.as_secs_f64(),
+                    requested_at: time::SystemTime::now()
+                        .duration_since(time::UNIX_EPOCH)?
+                        .as_secs_f64(),
                     ..Default::default()
                 })
                 .await?
                 .into_inner();
-            dbg!(&func_outputs);
+            dbg!(&attempt, &func_outputs);
 
             if func_outputs.num_unfinished_inputs == 0 {
                 break;
             }
 
-            tokio::time::sleep(time::Duration::from_secs(1)).await;
+            tokio::time::sleep(time::Duration::from_millis(10 * fib)).await;
         }
         Ok(())
+    }
+}
+
+impl Fibonacci {
+    fn new() -> Self {
+        Fibonacci { a: 1, b: 0 }
+    }
+}
+impl Iterator for Fibonacci {
+    type Item = u64;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let r = self.b;
+        self.b = self.a;
+        self.a += r;
+        Some(r)
     }
 }
