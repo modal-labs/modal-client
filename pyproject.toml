@@ -29,6 +29,7 @@ filterwarnings = [
     "ignore::DeprecationWarning:pytest.*:",
     "ignore::DeprecationWarning:pkg_resources.*:",
     "ignore::DeprecationWarning:google.rpc.*:",
+    "ignore::DeprecationWarning:nbclient.*:",
     "ignore:.*pkg_resources.*:DeprecationWarning::",
 ]
 
