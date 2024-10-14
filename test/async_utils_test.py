@@ -15,6 +15,7 @@ from modal._utils.async_utils import (
     aclosing,
     async_map,
     async_merge,
+    async_zip,
     awaitable_to_aiter,
     queue_batch_iterator,
     retry,
@@ -470,3 +471,22 @@ async def test_async_merge():
 
     assert result == []
     assert sorted(states) == ["gen1 enter", "gen1 exit", "gen2 enter", "gen2 exit", "gen3 enter", "gen3 exit"]
+
+
+@pytest.mark.asyncio
+async def test_async_zip():
+    async def gen1(start, count=1):
+        for i in range(start, start + count):
+            yield i
+
+    result = []
+    async for item in async_zip(gen1(1), gen1(4), gen1(6)):
+        result.append(item)
+
+    assert result == [(1, 4, 6)]
+
+    result = []
+    async for item in async_zip(gen1(1, 10), gen1(5, 8), gen1(6, 2)):
+        result.append(item)
+
+    assert result == [(1, 5, 6), (2, 6, 7)]

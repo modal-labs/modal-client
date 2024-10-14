@@ -16,6 +16,7 @@ from typing import (
     List,
     Optional,
     Set,
+    Tuple,
     TypeVar,
     cast,
 )
@@ -594,6 +595,15 @@ async def async_merge(input: AsyncIterator[T], *more_inputs: AsyncIterator[T]) -
         for task in [complete_merge_task, *tasks]:
             task.cancel()
         await asyncio.gather(complete_merge_task, *tasks, return_exceptions=False)
+
+
+async def async_zip(*inputs: AsyncIterator[T]) -> AsyncIterator[Tuple[T, ...]]:
+    while True:
+        try:
+            items = await asyncio.gather(*(anext(it) for it in inputs))
+            yield tuple(items)
+        except StopAsyncIteration:
+            break
 
 
 async def awaitable_to_aiter(awaitable: Awaitable[T]) -> AsyncIterator[T]:
