@@ -416,7 +416,7 @@ def shell(
         ):
             from .container import exec
 
-            exec(container_id=container_or_function, command=["/bin/sh"], pty=True)
+            exec(container_id=container_or_function, command=shlex.split(cmd), pty=True)
             return
 
         function = import_function(
