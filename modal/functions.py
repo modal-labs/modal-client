@@ -37,6 +37,7 @@ from ._resources import convert_fn_config_to_resources_config
 from ._serialization import serialize, serialize_proto_params
 from ._utils.async_utils import (
     TaskContext,
+    aclosing,
     async_merge,
     awaitable_to_aiter,
     synchronize_api,
@@ -210,16 +211,17 @@ class _Invocation:
 
         items_received = 0
         items_total: Union[int, None] = None  # populated when self.run_function() completes
-        async for item in async_merge(data_stream, awaitable_to_aiter(self.run_function())):
-            if isinstance(item, api_pb2.GeneratorDone):
-                items_total = item.items_total
-            else:
-                yield item
-                items_received += 1
-            # The comparison avoids infinite loops if a non-deterministic generator is retried
-            # and produces less data in the second run than what was already sent.
-            if items_total is not None and items_received >= items_total:
-                break
+        async with aclosing(async_merge(data_stream, awaitable_to_aiter(self.run_function()))) as stream:
+            async for item in stream:
+                if isinstance(item, api_pb2.GeneratorDone):
+                    items_total = item.items_total
+                else:
+                    yield item
+                    items_received += 1
+                # The comparison avoids infinite loops if a non-deterministic generator is retried
+                # and produces less data in the second run than what was already sent.
+                if items_total is not None and items_received >= items_total:
+                    break
 
 
 # Wrapper type for api_pb2.FunctionStats
