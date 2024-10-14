@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.180 (2024-10-14)
+
+- `modal shell --cmd` now can be shortened to `modal shell -c`. This means you can use it like `modal shell -c "uname -a"` to quickly run a command within the remote environment.
+
+
+
 ### 0.64.168 (2024-10-03)
 
 - The `Image.conda`, `Image.conda_install`, and `Image.conda_update_from_environment` methods are now fully deprecated. We recommend using `micromamba` (via `Image.micromamba` and `Image.micromamba_install`) instead, or manually installing and using conda with `Image.run_commands` when strictly necessary.
