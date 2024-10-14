@@ -65,10 +65,13 @@ def get_all_dockerfile_commands(image_id: str, servicer) -> str:
 
 @pytest.fixture(params=get_args(ImageBuilderVersion))
 def builder_version(request, server_url_env, modal_config):
-    version = request.param
+    builder_version = request.param
+    python_version = f"{0}.{1}".format(sys.version_info)
+    if python_version not in SUPPORTED_PYTHON_SERIES[builder_version]:
+        pytest.skip("Python version not supported by Image Builder version")
     with modal_config():
-        with mock.patch("test.conftest.ImageBuilderVersion", Literal[version]):  # type: ignore
-            yield version
+        with mock.patch("test.conftest.ImageBuilderVersion", Literal[builder_version]):  # type: ignore
+            yield builder_version
 
 
 @pytest.fixture(autouse=True)
@@ -78,7 +81,6 @@ def clear_environment_cache():
     environments.ENVIRONMENT_CACHE.clear()
 
 
-@pytest.mark.parametrize("builder_version", get_args(ImageBuilderVersion))
 def test_python_version_validation(builder_version):
     assert _validate_python_version(None, builder_version) == "{0}.{1}".format(*sys.version_info)
     assert _validate_python_version("3.12", builder_version) == "3.12"
