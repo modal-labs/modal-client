@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2023
 import multiprocessing
 import platform
-import sys
 from multiprocessing.context import SpawnProcess
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, Set, TypeVar
@@ -86,16 +85,6 @@ async def _run_watch_loop(
                 curr_proc = await _restart_serve(app_ref, existing_app_id=app_id, environment_name=environment_name)
         finally:
             await _terminate(curr_proc)
-
-
-def _get_clean_app_description(app_ref: str) -> str:
-    # If possible, consider the 'ref' argument the start of the app's args. Everything
-    # before it Modal CLI cruft (eg. `modal serve --timeout 1.0`).
-    try:
-        func_ref_arg_idx = sys.argv.index(app_ref)
-        return " ".join(sys.argv[func_ref_arg_idx:])
-    except ValueError:
-        return " ".join(sys.argv)
 
 
 @asynccontextmanager
