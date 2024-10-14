@@ -1291,7 +1291,6 @@ class _Image(_Object, type_prefix="im"):
         ```
 
         The context mount will allow a `COPY src/ src/` instruction to succeed in Modal's remote builder.
-        ```
         """
 
         # --- Build the base dockerfile
