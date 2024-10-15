@@ -412,7 +412,7 @@ async def test_awaitable_to_aiter():
         return 42
 
     result = []
-    async for item in awaitable_to_aiter(foo()):
+    async for item in awaitable_to_aiter(foo):
         result.append(item)
     assert result == [await foo()]
 
