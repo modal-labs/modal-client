@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.182 (2024-10-15)
+
+- Fixed a bug where app rollbacks would not restart a schedule that had been removed in an intervening deployment.
+
+
+
 ### 0.64.181 (2024-10-14)
 
 - The `modal shell` CLI command now takes a container ID, allowing you to shell into a running container.
