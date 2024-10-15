@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2023
 import multiprocessing
 import platform
-import sys
 from multiprocessing.context import SpawnProcess
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, Set, TypeVar
@@ -9,14 +8,14 @@ from typing import TYPE_CHECKING, AsyncGenerator, Optional, Set, TypeVar
 from synchronicity import Interface
 from synchronicity.async_wrap import asynccontextmanager
 
-from ._output import OutputManager
 from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
 from ._utils.logger import logger
 from ._watcher import watch
 from .cli.import_refs import import_app
 from .client import _Client
 from .config import config
-from .exception import deprecation_warning
+from .exception import deprecation_error
+from .output import _get_output_manager
 from .runner import _run_app, serve_update
 
 if TYPE_CHECKING:
@@ -52,10 +51,10 @@ async def _terminate(proc: Optional[SpawnProcess], timeout: float = 5.0):
         proc.terminate()
         await asyncify(proc.join)(timeout)
         if proc.exitcode is not None:
-            if output_mgr := OutputManager.get():
+            if output_mgr := _get_output_manager():
                 output_mgr.print(f"Serve process {proc.pid} terminated")
         else:
-            if output_mgr := OutputManager.get():
+            if output_mgr := _get_output_manager():
                 output_mgr.print(f"[red]Serve process {proc.pid} didn't terminate after {timeout}s, killing it[/red]")
             proc.kill()
     except ProcessLookupError:
@@ -74,7 +73,7 @@ async def _run_watch_loop(
         " This can hopefully be fixed in a future version of Modal."
 
     if unsupported_msg:
-        if output_mgr := OutputManager.get():
+        if output_mgr := _get_output_manager():
             async for _ in watcher:
                 output_mgr.print(unsupported_msg)
     else:
@@ -86,16 +85,6 @@ async def _run_watch_loop(
                 curr_proc = await _restart_serve(app_ref, existing_app_id=app_id, environment_name=environment_name)
         finally:
             await _terminate(curr_proc)
-
-
-def _get_clean_app_description(app_ref: str) -> str:
-    # If possible, consider the 'ref' argument the start of the app's args. Everything
-    # before it Modal CLI cruft (eg. `modal serve --timeout 1.0`).
-    try:
-        func_ref_arg_idx = sys.argv.index(app_ref)
-        return " ".join(sys.argv[func_ref_arg_idx:])
-    except ValueError:
-        return " ".join(sys.argv)
 
 
 @asynccontextmanager
@@ -123,8 +112,7 @@ async def _serve_app(
 
 
 def _serve_stub(*args, **kwargs):
-    deprecation_warning((2024, 5, 1), "`serve_stub` is deprecated. Please use `serve_app` instead.")
-    return _run_app(*args, **kwargs)
+    deprecation_error((2024, 5, 1), "`serve_stub` is deprecated. Please use `serve_app` instead.")
 
 
 serve_app = synchronize_api(_serve_app)

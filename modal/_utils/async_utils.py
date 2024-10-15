@@ -15,7 +15,6 @@ from ..exception import InvalidError
 from .logger import logger
 
 synchronizer = synchronicity.Synchronizer()
-# atexit.register(synchronizer.close)
 
 
 def synchronize_api(obj, target_module=None):
@@ -152,6 +151,7 @@ class TaskContext:
 
                 # Cancel any remaining unfinished tasks.
                 task.cancel()
+            await asyncio.sleep(0)  # wake up coroutines waiting for cancellations
 
     async def __aexit__(self, exc_type, value, tb):
         await self.stop()
@@ -178,7 +178,7 @@ class TaskContext:
 
         async def loop_coro() -> None:
             logger.debug(f"Starting infinite loop {function_name}")
-            while True:
+            while not self.exited:
                 try:
                     await asyncio.wait_for(async_f(), timeout=timeout)
                 except Exception as exc:
@@ -192,9 +192,8 @@ class TaskContext:
                     await asyncio.wait_for(self._exited.wait(), timeout=sleep)
                 except asyncio.TimeoutError:
                     continue
-                # Only reached if self._exited got set.
-                logger.debug(f"Exiting infinite loop for {function_name}")
-                break
+
+            logger.debug(f"Exiting infinite loop for {function_name}")
 
         t = self.create_task(loop_coro())
         t.set_name(f"{function_name} loop")

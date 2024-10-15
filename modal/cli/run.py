@@ -17,13 +17,13 @@ from rich.console import Console
 from typing_extensions import TypedDict
 
 from .. import Cls
-from .._output import enable_output
 from ..app import App, LocalEntrypoint
 from ..config import config
 from ..environments import ensure_env
 from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
 from ..functions import Function, _FunctionSpec
 from ..image import Image
+from ..output import enable_output
 from ..runner import deploy_app, interactive_shell, run_app
 from ..serving import serve_app
 from ..volume import Volume
@@ -296,7 +296,7 @@ def deploy(
         res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
 
     if stream_logs:
-        stream_app_logs(res.app_id)
+        stream_app_logs(app_id=res.app_id, app_logs_url=res.app_logs_url)
 
 
 def serve(
@@ -331,49 +331,46 @@ def serve(
 
 
 def shell(
-    func_ref: Optional[str] = typer.Argument(
+    container_or_function: Optional[str] = typer.Argument(
         default=None,
         help=(
-            "Path to a Python file with an App or Modal function with container parameters."
-            " Can also include a function specifier, like `module.py::func`, when the file defines multiple functions."
+            "ID of running container, or path to a Python file containing a Modal App."
+            " Can also include a function specifier, like `module.py::func`, if the file defines multiple functions."
         ),
-        metavar="FUNC_REF",
+        metavar="REF",
     ),
-    cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
+    cmd: str = typer.Option("/bin/bash", "-c", "--cmd", help="Command to run inside the Modal image."),
     env: str = ENV_OPTION,
     image: Optional[str] = typer.Option(
-        default=None, help="Container image tag for inside the shell (if not using FUNC_REF)."
+        default=None, help="Container image tag for inside the shell (if not using REF)."
     ),
-    add_python: Optional[str] = typer.Option(default=None, help="Add Python to the image (if not using FUNC_REF)."),
+    add_python: Optional[str] = typer.Option(default=None, help="Add Python to the image (if not using REF)."),
     volume: Optional[typing.List[str]] = typer.Option(
         default=None,
         help=(
-            "Name of a `modal.Volume` to mount inside the shell at `/mnt/{name}` (if not using FUNC_REF)."
+            "Name of a `modal.Volume` to mount inside the shell at `/mnt/{name}` (if not using REF)."
             " Can be used multiple times."
         ),
     ),
-    cpu: Optional[int] = typer.Option(
-        default=None, help="Number of CPUs to allocate to the shell (if not using FUNC_REF)."
-    ),
+    cpu: Optional[int] = typer.Option(default=None, help="Number of CPUs to allocate to the shell (if not using REF)."),
     memory: Optional[int] = typer.Option(
-        default=None, help="Memory to allocate for the shell, in MiB (if not using FUNC_REF)."
+        default=None, help="Memory to allocate for the shell, in MiB (if not using REF)."
     ),
     gpu: Optional[str] = typer.Option(
         default=None,
-        help="GPUs to request for the shell, if any. Examples are `any`, `a10g`, `a100:4` (if not using FUNC_REF).",
+        help="GPUs to request for the shell, if any. Examples are `any`, `a10g`, `a100:4` (if not using REF).",
     ),
     cloud: Optional[str] = typer.Option(
         default=None,
         help=(
-            "Cloud provider to run the shell on. "
-            "Possible values are `aws`, `gcp`, `oci`, `auto` (if not using FUNC_REF)."
+            "Cloud provider to run the shell on. " "Possible values are `aws`, `gcp`, `oci`, `auto` (if not using REF)."
         ),
     ),
     region: Optional[str] = typer.Option(
         default=None,
         help=(
-            "Region(s) to run the shell on. "
-            "Can be a single region or a comma-separated list to choose from (if not using FUNC_REF)."
+            "Region(s) to run the container on. "
+            "Can be a single region or a comma-separated list to choose from (if not using REF)."
         ),
     ),
 ):
@@ -410,8 +407,21 @@ def shell(
 
     app = App("modal shell")
 
-    if func_ref is not None:
-        function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
+    if container_or_function is not None:
+        # `modal shell` with a container ID is a special case, alias for `modal container exec`.
+        if (
+            container_or_function.startswith("ta-")
+            and len(container_or_function[3:]) > 0
+            and container_or_function[3:].isalnum()
+        ):
+            from .container import exec
+
+            exec(container_id=container_or_function, command=shlex.split(cmd), pty=True)
+            return
+
+        function = import_function(
+            container_or_function, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell"
+        )
         assert isinstance(function, Function)
         function_spec: _FunctionSpec = function.spec
         start_shell = partial(
@@ -420,13 +430,12 @@ def shell(
             mounts=function_spec.mounts,
             secrets=function_spec.secrets,
             network_file_systems=function_spec.network_file_systems,
-            gpu=function_spec.gpu,
+            gpu=function_spec.gpus,
             cloud=function_spec.cloud,
             cpu=function_spec.cpu,
             memory=function_spec.memory,
             volumes=function_spec.volumes,
             region=function_spec.scheduler_placement.proto.regions if function_spec.scheduler_placement else None,
-            _experimental_gpus=function_spec._experimental_gpus,
         )
     else:
         modal_image = Image.from_registry(image, add_python=add_python) if image else None

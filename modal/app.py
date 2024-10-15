@@ -5,7 +5,20 @@ import typing
 import warnings
 from pathlib import PurePosixPath
 from textwrap import dedent
-from typing import Any, AsyncGenerator, Callable, ClassVar, Dict, List, Optional, Sequence, Tuple, Union
+from typing import (
+    Any,
+    AsyncGenerator,
+    Callable,
+    ClassVar,
+    Coroutine,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+    overload,
+)
 
 import typing_extensions
 from google.protobuf.message import Message
@@ -14,30 +27,31 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal_proto import api_pb2
 
 from ._ipython import is_notebook
-from ._output import OutputManager
 from ._utils.async_utils import synchronize_api
-from ._utils.function_utils import FunctionInfo, is_global_object, is_top_level_function
-from ._utils.grpc_utils import unary_stream
+from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
+from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, _get_class_constructor_signature, parameter
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
-from .functions import _Function
+from .experimental import _GroupedFunction
+from .functions import Function, _Function
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
-from .object import _Object
+from .object import _get_environment_name, _Object
+from .output import _get_output_manager, enable_output
 from .partial_function import (
+    PartialFunction,
     _find_partial_methods_for_user_cls,
     _PartialFunction,
     _PartialFunctionFlags,
 )
 from .proxy import _Proxy
 from .retries import Retries
-from .runner import _run_app
 from .running_app import RunningApp
 from .sandbox import _Sandbox
 from .schedule import Schedule
@@ -87,7 +101,29 @@ CLS_T = typing.TypeVar("CLS_T", bound=typing.Type[Any])
 
 
 P = typing_extensions.ParamSpec("P")
-R = typing.TypeVar("R")
+ReturnType = typing.TypeVar("ReturnType")
+OriginalReturnType = typing.TypeVar("OriginalReturnType")
+
+
+class _FunctionDecoratorType:
+    @overload
+    def __call__(
+        self, func: PartialFunction[P, ReturnType, OriginalReturnType]
+    ) -> Function[P, ReturnType, OriginalReturnType]:
+        ...  # already wrapped by a modal decorator, e.g. web_endpoint
+
+    @overload
+    def __call__(
+        self, func: Callable[P, Coroutine[Any, Any, ReturnType]]
+    ) -> Function[P, ReturnType, Coroutine[Any, Any, ReturnType]]:
+        ...  # decorated async function
+
+    @overload
+    def __call__(self, func: Callable[P, ReturnType]) -> Function[P, ReturnType, ReturnType]:
+        ...  # decorated non-async function
+
+    def __call__(self, func):
+        ...
 
 
 class _App:
@@ -124,6 +160,7 @@ class _App:
     """
 
     _all_apps: ClassVar[Dict[Optional[str], List["_App"]]] = {}
+    _container_app: ClassVar[Optional[RunningApp]] = None
 
     _name: Optional[str]
     _description: Optional[str]
@@ -211,6 +248,46 @@ class _App:
     def description(self) -> Optional[str]:
         """The App's `name`, if available, or a fallback descriptive identifier."""
         return self._description
+
+    @staticmethod
+    async def lookup(
+        label: str,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+        create_if_missing: bool = False,
+    ) -> "_App":
+        """Look up an app with a given name. When `create_if_missing` is true,
+        the app will be created if it doesn't exist.
+
+        ```python
+        app = modal.App.lookup("my-app", create_if_missing=True)
+
+        modal.Sandbox.create("echo", "hi", app=app)
+        ```
+        """
+        if client is None:
+            client = await _Client.from_env()
+
+        environment_name = _get_environment_name(environment_name)
+
+        request = api_pb2.AppGetOrCreateRequest(
+            app_name=label,
+            environment_name=environment_name,
+            object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
+        )
+
+        response = await retry_transient_errors(client.stub.AppGetOrCreate, request)
+
+        app = _App(label)
+        app._app_id = response.app_id
+        app._client = client
+        app._running_app = RunningApp(
+            response.app_id,
+            client=client,
+            environment_name=environment_name,
+            interactive=False,
+        )
+        return app
 
     def set_description(self, description: str):
         self._description = description
@@ -302,6 +379,7 @@ class _App:
         client: Optional[_Client] = None,
         show_progress: Optional[bool] = None,
         detach: bool = False,
+        interactive: bool = False,
     ) -> AsyncGenerator["_App", None]:
         """Context manager that runs an app on Modal.
 
@@ -361,6 +439,7 @@ class _App:
         If you don't want output, and you want to to suppress this warning,
         use `app.run(..., show_progress=False)`.
         """
+        from .runner import _run_app  # Defer import of runner.py, which imports a lot from Rich
 
         # See Github discussion here: https://github.com/modal-labs/modal-client/pull/2030#issuecomment-2237266186
 
@@ -368,27 +447,27 @@ class _App:
 
         if "MODAL_DISABLE_APP_RUN_OUTPUT_WARNING" not in os.environ:
             if show_progress is None:
-                if OutputManager.get() is None:
+                if _get_output_manager() is None:
                     deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
                     auto_enable_output = True
             elif show_progress is True:
-                if OutputManager.get() is None:
+                if _get_output_manager() is None:
                     deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
                     auto_enable_output = True
                 else:
                     deprecation_warning((2024, 7, 18), "`show_progress=True` is deprecated and no longer needed.")
             elif show_progress is False:
-                if OutputManager.get() is not None:
+                if _get_output_manager() is not None:
                     deprecation_warning(
                         (2024, 7, 18), "`show_progress=False` will have no effect since output is enabled."
                     )
 
         if auto_enable_output:
-            with OutputManager.enable_output():
-                async with _run_app(self, client=client, detach=detach):
+            with enable_output():
+                async with _run_app(self, client=client, detach=detach, interactive=interactive):
                     yield self
         else:
-            async with _run_app(self, client=client, detach=detach):
+            async with _run_app(self, client=client, detach=detach, interactive=interactive):
                 yield self
 
     def _get_default_image(self):
@@ -428,6 +507,8 @@ class _App:
         self._app_id = running_app.app_id
         self._running_app = running_app
         self._client = client
+
+        _App._container_app = running_app
 
         # Hydrate objects on app
         for tag, object_id in running_app.tag_to_object_id.items():
@@ -534,7 +615,9 @@ class _App:
         image: Optional[_Image] = None,  # The image to run as the container for the function
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
-        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
+        gpu: Union[
+            GPU_T, List[GPU_T]
+        ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),  # Modal Mounts added to the container
         network_file_systems: Dict[
@@ -572,15 +655,16 @@ class _App:
         # Maximum number of inputs a container should handle before shutting down.
         # With `max_inputs = 1`, containers will be single-use.
         max_inputs: Optional[int] = None,
+        i6pn: Optional[bool] = None,  # Whether to enable IPv6 container networking within the region.
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         # Parameters below here are experimental. Use with caution!
-        _experimental_boost: None = None,  # Deprecated: lower latency function execution is now default.
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
-        _experimental_gpus: Sequence[GPU_T] = [],  # Experimental controls over GPU fallbacks (alpha).
-    ) -> Callable[[Union[Callable[P, R], _PartialFunction[P, R]]], _Function[P, R]]:
+        _experimental_buffer_containers: Optional[int] = None,  # Number of additional, idle containers to keep around.
+        _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
+    ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal function with this app."""
         if isinstance(_warn_parentheses_missing, _Image):
             # Handle edge case where maybe (?) some users passed image as a positional arg
@@ -593,11 +677,6 @@ class _App:
                 (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
             )
 
-        if _experimental_boost is not None:
-            deprecation_warning(
-                (2024, 7, 23), "`_experimental_boost` is now always-on. This argument is no longer needed."
-            )
-
         if image is None:
             image = self._get_default_image()
 
@@ -606,7 +685,7 @@ class _App:
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any], None],
         ) -> _Function:
-            nonlocal keep_warm, is_generator
+            nonlocal keep_warm, is_generator, cloud, serialized
 
             # Check if the decorated object is a class
             if inspect.isclass(f):
@@ -617,6 +696,25 @@ class _App:
             if isinstance(f, _PartialFunction):
                 # typically for @function-wrapped @web_endpoint, @asgi_app, or @batched
                 f.wrapped = True
+
+                # but we don't support @app.function wrapping a method.
+                if is_method_fn(f.raw_f.__qualname__):
+                    raise InvalidError(
+                        "The `@app.function` decorator cannot be used on class methods. "
+                        "Swap with `@modal.method` or `@modal.web_endpoint`, or drop the `@app.function` decorator. "
+                        "Example: "
+                        "\n\n"
+                        "```python\n"
+                        "@app.cls()\n"
+                        "class MyClass:\n"
+                        "    @modal.web_endpoint()\n"
+                        "    def f(self, x):\n"
+                        "        ...\n"
+                        "```\n"
+                    )
+                i6pn_enabled = i6pn or (f.flags & _PartialFunctionFlags.GROUPED)
+                group_size = f.group_size  # Experimental: Grouped functions
+
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
                 webhook_config = f.webhook_config
@@ -639,7 +737,7 @@ class _App:
                         )
                     )
 
-                if not is_top_level_function(f) and is_global_object(f.__qualname__):
+                if is_method_fn(f.__qualname__):
                     raise InvalidError(
                         dedent(
                             """
@@ -662,6 +760,9 @@ class _App:
                 batch_max_size = None
                 batch_wait_ms = None
                 raw_f = f
+
+                group_size = None  # Experimental: Grouped functions
+                i6pn_enabled = i6pn
 
             if info.function_name.endswith(".app"):
                 warnings.warn(
@@ -709,11 +810,20 @@ class _App:
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
-                _experimental_boost=_experimental_boost,
-                _experimental_gpus=_experimental_gpus,
+                _experimental_buffer_containers=_experimental_buffer_containers,
+                _experimental_proxy_ip=_experimental_proxy_ip,
+                i6pn_enabled=i6pn_enabled,
+                group_size=group_size,  # Experimental: Grouped functions
             )
 
             self._add_function(function, webhook_config is not None)
+
+            # Experimental: Grouped functions
+            if group_size is not None:
+                if group_size <= 0:
+                    raise InvalidError("Group size must be positive")
+                function = _GroupedFunction(function, group_size)
+
             return function
 
         return wrapped
@@ -725,7 +835,9 @@ class _App:
         *,
         image: Optional[_Image] = None,  # The image to run as the container for the function
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
-        gpu: GPU_T = None,  # GPU specification as string ("any", "T4", "A10G", ...) or object (`modal.GPU.A100()`, ...)
+        gpu: Union[
+            GPU_T, List[GPU_T]
+        ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
         network_file_systems: Dict[
@@ -758,11 +870,11 @@ class _App:
         # The next group of parameters are deprecated; do not use in any new code
         interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         # Parameters below here are experimental. Use with caution!
-        _experimental_boost: None = None,  # Deprecated: lower latency function execution is now default.
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
-        _experimental_gpus: Sequence[GPU_T] = [],  # Experimental controls over GPU fallbacks (alpha).
+        _experimental_buffer_containers: Optional[int] = None,  # Number of additional, idle containers to keep around.
+        _experimental_proxy_ip: Optional[int] = None,  # IP address of proxy
     ) -> Callable[[CLS_T], CLS_T]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
@@ -770,11 +882,6 @@ class _App:
         if interactive:
             deprecation_error(
                 (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
-            )
-
-        if _experimental_boost is not None:
-            deprecation_warning(
-                (2024, 7, 23), "`_experimental_boost` is now always-on. This argument is no longer needed."
             )
 
         if image is None:
@@ -840,12 +947,12 @@ class _App:
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
-                _experimental_boost=_experimental_boost,
                 # class service function, so the following attributes which relate to
                 # the callable itself are invalid and set to defaults:
                 webhook_config=None,
                 is_generator=False,
-                _experimental_gpus=_experimental_gpus,
+                _experimental_buffer_containers=_experimental_buffer_containers,
+                _experimental_proxy_ip=_experimental_proxy_ip,
             )
 
             self._add_function(cls_func, is_web_endpoint=False)
@@ -989,7 +1096,7 @@ class _App:
                 timeout=55,
                 last_entry_id=last_log_batch_entry_id,
             )
-            async for log_batch in unary_stream(client.stub.AppGetLogs, request):
+            async for log_batch in client.stub.AppGetLogs.unary_stream(request):
                 if log_batch.entry_id:
                     # log_batch entry_id is empty for fd="server" messages from AppGetLogs
                     last_log_batch_entry_id = log_batch.entry_id
@@ -998,6 +1105,11 @@ class _App:
                 for log in log_batch.items:
                     if log.data:
                         yield log.data
+
+    @classmethod
+    def _reset_container_app(cls):
+        """Only used for tests."""
+        cls._container_app = None
 
 
 App = synchronize_api(_App)

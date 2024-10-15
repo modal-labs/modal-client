@@ -212,6 +212,7 @@ _SETTINGS = {
     "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),
     "function_runtime_debug": _Setting(False, transform=_to_boolean),  # For internal debugging use.
+    "runtime_perf_record": _Setting(False, transform=_to_boolean),  # For internal debugging use.
     "environment": _Setting(),
     "default_cloud": _Setting(None, transform=lambda x: x if x else None),
     "worker_id": _Setting(),  # For internal debugging use.
@@ -220,7 +221,7 @@ _SETTINGS = {
     "traceback": _Setting(False, transform=_to_boolean),
     "image_builder_version": _Setting(),
     "strict_parameters": _Setting(False, transform=_to_boolean),  # For internal/experimental use
-    "i6pn_enabled": _Setting(False, transform=_to_boolean),  # For internal/experimental use
+    "spawn_extended": _Setting(False, transform=_to_boolean),
 }
 
 

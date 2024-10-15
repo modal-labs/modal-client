@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2023
-import asyncio
 import inspect
 import textwrap
 import time
@@ -29,11 +28,10 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
 
-from modal._output import FunctionCreationStatus
-from modal_proto import api_grpc, api_pb2
+from modal_proto import api_pb2
+from modal_proto.modal_api_grpc import ModalClientModal
 
 from ._location import parse_cloud_provider
-from ._output import OutputManager
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
@@ -73,6 +71,7 @@ from .image import _Image
 from .mount import _get_client_mount, _Mount, get_auto_mounts
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import _get_environment_name, _Object, live_method, live_method_gen
+from .output import _get_output_manager
 from .parallel_map import (
     _for_each_async,
     _for_each_sync,
@@ -99,15 +98,22 @@ if TYPE_CHECKING:
 class _Invocation:
     """Internal client representation of a single-input call to a Modal Function or Generator"""
 
-    stub: api_grpc.ModalClientStub
+    stub: ModalClientModal
 
-    def __init__(self, stub: api_grpc.ModalClientStub, function_call_id: str, client: _Client):
+    def __init__(self, stub: ModalClientModal, function_call_id: str, client: _Client):
         self.stub = stub
         self.client = client  # Used by the deserializer.
         self.function_call_id = function_call_id  # TODO: remove and use only input_id
 
     @staticmethod
-    async def create(function: "_Function", args, kwargs, *, client: _Client) -> "_Invocation":
+    async def create(
+        function: "_Function",
+        args,
+        kwargs,
+        *,
+        client: _Client,
+        function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
+    ) -> "_Invocation":
         assert client.stub
         function_id = function._invocation_function_id()
         item = await _create_input(args, kwargs, client, method_name=function._use_method_name)
@@ -117,6 +123,7 @@ class _Invocation:
             parent_input_id=current_input_id() or "",
             function_call_type=api_pb2.FUNCTION_CALL_TYPE_UNARY,
             pipelined_inputs=[item],
+            function_call_invocation_type=function_call_invocation_type,
         )
         response = await retry_transient_errors(client.stub.FunctionMap, request)
         function_call_id = response.function_call_id
@@ -152,6 +159,7 @@ class _Invocation:
                 timeout=backend_timeout,
                 last_entry_id="0-0",
                 clear_on_success=clear_on_success,
+                requested_at=time.time(),
             )
             response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
@@ -268,20 +276,22 @@ class _FunctionSpec:
     secrets: Sequence[_Secret]
     network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem]
     volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]
-    gpu: GPU_T
+    gpus: Union[GPU_T, List[GPU_T]]  # TODO(irfansharif): Somehow assert that it's the first kind, in sandboxes
     cloud: Optional[str]
     cpu: Optional[float]
     memory: Optional[Union[int, Tuple[int, int]]]
     ephemeral_disk: Optional[int]
     scheduler_placement: Optional[SchedulerPlacement]
-    _experimental_gpus: Sequence[GPU_T]
 
 
 P = typing_extensions.ParamSpec("P")
-R = typing.TypeVar("R", covariant=True)
+ReturnType = typing.TypeVar("ReturnType", covariant=True)
+OriginalReturnType = typing.TypeVar(
+    "OriginalReturnType", covariant=True
+)  # differs from return type if ReturnType is coroutine
 
 
-class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
+class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
@@ -343,6 +353,8 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
             function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
         async def _load(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+            from ._output import FunctionCreationStatus  # Deferred import to avoid Rich dependency in container
+
             function_definition = api_pb2.Function(
                 function_name=full_name,
                 webhook_config=partial_function.webhook_config,
@@ -479,7 +491,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         secrets: Sequence[_Secret] = (),
         schedule: Optional[Schedule] = None,
         is_generator=False,
-        gpu: GPU_T = None,
+        gpu: Union[GPU_T, List[GPU_T]] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         mounts: Collection[_Mount] = (),
         network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
@@ -498,16 +510,18 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         cpu: Optional[float] = None,
         keep_warm: Optional[int] = None,  # keep_warm=True is equivalent to keep_warm=1
         cloud: Optional[str] = None,
-        _experimental_boost: None = None,
         scheduler_placement: Optional[SchedulerPlacement] = None,
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
         enable_memory_snapshot: bool = False,
         checkpointing_enabled: Optional[bool] = None,
         block_network: bool = False,
+        i6pn_enabled: bool = False,
+        group_size: Optional[int] = None,  # Experimental: Grouped functions
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
-        _experimental_gpus: Sequence[GPU_T] = [],
+        _experimental_buffer_containers: Optional[int] = None,
+        _experimental_proxy_ip: Optional[str] = None,
     ) -> None:
         """mdmd:hidden"""
         tag = info.get_tag()
@@ -573,7 +587,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         function_spec = _FunctionSpec(
             mounts=all_mounts,
             secrets=secrets,
-            gpu=gpu,
+            gpus=gpu,
             network_file_systems=network_file_systems,
             volumes=volumes,
             image=image,
@@ -582,7 +596,6 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
             memory=memory,
             ephemeral_disk=ephemeral_disk,
             scheduler_placement=scheduler_placement,
-            _experimental_gpus=_experimental_gpus,
         )
 
         if info.user_cls and not is_auto_snapshot:
@@ -609,7 +622,6 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                     is_builder_function=True,
                     is_auto_snapshot=True,
                     scheduler_placement=scheduler_placement,
-                    _experimental_gpus=_experimental_gpus,
                 )
                 image = _Image._from_args(
                     base_images={"base": image},
@@ -652,6 +664,14 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
 
         if container_idle_timeout is not None and container_idle_timeout <= 0:
             raise InvalidError("`container_idle_timeout` must be > 0")
+
+        if max_inputs is not None:
+            if not isinstance(max_inputs, int):
+                raise InvalidError(f"`max_inputs` must be an int, not {type(max_inputs).__name__}")
+            if max_inputs <= 0:
+                raise InvalidError("`max_inputs` must be positive")
+            if max_inputs > 1:
+                raise InvalidError("Only `max_inputs=1` is currently supported")
 
         # Validate volumes
         validated_volumes = validate_volumes(volumes)
@@ -711,6 +731,8 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            from ._output import FunctionCreationStatus  # Deferred import to avoid Rich dependency in container
+
             assert resolver.client and resolver.client.stub
             with FunctionCreationStatus(resolver, tag) as function_creation_status:
                 if is_generator:
@@ -773,6 +795,9 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                         raise Exception(f"Dependency {dep} isn't hydrated")
                     object_dependencies.append(api_pb2.ObjectDependency(object_id=dep.object_id))
 
+                function_data: Optional[api_pb2.FunctionData] = None
+                function_definition: Optional[api_pb2.Function] = None
+
                 # Create function remotely
                 function_definition = api_pb2.Function(
                     module_name=info.module_name or "",
@@ -784,9 +809,6 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                     function_serialized=function_serialized or b"",
                     class_serialized=class_serialized or b"",
                     function_type=function_type,
-                    resources=convert_fn_config_to_resources_config(
-                        cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
-                    ),
                     webhook_config=webhook_config,
                     shared_volume_mounts=network_file_system_mount_protos(
                         validated_network_file_systems, allow_cross_region_volumes
@@ -802,6 +824,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                     warm_pool_size=keep_warm or 0,
                     runtime=config.get("function_runtime"),
                     runtime_debug=config.get("function_runtime_debug"),
+                    runtime_perf_record=config.get("runtime_perf_record"),
                     app_name=app_name,
                     is_builder_function=is_builder_function,
                     target_concurrent_inputs=allow_concurrent_inputs or 0,
@@ -816,24 +839,73 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
                     block_network=block_network,
                     max_inputs=max_inputs or 0,
                     cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
-                    _experimental_boost=bool(_experimental_boost),
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
                     is_class=info.is_service_class(),
                     class_parameter_info=info.class_parameter_info(),
-                    _experimental_resources=[
-                        convert_fn_config_to_resources_config(
-                            cpu=cpu, memory=memory, gpu=_experimental_gpu, ephemeral_disk=ephemeral_disk
-                        )
-                        for _experimental_gpu in _experimental_gpus
-                    ],
-                    i6pn_enabled=config.get("i6pn_enabled"),
+                    i6pn_enabled=i6pn_enabled,
+                    schedule=schedule.proto_message if schedule is not None else None,
+                    _experimental_group_size=group_size or 0,  # Experimental: Grouped functions
                     _experimental_concurrent_cancellations=True,
+                    _experimental_buffer_containers=_experimental_buffer_containers or 0,
+                    _experimental_proxy_ip=_experimental_proxy_ip,
                 )
+
+                if isinstance(gpu, list):
+                    function_data = api_pb2.FunctionData(
+                        module_name=function_definition.module_name,
+                        function_name=function_definition.function_name,
+                        function_type=function_definition.function_type,
+                        warm_pool_size=function_definition.warm_pool_size,
+                        concurrency_limit=function_definition.concurrency_limit,
+                        task_idle_timeout_secs=function_definition.task_idle_timeout_secs,
+                        worker_id=function_definition.worker_id,
+                        timeout_secs=function_definition.timeout_secs,
+                        web_url=function_definition.web_url,
+                        web_url_info=function_definition.web_url_info,
+                        webhook_config=function_definition.webhook_config,
+                        custom_domain_info=function_definition.custom_domain_info,
+                        schedule=schedule.proto_message if schedule is not None else None,
+                        is_class=function_definition.is_class,
+                        class_parameter_info=function_definition.class_parameter_info,
+                        is_method=function_definition.is_method,
+                        use_function_id=function_definition.use_function_id,
+                        use_method_name=function_definition.use_method_name,
+                        _experimental_group_size=function_definition._experimental_group_size,
+                    )
+
+                    ranked_functions = []
+                    for rank, _gpu in enumerate(gpu):
+                        function_definition_copy = api_pb2.Function()
+                        function_definition_copy.CopyFrom(function_definition)
+
+                        function_definition_copy.resources.CopyFrom(
+                            convert_fn_config_to_resources_config(
+                                cpu=cpu, memory=memory, gpu=_gpu, ephemeral_disk=ephemeral_disk
+                            ),
+                        )
+                        ranked_function = api_pb2.FunctionData.RankedFunction(
+                            rank=rank,
+                            function=function_definition_copy,
+                        )
+                        ranked_functions.append(ranked_function)
+                    function_data.ranked_functions.extend(ranked_functions)
+                    function_definition = None  # function_definition is not used in this case
+                else:
+                    # TODO(irfansharif): Assert on this specific type once
+                    # we get rid of python 3.8.
+                    #   assert isinstance(gpu, GPU_T)  # includes the case where gpu==None case
+                    function_definition.resources.CopyFrom(
+                        convert_fn_config_to_resources_config(
+                            cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
+                        ),  # type: ignore
+                    )
+
                 assert resolver.app_id
+                assert (function_definition is None) != (function_data is None)  # xor
                 request = api_pb2.FunctionCreateRequest(
                     app_id=resolver.app_id,
                     function=function_definition,
-                    schedule=schedule.proto_message if schedule is not None else None,
+                    function_data=function_data,
                     existing_function_id=existing_object_id or "",
                     defer_updates=True,
                 )
@@ -866,19 +938,20 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         obj._is_method = False
         obj._spec = function_spec  # needed for modal shell
 
-        # Used to check whether we should rebuild an image using run_function
-        # Plaintext source and arg definition for the function, so it's part of the image
-        # hash. We can't use the cloudpickle hash because it's not very stable.
+        # Used to check whether we should rebuild a modal.Image which uses `run_function`.
+        gpus: List[GPU_T] = gpu if isinstance(gpu, list) else [gpu]
         obj._build_args = dict(  # See get_build_def
             secrets=repr(secrets),
-            gpu_config=repr(parse_gpu_config(gpu)),
+            gpu_config=repr([parse_gpu_config(_gpu) for _gpu in gpus]),
             mounts=repr(mounts),
             network_file_systems=repr(network_file_systems),
         )
-        if _experimental_gpus:
-            obj._build_args["experimental_gpus"] = repr(
-                [parse_gpu_config(_experimental_gpu) for _experimental_gpu in _experimental_gpus]
-            )
+        # these key are excluded if empty to avoid rebuilds on client upgrade
+        if volumes:
+            obj._build_args["volumes"] = repr(volumes)
+        if cloud or scheduler_placement:
+            obj._build_args["cloud"] = repr(cloud)
+            obj._build_args["scheduler_placement"] = repr(scheduler_placement)
 
         return obj
 
@@ -1020,7 +1093,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Ref({app_name})"
-        return cls._from_loader(_load_remote, rep, is_another_app=True)
+        return cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
     async def lookup(
@@ -1077,6 +1150,8 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
 
     def get_build_def(self) -> str:
         """mdmd:hidden"""
+        # Plaintext source and arg definition for the function, so it's part of the image
+        # hash. We can't use the cloudpickle hash because it's not very stable.
         assert hasattr(self, "_raw_f") and hasattr(self, "_build_args")
         return f"{inspect.getsource(self._raw_f)}\n{repr(self._build_args)}"
 
@@ -1087,9 +1162,6 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         self._progress = None
         self._is_generator = None
         self._web_url = None
-        self._mute_cancellation = (
-            False  # set when a user terminates the app intentionally, to prevent useless traceback spam
-        )
         self._function_name = None
         self._info = None
         self._all_mounts = []  # used for file watching
@@ -1112,7 +1184,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
-        assert self._function_name
+        assert self._function_name, f"Function name must be set before metadata can be retrieved for {self}"
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
             function_type=(
@@ -1128,8 +1200,13 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
             definition_id=self._definition_id,
         )
 
-    def _set_mute_cancellation(self, value: bool = True):
-        self._mute_cancellation = value
+    def _check_no_web_url(self, fn_name: str):
+        if self._web_url:
+            raise InvalidError(
+                f"A webhook function cannot be invoked for remote execution with `.{fn_name}`. "
+                f"Invoke this function via its web url '{self._web_url}' "
+                + f"or call it locally: {self._function_name}.local()"
+            )
 
     @property
     def web_url(self) -> str:
@@ -1160,16 +1237,12 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         _SynchronizedQueue is used instead of asyncio.Queue so that the main thread can put
         items in the queue safely.
         """
-        if self._web_url:
-            raise InvalidError(
-                "A web endpoint function cannot be directly invoked for parallel remote execution. "
-                f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
-            )
+        self._check_no_web_url("map")
         if self._is_generator:
             raise InvalidError("A generator function cannot be called with `.map(...)`.")
 
         assert self._function_name
-        if output_mgr := OutputManager.get():
+        if output_mgr := _get_output_manager():
             count_update_callback = output_mgr.function_progress_callback(self._function_name, total=None)
         else:
             count_update_callback = None
@@ -1184,44 +1257,58 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         ):
             yield item
 
-    async def _call_function(self, args, kwargs) -> R:
-        invocation = await _Invocation.create(self, args, kwargs, client=self._client)
-        try:
-            return await invocation.run_function()
-        except asyncio.CancelledError:
-            # this can happen if the user terminates a program, triggering a cancellation cascade
-            if not self._mute_cancellation:
-                raise
-            # TODO (elias): remove _mute_cancellation hack
-            return  # type: ignore
+    async def _call_function(self, args, kwargs) -> ReturnType:
+        invocation = await _Invocation.create(
+            self,
+            args,
+            kwargs,
+            client=self._client,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY,
+        )
+        return await invocation.run_function()
 
     async def _call_function_nowait(self, args, kwargs) -> _Invocation:
-        return await _Invocation.create(self, args, kwargs, client=self._client)
+        # This feature flag allows users to put a large number of inputs
+        if config.get("spawn_extended"):
+            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
+        else:
+            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY
+        return await _Invocation.create(
+            self, args, kwargs, client=self._client, function_call_invocation_type=function_call_invocation_type
+        )
 
     @warn_if_generator_is_not_consumed()
     @live_method_gen
     @synchronizer.no_input_translation
     async def _call_generator(self, args, kwargs):
-        invocation = await _Invocation.create(self, args, kwargs, client=self._client)
+        invocation = await _Invocation.create(
+            self,
+            args,
+            kwargs,
+            client=self._client,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY,
+        )
         async for res in invocation.run_generator():
             yield res
 
     @synchronizer.no_io_translation
     async def _call_generator_nowait(self, args, kwargs):
-        return await _Invocation.create(self, args, kwargs, client=self._client)
+        return await _Invocation.create(
+            self,
+            args,
+            kwargs,
+            client=self._client,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY,
+        )
 
     @synchronizer.no_io_translation
     @live_method
-    async def remote(self, *args: P.args, **kwargs: P.kwargs) -> R:
+    async def remote(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
         """
         # TODO: Generics/TypeVars
-        if self._web_url:
-            raise InvalidError(
-                "A web endpoint function cannot be invoked for remote execution with `.remote`. "
-                f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
-            )
+        self._check_no_web_url("remote")
         if self._is_generator:
             raise InvalidError(
                 "A generator function cannot be called with `.remote(...)`. Use `.remote_gen(...)` instead."
@@ -1236,11 +1323,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         Calls the generator remotely, executing it with the given arguments and returning the execution's result.
         """
         # TODO: Generics/TypeVars
-        if self._web_url:
-            raise InvalidError(
-                "A web endpoint function cannot be invoked for remote execution with `.remote`. "
-                f"Invoke this function via its web url '{self._web_url}' or call it locally: {self._function_name}()."
-            )
+        self._check_no_web_url("remote_gen")
 
         if not self._is_generator:
             raise InvalidError(
@@ -1248,15 +1331,6 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
             )
         async for item in self._call_generator(args, kwargs):  # type: ignore
             yield item
-
-    @synchronizer.no_io_translation
-    @live_method
-    async def shell(self, *args, **kwargs) -> None:
-        if self._is_generator:
-            async for item in self._call_generator(args, kwargs):
-                pass
-        else:
-            await self._call_function(args, kwargs)
 
     def _get_info(self) -> FunctionInfo:
         if not self._info:
@@ -1272,7 +1346,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
             return self._obj
 
     @synchronizer.nowrap
-    def local(self, *args: P.args, **kwargs: P.kwargs) -> R:
+    def local(self, *args: P.args, **kwargs: P.kwargs) -> OriginalReturnType:
         """
         Calls the function locally, executing it with the given arguments and returning the execution's result.
 
@@ -1320,7 +1394,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
 
     @synchronizer.no_input_translation
     @live_method
-    async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> Optional["_FunctionCall[R]"]:
+    async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> "_FunctionCall[ReturnType]":
         """Calls the function with the given arguments, without waiting for the results.
 
         Returns a `modal.functions.FunctionCall` object, that can later be polled or
@@ -1330,12 +1404,15 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
         *Note:* `.spawn()` on a modal generator function does call and execute the generator, but does not currently
         return a function handle for polling the result.
         """
+        self._check_no_web_url("spawn")
         if self._is_generator:
-            await self._call_generator_nowait(args, kwargs)
-            return None
+            invocation = await self._call_generator_nowait(args, kwargs)
+        else:
+            invocation = await self._call_function_nowait(args, kwargs)
 
-        invocation = await self._call_function_nowait(args, kwargs)
-        return _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
+        fc = _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
+        fc._is_generator = self._is_generator if self._is_generator else False
+        return fc
 
     def get_raw_f(self) -> Callable[..., Any]:
         """Return the inner Python object wrapped by this Modal Function."""
@@ -1364,7 +1441,7 @@ class _Function(typing.Generic[P, R], _Object, type_prefix="fu"):
 Function = synchronize_api(_Function)
 
 
-class _FunctionCall(typing.Generic[R], _Object, type_prefix="fc"):
+class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
     """A reference to an executed function call.
 
     Constructed using `.spawn(...)` on a Modal function with the same
@@ -1375,11 +1452,13 @@ class _FunctionCall(typing.Generic[R], _Object, type_prefix="fc"):
     Conceptually similar to a Future/Promise/AsyncResult in other contexts and languages.
     """
 
+    _is_generator: bool = False
+
     def _invocation(self):
         assert self._client.stub
         return _Invocation(self._client.stub, self.object_id, self._client)
 
-    async def get(self, timeout: Optional[float] = None) -> R:
+    async def get(self, timeout: Optional[float] = None) -> ReturnType:
         """Get the result of the function call.
 
         This function waits indefinitely by default. It takes an optional
@@ -1388,7 +1467,21 @@ class _FunctionCall(typing.Generic[R], _Object, type_prefix="fc"):
 
         The returned coroutine is not cancellation-safe.
         """
+
+        if self._is_generator:
+            raise Exception("Cannot get the result of a generator function call. Use `get_gen` instead.")
+
         return await self._invocation().poll_function(timeout=timeout)
+
+    async def get_gen(self) -> AsyncGenerator[Any, None]:
+        """
+        Calls the generator remotely, executing it with the given arguments and returning the execution's result.
+        """
+        if not self._is_generator:
+            raise Exception("Cannot iterate over a non-generator function call. Use `get` instead.")
+
+        async for res in self._invocation().run_generator():
+            yield res
 
     async def get_call_graph(self) -> List[InputInfo]:
         """Returns a structure representing the call graph from a given root
@@ -1419,17 +1512,21 @@ class _FunctionCall(typing.Generic[R], _Object, type_prefix="fc"):
         await retry_transient_errors(self._client.stub.FunctionCallCancel, request)
 
     @staticmethod
-    async def from_id(function_call_id: str, client: Optional[_Client] = None) -> "_FunctionCall":
+    async def from_id(
+        function_call_id: str, client: Optional[_Client] = None, is_generator: bool = False
+    ) -> "_FunctionCall":
         if client is None:
             client = await _Client.from_env()
 
-        return _FunctionCall._new_hydrated(function_call_id, client, None)
+        fc = _FunctionCall._new_hydrated(function_call_id, client, None)
+        fc._is_generator = is_generator
+        return fc
 
 
 FunctionCall = synchronize_api(_FunctionCall)
 
 
-async def _gather(*function_calls: _FunctionCall):
+async def _gather(*function_calls: _FunctionCall[ReturnType]) -> typing.Sequence[ReturnType]:
     """Wait until all Modal function calls have results before returning
 
     Accepts a variable number of FunctionCall objects as returned by `Function.spawn()`.

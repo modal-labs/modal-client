@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from synchronicity.exceptions import UserCodeException
 
 import modal
-from modal import App, Image, Mount, NetworkFileSystem, Proxy, batched, web_endpoint
+from modal import App, Image, Mount, NetworkFileSystem, Proxy, asgi_app, batched, web_endpoint
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
 from modal.exception import ExecutionError, InvalidError
@@ -261,6 +261,9 @@ def test_function_future(client, servicer):
 
         assert future.object_id not in servicer.cleared_function_calls
 
+        with pytest.raises(Exception, match="Cannot iterate"):
+            next(future.get_gen())
+
 
 @pytest.mark.asyncio
 async def test_function_future_async(client, servicer):
@@ -365,9 +368,16 @@ async def test_generator_async(client, servicer):
 async def test_generator_future(client, servicer):
     app = App()
 
-    later_gen_modal = app.function()(later_gen)
+    servicer.function_body(later_gen)
+    later_modal = app.function()(later_gen)
     with app.run(client=client):
-        assert later_gen_modal.spawn() is None  # until we have a nice interface for polling generator futures
+        future = later_modal.spawn()
+        assert isinstance(future, FunctionCall)
+
+        with pytest.raises(Exception, match="Cannot get"):
+            future.get()
+
+        assert next(future.get_gen()) == "foo"
 
 
 def gen_with_arg(i):
@@ -530,6 +540,72 @@ def test_from_id(client, servicer):
     app = App()
 
     @app.function(serialized=True)
+    def foo():
+        pass
+
+    deploy_app(app, "dummy", client=client)
+
+    function_id = foo.object_id
+    assert function_id
+
+    function_call = foo.spawn()
+    assert function_call.object_id
+    # Used in a few examples to construct FunctionCall objects
+    rehydrated_function_call = FunctionCall.from_id(function_call.object_id, client)
+    assert rehydrated_function_call.object_id == function_call.object_id
+
+
+def test_local_execution_on_web_endpoint(client, servicer):
+    app = App()
+
+    @app.function(serialized=True)
+    @web_endpoint()
+    def foo(x: str):
+        return f"{x}!"
+
+    deploy_app(app, "dummy", client=client)
+
+    function_id = foo.object_id
+    assert function_id
+    assert foo.web_url
+
+    res = foo.local("hello")
+    assert res == "hello!"
+
+
+def test_local_execution_on_asgi_app(client, servicer):
+    from fastapi import FastAPI
+
+    app = App()
+
+    @app.function(serialized=True)
+    @asgi_app()
+    def foo():
+        from fastapi import FastAPI
+
+        web_app = FastAPI()
+
+        @web_app.get("/bar")
+        def bar(arg="world"):
+            return {"hello": arg}
+
+        return web_app
+
+    deploy_app(app, "dummy", client=client)
+
+    function_id = foo.object_id
+    assert function_id
+    assert foo.web_url
+
+    res = foo.local()
+    assert type(res) == FastAPI
+
+
+@pytest.mark.parametrize("remote_executor", ["remote", "remote_gen", "spawn"])
+def test_invalid_remote_executor_on_web_endpoint(client, servicer, remote_executor):
+    app = App()
+
+    @app.function(serialized=True)
     @web_endpoint()
     def foo():
         pass
@@ -540,11 +616,67 @@ def test_from_id(client, servicer):
     assert function_id
     assert foo.web_url
 
-    function_call = foo.spawn()
-    assert function_call.object_id
-    # Used in a few examples to construct FunctionCall objects
-    rehydrated_function_call = FunctionCall.from_id(function_call.object_id, client)
-    assert rehydrated_function_call.object_id == function_call.object_id
+    with pytest.raises(InvalidError) as excinfo:
+        f = getattr(foo, remote_executor)
+        res = f()
+        if inspect.isgenerator(res):
+            next(res)
+
+    assert "webhook" in str(excinfo.value) and remote_executor in str(excinfo.value)
+
+
+@pytest.mark.parametrize("remote_executor", ["remote", "remote_gen", "spawn"])
+def test_invalid_remote_executor_on_asgi_app(client, servicer, remote_executor):
+    app = App()
+
+    @app.function(serialized=True)
+    @asgi_app()
+    def foo():
+        from fastapi import FastAPI
+
+        web_app = FastAPI()
+
+        @web_app.get("/foo")
+        def foo(arg="world"):
+            return {"hello": arg}
+
+        return web_app
+
+    deploy_app(app, "dummy", client=client)
+
+    function_id = foo.object_id
+    assert function_id
+    assert foo.web_url
+
+    with pytest.raises(InvalidError) as excinfo:
+        f = getattr(foo, remote_executor)
+        res = f()
+        if inspect.isgenerator(res):
+            next(res)
+
+    assert "webhook" in str(excinfo.value) and remote_executor in str(excinfo.value)
+
+
+@pytest.mark.parametrize("is_generator", [False, True])
+def test_from_id_iter_gen(client, servicer, is_generator):
+    app = App()
+
+    f = later_gen if is_generator else later
+
+    servicer.function_body(f)
+    later_modal = app.function()(f)
+    with app.run(client=client):
+        future = later_modal.spawn()
+        assert isinstance(future, FunctionCall)
+
+    assert future.object_id
+    rehydrated_function_call = FunctionCall.from_id(future.object_id, client, is_generator=is_generator)
+    assert rehydrated_function_call.object_id == future.object_id
+
+    if is_generator:
+        assert next(rehydrated_function_call.get_gen()) == "foo"
+    else:
+        assert rehydrated_function_call.get() == "hello"
 
 
 lc_app = App()
@@ -840,3 +972,24 @@ def test_batch_function_invalid_error():
         @batched(max_batch_size=1, wait_ms=1)
         def g(x=1):
             return [x_i**2 for x_i in x]
+
+
+@pytest.mark.parametrize("feature_flag", [True, False, None])
+def test_spawn_extended_feature_flag(client, servicer, monkeypatch, feature_flag):
+    app = App()
+    dummy_modal = app.function()(dummy)
+
+    if feature_flag is not None:
+        monkeypatch.setenv("MODAL_SPAWN_EXTENDED", str(feature_flag))
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            dummy_modal.spawn(1, 2)
+
+    # Verify the correct invocation type is set based on the feature flag
+    function_map = ctx.pop_request("FunctionMap")
+    if feature_flag:
+        expected_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
+    else:
+        expected_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY
+    assert function_map.function_call_invocation_type == expected_invocation_type

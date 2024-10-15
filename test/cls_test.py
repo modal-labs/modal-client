@@ -1004,3 +1004,22 @@ def test_unsupported_type_parameters_raise_errors():
         @app.cls(serialized=True)
         class C:
             c: float = modal.parameter()
+
+
+def test_unsupported_function_decorators_on_methods():
+    with pytest.raises(InvalidError, match="cannot be used on class methods"):
+
+        @app.cls(serialized=True)
+        class M:
+            @app.function(serialized=True)
+            @modal.web_endpoint()
+            def f(self):
+                pass
+
+    with pytest.raises(InvalidError, match="cannot be used on class methods"):
+
+        @app.cls(serialized=True)
+        class D:
+            @app.function(serialized=True)
+            def f(self):
+                pass

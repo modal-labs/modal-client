@@ -42,9 +42,9 @@ from ._serialization import deserialize, deserialize_proto_params
 from ._utils.async_utils import TaskContext, synchronizer
 from ._utils.function_utils import (
     LocalFunctionError,
+    callable_has_non_self_params,
     is_async as get_is_async,
     is_global_object,
-    method_has_params,
 )
 from .app import App, _App
 from .client import Client, _Client
@@ -52,6 +52,7 @@ from .cls import Cls, Obj
 from .config import logger
 from .exception import ExecutionError, InputCancellation, InvalidError, deprecation_warning
 from .execution_context import _set_current_context_ids
+from .experimental import GroupedFunction
 from .functions import Function, _Function
 from .partial_function import (
     _find_callables_for_obj,
@@ -150,13 +151,14 @@ class ImportedFunction(Service):
                 )
             }
 
-        web_callable = construct_webhook_callable(
+        web_callable, lifespan_manager = construct_webhook_callable(
             self._user_defined_callable, fun_def.webhook_config, container_io_manager
         )
 
         return {
             "": FinalizedFunction(
                 callable=web_callable,
+                lifespan_manager=lifespan_manager,
                 is_async=True,
                 is_generator=True,
                 data_format=api_pb2.DATA_FORMAT_ASGI,
@@ -196,9 +198,12 @@ class ImportedClass(Service):
                     data_format=api_pb2.DATA_FORMAT_PICKLE,
                 )
             else:
-                web_callable = construct_webhook_callable(bound_func, webhook_config, container_io_manager)
+                web_callable, lifespan_manager = construct_webhook_callable(
+                    bound_func, webhook_config, container_io_manager
+                )
                 finalized_function = FinalizedFunction(
                     callable=web_callable,
+                    lifespan_manager=lifespan_manager,
                     is_async=True,
                     is_generator=True,
                     data_format=api_pb2.DATA_FORMAT_ASGI,
@@ -269,13 +274,21 @@ class UserCodeEventLoop:
 
     def __enter__(self):
         self.loop = asyncio.new_event_loop()
+        self.tasks = []
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.loop.run_until_complete(self.loop.shutdown_asyncgens())
         if sys.version_info[:2] >= (3, 9):
             self.loop.run_until_complete(self.loop.shutdown_default_executor())  # Introduced in Python 3.9
+
+        for task in self.tasks:
+            task.cancel()
+
         self.loop.close()
+
+    def create_task(self, coro):
+        self.tasks.append(self.loop.create_task(coro))
 
     def run(self, coro):
         task = asyncio.ensure_future(coro, loop=self.loop)
@@ -439,7 +452,7 @@ def call_function(
                         "This shuts down the container, causing concurrently running inputs to be "
                         "rescheduled in other containers."
                     )
-                    os.kill(os.getpid(), signal.SIGINT)  # raises KeyboardInterrupt in main thread
+                    os.kill(os.getpid(), signal.SIGINT)
 
             async def run_concurrent_inputs():
                 # all run_input coroutines will have completed by the time we leave the execution context
@@ -531,6 +544,8 @@ def import_single_function_service(
             # This is a function
             cls = None
             f = getattr(module, qual_name)
+            if isinstance(f, GroupedFunction):
+                f = f.get_underlying_function()
             if isinstance(f, Function):
                 function = synchronizer._translate_in(f)
                 user_defined_callable = function.get_raw_f()
@@ -684,7 +699,7 @@ def call_lifecycle_functions(
         for func in funcs:
             # We are deprecating parameterized exit methods but want to gracefully handle old code.
             # We can remove this once the deprecation in the actual @exit decorator is enforced.
-            args = (None, None, None) if method_has_params(func) else ()
+            args = (None, None, None) if callable_has_non_self_params(func) else ()
             # in case func is non-async, it's executed here and sigint will by default
             # interrupt it using a KeyboardInterrupt exception
             res = func(*args)
@@ -829,9 +844,13 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         with container_io_manager.handle_user_exception():
             finalized_functions = service.get_finalized_functions(function_def, container_io_manager)
-
         # Execute the function.
         try:
+            for finalized_function in finalized_functions.values():
+                if finalized_function.lifespan_manager:
+                    event_loop.create_task(finalized_function.lifespan_manager.background_task())
+                    with container_io_manager.handle_user_exception():
+                        event_loop.run(finalized_function.lifespan_manager.lifespan_startup())
             call_function(
                 event_loop,
                 container_io_manager,
@@ -847,10 +866,18 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             usr1_handler = signal.signal(signal.SIGUSR1, signal.SIG_IGN)
 
             try:
-                # Identify "exit" methods and run them.
-                if service.user_cls_instance is not None and not is_auto_snapshot:
-                    exit_methods = _find_callables_for_obj(service.user_cls_instance, _PartialFunctionFlags.EXIT)
-                    call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
+                try:
+                    # run lifespan shutdown for asgi apps
+                    for finalized_function in finalized_functions.values():
+                        if finalized_function.lifespan_manager:
+                            with container_io_manager.handle_user_exception():
+                                event_loop.run(finalized_function.lifespan_manager.lifespan_shutdown())
+                finally:
+                    # Identify "exit" methods and run them.
+                    # want to make sure this is called even if the lifespan manager fails
+                    if service.user_cls_instance is not None and not is_auto_snapshot:
+                        exit_methods = _find_callables_for_obj(service.user_cls_instance, _PartialFunctionFlags.EXIT)
+                        call_lifecycle_functions(event_loop, container_io_manager, list(exit_methods.values()))
 
                 # Finally, commit on exit to catch uncommitted volume changes and surface background
                 # commit errors.

@@ -8,6 +8,7 @@ import sys
 import toml
 
 import modal
+from modal._utils.async_utils import synchronize_api
 from modal.config import Config, _lookup_workspace, config
 from modal.exception import InvalidError
 
@@ -134,7 +135,7 @@ def test_config_env_override_arbitrary_env():
 
 @pytest.mark.asyncio
 async def test_workspace_lookup(servicer, server_url_env):
-    resp = await _lookup_workspace(servicer.client_addr, "ak-abc", "as-xyz")
+    resp = await synchronize_api(_lookup_workspace).aio(servicer.client_addr, "ak-abc", "as-xyz")
     assert resp.username == "test-username"
 
 

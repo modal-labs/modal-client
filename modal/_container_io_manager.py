@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2024
 import asyncio
+import importlib.metadata
 import inspect
 import json
 import math
@@ -11,25 +12,41 @@ import traceback
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, AsyncGenerator, AsyncIterator, Callable, ClassVar, Dict, List, Optional, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncGenerator,
+    AsyncIterator,
+    Callable,
+    ClassVar,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+)
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 from grpclib import Status
 from synchronicity.async_wrap import asynccontextmanager
 
+import modal_proto.api_pb2
 from modal_proto import api_pb2
 
 from ._serialization import deserialize, serialize, serialize_data_format
-from ._traceback import extract_traceback
+from ._traceback import extract_traceback, print_exception
 from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from ._utils.function_utils import _stream_function_call_data
 from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
+from ._utils.package_utils import parse_major_minor_version
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .config import config, logger
-from .exception import InputCancellation, InvalidError
+from .exception import ClientClosed, InputCancellation, InvalidError, SerializationError
 from .running_app import RunningApp
+
+if TYPE_CHECKING:
+    import modal._asgi
 
 DYNAMIC_CONCURRENCY_INTERVAL_SECS = 3
 DYNAMIC_CONCURRENCY_TIMEOUT_SECS = 10
@@ -52,6 +69,7 @@ class FinalizedFunction:
     is_async: bool
     is_generator: bool
     data_format: int  # api_pb2.DataFormat
+    lifespan_manager: Optional["modal._asgi.LifespanManager"] = None
 
 
 class IOContext:
@@ -88,7 +106,7 @@ class IOContext:
         is_batched: bool,
     ) -> "IOContext":
         assert len(inputs) >= 1 if is_batched else len(inputs) == 1
-        input_ids, function_call_ids, inputs = zip(*inputs)
+        input_ids, function_call_ids, function_inputs = zip(*inputs)
 
         async def _populate_input_blobs(client: _Client, input: api_pb2.FunctionInput) -> api_pb2.FunctionInput:
             # If we got a pointer to a blob, download it from S3.
@@ -100,13 +118,13 @@ class IOContext:
 
             return input
 
-        inputs = await asyncio.gather(*[_populate_input_blobs(client, input) for input in inputs])
+        function_inputs = await asyncio.gather(*[_populate_input_blobs(client, input) for input in function_inputs])
         # check every input in batch executes the same function
-        method_name = inputs[0].method_name
-        assert all(method_name == input.method_name for input in inputs)
+        method_name = function_inputs[0].method_name
+        assert all(method_name == input.method_name for input in function_inputs)
         finalized_function = finalized_functions[method_name]
-        # TODO(cathy) Performance decrease if we deserialize inputs later
-        deserialized_args = [deserialize(input.args, client) if input.args else ((), {}) for input in inputs]
+        # TODO(cathy) Performance decrease if we deserialize function_inputs later
+        deserialized_args = [deserialize(input.args, client) if input.args else ((), {}) for input in function_inputs]
         return cls(input_ids, function_call_ids, finalized_function, deserialized_args, is_batched)
 
     def set_cancel_callback(self, cb: Callable[[], None]):
@@ -205,7 +223,8 @@ class InputSlots:
 
     def _wake_waiter(self) -> None:
         if self.active < self.value and self.waiter is not None:
-            self.waiter.set_result(None)
+            if not self.waiter.cancelled():  # could have been cancelled during interpreter shutdown
+                self.waiter.set_result(None)
             self.waiter = None
             self.active += 1
 
@@ -251,7 +270,7 @@ class _ContainerIOManager:
 
     _environment_name: str
     _heartbeat_loop: Optional[asyncio.Task]
-    _heartbeat_condition: asyncio.Condition
+    _heartbeat_condition: Optional[asyncio.Condition]
     _waiting_for_memory_snapshot: bool
 
     _is_interactivity_enabled: bool
@@ -277,7 +296,7 @@ class _ContainerIOManager:
 
         if container_args.function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
             target_concurrency = 1
-            max_concurrency = 0
+            max_concurrency = 1
         else:
             target_concurrency = container_args.function_def.target_concurrent_inputs or 1
             max_concurrency = container_args.function_def.max_concurrent_inputs or target_concurrency
@@ -285,11 +304,12 @@ class _ContainerIOManager:
         self._target_concurrency = target_concurrency
         self._max_concurrency = max_concurrency
         self._concurrency_loop = None
+        self._stop_concurrency_loop = False
         self._input_slots = InputSlots(target_concurrency)
 
         self._environment_name = container_args.environment_name
         self._heartbeat_loop = None
-        self._heartbeat_condition = asyncio.Condition()
+        self._heartbeat_condition = None
         self._waiting_for_memory_snapshot = False
 
         self._is_interactivity_enabled = False
@@ -297,6 +317,14 @@ class _ContainerIOManager:
 
         self._client = client
         assert isinstance(self._client, _Client)
+
+    @property
+    def heartbeat_condition(self) -> asyncio.Condition:
+        # ensures that heartbeat condition isn't assigned to an event loop until it's used for the first time
+        # (On Python 3.9 and below it would be assigned to the current thread's event loop on creation)
+        if self._heartbeat_condition is None:
+            self._heartbeat_condition = asyncio.Condition()
+        return self._heartbeat_condition
 
     def __new__(cls, container_args: api_pb2.ContainerArguments, client: _Client) -> "_ContainerIOManager":
         cls._singleton = super().__new__(cls)
@@ -320,6 +348,9 @@ class _ContainerIOManager:
                     # two subsequent cancellations on the same task at the moment
                     await asyncio.sleep(1.0)
                     continue
+            except ClientClosed:
+                logger.info("Stopping heartbeat loop due to client shutdown")
+                break
             except Exception as exc:
                 # don't stop heartbeat loop if there are transient exceptions!
                 time_elapsed = time.monotonic() - t0
@@ -340,13 +371,13 @@ class _ContainerIOManager:
         if self.current_input_started_at is not None:
             request.current_input_started_at = self.current_input_started_at
 
-        async with self._heartbeat_condition:
+        async with self.heartbeat_condition:
             # Continuously wait until `waiting_for_memory_snapshot` is false.
             # TODO(matt): Verify that a `while` is necessary over an `if`. Spurious
             # wakeups could allow execution to continue despite `_waiting_for_memory_snapshot`
             # being true.
             while self._waiting_for_memory_snapshot:
-                await self._heartbeat_condition.wait()
+                await self.heartbeat_condition.wait()
 
             # TODO(erikbern): capture exceptions?
             response = await retry_transient_errors(
@@ -356,8 +387,13 @@ class _ContainerIOManager:
         if response.HasField("cancel_input_event"):
             # Pause processing of the current input by signaling self a SIGUSR1.
             input_ids_to_cancel = response.cancel_input_event.input_ids
+            if response.cancel_input_event.terminate_containers:
+                # This should typically never happen since the task should have been killed
+                logger.warning("Force-terminating container due to input cancellation")
+                os.kill(os.getpid(), signal.SIGINT)
+
             if input_ids_to_cancel:
-                if self._target_concurrency > 1:
+                if self._max_concurrency > 1:
                     for input_id in input_ids_to_cancel:
                         if input_id in self.current_inputs:
                             self.current_inputs[input_id].cancel()
@@ -402,7 +438,7 @@ class _ContainerIOManager:
 
     async def _dynamic_concurrency_loop(self):
         logger.debug(f"Starting dynamic concurrency loop for task {self.task_id}")
-        while 1:
+        while not self._stop_concurrency_loop:
             try:
                 request = api_pb2.FunctionGetDynamicConcurrencyRequest(
                     function_id=self.function_id,
@@ -414,9 +450,9 @@ class _ContainerIOManager:
                     request,
                     attempt_timeout=DYNAMIC_CONCURRENCY_TIMEOUT_SECS,
                 )
-                if resp.concurrency != self._input_slots.value:
+                if resp.concurrency != self._input_slots.value and not self._stop_concurrency_loop:
                     logger.debug(f"Dynamic concurrency set from {self._input_slots.value} to {resp.concurrency}")
-                self._input_slots.set_value(resp.concurrency)
+                    self._input_slots.set_value(resp.concurrency)
 
             except Exception as exc:
                 logger.debug(f"Failed to get dynamic concurrency for task {self.task_id}, {exc}")
@@ -441,9 +477,10 @@ class _ContainerIOManager:
             environment_name=self._environment_name,
             tag_to_object_id=tag_to_object_id,
             object_handle_metadata=object_handle_metadata,
+            client=self._client,
         )
 
-    async def get_serialized_function(self) -> Tuple[Optional[Any], Callable[..., Any]]:
+    async def get_serialized_function(self) -> Tuple[Optional[Any], Optional[Callable[..., Any]]]:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self._client.stub.FunctionGetSerialized(request)
@@ -642,7 +679,11 @@ class _ContainerIOManager:
 
     @synchronizer.no_io_translation
     async def _push_outputs(
-        self, io_context: IOContext, started_at: float, data_format: int, results: List[api_pb2.GenericResult]
+        self,
+        io_context: IOContext,
+        started_at: float,
+        data_format: "modal_proto.api_pb2.DataFormat.ValueType",
+        results: List[api_pb2.GenericResult],
     ) -> None:
         output_created_at = time.time()
         outputs = [
@@ -662,13 +703,14 @@ class _ContainerIOManager:
             max_retries=None,  # Retry indefinitely, trying every 1s.
         )
 
-    def serialize_exception(self, exc: BaseException) -> Optional[bytes]:
+    def serialize_exception(self, exc: BaseException) -> bytes:
         try:
             return self.serialize(exc)
         except Exception as serialization_exc:
-            logger.info(f"Failed to serialize exception {exc}: {serialization_exc}")
             # We can't always serialize exceptions.
-            return None
+            err = f"Failed to serialize exception {exc} of type {type(exc)}: {serialization_exc}"
+            logger.info(err)
+            return self.serialize(SerializationError(err))
 
     def serialize_traceback(self, exc: BaseException) -> Tuple[Optional[bytes], Optional[bytes]]:
         serialized_tb, tb_line_cache = None, None
@@ -696,8 +738,12 @@ class _ContainerIOManager:
             # The status of the input should have been handled externally already in that case
             raise
         except BaseException as exc:
+            if isinstance(exc, ImportError):
+                # Catches errors raised by global scope imports
+                check_fastapi_pydantic_compatibility(exc)
+
             # Since this is on a different thread, sys.exc_info() can't find the exception in the stack.
-            traceback.print_exception(type(exc), exc, exc.__traceback__)
+            print_exception(type(exc), exc, exc.__traceback__)
 
             serialized_tb, tb_line_cache = self.serialize_traceback(exc)
 
@@ -706,8 +752,8 @@ class _ContainerIOManager:
                 data=self.serialize_exception(exc),
                 exception=repr(exc),
                 traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
-                serialized_tb=serialized_tb,
-                tb_line_cache=tb_line_cache,
+                serialized_tb=serialized_tb or b"",
+                tb_line_cache=tb_line_cache or b"",
             )
 
             req = api_pb2.TaskResultRequest(result=result)
@@ -740,8 +786,13 @@ class _ContainerIOManager:
             await self.exit_context(started_at, io_context.input_ids)
             return
         except BaseException as exc:
+            if isinstance(exc, ImportError):
+                # Catches errors raised by imports from within function body
+                check_fastapi_pydantic_compatibility(exc)
+
             # print exception so it's logged
-            traceback.print_exc()
+            print_exception(*sys.exc_info())
+
             serialized_tb, tb_line_cache = self.serialize_traceback(exc)
 
             # Note: we're not serializing the traceback since it contains
@@ -766,8 +817,8 @@ class _ContainerIOManager:
                     status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
                     exception=repr_exc,
                     traceback=traceback.format_exc(),
-                    serialized_tb=serialized_tb,
-                    tb_line_cache=tb_line_cache,
+                    serialized_tb=serialized_tb or b"",
+                    tb_line_cache=tb_line_cache or b"",
                     **data_result_part,
                 )
                 for _ in io_context.input_ids
@@ -790,7 +841,13 @@ class _ContainerIOManager:
         self._input_slots.release()
 
     @synchronizer.no_io_translation
-    async def push_outputs(self, io_context: IOContext, started_at: float, data: Any, data_format: int) -> None:
+    async def push_outputs(
+        self,
+        io_context: IOContext,
+        started_at: float,
+        data: Any,
+        data_format: "modal_proto.api_pb2.DataFormat.ValueType",
+    ) -> None:
         data = io_context.validate_output_data(data)
         formatted_data = await asyncio.gather(
             *[self.format_blob_data(self.serialize_data_format(d, data_format)) for d in data]
@@ -869,27 +926,28 @@ class _ContainerIOManager:
         """Message server indicating that function is ready to be checkpointed."""
         if self.checkpoint_id:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id} (Memory Snapshot ID)")
+        else:
+            logger.debug("No checkpoint ID provided (Memory Snapshot ID)")
 
         # Pause heartbeats since they keep the client connection open which causes the snapshotter to crash
-        async with self._heartbeat_condition:
+        async with self.heartbeat_condition:
             # Notify the heartbeat loop that the snapshot phase has begun in order to
             # prevent it from sending heartbeat RPCs
             self._waiting_for_memory_snapshot = True
-            self._heartbeat_condition.notify_all()
+            self.heartbeat_condition.notify_all()
 
             await self._client.stub.ContainerCheckpoint(
-                api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
+                api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id or "")
             )
 
-            await self._client._close(forget_credentials=True)
+            await self._client._close(prep_for_restore=True)
 
             logger.debug("Memory snapshot request sent. Connection closed.")
             await self.memory_restore()
-
             # Turn heartbeats back on. This is safe since the snapshot RPC
             # and the restore phase has finished.
             self._waiting_for_memory_snapshot = False
-            self._heartbeat_condition.notify_all()
+            self.heartbeat_condition.notify_all()
 
     async def volume_commit(self, volume_ids: List[str]) -> None:
         """
@@ -945,9 +1003,30 @@ class _ContainerIOManager:
 
     @classmethod
     def get_input_concurrency(cls) -> int:
+        """
+        Returns the number of usable input slots.
+
+        If concurrency is reduced, active slots can exceed allotted slots. Returns the larger value
+        in this case.
+        """
+
         io_manager = cls._singleton
         assert io_manager
-        return io_manager._input_slots.value
+        return max(io_manager._input_slots.active, io_manager._input_slots.value)
+
+    @classmethod
+    def set_input_concurrency(cls, concurrency: int):
+        """
+        Edit the number of input slots.
+
+        This disables the background loop which automatically adjusts concurrency
+        within [target_concurrency, max_concurrency].
+        """
+        io_manager = cls._singleton
+        assert io_manager
+        io_manager._stop_concurrency_loop = True
+        concurrency = min(concurrency, io_manager._max_concurrency)
+        io_manager._input_slots.set_value(concurrency)
 
     @classmethod
     def stop_fetching_inputs(cls):
@@ -956,3 +1035,30 @@ class _ContainerIOManager:
 
 
 ContainerIOManager = synchronize_api(_ContainerIOManager)
+
+
+def check_fastapi_pydantic_compatibility(exc: ImportError) -> None:
+    """Add a helpful note to an exception that is likely caused by a pydantic<>fastapi version incompatibility.
+
+    We need this becasue the legacy set of container requirements (image_builder_version=2023.12) contains a
+    version of fastapi that is not forwards-compatible with pydantic 2.0+, and users commonly run into issues
+    building an image that specifies a more recent version only for pydantic.
+    """
+    note = (
+        "Please ensure that your Image contains compatible versions of fastapi and pydantic."
+        " If using pydantic>=2.0, you must also install fastapi>=0.100."
+    )
+    name = exc.name or ""
+    if name.startswith("pydantic"):
+        try:
+            fastapi_version = parse_major_minor_version(importlib.metadata.version("fastapi"))
+            pydantic_version = parse_major_minor_version(importlib.metadata.version("pydantic"))
+            if pydantic_version >= (2, 0) and fastapi_version < (0, 100):
+                if sys.version_info < (3, 11):
+                    # https://peps.python.org/pep-0678/
+                    exc.__notes__ = [note]
+                else:
+                    exc.add_note(note)
+        except Exception:
+            # Since we're just trying to add a helpful message, don't fail here
+            pass

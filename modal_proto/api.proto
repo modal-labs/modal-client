@@ -118,6 +118,13 @@ enum FileDescriptor {
   FILE_DESCRIPTOR_INFO = 3;
 }
 
+enum FunctionCallInvocationType {
+  FUNCTION_CALL_INVOCATION_TYPE_UNSPECIFIED = 0;
+  FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY = 1;
+  FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY = 2;
+  FUNCTION_CALL_INVOCATION_TYPE_ASYNC = 3;
+}
+
 enum FunctionCallType {
   FUNCTION_CALL_TYPE_UNSPECIFIED = 0;
   FUNCTION_CALL_TYPE_UNARY = 1;
@@ -136,6 +143,7 @@ enum GPUType {
   GPU_TYPE_A100_80GB = 8;
   GPU_TYPE_L4 = 9;
   GPU_TYPE_H100 = 10;
+  GPU_TYPE_L40S = 11;
 }
 
 enum ObjectCreationType {
@@ -156,6 +164,14 @@ enum ParameterType {
 enum ProgressType {
   IMAGE_SNAPSHOT_UPLOAD = 0;  // TODO(erikbern): shouldn't be zero, and needs prefix
   FUNCTION_QUEUED = 1;  // TODO(erikbern): needs_prefix
+}
+
+enum ProxyIpStatus {
+  PROXY_IP_STATUS_UNSPECIFIED = 0;
+  PROXY_IP_STATUS_CREATING = 1;
+  PROXY_IP_STATUS_ONLINE = 2;
+  PROXY_IP_STATUS_TERMINATED = 3;
+  PROXY_IP_STATUS_UNHEALTHY = 4;
 }
 
 enum RateLimitInterval {
@@ -224,7 +240,8 @@ message AppCreateRequest {
 
 message AppCreateResponse {
   string app_id = 1;
-  string app_logs_url = 2;
+  string app_page_url = 2;
+  string app_logs_url = 3;
 }
 
 message AppDeployRequest {
@@ -304,6 +321,16 @@ message AppGetObjectsResponse {
   repeated AppGetObjectsItem items = 2;
 }
 
+message AppGetOrCreateRequest {
+  string app_name = 1;
+  string environment_name = 2;
+  ObjectCreationType object_creation_type = 3;
+}
+
+message AppGetOrCreateResponse {
+  string app_id = 1;
+}
+
 message AppHeartbeatRequest {
   string app_id = 1;
 }
@@ -323,20 +350,6 @@ message AppListResponse {
     string name = 10;
   }
   repeated AppListItem apps = 1;
-}
-
-message AppLookupObjectRequest {
-  DeploymentNamespace namespace = 2;
-  string app_name = 3;
-  string object_tag = 4;
-  string object_id = 5;
-  string object_entity = 6;
-  string environment_name = 7;
-}
-
-message AppLookupObjectResponse {
-  Object object = 6;
-  string app_id = 7;
 }
 
 message AppLookupRequest {
@@ -540,6 +553,7 @@ message BuildFunction {
 
 message CancelInputEvent {
   repeated string input_ids = 1;
+  bool terminate_containers = 2;
 }
 
 message CheckpointInfo {
@@ -630,26 +644,9 @@ message ClassParameterValue {
   }
 }
 
-message ClientCreateRequest {
-  ClientType client_type = 1  [ (modal.options.audit_target_attr) = true ];
-  string version = 2;
-}
-
-message ClientCreateResponse {
-  string client_id = 1;
-  string error = 2;
-  string deprecation_warning = 3;
-}
-
-message ClientHeartbeatRequest {
-  string client_id = 1;
-  string current_input_id = 3;
-  double current_input_started_at = 4;
-}
-
 message ClientHelloResponse {
   string warning = 1;
-  string image_builder_version = 2;
+  string image_builder_version = 2;  // Deprecated, no longer used in client
 }
 
 message CloudBucketMount {
@@ -733,8 +730,7 @@ message ContainerHeartbeatResponse {
 }
 
 message ContainerLogRequest {
-  string message = 1;
-  string input_id = 2;
+  repeated TaskLogs logs = 3;
 }
 
 message ContainerStopRequest {
@@ -787,16 +783,6 @@ message DictContentsRequest {
   // This lets us support the keys/values/items SDK API through one RPC without unnecessary data transfer
   bool keys = 2;
   bool values = 3;
-}
-
-message DictCreateRequest {  // Will be superseded by DictGetOrCreateRequest
-  repeated DictEntry data = 1;
-  string app_id = 2  [ (modal.options.audit_target_attr) = true ];
-  string existing_dict_id = 3;
-}
-
-message DictCreateResponse {  // Will be superseded by DictGetOrCreateResponse
-  string dict_id = 1;
 }
 
 message DictDeleteRequest {
@@ -912,15 +898,38 @@ message EnvironmentCreateRequest {
 message EnvironmentDeleteRequest {
   string name = 1 [ (modal.options.audit_target_attr) = true ];
 }
+message EnvironmentGetOrCreateRequest {
+  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  ObjectCreationType object_creation_type = 2;
+}
+
+message EnvironmentGetOrCreateResponse {
+  string environment_id = 1;
+  EnvironmentMetadata metadata = 2;
+}
 
 message EnvironmentListItem {
   string name = 1;
   string webhook_suffix = 2;
   double created_at = 3;
+  bool default = 4;
 }
 
 message EnvironmentListResponse {
   repeated EnvironmentListItem items = 2;
+}
+
+message EnvironmentMetadata{
+  string name = 1;
+  EnvironmentSettings settings = 2;
+}
+
+// Environment-scoped settings, with workspace-level defaults.
+// Note that we use MergeFrom to combine workspace / environment settings,
+// which will *append* any `repeated` fields!
+message EnvironmentSettings {
+  string image_builder_version = 1;
+  string webhook_suffix = 2;
 }
 
 message EnvironmentUpdateRequest {
@@ -942,7 +951,6 @@ message FileEntry {
   uint64 mtime = 3;
   uint64 size = 4;
 }
-
 
 message Function {
   string module_name = 1;
@@ -1045,8 +1053,7 @@ message Function {
 
   ClassParameterInfo class_parameter_info = 56;
 
-  repeated Resources _experimental_resources = 57; // overrides `resources` field above
-
+  reserved 57; // _experimental_resources
   reserved 58;
   reserved 59;
   uint32 batch_max_size = 60; // Maximum number of inputs to fetch at once
@@ -1054,6 +1061,26 @@ message Function {
   bool i6pn_enabled = 62;
   bool _experimental_concurrent_cancellations = 63;
   uint32 max_concurrent_inputs = 64;
+
+  // TODO(irfansharif): Remove, once https://github.com/modal-labs/modal/pull/15645 lands.
+  bool _experimental_task_templates_enabled = 65;  // forces going through the new gpu-fallbacks integration path, even if no fallback options are specified
+  repeated TaskTemplate _experimental_task_templates = 66;  // for fallback options, where the first/most-preferred "template" is derived from fields above
+
+  // When the function is a "grouped" one, this records the # of tasks we want
+  // to schedule in tandem.
+  uint32 _experimental_group_size = 67;
+
+  // If set, the function will be run in an untrusted environment.
+  bool untrusted = 68;
+
+  uint32 _experimental_buffer_containers = 69;
+
+  optional string _experimental_proxy_ip = 70;
+
+  bool runtime_perf_record = 71; // For internal debugging use only.
+
+  Schedule schedule = 72;
+
 }
 
 message FunctionBindParamsRequest {
@@ -1116,12 +1143,13 @@ message FunctionCallPutDataRequest {
 message FunctionCreateRequest {
   Function function = 1;
   string app_id = 2  [ (modal.options.audit_target_attr) = true ];
-  Schedule schedule = 6;
+  Schedule schedule = 6; // Deprecated: now passed in the Function definition
   string existing_function_id = 7;
   // This flag tells the server to avoid doing updates in FunctionCreate that should now
   // be done in AppPublish. Provides a smoother migration onto atomic deployments with 0.64,
   // and can be deprecated once we no longer support ealier versions.
   bool defer_updates = 8;
+  FunctionData function_data = 9;  // supersedes 'function' field above
 }
 
 message FunctionCreateResponse {
@@ -1130,6 +1158,68 @@ message FunctionCreateResponse {
   Function function = 4;
   FunctionHandleMetadata handle_metadata = 5;
 }
+
+message FunctionData {
+  // Note: FunctionData pulls "up" a subset of fields from Function message that
+  // will get deprecated there and made authoritative here, at the top-level.
+  // All remaining fields will stay within the Function message itself and a
+  // single FunctionData will contain a list of such (ranked) Functions. The
+  // top-level fields capture data not specific to any particular underlying
+  // task (like warm-pool-size, applicable across all tasks), while fields
+  // specific to the task (like the resource request) will exist at the bottom
+  // level.
+
+  string module_name = 1;
+  string function_name = 2;
+
+  Function.FunctionType function_type = 3;
+
+  // Scheduling related fields.
+  uint32 warm_pool_size = 4;
+  uint32 concurrency_limit = 5;
+  uint32 task_idle_timeout_secs = 6;
+  string worker_id = 7; // for internal debugging use only
+
+  uint32 timeout_secs = 8;
+
+  string web_url = 9;
+  WebUrlInfo web_url_info = 10;
+  WebhookConfig webhook_config = 11;
+  repeated CustomDomainInfo custom_domain_info = 12;
+
+  bool is_class = 13;  // if "Function" is actually a class grouping multiple methods - applies across all underlying tasks
+  ClassParameterInfo class_parameter_info = 14;
+
+  bool is_method = 15;
+  string use_function_id = 16; // used for methods
+  string use_method_name = 17; // used for methods
+
+  message RankedFunction {
+    uint32 rank = 1;
+    Function function = 2;
+  }
+  repeated RankedFunction ranked_functions = 18;
+
+  // When the function is a "grouped" one, this records the # of tasks we want
+  // to schedule in tandem.
+  uint32 _experimental_group_size = 19;
+
+  Schedule schedule = 20;
+
+}
+
+message FunctionExtended {
+  uint32 type_identifier = 1;
+  // FunctionExtended is a union type that exists while we migrate between
+  // storage of FunctionData vs. Functions, internally. Once migrated at the
+  // storage level, we can get rid of this union type and replace with access
+  // that expects FunctionData only.
+  oneof function_extended {
+    Function function_singleton = 2;
+    FunctionData function_data = 3;
+  }
+}
+
 
 message FunctionGetCallGraphRequest {
   // TODO: use input_id once we switch client submit API to return those.
@@ -1196,6 +1286,7 @@ message FunctionGetOutputsRequest {
   float timeout = 3;
   string last_entry_id = 6;
   bool clear_on_success = 7; // expires *any* remaining outputs soon after this call, not just the returned ones
+  double requested_at = 8; // Used for waypoints.
 }
 
 message FunctionGetOutputsResponse {
@@ -1259,6 +1350,7 @@ message FunctionMapRequest {
   bool return_exceptions = 3;
   FunctionCallType function_call_type = 4;
   repeated FunctionPutInputsItem pipelined_inputs = 5;
+  FunctionCallInvocationType function_call_invocation_type = 6;
 }
 
 message FunctionMapResponse {
@@ -1327,6 +1419,7 @@ message FunctionPutOutputsItem {
 
 message FunctionPutOutputsRequest {
   repeated FunctionPutOutputsItem outputs = 4;
+  double requested_at = 5; // Used for waypoints.
 }
 
 message FunctionRetryPolicy {
@@ -1485,17 +1578,6 @@ message InputInfo {
   bool task_first_input = 7;
 }
 
-message MountBuildRequest {
-  string app_id = 2 [ (modal.options.audit_target_attr) = true ];
-  string existing_mount_id = 3;
-  repeated MountFile files = 4;
-}
-
-message MountBuildResponse {
-  string mount_id = 1;
-  MountHandleMetadata handle_metadata = 2;
-}
-
 message MountFile {
   string filename = 1;
   string sha256_hex = 3; // SHA-256 checksum of the file.
@@ -1538,6 +1620,17 @@ message MultiPartUpload {
   int64 part_length = 1; // split upload based on this part length - all except the last part must have this length
   repeated string upload_urls = 2;
   string completion_url = 3;
+}
+
+message NetworkAccess {
+  enum NetworkAccessType {
+    UNSPECIFIED = 0;
+    OPEN = 1;
+    BLOCKED = 2;
+    ALLOWLIST = 3;
+  }
+  NetworkAccessType network_access_type = 1;
+  repeated string allowed_cidrs = 2;
 }
 
 message Object {
@@ -1596,19 +1689,33 @@ message ProxyInfo {
   int32 remote_port = 4;
 }
 
+message ProxyIp {
+  string proxy_ip = 1;
+  ProxyIpStatus status = 2;
+  double created_at = 3;
+}
+
+message ProxyIpDeleteRequest {
+  string proxy_ip = 1;
+}
+
+message ProxyIpGetOrCreateRequest {
+  optional string proxy_ip = 1;
+}
+
+message ProxyIpGetOrCreateResponse {
+  string proxy_ip = 1;
+  ProxyIpStatus status = 2;
+}
+
+message ProxyIpListResponse {
+  repeated ProxyIp proxy_ips = 1;
+}
+
 message QueueClearRequest {
   string queue_id = 1;
   bytes partition_key = 2;
   bool all_partitions = 3;
-}
-
-message QueueCreateRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
-  string existing_queue_id = 2;
-}
-
-message QueueCreateResponse {
-  string queue_id = 1;
 }
 
 message QueueDeleteRequest {
@@ -1762,17 +1869,23 @@ message Sandbox {
   // to look at fine-grained placement constraints.
   reserved 16; // _experimental_scheduler
   optional SchedulerPlacement scheduler_placement = 17;
-  repeated Resources _experimental_resources = 18; // overrides `resources` field above
+  reserved 18;  // _experimental_resources
 
   string worker_id = 19; // for internal debugging use only
   oneof open_ports_oneof {
     PortSpecs open_ports = 20;
   }
+
+  bool i6pn_enabled = 21;
+
+  // Network access configuration beyond simple allow/block.
+  NetworkAccess network_access = 22;
 }
 
 message SandboxCreateRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
   Sandbox definition = 2;
+  string environment_name = 3;
 }
 
 message SandboxCreateResponse {
@@ -1810,14 +1923,18 @@ message SandboxHandleMetadata {
 
 message SandboxInfo {
   string id = 1;
-  modal.client.Sandbox definition = 2;
   double created_at = 3;
   TaskInfo task_info = 4;
+
+  reserved 2; // modal.client.Sandbox definition
 }
 
 message SandboxListRequest {
   string app_id = 1;
   double before_timestamp = 2;
+  string environment_name = 3;
+  bool include_finished = 4;
+  repeated SandboxTag tags = 5;
 }
 
 message SandboxListResponse {
@@ -1832,6 +1949,17 @@ message SandboxStdinWriteRequest {
 }
 
 message SandboxStdinWriteResponse {
+}
+
+message SandboxTag {
+  string tag_name = 1;
+  string tag_value = 2;
+}
+
+message SandboxTagsSetRequest {
+  string environment_name = 1;
+  string sandbox_id = 2;
+  repeated SandboxTag tags = 3;
 }
 
 message SandboxTerminateRequest {
@@ -1877,8 +2005,10 @@ message SchedulerPlacement {
   //   GPU types.
 
   repeated string regions = 4;
-  optional string _zone = 2;
-  optional string _lifecycle = 3; // "on-demand" or "spot", else ignored
+  // TODO(irfansharif): Make these two repeated.
+  optional string _zone = 2; // admin-only
+  optional string _lifecycle = 3; // admin-only, "on-demand" or "spot", else ignored
+  repeated string _instance_types = 5; // admin-only
 
   reserved 1;
 }
@@ -1891,6 +2021,10 @@ message SecretCreateRequest {  // Not used by client anymore
 }
 
 message SecretCreateResponse {  // Not used by client anymore
+  string secret_id = 1;
+}
+
+message SecretDeleteRequest {
   string secret_id = 1;
 }
 
@@ -1913,6 +2047,7 @@ message SecretListItem {
   double created_at = 2;
   double last_used_at = 3;
   string environment_name = 4;
+  string secret_id = 5;
 }
 
 message SecretListRequest {
@@ -1922,15 +2057,6 @@ message SecretListRequest {
 message SecretListResponse {
   repeated SecretListItem items = 1;
   string environment_name = 2; // the environment that was listed (useful when relying on "default" logic)
-}
-
-message SharedVolumeCreateRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
-  CloudProvider cloud_provider = 2;
-}
-
-message SharedVolumeCreateResponse {
-  string shared_volume_id = 1;
 }
 
 message SharedVolumeGetFileRequest {
@@ -2072,6 +2198,16 @@ message TaskStats {
   double started_at = 4;
 }
 
+message TaskTemplate {
+  uint32 rank = 1;
+  Resources resources = 2;
+  uint32 target_concurrent_inputs = 3;
+  uint32 max_concurrent_inputs = 4;
+
+  // TODO(irfansharif): Just move this into a column in the task table instead?
+  // Deprecate all above fields and get rid of this message altogether
+  uint32 index = 5;  // pointer into FunctionData, if using that as the underlying definition type
+}
 
 message TokenFlowCreateRequest {
   string utm_source = 3;
@@ -2142,16 +2278,6 @@ message VolumeCopyFilesRequest {
   repeated string src_paths = 2;
   string dst_path = 3;
   bool recursive = 4;
-}
-
-message VolumeCreateRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
-  VolumeFsVersion version = 2;
-}
-
-message VolumeCreateResponse {
-  string volume_id = 1;
-  VolumeFsVersion version = 2;
 }
 
 message VolumeDeleteRequest {
@@ -2280,10 +2406,10 @@ service ModalClient {
   rpc AppGetByDeploymentName(AppGetByDeploymentNameRequest) returns (AppGetByDeploymentNameResponse);
   rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
   rpc AppGetObjects(AppGetObjectsRequest) returns (AppGetObjectsResponse);
+  rpc AppGetOrCreate(AppGetOrCreateRequest) returns (AppGetOrCreateResponse);
   rpc AppHeartbeat(AppHeartbeatRequest) returns (google.protobuf.Empty);
   rpc AppList(AppListRequest) returns (AppListResponse);
   rpc AppLookup(AppLookupRequest) returns (AppLookupResponse);
-  rpc AppLookupObject(AppLookupObjectRequest) returns (AppLookupObjectResponse);
   rpc AppPublish(AppPublishRequest) returns (AppPublishResponse);
   rpc AppRollback(AppRollbackRequest) returns (google.protobuf.Empty);
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
@@ -2298,8 +2424,6 @@ service ModalClient {
   rpc ClassGet(ClassGetRequest) returns (ClassGetResponse);
 
   // Clients
-  rpc ClientCreate(ClientCreateRequest) returns (ClientCreateResponse);
-  rpc ClientHeartbeat(ClientHeartbeatRequest) returns (google.protobuf.Empty);
   rpc ClientHello(google.protobuf.Empty) returns (ClientHelloResponse);
 
   // Container
@@ -2316,7 +2440,6 @@ service ModalClient {
   rpc DictClear(DictClearRequest) returns (google.protobuf.Empty);
   rpc DictContains(DictContainsRequest) returns (DictContainsResponse);
   rpc DictContents(DictContentsRequest) returns (stream DictEntry);
-  rpc DictCreate(DictCreateRequest) returns (DictCreateResponse);  // Will be superseded by DictGetOrCreate
   rpc DictDelete(DictDeleteRequest) returns (google.protobuf.Empty);
   rpc DictGet(DictGetRequest) returns (DictGetResponse);
   rpc DictGetOrCreate(DictGetOrCreateRequest) returns (DictGetOrCreateResponse);
@@ -2334,6 +2457,7 @@ service ModalClient {
   // Environments
   rpc EnvironmentCreate(EnvironmentCreateRequest) returns (google.protobuf.Empty);
   rpc EnvironmentDelete(EnvironmentDeleteRequest) returns (google.protobuf.Empty);
+  rpc EnvironmentGetOrCreate(EnvironmentGetOrCreateRequest) returns (EnvironmentGetOrCreateResponse);
   rpc EnvironmentList(google.protobuf.Empty) returns (EnvironmentListResponse);
   rpc EnvironmentUpdate(EnvironmentUpdateRequest) returns (EnvironmentListItem);
 
@@ -2364,16 +2488,19 @@ service ModalClient {
   rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
 
   // Mounts
-  rpc MountBuild(MountBuildRequest) returns (MountBuildResponse);
   rpc MountGetOrCreate(MountGetOrCreateRequest) returns (MountGetOrCreateResponse);
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
 
-  // Proxies
+  // Proxies (legacy)
   rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);
+
+  // Proxy IPs
+  rpc ProxyIpDelete(ProxyIpDeleteRequest) returns (google.protobuf.Empty);
+  rpc ProxyIpGetOrCreate(ProxyIpGetOrCreateRequest) returns (ProxyIpGetOrCreateResponse);
+  rpc ProxyIpList(google.protobuf.Empty) returns (ProxyIpListResponse);
 
   // Queues
   rpc QueueClear(QueueClearRequest) returns (google.protobuf.Empty);
-  rpc QueueCreate(QueueCreateRequest) returns (QueueCreateResponse);
   rpc QueueDelete(QueueDeleteRequest) returns (google.protobuf.Empty);
   rpc QueueGet(QueueGetRequest) returns (QueueGetResponse);
   rpc QueueGetOrCreate(QueueGetOrCreateRequest) returns (QueueGetOrCreateResponse);
@@ -2390,16 +2517,16 @@ service ModalClient {
   rpc SandboxGetTunnels(SandboxGetTunnelsRequest) returns (SandboxGetTunnelsResponse);
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
   rpc SandboxStdinWrite(SandboxStdinWriteRequest) returns (SandboxStdinWriteResponse);
+  rpc SandboxTagsSet(SandboxTagsSetRequest) returns (google.protobuf.Empty);
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
 
   // Secrets
-  rpc SecretCreate(SecretCreateRequest) returns (SecretCreateResponse);  // Not used by client anymore
+  rpc SecretDelete(SecretDeleteRequest) returns (google.protobuf.Empty);
   rpc SecretGetOrCreate(SecretGetOrCreateRequest) returns (SecretGetOrCreateResponse);
   rpc SecretList(SecretListRequest) returns (SecretListResponse);
 
   // SharedVolumes
-  rpc SharedVolumeCreate(SharedVolumeCreateRequest) returns (SharedVolumeCreateResponse);
   rpc SharedVolumeGetFile(SharedVolumeGetFileRequest) returns (SharedVolumeGetFileResponse);
   rpc SharedVolumeGetOrCreate(SharedVolumeGetOrCreateRequest) returns (SharedVolumeGetOrCreateResponse);
   rpc SharedVolumeHeartbeat(SharedVolumeHeartbeatRequest) returns (google.protobuf.Empty);
@@ -2425,7 +2552,6 @@ service ModalClient {
   // Volumes
   rpc VolumeCommit(VolumeCommitRequest) returns (VolumeCommitResponse);
   rpc VolumeCopyFiles(VolumeCopyFilesRequest) returns (google.protobuf.Empty);
-  rpc VolumeCreate(VolumeCreateRequest) returns (VolumeCreateResponse);
   rpc VolumeDelete(VolumeDeleteRequest) returns (google.protobuf.Empty);
   rpc VolumeGetFile(VolumeGetFileRequest) returns (VolumeGetFileResponse);
   rpc VolumeGetOrCreate(VolumeGetOrCreateRequest) returns (VolumeGetOrCreateResponse);

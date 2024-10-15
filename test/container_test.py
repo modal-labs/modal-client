@@ -669,6 +669,147 @@ def test_asgi(servicer):
 
 
 @skip_github_non_linux
+def test_asgi_lifespan(servicer):
+    inputs = _get_web_inputs(path="/")
+
+    _put_web_body(servicer, b"")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "fastapi_app_with_lifespan",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+    )
+
+    # There should be one message for the header, and one for the body
+    first_message, second_message = _unwrap_asgi(ret)
+
+    # Check the headers
+    assert first_message["status"] == 200
+    headers = dict(first_message["headers"])
+    assert headers[b"content-type"] == b"application/json"
+
+    # Check body
+    assert json.loads(second_message["body"]) == "this was set from state"
+
+    from test.supports import functions
+
+    assert ["enter", "foo", "exit"] == functions.lifespan_global_asgi_app_func
+
+
+@skip_github_non_linux
+def test_asgi_lifespan_startup_failure(servicer):
+    inputs = _get_web_inputs(path="/")
+
+    _put_web_body(servicer, b"")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "fastapi_app_with_lifespan_failing_startup",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+    )
+    assert ret.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert "ASGI lifespan startup failed" in ret.task_result.exception
+
+
+@skip_github_non_linux
+def test_asgi_lifespan_shutdown_failure(servicer):
+    inputs = _get_web_inputs(path="/")
+
+    _put_web_body(servicer, b"")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "fastapi_app_with_lifespan_failing_shutdown",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+    )
+    assert ret.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert "ASGI lifespan shutdown failed" in ret.task_result.exception
+
+
+@skip_github_non_linux
+def test_cls_web_asgi_with_lifespan(servicer):
+    inputs = _get_web_inputs(method_name="my_app1")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "fastapi_class_multiple_asgi_apps_lifespans.*",
+        inputs=inputs,
+        is_class=True,
+    )
+
+    # There should be one message for the header, and one for the body
+    first_message, second_message = _unwrap_asgi(ret)
+
+    # Check the headers
+    assert first_message["status"] == 200
+    headers = dict(first_message["headers"])
+    assert headers[b"content-type"] == b"application/json"
+
+    # Check body
+    assert json.loads(second_message["body"]) == "foo1"
+
+    from test.supports import functions
+
+    assert ["enter1", "enter2", "foo1", "exit1", "exit2", "exit"] == functions.lifespan_global_asgi_app_cls
+
+
+@skip_github_non_linux
+def test_cls_web_asgi_with_lifespan_failure(servicer):
+    inputs = _get_web_inputs(method_name="my_app1")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "fastapi_class_lifespan_shutdown_failure.*",
+        inputs=inputs,
+        is_class=True,
+    )
+
+    # There should be one message for the header, and one for the body
+    first_message, second_message = _unwrap_asgi(ret)
+
+    # Check the headers
+    assert first_message["status"] == 200
+    headers = dict(first_message["headers"])
+    assert headers[b"content-type"] == b"application/json"
+
+    # Check body
+    assert json.loads(second_message["body"]) == "foo"
+
+    from test.supports import functions
+
+    assert ["enter", "foo", "lifecycle exit"] == functions.lifespan_global_asgi_app_cls_fail
+
+
+@skip_github_non_linux
+def test_non_lifespan_asgi(servicer):
+    inputs = _get_web_inputs(path="/")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "non_lifespan_asgi",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+    )
+
+    # There should be one message for the header, and one for the body
+    first_message, second_message = _unwrap_asgi(ret)
+
+    # Check the headers
+    assert first_message["status"] == 200
+    headers = dict(first_message["headers"])
+    assert headers[b"content-type"] == b"application/json"
+
+    # Check body
+    print("\n#########################")
+    print(f"second_message: {second_message['body']}")
+    print("#########################\n")
+    assert json.loads(second_message["body"]) == "foo"
+
+
+@skip_github_non_linux
 def test_wsgi(servicer):
     inputs = _get_web_inputs(path="/")
     _put_web_body(servicer, b"my wsgi body")
@@ -855,10 +996,10 @@ def test_serialized_cls(servicer):
         def method(self, x):
             return x**self.power
 
+    app = modal.App()
+    app.cls(serialized=True)(Cls)  # prevents warnings about not turning methods into functions
     servicer.class_serialized = serialize(Cls)
-    servicer.function_serialized = serialize(
-        {"method": Cls.__dict__["method"]}
-    )  # can't use Cls.method because of descriptor protocol that returns Function instead of PartialFunction
+    servicer.function_serialized = None
     ret = _run_container(
         servicer,
         "module.doesnt.matter",
@@ -1589,6 +1730,30 @@ def test_cancellation_stops_subset_of_async_concurrent_inputs(servicer):
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
+def test_sigint_concurrent_async_cancel_doesnt_reraise(servicer):
+    with servicer.input_lockstep() as input_lock:
+        container_process = _run_container_process(
+            servicer,
+            "test.supports.functions",
+            "async_cancel_doesnt_reraise",
+            inputs=[("", (1,), {})] * 2,  # two inputs
+            allow_concurrent_inputs=2,
+        )
+        input_lock.wait()
+        input_lock.wait()
+
+    time.sleep(0.05)  # let the container get and start processing the input
+    container_process.send_signal(signal.SIGINT)
+    # container should exit soon!
+    exit_code = container_process.wait(5)
+    container_stderr = container_process.stderr.read().decode("utf8")
+    assert "Traceback" not in container_stderr
+    # TODO (elias): Make some assertions regarding what kind of output is recorded (if any) is recorded for these inputs
+    assert exit_code == 0  # container should exit gracefully
+
+
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
 def test_cancellation_stops_task_with_concurrent_inputs(servicer):
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
@@ -2065,3 +2230,29 @@ def test_max_concurrency(servicer):
 
     outputs = [deserialize(item.result.data, ret.client) for item in ret.items]
     assert n_inputs in outputs
+
+
+@skip_github_non_linux
+def test_set_local_input_concurrency(servicer):
+    n_inputs = 6
+    target_concurrency = 3
+    max_concurrency = 6
+
+    now = time.time()
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "set_input_concurrency",
+        inputs=_get_inputs(((now,), {}), n=n_inputs),
+        allow_concurrent_inputs=target_concurrency,
+        max_concurrent_inputs=max_concurrency,
+    )
+
+    outputs = [int(deserialize(item.result.data, ret.client)) for item in ret.items]
+    assert outputs == [1] * 3 + [2] * 3
+
+
+@skip_github_non_linux
+def test_sandbox_infers_app(servicer, event_loop):
+    _run_container(servicer, "test.supports.sandbox", "spawn_sandbox")
+    assert servicer.sandbox_app_id == "ap-1"

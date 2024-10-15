@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
-from typing import Any, AsyncGenerator, Callable, Dict, NoReturn, Optional, cast
+from typing import Any, AsyncGenerator, Callable, Dict, NoReturn, Optional, Tuple, cast
 
 import aiohttp
 
@@ -15,12 +15,82 @@ from .experimental import stop_fetching_inputs
 FIRST_MESSAGE_TIMEOUT_SECONDS = 5.0
 
 
-def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenerator]:
+class LifespanManager:
+    startup: asyncio.Future
+    shutdown: asyncio.Future
+    queue: asyncio.Queue
+    has_run_init: bool = False
+
+    def __init__(self, asgi_app, state):
+        self.asgi_app = asgi_app
+        self.state = state
+
+    async def ensure_init(self):
+        # making this async even though
+        # no async code since it has to run inside
+        # the event loop to tie the
+        # objects to the correct loop in python 3.9
+        if not self.has_run_init:
+            self.queue = asyncio.Queue()
+            self.startup = asyncio.Future()
+            self.shutdown = asyncio.Future()
+            self.has_run_init = True
+
+    async def background_task(self):
+        await self.ensure_init()
+
+        async def receive():
+            return await self.queue.get()
+
+        async def send(message):
+            if message["type"] == "lifespan.startup.complete":
+                self.startup.set_result(None)
+            elif message["type"] == "lifespan.startup.failed":
+                self.startup.set_exception(ExecutionError("ASGI lifespan startup failed"))
+            elif message["type"] == "lifespan.shutdown.complete":
+                self.shutdown.set_result(None)
+            elif message["type"] == "lifespan.shutdown.failed":
+                self.shutdown.set_exception(ExecutionError("ASGI lifespan shutdown failed"))
+            else:
+                raise ExecutionError(f"Unexpected message type: {message['type']}")
+
+        try:
+            await self.asgi_app({"type": "lifespan", "state": self.state}, receive, send)
+        except Exception as e:
+            logger.error(f"Error in ASGI lifespan task: {e}")
+            if not self.startup.done():
+                self.startup.set_exception(ExecutionError("ASGI lifespan task exited startup"))
+            if not self.shutdown.done():
+                self.shutdown.set_exception(ExecutionError("ASGI lifespan task exited shutdown"))
+        else:
+            if not self.startup.done():
+                self.startup.set_result("ASGI Lifespan protocol is probably not supported by this library")
+            if not self.shutdown.done():
+                self.shutdown.set_result("ASGI Lifespan protocol is probably not supported by this library")
+
+    async def lifespan_startup(self):
+        await self.ensure_init()
+        self.queue.put_nowait({"type": "lifespan.startup"})
+        await self.startup
+
+    async def lifespan_shutdown(self):
+        await self.ensure_init()
+        self.queue.put_nowait({"type": "lifespan.shutdown"})
+        await self.shutdown
+
+
+def asgi_app_wrapper(asgi_app, container_io_manager) -> Tuple[Callable[..., AsyncGenerator], LifespanManager]:
+    state: Dict[str, Any] = {}  # used for lifespan state
+
     async def fn(scope):
+        if "state" in scope:
+            # we don't expect users to set state in ASGI scope
+            # this should be handled internally by the LifespanManager
+            raise ExecutionError("Unpexected state in ASGI scope")
+        scope["state"] = state
         function_call_id = current_function_call_id()
         assert function_call_id, "internal error: function_call_id not set in asgi_app() scope"
 
-        # TODO: Add support for the ASGI lifecycle spec.
         messages_from_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
         messages_to_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
 
@@ -55,10 +125,21 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
             # This initial message, "http.request" or "websocket.connect", should be sent
             # immediately after starting the ASGI app's function call. If it is not received, that
             # indicates a request cancellation or other abnormal circumstance.
-            message_gen = function_io_manager.get_data_in.aio(function_call_id)
+            message_gen = container_io_manager.get_data_in.aio(function_call_id)
+            first_message_task = asyncio.create_task(message_gen.__anext__())
 
             try:
-                first_message = await asyncio.wait_for(message_gen.__anext__(), FIRST_MESSAGE_TIMEOUT_SECONDS)
+                # we are intentionally shielding + manually cancelling first_message_task, since cancellations
+                # can otherwise get ignored in case the cancellation and an awaited future resolve gets
+                # triggered in the same sequence before handing back control to the event loop.
+                first_message = await asyncio.shield(
+                    asyncio.wait_for(first_message_task, FIRST_MESSAGE_TIMEOUT_SECONDS)
+                )
+            except asyncio.CancelledError:
+                if not first_message_task.done():
+                    # see comment above about manual cancellation
+                    first_message_task.cancel()
+                raise
             except (asyncio.TimeoutError, StopAsyncIteration):
                 # About `StopAsyncIteration` above: The generator shouldn't typically exit,
                 # but if it does, we handle it like a timeout in that case.
@@ -128,21 +209,27 @@ def asgi_app_wrapper(asgi_app, function_io_manager) -> Callable[..., AsyncGenera
                     app_task.result()  # consume/raise exceptions if there are any!
                     break
 
-    return fn
+    return fn, LifespanManager(asgi_app, state)
 
 
-def wsgi_app_wrapper(wsgi_app, function_io_manager):
+def wsgi_app_wrapper(wsgi_app, container_io_manager):
     from ._vendor.a2wsgi_wsgi import WSGIMiddleware
 
     asgi_app = WSGIMiddleware(wsgi_app, workers=10000, send_queue_size=1)  # unlimited workers
-    return asgi_app_wrapper(asgi_app, function_io_manager)
+    return asgi_app_wrapper(asgi_app, container_io_manager)
 
 
 def webhook_asgi_app(fn: Callable[..., Any], method: str, docs: bool):
     """Return a FastAPI app wrapping a function handler."""
-    # Pulls in `fastapi` module, which is slow to import.
-    from fastapi import FastAPI
-    from fastapi.middleware.cors import CORSMiddleware
+    try:
+        from fastapi import FastAPI
+        from fastapi.middleware.cors import CORSMiddleware
+    except ImportError as exc:
+        message = (
+            "Modal web_endpoint functions require FastAPI to be installed in the modal.Image."
+            ' Please update your Image definition code, e.g. with `.pip_install("fastapi[standard]")`.'
+        )
+        raise InvalidError(message) from exc
 
     app = FastAPI(openapi_url="/openapi.json" if docs else None)  # disabling openapi spec disables all docs
     app.add_middleware(
@@ -316,45 +403,55 @@ async def _proxy_websocket_request(session: aiohttp.ClientSession, scope, receiv
             await asyncio.wait([client_to_upstream_task, upstream_to_client_task], return_when=asyncio.FIRST_COMPLETED)
 
 
+async def _proxy_lifespan_request(base_url, scope, receive, send) -> None:
+    session: Optional[aiohttp.ClientSession] = None
+    while True:
+        message = await receive()
+        if message["type"] == "lifespan.startup":
+            if session is None:
+                session = aiohttp.ClientSession(
+                    base_url,
+                    cookie_jar=aiohttp.DummyCookieJar(),
+                    timeout=aiohttp.ClientTimeout(total=3600),
+                    auto_decompress=False,
+                    read_bufsize=1024 * 1024,  # 1 MiB
+                    **(
+                        # These options were introduced in aiohttp 3.9, and we can remove the
+                        # conditional after deprecating image builder version 2023.12.
+                        dict(  # type: ignore
+                            max_line_size=64 * 1024,  # 64 KiB
+                            max_field_size=64 * 1024,  # 64 KiB
+                        )
+                        if parse_major_minor_version(aiohttp.__version__) >= (3, 9)
+                        else {}
+                    ),
+                )
+                scope["state"]["session"] = session
+            await send({"type": "lifespan.startup.complete"})
+        elif message["type"] == "lifespan.shutdown":
+            if session is not None:
+                await session.close()
+            await send({"type": "lifespan.shutdown.complete"})
+            break
+        else:
+            raise ExecutionError(f"Unexpected message type: {message['type']}")
+
+
 def web_server_proxy(host: str, port: int):
     """Return an ASGI app that proxies requests to a web server running on the same host."""
     if not 0 < port < 65536:
         raise InvalidError(f"Invalid port number: {port}")
 
     base_url = f"http://{host}:{port}"
-    session: Optional[aiohttp.ClientSession] = None
 
     async def web_server_proxy_app(scope, receive, send):
-        nonlocal session
-        if session is None:
-            # TODO: We currently create the ClientSession on container startup and never close it.
-            # This outputs an "Unclosed client session" warning during runner termination. We should
-            # properly close the session once we implement the ASGI lifespan protocol.
-            session = aiohttp.ClientSession(
-                base_url,
-                cookie_jar=aiohttp.DummyCookieJar(),
-                timeout=aiohttp.ClientTimeout(total=3600),
-                auto_decompress=False,
-                read_bufsize=1024 * 1024,  # 1 MiB
-                **(
-                    # These options were introduced in aiohttp 3.9, and we can remove the
-                    # conditional after deprecating image builder version 2023.12.
-                    dict(  # type: ignore
-                        max_line_size=64 * 1024,  # 64 KiB
-                        max_field_size=64 * 1024,  # 64 KiB
-                    )
-                    if parse_major_minor_version(aiohttp.__version__) >= (3, 9)
-                    else {}
-                ),
-            )
-
         try:
             if scope["type"] == "lifespan":
-                pass  # Do nothing for lifespan events.
+                await _proxy_lifespan_request(base_url, scope, receive, send)
             elif scope["type"] == "http":
-                await _proxy_http_request(session, scope, receive, send)
+                await _proxy_http_request(scope["state"]["session"], scope, receive, send)
             elif scope["type"] == "websocket":
-                await _proxy_websocket_request(session, scope, receive, send)
+                await _proxy_websocket_request(scope["state"]["session"], scope, receive, send)
             else:
                 raise NotImplementedError(f"Scope {scope} is not understood")
 

@@ -6,9 +6,11 @@ import os
 import platform
 import pytest
 import re
+import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import traceback
 from pickle import dumps
 from typing import List
@@ -18,6 +20,7 @@ import click
 import click.testing
 import toml
 
+from modal._utils.grpc_testing import InterceptionContext
 from modal.cli.entry_point import entrypoint_cli
 from modal.exception import InvalidError
 from modal_proto import api_pb2
@@ -443,6 +446,21 @@ def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
     shell_prompt = servicer.shell_prompt.encode("utf-8")
     _run(["shell", "--cmd", "pwd", app_file.as_posix() + "::foo"])
     expected_output = subprocess.run(["pwd"], capture_output=True, check=True).stdout
+    assert captured_out == [(1, shell_prompt), (1, expected_output)]
+
+
+@skip_windows("modal shell is not supported on Windows.")
+def test_shell_preserve_token(servicer, set_env_client, mock_shell_pty, monkeypatch):
+    monkeypatch.setenv("MODAL_TOKEN_ID", "my-token-id")
+
+    fake_stdin, captured_out = mock_shell_pty
+    shell_prompt = servicer.shell_prompt.encode("utf-8")
+
+    fake_stdin.clear()
+    fake_stdin.extend([b'echo "$MODAL_TOKEN_ID"\n', b"exit\n"])
+    _run(["shell"])
+
+    expected_output = b"my-token-id\n"
     assert captured_out == [(1, shell_prompt), (1, expected_output)]
 
 
@@ -957,3 +975,76 @@ def test_update_environment_name_valid(servicer, set_env_client, name, set_name)
 
 def test_call_update_environment_suffix(servicer, set_env_client):
     _run(["environment", "update", "main", "--set-web-suffix", "_"])
+
+
+def _run_subprocess(cli_cmd: List[str]) -> subprocess.Popen:
+    p = subprocess.Popen(
+        [sys.executable, "-m", "modal"] + cli_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf8"
+    )
+    return p
+
+
+@pytest.mark.timeout(10)
+@skip_windows("no sigint on windows")
+def test_keyboard_interrupt_during_app_load(servicer, server_url_env, supports_dir):
+    ctx: InterceptionContext
+    creating_function = threading.Event()
+
+    async def stalling_function_create(servicer, req):
+        creating_function.set()
+        await asyncio.sleep(10)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("FunctionCreate", stalling_function_create)
+
+        p = _run_subprocess(["run", f"{supports_dir / 'hello.py'}::hello"])
+        creating_function.wait()
+        p.send_signal(signal.SIGINT)
+        out, err = p.communicate(timeout=1)
+        print(out)
+        assert "Traceback" not in err
+        assert "Aborting app initialization..." in out
+
+
+@pytest.mark.timeout(10)
+@skip_windows("no sigint on windows")
+def test_keyboard_interrupt_during_app_run(servicer, server_url_env, supports_dir):
+    ctx: InterceptionContext
+    waiting_for_output = threading.Event()
+
+    async def stalling_function_get_output(servicer, req):
+        waiting_for_output.set()
+        await asyncio.sleep(10)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("FunctionGetOutputs", stalling_function_get_output)
+
+        p = _run_subprocess(["run", f"{supports_dir / 'hello.py'}::hello"])
+        waiting_for_output.wait()
+        p.send_signal(signal.SIGINT)
+        out, err = p.communicate(timeout=1)
+        assert "App aborted. View run at https://modaltest.com/apps/ap-123" in out
+        assert "Traceback" not in err
+
+
+@pytest.mark.timeout(10)
+@skip_windows("no sigint on windows")
+def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, supports_dir):
+    ctx: InterceptionContext
+    waiting_for_output = threading.Event()
+
+    async def stalling_function_get_output(servicer, req):
+        waiting_for_output.set()
+        await asyncio.sleep(10)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("FunctionGetOutputs", stalling_function_get_output)
+
+        p = _run_subprocess(["run", "--detach", f"{supports_dir / 'hello.py'}::hello"])
+        waiting_for_output.wait()
+        p.send_signal(signal.SIGINT)
+        out, err = p.communicate(timeout=1)
+        print(out)
+        assert "Shutting down Modal client." in out
+        assert "The detached app keeps running. You can track its progress at:" in out
+        assert "Traceback" not in err
