@@ -845,6 +845,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     is_class=info.is_service_class(),
                     class_parameter_info=info.class_parameter_info(),
                     i6pn_enabled=i6pn_enabled,
+                    schedule=schedule.proto_message if schedule is not None else None,
                     _experimental_group_size=group_size or 0,  # Experimental: Grouped functions
                     _experimental_concurrent_cancellations=True,
                     _experimental_buffer_containers=_experimental_buffer_containers or 0,
@@ -865,6 +866,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         web_url_info=function_definition.web_url_info,
                         webhook_config=function_definition.webhook_config,
                         custom_domain_info=function_definition.custom_domain_info,
+                        schedule=schedule.proto_message if schedule is not None else None,
                         is_class=function_definition.is_class,
                         class_parameter_info=function_definition.class_parameter_info,
                         is_method=function_definition.is_method,
@@ -906,7 +908,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     app_id=resolver.app_id,
                     function=function_definition,
                     function_data=function_data,
-                    schedule=schedule.proto_message if schedule is not None else None,
                     existing_function_id=existing_object_id or "",
                     defer_updates=True,
                 )
