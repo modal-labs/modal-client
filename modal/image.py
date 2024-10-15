@@ -1009,15 +1009,9 @@ class _Image(_Object, type_prefix="im"):
             nonlocal python_version
             if version == "2023.12" and python_version is None:
                 python_version = "3.9"  # Backcompat for old hardcoded default param
-<<<<<<< HEAD
-            validated_python_version = _validate_python_version(python_version)
+            validated_python_version = _validate_python_version(python_version, version)
             micromamba_version = _base_image_config("micromamba", version)
             debian_codename = _base_image_config("debian", version)
-=======
-            validated_python_version = _validate_python_version(python_version, version)
-            micromamba_version = _base_image_versions("micromamba", version)
-            debian_codename = _dockerhub_debian_codename(version)
->>>>>>> e0ff40f4 (Image updates to support Python 3.13)
             tag = f"mambaorg/micromamba:{micromamba_version}-{debian_codename}-slim"
             setup_commands = [
                 'SHELL ["/usr/local/bin/_dockerfile_shell.sh"]',
