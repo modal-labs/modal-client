@@ -211,7 +211,8 @@ class _Invocation:
 
         items_received = 0
         items_total: Union[int, None] = None  # populated when self.run_function() completes
-        async with aclosing(async_merge(data_stream, awaitable_to_aiter(self.run_function()))) as stream:
+
+        async with aclosing(async_merge(data_stream, awaitable_to_aiter(self.run_function))) as stream:
             async for item in stream:
                 if isinstance(item, api_pb2.GeneratorDone):
                     items_total = item.items_total

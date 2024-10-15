@@ -562,39 +562,34 @@ async def async_map(
         await asyncio.gather(producer_task, complete_map_task, *worker_tasks, return_exceptions=True)
 
 
-async def async_merge(input: AsyncIterator[T], *more_inputs: AsyncIterator[T]) -> AsyncIterator[T]:
-    queue: asyncio.Queue[T] = asyncio.Queue()
-    inputs = [input] + list(more_inputs)
+async def async_merge(*inputs: AsyncIterator[T]) -> AsyncIterator[T]:
+    queue: asyncio.Queue[Tuple[int, T]] = asyncio.Queue()
 
-    async def producer(iterator: AsyncIterator[T]):
-        async for item in iterator:
-            await queue.put(item)
+    async def producer(index: int, iterator: AsyncIterator[T]):
+        try:
+            async for item in iterator:
+                await queue.put((index, item))
+        except Exception as e:
+            await queue.put((index, e))
+        finally:
+            await queue.put((index, StopAsyncIteration()))
 
-    tasks = [asyncio.create_task(producer(it)) for it in inputs]
-
-    async def complete_merge():
-        for task in tasks:
-            await task
-        await queue.join()
-
-    complete_merge_task = asyncio.create_task(complete_merge())
+    tasks = [asyncio.create_task(producer(i, it)) for i, it in enumerate(inputs)]
+    active_inputs = set(range(len(inputs)))
 
     try:
-        while True:
-            await asyncio.wait([complete_merge_task, *tasks], return_when=asyncio.FIRST_COMPLETED)
-            if complete_merge_task.done():
-                break
-
-            while not queue.empty():
-                result = await queue.get()
-                if isinstance(result, Exception):
-                    raise result
-                yield result
-                queue.task_done()
+        while active_inputs:
+            index, item = await queue.get()
+            if isinstance(item, StopAsyncIteration):
+                active_inputs.remove(index)
+            elif isinstance(item, Exception):
+                raise item
+            else:
+                yield item
     finally:
-        for task in [complete_merge_task, *tasks]:
+        for task in tasks:
             task.cancel()
-        await asyncio.gather(complete_merge_task, *tasks, return_exceptions=False)
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def async_zip(*inputs: AsyncIterator[T]) -> AsyncIterator[Tuple[T, ...]]:
@@ -607,5 +602,4 @@ async def async_zip(*inputs: AsyncIterator[T]) -> AsyncIterator[Tuple[T, ...]]:
 
 
 async def awaitable_to_aiter(awaitable: Awaitable[T]) -> AsyncIterator[T]:
-    result = await awaitable
-    yield result
+    yield await awaitable()
