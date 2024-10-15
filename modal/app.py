@@ -1006,20 +1006,11 @@ class _App:
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
     ) -> _Sandbox:
-        """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
+        """`App.spawn_sandbox` is deprecated in favor of `Sandbox.create(app=...)`.
 
-        This function returns a [SandboxHandle](/docs/reference/modal.Sandbox#modalsandboxsandbox),
-        which can be used to interact with the running sandbox.
-
-        Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
+        See https://modal.com/docs/guide/sandbox for more info on working with sandboxes.
         """
-        deprecation_warning(
-            (2024, 7, 5),
-            """`App.spawn_sandbox` is deprecated in favor of `Sandbox.create`.
-
-            See https://modal.com/docs/guide/sandbox for more info.
-            """,
-        )
+        deprecation_warning((2024, 7, 5), _App.spawn_sandbox.__doc__ or "")
         if not self._running_app:
             raise InvalidError("`app.spawn_sandbox` requires a running app.")
 
