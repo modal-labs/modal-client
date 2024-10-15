@@ -18,7 +18,12 @@ from .supports.skip import skip_old_py, skip_windows
 @pytest.fixture
 def venv_path(tmp_path, repo_root):
     venv_path = tmp_path
-    subprocess.run([sys.executable, "-m", "venv", venv_path, "--copies", "--system-site-packages"], check=True)
+    args = [sys.executable, "-m", "venv", venv_path, "--system-site-packages"]
+    if sys.platform == "win32":
+        # --copies appears to be broken on Python 3.13.0
+        # but I believe it is a no-op on non-windows platforms anyway?
+        args.append("--copies")
+    subprocess.run(args, check=True)
     # Install Modal and a tiny package in the venv.
     subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "-e", repo_root], check=True)
     subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "--force-reinstall", "six"], check=True)

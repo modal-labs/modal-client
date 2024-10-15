@@ -33,7 +33,8 @@ def dummy():
 
 
 def test_supported_python_series():
-    assert SUPPORTED_PYTHON_SERIES == PYTHON_STANDALONE_VERSIONS.keys()
+    for builder_version in get_args(ImageBuilderVersion):
+        assert SUPPORTED_PYTHON_SERIES[builder_version] <= PYTHON_STANDALONE_VERSIONS.keys()
 
 
 def get_image_layers(image_id: str, servicer) -> List[api_pb2.Image]:
@@ -64,10 +65,13 @@ def get_all_dockerfile_commands(image_id: str, servicer) -> str:
 
 @pytest.fixture(params=get_args(ImageBuilderVersion))
 def builder_version(request, server_url_env, modal_config):
-    version = request.param
+    builder_version = request.param
+    python_version = f"{0}.{1}".format(sys.version_info)
+    if python_version not in SUPPORTED_PYTHON_SERIES[builder_version]:
+        pytest.skip("Python version not supported by Image Builder version")
     with modal_config():
-        with mock.patch("test.conftest.ImageBuilderVersion", Literal[version]):  # type: ignore
-            yield version
+        with mock.patch("test.conftest.ImageBuilderVersion", Literal[builder_version]):  # type: ignore
+            yield builder_version
 
 
 @pytest.fixture(autouse=True)
@@ -77,25 +81,25 @@ def clear_environment_cache():
     environments.ENVIRONMENT_CACHE.clear()
 
 
-def test_python_version_validation():
-    assert _validate_python_version(None) == "{0}.{1}".format(*sys.version_info)
-    assert _validate_python_version("3.12") == "3.12"
-    assert _validate_python_version("3.12.0") == "3.12.0"
+def test_python_version_validation(builder_version):
+    assert _validate_python_version(None, builder_version) == "{0}.{1}".format(*sys.version_info)
+    assert _validate_python_version("3.12", builder_version) == "3.12"
+    assert _validate_python_version("3.12.0", builder_version) == "3.12.0"
 
     with pytest.raises(InvalidError, match="Unsupported Python version"):
-        _validate_python_version("3.7")
+        _validate_python_version("3.7", builder_version)
 
     with pytest.raises(InvalidError, match="Python version must be specified as a string"):
-        _validate_python_version(3.10)  # type: ignore
+        _validate_python_version(3.10, builder_version)  # type: ignore
 
     with pytest.raises(InvalidError, match="Invalid Python version"):
-        _validate_python_version("3.10.2.9")
+        _validate_python_version("3.10.2.9", builder_version)
 
     with pytest.raises(InvalidError, match="Invalid Python version"):
-        _validate_python_version("3.10.x")
+        _validate_python_version("3.10.x", builder_version)
 
     with pytest.raises(InvalidError, match="Python version must be specified as 'major.minor'"):
-        _validate_python_version("3.10.5", allow_micro_granularity=False)
+        _validate_python_version("3.10.5", builder_version, allow_micro_granularity=False)
 
 
 def test_dockerhub_python_version(builder_version):
