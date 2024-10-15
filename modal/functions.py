@@ -39,7 +39,7 @@ from ._utils.async_utils import (
     TaskContext,
     aclosing,
     async_merge,
-    awaitable_to_aiter,
+    callable_to_aiter,
     synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
@@ -212,7 +212,7 @@ class _Invocation:
         items_received = 0
         items_total: Union[int, None] = None  # populated when self.run_function() completes
 
-        async with aclosing(async_merge(data_stream, awaitable_to_aiter(self.run_function))) as stream:
+        async with aclosing(async_merge(data_stream, callable_to_aiter(self.run_function))) as stream:
             async for item in stream:
                 if isinstance(item, api_pb2.GeneratorDone):
                     items_total = item.items_total

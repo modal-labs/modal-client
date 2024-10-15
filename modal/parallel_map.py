@@ -14,6 +14,7 @@ from modal._utils.async_utils import (
     async_merge,
     async_zip,
     queue_batch_iterator,
+    sync_or_async_iter,
     synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
@@ -27,7 +28,6 @@ from modal._utils.function_utils import (
 )
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.config import logger
-from modal.exception import InvalidError
 from modal.execution_context import current_input_id
 from modal_proto import api_pb2
 
@@ -334,18 +334,8 @@ async def _map_async(
 
     async def feed_queue():
         # This runs in a main thread event loop, so it doesn't block the synchronizer loop
-
-        all_async = all(isinstance(it, typing.AsyncIterable) for it in input_iterators)
-        all_sync = all(not isinstance(it, typing.AsyncIterable) for it in input_iterators)
-        if not (all_sync or all_async):
-            raise InvalidError("Cannot mix sync and async iterators in map")
-
-        if all_async:
-            async with aclosing(async_zip(*input_iterators)) as stream:
-                async for args in stream:
-                    await raw_input_queue.put.aio((args, kwargs))
-        else:
-            for args in zip(*input_iterators):
+        async with aclosing(async_zip(*input_iterators)) as stream:
+            async for args in stream:
                 await raw_input_queue.put.aio((args, kwargs))
 
         await raw_input_queue.put.aio(None)  # end-of-input sentinel
@@ -396,12 +386,8 @@ async def _starmap_async(
     async def feed_queue():
         # This runs in a main thread event loop, so it doesn't block the synchronizer loop
 
-        if isinstance(input_iterator, typing.AsyncIterable):
-            async with aclosing(input_iterator) as stream:
-                async for args in stream:
-                    await raw_input_queue.put.aio((args, kwargs))
-        else:
-            for args in input_iterator:
+        async with aclosing(sync_or_async_iter(input_iterator)) as stream:
+            async for args in stream:
                 await raw_input_queue.put.aio((args, kwargs))
 
         await raw_input_queue.put.aio(None)  # end-of-input sentinel
