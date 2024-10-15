@@ -154,28 +154,34 @@ def test_sandbox_stdin_write_after_eof(app, servicer):
 
 @skip_non_linux
 def test_sandbox_stdout(app, servicer):
-    N = 5
-    # echo N separate times
-    sb = Sandbox.create("bash", "-c", f"for i in $(seq 1 {N}); do echo foo $i; done", app=app)
-    out = []
-    for line in sb.stdout:
-        out.append(line)
-    assert out == [f"foo {i}\n" for i in range(1, N + 1)]
+    """Test that reads from sandboxes are fully line-buffered, i.e.,
+    that we don't read partial lines or multiple lines at once."""
 
-    # echo a single time with newlines in between
-    input = "".join(f"foo {i}\n" for i in range(1, N + 1))
-    sb = Sandbox.create("bash", "-c", f"echo '{input}'", app=app)
+    # normal sequence of reads
+    sb = Sandbox.create("bash", "-c", "for i in $(seq 1 3); do echo foo $i; done", app=app)
     out = []
     for line in sb.stdout:
         out.append(line)
-    assert out == [f"foo {i}\n" for i in range(1, N + 1)] + ["\n"]
+    assert out == ["foo 1\n", "foo 2\n", "foo 3\n"]
 
-    # echo a single newline
-    sb = Sandbox.create("bash", "-c", "echo -n $'\n'", app=app)
+    # multiple newlines
+    sb = Sandbox.create("bash", "-c", "echo 'foo 1\nfoo 2\nfoo 3'", app=app)
     out = []
     for line in sb.stdout:
         out.append(line)
-    assert out == ["\n"]
+    assert out == ["foo 1\n", "foo 2\n", "foo 3\n"]
+
+    # partial lines
+    sb = Sandbox.create("sleep", "infinity", app=app)
+    cp = sb.exec("bash", "-c", "while read line; do echo $line; done")
+
+    cp.stdin.write(b"foo 1\n")
+    cp.stdin.write(b"foo 2")
+    cp.stdin.write(b"foo 3\n")
+    cp.stdin.write_eof()
+    cp.stdin.drain()
+
+    assert cp.stdout.read() == "foo 1\nfoo 2foo 3\n"
 
 
 @skip_non_linux
