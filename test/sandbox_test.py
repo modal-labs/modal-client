@@ -171,7 +171,7 @@ def test_sandbox_stdout(app, servicer):
     assert out == [f"foo {i}\n" for i in range(1, N + 1)] + ["\n"]
 
     # echo a single newline
-    sb = Sandbox.create("bash", "-c", "echo", app=app)
+    sb = Sandbox.create("bash", "-c", "echo -n $'\n'", app=app)
     out = []
     for line in sb.stdout:
         out.append(line)
