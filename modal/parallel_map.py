@@ -337,7 +337,7 @@ async def _map_async(
 
         all_async = all(isinstance(it, typing.AsyncIterable) for it in input_iterators)
         all_sync = all(not isinstance(it, typing.AsyncIterable) for it in input_iterators)
-        if all_async and not all_sync:
+        if not (all_sync or all_async):
             raise InvalidError("Cannot mix sync and async iterators in map")
 
         if all_async:
