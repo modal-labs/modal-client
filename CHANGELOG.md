@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.184 (2024-10-15)
+
+StreamWriters now accept strings as input.
+
+
+
 ### 0.64.182 (2024-10-15)
 
 - Fixed a bug where app rollbacks would not restart a schedule that had been removed in an intervening deployment.
