@@ -446,7 +446,7 @@ def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
     shell_prompt = servicer.shell_prompt.encode("utf-8")
     _run(["shell", "--cmd", "pwd", app_file.as_posix() + "::foo"])
     expected_output = subprocess.run(["pwd"], capture_output=True, check=True).stdout
-    assert captured_out == [(1, shell_prompt), (1, expected_output)]
+    assert captured_out == [(1, shell_prompt + expected_output)]
 
 
 @skip_windows("modal shell is not supported on Windows.")
