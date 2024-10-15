@@ -153,6 +153,32 @@ def test_sandbox_stdin_write_after_eof(app, servicer):
 
 
 @skip_non_linux
+def test_sandbox_stdout(app, servicer):
+    N = 5
+    # echo N separate times
+    sb = Sandbox.create("bash", "-c", f"for i in $(seq 1 {N}); do echo foo $i; done", app=app)
+    out = []
+    for line in sb.stdout:
+        out.append(line)
+    assert out == [f"foo {i}\n" for i in range(1, N + 1)]
+
+    # echo a single time with newlines in between
+    input = "".join(f"foo {i}\n" for i in range(1, N + 1))
+    sb = Sandbox.create("bash", "-c", f"echo '{input}'", app=app)
+    out = []
+    for line in sb.stdout:
+        out.append(line)
+    assert out == [f"foo {i}\n" for i in range(1, N + 1)] + ["\n"]
+
+    # echo a single newline
+    sb = Sandbox.create("bash", "-c", "echo", app=app)
+    out = []
+    for line in sb.stdout:
+        out.append(line)
+    assert out == ["\n"]
+
+
+@skip_non_linux
 @pytest.mark.asyncio
 async def test_sandbox_async_for(app, servicer):
     sb = await Sandbox.create.aio("bash", "-c", "echo hello && echo world && echo bye >&2", app=app)

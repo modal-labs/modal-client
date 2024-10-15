@@ -88,6 +88,7 @@ class _StreamReader:
         self._client = client
         self._stream = None
         self._last_entry_id = None
+        self._buffer = ""
         # Whether the reader received an EOF. Once EOF is True, it returns
         # an empty string for any subsequent reads (including async for)
         self.eof = False
@@ -148,10 +149,18 @@ class _StreamReader:
 
                 async for message, entry_id in iterator:
                     self._last_entry_id = entry_id
-                    yield message
                     if message is None:
                         completed = True
                         self.eof = True
+                        if self._buffer:
+                            yield self._buffer
+                            self._buffer = ""
+                        yield None
+                    else:
+                        self._buffer += message
+                        while "\n" in self._buffer:
+                            line, self._buffer = self._buffer.split("\n", 1)
+                            yield line + "\n"
 
             except (GRPCError, StreamTerminatedError) as exc:
                 if retries_remaining > 0:
