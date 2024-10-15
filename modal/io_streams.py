@@ -200,7 +200,7 @@ class _StreamWriter:
         self._index += 1
         return index
 
-    def write(self, data: Union[bytes, bytearray, memoryview]):
+    def write(self, data: Union[bytes, bytearray, memoryview, str]):
         """
         Writes data to stream's internal buffer, but does not drain/flush the write.
 
@@ -227,7 +227,9 @@ class _StreamWriter:
         """
         if self._is_closed:
             raise EOFError("Stdin is closed. Cannot write to it.")
-        if isinstance(data, (bytes, bytearray, memoryview)):
+        if isinstance(data, (bytes, bytearray, memoryview, str)):
+            if isinstance(data, str):
+                data = data.encode("utf-8")
             if len(self._buffer) + len(data) > MAX_BUFFER_SIZE:
                 raise BufferError("Buffer size exceed limit. Call drain to clear the buffer.")
             self._buffer.extend(data)
