@@ -138,10 +138,20 @@ def test_sandbox_stdin(app, servicer):
 
 
 @skip_non_linux
-def test_sandbox_stdin_invalid_write(app, servicer):
-    sb = Sandbox.create("bash", "-c", "echo foo", app=app)
-    with pytest.raises(TypeError):
-        sb.stdin.write("foo\n")  # type: ignore
+def test_sandbox_stdin_write_str(app, servicer):
+    sb = Sandbox.create("bash", "-c", "while read line; do echo $line; done && exit 13", app=app)
+
+    sb.stdin.write("foo\n")
+    sb.stdin.write("bar\n")
+
+    sb.stdin.write_eof()
+
+    sb.stdin.drain()
+
+    sb.wait()
+
+    assert sb.stdout.read() == "foo\nbar\n"
+    assert sb.returncode == 13
 
 
 @skip_non_linux
