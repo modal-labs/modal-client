@@ -601,12 +601,18 @@ async def async_merge(*inputs: Union[AsyncIterable[T], Iterator[T]]) -> AsyncIte
 
 
 async def async_zip(*inputs: Union[AsyncIterable[T], Iterable[T]]) -> AsyncIterator[Tuple[T, ...]]:
-    while True:
-        try:
-            items = await asyncio.gather(*(sync_or_async_iter(it).__anext__() for it in inputs))
-            yield tuple(items)
-        except StopAsyncIteration:
-            break
+    iterators = [sync_or_async_iter(it) for it in inputs]
+    try:
+        while True:
+            try:
+                items = await asyncio.gather(*(it.__anext__() for it in iterators))
+                yield tuple(items)
+            except StopAsyncIteration:
+                break
+    finally:
+        for it in iterators:
+            if hasattr(it, "aclose"):
+                await it.aclose()
 
 
 async def callable_to_aiter(awaitable: Callable[[], Awaitable[T]]) -> AsyncIterator[T]:
