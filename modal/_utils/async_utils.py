@@ -537,10 +537,12 @@ async def async_map(
 
     complete_map_task = asyncio.create_task(complete_map())
 
+    all_tasks = [complete_map_task, producer_task, *worker_tasks, wait_for_results_task, wait_for_exceptions_task]
+
     try:
         while True:
             done, _ = await asyncio.wait(
-                [complete_map_task, producer_task, *worker_tasks, wait_for_results_task, wait_for_exceptions_task],
+                all_tasks,
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
@@ -563,9 +565,9 @@ async def async_map(
                 raise exception
 
     finally:
-        for task in [producer_task, complete_map_task, *worker_tasks]:
+        for task in all_tasks:
             task.cancel()
-        await asyncio.gather(producer_task, complete_map_task, *worker_tasks, return_exceptions=True)
+        await asyncio.gather(*all_tasks, return_exceptions=True)
 
 
 async def async_merge(*inputs: Union[AsyncIterable[T], Iterator[T]]) -> AsyncIterator[T]:
