@@ -163,6 +163,38 @@ def test_sandbox_stdin_write_after_eof(app, servicer):
 
 
 @skip_non_linux
+def test_sandbox_stdout(app, servicer):
+    """Test that reads from sandboxes are fully line-buffered, i.e.,
+    that we don't read partial lines or multiple lines at once."""
+
+    # normal sequence of reads
+    sb = Sandbox.create("bash", "-c", "for i in $(seq 1 3); do echo foo $i; done", app=app)
+    out = []
+    for line in sb.stdout:
+        out.append(line)
+    assert out == ["foo 1\n", "foo 2\n", "foo 3\n"]
+
+    # multiple newlines
+    sb = Sandbox.create("bash", "-c", "echo 'foo 1\nfoo 2\nfoo 3'", app=app)
+    out = []
+    for line in sb.stdout:
+        out.append(line)
+    assert out == ["foo 1\n", "foo 2\n", "foo 3\n"]
+
+    # partial lines
+    sb = Sandbox.create("sleep", "infinity", app=app)
+    cp = sb.exec("bash", "-c", "while read line; do echo $line; done")
+
+    cp.stdin.write(b"foo 1\n")
+    cp.stdin.write(b"foo 2")
+    cp.stdin.write(b"foo 3\n")
+    cp.stdin.write_eof()
+    cp.stdin.drain()
+
+    assert cp.stdout.read() == "foo 1\nfoo 2foo 3\n"
+
+
+@skip_non_linux
 @pytest.mark.asyncio
 async def test_sandbox_async_for(app, servicer):
     sb = await Sandbox.create.aio("bash", "-c", "echo hello && echo world && echo bye >&2", app=app)
