@@ -79,7 +79,7 @@ class _StreamReader:
         object_id: str,
         object_type: Literal["sandbox", "container_process"],
         client: _Client,
-        raw: bool = True,  # if False, streamed logs are further processed into complete lines.
+        by_line: bool = False,  # if True, streamed logs are further processed into complete lines.
     ) -> None:
         """mdmd:hidden"""
         self._file_descriptor = file_descriptor
@@ -89,7 +89,7 @@ class _StreamReader:
         self._stream = None
         self._last_entry_id = None
         self._buffer = ""
-        self._raw = raw
+        self._by_line = by_line
         # Whether the reader received an EOF. Once EOF is True, it returns
         # an empty string for any subsequent reads (including async for)
         self.eof = False
@@ -116,16 +116,16 @@ class _StreamReader:
         """
         data = ""
         # TODO: maybe combine this with get_app_logs_loop
-        async for message in self._get_logs():
+        async for message in self._get_logs_by_line():
             if message is None:
                 break
             data += message
 
         return data
 
-    async def _get_logs_raw(self) -> AsyncIterator[Optional[str]]:
+    async def _get_logs(self) -> AsyncIterator[Optional[str]]:
         """mdmd:hidden
-        Streams raw sandbox or process logs from the server to the reader.
+        Streams sandbox or process logs from the server to the reader.
 
         Logs returned by this method may contain partial or multiple lines at a time.
 
@@ -168,11 +168,11 @@ class _StreamReader:
                         continue
                 raise
 
-    async def _get_logs(self) -> AsyncIterator[Optional[str]]:
+    async def _get_logs_by_line(self) -> AsyncIterator[Optional[str]]:
         """mdmd:hidden
-        Processes raw logs from the server and yields complete lines only.
+        Processes logs from the server and yields complete lines only.
         """
-        async for message in self._get_logs_raw():
+        async for message in self._get_logs():
             if message is None:
                 if self._buffer:
                     yield self._buffer
@@ -186,8 +186,8 @@ class _StreamReader:
 
     def __aiter__(self):
         """mdmd:hidden"""
-        if self._raw:
-            self._stream = self._get_logs_raw()
+        if self._by_line:
+            self._stream = self._get_logs_by_line()
         else:
             self._stream = self._get_logs()
         return self

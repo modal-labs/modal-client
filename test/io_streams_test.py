@@ -37,7 +37,7 @@ def test_stream_reader(servicer, client):
 
 
 def test_stream_reader_processed(servicer, client):
-    """Tests that the stream reader with processed logs works with clean inputs."""
+    """Tests that the stream reader with logs by line works with clean inputs."""
     lines = ["foo\n", "bar\n", "baz\n"]
 
     async def sandbox_get_logs(servicer, stream):
@@ -59,7 +59,7 @@ def test_stream_reader_processed(servicer, client):
                 object_id="sb-123",
                 object_type="sandbox",
                 client=client,
-                raw=False,
+                by_line=True,
             )
 
             out = []
@@ -70,7 +70,7 @@ def test_stream_reader_processed(servicer, client):
 
 
 def test_stream_reader_processed_multiple(servicer, client):
-    """Tests that the stream reader with processed logs splits multiple lines."""
+    """Tests that the stream reader with logs by line splits multiple lines."""
 
     async def sandbox_get_logs(servicer, stream):
         await stream.recv_message()
@@ -93,7 +93,7 @@ def test_stream_reader_processed_multiple(servicer, client):
                 object_id="sb-123",
                 object_type="sandbox",
                 client=client,
-                raw=False,
+                by_line=True,
             )
 
             out = []
@@ -104,7 +104,7 @@ def test_stream_reader_processed_multiple(servicer, client):
 
 
 def test_stream_reader_processed_partial_lines(servicer, client):
-    """Test that the stream reader with processed logs joins partial lines together."""
+    """Test that the stream reader with logs by line joins partial lines together."""
 
     async def sandbox_get_logs(servicer, stream):
         await stream.recv_message()
@@ -139,7 +139,7 @@ def test_stream_reader_processed_partial_lines(servicer, client):
                 object_id="sb-123",
                 object_type="sandbox",
                 client=client,
-                raw=False,
+                by_line=True,
             )
 
             out = []
