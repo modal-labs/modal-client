@@ -11,8 +11,11 @@ from synchronicity import Synchronizer
 from modal._utils import async_utils
 from modal._utils.async_utils import (
     TaskContext,
+    aclosing,
+    async_zip,
     queue_batch_iterator,
     retry,
+    sync_or_async_iter,
     synchronize_api,
     warn_if_generator_is_not_consumed,
 )
@@ -283,3 +286,99 @@ def test_synchronize_api_blocking_name():
     myfunc = synchronize_api(_myfunc)
     assert myfunc.__name__ == "myfunc"
     assert myfunc() == "bar"
+
+
+@pytest.mark.asyncio
+async def test_aclosing():
+    result = []
+    states = []
+
+    async def foo():
+        states.append("enter")
+        try:
+            yield 1
+            yield 2
+        finally:
+            states.append("exit")
+
+    async with aclosing(foo()) as stream:
+        async for it in stream:
+            result.append(it)
+
+    assert sorted(result) == [1, 2]
+    assert states == ["enter", "exit"]
+
+    states.clear()
+    result.clear()
+    async with aclosing(foo()) as stream:
+        async for it in stream:
+            break
+
+    assert result == []
+    assert states == ["enter", "exit"]
+
+
+@pytest.mark.asyncio
+async def test_sync_or_async_iter():
+    async def async_gen():
+        yield 1
+        await asyncio.sleep(0.1)
+        yield 2
+        await asyncio.sleep(0.1)
+        yield 3
+
+    def sync_gen():
+        yield 4
+        yield 5
+        yield 6
+
+    res = []
+    async for i in sync_or_async_iter(async_gen()):
+        res.append(i)
+    assert res == [1, 2, 3]
+
+    res = []
+    async for i in sync_or_async_iter(sync_gen()):
+        res.append(i)
+    assert res == [4, 5, 6]
+
+
+@pytest.mark.asyncio
+async def test_async_zip():
+    async def gen1(start, count=1):
+        for i in range(start, start + count):
+            yield i
+
+    result = []
+    async for item in async_zip(gen1(1), gen1(4), gen1(6)):
+        result.append(item)
+
+    assert result == [(1, 4, 6)]
+
+    result = []
+    async for item in async_zip(gen1(1, 10), gen1(5, 8), gen1(6, 2)):
+        result.append(item)
+
+    assert result == [(1, 5, 6), (2, 6, 7)]
+
+
+@pytest.mark.asyncio
+async def test_async_zip_parallel():
+    ev = asyncio.Event()
+    ev2 = asyncio.Event()
+
+    async def gen1():
+        ev.set()
+        await ev2.wait()
+        yield 1
+
+    async def gen2():
+        await ev.wait()
+        ev2.set()
+        yield 2
+
+    result = []
+    async for item in async_zip(gen1(), gen2()):
+        result.append(item)
+
+    assert result == [(1, 2)]
