@@ -276,8 +276,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         return obj
 
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
-        self._stdout = StreamReader(api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, "sandbox", self._client)
-        self._stderr = StreamReader(api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, "sandbox", self._client)
+        self._stdout = StreamReader(api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, "sandbox", self._client, raw=False)
+        self._stderr = StreamReader(api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, "sandbox", self._client, raw=False)
         self._stdin = StreamWriter(self.object_id, "sandbox", self._client)
         self._result = None
 

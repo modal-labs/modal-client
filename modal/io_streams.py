@@ -79,9 +79,9 @@ class _StreamReader:
         object_id: str,
         object_type: Literal["sandbox", "container_process"],
         client: _Client,
+        raw: bool = True,  # if False, streamed logs are further processed into complete lines.
     ) -> None:
         """mdmd:hidden"""
-
         self._file_descriptor = file_descriptor
         self._object_type = object_type
         self._object_id = object_id
@@ -89,6 +89,7 @@ class _StreamReader:
         self._stream = None
         self._last_entry_id = None
         self._buffer = ""
+        self._raw = raw
         # Whether the reader received an EOF. Once EOF is True, it returns
         # an empty string for any subsequent reads (including async for)
         self.eof = False
@@ -185,10 +186,10 @@ class _StreamReader:
 
     def __aiter__(self):
         """mdmd:hidden"""
-        if self._object_type == "sandbox":
-            self._stream = self._get_logs()
-        else:
+        if self._raw:
             self._stream = self._get_logs_raw()
+        else:
+            self._stream = self._get_logs()
         return self
 
     async def __anext__(self):

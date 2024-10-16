@@ -36,8 +36,41 @@ def test_stream_reader(servicer, client):
             assert out == lines
 
 
-def test_stream_reader_multiple(servicer, client):
-    """Tests that the stream reader splits multiple lines."""
+def test_stream_reader_processed(servicer, client):
+    """Tests that the stream reader with processed logs works with clean inputs."""
+    lines = ["foo\n", "bar\n", "baz\n"]
+
+    async def sandbox_get_logs(servicer, stream):
+        await stream.recv_message()
+
+        for line in lines:
+            log = api_pb2.TaskLogs(data=line, file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT)
+            await stream.send_message(api_pb2.TaskLogsBatch(entry_id=line, items=[log]))
+
+        # send EOF
+        await stream.send_message(api_pb2.TaskLogsBatch(eof=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetLogs", sandbox_get_logs)
+
+        with enable_output():
+            stdout = StreamReader(
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                object_id="sb-123",
+                object_type="sandbox",
+                client=client,
+                raw=False,
+            )
+
+            out = []
+            for line in stdout:
+                out.append(line)
+
+            assert out == lines
+
+
+def test_stream_reader_processed_multiple(servicer, client):
+    """Tests that the stream reader with processed logs splits multiple lines."""
 
     async def sandbox_get_logs(servicer, stream):
         await stream.recv_message()
@@ -60,6 +93,7 @@ def test_stream_reader_multiple(servicer, client):
                 object_id="sb-123",
                 object_type="sandbox",
                 client=client,
+                raw=False,
             )
 
             out = []
@@ -69,8 +103,8 @@ def test_stream_reader_multiple(servicer, client):
             assert out == ["foo\n", "bar\n", "baz"]
 
 
-def test_stream_reader_partial_lines(servicer, client):
-    """Test that the stream reader joins partial lines together."""
+def test_stream_reader_processed_partial_lines(servicer, client):
+    """Test that the stream reader with processed logs joins partial lines together."""
 
     async def sandbox_get_logs(servicer, stream):
         await stream.recv_message()
@@ -105,6 +139,7 @@ def test_stream_reader_partial_lines(servicer, client):
                 object_id="sb-123",
                 object_type="sandbox",
                 client=client,
+                raw=False,
             )
 
             out = []
