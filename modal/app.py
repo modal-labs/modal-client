@@ -134,7 +134,7 @@ class _App:
 
     * A unit of deployment for functions and classes.
     * Syncing of identities of (primarily) functions and classes across processes
-      (your local Python interpreter and every Modal containerr active in your application).
+      (your local Python interpreter and every Modal container active in your application).
     * Manage log collection for everything that happens inside your code.
 
     **Registering functions with an app**
