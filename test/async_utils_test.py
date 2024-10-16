@@ -360,3 +360,25 @@ async def test_async_zip():
         result.append(item)
 
     assert result == [(1, 5, 6), (2, 6, 7)]
+
+
+@pytest.mark.asyncio
+async def test_async_zip_parallel():
+    ev = asyncio.Event()
+    ev2 = asyncio.Event()
+
+    async def gen1():
+        ev.set()
+        await ev2.wait()
+        yield 1
+
+    async def gen2():
+        await ev.wait()
+        ev2.set()
+        yield 2
+
+    result = []
+    async for item in async_zip(gen1(), gen2()):
+        result.append(item)
+
+    assert result == [(1, 2)]
