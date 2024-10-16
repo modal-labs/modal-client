@@ -12,7 +12,6 @@ from unittest import mock
 
 from modal import App, Image, Mount, Secret, build, environments, gpu, method
 from modal._serialization import serialize
-from modal._utils.async_utils import synchronizer
 from modal.client import Client
 from modal.exception import DeprecationError, InvalidError, VersionError
 from modal.image import (
@@ -1099,35 +1098,43 @@ async def test_logs(servicer, client):
     assert logs == ["build starting\n", "build finished\n"]
 
 
-def test_add_local_python_packages(client, servicer, set_env_client):
+def test_add_local_python_packages(client, servicer, set_env_client, test_dir, monkeypatch):
+    monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
     deb = Image.debian_slim()
     image = deb.add_local_python_packages("pkg_a")
 
-    # _image = synchronizer._translate_in(image)
-    # mount_layer = _image._mounts
-    # pkg_mount: Mount = mount_layer[0]
-    # from modal.mount import _MountedPythonModule
+    def hydrate_image(img):
+        # there should be a more straight forward way to do this?
+        app = App()
+        app.function(serialized=True, image=img)(lambda: None)
+        with app.run(client=client):
+            pass
+        assert len(image._stacked_mounts) == 1
 
-    # assert len(pkg_mount.entries) == 1
-    # mount_entry = pkg_mount.entries[0]
-    # assert isinstance(mount_entry, _MountedPythonModule)
-    # assert mount_entry.remote_dir == "/root"
-    # assert mount_entry.module_name == "pkg_a"
+    hydrate_image(image)
+    assert len(image._stacked_mounts) == 1
 
     image_additional_mount = image.add_local_python_packages("pkg_b")
-    assert len(synchronizer._translate_in(image_additional_mount)._mounts) == 2
+    hydrate_image(image_additional_mount)
+    assert len(image_additional_mount._stacked_mounts) == 2  # another mount added to lazy layer
+    assert len(image._stacked_mounts) == 1  # original image should not be affected
 
     image_non_mount = image.run_commands("echo 'hello'")
-    assert synchronizer._translate_in(image_non_mount)._mounts == ()  # mounts don't transfer for non-mount operations
+    hydrate_image(image_non_mount)
+    assert len(image_non_mount._stacked_mounts) == 0
+    # TODO: assert layers include copy of all mounts + echo
 
-    # make sure that the run_commands instroduce a new layer that copies the mount
-    app = App()
+    layers = get_image_layers(image_non_mount.object_id, servicer)
+    for layer in layers:
+        print("===========LAYER========")
+        print(layer)
 
-    app.function(serialized=True, image=image)(lambda: None)
-    with app.run(client=client):
-        layers = get_image_layers(image.object_id, servicer)
-        for i, layer in enumerate(layers):
-            print("Layer", i)
-            print(layer)
-        commands = [layer.dockerfile_commands for layer in layers]
-        context_files = [[(f.filename, f.data) for f in layer.context_files] for layer in layers]
+    echo_layer = layers[0]
+    assert echo_layer.dockerfile_commands == ["FROM base", "RUN echo 'hello'"]
+
+    copy_layer = layers[1]
+    assert copy_layer.dockerfile_commands == ["FROM base", "COPY . /"]
+    assert copy_layer.context_mount_id
+    copied_files = servicer.mount_contents[copy_layer.context_mount_id].keys()
+    assert len(copied_files) == 8
+    assert all(fn.startswith("/root/pkg_a/") for fn in copied_files)

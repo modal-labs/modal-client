@@ -274,22 +274,57 @@ class _Image(_Object, type_prefix="im"):
 
     force_build: bool
     inside_exceptions: List[Exception]
-    _mounts: Optional[Sequence[_Mount]]
+    _mounts: Tuple[_Mount]
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
-        self._mounts = None
+        self._mounts = ()
+        self.force_build = False
 
     def _initialize_from_other(self, other):
         # used by .clone()
         self.inside_exceptions = other.inside_exceptions
-        self._mounts = other._mounts.copy() if other._mounts is not None else None
+        self.force_build = other.force_build
+        self._mounts = other._mounts
 
     def _hydrate_metadata(self, message: Optional[Message]):
         env_image_id = config.get("image_id")
         if env_image_id == self.object_id:
             for exc in self.inside_exceptions:
                 raise exc
+
+    def _add_mount_layer(self, mounts: Sequence[_Mount] = ()):
+        base_image = self
+
+        async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+            self._hydrate_from_other(base_image)  # same image id as base image as long as it's lazy
+            self._mounts = base_image._mounts + tuple(mounts)
+
+        return _Image._from_loader(_load, "ImageWithMounts()", deps=lambda: [base_image] + list(mounts))
+
+    @property
+    def _stacked_mounts(self) -> typing.Tuple[_Mount]:
+        """Non-evaluated mount layers on the image
+
+        When the image is used by a Modal container, these mounts need to be attached as well to
+        represent the full image content, as they haven't yet been represented as a layer in the
+        image.
+
+        When the image is used as a base image for a new layer (that is not itself a mount layer)
+        these mounts need to first be inserted as a copy operation (.copy_mount) into the image.
+        """
+        return self._mounts
+
+    def _consolidate_mounts(self) -> "_Image":
+        """Takes any stacked mounts on the image and makes them into actual image layers using COPY
+
+        This needs to be run before an image with mounts is used as a base image for anything
+        other than another "mount only" layer, e.g. a docker command.
+        """
+        image = self
+        for mount in self._stacked_mounts:
+            image = image._consolidate_mount(mount)
+        return image
 
     @staticmethod
     def _from_args(
@@ -305,10 +340,12 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,
         # For internal use only.
         _namespace: int = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        _mounts: Sequence[_Mount] = (),  # used for "soft/lazy" layers
+        _consolidate_mounts: bool = True,
     ):
         if base_images is None:
             base_images = {}
+        else:
+            base_images = {k: v._consolidate_mounts() if _consolidate_mounts else v for k, v in base_images.items()}
         if secrets is None:
             secrets = []
         if gpu_config is None:
@@ -344,26 +381,14 @@ class _Image(_Object, type_prefix="im"):
             else:
                 dockerfile = dockerfile_function(builder_version)
 
-            if not dockerfile.commands and not build_function and not _mounts:
+            if not dockerfile.commands and not build_function:
                 raise InvalidError(
                     "No commands were provided for the image — have you tried using modal.Image.debian_slim()?"
                 )
-            if bool(dockerfile.commands) + bool(build_function) + bool(_mounts) > 1:
+            if dockerfile.commands and build_function:
                 raise InvalidError(
-                    "Cannot provide multiple of: build function, Dockerfile commands and lazy mounts in the same image layer!"
+                    "Cannot provide both build function and Dockerfile commands in the same image layer!"
                 )
-
-            if _mounts:
-                if len(base_images) > 1:
-                    raise InvalidError("Mount can't be used directly on multiple base images")
-
-                print("MOUNT LAYER", _mounts)
-                # for building purposes, this image should be the same as the base image, until
-                # another non-mount layer is added on top of it
-                base_image = list(base_images.values())[0]
-                soft_layer_image = base_image.clone()
-                soft_layer_image._mounts.append(_mounts)
-                return soft_layer_image
 
             base_images_pb2s = [
                 api_pb2.BaseImage(
@@ -492,7 +517,7 @@ class _Image(_Object, type_prefix="im"):
 
             self._hydrate(image_id, resolver.client, None)
 
-        rep = "Image()"
+        rep = f"Image({dockerfile_function})"
         obj = _Image._from_loader(_load, rep, deps=_deps)
         obj.force_build = force_build
         return obj
@@ -511,6 +536,18 @@ class _Image(_Object, type_prefix="im"):
             )
 
         return _Image._from_args(base_images={"base": self}, dockerfile_function=build_dockerfile, **kwargs)
+
+    def _consolidate_mount(self, mount: _Mount) -> "_Image":
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+            commands = ["FROM base", "COPY . /"]  # copy everything from the supplied mount into the root
+            return DockerfileSpec(commands=commands, context_files={})
+
+        return _Image._from_args(
+            base_images={"base": self},
+            dockerfile_function=build_dockerfile,
+            context_mount=mount,
+            _consolidate_mounts=False,  # avoid recursion
+        )
 
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy the entire contents of a `modal.Mount` into an image.
@@ -565,7 +602,7 @@ class _Image(_Object, type_prefix="im"):
         executed Modal functions.
         """
         mount = _Mount.from_local_python_packages(*packages)
-        return _Image._from_args(base_images={"base": self}, _mounts=self._mounts + (mount,))
+        return self._add_mount_layer([mount])
 
     def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy a directory into the image as a part of building the image.
