@@ -421,21 +421,21 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
     _run(["shell", app_file.as_posix() + "::foo"])
 
     # first captured message is the empty message the mock server sends
-    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
+    assert captured_out == [(1, shell_prompt + b"Hello World\n")]
     captured_out.clear()
 
     # Function is explicitly specified
     _run(["shell", webhook_app_file.as_posix() + "::foo"])
-    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
+    assert captured_out == [(1, shell_prompt + b"Hello World\n")]
     captured_out.clear()
 
     # Function must be inferred
     _run(["shell", webhook_app_file.as_posix()])
-    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
+    assert captured_out == [(1, shell_prompt + b"Hello World\n")]
     captured_out.clear()
 
     _run(["shell", cls_app_file.as_posix()])
-    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
+    assert captured_out == [(1, shell_prompt + b"Hello World\n")]
     captured_out.clear()
 
 
