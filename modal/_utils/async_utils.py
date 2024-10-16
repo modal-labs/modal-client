@@ -515,25 +515,25 @@ async def async_zip(*inputs: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGener
 async def async_merge(*inputs: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerator[T, None]:
     queue: asyncio.Queue[Tuple[int, Union[T, Exception]]] = asyncio.Queue()
 
-    async def producer(index: int, iterable: Union[AsyncIterable[T], Iterable[T]]):
+    async def producer(producer_id: int, iterable: Union[AsyncIterable[T], Iterable[T]]):
         try:
             async for item in sync_or_async_iter(iterable):
-                await queue.put((index, item))
+                await queue.put((producer_id, ("value", item)))
         except Exception as e:
-            await queue.put((index, e))
+            await queue.put((producer_id, ("exception", e)))
         finally:
-            await queue.put((index, StopAsyncIteration()))
+            await queue.put((producer_id, ("stop", StopAsyncIteration())))
 
     tasks = [asyncio.create_task(producer(i, it)) for i, it in enumerate(inputs)]
-    active_inputs = set(range(len(inputs)))
+    active_producers = set(range(len(inputs)))
 
     try:
-        while active_inputs:
-            index, item = await queue.get()
-            if isinstance(item, StopAsyncIteration):
-                active_inputs.remove(index)
-            elif isinstance(item, Exception):
+        while active_producers:
+            producer_id, (event_type, item) = await queue.get()
+            if event_type == "exception":
                 raise item
+            elif event_type == "stop":
+                active_producers.remove(producer_id)
             else:
                 yield item
     finally:
