@@ -88,14 +88,16 @@ class IOContext:
         input_ids: List[str],
         function_call_ids: List[str],
         finalized_function: FinalizedFunction,
-        deserialized_args: List[Any],
+        function_inputs: List[api_pb2.FunctionInput],
         is_batched: bool,
+        client: _Client,
     ):
         self.input_ids = input_ids
         self.function_call_ids = function_call_ids
         self.finalized_function = finalized_function
-        self._deserialized_args = deserialized_args
+        self._function_inputs = function_inputs
         self._is_batched = is_batched
+        self._client = client
 
     @classmethod
     async def create(
@@ -123,9 +125,7 @@ class IOContext:
         method_name = function_inputs[0].method_name
         assert all(method_name == input.method_name for input in function_inputs)
         finalized_function = finalized_functions[method_name]
-        # TODO(cathy) Performance decrease if we deserialize function_inputs later
-        deserialized_args = [deserialize(input.args, client) if input.args else ((), {}) for input in function_inputs]
-        return cls(input_ids, function_call_ids, finalized_function, deserialized_args, is_batched)
+        return cls(input_ids, function_call_ids, finalized_function, function_inputs, is_batched, client)
 
     def set_cancel_callback(self, cb: Callable[[], None]):
         self._cancel_callback = cb
@@ -141,8 +141,14 @@ class IOContext:
             logger.warning("Unexpected: Could not cancel input")
 
     def _args_and_kwargs(self) -> Tuple[Tuple[Any, ...], Dict[str, List[Any]]]:
+        # deserializing here instead of the constructor
+        # to make sure we handle user exceptions properly
+        # and don't retry
+        deserialized_args = [
+            deserialize(input.args, self._client) if input.args else ((), {}) for input in self._function_inputs
+        ]
         if not self._is_batched:
-            return self._deserialized_args[0]
+            return deserialized_args[0]
 
         func_name = self.finalized_function.callable.__name__
 
@@ -152,7 +158,8 @@ class IOContext:
 
         # aggregate args and kwargs of all inputs into a kwarg dict
         kwargs_by_inputs: List[Dict[str, Any]] = [{} for _ in range(len(self.input_ids))]
-        for i, (args, kwargs) in enumerate(self._deserialized_args):
+
+        for i, (args, kwargs) in enumerate(deserialized_args):
             # check that all batched inputs should have the same number of args and kwargs
             if (num_params := len(args) + len(kwargs)) != len(param_names):
                 raise InvalidError(
