@@ -788,7 +788,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     )
                     for path, volume in validated_volumes
                 ]
-                loaded_mount_ids = {m.object_id for m in all_mounts} | {m.object_id for m in image._stacked_mounts}
+                loaded_mount_ids = {m.object_id for m in all_mounts} | {m.object_id for m in image._mount_layers}
 
                 # Get object dependencies
                 object_dependencies = []

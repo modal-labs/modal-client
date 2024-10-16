@@ -1111,19 +1111,19 @@ def test_add_local_python_packages(client, servicer, set_env_client, test_dir, m
         app.function(serialized=True, image=img)(lambda: None)
         with app.run(client=client):
             pass
-        assert len(image._stacked_mounts) == 1
+        assert len(image._mount_layers) == 1
 
     hydrate_image(image)
-    assert len(image._stacked_mounts) == 1
+    assert len(image._mount_layers) == 1
 
     image_additional_mount = image.add_local_python_packages("pkg_b")
     hydrate_image(image_additional_mount)
-    assert len(image_additional_mount._stacked_mounts) == 2  # another mount added to lazy layer
-    assert len(image._stacked_mounts) == 1  # original image should not be affected
+    assert len(image_additional_mount._mount_layers) == 2  # another mount added to lazy layer
+    assert len(image._mount_layers) == 1  # original image should not be affected
 
     image_non_mount = image.run_commands("echo 'hello'")
     hydrate_image(image_non_mount)
-    assert len(image_non_mount._stacked_mounts) == 0
+    assert len(image_non_mount._mount_layers) == 0
     # TODO: assert layers include copy of all mounts + echo
 
     layers = get_image_layers(image_non_mount.object_id, servicer)
@@ -1136,7 +1136,7 @@ def test_add_local_python_packages(client, servicer, set_env_client, test_dir, m
 
     copy_layer = layers[1]
     assert copy_layer.dockerfile_commands == ["FROM base", "COPY . /"]
-    assert copy_layer.context_mount_id == image._stacked_mounts[0].object_id
+    assert copy_layer.context_mount_id == image._mount_layers[0].object_id
     copied_files = servicer.mount_contents[copy_layer.context_mount_id].keys()
     assert len(copied_files) == 8
     assert all(fn.startswith("/root/pkg_a/") for fn in copied_files)
@@ -1155,7 +1155,7 @@ def test_lazy_mounts_are_attached_to_functions(servicer, client, test_dir, monke
     fun_def = servicer.app_functions[fun.object_id]
     added_mounts = set(fun_def.mount_ids) - control_func_mounts
     assert len(added_mounts) == 1
-    assert added_mounts == {img._stacked_mounts[0].object_id}
+    assert added_mounts == {img._mount_layers[0].object_id}
 
 
 def test_lazy_mounts_are_attached_to_classes(servicer, client, test_dir, monkeypatch):
@@ -1175,19 +1175,27 @@ def test_lazy_mounts_are_attached_to_classes(servicer, client, test_dir, monkeyp
     fun_def = servicer.function_by_name("A.*")  # class service function
     added_mounts = set(fun_def.mount_ids) - control_func_mounts
     assert len(added_mounts) == 1
-    assert added_mounts == {img._stacked_mounts[0].object_id}
+    assert added_mounts == {img._mount_layers[0].object_id}
 
     obj = ACls(some_arg="foo")
     obj.keep_warm(0)  # hacky way to force hydration of the *parameter bound* function (instance service function)
     obj_fun_def = servicer.function_by_name("A.*", ((), {"some_arg": "foo"}))  # instance service function
     added_mounts = set(obj_fun_def.mount_ids) - control_func_mounts
     assert len(added_mounts) == 1
-    assert added_mounts == {img._stacked_mounts[0].object_id}
+    assert added_mounts == {img._mount_layers[0].object_id}
 
 
-# def test_lazy_mounts_are_attached_to_sandboxes(servicer, client, test_dir, monkeypatch):
-#     monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
-#     img = Image.debian_slim().add_local_python_packages("pkg_a")
+def test_lazy_mounts_are_attached_to_sandboxes(servicer, client, test_dir, monkeypatch):
+    monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
+    deb_slim = Image.debian_slim()
+    img = deb_slim.add_local_python_packages("pkg_a")
+    app = App("my-app")
+    with app.run(client=client):
+        modal.Sandbox.create(image=img, app=app, client=client)
+        sandbox_def = servicer.sandbox_defs[0]
+
+    assert sandbox_def.image_id == deb_slim.object_id
+    assert sandbox_def.mount_ids == [img._mount_layers[0].object_id]
 
 
 # TODO: test build functions w/ lazy mounts

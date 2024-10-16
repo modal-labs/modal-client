@@ -303,7 +303,7 @@ class _Image(_Object, type_prefix="im"):
         return _Image._from_loader(_load, "ImageWithMounts()", deps=lambda: [base_image] + list(mounts))
 
     @property
-    def _stacked_mounts(self) -> typing.Tuple[_Mount]:
+    def _mount_layers(self) -> typing.Tuple[_Mount]:
         """Non-evaluated mount layers on the image
 
         When the image is used by a Modal container, these mounts need to be attached as well to
@@ -322,7 +322,7 @@ class _Image(_Object, type_prefix="im"):
         other than another "mount only" layer, e.g. a docker command.
         """
         image = self
-        for mount in self._stacked_mounts:
+        for mount in self._mount_layers:
             image = image._materialize_mount(mount)
         return image
 
