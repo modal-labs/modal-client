@@ -1185,6 +1185,7 @@ def test_lazy_mounts_are_attached_to_classes(servicer, client, test_dir, monkeyp
     assert added_mounts == {img._mount_layers[0].object_id}
 
 
+@skip_windows("servicer sandbox implementation not working on windows")
 def test_lazy_mounts_are_attached_to_sandboxes(servicer, client, test_dir, monkeypatch):
     monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
     deb_slim = Image.debian_slim()
