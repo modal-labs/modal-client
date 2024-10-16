@@ -420,6 +420,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 task_id=task_id,
                 command=cmds,
                 pty_info=pty_info,
+                runtime_debug=config.get("function_runtime_debug"),
             )
         )
         return _ContainerProcess(resp.exec_id, self._client)

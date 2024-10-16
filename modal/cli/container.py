@@ -10,6 +10,7 @@ from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.cli.utils import display_table, stream_app_logs, timestamp_to_local
 from modal.client import _Client
+from modal.config import config
 from modal.container_process import _ContainerProcess
 from modal_proto import api_pb2
 
@@ -57,7 +58,10 @@ async def exec(
     client = await _Client.from_env()
 
     req = api_pb2.ContainerExecRequest(
-        task_id=container_id, command=command, pty_info=get_pty_info(shell=True) if pty else None
+        task_id=container_id,
+        command=command,
+        pty_info=get_pty_info(shell=True) if pty else None,
+        runtime_debug=config.get("function_runtime_debug"),
     )
     res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(req)
 
