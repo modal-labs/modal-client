@@ -11,6 +11,7 @@ from synchronicity import Synchronizer
 from modal._utils import async_utils
 from modal._utils.async_utils import (
     TaskContext,
+    aclosing,
     queue_batch_iterator,
     retry,
     synchronize_api,
@@ -283,3 +284,33 @@ def test_synchronize_api_blocking_name():
     myfunc = synchronize_api(_myfunc)
     assert myfunc.__name__ == "myfunc"
     assert myfunc() == "bar"
+
+
+@pytest.mark.asyncio
+async def test_aclosing():
+    result = []
+    states = []
+
+    async def foo():
+        states.append("enter")
+        try:
+            yield 1
+            yield 2
+        finally:
+            states.append("exit")
+
+    async with aclosing(foo()) as stream:
+        async for it in stream:
+            result.append(it)
+
+    assert sorted(result) == [1, 2]
+    assert states == ["enter", "exit"]
+
+    states.clear()
+    result.clear()
+    async with aclosing(foo()) as stream:
+        async for it in stream:
+            break
+
+    assert result == []
+    assert states == ["enter", "exit"]

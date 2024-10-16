@@ -463,3 +463,13 @@ def run_generator_sync(
         except BaseException as err:
             exc = err
     loop.close()
+
+
+@asynccontextmanager
+async def aclosing(
+    agen: AsyncGenerator[T, None],
+) -> AsyncGenerator[AsyncGenerator[T, None], None]:
+    try:
+        yield agen
+    finally:
+        await agen.aclose()
