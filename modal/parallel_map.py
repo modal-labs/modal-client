@@ -11,6 +11,7 @@ from grpclib import GRPCError, Status
 from modal._utils.async_utils import (
     AsyncOrSyncIterable,
     aclosing,
+    async_merge,
     async_zip,
     queue_batch_iterator,
     synchronize_api,
@@ -249,9 +250,7 @@ async def _map_invocation(
 
         assert len(received_outputs) == 0
 
-    response_gen = stream.merge(drain_input_generator(), pump_inputs(), poll_outputs())
-
-    async with response_gen.stream() as streamer:
+    async with aclosing(async_merge(drain_input_generator(), pump_inputs(), poll_outputs())) as streamer:
         async for response in streamer:
             if response is not None:
                 yield response.value

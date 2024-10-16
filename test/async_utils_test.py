@@ -12,6 +12,7 @@ from modal._utils import async_utils
 from modal._utils.async_utils import (
     TaskContext,
     aclosing,
+    async_merge,
     async_zip,
     queue_batch_iterator,
     retry,
@@ -382,3 +383,59 @@ async def test_async_zip_parallel():
         result.append(item)
 
     assert result == [(1, 2)]
+
+
+@pytest.mark.asyncio
+async def test_async_merge():
+    result = []
+    states = []
+
+    async def gen1():
+        states.append("gen1 enter")
+        try:
+            await asyncio.sleep(0.1)
+            yield 1
+            await asyncio.sleep(0.1)
+            yield 4
+        finally:
+            states.append("gen1 exit")
+
+    async def gen2():
+        states.append("gen2 enter")
+        try:
+            await asyncio.sleep(0.05)
+            yield 2
+            await asyncio.sleep(0.15)
+            yield 5
+        finally:
+            states.append("gen2 exit")
+
+    async def gen3():
+        states.append("gen3 enter")
+        try:
+            yield 3
+            await asyncio.sleep(0.2)
+            yield 6
+        finally:
+            states.append("gen3 exit")
+
+    async for item in async_merge(gen1(), gen2(), gen3()):
+        result.append(item)
+
+    # Wait a bit to ensure all generators have finished
+    await asyncio.sleep(0.3)
+
+    assert sorted(result) == [1, 2, 3, 4, 5, 6]
+    assert sorted(states) == ["gen1 enter", "gen1 exit", "gen2 enter", "gen2 exit", "gen3 enter", "gen3 exit"]
+
+    result.clear()
+    states.clear()
+
+    async for item in async_merge(gen1(), gen2(), gen3()):
+        break
+
+    # Wait a bit to ensure all generators have finished
+    await asyncio.sleep(0.3)
+
+    assert result == []
+    assert sorted(states) == ["gen1 enter", "gen1 exit", "gen2 enter", "gen2 exit", "gen3 enter", "gen3 exit"]
