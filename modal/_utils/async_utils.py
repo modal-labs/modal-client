@@ -492,10 +492,10 @@ async def aclosing(
 
 async def sync_or_async_iter(iterator: Union[Iterable[T], AsyncIterable[T]]) -> AsyncGenerator[T, None]:
     if hasattr(iterator, "__aiter__"):
-        async for item in iterator:
+        async for item in typing.cast(AsyncIterable[T], iterator):
             yield item
     else:
-        for item in iterator:
+        for item in typing.cast(Iterable[T], iterator):
             yield item
 
 
