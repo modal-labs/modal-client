@@ -79,15 +79,17 @@ class _StreamReader:
         object_id: str,
         object_type: Literal["sandbox", "container_process"],
         client: _Client,
+        by_line: bool = False,  # if True, streamed logs are further processed into complete lines.
     ) -> None:
         """mdmd:hidden"""
-
         self._file_descriptor = file_descriptor
         self._object_type = object_type
         self._object_id = object_id
         self._client = client
         self._stream = None
         self._last_entry_id = None
+        self._buffer = ""
+        self._by_line = by_line
         # Whether the reader received an EOF. Once EOF is True, it returns
         # an empty string for any subsequent reads (including async for)
         self.eof = False
@@ -114,16 +116,18 @@ class _StreamReader:
         """
         data = ""
         # TODO: maybe combine this with get_app_logs_loop
-        async for message in self._get_logs():
+        async for message in self._get_logs_by_line():
             if message is None:
                 break
             data += message
 
         return data
 
-    async def _get_logs(self) -> AsyncIterator[Optional[api_pb2.TaskLogs]]:
+    async def _get_logs(self) -> AsyncIterator[Optional[str]]:
         """mdmd:hidden
         Streams sandbox or process logs from the server to the reader.
+
+        Logs returned by this method may contain partial or multiple lines at a time.
 
         When the stream receives an EOF, it yields None. Once an EOF is received,
         subsequent invocations will not yield logs.
@@ -164,9 +168,28 @@ class _StreamReader:
                         continue
                 raise
 
+    async def _get_logs_by_line(self) -> AsyncIterator[Optional[str]]:
+        """mdmd:hidden
+        Processes logs from the server and yields complete lines only.
+        """
+        async for message in self._get_logs():
+            if message is None:
+                if self._buffer:
+                    yield self._buffer
+                    self._buffer = ""
+                yield None
+            else:
+                self._buffer += message
+                while "\n" in self._buffer:
+                    line, self._buffer = self._buffer.split("\n", 1)
+                    yield line + "\n"
+
     def __aiter__(self):
         """mdmd:hidden"""
-        self._stream = self._get_logs()
+        if self._by_line:
+            self._stream = self._get_logs_by_line()
+        else:
+            self._stream = self._get_logs()
         return self
 
     async def __anext__(self):
