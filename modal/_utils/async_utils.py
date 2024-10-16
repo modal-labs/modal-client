@@ -6,13 +6,34 @@ import inspect
 import time
 import typing
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Awaitable, Callable, Iterator, List, Optional, Set, TypeVar, cast
+from typing import (
+    Any,
+    AsyncGenerator,
+    AsyncIterable,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+)
 
 import synchronicity
 from typing_extensions import ParamSpec
 
 from ..exception import InvalidError
 from .logger import logger
+
+T = TypeVar("T")
+V = TypeVar("V")
+P = ParamSpec("P")
+
 
 synchronizer = synchronicity.Synchronizer()
 
@@ -386,10 +407,6 @@ def on_shutdown(coro):
     _shutdown_tasks.append(asyncio.create_task(wrapper()))
 
 
-T = TypeVar("T")
-P = ParamSpec("P")
-
-
 def asyncify(f: Callable[P, T]) -> Callable[P, typing.Coroutine[None, None, T]]:
     """Convert a blocking function into one that runs in the current loop's executor."""
 
@@ -463,3 +480,144 @@ def run_generator_sync(
         except BaseException as err:
             exc = err
     loop.close()
+
+
+@asynccontextmanager
+async def aclosing(
+    agen: AsyncGenerator[T, None],
+) -> AsyncGenerator[AsyncGenerator[T, None], None]:
+    try:
+        yield agen
+    finally:
+        await agen.aclose()
+
+
+async def async_map(
+    input: Union[AsyncIterable[T], Iterable[T]],
+    async_mapper_func: Callable[[T], Awaitable[V]],
+    concurrency: int,
+    in_order: bool = False,
+) -> AsyncIterator[V]:
+    input_queue: asyncio.Queue[T] = asyncio.Queue(maxsize=concurrency)
+    results_queue: asyncio.Queue[V] = asyncio.Queue()
+    exception_queue: asyncio.Queue[Exception] = asyncio.Queue()
+    # TODO: figure out how to return in order
+    new_result_event = asyncio.Event()
+    new_exception_event = asyncio.Event()
+
+    async def producer():
+        async for item in sync_or_async_iter(input):
+            await input_queue.put(item)
+
+    async def worker():
+        while True:
+            try:
+                item = await input_queue.get()
+                if asyncio.iscoroutinefunction(async_mapper_func):
+                    result = await async_mapper_func(item)
+                else:
+                    result = async_mapper_func(item)
+                await results_queue.put(result)
+                new_result_event.set()
+            except Exception as e:
+                await exception_queue.put(e)
+                new_exception_event.set()
+            finally:
+                input_queue.task_done()
+
+    producer_task = asyncio.create_task(producer())
+    worker_tasks = [asyncio.create_task(worker()) for _ in range(concurrency)]
+
+    wait_for_results_task = asyncio.create_task(new_result_event.wait())
+    wait_for_exceptions_task = asyncio.create_task(new_exception_event.wait())
+
+    async def complete_map():
+        await producer_task
+        await input_queue.join()
+
+    complete_map_task = asyncio.create_task(complete_map())
+
+    all_tasks = [complete_map_task, producer_task, *worker_tasks, wait_for_results_task, wait_for_exceptions_task]
+
+    try:
+        while True:
+            done, _ = await asyncio.wait(
+                all_tasks,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            finished_workers = done & set(worker_tasks)
+            for finished_worker in finished_workers:
+                await finished_worker
+
+            if complete_map_task.done():
+                while not results_queue.empty():
+                    yield await results_queue.get()
+                break
+
+            if new_result_event.is_set():
+                while not results_queue.empty():
+                    yield await results_queue.get()
+                new_result_event.clear()
+
+            if new_exception_event.is_set():
+                exception = await exception_queue.get()
+                raise exception
+
+    finally:
+        for task in all_tasks:
+            task.cancel()
+        await asyncio.gather(*all_tasks, return_exceptions=True)
+
+
+async def async_merge(*inputs: Union[AsyncIterable[T], Iterator[T]]) -> AsyncIterator[T]:
+    queue: asyncio.Queue[Tuple[int, Union[T, Exception]]] = asyncio.Queue()
+
+    async def producer(index: int, iterator: Union[AsyncIterable[T], Iterator[T]]):
+        try:
+            async for item in sync_or_async_iter(iterator):
+                await queue.put((index, item))
+        except Exception as e:
+            await queue.put((index, e))
+        finally:
+            await queue.put((index, StopAsyncIteration()))
+
+    tasks = [asyncio.create_task(producer(i, it)) for i, it in enumerate(inputs)]
+    active_inputs = set(range(len(inputs)))
+
+    try:
+        while active_inputs:
+            index, item = await queue.get()
+            if isinstance(item, StopAsyncIteration):
+                active_inputs.remove(index)
+            elif isinstance(item, Exception):
+                raise item
+            else:
+                yield item
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def async_zip(*inputs: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerator[Tuple[T, ...], None]:
+    generators = [sync_or_async_iter(it) for it in inputs]
+    while True:
+        try:
+            items = await asyncio.gather(*(it.__anext__() for it in generators))
+            yield tuple(items)
+        except StopAsyncIteration:
+            break
+
+
+async def callable_to_aiter(awaitable: Callable[[], Awaitable[T]]) -> AsyncIterator[T]:
+    yield await awaitable()
+
+
+async def sync_or_async_iter(iterator: Union[Iterable[T], AsyncIterable[T]]) -> AsyncGenerator[T, None]:
+    if hasattr(iterator, "__aiter__"):
+        async for item in iterator:
+            yield item
+    else:
+        for item in iterator:
+            yield item

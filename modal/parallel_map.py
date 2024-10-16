@@ -5,12 +5,16 @@ import typing
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Set, Tuple
 
-from aiostream import pipe, stream
 from grpclib import GRPCError, Status
 
 from modal._utils.async_utils import (
     AsyncOrSyncIterable,
+    aclosing,
+    async_map,
+    async_merge,
+    async_zip,
     queue_batch_iterator,
+    sync_or_async_iter,
     synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
@@ -112,13 +116,10 @@ async def _map_invocation(
 
     async def drain_input_generator():
         # Parallelize uploading blobs
-        proto_input_stream = stream.iterate(input_iter()) | pipe.map(
-            create_input,  # type: ignore[reportArgumentType]
-            ordered=True,
-            task_limit=BLOB_MAX_PARALLELISM,
-        )
-        async with proto_input_stream.stream() as streamer:
-            async for item in streamer:
+        async with aclosing(
+            async_map(input_iter(), create_input, concurrency=BLOB_MAX_PARALLELISM, in_order=True)
+        ) as stream:
+            async for item in stream:
                 await input_queue.put(item)
 
         # close queue iterator
@@ -225,15 +226,14 @@ async def _map_invocation(
         return (item.idx, output)
 
     async def poll_outputs():
-        outputs = stream.iterate(get_all_outputs_and_clean_up())
-        outputs_fetched = outputs | pipe.map(fetch_output, ordered=True, task_limit=BLOB_MAX_PARALLELISM)  # type: ignore
-
         # map to store out-of-order outputs received
         received_outputs = {}
         output_idx = 0
 
-        async with outputs_fetched.stream() as streamer:
-            async for idx, output in streamer:
+        async with aclosing(
+            async_map(get_all_outputs_and_clean_up(), fetch_output, concurrency=BLOB_MAX_PARALLELISM, in_order=True)
+        ) as stream:
+            async for idx, output in stream:
                 count_update()
                 if not order_outputs:
                     yield _OutputValue(output)
@@ -247,10 +247,8 @@ async def _map_invocation(
 
         assert len(received_outputs) == 0
 
-    response_gen = stream.merge(drain_input_generator(), pump_inputs(), poll_outputs())
-
-    async with response_gen.stream() as streamer:
-        async for response in streamer:
+    async with aclosing(async_merge(drain_input_generator(), pump_inputs(), poll_outputs())) as stream:
+        async for response in stream:
             if response is not None:
                 yield response.value
 
@@ -336,9 +334,10 @@ async def _map_async(
 
     async def feed_queue():
         # This runs in a main thread event loop, so it doesn't block the synchronizer loop
-        async with stream.zip(*[stream.iterate(it) for it in input_iterators]).stream() as streamer:
-            async for args in streamer:
+        async with aclosing(async_zip(*input_iterators)) as stream:
+            async for args in stream:
                 await raw_input_queue.put.aio((args, kwargs))
+
         await raw_input_queue.put.aio(None)  # end-of-input sentinel
 
     feed_input_task = asyncio.create_task(feed_queue())
@@ -386,9 +385,11 @@ async def _starmap_async(
 
     async def feed_queue():
         # This runs in a main thread event loop, so it doesn't block the synchronizer loop
-        async with stream.iterate(input_iterator).stream() as streamer:
-            async for args in streamer:
+
+        async with aclosing(sync_or_async_iter(input_iterator)) as stream:
+            async for args in stream:
                 await raw_input_queue.put.aio((args, kwargs))
+
         await raw_input_queue.put.aio(None)  # end-of-input sentinel
 
     feed_input_task = asyncio.create_task(feed_queue())
