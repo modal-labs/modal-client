@@ -513,7 +513,7 @@ async def async_zip(*inputs: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGener
 
 
 async def async_merge(*inputs: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerator[T, None]:
-    queue: asyncio.Queue[Tuple[int, Tuple[str, Union[T, Exception]]]] = asyncio.Queue()
+    queue: asyncio.Queue[Tuple[int, Tuple[str, Union[T, Exception, None]]]] = asyncio.Queue()
 
     async def producer(producer_id: int, iterable: Union[AsyncIterable[T], Iterable[T]]):
         try:
