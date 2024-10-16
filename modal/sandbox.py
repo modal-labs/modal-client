@@ -388,8 +388,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         while not self._task_id:
             resp = await self._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id))
             self._task_id = resp.task_id
-            # TODO: debug why sending an exec right after a task ID exists fails silently
-            await asyncio.sleep(0.5)
+            if not self._task_id:
+                await asyncio.sleep(0.5)
         return self._task_id
 
     async def exec(self, *cmds: str, pty_info: Optional[api_pb2.PTYInfo] = None):
