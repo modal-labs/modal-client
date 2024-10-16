@@ -122,9 +122,11 @@ class _StreamReader:
 
         return data
 
-    async def _get_logs(self) -> AsyncIterator[Optional[api_pb2.TaskLogs]]:
+    async def _get_logs_raw(self) -> AsyncIterator[Optional[str]]:
         """mdmd:hidden
-        Streams sandbox or process logs from the server to the reader.
+        Streams raw sandbox or process logs from the server to the reader.
+
+        Logs returned by this method may contain partial or multiple lines at a time.
 
         When the stream receives an EOF, it yields None. Once an EOF is received,
         subsequent invocations will not yield logs.
@@ -149,18 +151,10 @@ class _StreamReader:
 
                 async for message, entry_id in iterator:
                     self._last_entry_id = entry_id
+                    yield message
                     if message is None:
                         completed = True
                         self.eof = True
-                        if self._buffer:
-                            yield self._buffer
-                            self._buffer = ""
-                        yield None
-                    else:
-                        self._buffer += message
-                        while "\n" in self._buffer:
-                            line, self._buffer = self._buffer.split("\n", 1)
-                            yield line + "\n"
 
             except (GRPCError, StreamTerminatedError) as exc:
                 if retries_remaining > 0:
@@ -173,9 +167,28 @@ class _StreamReader:
                         continue
                 raise
 
+    async def _get_logs(self) -> AsyncIterator[Optional[str]]:
+        """mdmd:hidden
+        Processes raw logs from the server and yields complete lines only.
+        """
+        async for message in self._get_logs_raw():
+            if message is None:
+                if self._buffer:
+                    yield self._buffer
+                    self._buffer = ""
+                yield None
+            else:
+                self._buffer += message
+                while "\n" in self._buffer:
+                    line, self._buffer = self._buffer.split("\n", 1)
+                    yield line + "\n"
+
     def __aiter__(self):
         """mdmd:hidden"""
-        self._stream = self._get_logs()
+        if self._object_type == "sandbox":
+            self._stream = self._get_logs()
+        else:
+            self._stream = self._get_logs_raw()
         return self
 
     async def __anext__(self):
