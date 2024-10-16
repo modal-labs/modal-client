@@ -29,6 +29,7 @@ from typing import (
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
+from modal.client import _Client
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
@@ -44,7 +45,7 @@ from .exception import InvalidError, NotFoundError, RemoteError, VersionError, d
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
-from .object import _Object, live_method_gen
+from .object import _get_environment_name, _Object, live_method_gen
 from .output import _get_output_manager
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
@@ -52,6 +53,7 @@ from .volume import _Volume
 
 if typing.TYPE_CHECKING:
     import modal.functions
+    from modal.app import _App
 
 
 # This is used for both type checking and runtime validation
@@ -464,6 +466,15 @@ class _Image(_Object, type_prefix="im"):
         obj = _Image._from_loader(_load, rep, deps=_deps)
         obj.force_build = force_build
         return obj
+
+    async def build(self, app: "_App", client: Optional[_Client] = None) -> None:
+        """Build the image immediately rather than waiting for it to be used."""
+
+        client = client or app._client or await _Client.from_env()
+        environment_name = _get_environment_name(None)
+
+        resolver = Resolver(client, environment_name=environment_name, app_id=app._app_id)
+        await resolver.load(self)
 
     def extend(self, **kwargs) -> "_Image":
         """Deprecated! This is a low-level method not intended to be part of the public API."""
