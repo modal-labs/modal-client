@@ -10,6 +10,7 @@ from tempfile import NamedTemporaryFile
 from typing import List, Literal, get_args
 from unittest import mock
 
+import modal
 from modal import App, Image, Mount, Secret, build, environments, gpu, method
 from modal._serialization import serialize
 from modal.client import Client
@@ -23,6 +24,7 @@ from modal.image import (
     _validate_python_version,
 )
 from modal.mount import PYTHON_STANDALONE_VERSIONS
+from modal.runner import deploy_app
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows
@@ -1134,7 +1136,60 @@ def test_add_local_python_packages(client, servicer, set_env_client, test_dir, m
 
     copy_layer = layers[1]
     assert copy_layer.dockerfile_commands == ["FROM base", "COPY . /"]
-    assert copy_layer.context_mount_id
+    assert copy_layer.context_mount_id == image._stacked_mounts[0].object_id
     copied_files = servicer.mount_contents[copy_layer.context_mount_id].keys()
     assert len(copied_files) == 8
     assert all(fn.startswith("/root/pkg_a/") for fn in copied_files)
+
+
+def test_lazy_mounts_are_attached_to_functions(servicer, client, test_dir, monkeypatch):
+    monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
+    deb_slim = Image.debian_slim()
+    img = deb_slim.add_local_python_packages("pkg_a")
+    app = App("my-app")
+    control_fun = app.function(serialized=True, image=deb_slim, name="control")(lambda: None)  # no mounts on image
+    fun = app.function(serialized=True, image=img, name="fun")(lambda: None)  # mounts on image
+    deploy_app(app, client=client)
+
+    control_func_mounts = set(servicer.app_functions[control_fun.object_id].mount_ids)
+    fun_def = servicer.app_functions[fun.object_id]
+    added_mounts = set(fun_def.mount_ids) - control_func_mounts
+    assert len(added_mounts) == 1
+    assert added_mounts == {img._stacked_mounts[0].object_id}
+
+
+def test_lazy_mounts_are_attached_to_classes(servicer, client, test_dir, monkeypatch):
+    monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
+    deb_slim = Image.debian_slim()
+    img = deb_slim.add_local_python_packages("pkg_a")
+    app = App("my-app")
+    control_fun = app.function(serialized=True, image=deb_slim, name="control")(lambda: None)  # no mounts on image
+
+    class A:
+        some_arg: str = modal.parameter()
+
+    ACls = app.cls(serialized=True, image=img)(A)  # mounts on image
+    deploy_app(app, client=client)
+
+    control_func_mounts = set(servicer.app_functions[control_fun.object_id].mount_ids)
+    fun_def = servicer.function_by_name("A.*")  # class service function
+    added_mounts = set(fun_def.mount_ids) - control_func_mounts
+    assert len(added_mounts) == 1
+    assert added_mounts == {img._stacked_mounts[0].object_id}
+
+    obj = ACls(some_arg="foo")
+    obj.keep_warm(0)  # hacky way to force hydration of the *parameter bound* function (instance service function)
+    obj_fun_def = servicer.function_by_name("A.*", ((), {"some_arg": "foo"}))  # instance service function
+    added_mounts = set(obj_fun_def.mount_ids) - control_func_mounts
+    assert len(added_mounts) == 1
+    assert added_mounts == {img._stacked_mounts[0].object_id}
+
+
+# def test_lazy_mounts_are_attached_to_sandboxes(servicer, client, test_dir, monkeypatch):
+#     monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
+#     img = Image.debian_slim().add_local_python_packages("pkg_a")
+
+
+# TODO: test build functions w/ lazy mounts
+
+# TODO: test modal serve w/ lazy mounts

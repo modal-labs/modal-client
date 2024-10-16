@@ -315,7 +315,7 @@ class _Image(_Object, type_prefix="im"):
         """
         return self._mounts
 
-    def _consolidate_mounts(self) -> "_Image":
+    def _materialize_mounts(self) -> "_Image":
         """Takes any stacked mounts on the image and makes them into actual image layers using COPY
 
         This needs to be run before an image with mounts is used as a base image for anything
@@ -323,7 +323,7 @@ class _Image(_Object, type_prefix="im"):
         """
         image = self
         for mount in self._stacked_mounts:
-            image = image._consolidate_mount(mount)
+            image = image._materialize_mount(mount)
         return image
 
     @staticmethod
@@ -340,12 +340,12 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,
         # For internal use only.
         _namespace: int = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        _consolidate_mounts: bool = True,
+        _materialize_mounts: bool = True,
     ):
         if base_images is None:
             base_images = {}
         else:
-            base_images = {k: v._consolidate_mounts() if _consolidate_mounts else v for k, v in base_images.items()}
+            base_images = {k: v._materialize_mounts() if _materialize_mounts else v for k, v in base_images.items()}
         if secrets is None:
             secrets = []
         if gpu_config is None:
@@ -537,7 +537,7 @@ class _Image(_Object, type_prefix="im"):
 
         return _Image._from_args(base_images={"base": self}, dockerfile_function=build_dockerfile, **kwargs)
 
-    def _consolidate_mount(self, mount: _Mount) -> "_Image":
+    def _materialize_mount(self, mount: _Mount) -> "_Image":
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             commands = ["FROM base", "COPY . /"]  # copy everything from the supplied mount into the root
             return DockerfileSpec(commands=commands, context_files={})
@@ -546,7 +546,7 @@ class _Image(_Object, type_prefix="im"):
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
             context_mount=mount,
-            _consolidate_mounts=False,  # avoid recursion
+            _materialize_mounts=False,  # avoid recursion
         )
 
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":

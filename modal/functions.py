@@ -550,6 +550,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         if is_local():
             entrypoint_mounts = info.get_entrypoint_mount()
+
             all_mounts = [
                 _get_client_mount(),
                 *explicit_mounts,
@@ -582,6 +583,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if proxy:
             # HACK: remove this once we stop using ssh tunnels for this.
             if image:
+                # TODO(elias): this breaks lazy mounts by materializing them, which isn't great
                 image = image.apt_install("autossh")
 
         function_spec = _FunctionSpec(
@@ -786,7 +788,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     )
                     for path, volume in validated_volumes
                 ]
-                loaded_mount_ids = {m.object_id for m in all_mounts}
+                loaded_mount_ids = {m.object_id for m in all_mounts} | {m.object_id for m in image._stacked_mounts}
 
                 # Get object dependencies
                 object_dependencies = []
