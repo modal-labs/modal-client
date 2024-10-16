@@ -310,6 +310,9 @@ class _WarnIfGeneratorIsNotConsumed:
     async def athrow(self, exc):
         return await self.gen.athrow(exc)
 
+    async def aclose(self):
+        return await self.gen.aclose()
+
 
 synchronize_api(_WarnIfGeneratorIsNotConsumed)
 
@@ -443,23 +446,34 @@ def run_generator_sync(
         pass  # no event loop - this is what we expect!
     else:
         raise NestedAsyncCalls()
-    loop = asyncio.new_event_loop()  # set up new event loop for the map so we can use async logic
+    with asyncio.Runner() as runner:
+        # more or less copied from synchronicity's implementation:
+        next_send: typing.Union[SEND_TYPE, None] = None
+        next_yield: YIELD_TYPE
+        exc: Optional[BaseException] = None
+        while True:
+            try:
+                if exc:
+                    next_yield = runner.run(gen.athrow(exc))
+                else:
+                    next_yield = runner.run(gen.asend(next_send))  # type: ignore[arg-type]
+            except KeyboardInterrupt as e:
+                raise e from None
+            except StopAsyncIteration:
+                break
+            try:
+                next_send = yield next_yield
+                exc = None
+            except BaseException as err:
+                exc = err
 
-    # more or less copied from synchronicity's implementation:
-    next_send: typing.Union[SEND_TYPE, None] = None
-    next_yield: YIELD_TYPE
-    exc: Optional[BaseException] = None
-    while True:
-        try:
-            if exc:
-                next_yield = loop.run_until_complete(gen.athrow(exc))
-            else:
-                next_yield = loop.run_until_complete(gen.asend(next_send))  # type: ignore[arg-type]
-        except StopAsyncIteration:
-            break
-        try:
-            next_send = yield next_yield
-            exc = None
-        except BaseException as err:
-            exc = err
-    loop.close()
+
+@asynccontextmanager
+async def aclosing(agen: AsyncGenerator[T, None]) -> AsyncGenerator[AsyncGenerator[T, None], None]:
+    # ensure aclose is called asynchronously after context manager is closed
+    # call to ensure cleanup after stateful generators since they can't
+    # always be cleaned up by garbage collection
+    try:
+        yield agen
+    finally:
+        await agen.aclose()
