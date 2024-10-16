@@ -513,7 +513,7 @@ async def async_zip(*inputs: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGener
 
 
 async def async_merge(*inputs: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerator[T, None]:
-    queue: asyncio.Queue[Tuple[int, Union[T, Exception]]] = asyncio.Queue()
+    queue: asyncio.Queue[Tuple[int, Tuple[str, Union[T, Exception]]]] = asyncio.Queue()
 
     async def producer(producer_id: int, iterable: Union[AsyncIterable[T], Iterable[T]]):
         try:
@@ -522,7 +522,7 @@ async def async_merge(*inputs: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGen
         except Exception as e:
             await queue.put((producer_id, ("exception", e)))
         finally:
-            await queue.put((producer_id, ("stop", StopAsyncIteration())))
+            await queue.put((producer_id, ("stop", None)))
 
     tasks = [asyncio.create_task(producer(i, it)) for i, it in enumerate(inputs)]
     active_producers = set(range(len(inputs)))
@@ -531,11 +531,11 @@ async def async_merge(*inputs: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGen
         while active_producers:
             producer_id, (event_type, item) = await queue.get()
             if event_type == "exception":
-                raise item
+                raise typing.cast(Exception, item)
             elif event_type == "stop":
                 active_producers.remove(producer_id)
             else:
-                yield item
+                yield typing.cast(T, item)
     finally:
         for task in tasks:
             task.cancel()
