@@ -157,8 +157,12 @@ def _networked(func):
         import os
         import socket
 
+        def get_i6pn():
+            """Returns the ipv6 address assigned to this container."""
+            socket.getaddrinfo("i6pn.modal.local", None, socket.AF_INET6)[0][4][0]
+
         hostname = socket.gethostname()
-        addr_info = socket.getaddrinfo("i6pn.modal.local", None, socket.AF_INET6)[0][4][0]
+        addr_info = get_i6pn()
         # nccl's default host ID is $(hostname)$(cat /proc/sys/kernel/random/boot_id).
         # on runc, if two i6pn-linked containers get scheduled on the same worker,
         # their boot ID and hostname will both be identical, causing nccl to break.
