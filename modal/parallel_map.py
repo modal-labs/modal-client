@@ -10,6 +10,8 @@ from grpclib import GRPCError, Status
 
 from modal._utils.async_utils import (
     AsyncOrSyncIterable,
+    aclosing,
+    async_zip,
     queue_batch_iterator,
     synchronize_api,
     synchronizer,
@@ -336,7 +338,7 @@ async def _map_async(
 
     async def feed_queue():
         # This runs in a main thread event loop, so it doesn't block the synchronizer loop
-        async with stream.zip(*[stream.iterate(it) for it in input_iterators]).stream() as streamer:
+        async with aclosing(async_zip(*input_iterators)) as streamer:
             async for args in streamer:
                 await raw_input_queue.put.aio((args, kwargs))
         await raw_input_queue.put.aio(None)  # end-of-input sentinel
