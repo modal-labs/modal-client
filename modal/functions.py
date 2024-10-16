@@ -38,7 +38,6 @@ from ._resources import convert_fn_config_to_resources_config
 from ._serialization import serialize, serialize_proto_params
 from ._utils.async_utils import (
     TaskContext,
-    aclosing,
     synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
@@ -211,7 +210,7 @@ class _Invocation:
 
         items_received = 0
         items_total: Union[int, None] = None  # populated when self.run_function() completes
-        async with aclosing(combined_stream) as streamer:  # type: ignore[reportArgumentType]
+        async with combined_stream.stream() as streamer:
             async for item in streamer:
                 if isinstance(item, api_pb2.GeneratorDone):
                     items_total = item.items_total

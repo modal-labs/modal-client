@@ -6,7 +6,22 @@ import inspect
 import time
 import typing
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Awaitable, Callable, Iterator, List, Optional, Set, TypeVar, cast
+from typing import (
+    Any,
+    AsyncGenerator,
+    AsyncIterable,
+    Awaitable,
+    Callable,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+)
 
 import synchronicity
 from typing_extensions import ParamSpec
@@ -473,3 +488,22 @@ async def aclosing(
         yield agen
     finally:
         await agen.aclose()
+
+
+async def sync_or_async_iter(iterator: Union[Iterable[T], AsyncIterable[T]]) -> AsyncGenerator[T, None]:
+    if hasattr(iterator, "__aiter__"):
+        async for item in iterator:
+            yield item
+    else:
+        for item in iterator:
+            yield item
+
+
+async def async_zip(*inputs: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerator[Tuple[T, ...], None]:
+    generators = [sync_or_async_iter(it) for it in inputs]
+    while True:
+        try:
+            items = await asyncio.gather(*(it.__anext__() for it in generators))
+            yield tuple(items)
+        except StopAsyncIteration:
+            break
