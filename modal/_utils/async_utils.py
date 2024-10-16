@@ -495,6 +495,9 @@ async def sync_or_async_iter(iterator: Union[Iterable[T], AsyncIterable[T]]) -> 
         async for item in typing.cast(AsyncIterable[T], iterator):
             yield item
     else:
+        # This intentionally could block the event loop for the duration of calling __iter__ and __next__,
+        # so in non-trivial cases (like passing lists and ranges) this could be quite a foot gun for users #
+        # w/ async code (but they can work around it by always using async iterators)
         for item in typing.cast(Iterable[T], iterator):
             yield item
 
