@@ -14,6 +14,7 @@ from modal._utils.async_utils import (
     aclosing,
     async_merge,
     async_zip,
+    callable_to_agen,
     queue_batch_iterator,
     retry,
     sync_or_async_iter,
@@ -439,3 +440,15 @@ async def test_async_merge():
 
     assert result == []
     assert sorted(states) == ["gen1 enter", "gen1 exit", "gen2 enter", "gen2 exit", "gen3 enter", "gen3 exit"]
+
+
+@pytest.mark.asyncio
+async def test_awaitable_to_aiter():
+    async def foo():
+        await asyncio.sleep(0.1)
+        return 42
+
+    result = []
+    async for item in callable_to_agen(foo):
+        result.append(item)
+    assert result == [await foo()]
