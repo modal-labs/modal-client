@@ -30,8 +30,8 @@ from modal_proto import api_pb2
 from .supports.skip import skip_windows
 
 
-def dummy():
-    ...
+def dummy() -> None:
+    return None
 
 
 def test_supported_python_series():
@@ -1147,8 +1147,10 @@ def test_lazy_mounts_are_attached_to_functions(servicer, client, test_dir, monke
     deb_slim = Image.debian_slim()
     img = deb_slim.add_local_python_packages("pkg_a")
     app = App("my-app")
-    control_fun = app.function(serialized=True, image=deb_slim, name="control")(lambda: None)  # no mounts on image
-    fun = app.function(serialized=True, image=img, name="fun")(lambda: None)  # mounts on image
+    control_fun: modal.Function = app.function(serialized=True, image=deb_slim, name="control")(
+        dummy
+    )  # no mounts on image
+    fun: modal.Function = app.function(serialized=True, image=img, name="fun")(dummy)  # mounts on image
     deploy_app(app, client=client)
 
     control_func_mounts = set(servicer.app_functions[control_fun.object_id].mount_ids)
@@ -1163,7 +1165,9 @@ def test_lazy_mounts_are_attached_to_classes(servicer, client, test_dir, monkeyp
     deb_slim = Image.debian_slim()
     img = deb_slim.add_local_python_packages("pkg_a")
     app = App("my-app")
-    control_fun = app.function(serialized=True, image=deb_slim, name="control")(lambda: None)  # no mounts on image
+    control_fun: modal.Function = app.function(serialized=True, image=deb_slim, name="control")(
+        dummy
+    )  # no mounts on image
 
     class A:
         some_arg: str = modal.parameter()
@@ -1177,8 +1181,10 @@ def test_lazy_mounts_are_attached_to_classes(servicer, client, test_dir, monkeyp
     assert len(added_mounts) == 1
     assert added_mounts == {img._mount_layers[0].object_id}
 
-    obj = ACls(some_arg="foo")
-    obj.keep_warm(0)  # hacky way to force hydration of the *parameter bound* function (instance service function)
+    obj = ACls(some_arg="foo")  # type: ignore
+    # hacky way to force hydration of the *parameter bound* function (instance service function):
+    obj.keep_warm(0)  #  type: ignore
+
     obj_fun_def = servicer.function_by_name("A.*", ((), {"some_arg": "foo"}))  # instance service function
     added_mounts = set(obj_fun_def.mount_ids) - control_func_mounts
     assert len(added_mounts) == 1
