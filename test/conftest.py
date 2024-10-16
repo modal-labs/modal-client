@@ -1329,6 +1329,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SandboxStdinWrite(self, stream):
         request: api_pb2.SandboxStdinWriteRequest = await stream.recv_message()
 
+        if self.sandbox.returncode is not None:
+            raise GRPCError(Status.FAILED_PRECONDITION, "Sandbox has already terminated")
+
         self.sandbox.stdin.write(request.input)
         await self.sandbox.stdin.drain()
 
