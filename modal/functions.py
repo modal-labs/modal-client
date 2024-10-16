@@ -211,7 +211,7 @@ class _Invocation:
 
         items_received = 0
         items_total: Union[int, None] = None  # populated when self.run_function() completes
-        async with aclosing(combined_stream) as streamer:
+        async with aclosing(combined_stream) as streamer:  # type: ignore[reportArgumentType]
             async for item in streamer:
                 if isinstance(item, api_pb2.GeneratorDone):
                     items_total = item.items_total
