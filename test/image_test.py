@@ -1158,7 +1158,7 @@ def test_lazy_mounts_are_attached_to_functions(servicer, client, test_dir, monke
     assert added_mounts == {img._mount_layers[0].object_id}
 
 
-def test_lazy_mounts_are_attached_to_classes(servicer, client, test_dir, monkeypatch):
+def test_lazy_mounts_are_attached_to_classes(servicer, client, test_dir, monkeypatch, set_env_client):
     monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
     deb_slim = Image.debian_slim()
     img = deb_slim.add_local_python_packages("pkg_a")
