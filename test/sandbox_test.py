@@ -155,11 +155,21 @@ def test_sandbox_stdin_write_str(app, servicer):
 
 
 @skip_non_linux
-def test_sandbox_stdin_write_after_eof(app, servicer):
+def test_sandbox_stdin_write_after_terminate(app, servicer):
     sb = Sandbox.create("bash", "-c", "echo foo", app=app)
-    sb.stdin.write_eof()
-    with pytest.raises(EOFError):
+    sb.wait()
+    with pytest.raises(ValueError):
         sb.stdin.write(b"foo")
+        sb.stdin.drain()
+
+
+@skip_non_linux
+def test_sandbox_stdin_write_after_eof(app, servicer):
+    sb = Sandbox.create(app=app)
+    sb.stdin.write_eof()
+    with pytest.raises(ValueError):
+        sb.stdin.write(b"foo")
+    sb.terminate()
 
 
 @skip_non_linux
