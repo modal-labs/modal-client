@@ -185,10 +185,10 @@ class IOContext:
         return (), formatted_kwargs
 
     def call_finalized_function(self) -> Any:
+        logger.debug(f"Starting input {self.input_ids}")
         args, kwargs = self._args_and_kwargs()
-        logger.debug(f"Starting input {self.input_ids} (async)")
         res = self.finalized_function.callable(*args, **kwargs)
-        logger.debug(f"Finished input {self.input_ids} (async)")
+        logger.debug(f"Finished input {self.input_ids}")
         return res
 
     def validate_output_data(self, data: Any) -> List[Any]:
