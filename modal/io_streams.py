@@ -2,6 +2,7 @@
 import asyncio
 from typing import TYPE_CHECKING, AsyncIterator, Literal, Optional, Tuple, Union
 
+from grpclib import Status
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal_proto import api_pb2
@@ -79,15 +80,17 @@ class _StreamReader:
         object_id: str,
         object_type: Literal["sandbox", "container_process"],
         client: _Client,
+        by_line: bool = False,  # if True, streamed logs are further processed into complete lines.
     ) -> None:
         """mdmd:hidden"""
-
         self._file_descriptor = file_descriptor
         self._object_type = object_type
         self._object_id = object_id
         self._client = client
         self._stream = None
         self._last_entry_id = None
+        self._buffer = ""
+        self._by_line = by_line
         # Whether the reader received an EOF. Once EOF is True, it returns
         # an empty string for any subsequent reads (including async for)
         self.eof = False
@@ -114,16 +117,18 @@ class _StreamReader:
         """
         data = ""
         # TODO: maybe combine this with get_app_logs_loop
-        async for message in self._get_logs():
+        async for message in self._get_logs_by_line():
             if message is None:
                 break
             data += message
 
         return data
 
-    async def _get_logs(self) -> AsyncIterator[Optional[api_pb2.TaskLogs]]:
+    async def _get_logs(self) -> AsyncIterator[Optional[str]]:
         """mdmd:hidden
         Streams sandbox or process logs from the server to the reader.
+
+        Logs returned by this method may contain partial or multiple lines at a time.
 
         When the stream receives an EOF, it yields None. Once an EOF is received,
         subsequent invocations will not yield logs.
@@ -164,9 +169,28 @@ class _StreamReader:
                         continue
                 raise
 
+    async def _get_logs_by_line(self) -> AsyncIterator[Optional[str]]:
+        """mdmd:hidden
+        Processes logs from the server and yields complete lines only.
+        """
+        async for message in self._get_logs():
+            if message is None:
+                if self._buffer:
+                    yield self._buffer
+                    self._buffer = ""
+                yield None
+            else:
+                self._buffer += message
+                while "\n" in self._buffer:
+                    line, self._buffer = self._buffer.split("\n", 1)
+                    yield line + "\n"
+
     def __aiter__(self):
         """mdmd:hidden"""
-        self._stream = self._get_logs()
+        if self._by_line:
+            self._stream = self._get_logs_by_line()
+        else:
+            self._stream = self._get_logs()
         return self
 
     async def __anext__(self):
@@ -226,7 +250,7 @@ class _StreamWriter:
         ```
         """
         if self._is_closed:
-            raise EOFError("Stdin is closed. Cannot write to it.")
+            raise ValueError("Stdin is closed. Cannot write to it.")
         if isinstance(data, (bytes, bytearray, memoryview, str)):
             if isinstance(data, str):
                 data = data.encode("utf-8")
@@ -247,27 +271,33 @@ class _StreamWriter:
 
     async def drain(self):
         """
-        Flushes the write buffer and EOF to the running process.
+        Flushes the write buffer to the running process. Flushes the EOF if the writer is closed.
         """
         data = bytes(self._buffer)
         self._buffer.clear()
         index = self.get_next_index()
 
-        if self._object_type == "sandbox":
-            await retry_transient_errors(
-                self._client.stub.SandboxStdinWrite,
-                api_pb2.SandboxStdinWriteRequest(
-                    sandbox_id=self._object_id, index=index, eof=self._is_closed, input=data
-                ),
-            )
-        else:
-            await retry_transient_errors(
-                self._client.stub.ContainerExecPutInput,
-                api_pb2.ContainerExecPutInputRequest(
-                    exec_id=self._object_id,
-                    input=api_pb2.RuntimeInputMessage(message=data, message_index=index, eof=self._is_closed),
-                ),
-            )
+        try:
+            if self._object_type == "sandbox":
+                await retry_transient_errors(
+                    self._client.stub.SandboxStdinWrite,
+                    api_pb2.SandboxStdinWriteRequest(
+                        sandbox_id=self._object_id, index=index, eof=self._is_closed, input=data
+                    ),
+                )
+            else:
+                await retry_transient_errors(
+                    self._client.stub.ContainerExecPutInput,
+                    api_pb2.ContainerExecPutInputRequest(
+                        exec_id=self._object_id,
+                        input=api_pb2.RuntimeInputMessage(message=data, message_index=index, eof=self._is_closed),
+                    ),
+                )
+        except GRPCError as exc:
+            if exc.status == Status.FAILED_PRECONDITION:
+                raise ValueError(exc.message)
+            else:
+                raise exc
 
 
 StreamReader = synchronize_api(_StreamReader)

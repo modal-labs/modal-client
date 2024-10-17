@@ -276,8 +276,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         return obj
 
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
-        self._stdout = StreamReader(api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, "sandbox", self._client)
-        self._stderr = StreamReader(api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, "sandbox", self._client)
+        self._stdout = StreamReader(
+            api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, "sandbox", self._client, by_line=True
+        )
+        self._stderr = StreamReader(
+            api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, "sandbox", self._client, by_line=True
+        )
         self._stdin = StreamWriter(self.object_id, "sandbox", self._client)
         self._result = None
 
@@ -388,8 +392,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         while not self._task_id:
             resp = await self._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id))
             self._task_id = resp.task_id
-            # TODO: debug why sending an exec right after a task ID exists fails silently
-            await asyncio.sleep(0.5)
+            if not self._task_id:
+                await asyncio.sleep(0.5)
         return self._task_id
 
     async def exec(self, *cmds: str, pty_info: Optional[api_pb2.PTYInfo] = None):
@@ -416,6 +420,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 task_id=task_id,
                 command=cmds,
                 pty_info=pty_info,
+                runtime_debug=config.get("function_runtime_debug"),
             )
         )
         return _ContainerProcess(resp.exec_id, self._client)

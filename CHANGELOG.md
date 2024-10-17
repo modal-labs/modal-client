@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.187 (2024-10-16)
+
+When writing to a `StreamWriter` that has already had EOF written, a ValueError is now raised instead of an `EOFError`.
+
+
+
 ### 0.64.185 (2024-10-15)
 
 Memory snapshotting can now be used with parameterized functions.
