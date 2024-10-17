@@ -159,7 +159,7 @@ def _networked(func):
 
         def get_i6pn():
             """Returns the ipv6 address assigned to this container."""
-            socket.getaddrinfo("i6pn.modal.local", None, socket.AF_INET6)[0][4][0]
+            return socket.getaddrinfo("i6pn.modal.local", None, socket.AF_INET6)[0][4][0]
 
         hostname = socket.gethostname()
         addr_info = get_i6pn()
@@ -179,6 +179,7 @@ def _networked(func):
         elif rank == 0:
             q.put_many([addr_info for _ in range(size)])
         main_ip = q.get()
+        assert main_ip is not None, "Failed to get main i6pn address"
 
         os.environ["MODAL_MAIN_I6PN"] = f"{main_ip}"
         os.environ["MODAL_WORLD_SIZE"] = f"{size}"
