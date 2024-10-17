@@ -23,7 +23,6 @@ from typing import (
 )
 
 import typing_extensions
-from aiostream import stream
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
@@ -38,6 +37,9 @@ from ._resources import convert_fn_config_to_resources_config
 from ._serialization import serialize, serialize_proto_params
 from ._utils.async_utils import (
     TaskContext,
+    aclosing,
+    async_merge,
+    callable_to_agen,
     synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
@@ -205,22 +207,22 @@ class _Invocation:
         )
 
     async def run_generator(self):
-        data_stream = _stream_function_call_data(self.client, self.function_call_id, variant="data_out")
-        combined_stream = stream.merge(data_stream, stream.call(self.run_function))  # type: ignore
-
         items_received = 0
         items_total: Union[int, None] = None  # populated when self.run_function() completes
-        async with combined_stream.stream() as streamer:
-            async for item in streamer:
-                if isinstance(item, api_pb2.GeneratorDone):
-                    items_total = item.items_total
-                else:
-                    yield item
-                    items_received += 1
-                # The comparison avoids infinite loops if a non-deterministic generator is retried
-                # and produces less data in the second run than what was already sent.
-                if items_total is not None and items_received >= items_total:
-                    break
+        async with aclosing(
+            _stream_function_call_data(self.client, self.function_call_id, variant="data_out")
+        ) as data_stream:
+            async with aclosing(async_merge(data_stream, callable_to_agen(self.run_function))) as streamer:
+                async for item in streamer:
+                    if isinstance(item, api_pb2.GeneratorDone):
+                        items_total = item.items_total
+                    else:
+                        yield item
+                        items_received += 1
+                    # The comparison avoids infinite loops if a non-deterministic generator is retried
+                    # and produces less data in the second run than what was already sent.
+                    if items_total is not None and items_received >= items_total:
+                        break
 
 
 # Wrapper type for api_pb2.FunctionStats
