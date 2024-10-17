@@ -66,14 +66,6 @@ def _get_metadata(client_type: int, credentials: Optional[Tuple[str, str]], vers
                 "x-modal-token-secret": token_secret,
             }
         )
-    elif credentials and client_type == api_pb2.CLIENT_TYPE_CONTAINER:
-        task_id, task_secret = credentials
-        metadata.update(
-            {
-                "x-modal-task-id": task_id,
-                "x-modal-task-secret": task_secret,
-            }
-        )
     return metadata
 
 
@@ -143,14 +135,6 @@ class _Client:
         assert self._stub
         return self._stub
 
-    @property
-    def credentials(self) -> tuple:
-        """mdmd:hidden"""
-        if self._credentials is None and self.client_type == api_pb2.CLIENT_TYPE_CONTAINER:
-            logger.debug("restoring credentials for memory snapshotted client instance")
-            self._credentials = (config["task_id"], config["task_secret"])
-        return self._credentials
-
     async def _open(self):
         self._closed = False
         assert self._stub is None
@@ -170,7 +154,6 @@ class _Client:
             self._channel.close()
 
         if prep_for_restore:
-            self._credentials = None
             self._snapshotted = True
 
         # Remove cached client.
@@ -248,17 +231,14 @@ class _Client:
         token_id = c["token_id"]
         token_secret = c["token_secret"]
         task_id = c["task_id"]
-        task_secret = c["task_secret"]
+        credentials = None
 
-        if task_id and task_secret:
+        if task_id:
             client_type = api_pb2.CLIENT_TYPE_CONTAINER
-            credentials = (task_id, task_secret)
-        elif token_id and token_secret:
-            client_type = api_pb2.CLIENT_TYPE_CLIENT
-            credentials = (token_id, token_secret)
         else:
             client_type = api_pb2.CLIENT_TYPE_CLIENT
-            credentials = None
+            if token_id and token_secret:
+                credentials = (token_id, token_secret)
 
         if cls._client_from_env_lock is None:
             cls._client_from_env_lock = asyncio.Lock()
