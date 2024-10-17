@@ -403,6 +403,7 @@ def on_shutdown(coro):
 
 T = TypeVar("T")
 P = ParamSpec("P")
+V = TypeVar("V")
 
 
 def asyncify(f: Callable[P, T]) -> Callable[P, typing.Coroutine[None, None, T]]:
@@ -544,3 +545,116 @@ async def async_merge(*inputs: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGen
 
 async def callable_to_agen(awaitable: Callable[[], Awaitable[T]]) -> AsyncGenerator[T, None]:
     yield await awaitable()
+
+
+async def async_map(
+    input: Union[AsyncIterable[T], Iterable[T]],
+    async_mapper_func: Callable[[T], Awaitable[V]],
+    concurrency: int,
+) -> AsyncGenerator[V, None]:
+    input_queue: asyncio.Queue[Union[T, None]] = asyncio.Queue()
+    output_queue: asyncio.Queue[Union[V, Exception]] = asyncio.Queue()
+    output_event = asyncio.Event()
+
+    async def producer():
+        async for item in sync_or_async_iter(input):
+            await input_queue.put(("value", item))
+        await input_queue.put(("stop", None))
+
+    async def worker():
+        while True:
+            try:
+                event_type, item = await input_queue.get()
+                if event_type == "stop":
+                    break
+                if event_type == "value":
+                    if asyncio.iscoroutinefunction(async_mapper_func):
+                        result = await async_mapper_func(item)
+                    else:
+                        result = async_mapper_func(item)
+                    await output_queue.put(("value", result))
+            except Exception as e:
+                await output_queue.put(("exception", e))
+            finally:
+                input_queue.task_done()
+
+    output_event_task = asyncio.create_task(output_event.wait())
+    producer_task = asyncio.create_task(producer())
+    worker_tasks = [asyncio.create_task(worker()) for _ in range(concurrency)]
+
+    async def complete_map():
+        await producer_task
+        await input_queue.join()
+
+    complete_map_task = asyncio.create_task(complete_map())
+
+    all_tasks = [output_event_task, producer_task, *worker_tasks, complete_map_task]
+
+    try:
+        while True:
+            done, _ = await asyncio.wait(
+                all_tasks,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            finished_workers = done & set(worker_tasks)
+            for finished_worker in finished_workers:
+                await finished_worker
+
+            if complete_map_task.done():
+                while not output_queue.empty():
+                    event_type, item = await output_queue.get()
+                    if event_type == "value":
+                        yield item
+                    elif event_type == "exception":
+                        raise item
+                    else:
+                        raise Exception("Unknown event type: " + event_type)
+                break
+
+            if output_event.is_set():
+                while not output_queue.empty():
+                    event_type, item = await output_queue.get()
+                    if event_type == "value":
+                        yield item
+                    elif event_type == "exception":
+                        raise item
+                    else:
+                        raise Exception("Unknown event type: " + event_type)
+                output_event.clear()
+
+    finally:
+        for task in all_tasks:
+            task.cancel()
+        await asyncio.gather(*all_tasks, return_exceptions=True)
+
+
+async def async_map_ordered(
+    input: Union[AsyncIterable[T], Iterable[T]],
+    async_mapper_func: Callable[[T], Awaitable[V]],
+    concurrency: int,
+) -> AsyncGenerator[V, None]:
+    async def mapper_func_wrapper(tup: Tuple[int, T]) -> Tuple[int, V]:
+        if asyncio.iscoroutinefunction(async_mapper_func):
+            return tup[0], await async_mapper_func(tup[1])
+        return tup[0], async_mapper_func(tup[1])
+
+    async def counter():
+        i = 0
+        while True:
+            yield i
+            i += 1
+
+    next_idx = 0
+    buffer = {}
+
+    async with aclosing(counter()) as counter, aclosing(input) as input:
+        async with aclosing(async_zip(counter, input)) as zipped_input:
+            async with aclosing(async_map(zipped_input, mapper_func_wrapper, concurrency)) as stream:
+                async for output_idx, output_item in stream:
+                    buffer[output_idx] = output_item
+                    if output_idx == next_idx:
+                        while next_idx in buffer:
+                            yield buffer[next_idx]
+                            del buffer[next_idx]
+                            next_idx += 1

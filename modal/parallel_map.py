@@ -5,12 +5,12 @@ import typing
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Set, Tuple
 
-from aiostream import pipe, stream
 from grpclib import GRPCError, Status
 
 from modal._utils.async_utils import (
     AsyncOrSyncIterable,
     aclosing,
+    async_map_ordered,
     async_merge,
     async_zip,
     queue_batch_iterator,
@@ -115,14 +115,13 @@ async def _map_invocation(
 
     async def drain_input_generator():
         # Parallelize uploading blobs
-        proto_input_stream = stream.iterate(input_iter()) | pipe.map(
-            create_input,  # type: ignore[reportArgumentType]
-            ordered=True,
-            task_limit=BLOB_MAX_PARALLELISM,
-        )
-        async with proto_input_stream.stream() as streamer:
-            async for item in streamer:
-                await input_queue.put(item)
+
+        async with aclosing(input_iter()) as input_streamer:
+            async with aclosing(
+                async_map_ordered(input_streamer, create_input, concurrency=BLOB_MAX_PARALLELISM)
+            ) as streamer:
+                async for item in streamer:
+                    await input_queue.put(item)
 
         # close queue iterator
         await input_queue.put(None)
@@ -228,25 +227,23 @@ async def _map_invocation(
         return (item.idx, output)
 
     async def poll_outputs():
-        outputs = stream.iterate(get_all_outputs_and_clean_up())
-        outputs_fetched = outputs | pipe.map(fetch_output, ordered=True, task_limit=BLOB_MAX_PARALLELISM)  # type: ignore
-
         # map to store out-of-order outputs received
         received_outputs = {}
         output_idx = 0
 
-        async with outputs_fetched.stream() as streamer:
-            async for idx, output in streamer:
-                count_update()
-                if not order_outputs:
-                    yield _OutputValue(output)
-                else:
-                    # hold on to outputs for function maps, so we can reorder them correctly.
-                    received_outputs[idx] = output
-                    while output_idx in received_outputs:
-                        output = received_outputs.pop(output_idx)
+        async with aclosing(get_all_outputs_and_clean_up()) as outputs:
+            async with aclosing(async_map_ordered(outputs, fetch_output, concurrency=BLOB_MAX_PARALLELISM)) as streamer:
+                async for idx, output in streamer:
+                    count_update()
+                    if not order_outputs:
                         yield _OutputValue(output)
-                        output_idx += 1
+                    else:
+                        # hold on to outputs for function maps, so we can reorder them correctly.
+                        received_outputs[idx] = output
+                        while output_idx in received_outputs:
+                            output = received_outputs.pop(output_idx)
+                            yield _OutputValue(output)
+                            output_idx += 1
 
         assert len(received_outputs) == 0
 
@@ -390,7 +387,7 @@ async def _starmap_async(
 
     async def feed_queue():
         # This runs in a main thread event loop, so it doesn't block the synchronizer loop
-        async with stream.iterate(input_iterator).stream() as streamer:
+        async with aclosing(input_iterator) as streamer:
             async for args in streamer:
                 await raw_input_queue.put.aio((args, kwargs))
         await raw_input_queue.put.aio(None)  # end-of-input sentinel

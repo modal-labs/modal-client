@@ -5,6 +5,7 @@ import logging
 import os
 import platform
 import pytest
+import time
 
 from synchronicity import Synchronizer
 
@@ -12,6 +13,8 @@ from modal._utils import async_utils
 from modal._utils.async_utils import (
     TaskContext,
     aclosing,
+    async_map,
+    async_map_ordered,
     async_merge,
     async_zip,
     callable_to_agen,
@@ -456,3 +459,109 @@ async def test_awaitable_to_aiter():
     async for item in callable_to_agen(foo):
         result.append(item)
     assert result == [await foo()]
+
+
+@pytest.mark.asyncio
+async def test_async_map():
+    result = []
+    states = []
+
+    async def foo():
+        states.append("enter")
+        try:
+            yield 1
+            yield 2
+            yield 3
+        finally:
+            states.append("exit")
+
+    async def mapper(x):
+        await asyncio.sleep(0.1)  # Simulate some async work
+        return x * 2
+
+    async for item in async_map(foo(), mapper, concurrency=3):
+        result.append(item)
+
+    assert sorted(result) == [2, 4, 6]
+    assert states == ["enter", "exit"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("in_order", [True, False])
+async def test_async_map_ordering(in_order):
+    result = []
+    ev = asyncio.Event()
+
+    async def foo():
+        yield 1
+        yield 2
+        yield 3
+
+    async def mapper(x):
+        await asyncio.sleep(0.1)  # simulate some async work
+        if x == 1:
+            await ev.wait()
+
+        if x == 2:
+            ev.set()
+
+        return x * 2
+
+    if in_order:
+        async for item in async_map_ordered(foo(), mapper, concurrency=3):
+            result.append(item)
+        assert result == [2, 4, 6]
+    else:
+        async for item in async_map(foo(), mapper, concurrency=3):
+            result.append(item)
+        assert result == [4, 6, 2]
+
+
+@pytest.mark.asyncio
+async def test_async_map_slow():
+    async def slow_square(x):
+        await asyncio.sleep(0.1)  # Simulate a task that takes 0.1 seconds
+        return x * x
+
+    async def input_generator():
+        for i in range(5):
+            yield i
+
+    start_time = time.time()
+    results = []
+
+    async with aclosing(async_map(input_generator(), slow_square, concurrency=1)) as stream:
+        async for result in stream:
+            results.append(result)
+            elapsed = time.time() - start_time
+            # Check if we're getting a result roughly every 0.1 seconds
+            assert abs(elapsed - 0.1 * len(results)) < 0.05, f"Unexpected timing for result {len(results)}"
+
+    assert results == [0, 1, 4, 9, 16]
+    total_elapsed = time.time() - start_time
+    assert 0.45 < total_elapsed < 0.55, f"Unexpected total time: {total_elapsed}"
+
+
+@pytest.mark.asyncio
+async def test_async_map_fast():
+    async def slow_square(x):
+        await asyncio.sleep(0.1)  # Simulate a task that takes 0.1 seconds
+        return x * x
+
+    async def input_generator():
+        for i in range(5):
+            yield i
+
+    start_time = time.time()
+    results = []
+
+    async with aclosing(async_map(input_generator(), slow_square, concurrency=5)) as stream:
+        async for result in stream:
+            results.append(result)
+            elapsed = time.time() - start_time
+            # Check if we're getting a result roughly every 0.1 seconds
+            assert abs(elapsed - 0.1) < 0.05, f"Unexpected timing for result {len(results)}"
+
+    assert results == [0, 1, 4, 9, 16]
+    total_elapsed = time.time() - start_time
+    assert 0.05 < total_elapsed < 0.15, f"Unexpected total time: {total_elapsed}"
