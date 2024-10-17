@@ -10,6 +10,7 @@ from tempfile import NamedTemporaryFile
 from typing import List, Literal, get_args
 from unittest import mock
 
+import modal
 from modal import App, Image, Mount, Secret, build, environments, gpu, method
 from modal._serialization import serialize
 from modal.client import Client
@@ -23,13 +24,14 @@ from modal.image import (
     _validate_python_version,
 )
 from modal.mount import PYTHON_STANDALONE_VERSIONS
+from modal.runner import deploy_app
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows
 
 
-def dummy():
-    ...
+def dummy() -> None:
+    return None
 
 
 def test_supported_python_series():
@@ -1104,3 +1106,113 @@ async def test_logs(servicer, client):
 
     logs = [data async for data in image._logs.aio()]
     assert logs == ["build starting\n", "build finished\n"]
+
+
+def test_add_local_python_packages(client, servicer, set_env_client, test_dir, monkeypatch):
+    monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
+    deb = Image.debian_slim()
+    image = deb.add_local_python_packages("pkg_a")
+
+    def hydrate_image(img):
+        # there should be a more straight forward way to do this?
+        app = App()
+        app.function(serialized=True, image=img)(lambda: None)
+        with app.run(client=client):
+            pass
+        assert len(image._mount_layers) == 1
+
+    hydrate_image(image)
+    assert len(image._mount_layers) == 1
+
+    image_additional_mount = image.add_local_python_packages("pkg_b")
+    hydrate_image(image_additional_mount)
+    assert len(image_additional_mount._mount_layers) == 2  # another mount added to lazy layer
+    assert len(image._mount_layers) == 1  # original image should not be affected
+
+    image_non_mount = image.run_commands("echo 'hello'")
+    hydrate_image(image_non_mount)
+    assert len(image_non_mount._mount_layers) == 0
+    # TODO: assert layers include copy of all mounts + echo
+
+    layers = get_image_layers(image_non_mount.object_id, servicer)
+    for layer in layers:
+        print("===========LAYER========")
+        print(layer)
+
+    echo_layer = layers[0]
+    assert echo_layer.dockerfile_commands == ["FROM base", "RUN echo 'hello'"]
+
+    copy_layer = layers[1]
+    assert copy_layer.dockerfile_commands == ["FROM base", "COPY . /"]
+    assert copy_layer.context_mount_id == image._mount_layers[0].object_id
+    copied_files = servicer.mount_contents[copy_layer.context_mount_id].keys()
+    assert len(copied_files) == 8
+    assert all(fn.startswith("/root/pkg_a/") for fn in copied_files)
+
+
+def test_lazy_mounts_are_attached_to_functions(servicer, client, test_dir, monkeypatch):
+    monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
+    deb_slim = Image.debian_slim()
+    img = deb_slim.add_local_python_packages("pkg_a")
+    app = App("my-app")
+    control_fun: modal.Function = app.function(serialized=True, image=deb_slim, name="control")(
+        dummy
+    )  # no mounts on image
+    fun: modal.Function = app.function(serialized=True, image=img, name="fun")(dummy)  # mounts on image
+    deploy_app(app, client=client)
+
+    control_func_mounts = set(servicer.app_functions[control_fun.object_id].mount_ids)
+    fun_def = servicer.app_functions[fun.object_id]
+    added_mounts = set(fun_def.mount_ids) - control_func_mounts
+    assert len(added_mounts) == 1
+    assert added_mounts == {img._mount_layers[0].object_id}
+
+
+def test_lazy_mounts_are_attached_to_classes(servicer, client, test_dir, monkeypatch, set_env_client):
+    monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
+    deb_slim = Image.debian_slim()
+    img = deb_slim.add_local_python_packages("pkg_a")
+    app = App("my-app")
+    control_fun: modal.Function = app.function(serialized=True, image=deb_slim, name="control")(
+        dummy
+    )  # no mounts on image
+
+    class A:
+        some_arg: str = modal.parameter()
+
+    ACls = app.cls(serialized=True, image=img)(A)  # mounts on image
+    deploy_app(app, client=client)
+
+    control_func_mounts = set(servicer.app_functions[control_fun.object_id].mount_ids)
+    fun_def = servicer.function_by_name("A.*")  # class service function
+    added_mounts = set(fun_def.mount_ids) - control_func_mounts
+    assert len(added_mounts) == 1
+    assert added_mounts == {img._mount_layers[0].object_id}
+
+    obj = ACls(some_arg="foo")  # type: ignore
+    # hacky way to force hydration of the *parameter bound* function (instance service function):
+    obj.keep_warm(0)  #  type: ignore
+
+    obj_fun_def = servicer.function_by_name("A.*", ((), {"some_arg": "foo"}))  # instance service function
+    added_mounts = set(obj_fun_def.mount_ids) - control_func_mounts
+    assert len(added_mounts) == 1
+    assert added_mounts == {img._mount_layers[0].object_id}
+
+
+@skip_windows("servicer sandbox implementation not working on windows")
+def test_lazy_mounts_are_attached_to_sandboxes(servicer, client, test_dir, monkeypatch):
+    monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
+    deb_slim = Image.debian_slim()
+    img = deb_slim.add_local_python_packages("pkg_a")
+    app = App("my-app")
+    with app.run(client=client):
+        modal.Sandbox.create(image=img, app=app, client=client)
+        sandbox_def = servicer.sandbox_defs[0]
+
+    assert sandbox_def.image_id == deb_slim.object_id
+    assert sandbox_def.mount_ids == [img._mount_layers[0].object_id]
+
+
+# TODO: test build functions w/ lazy mounts
+
+# TODO: test modal serve w/ lazy mounts
