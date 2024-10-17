@@ -552,8 +552,8 @@ async def async_map(
     async_mapper_func: Callable[[T], Awaitable[V]],
     concurrency: int,
 ) -> AsyncGenerator[V, None]:
-    input_queue: asyncio.Queue[Union[T, None]] = asyncio.Queue()
-    output_queue: asyncio.Queue[Union[V, Exception]] = asyncio.Queue()
+    input_queue: asyncio.Queue[Tuple[str, Union[T, None]]] = asyncio.Queue()
+    output_queue: asyncio.Queue[Tuple[str, Union[V, Exception]]] = asyncio.Queue()
     output_event = asyncio.Event()
 
     async def producer():
@@ -571,7 +571,7 @@ async def async_map(
                     if asyncio.iscoroutinefunction(async_mapper_func):
                         result = await async_mapper_func(item)
                     else:
-                        result = async_mapper_func(item)
+                        result = typing.cast(V, async_mapper_func(item))
                     await output_queue.put(("value", result))
             except Exception as e:
                 await output_queue.put(("exception", e))
@@ -605,9 +605,9 @@ async def async_map(
                 while not output_queue.empty():
                     event_type, item = await output_queue.get()
                     if event_type == "value":
-                        yield item
+                        yield typing.cast(V, item)
                     elif event_type == "exception":
-                        raise item
+                        raise typing.cast(Exception, item)
                     else:
                         raise Exception("Unknown event type: " + event_type)
                 break
@@ -616,9 +616,9 @@ async def async_map(
                 while not output_queue.empty():
                     event_type, item = await output_queue.get()
                     if event_type == "value":
-                        yield item
+                        yield typing.cast(V, item)
                     elif event_type == "exception":
-                        raise item
+                        raise typing.cast(Exception, item)
                     else:
                         raise Exception("Unknown event type: " + event_type)
                 output_event.clear()
@@ -637,9 +637,9 @@ async def async_map_ordered(
     async def mapper_func_wrapper(tup: Tuple[int, T]) -> Tuple[int, V]:
         if asyncio.iscoroutinefunction(async_mapper_func):
             return tup[0], await async_mapper_func(tup[1])
-        return tup[0], async_mapper_func(tup[1])
+        return tup[0], typing.cast(V, async_mapper_func(tup[1]))
 
-    async def counter():
+    async def counter() -> AsyncGenerator[int, None]:
         i = 0
         while True:
             yield i
@@ -648,8 +648,8 @@ async def async_map_ordered(
     next_idx = 0
     buffer = {}
 
-    async with aclosing(counter()) as counter, aclosing(input) as input:
-        async with aclosing(async_zip(counter, input)) as zipped_input:
+    async with aclosing(counter()) as counter_gen:
+        async with aclosing(async_zip(counter_gen, input)) as zipped_input:
             async with aclosing(async_map(zipped_input, mapper_func_wrapper, concurrency)) as stream:
                 async for output_idx, output_item in stream:
                     buffer[output_idx] = output_item
