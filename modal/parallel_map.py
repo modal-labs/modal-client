@@ -14,6 +14,7 @@ from modal._utils.async_utils import (
     async_merge,
     async_zip,
     queue_batch_iterator,
+    sync_or_async_iter,
     synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
@@ -387,7 +388,7 @@ async def _starmap_async(
 
     async def feed_queue():
         # This runs in a main thread event loop, so it doesn't block the synchronizer loop
-        async with aclosing(input_iterator) as streamer:
+        async with aclosing(sync_or_async_iter(input_iterator)) as streamer:
             async for args in streamer:
                 await raw_input_queue.put.aio((args, kwargs))
         await raw_input_queue.put.aio(None)  # end-of-input sentinel
