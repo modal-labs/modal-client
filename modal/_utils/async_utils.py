@@ -490,15 +490,15 @@ async def aclosing(
         await agen.aclose()
 
 
-async def sync_or_async_iter(iterator: Union[Iterable[T], AsyncIterable[T]]) -> AsyncGenerator[T, None]:
-    if hasattr(iterator, "__aiter__"):
-        async for item in typing.cast(AsyncIterable[T], iterator):
+async def sync_or_async_iter(iterable: Union[Iterable[T], AsyncIterable[T]]) -> AsyncGenerator[T, None]:
+    if hasattr(iterable, "__aiter__"):
+        async for item in typing.cast(AsyncIterable[T], iterable):
             yield item
     else:
         # This intentionally could block the event loop for the duration of calling __iter__ and __next__,
         # so in non-trivial cases (like passing lists and ranges) this could be quite a foot gun for users #
         # w/ async code (but they can work around it by always using async iterators)
-        for item in typing.cast(Iterable[T], iterator):
+        for item in typing.cast(Iterable[T], iterable):
             yield item
 
 
@@ -510,3 +510,37 @@ async def async_zip(*inputs: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGener
             yield tuple(items)
         except StopAsyncIteration:
             break
+
+
+async def async_merge(*inputs: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerator[T, None]:
+    queue: asyncio.Queue[Tuple[int, Tuple[str, Union[T, Exception, None]]]] = asyncio.Queue()
+
+    async def producer(producer_id: int, iterable: Union[AsyncIterable[T], Iterable[T]]):
+        try:
+            async for item in sync_or_async_iter(iterable):
+                await queue.put((producer_id, ("value", item)))
+        except Exception as e:
+            await queue.put((producer_id, ("exception", e)))
+        finally:
+            await queue.put((producer_id, ("stop", None)))
+
+    tasks = [asyncio.create_task(producer(i, it)) for i, it in enumerate(inputs)]
+    active_producers = set(range(len(inputs)))
+
+    try:
+        while active_producers:
+            producer_id, (event_type, item) = await queue.get()
+            if event_type == "exception":
+                raise typing.cast(Exception, item)
+            elif event_type == "stop":
+                active_producers.remove(producer_id)
+            else:
+                yield typing.cast(T, item)
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def callable_to_agen(awaitable: Callable[[], Awaitable[T]]) -> AsyncGenerator[T, None]:
+    yield await awaitable()

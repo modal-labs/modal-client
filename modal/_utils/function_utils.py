@@ -4,7 +4,7 @@ import inspect
 import os
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Tuple, Type
+from typing import Any, AsyncGenerator, Callable, Dict, List, Literal, Optional, Tuple, Type
 
 from grpclib import GRPCError
 from grpclib.exceptions import StreamTerminatedError
@@ -355,7 +355,7 @@ def callable_has_non_self_non_default_params(f: Callable[..., Any]) -> bool:
 
 async def _stream_function_call_data(
     client, function_call_id: str, variant: Literal["data_in", "data_out"]
-) -> AsyncIterator[Any]:
+) -> AsyncGenerator[Any, None]:
     """Read from the `data_in` or `data_out` stream of a function call."""
     last_index = 0
 
