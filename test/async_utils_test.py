@@ -12,6 +12,8 @@ from modal._utils import async_utils
 from modal._utils.async_utils import (
     TaskContext,
     aclosing,
+    async_map,
+    async_map_ordered,
     async_merge,
     async_zip,
     callable_to_agen,
@@ -456,3 +458,58 @@ async def test_awaitable_to_aiter():
     async for item in callable_to_agen(foo):
         result.append(item)
     assert result == [await foo()]
+
+
+@pytest.mark.asyncio
+async def test_async_map():
+    result = []
+    states = []
+
+    async def foo():
+        states.append("enter")
+        try:
+            yield 1
+            yield 2
+            yield 3
+        finally:
+            states.append("exit")
+
+    async def mapper(x):
+        await asyncio.sleep(0.1)  # Simulate some async work
+        return x * 2
+
+    async for item in async_map(foo(), mapper, concurrency=3):
+        result.append(item)
+
+    assert sorted(result) == [2, 4, 6]
+    assert states == ["enter", "exit"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("in_order", [True, False])
+async def test_async_map_ordering(in_order):
+    result = []
+    ev = asyncio.Event()
+
+    async def foo():
+        yield 1
+        yield 2
+        yield 3
+
+    async def mapper(x):
+        if x == 1:
+            await ev.wait()
+
+        if x == 2:
+            ev.set()
+
+        return x * 2
+
+    if in_order:
+        async for item in async_map_ordered(foo(), mapper, concurrency=3):
+            result.append(item)
+        assert result == [2, 4, 6]
+    else:
+        async for item in async_map(foo(), mapper, concurrency=3):
+            result.append(item)
+        assert result == [4, 6, 2]
