@@ -13,7 +13,6 @@ from modal._utils.async_utils import (
     async_map_ordered,
     async_merge,
     async_zip,
-    callable_to_agen,
     queue_batch_iterator,
     sync_or_async_iter,
     synchronize_api,
@@ -117,12 +116,9 @@ async def _map_invocation(
 
     async def drain_input_generator():
         # Parallelize uploading blobs
-
-        async with aclosing(input_iter()) as input_streamer, aclosing(
-            callable_to_agen(create_input)
-        ) as create_input_agen:
+        async with aclosing(input_iter()) as input_streamer:
             async with aclosing(
-                async_map_ordered(input_streamer, create_input_agen, concurrency=BLOB_MAX_PARALLELISM)
+                async_map_ordered(input_streamer, create_input, concurrency=BLOB_MAX_PARALLELISM)
             ) as streamer:
                 async for item in streamer:
                     await input_queue.put(item)
