@@ -497,7 +497,6 @@ async def test_async_map_ordering(in_order):
         yield 3
 
     async def mapper(x):
-        await asyncio.sleep(0.1)  # simulate some async work
         if x == 1:
             await ev.wait()
 
