@@ -3,9 +3,11 @@ import asyncio
 import concurrent.futures
 import functools
 import inspect
+import itertools
 import time
 import typing
 from contextlib import asynccontextmanager
+from enum import Enum
 from typing import (
     Any,
     AsyncGenerator,
@@ -481,6 +483,12 @@ def run_generator_sync(
     loop.close()
 
 
+class AsyncItemType(Enum):
+    VALUE = "value"
+    EXCEPTION = "exception"
+    STOP = "stop"
+
+
 @asynccontextmanager
 async def aclosing(
     agen: AsyncGenerator[T, None],
@@ -519,11 +527,11 @@ async def async_merge(*inputs: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGen
     async def producer(producer_id: int, iterable: Union[AsyncIterable[T], Iterable[T]]):
         try:
             async for item in sync_or_async_iter(iterable):
-                await queue.put((producer_id, ("value", item)))
+                await queue.put((producer_id, (AsyncItemType.VALUE, item)))
         except Exception as e:
-            await queue.put((producer_id, ("exception", e)))
+            await queue.put((producer_id, (AsyncItemType.EXCEPTION, e)))
         finally:
-            await queue.put((producer_id, ("stop", None)))
+            await queue.put((producer_id, (AsyncItemType.STOP, None)))
 
     tasks = [asyncio.create_task(producer(i, it)) for i, it in enumerate(inputs)]
     active_producers = set(range(len(inputs)))
@@ -531,9 +539,9 @@ async def async_merge(*inputs: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGen
     try:
         while active_producers:
             producer_id, (event_type, item) = await queue.get()
-            if event_type == "exception":
+            if event_type == AsyncItemType.EXCEPTION:
                 raise typing.cast(Exception, item)
-            elif event_type == "stop":
+            elif event_type == AsyncItemType.STOP:
                 active_producers.remove(producer_id)
             else:
                 yield typing.cast(T, item)
@@ -548,7 +556,7 @@ async def callable_to_agen(awaitable: Callable[[], Awaitable[T]]) -> AsyncGenera
 
 
 async def async_map(
-    input: Union[AsyncIterable[T], Iterable[T]],
+    input_iterable: Union[AsyncIterable[T], Iterable[T]],
     async_mapper_func: Callable[[T], Awaitable[V]],
     concurrency: int,
 ) -> AsyncGenerator[V, None]:
@@ -557,28 +565,28 @@ async def async_map(
     output_event = asyncio.Event()
 
     async def producer():
-        async for item in sync_or_async_iter(input):
-            await input_queue.put(("value", item))
-        await input_queue.put(("stop", None))
+        async for item in sync_or_async_iter(input_iterable):
+            await input_queue.put((AsyncItemType.VALUE, item))
+        await input_queue.put((AsyncItemType.STOP, None))
 
     async def worker():
         while True:
             try:
                 event_type, item = await input_queue.get()
-                if event_type == "stop":
+                if event_type == AsyncItemType.STOP:
                     break
-                if event_type == "value":
-                    if asyncio.iscoroutinefunction(async_mapper_func):
-                        result = await async_mapper_func(item)
+                if event_type == AsyncItemType.VALUE:
+                    res = async_mapper_func(item)
+                    if inspect.isawaitable(res):
+                        result = await res
                     else:
-                        result = typing.cast(V, async_mapper_func(item))
-                    await output_queue.put(("value", result))
+                        result = typing.cast(V, res)
+                    await output_queue.put((AsyncItemType.VALUE, result))
             except Exception as e:
-                await output_queue.put(("exception", e))
+                await output_queue.put((AsyncItemType.EXCEPTION, e))
             finally:
                 input_queue.task_done()
 
-    output_event_task = asyncio.create_task(output_event.wait())
     producer_task = asyncio.create_task(producer())
     worker_tasks = [asyncio.create_task(worker()) for _ in range(concurrency)]
 
@@ -587,40 +595,42 @@ async def async_map(
         await input_queue.join()
 
     complete_map_task = asyncio.create_task(complete_map())
-
-    all_tasks = [output_event_task, producer_task, *worker_tasks, complete_map_task]
+    all_tasks = [*worker_tasks, complete_map_task]
 
     try:
         while True:
             done, _ = await asyncio.wait(
-                all_tasks,
+                [*all_tasks, asyncio.create_task(output_event.wait())],
                 return_when=asyncio.FIRST_COMPLETED,
             )
 
             finished_workers = done & set(worker_tasks)
             for finished_worker in finished_workers:
+                # this is done in order to catch potential raised errors/cancellations
+                # from within worker tasks as soon as they happen.
                 await finished_worker
 
             if complete_map_task.done():
                 while not output_queue.empty():
                     event_type, item = await output_queue.get()
-                    if event_type == "value":
+                    if event_type == AsyncItemType.VALUE:
                         yield typing.cast(V, item)
-                    elif event_type == "exception":
+                    elif event_type == AsyncItemType.EXCEPTION:
                         raise typing.cast(Exception, item)
                     else:
-                        raise Exception("Unknown event type: " + event_type)
+                        raise Exception(f"Unknown event type: {event_type}")
+                await complete_map_task
                 break
 
             if output_event.is_set():
                 while not output_queue.empty():
                     event_type, item = await output_queue.get()
-                    if event_type == "value":
+                    if event_type == AsyncItemType.VALUE:
                         yield typing.cast(V, item)
-                    elif event_type == "exception":
+                    elif event_type == AsyncItemType.EXCEPTION:
                         raise typing.cast(Exception, item)
                     else:
-                        raise Exception("Unknown event type: " + event_type)
+                        raise Exception(f"Unknown event type: {event_type}")
                 output_event.clear()
 
     finally:
@@ -630,26 +640,25 @@ async def async_map(
 
 
 async def async_map_ordered(
-    input: Union[AsyncIterable[T], Iterable[T]],
+    input_iterable: Union[AsyncIterable[T], Iterable[T]],
     async_mapper_func: Callable[[T], Awaitable[V]],
     concurrency: int,
 ) -> AsyncGenerator[V, None]:
     async def mapper_func_wrapper(tup: Tuple[int, T]) -> Tuple[int, V]:
-        if asyncio.iscoroutinefunction(async_mapper_func):
-            return tup[0], await async_mapper_func(tup[1])
-        return tup[0], typing.cast(V, async_mapper_func(tup[1]))
+        res = async_mapper_func(tup[1])
+        if inspect.isawaitable(res):
+            return tup[0], await res
+        return tup[0], typing.cast(V, res)
 
     async def counter() -> AsyncGenerator[int, None]:
-        i = 0
-        while True:
+        for i in itertools.count():
             yield i
-            i += 1
 
     next_idx = 0
     buffer = {}
 
     async with aclosing(counter()) as counter_gen:
-        async with aclosing(async_zip(counter_gen, input)) as zipped_input:
+        async with aclosing(async_zip(counter_gen, input_iterable)) as zipped_input:
             async with aclosing(async_map(zipped_input, mapper_func_wrapper, concurrency)) as stream:
                 async for output_idx, output_item in stream:
                     buffer[output_idx] = output_item
