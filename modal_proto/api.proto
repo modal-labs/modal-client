@@ -212,9 +212,9 @@ enum VolumeFsVersion {
 enum WebhookAsyncMode {
   WEBHOOK_ASYNC_MODE_UNSPECIFIED = 0;
   reserved 1; // unused REDIRECT mode
-  WEBHOOK_ASYNC_MODE_DISABLED = 2; // no redirect, fail after timeout
-  WEBHOOK_ASYNC_MODE_TRIGGER = 3; // return immediately, roughly same as old wait_for_response=False
-  WEBHOOK_ASYNC_MODE_AUTO = 4; // redirect to polling endpoint if execution time nears the http timeout
+  WEBHOOK_ASYNC_MODE_DISABLED = 2; // No longer used by client
+  WEBHOOK_ASYNC_MODE_TRIGGER = 3; // No longer used by client (previously used when wait_for_response=False)
+  WEBHOOK_ASYNC_MODE_AUTO = 4; // The default
 }
 
 enum WebhookType {
