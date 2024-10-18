@@ -1269,7 +1269,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         )
         return await invocation.run_function()
 
-    async def _call_function_nowait(self, args, kwargs, function_call_invocation_type) -> _Invocation:
+    async def _call_function_nowait(
+        self, args, kwargs, function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType"
+    ) -> _Invocation:
         return await _Invocation.create(
             self, args, kwargs, client=self._client, function_call_invocation_type=function_call_invocation_type
         )
