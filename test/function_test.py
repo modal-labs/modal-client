@@ -993,3 +993,16 @@ def test_spawn_extended_feature_flag(client, servicer, monkeypatch, feature_flag
     else:
         expected_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY
     assert function_map.function_call_invocation_type == expected_invocation_type
+
+
+def test_experimental_spawn(client, servicer):
+    app = App()
+    dummy_modal = app.function()(dummy)
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            dummy_modal._experimental_spawn(1, 2)
+
+    # Verify the correct invocation type is set
+    function_map = ctx.pop_request("FunctionMap")
+    assert function_map.function_call_invocation_type == api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
