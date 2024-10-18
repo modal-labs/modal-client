@@ -11,6 +11,8 @@ def _cli(args, server_url, extra_env={}, check=True) -> Tuple[int, str, str]:
     args = [sys.executable] + args
     env = {
         "MODAL_SERVER_URL": server_url,
+        "MODAL_TOKEN_ID": "ak-123",
+        "MODAL_TOKEN_SECRET": "as-123",
         **os.environ,
         "PYTHONUTF8": "1",  # For windows
         **extra_env,
