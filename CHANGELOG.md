@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.198 (2024-10-18)
+
+Fixes a bug where `Queue.put` and `Queue.put_many` would throw `queue.Full` even if `timeout=None`.
+
+
+
 ### 0.64.194 (2024-10-18)
 
 - The previously-deprecated `--confirm` flag has been removed from the `modal volume delete` CLI. Use `--yes` to force deletion without a confirmation prompt.
