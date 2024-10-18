@@ -1823,9 +1823,11 @@ message RuntimeOutputBatch {
   uint64 batch_index = 2;
   // if an exit code is given, this is the final message that will be sent.
   optional int32 exit_code = 3;
+  repeated RuntimeOutputMessage stdout = 4;
+  repeated RuntimeOutputMessage stderr = 5;
+  repeated RuntimeOutputMessage info = 6;
 }
 
-// Used for `modal container exec`
 message RuntimeOutputMessage {
   // only stdout / stderr is used
   FileDescriptor file_descriptor = 1;
