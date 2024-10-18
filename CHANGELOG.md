@@ -18,7 +18,7 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 ### 0.64.193 (2024-10-18)
 
-- Passing `wait_for_response=False` with `modal.web_endpoint` is no longer supported. See [the docs](https://modal.com/docs/guide/webhook-timeouts#polling-solutions) for alternatives.
+- Passing `wait_for_response=False` in Modal webhook decorators is no longer supported. See [the docs](https://modal.com/docs/guide/webhook-timeouts#polling-solutions) for alternatives.
 
 
 
