@@ -312,9 +312,6 @@ def _web_endpoint(
                 "wait_for_response=False has been deprecated on web endpoints. See "
                 "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives.",
             )
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
-        else:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
         # self._loose_webhook_configs.add(raw_f)
 
@@ -326,7 +323,7 @@ def _web_endpoint(
                 method=method,
                 web_endpoint_docs=docs,
                 requested_suffix=label,
-                async_mode=_response_mode,
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
                 custom_domains=_parse_custom_domains(custom_domains),
             ),
         )
