@@ -1768,6 +1768,8 @@ async def container_client(servicer):
 @pytest_asyncio.fixture(scope="function")
 async def server_url_env(servicer, monkeypatch):
     monkeypatch.setenv("MODAL_SERVER_URL", servicer.client_addr)
+    monkeypatch.setenv("MODAL_TOKEN_ID", "ak-123")
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", "as-123")
     yield
 
 

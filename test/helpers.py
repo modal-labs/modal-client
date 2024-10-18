@@ -26,7 +26,14 @@ def deploy_app_externally(
             **{"PYTHONUTF8": "1"},
         }  # windows apparently needs a bunch of env vars to start python...
 
-    env = {**windows_support, "MODAL_SERVER_URL": servicer.client_addr, "MODAL_ENVIRONMENT": "main", **env}
+    env = {
+        **windows_support,
+        "MODAL_SERVER_URL": servicer.client_addr,
+        "MODAL_ENVIRONMENT": "main",
+        "MODAL_TOKEN_ID": "ak-123",
+        "MODAL_TOKEN_SECRET": "as-123",
+        **env,
+    }
     if cwd is None:
         cwd = pathlib.Path(__file__).parent.parent
 
