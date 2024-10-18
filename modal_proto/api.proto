@@ -1828,6 +1828,7 @@ message RuntimeOutputBatch {
   repeated RuntimeOutputMessage info = 6;
 }
 
+// Used for `modal container exec`, `modal shell`, and Sandboxes
 message RuntimeOutputMessage {
   // only stdout / stderr is used
   FileDescriptor file_descriptor = 1;
