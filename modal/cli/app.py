@@ -17,7 +17,7 @@ from modal.exception import deprecation_warning
 from modal.object import _get_environment_name
 from modal_proto import api_pb2
 
-from .utils import ENV_OPTION, display_table, _get_app_id_from_name, _stream_app_logs, timestamp_to_local
+from .utils import ENV_OPTION, _get_app_id_from_name, _stream_app_logs, display_table, timestamp_to_local
 
 APP_IDENTIFIER = Argument("", help="App name or ID")
 NAME_OPTION = typer.Option("", "-n", "--name", help="Deprecated: Pass App name as a positional argument")
