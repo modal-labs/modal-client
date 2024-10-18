@@ -10,6 +10,7 @@ from rich.text import Text
 from typer import Argument
 
 from modal._utils.async_utils import synchronizer
+from modal.app import _App
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.exception import deprecation_warning
@@ -180,10 +181,8 @@ async def stop(
 ):
     """Stop an app."""
     app_identifier = warn_on_name_option("stop", app_identifier, name)
-    client = await _Client.from_env()
     app_id = await _get_app_id(app_identifier, env)
-    req = api_pb2.AppStopRequest(app_id=app_id, source=api_pb2.APP_STOP_SOURCE_CLI)
-    await client.stub.AppStop(req)
+    await _App.stop(app_id)
 
 
 @app_cli.command("history", no_args_is_help=True)
