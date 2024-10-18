@@ -986,7 +986,7 @@ class _Image(_Object, type_prefix="im"):
         gpu: GPU_T = None,
     ):
         """DEPRECATED: Removed in favor of the `Image.micromamba_install` method (using the `spec_file` parameter)."""
-        deprecation_warning((2024, 5, 2), _Image.conda_update_from_environment.__doc__ or "")
+        deprecation_error((2024, 5, 2), _Image.conda_update_from_environment.__doc__ or "")
 
     @staticmethod
     def micromamba(
