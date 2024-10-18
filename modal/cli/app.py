@@ -10,13 +10,14 @@ from rich.text import Text
 from typer import Argument
 
 from modal._utils.async_utils import synchronizer
+from modal.app import _App
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.exception import deprecation_warning
 from modal.object import _get_environment_name
 from modal_proto import api_pb2
 
-from .utils import ENV_OPTION, display_table, get_app_id_from_name, stream_app_logs, timestamp_to_local
+from .utils import ENV_OPTION, _get_app_id_from_name, _stream_app_logs, display_table, timestamp_to_local
 
 APP_IDENTIFIER = Argument("", help="App name or ID")
 NAME_OPTION = typer.Option("", "-n", "--name", help="Deprecated: Pass App name as a positional argument")
@@ -34,12 +35,11 @@ APP_STATE_TO_MESSAGE = {
 }
 
 
-@synchronizer.create_blocking
-async def get_app_id(app_identifier: str, env: Optional[str], client: Optional[_Client] = None) -> str:
+async def _get_app_id(app_identifier: str, env: Optional[str], client: Optional[_Client] = None) -> str:
     """Resolve an app_identifier that may be a name or an ID into an ID."""
     if re.match(r"^ap-[a-zA-Z0-9]{22}$", app_identifier):
         return app_identifier
-    return await get_app_id_from_name.aio(app_identifier, env, client)
+    return await _get_app_id_from_name(app_identifier, env, client)
 
 
 def warn_on_name_option(command: str, app_identifier: str, name: str) -> str:
@@ -92,7 +92,8 @@ async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
 
 
 @app_cli.command("logs", no_args_is_help=True)
-def logs(
+@synchronizer.create_blocking
+async def logs(
     app_identifier: str = APP_IDENTIFIER,
     *,
     name: str = NAME_OPTION,
@@ -116,8 +117,8 @@ def logs(
 
     """
     app_identifier = warn_on_name_option("stop", app_identifier, name)
-    app_id = get_app_id(app_identifier, env)
-    stream_app_logs(app_id)
+    app_id = await _get_app_id(app_identifier, env)
+    await _stream_app_logs(app_id)
 
 
 @app_cli.command("rollback", no_args_is_help=True, context_settings={"ignore_unknown_options": True})
@@ -157,7 +158,7 @@ async def rollback(
     """
     env = ensure_env(env)
     client = await _Client.from_env()
-    app_id = await get_app_id.aio(app_identifier, env, client)
+    app_id = await _get_app_id(app_identifier, env, client)
     if not version:
         version_number = -1
     else:
@@ -180,10 +181,8 @@ async def stop(
 ):
     """Stop an app."""
     app_identifier = warn_on_name_option("stop", app_identifier, name)
-    client = await _Client.from_env()
-    app_id = await get_app_id.aio(app_identifier, env)
-    req = api_pb2.AppStopRequest(app_id=app_id, source=api_pb2.APP_STOP_SOURCE_CLI)
-    await client.stub.AppStop(req)
+    app_id = await _get_app_id(app_identifier, env)
+    await _App.stop(app_id)
 
 
 @app_cli.command("history", no_args_is_help=True)
@@ -215,7 +214,7 @@ async def history(
     app_identifier = warn_on_name_option("history", app_identifier, name)
     env = ensure_env(env)
     client = await _Client.from_env()
-    app_id = await get_app_id.aio(app_identifier, env, client)
+    app_id = await _get_app_id(app_identifier, env, client)
     resp = await client.stub.AppDeploymentHistory(api_pb2.AppDeploymentHistoryRequest(app_id=app_id))
 
     columns = [
