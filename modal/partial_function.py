@@ -335,8 +335,8 @@ def _asgi_app(
     _warn_parentheses_missing=None,
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
-    wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
+    wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering an ASGI app with a Modal function.
 
@@ -380,14 +380,11 @@ def _asgi_app(
                 )
 
         if not wait_for_response:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 5, 13),
                 "wait_for_response=False has been deprecated on web endpoints. See "
-                + "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives",
+                "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives",
             )
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
-        else:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
         return _PartialFunction(
             raw_f,
@@ -395,7 +392,7 @@ def _asgi_app(
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
                 requested_suffix=label,
-                async_mode=_response_mode,
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
                 custom_domains=_parse_custom_domains(custom_domains),
             ),
         )
@@ -407,8 +404,8 @@ def _wsgi_app(
     _warn_parentheses_missing=None,
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
-    wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
+    wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering a WSGI app with a Modal function.
 
@@ -452,14 +449,11 @@ def _wsgi_app(
                 )
 
         if not wait_for_response:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 5, 13),
                 "wait_for_response=False has been deprecated on web endpoints. See "
-                + "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives",
+                "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives",
             )
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
-        else:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
         return _PartialFunction(
             raw_f,
@@ -467,7 +461,7 @@ def _wsgi_app(
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
                 requested_suffix=label,
-                async_mode=_response_mode,
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
                 custom_domains=_parse_custom_domains(custom_domains),
             ),
         )
