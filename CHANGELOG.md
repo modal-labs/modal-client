@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.193 (2024-10-18)
+
+- Passing `wait_for_response=False` with `modal.web_endpoint` is no longer supported. See [the docs](https://modal.com/docs/guide/webhook-timeouts#polling-solutions) for alternatives.
+
+
+
 ### 0.64.187 (2024-10-16)
 
 When writing to a `StreamWriter` that has already had EOF written, a ValueError is now raised instead of an `EOFError`.
