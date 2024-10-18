@@ -20,8 +20,7 @@ from ..environments import ensure_env
 from ..exception import NotFoundError
 
 
-@synchronizer.create_blocking
-async def stream_app_logs(
+async def _stream_app_logs(
     app_id: Optional[str] = None, task_id: Optional[str] = None, app_logs_url: Optional[str] = None
 ):
     client = await _Client.from_env()
@@ -39,9 +38,9 @@ async def stream_app_logs(
     except KeyboardInterrupt:
         pass
 
+stream_app_logs = synchronizer.create_blocking(_stream_app_logs)
 
-@synchronizer.create_blocking
-async def get_app_id_from_name(name: str, env: Optional[str], client: Optional[_Client] = None) -> str:
+async def _get_app_id_from_name(name: str, env: Optional[str], client: Optional[_Client] = None) -> str:
     if client is None:
         client = await _Client.from_env()
     env_name = ensure_env(env)
