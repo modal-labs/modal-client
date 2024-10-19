@@ -1092,6 +1092,15 @@ class _App:
         """Only used for tests."""
         cls._container_app = None
 
+    @classmethod
+    async def stop(cls, app_id: str, client: Optional[_Client] = None):
+        """Stops an app programmatically."""
+        # TODO(erikbern): we should make this an instance method instead!
+        if client is None:
+            client = await _Client.from_env()
+        req = api_pb2.AppStopRequest(app_id=app_id, source=api_pb2.APP_STOP_SOURCE_CLI)
+        await client.stub.AppStop(req)
+
 
 App = synchronize_api(_App)
 
