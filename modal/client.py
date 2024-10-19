@@ -148,7 +148,7 @@ class _Client:
         self._owner_pid = os.getpid()
 
     async def _close(self, prep_for_restore: bool = False):
-        logger.debug(f"Client({id(self)}): closing")
+        logger.debug(f"Client ({id(self)}): closing")
         self._closed = True
         await self._cancellation_context.__aexit__(None, None, None)  # wait for all rpcs to be finished/cancelled
         if self._channel is not None:
@@ -162,7 +162,7 @@ class _Client:
 
     async def _init(self):
         """Connect to server and retrieve version information; raise appropriate error for various failures."""
-        logger.debug("Client: Starting")
+        logger.debug(f"Client ({id(self)}): Starting")
         _check_config()
         try:
             req = empty_pb2.Empty()
