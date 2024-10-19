@@ -80,7 +80,7 @@ async def list(json: Optional[bool] = False):
             table.add_row(*content, style=highlight if active else "dim")
         console.print(table)
 
-    if env_based_workspace is not None:
-        console.print(
-            f"Using [bold]{env_based_workspace}[/bold] workspace based on environment variables", style="yellow"
-        )
+        if env_based_workspace is not None:
+            console.print(
+                f"Using [bold]{env_based_workspace}[/bold] workspace based on environment variables", style="yellow"
+            )
