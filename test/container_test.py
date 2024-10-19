@@ -302,6 +302,8 @@ def _run_container(
             with pathlib.Path(tmp_file_name).open("w") as target:
                 json.dump({}, target)
             env["MODAL_RESTORE_STATE_PATH"] = tmp_file_name
+            env["MODAL_TOKEN_ID"] = "ak-123"
+            env["MODAL_TOKEN_SECRET"] = "as-123"
 
             # Override server URL to reproduce restore behavior.
             env["MODAL_SERVER_URL"] = servicer.container_addr
@@ -1091,7 +1093,7 @@ def test_cli(servicer):
     servicer.container_inputs = _get_inputs()
 
     # Launch subprocess
-    env = {"MODAL_SERVER_URL": servicer.container_addr}
+    env = {"MODAL_TOKEN_ID": "ak-123", "MODAL_TOKEN_SECRET": "as-12", "MODAL_SERVER_URL": servicer.container_addr}
     lib_dir = pathlib.Path(__file__).parent.parent
     args: List[str] = [sys.executable, "-m", "modal._container_entrypoint", data_base64]
     ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
