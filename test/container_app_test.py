@@ -4,6 +4,7 @@ import json
 import os
 import pytest
 import time
+from contextlib import contextmanager
 from typing import Dict
 from unittest import mock
 
@@ -71,6 +72,20 @@ async def stop_app(client, app_id):
     return await retry_transient_errors(client.stub.AppStop, api_pb2.AppStopRequest(app_id=app_id))
 
 
+@contextmanager
+def set_env_vars(restore_path, container_addr):
+    with mock.patch.dict(
+        os.environ,
+        {
+            "MODAL_RESTORE_STATE_PATH": str(restore_path),
+            "MODAL_SERVER_URL": container_addr,
+            "MODAL_TASK_ID": "ta-123",
+            "MODAL_IS_REMOTE": "1",
+        },
+    ):
+        yield
+
+
 @pytest.mark.asyncio
 async def test_container_snapshot_reference_capture(container_client, tmpdir, servicer, client):
     app = App()
@@ -86,9 +101,7 @@ async def test_container_snapshot_reference_capture(container_client, tmpdir, se
     assert f.object_id == "fu-1"
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
     restore_path = temp_restore_path(tmpdir)
-    with mock.patch.dict(
-        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
-    ):
+    with set_env_vars(restore_path, servicer.container_addr):
         io_manager.memory_snapshot()
 
     # Stop the App, invalidating the fu- ID stored in `f`.
@@ -112,10 +125,7 @@ def test_container_snapshot_restore_heartbeats(tmpdir, servicer, container_clien
     # Ensure that heartbeats only run after the snapshot
     heartbeat_interval_secs = 0.01
     with io_manager.heartbeats(True):
-        with mock.patch.dict(
-            os.environ,
-            {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr},
-        ):
+        with set_env_vars(restore_path, servicer.container_addr):
             with mock.patch("modal.runner.HEARTBEAT_INTERVAL", heartbeat_interval_secs):
                 time.sleep(heartbeat_interval_secs * 2)
                 assert not list(
@@ -140,15 +150,7 @@ async def test_container_debug_snapshot(container_client, tmpdir, servicer):
     # Test that the breakpoint was called
     test_breakpoint = mock.Mock()
     with mock.patch("sys.breakpointhook", test_breakpoint):
-        with mock.patch.dict(
-            os.environ,
-            {
-                "MODAL_RESTORE_STATE_PATH": str(restore_path),
-                "MODAL_SERVER_URL": servicer.container_addr,
-                "MODAL_TASK_ID": "ta-123",
-                "MODAL_IS_REMOTE": "1",
-            },
-        ):
+        with set_env_vars(restore_path, servicer.container_addr):
             io_manager.memory_snapshot()
             test_breakpoint.assert_called_once()
 
@@ -198,9 +200,7 @@ async def test_container_snapshot_patching(fake_torch_module, container_client, 
 
     # Write out a restore file so that snapshot+restore will complete
     restore_path = temp_restore_path(tmpdir)
-    with mock.patch.dict(
-        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
-    ):
+    with set_env_vars(restore_path, servicer.container_addr):
         io_manager.memory_snapshot()
         assert torch.cuda.device_count() == 2
 
@@ -217,9 +217,7 @@ async def test_container_snapshot_patching_err(weird_torch_module, container_cli
 
     assert torch.IM_WEIRD == 42
 
-    with mock.patch.dict(
-        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
-    ):
+    with set_env_vars(restore_path, servicer.container_addr):
         io_manager.memory_snapshot()  # should not crash
 
 
