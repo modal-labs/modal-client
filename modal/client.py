@@ -420,6 +420,9 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         timeout: Optional[float] = None,
         metadata: Optional[_MetadataLike] = None,
     ) -> ResponseType:
+        if self.client._snapshotted:
+            logger.debug(f"refreshing client after snapshot for {self._wrapped_method_name}")
+            self.client = await _Client.from_env()
         return await self.client._call_unary(self._wrapped_method_name, req, timeout=timeout, metadata=metadata)
 
 
