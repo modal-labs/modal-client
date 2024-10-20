@@ -6,6 +6,7 @@ import os
 import platform
 import pytest
 
+import pytest_asyncio
 from synchronicity import Synchronizer
 
 from modal._utils import async_utils
@@ -23,6 +24,13 @@ from modal._utils.async_utils import (
     synchronize_api,
     warn_if_generator_is_not_consumed,
 )
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def no_dangling_tasks():
+    yield
+    assert not asyncio.all_tasks() - {asyncio.tasks.current_task()}
+
 
 skip_github_non_linux = pytest.mark.skipif(
     (os.environ.get("GITHUB_ACTIONS") == "true" and platform.system() != "Linux"),
@@ -408,6 +416,7 @@ async def test_async_merge():
             await gen4_event.wait()
             yield 2
         finally:
+            await asyncio.sleep(0)
             states.append("gen1 exit")
 
     async def gen2():
@@ -420,31 +429,35 @@ async def test_async_merge():
             yield 4
             gen4_event.set()
         finally:
+            await asyncio.sleep(0)
             states.append("gen2 exit")
 
     async for item in async_merge(gen1(), gen2()):
         result.append(item)
 
     assert result == [3, 1, 4, 2]
-    assert sorted(states) == [
+    assert states == [
         "gen1 enter",
-        "gen1 exit",
         "gen2 enter",
         "gen2 exit",
+        "gen1 exit",
     ]
 
     result.clear()
     states.clear()
+    for ev in [gen1_event, gen2_event, gen3_event, gen4_event]:
+        ev.clear()
 
-    async for item in async_merge(gen1(), gen2()):
-        break
-
-    assert result == []
-    assert sorted(states) == [
+    # test that things are cleaned up even if the generator(s) aren't fully exhausted...
+    async with aclosing(gen1()) as g1, aclosing(gen2()) as g2, aclosing(async_merge(g1, g2)) as stream:
+        async for item in stream:
+            break
+    # TODO(elias): this fails for mysterious reasons
+    assert states == [
         "gen1 enter",
-        "gen1 exit",
         "gen2 enter",
         "gen2 exit",
+        "gen1 exit",
     ]
 
 
@@ -483,6 +496,25 @@ async def test_async_map():
 
     assert sorted(result) == [2, 4, 6]
     assert states == ["enter", "exit"]
+
+
+@pytest.mark.asyncio
+async def test_async_map_concurrency():
+    active_mappers = 0
+    active_mappers_history = []
+
+    async def mapper(x):
+        nonlocal active_mappers
+        active_mappers += 1
+        active_mappers_history.append(active_mappers)
+        await asyncio.sleep(0.1)  # Simulate some async work
+        active_mappers -= 1
+        return x * 2
+
+    result = [item async for item in async_map(range(10), mapper, concurrency=3)]
+    assert sorted(result) == [x * 2 for x in range(10)]
+    assert max(active_mappers_history) == 3
+    assert active_mappers_history.count(3) >= 7  # 2, ... 3, 4, 5 and 6, 7, 8 (9 *could* also be active with 3)
 
 
 @pytest.mark.asyncio
