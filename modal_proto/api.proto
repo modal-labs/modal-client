@@ -1081,6 +1081,9 @@ message Function {
 
   Schedule schedule = 72;
 
+  // Need a mapping of method names to webhook configs, e.g. {"method_name": WebhookConfig}
+  map<string, WebhookConfig> method_webhook_configs = 73;
+
 }
 
 message FunctionBindParamsRequest {
