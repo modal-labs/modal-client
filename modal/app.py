@@ -951,10 +951,6 @@ class _App:
                 scheduler_placement=scheduler_placement,
                 _experimental_buffer_containers=_experimental_buffer_containers,
                 _experimental_proxy_ip=_experimental_proxy_ip,
-                # class service function, so the following attributes which relate to
-                # the callable itself are invalid and set to defaults:
-                webhook_config=None,
-                is_generator=False,
             )
 
             self._add_function(cls_func, is_web_endpoint=False)
