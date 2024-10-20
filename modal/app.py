@@ -884,10 +884,14 @@ class _App:
                 (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
             )
 
-        if image is None:
-            image = self._get_default_image()
-
+        image = image or self._get_default_image()
         secrets = [*self._secrets, *secrets]
+
+        scheduler_placement = _experimental_scheduler_placement
+        if region:
+            if scheduler_placement:
+                raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
+            scheduler_placement = SchedulerPlacement(region=region)
 
         def wrapper(user_cls: CLS_T) -> CLS_T:
             nonlocal keep_warm
@@ -895,14 +899,6 @@ class _App:
             # Check if the decorated object is a class
             if not inspect.isclass(user_cls):
                 raise TypeError("The @app.cls decorator must be used on a class.")
-
-            info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
-
-            scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
-            if region:
-                if scheduler_placement:
-                    raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
-                scheduler_placement = SchedulerPlacement(region=region)
 
             batch_functions = _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.BATCHED)
             if batch_functions:
@@ -918,6 +914,14 @@ class _App:
             else:
                 batch_max_size = None
                 batch_wait_ms = None
+
+            if (
+                _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
+                and not enable_memory_snapshot
+            ):
+                raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
+
+            info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             cls_func = _Function.from_args(
                 info,
@@ -947,23 +951,17 @@ class _App:
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
+                _experimental_buffer_containers=_experimental_buffer_containers,
+                _experimental_proxy_ip=_experimental_proxy_ip,
                 # class service function, so the following attributes which relate to
                 # the callable itself are invalid and set to defaults:
                 webhook_config=None,
                 is_generator=False,
-                _experimental_buffer_containers=_experimental_buffer_containers,
-                _experimental_proxy_ip=_experimental_proxy_ip,
             )
 
             self._add_function(cls_func, is_web_endpoint=False)
 
             cls: _Cls = _Cls.from_local(user_cls, self, cls_func)
-
-            if (
-                _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
-                and not enable_memory_snapshot
-            ):
-                raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
 
             tag: str = user_cls.__name__
             self._add_object(tag, cls)
