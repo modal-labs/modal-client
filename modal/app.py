@@ -884,9 +884,6 @@ class _App:
                 (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
             )
 
-        image = image or self._get_default_image()
-        secrets = [*self._secrets, *secrets]
-
         scheduler_placement = _experimental_scheduler_placement
         if region:
             if scheduler_placement:
@@ -926,8 +923,8 @@ class _App:
             cls_func = _Function.from_args(
                 info,
                 app=self,
-                image=image,
-                secrets=secrets,
+                image=image or self._get_default_image(),
+                secrets=[*self._secrets, *secrets],
                 gpu=gpu,
                 mounts=[*self._mounts, *mounts],
                 network_file_systems=network_file_systems,
