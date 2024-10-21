@@ -129,9 +129,6 @@ async def _create_all_objects(
     environment_name: str,
 ) -> None:
     """Create objects that have been defined but not created on the server."""
-    if not client.authenticated:
-        raise ExecutionError("Objects cannot be created with an unauthenticated client")
-
     resolver = Resolver(
         client,
         environment_name=environment_name,
@@ -291,6 +288,10 @@ async def _run_app(
 
     if client is None:
         client = await _Client.from_env()
+
+    if not client.authenticated:
+        raise ExecutionError("Objects cannot be created with an unauthenticated client")
+
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
     running_app: RunningApp = await _init_local_app_new(
         client,
@@ -501,6 +502,9 @@ async def _deploy_app(
 
     if client is None:
         client = await _Client.from_env()
+
+    if not client.authenticated:
+        raise ExecutionError("Objects cannot be created with an unauthenticated client")
 
     t0 = time.time()
 
