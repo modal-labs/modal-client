@@ -521,6 +521,8 @@ class _Volume(_Object, type_prefix="vo"):
         # TODO(michael) Upon enforcement of this deprecation, remove *args and the default argument for label=.
         if args:
             if isinstance(self := args[0], _Volume):
+                # TODO(michael) we have some second-thoughts about whether deletion methods
+                # should be static or instance. We might revert this, but there isn't consensus.
                 msg = (
                     "Calling Volume.delete as an instance method is deprecated."
                     " Please update your code to call it as a static method, passing"

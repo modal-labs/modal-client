@@ -379,6 +379,7 @@ class _Queue(_Object, type_prefix="qu"):
                 # A full queue will return this status.
                 additional_status_codes=[Status.RESOURCE_EXHAUSTED],
                 max_delay=30.0,
+                max_retries=None,
                 total_timeout=timeout,
             )
         except GRPCError as exc:
