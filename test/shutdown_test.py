@@ -25,7 +25,7 @@ def close_client_soon(client):
 def test_client_shutdown_raises_client_closed(servicer):
     # Queue.get() loops rpc calls until it gets a response - make sure it shuts down
     # if the client is closed and doesn't stay in an indefinite retry loop
-    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
+    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-123")) as client:
         with modal.Queue.ephemeral(client=client) as q:
             close_client_soon(client)  # simulate an early shutdown of the client
             with pytest.raises(modal.exception.ClientClosed):
@@ -56,14 +56,14 @@ async def test_client_shutdown_raises_client_closed_streaming(servicer, caplog):
 
     sync_log_loop = synchronize_api(_mocked_logs_loop)
 
-    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
+    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-123")) as client:
         t = asyncio.create_task(sync_log_loop.aio(client, "ap-1"))
         await asyncio.sleep(0.1)  # in loop
 
     with pytest.raises(ClientClosed):
         await t
 
-    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
+    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-123")) as client:
         t = asyncio.create_task(_mocked_logs_loop(client, "ap-1"))
         await asyncio.sleep(0.1)  # in loop
 
@@ -77,7 +77,7 @@ async def test_client_shutdown_raises_client_closed_streaming(servicer, caplog):
 @pytest.mark.timeout(5)
 @pytest.mark.asyncio
 async def test_client_close_cancellation_context_only_used_in_correct_event_loop(servicer, caplog):
-    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
+    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-123")) as client:
         with modal.Queue.ephemeral(client=client) as q:
             request = api_pb2.QueueGetRequest(
                 queue_id=q.object_id,
