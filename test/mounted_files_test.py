@@ -332,10 +332,41 @@ def test_pdm_cache_automount_exclude(tmp_path, monkeypatch, supports_dir, servic
     }
 
 
-def test_mount_directory_with_symlinked_file(path_with_symlinked_files, servicer, server_url_env):
+def test_mount_directory_with_symlinked_file(path_with_symlinked_files, servicer, client):
     path, files = path_with_symlinked_files
     mount = Mount.from_local_dir(path)
-    mount._deploy("mo-1")
+    mount._deploy("mo-1", client=client)
     pkg_a_mount = servicer.mount_contents["mo-1"]
     for src_f in files:
         assert any(mnt_f.endswith(src_f.name) for mnt_f in pkg_a_mount)
+
+
+def test_module_with_dot_prefixed_parent_can_be_mounted(tmp_path, monkeypatch, servicer, client):
+    # the typical usecase would be to have a `.venv` directory with a virualenv
+    # that could possibly contain local site-packages that a user wants to mount
+
+    # set up some dummy packages:
+    # .parent
+    #    |---- foo.py
+    #    |---- bar
+    #    |------|--baz.py
+    parent_dir = Path(tmp_path) / ".parent"
+    parent_dir.mkdir()
+    foo_py = parent_dir / "foo.py"
+    foo_py.touch()
+    bar_package = parent_dir / "bar"
+    bar_package.mkdir()
+    (bar_package / "__init__.py").touch()
+    (bar_package / "baz.py").touch()
+
+    monkeypatch.syspath_prepend(parent_dir)
+    foo_mount = Mount.from_local_python_packages("foo")
+    foo_mount._deploy("mo-1", client=client)
+    foo_mount_content = servicer.mount_contents["mo-1"]
+    assert foo_mount_content.keys() == {"/root/foo.py"}
+
+    bar_mount = Mount.from_local_python_packages("bar")
+    bar_mount._deploy("mo-2", client=client)
+
+    bar_mount_content = servicer.mount_contents["mo-2"]
+    assert bar_mount_content.keys() == {"/root/bar/__init__.py", "/root/bar/baz.py"}
