@@ -272,7 +272,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 "x-modal-task-secret",  # old
             ]:
                 if header in event.metadata:
-                    raise GRPCError(Status.FAILED_PRECONDITION, f"Container client should not header {header}")
+                    raise GRPCError(Status.FAILED_PRECONDITION, f"Container client should not set header {header}")
         else:
             raise GRPCError(Status.FAILED_PRECONDITION, "Unknown client type")
 
