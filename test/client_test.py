@@ -96,16 +96,14 @@ async def test_client_server_error(servicer):
 @pytest.mark.asyncio
 async def test_client_old_version(servicer):
     with pytest.raises(VersionError):
-        async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret"), version="0.0.0"):
+        async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-123"), version="0.0.0"):
             pass
 
 
 @pytest.mark.asyncio
 async def test_client_deprecated(servicer):
     with pytest.warns(modal.exception.DeprecationError):
-        async with Client(
-            servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret"), version="deprecated"
-        ):
+        async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-123"), version="deprecated"):
             pass
 
 
@@ -119,8 +117,8 @@ async def test_client_unauthenticated(servicer):
 def client_from_env(client_addr):
     _override_config = {
         "server_url": client_addr,
-        "token_id": "foo-id",
-        "token_secret": "foo-secret",
+        "token_id": "ak-123",
+        "token_secret": "as-123",
         "task_id": None,
         "task_secret": None,
     }
@@ -191,7 +189,7 @@ def test_implicit_default_profile_warning(servicer, modal_config):
     """
     with modal_config(config):
         # A single profile should be fine, even if not explicitly active and named 'default'
-        Client.verify(servicer.client_addr, None)
+        Client.verify(servicer.client_addr, ("ak-123", "as-123"))
 
 
 def test_import_modal_from_thread(supports_dir):
