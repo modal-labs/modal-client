@@ -359,6 +359,7 @@ async def test_sync_or_async_iter():
 async def test_async_zip():
     async def gen1(start, count=1):
         for i in range(start, start + count):
+            await asyncio.sleep(0.1)
             yield i
 
     result = []
