@@ -519,12 +519,24 @@ def async_zip(*iterables: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerato
 
 async def async_zip(*iterables):
     generators = [sync_or_async_iter(it) for it in iterables]
-    while True:
+    try:
+        while True:
+            try:
+                tasks = [asyncio.create_task(gen.__anext__()) for gen in generators]
+                items = await asyncio.gather(*tasks)
+                yield tuple(items)
+            except StopAsyncIteration:
+                break
+    finally:
+        cancelled_tasks = []
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+                cancelled_tasks.append(task)
         try:
-            items = await asyncio.gather(*(gen.__anext__() for gen in generators))
-            yield tuple(items)
-        except StopAsyncIteration:
-            break
+            await asyncio.gather(*cancelled_tasks)
+        except asyncio.CancelledError:
+            pass
 
 
 @dataclass

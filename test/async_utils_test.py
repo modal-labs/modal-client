@@ -357,22 +357,26 @@ async def test_sync_or_async_iter():
 
 @pytest.mark.asyncio
 async def test_async_zip():
-    async def gen1(start, count=1):
+    async def gen(start, count=1):
         for i in range(start, start + count):
             await asyncio.sleep(0.1)
             yield i
 
     result = []
-    async for item in async_zip(gen1(1), gen1(4), gen1(6)):
-        result.append(item)
+    async with aclosing(gen(1)) as g1, aclosing(gen(4)) as g2, aclosing(gen(6)) as g3, aclosing(
+        async_zip(g1, g2, g3)
+    ) as stream:
+        async for item in stream:
+            result.append(item)
 
     assert result == [(1, 4, 6)]
 
-    result = []
-    async for item in async_zip(gen1(1, 10), gen1(5, 8), gen1(6, 2)):
-        result.append(item)
+    result.clear()
+    async with aclosing(async_zip(gen(1, 5), gen(5, 10))) as stream:
+        async for item in stream:
+            result.append(item)
 
-    assert result == [(1, 5, 6), (2, 6, 7)]
+    assert result == [(1, 5), (2, 6), (3, 7), (4, 8), (5, 9)]
 
 
 @pytest.mark.asyncio
