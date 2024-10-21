@@ -24,7 +24,6 @@ from modal._utils.async_utils import (
     synchronize_api,
     warn_if_generator_is_not_consumed,
 )
-from modal.exception import ExecutionError
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -757,7 +756,7 @@ async def test_async_map_output_cancellation(cancelled_at_idx):
             raise SampleException("test")
         return x * 2
 
-    with pytest.raises(ExecutionError):
+    with pytest.raises(SampleException):
         async for item in async_map(gen(), mapper_func, concurrency=3):
             result.append(item)
 
