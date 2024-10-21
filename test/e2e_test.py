@@ -11,6 +11,8 @@ def _cli(args, server_url, extra_env={}, check=True) -> Tuple[int, str, str]:
     args = [sys.executable] + args
     env = {
         "MODAL_SERVER_URL": server_url,
+        "MODAL_TOKEN_ID": "ak-123",
+        "MODAL_TOKEN_SECRET": "as-123",
         **os.environ,
         "PYTHONUTF8": "1",  # For windows
         **extra_env,
@@ -61,7 +63,7 @@ def test_auth_failure_last_line(servicer):
     )
     try:
         assert returncode != 0
-        assert "bad bad bad" in err.strip().split("\n")[-1]  # err msg should be on the last line
+        assert "auth token" in err.strip().split("\n")[-1]  # err msg should be on the last line
     except Exception:
         print("out:", repr(out))
         print("err:", repr(err))
