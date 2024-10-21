@@ -243,18 +243,28 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def recv_request(self, event: RecvRequest):
         # Make sure metadata is correct
-        assert event.metadata.get("x-modal-python-version")
-        assert event.metadata.get("x-modal-client-version")
-        assert event.metadata.get("x-modal-client-type")
+        for header in [
+            "x-modal-python-version",
+            "x-modal-client-version",
+            "x-modal-client-type",
+        ]:
+            if header not in event.metadata:
+                raise GRPCError(Status.FAILED_PRECONDITION, f"Missing {header} header")
         if event.metadata["x-modal-client-type"] == "1":  # CLIENT_TYPE_CLIENT
-            creds = (event.metadata["x-modal-token-id"], event.metadata["x-modal-token-secret"])
+            creds = (event.metadata.get("x-modal-token-id"), event.metadata.get("x-modal-token-secret"))
             if creds != ("ak-123", "as-123"):
                 raise GRPCError(Status.UNAUTHENTICATED, f"Incorrect auth token {creds}")
         elif event.metadata["x-modal-client-type"] == "3":  # CLIENT_TYPE_CONTAINER
-            assert "x-modal-token-id" not in event.metadata
-            assert "x-modal-token-secret" not in event.metadata
+            for header in [
+                "x-modal-token-id",
+                "x-modal-token-secret",
+                "x-modal-task-id",  # old
+                "x-modal-task-secret",  # old
+            ]:
+                if header in event.metadata:
+                    raise GRPCError(Status.FAILED_PRECONDITION, f"Container client should not header {header}")
         else:
-            raise Exception("unknown client type")
+            raise GRPCError(Status.FAILED_PRECONDITION, "Unknown client type")
 
     def function_body(self, func):
         """Decorator for setting the function that will be called for any FunctionGetOutputs calls"""
