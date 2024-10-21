@@ -2256,3 +2256,35 @@ def test_set_local_input_concurrency(servicer):
 def test_sandbox_infers_app(servicer, event_loop):
     _run_container(servicer, "test.supports.sandbox", "spawn_sandbox")
     assert servicer.sandbox_app_id == "ap-1"
+
+
+@skip_github_non_linux
+def test_deserialization_error_returns_exception(servicer, client):
+    inputs = [
+        api_pb2.FunctionGetInputsResponse(
+            inputs=[
+                api_pb2.FunctionGetInputsItem(
+                    input_id="in-xyz0",
+                    function_call_id="fc-123",
+                    input=api_pb2.FunctionInput(
+                        args=b"\x80\x04\x95(\x00\x00\x00\x00\x00\x00\x00\x8c\x17",
+                        data_format=api_pb2.DATA_FORMAT_PICKLE,
+                        method_name="",
+                    ),
+                ),
+            ]
+        ),
+        *_get_inputs(((2,), {})),
+    ]
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "square",
+        inputs=inputs,
+    )
+    assert len(ret.items) == 2
+    assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert "DeserializationError" in ret.items[0].result.exception
+
+    assert ret.items[1].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert int(deserialize(ret.items[1].result.data, ret.client)) == 4

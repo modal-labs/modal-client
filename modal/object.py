@@ -123,7 +123,7 @@ class _Object:
             object_type = self.__class__.__name__.strip("_")
             if hasattr(self, "_app") and getattr(self._app, "_running_app", "") is None:
                 # The most common cause of this error: e.g., user called a Function without using App.run()
-                reason = ", because the App it is defined on is not running."
+                reason = ", because the App it is defined on is not running"
             else:
                 # Technically possible, but with an ambiguous cause.
                 reason = ""

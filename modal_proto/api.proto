@@ -212,9 +212,9 @@ enum VolumeFsVersion {
 enum WebhookAsyncMode {
   WEBHOOK_ASYNC_MODE_UNSPECIFIED = 0;
   reserved 1; // unused REDIRECT mode
-  WEBHOOK_ASYNC_MODE_DISABLED = 2; // no redirect, fail after timeout
-  WEBHOOK_ASYNC_MODE_TRIGGER = 3; // return immediately, roughly same as old wait_for_response=False
-  WEBHOOK_ASYNC_MODE_AUTO = 4; // redirect to polling endpoint if execution time nears the http timeout
+  WEBHOOK_ASYNC_MODE_DISABLED = 2; // No longer used by client
+  WEBHOOK_ASYNC_MODE_TRIGGER = 3; // No longer used by client (previously used when wait_for_response=False)
+  WEBHOOK_ASYNC_MODE_AUTO = 4; // The default
 }
 
 enum WebhookType {
@@ -1823,9 +1823,12 @@ message RuntimeOutputBatch {
   uint64 batch_index = 2;
   // if an exit code is given, this is the final message that will be sent.
   optional int32 exit_code = 3;
+  repeated RuntimeOutputMessage stdout = 4;
+  repeated RuntimeOutputMessage stderr = 5;
+  repeated RuntimeOutputMessage info = 6;
 }
 
-// Used for `modal container exec`
+// Used for `modal container exec`, `modal shell`, and Sandboxes
 message RuntimeOutputMessage {
   // only stdout / stderr is used
   FileDescriptor file_descriptor = 1;
