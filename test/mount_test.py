@@ -3,7 +3,6 @@ import hashlib
 import os
 import platform
 import pytest
-import sys
 from pathlib import Path
 
 from modal import App
@@ -88,10 +87,10 @@ def dummy():
     pass
 
 
-def test_from_local_python_packages(servicer, client, test_dir):
+def test_from_local_python_packages(servicer, client, test_dir, monkeypatch):
     app = App()
 
-    sys.path.append((test_dir / "supports").as_posix())
+    monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
 
     app.function(mounts=[Mount.from_local_python_packages("pkg_a", "pkg_b", "standalone_file")])(dummy)
 
@@ -110,8 +109,8 @@ def test_from_local_python_packages(servicer, client, test_dir):
         assert "/root/pkg_c/j/k.py" not in files
 
 
-def test_app_mounts(servicer, client, test_dir):
-    sys.path.append((test_dir / "supports").as_posix())
+def test_app_mounts(servicer, client, test_dir, monkeypatch):
+    monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
 
     app = App(mounts=[Mount.from_local_python_packages("pkg_b")])
 
