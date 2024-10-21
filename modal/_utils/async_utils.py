@@ -507,7 +507,7 @@ async def sync_or_async_iter(iterable: Union[Iterable[T], AsyncIterable[T]]) -> 
 
 @typing.overload
 def async_zip(
-    i1: Union[AsyncIterable[T], Iterable[T]], i2: Union[AsyncIterable[V], Iterable[V]]
+    i1: Union[AsyncIterable[T], Iterable[T]], i2: Union[AsyncIterable[V], Iterable[V]], /
 ) -> AsyncGenerator[Tuple[T, V], None]:
     ...
 
@@ -523,7 +523,11 @@ async def async_zip(*iterables):
     try:
         while True:
             try:
-                tasks = [asyncio.create_task(gen.__anext__().__await__()) for gen in generators]
+
+                async def next_item(gen):
+                    return await gen.__anext__()
+
+                tasks = [asyncio.create_task(next_item(gen)) for gen in generators]
                 items = await asyncio.gather(*tasks)
                 yield tuple(items)
             except StopAsyncIteration:
