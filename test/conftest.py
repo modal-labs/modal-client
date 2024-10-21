@@ -237,6 +237,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.image_join_sleep_duration = None
 
+        self.required_creds = ("ak-123", "as-123")
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
@@ -251,9 +253,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if header not in event.metadata:
                 raise GRPCError(Status.FAILED_PRECONDITION, f"Missing {header} header")
         if event.metadata["x-modal-client-type"] == "1":  # CLIENT_TYPE_CLIENT
-            creds = (event.metadata.get("x-modal-token-id"), event.metadata.get("x-modal-token-secret"))
-            if creds != ("ak-123", "as-123"):
-                raise GRPCError(Status.UNAUTHENTICATED, f"Incorrect auth token {creds}")
+            if event.method_name in [
+                "/modal.client.ModalClient/TokenFlowCreate",
+                "/modal.client.ModalClient/TokenFlowWait",
+            ]:
+                pass  # Methods that don't require authentication
+            else:
+                creds = (event.metadata.get("x-modal-token-id"), event.metadata.get("x-modal-token-secret"))
+                if creds != self.required_creds:
+                    raise GRPCError(
+                        Status.UNAUTHENTICATED, f"Incorrect auth token {creds} for method {event.method_name}"
+                    )
         elif event.metadata["x-modal-client-type"] == "3":  # CLIENT_TYPE_CONTAINER
             for header in [
                 "x-modal-token-id",

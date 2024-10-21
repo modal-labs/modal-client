@@ -113,12 +113,14 @@ def test_secret_list(servicer, set_env_client):
 
 
 def test_app_token_new(servicer, set_env_client, server_url_env, modal_config):
+    servicer.required_creds = ("abc", "xyz")
     with modal_config() as config_file_path:
         _run(["token", "new", "--profile", "_test"])
         assert "_test" in toml.load(config_file_path)
 
 
 def test_app_setup(servicer, set_env_client, server_url_env, modal_config):
+    servicer.required_creds = ("abc", "xyz")
     with modal_config() as config_file_path:
         _run(["setup", "--profile", "_test"])
         assert "_test" in toml.load(config_file_path)
