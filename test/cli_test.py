@@ -990,7 +990,7 @@ def _run_subprocess(cli_cmd: List[str]) -> subprocess.Popen:
 
 @pytest.mark.timeout(10)
 @skip_windows("no sigint on windows")
-def test_keyboard_interrupt_during_app_load(servicer, server_url_env, supports_dir):
+def test_keyboard_interrupt_during_app_load(servicer, server_url_env, token_env, supports_dir):
     ctx: InterceptionContext
     creating_function = threading.Event()
 
