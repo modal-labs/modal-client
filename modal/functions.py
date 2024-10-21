@@ -1401,11 +1401,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         Returns a `modal.functions.FunctionCall` object, that can later be polled or
         waited for using `.get(timeout=...)`.
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
-
-        *Note:* `.spawn()` on a modal generator function does call and execute the generator, but does not currently
-        return a function handle for polling the result.
         """
-        self._check_no_web_url("spawn")
+        self._check_no_web_url("_experimental_spawn")
         if self._is_generator:
             invocation = await self._call_generator_nowait(args, kwargs)
         else:
@@ -1425,21 +1422,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         Returns a `modal.functions.FunctionCall` object, that can later be polled or
         waited for using `.get(timeout=...)`.
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
-
-        *Note:* `.spawn()` on a modal generator function does call and execute the generator, but does not currently
-        return a function handle for polling the result.
         """
         self._check_no_web_url("spawn")
         if self._is_generator:
             invocation = await self._call_generator_nowait(args, kwargs)
         else:
-            function_call_invocation_type = (
-                # This feature flag allows users to put a large number of inputs
-                api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
-                if config.get("spawn_extended")
-                else api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY
+            invocation = await self._call_function_nowait(
+                args, kwargs, api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY
             )
-            invocation = await self._call_function_nowait(args, kwargs, function_call_invocation_type)
 
         fc = _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
         fc._is_generator = self._is_generator if self._is_generator else False
