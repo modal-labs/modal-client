@@ -1329,6 +1329,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SandboxStdinWrite(self, stream):
         request: api_pb2.SandboxStdinWriteRequest = await stream.recv_message()
 
+        if self.sandbox.returncode is not None:
+            raise GRPCError(Status.FAILED_PRECONDITION, "Sandbox has already terminated")
+
         self.sandbox.stdin.write(request.input)
         await self.sandbox.stdin.drain()
 
@@ -1758,7 +1761,7 @@ async def client(servicer):
 
 @pytest_asyncio.fixture(scope="function")
 async def container_client(servicer):
-    async with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
+    async with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
         yield client
 
 

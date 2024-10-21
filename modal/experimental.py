@@ -155,6 +155,20 @@ def _networked(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         import os
+        import socket
+
+        def get_i6pn():
+            """Returns the ipv6 address assigned to this container."""
+            return socket.getaddrinfo("i6pn.modal.local", None, socket.AF_INET6)[0][4][0]
+
+        hostname = socket.gethostname()
+        addr_info = get_i6pn()
+        # nccl's default host ID is $(hostname)$(cat /proc/sys/kernel/random/boot_id).
+        # on runc, if two i6pn-linked containers get scheduled on the same worker,
+        # their boot ID and hostname will both be identical, causing nccl to break.
+        # As a workaround, we can explicitly specify a unique host ID here.
+        # See MOD-4067.
+        os.environ["NCCL_HOSTID"] = f"{hostname}{addr_info}"
 
         rank = kwargs.pop("modal_rank", None)
         size = kwargs.pop("modal_size", None)
@@ -163,16 +177,9 @@ def _networked(func):
         if rank is None or size is None or q is None:
             raise ValueError("Missing required arguments; `_networked` must be called using `grouped` decorator")
         elif rank == 0:
-            import socket
-
-            addr_info = socket.getaddrinfo("i6pn.modal.local", None, socket.AF_INET6)
-            # Extract IPv6 addresses from the results
-            ipv6_addresses = [
-                addr[4][0] for addr in addr_info if addr[1] == socket.SOCK_STREAM and "fdaa" in addr[4][0]
-            ]
-            main_ip = ipv6_addresses[0]
-            q.put_many([main_ip for _ in range(size)])
+            q.put_many([addr_info for _ in range(size)])
         main_ip = q.get()
+        assert main_ip is not None, "Failed to get main i6pn address"
 
         os.environ["MODAL_MAIN_I6PN"] = f"{main_ip}"
         os.environ["MODAL_WORLD_SIZE"] = f"{size}"

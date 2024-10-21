@@ -33,7 +33,7 @@ from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
-from .cls import _Cls, _get_class_constructor_signature, parameter
+from .cls import _Cls, parameter
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 from .experimental import _GroupedFunction
@@ -134,7 +134,7 @@ class _App:
 
     * A unit of deployment for functions and classes.
     * Syncing of identities of (primarily) functions and classes across processes
-      (your local Python interpreter and every Modal containerr active in your application).
+      (your local Python interpreter and every Modal container active in your application).
     * Manage log collection for everything that happens inside your code.
 
     **Registering functions with an app**
@@ -965,16 +965,6 @@ class _App:
             ):
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
 
-            # Disallow enable_memory_snapshot for parameterized classes
-            # TODO(matt) Temporary fix for MOD-3048
-            if enable_memory_snapshot:
-                signature = _get_class_constructor_signature(user_cls)
-                if len(signature.parameters) > 0:
-                    name = user_cls.__name__
-                    raise InvalidError(
-                        f"Cannot use class parameterization in class {name} with `enable_memory_snapshot=True`."
-                    )
-
             tag: str = user_cls.__name__
             self._add_object(tag, cls)
             return cls  # type: ignore  # a _Cls instance "simulates" being the user provided class
@@ -1006,20 +996,11 @@ class _App:
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
     ) -> _Sandbox:
-        """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
+        """`App.spawn_sandbox` is deprecated in favor of `Sandbox.create(app=...)`.
 
-        This function returns a [SandboxHandle](/docs/reference/modal.Sandbox#modalsandboxsandbox),
-        which can be used to interact with the running sandbox.
-
-        Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
+        See https://modal.com/docs/guide/sandbox for more info on working with sandboxes.
         """
-        deprecation_warning(
-            (2024, 7, 5),
-            """`App.spawn_sandbox` is deprecated in favor of `Sandbox.create`.
-
-            See https://modal.com/docs/guide/sandbox for more info.
-            """,
-        )
+        deprecation_warning((2024, 7, 5), _App.spawn_sandbox.__doc__ or "")
         if not self._running_app:
             raise InvalidError("`app.spawn_sandbox` requires a running app.")
 

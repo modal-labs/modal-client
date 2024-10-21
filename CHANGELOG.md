@@ -10,6 +10,42 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.198 (2024-10-18)
+
+Fixes a bug where `Queue.put` and `Queue.put_many` would throw `queue.Full` even if `timeout=None`.
+
+
+
+### 0.64.194 (2024-10-18)
+
+- The previously-deprecated `--confirm` flag has been removed from the `modal volume delete` CLI. Use `--yes` to force deletion without a confirmation prompt.
+
+
+
+### 0.64.193 (2024-10-18)
+
+- Passing `wait_for_response=False` in Modal webhook decorators is no longer supported. See [the docs](https://modal.com/docs/guide/webhook-timeouts#polling-solutions) for alternatives.
+
+
+
+### 0.64.187 (2024-10-16)
+
+When writing to a `StreamWriter` that has already had EOF written, a ValueError is now raised instead of an `EOFError`.
+
+
+
+### 0.64.185 (2024-10-15)
+
+Memory snapshotting can now be used with parameterized functions.
+
+
+
+### 0.64.184 (2024-10-15)
+
+StreamWriters now accept strings as input.
+
+
+
 ### 0.64.182 (2024-10-15)
 
 - Fixed a bug where app rollbacks would not restart a schedule that had been removed in an intervening deployment.
