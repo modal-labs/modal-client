@@ -27,6 +27,7 @@ import pkg_resources
 import pytest_asyncio
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
+from grpclib.events import RecvRequest, listen
 
 import modal._serialization
 from modal import __version__, config
@@ -239,6 +240,20 @@ class MockClientServicer(api_grpc.ModalClientBase):
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
+
+    async def recv_request(self, event: RecvRequest):
+        # Make sure metadata is correct
+        assert event.metadata.get("x-modal-python-version")
+        assert event.metadata.get("x-modal-client-version")
+        assert event.metadata.get("x-modal-client-type")
+        if event.metadata["x-modal-client-type"] == "1":  # CLIENT_TYPE_CLIENT
+            assert event.metadata["x-modal-token-id"] == "ak-123"
+            assert event.metadata["x-modal-token-secret"] == "as-123"
+        elif event.metadata["x-modal-client-type"] == "3":  # CLIENT_TYPE_CONTAINER
+            assert "x-modal-token-id" not in event.metadata
+            assert "x-modal-token-secret" not in event.metadata
+        else:
+            raise Exception("unknown client type")
 
     def function_body(self, func):
         """Decorator for setting the function that will be called for any FunctionGetOutputs calls"""
@@ -1708,6 +1723,7 @@ async def run_server(servicer, host=None, port=None, path=None):
     async def _start_servicer():
         nonlocal server
         server = grpclib.server.Server([servicer])
+        listen(server, RecvRequest, servicer.recv_request)
         await server.start(host=host, port=port, path=path)
 
     async def _stop_servicer():
@@ -1755,7 +1771,7 @@ async def servicer(blob_server, temporary_sock_path):
 
 @pytest_asyncio.fixture(scope="function")
 async def client(servicer):
-    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
+    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-123")) as client:
         yield client
 
 
