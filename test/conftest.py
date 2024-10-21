@@ -1806,6 +1806,13 @@ async def server_url_env(servicer, monkeypatch):
     yield
 
 
+@pytest_asyncio.fixture(scope="function")
+async def token_env(servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_TOKEN_ID", "ak-123")
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", "as-123")
+    yield
+
+
 @pytest_asyncio.fixture(scope="function", autouse=True)
 async def reset_default_client():
     Client.set_env_client(None)
