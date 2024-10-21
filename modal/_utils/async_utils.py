@@ -495,13 +495,13 @@ async def aclosing(
 
 async def sync_or_async_iter(iterable: Union[Iterable[T], AsyncIterable[T]]) -> AsyncGenerator[T, None]:
     if hasattr(iterable, "__aiter__"):
-        async for item in iterable:
+        async for item in typing.cast(AsyncIterable[T], iterable):
             yield item
     else:
         # This intentionally could block the event loop for the duration of calling __iter__ and __next__,
         # so in non-trivial cases (like passing lists and ranges) this could be quite a foot gun for users #
         # w/ async code (but they can work around it by always using async iterators)
-        for item in iterable:
+        for item in typing.cast(Iterable[T], iterable):
             yield item
 
 
@@ -518,6 +518,7 @@ def async_zip(*iterables: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerato
 
 
 async def async_zip(*iterables):
+    tasks = []
     generators = [sync_or_async_iter(it) for it in iterables]
     try:
         while True:
