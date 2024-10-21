@@ -113,14 +113,14 @@ def test_secret_list(servicer, set_env_client):
 
 
 def test_app_token_new(servicer, set_env_client, server_url_env, modal_config):
-    servicer.required_creds = ("abc", "xyz")
+    servicer.required_creds = {("abc", "xyz")}
     with modal_config() as config_file_path:
         _run(["token", "new", "--profile", "_test"])
         assert "_test" in toml.load(config_file_path)
 
 
 def test_app_setup(servicer, set_env_client, server_url_env, modal_config):
-    servicer.required_creds = ("abc", "xyz")
+    servicer.required_creds = {("abc", "xyz")}
     with modal_config() as config_file_path:
         _run(["setup", "--profile", "_test"])
         assert "_test" in toml.load(config_file_path)
@@ -474,7 +474,7 @@ def test_shell_unsuported_cmds_fails_on_windows(servicer, set_env_client, mock_s
         assert re.search("Windows", str(res.exception)), "exception message does not match expected string"
 
 
-def test_app_descriptions(servicer, server_url_env, test_dir):
+def test_app_descriptions(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "prints_desc_app.py"
     _run(["run", "--detach", app_file.as_posix() + "::foo"])
 
@@ -756,6 +756,7 @@ def test_profile_list(servicer, server_url_env, modal_config):
     """
 
     with modal_config(config):
+        servicer.required_creds = {("ak-abc", "as-xyz"), ("ak-123", "as-789")}
         res = _run(["profile", "list"])
         table_rows = res.stdout.split("\n")
         assert re.search("Profile .+ Workspace", table_rows[1])
@@ -773,6 +774,7 @@ def test_profile_list(servicer, server_url_env, modal_config):
         orig_env_token_secret = os.environ.get("MODAL_TOKEN_SECRET")
         os.environ["MODAL_TOKEN_ID"] = "ak-abc"
         os.environ["MODAL_TOKEN_SECRET"] = "as-xyz"
+        servicer.required_creds = {("ak-abc", "as-xyz")}
         try:
             res = _run(["profile", "list"])
             assert "Using test-username workspace based on environment variables" in res.stdout
@@ -1010,7 +1012,7 @@ def test_keyboard_interrupt_during_app_load(servicer, server_url_env, supports_d
 
 @pytest.mark.timeout(10)
 @skip_windows("no sigint on windows")
-def test_keyboard_interrupt_during_app_run(servicer, server_url_env, supports_dir):
+def test_keyboard_interrupt_during_app_run(servicer, server_url_env, token_env, supports_dir):
     ctx: InterceptionContext
     waiting_for_output = threading.Event()
 
@@ -1031,7 +1033,7 @@ def test_keyboard_interrupt_during_app_run(servicer, server_url_env, supports_di
 
 @pytest.mark.timeout(10)
 @skip_windows("no sigint on windows")
-def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, supports_dir):
+def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, token_env, supports_dir):
     ctx: InterceptionContext
     waiting_for_output = threading.Event()
 

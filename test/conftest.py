@@ -237,7 +237,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.image_join_sleep_duration = None
 
-        self.required_creds = ("ak-123", "as-123")
+        self.required_creds = {("ak-123", "as-123")}
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -260,7 +260,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 pass  # Methods that don't require authentication
             else:
                 creds = (event.metadata.get("x-modal-token-id"), event.metadata.get("x-modal-token-secret"))
-                if creds != self.required_creds:
+                if creds not in self.required_creds:
                     raise GRPCError(
                         Status.UNAUTHENTICATED, f"Incorrect auth token {creds} for method {event.method_name}"
                     )
