@@ -247,8 +247,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         assert event.metadata.get("x-modal-client-version")
         assert event.metadata.get("x-modal-client-type")
         if event.metadata["x-modal-client-type"] == "1":  # CLIENT_TYPE_CLIENT
-            assert event.metadata["x-modal-token-id"] == "ak-123"
-            assert event.metadata["x-modal-token-secret"] == "as-123"
+            creds = (event.metadata["x-modal-token-id"], event.metadata["x-modal-token-secret"])
+            if creds != ("ak-123", "as-123"):
+                raise GRPCError(Status.UNAUTHENTICATED, "Incorrect auth token")
         elif event.metadata["x-modal-client-type"] == "3":  # CLIENT_TYPE_CONTAINER
             assert "x-modal-token-id" not in event.metadata
             assert "x-modal-token-secret" not in event.metadata
@@ -613,9 +614,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         client_version = stream.metadata["x-modal-client-version"]
         warning = ""
         assert stream.user_agent.startswith(f"modal-client/{__version__} ")
-        if stream.metadata.get("x-modal-token-id") == "bad":
-            raise GRPCError(Status.UNAUTHENTICATED, "bad bad bad")
-        elif client_version == "unauthenticated":
+        if client_version == "unauthenticated":
             raise GRPCError(Status.UNAUTHENTICATED, "failed authentication")
         elif client_version == "deprecated":
             warning = "SUPER OLD"
