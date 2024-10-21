@@ -350,8 +350,8 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                     concurrency=20,
                 )
             ) as stream:
-                async for item in stream:
-                    await item
+                async for _ in stream:  # consume/execute the map
+                    pass
 
     @live_method
     async def listdir(self, path: str) -> List[FileEntry]:
