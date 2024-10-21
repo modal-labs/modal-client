@@ -506,18 +506,18 @@ async def sync_or_async_iter(iterable: Union[Iterable[T], AsyncIterable[T]]) -> 
 
 
 @typing.overload
-async def async_zip(
+def async_zip(
     i1: Union[AsyncIterable[T], Iterable[T]], i2: Union[AsyncIterable[V], Iterable[V]]
 ) -> AsyncGenerator[Tuple[T, V], None]:
     ...
 
 
 @typing.overload
-async def async_zip(*iterables: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerator[Tuple[T, ...], None]:
+def async_zip(*iterables: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerator[Tuple[T, ...], None]:
     ...
 
 
-async def async_zip(*iterables: Union[AsyncIterable[T], Iterable[T]]):
+async def async_zip(*iterables):
     generators = [sync_or_async_iter(it) for it in iterables]
     while True:
         try:
