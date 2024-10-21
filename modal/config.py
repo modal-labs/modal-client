@@ -220,7 +220,6 @@ _SETTINGS = {
     "traceback": _Setting(False, transform=_to_boolean),
     "image_builder_version": _Setting(),
     "strict_parameters": _Setting(False, transform=_to_boolean),  # For internal/experimental use
-    "spawn_extended": _Setting(False, transform=_to_boolean),
 }
 
 
