@@ -797,6 +797,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         raise Exception(f"Dependency {dep} isn't hydrated")
                     object_dependencies.append(api_pb2.ObjectDependency(object_id=dep.object_id))
 
+                method_webhook_configs = {}
+
                 function_data: Optional[api_pb2.FunctionData] = None
                 function_definition: Optional[api_pb2.Function] = None
 
@@ -812,6 +814,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     class_serialized=class_serialized or b"",
                     function_type=function_type,
                     webhook_config=webhook_config,
+                    method_webhook_configs=method_webhook_configs if info.is_service_class() else None,
                     shared_volume_mounts=network_file_system_mount_protos(
                         validated_network_file_systems, allow_cross_region_volumes
                     ),
