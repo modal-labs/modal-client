@@ -30,6 +30,14 @@ from modal_proto import api_pb2
 from .supports.skip import skip_windows
 
 
+@pytest.fixture(autouse=True)
+def no_automount(monkeypatch):
+    # no tests in here use automounting, but a lot of them implicitly create
+    # functions w/ lots of modules is sys.modules which will automount
+    # which takes a lot of time, so we disable it
+    monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
+
+
 def dummy() -> None:
     return None
 
