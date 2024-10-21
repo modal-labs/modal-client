@@ -450,13 +450,13 @@ async def test_async_zip_exception():
             await asyncio.sleep(0.1)
             yield x
             if x == 1:
-                raise Exception("test")
+                raise SampleException("test")
             yield x + 1
         finally:
             await asyncio.sleep(0)
             states.append(f"exit {x}")
 
-    with pytest.raises(Exception):
+    with pytest.raises(SampleException):
         async with aclosing(gen(1)) as g1, aclosing(gen(5)) as g2, aclosing(async_zip(g1, g2)) as stream:
             async for item in stream:
                 result.append(item)
@@ -467,24 +467,29 @@ async def test_async_zip_exception():
 
 @pytest.mark.asyncio
 async def test_async_zip_parallel():
-    ev = asyncio.Event()
+    print()
+    ev1 = asyncio.Event()
     ev2 = asyncio.Event()
 
     async def gen1():
-        ev.set()
-        await ev2.wait()
+        await asyncio.sleep(0.1)
+        ev1.set()
         yield 1
+        await ev2.wait()
+        yield 2
 
     async def gen2():
-        await ev.wait()
+        await ev1.wait()
+        yield 3
+        await asyncio.sleep(0.1)
         ev2.set()
-        yield 2
+        yield 4
 
     result = []
     async for item in async_zip(gen1(), gen2()):
         result.append(item)
 
-    assert result == [(1, 2)]
+    assert result == [(1, 3), (2, 4)]
 
 
 @pytest.mark.asyncio
@@ -492,19 +497,16 @@ async def test_async_merge():
     result = []
     states = []
 
-    gen1_event = asyncio.Event()
-    gen2_event = asyncio.Event()
-    gen3_event = asyncio.Event()
-    gen4_event = asyncio.Event()
+    ev1 = asyncio.Event()
+    ev2 = asyncio.Event()
 
     async def gen1():
         states.append("gen1 enter")
         try:
-            gen1_event.set()
-            await gen2_event.wait()
+            await asyncio.sleep(0.1)
             yield 1
-            gen3_event.set()
-            await gen4_event.wait()
+            ev1.set()
+            await ev2.wait()
             yield 2
         finally:
             await asyncio.sleep(0)
@@ -513,12 +515,11 @@ async def test_async_merge():
     async def gen2():
         states.append("gen2 enter")
         try:
-            await gen1_event.wait()
+            await ev1.wait()
             yield 3
-            gen2_event.set()
-            await gen3_event.wait()
+            await asyncio.sleep(0.1)
+            ev2.set()
             yield 4
-            gen4_event.set()
         finally:
             await asyncio.sleep(0)
             states.append("gen2 exit")
@@ -526,7 +527,7 @@ async def test_async_merge():
     async for item in async_merge(gen1(), gen2()):
         result.append(item)
 
-    assert result == [3, 1, 4, 2]
+    assert result == [1, 3, 4, 2]
     assert states == [
         "gen1 enter",
         "gen2 enter",
@@ -539,19 +540,16 @@ async def test_async_merge():
 async def test_async_merge_cleanup():
     states = []
 
-    gen1_event = asyncio.Event()
-    gen2_event = asyncio.Event()
-    gen3_event = asyncio.Event()
-    gen4_event = asyncio.Event()
+    ev1 = asyncio.Event()
+    ev2 = asyncio.Event()
 
     async def gen1():
         states.append("gen1 enter")
         try:
-            gen1_event.set()
-            await gen2_event.wait()
+            await asyncio.sleep(0.1)
             yield 1
-            gen3_event.set()
-            await gen4_event.wait()
+            ev1.set()
+            await ev2.wait()
             yield 2
         finally:
             await asyncio.sleep(0)
@@ -560,33 +558,67 @@ async def test_async_merge_cleanup():
     async def gen2():
         states.append("gen2 enter")
         try:
-            await gen1_event.wait()
+            await ev1.wait()
             yield 3
-            gen2_event.set()
-            await gen3_event.wait()
+            await asyncio.sleep(0.1)
+            ev2.set()
             yield 4
-            gen4_event.set()
         finally:
             await asyncio.sleep(0)
             states.append("gen2 exit")
 
-    for ev in [gen1_event, gen2_event, gen3_event, gen4_event]:
-        ev.clear()
-
-    # test that things are cleaned up even if the generator(s) aren't fully exhausted...
     async with aclosing(gen1()) as g1, aclosing(gen2()) as g2, aclosing(async_merge(g1, g2)) as stream:
         async for _ in stream:
             break
+
     assert states == [
         "gen1 enter",
         "gen2 enter",
+        "gen2 exit",
         "gen1 exit",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_async_merge_exception():
+    result = []
+    states = []
+
+    async def gen1():
+        states.append("gen1 enter")
+        try:
+            await asyncio.sleep(0.1)
+            yield 1
+            raise SampleException("test")
+        finally:
+            await asyncio.sleep(0)
+            states.append("gen1 exit")
+
+    async def gen2():
+        states.append("gen2 enter")
+        try:
+            yield 3
+            await asyncio.sleep(0.1)
+            yield 4
+        finally:
+            await asyncio.sleep(0)
+            states.append("gen2 exit")
+
+    with pytest.raises(SampleException):
+        async for item in async_merge(gen1(), gen2()):
+            result.append(item)
+
+    assert sorted(result) == [1, 3, 4]
+    assert sorted(states) == [
+        "gen1 enter",
+        "gen1 exit",
+        "gen2 enter",
         "gen2 exit",
     ]
 
 
 @pytest.mark.asyncio
-async def test_awaitable_to_aiter():
+async def test_callable_to_agen():
     async def foo():
         await asyncio.sleep(0.1)
         return 42
@@ -623,27 +655,23 @@ async def test_async_map():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("cancelled_at_idx", [0, 3, 5])
-async def test_async_map_input_cancellation(cancelled_at_idx):
+async def test_async_map_input_cancellation_before_yield():
     result = []
     states = []
-
-    def gen():
-        states.append("enter")
-        try:
-            for i in range(5):
-                if i == cancelled_at_idx:
-                    raise SampleException("test")
-                yield i
-        finally:
-            states.append("exit")
-
-        if cancelled_at_idx == 5:
-            raise SampleException("test")
 
     async def mapper_func(x):
         await asyncio.sleep(0.1)
         return x * 2
+
+    async def gen():
+        states.append("enter")
+        try:
+            raise SampleException("test")
+            for i in range(5):
+                await asyncio.sleep(0.1)
+                yield i
+        finally:
+            states.append("exit")
 
     with pytest.raises(SampleException):
         async for item in async_map(gen(), mapper_func, concurrency=3):
@@ -654,7 +682,62 @@ async def test_async_map_input_cancellation(cancelled_at_idx):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("cancelled_at_idx", [0, 3])
+async def test_async_map_input_cancellation_after_yield():
+    result = []
+    states = []
+
+    async def mapper_func(x):
+        await asyncio.sleep(0.1)
+        return x * 2
+
+    async def gen():
+        states.append("enter")
+        try:
+            for i in range(5):
+                await asyncio.sleep(0.1)
+                yield i
+            raise SampleException("test")
+        finally:
+            states.append("exit")
+
+    with pytest.raises(SampleException):
+        async for item in async_map(gen(), mapper_func, concurrency=3):
+            result.append(item)
+
+    assert sorted(result) == [0, 2, 4, 6]
+    assert sorted(states) == ["enter", "exit"]
+
+
+@pytest.mark.asyncio
+async def test_async_map_input_cancellation_between_yields():
+    result = []
+    states = []
+
+    async def mapper_func(x):
+        await asyncio.sleep(0.1)
+        return x * 2
+
+    async def gen():
+        states.append("enter")
+        try:
+            for i in range(5):
+                if i == 3:
+                    raise SampleException("test")
+                await asyncio.sleep(0.1)
+                yield i
+        finally:
+            states.append("exit")
+
+    with pytest.raises(SampleException):
+        async for item in async_map(gen(), mapper_func, concurrency=3):
+            result.append(item)
+
+    assert sorted(result) == [0, 2]
+    assert sorted(states) == ["enter", "exit"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancelled_at_idx", [0, 1, 3])
 async def test_async_map_output_cancellation(cancelled_at_idx):
     result = []
     states = []
@@ -682,7 +765,8 @@ async def test_async_map_output_cancellation(cancelled_at_idx):
 
 
 @pytest.mark.asyncio
-async def test_async_map_concurrency():
+@pytest.mark.parametrize("in_order", [True, False])
+async def test_async_map_concurrency(in_order):
     active_mappers = 0
     active_mappers_history = []
 
@@ -694,7 +778,10 @@ async def test_async_map_concurrency():
         active_mappers -= 1
         return x * 2
 
-    result = [item async for item in async_map(range(10), mapper, concurrency=3)]
+    if in_order:
+        result = [item async for item in async_map_ordered(range(10), mapper, concurrency=3)]
+    else:
+        result = [item async for item in async_map(range(10), mapper, concurrency=3)]
     assert sorted(result) == [x * 2 for x in range(10)]
     assert max(active_mappers_history) == 3
     assert active_mappers_history.count(3) >= 7  # 2, ... 3, 4, 5 and 6, 7, 8 (9 *could* also be active with 3)
