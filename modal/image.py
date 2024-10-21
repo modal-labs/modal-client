@@ -423,11 +423,7 @@ class _Image(_Object, type_prefix="im"):
                     if response.result.status:
                         result = response.result
                     for task_log in response.task_logs:
-                        if task_log.task_progress.pos or task_log.task_progress.len:
-                            assert task_log.task_progress.progress_type == api_pb2.IMAGE_SNAPSHOT_UPLOAD
-                            if output_mgr := _get_output_manager():
-                                output_mgr.update_snapshot_progress(image_id, task_log.task_progress)
-                        elif task_log.data:
+                        if task_log.data:
                             if output_mgr := _get_output_manager():
                                 await output_mgr.put_log_content(task_log)
                 if output_mgr := _get_output_manager():

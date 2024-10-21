@@ -142,7 +142,6 @@ class OutputManager:
     _current_render_group: Optional[Group]
     _function_progress: Optional[Progress]
     _function_queueing_progress: Optional[Progress]
-    _snapshot_progress: Optional[Progress]
     _line_buffers: Dict[int, LineBufferedOutput]
     _status_spinner: Spinner
     _app_page_url: Optional[str]
@@ -162,7 +161,6 @@ class OutputManager:
         self._current_render_group = None
         self._function_progress = None
         self._function_queueing_progress = None
-        self._snapshot_progress = None
         self._line_buffers = {}
         self._status_spinner = step_progress(status_spinner_text)
         self._app_page_url = None
@@ -218,24 +216,6 @@ class OutputManager:
             if self._current_render_group:
                 self._current_render_group.renderables.append(Panel(self._function_progress, style="gray50"))
         return self._function_progress
-
-    @property
-    def snapshot_progress(self) -> Progress:
-        """Creates a `rich.Progress` instance with custom columns for image snapshot progress,
-        and adds it to the current render group."""
-        if not self._snapshot_progress:
-            self._snapshot_progress = Progress(
-                TextColumn("[progress.description]{task.description}"),
-                BarColumn(),
-                DownloadColumn(),
-                TimeElapsedColumn(),
-                console=self._console,
-                transient=True,
-            )
-            if self._current_render_group:
-                # Appear above function progress renderables.
-                self._current_render_group.renderables.insert(0, self._snapshot_progress)
-        return self._snapshot_progress
 
     @property
     def function_queueing_progress(self) -> Progress:
@@ -308,26 +288,6 @@ class OutputManager:
 
         # Set the new message
         self._status_spinner.update(text=message)
-
-    def update_snapshot_progress(self, image_id: str, task_progress: api_pb2.TaskProgress) -> None:
-        # TODO(erikbern): move this to sit on the resolver object, mostly
-        completed = task_progress.pos
-        total = task_progress.len
-
-        task_key = (image_id, api_pb2.IMAGE_SNAPSHOT_UPLOAD)
-        if task_key in self._task_progress_items:
-            progress_task_id = self._task_progress_items[task_key]
-        else:
-            progress_task_id = self.snapshot_progress.add_task("[yellow]Uploading image snapshot…", total=total)
-            self._task_progress_items[task_key] = progress_task_id
-
-        try:
-            self.snapshot_progress.update(progress_task_id, completed=completed, total=total)
-            if completed == total:
-                self.snapshot_progress.remove_task(progress_task_id)
-        except KeyError:
-            # Rich throws a KeyError if the task has already been removed.
-            pass
 
     def update_queueing_progress(
         self, *, function_id: str, completed: int, total: Optional[int], description: Optional[str]
