@@ -313,6 +313,7 @@ async def test_aclosing():
         finally:
             states.append("exit")
 
+    # test that things are cleaned up when we fully exhaust the generator
     async with aclosing(foo()) as stream:
         async for it in stream:
             result.append(it)
@@ -320,6 +321,7 @@ async def test_aclosing():
     assert sorted(result) == [1, 2]
     assert states == ["enter", "exit"]
 
+    # test that things are cleaned up when we exit the context manager without fully exhausting the generator
     states.clear()
     result.clear()
     async with aclosing(foo()) as stream:
@@ -331,52 +333,136 @@ async def test_aclosing():
 
 
 @pytest.mark.asyncio
-async def test_sync_or_async_iter():
-    async def async_gen():
-        yield 1
-        await asyncio.sleep(0.1)
-        yield 2
-        await asyncio.sleep(0.1)
-        yield 3
+async def test_sync_or_async_iter_sync_gen():
+    result = []
 
     def sync_gen():
         yield 4
         yield 5
         yield 6
 
-    res = []
-    async for i in sync_or_async_iter(async_gen()):
-        res.append(i)
-    assert res == [1, 2, 3]
-
-    res = []
     async for i in sync_or_async_iter(sync_gen()):
-        res.append(i)
-    assert res == [4, 5, 6]
+        result.append(i)
+    assert result == [4, 5, 6]
+
+
+@pytest.mark.asyncio
+async def test_sync_or_async_iter_async_gen():
+    result = []
+    states = []
+
+    async def async_gen():
+        states.append("enter")
+        try:
+            yield 1
+            await asyncio.sleep(0.1)
+            yield 2
+            await asyncio.sleep(0.1)
+            yield 3
+        finally:
+            states.append("exit")
+
+    # test that things are cleaned up when we fully exhaust the generator
+    async for i in sync_or_async_iter(async_gen()):
+        result.append(i)
+    assert result == [1, 2, 3]
+    assert states == ["enter", "exit"]
+
+    # test that things are cleaned up when we exit the context manager without fully exhausting the generator
+    result.clear()
+    states.clear()
+    async with aclosing(async_gen()) as agen, aclosing(sync_or_async_iter(agen)) as stream:
+        async for _ in stream:
+            break
+    assert states == ["enter", "exit"]
+    assert result == []
 
 
 @pytest.mark.asyncio
 async def test_async_zip():
-    async def gen(start, count=1):
-        for i in range(start, start + count):
-            await asyncio.sleep(0.1)
-            yield i
-
+    states = []
     result = []
-    async with aclosing(gen(1)) as g1, aclosing(gen(4)) as g2, aclosing(gen(6)) as g3, aclosing(
+
+    async def gen(x):
+        states.append(f"enter {x}")
+        try:
+            await asyncio.sleep(0.1)
+            yield x
+            yield x + 1
+        finally:
+            await asyncio.sleep(0)
+            states.append(f"exit {x}")
+
+    async with aclosing(gen(1)) as g1, aclosing(gen(5)) as g2, aclosing(gen(10)) as g3, aclosing(
         async_zip(g1, g2, g3)
     ) as stream:
         async for item in stream:
             result.append(item)
 
-    assert result == [(1, 4, 6)]
+    assert result == [(1, 5, 10), (2, 6, 11)]
+    assert states == ["enter 1", "enter 5", "enter 10", "exit 1", "exit 5", "exit 10"]
 
-    result.clear()
-    async with aclosing(async_zip(gen(1, 5), gen(5, 10))) as stream:
+
+@pytest.mark.asyncio
+async def test_async_zip_different_lengths():
+    states = []
+    result = []
+
+    async def gen_short():
+        states.append("enter short")
+        try:
+            await asyncio.sleep(0.1)
+            yield 1
+            yield 2
+        finally:
+            await asyncio.sleep(0)
+            states.append("exit short")
+
+    async def gen_long():
+        states.append("enter long")
+        try:
+            await asyncio.sleep(0.1)
+            yield 3
+            yield 4
+            yield 5
+            yield 6
+
+        finally:
+            await asyncio.sleep(0)
+            states.append("exit long")
+
+    async with aclosing(gen_short()) as g1, aclosing(gen_long()) as g2, aclosing(async_zip(g1, g2)) as stream:
         async for item in stream:
             result.append(item)
 
-    assert result == [(1, 5), (2, 6), (3, 7), (4, 8), (5, 9)]
+    assert result == [(1, 3), (2, 4)]
+    assert states == ["enter short", "enter long", "exit short", "exit long"]
+
+
+@pytest.mark.asyncio
+async def test_async_zip_exception():
+    states = []
+    result = []
+
+    async def gen(x):
+        states.append(f"enter {x}")
+        try:
+            await asyncio.sleep(0.1)
+            yield x
+            if x == 1:
+                raise Exception("test")
+            yield x + 1
+        finally:
+            await asyncio.sleep(0)
+            states.append(f"exit {x}")
+
+    with pytest.raises(Exception):
+        async with aclosing(gen(1)) as g1, aclosing(gen(5)) as g2, aclosing(async_zip(g1, g2)) as stream:
+            async for item in stream:
+                result.append(item)
+
+    assert result == [(1, 5)]
+    assert states == ["enter 1", "enter 5", "exit 1", "exit 5"]
 
 
 @pytest.mark.asyncio
@@ -448,16 +534,49 @@ async def test_async_merge():
         "gen1 exit",
     ]
 
-    result.clear()
-    states.clear()
+
+@pytest.mark.asyncio
+async def test_async_merge_cleanup():
+    states = []
+
+    gen1_event = asyncio.Event()
+    gen2_event = asyncio.Event()
+    gen3_event = asyncio.Event()
+    gen4_event = asyncio.Event()
+
+    async def gen1():
+        states.append("gen1 enter")
+        try:
+            gen1_event.set()
+            await gen2_event.wait()
+            yield 1
+            gen3_event.set()
+            await gen4_event.wait()
+            yield 2
+        finally:
+            await asyncio.sleep(0)
+            states.append("gen1 exit")
+
+    async def gen2():
+        states.append("gen2 enter")
+        try:
+            await gen1_event.wait()
+            yield 3
+            gen2_event.set()
+            await gen3_event.wait()
+            yield 4
+            gen4_event.set()
+        finally:
+            await asyncio.sleep(0)
+            states.append("gen2 exit")
+
     for ev in [gen1_event, gen2_event, gen3_event, gen4_event]:
         ev.clear()
 
     # test that things are cleaned up even if the generator(s) aren't fully exhausted...
     async with aclosing(gen1()) as g1, aclosing(gen2()) as g2, aclosing(async_merge(g1, g2)) as stream:
-        async for item in stream:
+        async for _ in stream:
             break
-    # TODO(elias): this fails for mysterious reasons
     assert states == [
         "gen1 enter",
         "gen2 enter",
