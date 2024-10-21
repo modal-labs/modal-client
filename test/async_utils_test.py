@@ -456,8 +456,8 @@ async def test_async_merge():
     assert states == [
         "gen1 enter",
         "gen2 enter",
-        "gen2 exit",
         "gen1 exit",
+        "gen2 exit",
     ]
 
 
