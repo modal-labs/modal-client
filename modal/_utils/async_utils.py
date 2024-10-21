@@ -522,7 +522,7 @@ async def async_zip(*iterables):
     try:
         while True:
             try:
-                tasks = [asyncio.create_task(gen.__anext__()) for gen in generators]
+                tasks = [asyncio.create_task(gen.__anext__().__await__()) for gen in generators]
                 items = await asyncio.gather(*tasks)
                 yield tuple(items)
             except StopAsyncIteration:
