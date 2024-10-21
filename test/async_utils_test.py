@@ -499,6 +499,65 @@ async def test_async_map():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("cancelled_at_idx", [0, 3, 5])
+async def test_async_map_input_cancellation(cancelled_at_idx):
+    result = []
+    states = []
+
+    def gen():
+        states.append("enter")
+        try:
+            for i in range(5):
+                if i == cancelled_at_idx:
+                    raise SampleException("test")
+                yield i
+        finally:
+            states.append("exit")
+
+        if cancelled_at_idx == 5:
+            raise SampleException("test")
+
+    async def mapper_func(x):
+        await asyncio.sleep(0.1)
+        return x * 2
+
+    with pytest.raises(SampleException):
+        async for item in async_map(gen(), mapper_func, concurrency=3):
+            result.append(item)
+
+    assert sorted(result) == []
+    assert states == ["enter", "exit"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancelled_at_idx", [0, 3])
+async def test_async_map_output_cancellation(cancelled_at_idx):
+    result = []
+    states = []
+
+    def gen():
+        states.append("enter")
+        try:
+            for i in range(5):
+                yield i
+        finally:
+            states.append("exit")
+
+    async def mapper_func(x):
+        await asyncio.sleep(0.1)
+        if x == cancelled_at_idx:
+            raise SampleException("test")
+        return x * 2
+
+    with pytest.raises(SampleException):
+        async for item in async_map(gen(), mapper_func, concurrency=3):
+            result.append(item)
+
+    assert sorted(result) == [0, 2, 4][:cancelled_at_idx]
+    assert states == ["enter", "exit"]
+
+
+@pytest.mark.asyncio
 async def test_async_map_concurrency():
     active_mappers = 0
     active_mappers_history = []

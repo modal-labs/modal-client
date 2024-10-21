@@ -343,7 +343,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 yield subpath, PurePosixPath(remote_path, relpath_str)
 
         async def _add_local_file(paths: Tuple[Path, PurePosixPath]) -> int:
-            return self.add_local_file(paths[0], paths[1], progress_cb)
+            return await self.add_local_file(paths[0], paths[1], progress_cb)
 
         async with aclosing(sync_or_async_iter(gen_transfers())) as transfer_paths, aclosing(
             async_map(transfer_paths, _add_local_file, concurrency=20)
