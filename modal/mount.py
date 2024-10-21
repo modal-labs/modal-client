@@ -169,7 +169,6 @@ def module_mount_condition(module_base: Path):
         # /a/.venv/site-packages/mymod/foo.py should be included by default
         # /a/my_mod/.config/foo.py should *not* be included by default
         while path != module_base and path != path.parent:
-            print(path, flush=True)
             if SKIP_BYTECODE and path.name == "__pycache__":
                 return False
 
@@ -425,9 +424,10 @@ class _Mount(_Object, type_prefix="mo"):
 
             futs = []
             for local_filename, remote_filename in all_files:
+                logger.debug(f"Mounting {local_filename} as {remote_filename}")
                 futs.append(loop.run_in_executor(exe, get_file_upload_spec_from_path, local_filename, remote_filename))
 
-            logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
+            logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} worker threads")
             for fut in asyncio.as_completed(futs):
                 try:
                     yield await fut
@@ -649,7 +649,7 @@ def _create_client_mount():
 
     for pkg_name in MODAL_PACKAGES:
         package_base_path = Path(modal_parent_dir) / pkg_name
-        client_mount.add_local_dir(
+        client_mount = client_mount.add_local_dir(
             package_base_path,
             remote_path=f"/pkg/{pkg_name}",
             condition=module_mount_condition(package_base_path),
@@ -657,12 +657,14 @@ def _create_client_mount():
         )
 
     # Mount synchronicity, so version changes don't trigger image rebuilds for users.
+    synchronicity_base_path = Path(synchronicity.__path__[0])
     client_mount = client_mount.add_local_dir(
-        synchronicity.__path__[0],
+        synchronicity_base_path,
         remote_path="/pkg/synchronicity",
-        condition=module_mount_condition,
+        condition=module_mount_condition(synchronicity_base_path),
         recursive=True,
     )
+    return client_mount
 
 
 create_client_mount = synchronize_api(_create_client_mount)
