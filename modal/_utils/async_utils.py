@@ -28,7 +28,7 @@ from typing import (
 import synchronicity
 from typing_extensions import ParamSpec, assert_type
 
-from ..exception import InvalidError
+from ..exception import ExecutionError, InvalidError
 from .logger import logger
 
 synchronizer = synchronicity.Synchronizer()
@@ -613,8 +613,12 @@ async def async_map(
             try:
                 item = await input_queue.get()
                 if isinstance(item, ValueWrapper):
-                    res = await async_mapper_func(item.value)
-                    await output_queue.put(ValueWrapper(res))
+                    try:
+                        res = await async_mapper_func(item.value)
+                    except Exception as e:
+                        await output_queue.put(ExceptionWrapper(ExecutionError(e)))
+                    else:
+                        await output_queue.put(ValueWrapper(res))
                 else:
                     assert_type(item, StopSentinelType)
                     break
