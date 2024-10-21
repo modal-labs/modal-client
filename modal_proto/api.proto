@@ -1081,6 +1081,7 @@ message Function {
 
   Schedule schedule = 72;
 
+  bool snapshot_debug = 73; // For internal debugging use only.
 }
 
 message FunctionBindParamsRequest {
