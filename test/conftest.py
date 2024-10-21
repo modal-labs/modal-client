@@ -252,7 +252,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         ]:
             if header not in event.metadata:
                 raise GRPCError(Status.FAILED_PRECONDITION, f"Missing {header} header")
-        if event.metadata["x-modal-client-type"] == "1":  # CLIENT_TYPE_CLIENT
+        if event.metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT):
             if event.method_name in [
                 "/modal.client.ModalClient/TokenFlowCreate",
                 "/modal.client.ModalClient/TokenFlowWait",
@@ -264,7 +264,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     raise GRPCError(
                         Status.UNAUTHENTICATED, f"Incorrect auth token {creds} for method {event.method_name}"
                     )
-        elif event.metadata["x-modal-client-type"] == "3":  # CLIENT_TYPE_CONTAINER
+        elif event.metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER):
             for header in [
                 "x-modal-token-id",
                 "x-modal-token-secret",
