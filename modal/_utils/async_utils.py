@@ -580,7 +580,7 @@ async def callable_to_agen(awaitable: Callable[[], Awaitable[T]]) -> AsyncGenera
 
 async def async_map(
     input_iterable: Union[AsyncIterable[T], Iterable[T]],
-    async_mapper_func: Awaitable[V],
+    async_mapper_func: Callable[[T], Awaitable[V]],
     concurrency: int,
 ) -> AsyncGenerator[V, None]:
     input_queue: asyncio.Queue[Union[ValueWrapper[T], StopSentinelType]] = asyncio.Queue()
@@ -665,7 +665,7 @@ async def async_map(
 
 async def async_map_ordered(
     input_iterable: Union[AsyncIterable[T], Iterable[T]],
-    async_mapper_func: Awaitable[V],
+    async_mapper_func: Callable[[T], Awaitable[V]],
     concurrency: int,
 ) -> AsyncGenerator[V, None]:
     async def mapper_func_wrapper(tup: Tuple[int, T]) -> Tuple[int, V]:
