@@ -249,7 +249,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if event.metadata["x-modal-client-type"] == "1":  # CLIENT_TYPE_CLIENT
             creds = (event.metadata["x-modal-token-id"], event.metadata["x-modal-token-secret"])
             if creds != ("ak-123", "as-123"):
-                raise GRPCError(Status.UNAUTHENTICATED, "Incorrect auth token")
+                raise GRPCError(Status.UNAUTHENTICATED, f"Incorrect auth token {creds}")
         elif event.metadata["x-modal-client-type"] == "3":  # CLIENT_TYPE_CONTAINER
             assert "x-modal-token-id" not in event.metadata
             assert "x-modal-token-secret" not in event.metadata
