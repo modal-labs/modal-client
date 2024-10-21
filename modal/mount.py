@@ -482,10 +482,11 @@ class _Mount(_Object, type_prefix="mo"):
         # Upload files, or check if they already exist.
         n_concurrent_uploads = 512
         files: List[api_pb2.MountFile] = []
-        async with aclosing(_Mount._get_files(self._entries)) as files_stream:
-            async with aclosing(async_map(files_stream, _put_file, concurrency=n_concurrent_uploads)) as stream:
-                async for file in stream:
-                    files.append(file)
+        async with aclosing(_Mount._get_files(self._entries)) as files_stream, aclosing(
+            async_map(files_stream, _put_file, concurrency=n_concurrent_uploads)
+        ) as stream:
+            async for file in stream:
+                files.append(file)
 
         if not files:
             logger.warning(f"Mount of '{message_label}' is empty.")

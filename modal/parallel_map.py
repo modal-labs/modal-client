@@ -116,12 +116,11 @@ async def _map_invocation(
 
     async def drain_input_generator():
         # Parallelize uploading blobs
-        async with aclosing(input_iter()) as input_streamer:
-            async with aclosing(
-                async_map_ordered(input_streamer, create_input, concurrency=BLOB_MAX_PARALLELISM)
-            ) as streamer:
-                async for item in streamer:
-                    await input_queue.put(item)
+        async with aclosing(input_iter()) as input_streamer, aclosing(
+            async_map_ordered(input_streamer, create_input, concurrency=BLOB_MAX_PARALLELISM)
+        ) as streamer:
+            async for item in streamer:
+                await input_queue.put(item)
 
         # close queue iterator
         await input_queue.put(None)
@@ -231,29 +230,29 @@ async def _map_invocation(
         received_outputs = {}
         output_idx = 0
 
-        async with aclosing(get_all_outputs_and_clean_up()) as outputs:
-            async with aclosing(async_map_ordered(outputs, fetch_output, concurrency=BLOB_MAX_PARALLELISM)) as streamer:
-                async for idx, output in streamer:
-                    count_update()
-                    if not order_outputs:
+        async with aclosing(get_all_outputs_and_clean_up()) as outputs, aclosing(
+            async_map_ordered(outputs, fetch_output, concurrency=BLOB_MAX_PARALLELISM)
+        ) as streamer:
+            async for idx, output in streamer:
+                count_update()
+                if not order_outputs:
+                    yield _OutputValue(output)
+                else:
+                    # hold on to outputs for function maps, so we can reorder them correctly.
+                    received_outputs[idx] = output
+                    while output_idx in received_outputs:
+                        output = received_outputs.pop(output_idx)
                         yield _OutputValue(output)
-                    else:
-                        # hold on to outputs for function maps, so we can reorder them correctly.
-                        received_outputs[idx] = output
-                        while output_idx in received_outputs:
-                            output = received_outputs.pop(output_idx)
-                            yield _OutputValue(output)
-                            output_idx += 1
+                        output_idx += 1
 
         assert len(received_outputs) == 0
 
     async with aclosing(drain_input_generator()) as drainer, aclosing(pump_inputs()) as pump, aclosing(
         poll_outputs()
-    ) as poller:
-        async with aclosing(async_merge(drainer, pump, poller)) as streamer:
-            async for response in streamer:
-                if response is not None:
-                    yield response.value
+    ) as poller, aclosing(async_merge(drainer, pump, poller)) as streamer:
+        async for response in streamer:
+            if response is not None:
+                yield response.value
 
 
 @warn_if_generator_is_not_consumed(function_name="Function.map")

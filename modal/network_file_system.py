@@ -342,16 +342,13 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 relpath_str = subpath.relative_to(_local_path).as_posix()
                 yield subpath, PurePosixPath(remote_path, relpath_str)
 
-        async with aclosing(sync_or_async_iter(gen_transfers())) as transfer_paths:
-            async with aclosing(
-                async_map(
-                    transfer_paths,
-                    lambda paths: self.add_local_file(paths[0], paths[1], progress_cb),
-                    concurrency=20,
-                )
-            ) as stream:
-                async for _ in stream:  # consume/execute the map
-                    pass
+        async with aclosing(sync_or_async_iter(gen_transfers())) as transfer_paths, aclosing(
+            async_map(
+                transfer_paths, lambda paths: self.add_local_file(paths[0], paths[1], progress_cb), concurrency=20
+            )
+        ) as stream:
+            async for _ in stream:  # consume/execute the map
+                pass
 
     @live_method
     async def listdir(self, path: str) -> List[FileEntry]:

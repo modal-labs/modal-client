@@ -507,7 +507,7 @@ async def sync_or_async_iter(iterable: Union[Iterable[T], AsyncIterable[T]]) -> 
 
 @typing.overload
 def async_zip(
-    i1: Union[AsyncIterable[T], Iterable[T]], i2: Union[AsyncIterable[V], Iterable[V]], /
+    i1: Union[AsyncIterable[T], Iterable[T]], i2: Union[AsyncIterable[V], Iterable[V]]
 ) -> AsyncGenerator[Tuple[T, V], None]:
     ...
 
@@ -580,7 +580,7 @@ async def callable_to_agen(awaitable: Callable[[], Awaitable[T]]) -> AsyncGenera
 
 async def async_map(
     input_iterable: Union[AsyncIterable[T], Iterable[T]],
-    async_mapper_func: Callable[[T], Awaitable[V]],
+    async_mapper_func: Awaitable[V],
     concurrency: int,
 ) -> AsyncGenerator[V, None]:
     input_queue: asyncio.Queue[Union[ValueWrapper[T], StopSentinelType]] = asyncio.Queue()
@@ -665,7 +665,7 @@ async def async_map(
 
 async def async_map_ordered(
     input_iterable: Union[AsyncIterable[T], Iterable[T]],
-    async_mapper_func: Callable[[T], Awaitable[V]],
+    async_mapper_func: Awaitable[V],
     concurrency: int,
 ) -> AsyncGenerator[V, None]:
     async def mapper_func_wrapper(tup: Tuple[int, T]) -> Tuple[int, V]:
@@ -678,13 +678,13 @@ async def async_map_ordered(
     next_idx = 0
     buffer = {}
 
-    async with aclosing(counter()) as counter_gen:
-        async with aclosing(async_zip(counter_gen, input_iterable)) as zipped_input:
-            async with aclosing(async_map(zipped_input, mapper_func_wrapper, concurrency)) as stream:
-                async for output_idx, output_item in stream:
-                    buffer[output_idx] = output_item
-                    if output_idx == next_idx:
-                        while next_idx in buffer:
-                            yield buffer[next_idx]
-                            del buffer[next_idx]
-                            next_idx += 1
+    async with aclosing(counter()) as counter_gen, aclosing(
+        async_zip(counter_gen, input_iterable)
+    ) as zipped_input, aclosing(async_map(zipped_input, mapper_func_wrapper, concurrency)) as stream:
+        async for output_idx, output_item in stream:
+            buffer[output_idx] = output_item
+
+            while next_idx in buffer:
+                yield buffer[next_idx]
+                del buffer[next_idx]
+                next_idx += 1

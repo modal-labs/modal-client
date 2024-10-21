@@ -585,10 +585,11 @@ class _VolumeUploadContextManager:
 
             # Compute checksums & Upload files
             files: List[api_pb2.MountFile] = []
-            async with aclosing(gen_file_upload_specs()) as files_stream:
-                async with aclosing(async_map(files_stream, self._upload_file, concurrency=20)) as stream:
-                    async for item in stream:
-                        files.append(item)
+            async with aclosing(gen_file_upload_specs()) as files_stream, aclosing(
+                async_map(files_stream, self._upload_file, concurrency=20)
+            ) as stream:
+                async for item in stream:
+                    files.append(item)
 
             self._progress_cb(complete=True)
 
