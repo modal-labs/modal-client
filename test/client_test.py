@@ -200,25 +200,22 @@ def test_import_modal_from_thread(supports_dir):
     subprocess.check_call([sys.executable, supports_dir / "import_modal_from_thread.py"])
 
 
-@pytest.mark.asyncio
-async def test_from_env_container(servicer, container_env):
+def test_from_env_container(servicer, container_env):
     servicer.required_creds = {}  # Disallow default client creds
-    await Client.from_env.aio()
+    Client.from_env()
     # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
 
 
-@pytest.mark.asyncio
-async def test_from_credentials_client(servicer, set_env_client, server_url_env, token_env):
+def test_from_credentials_client(servicer, set_env_client, server_url_env, token_env):
     # Note: this explicitly uses a lot of fixtures to make sure those are ignored
     creds = ("ak-foo-1", "as-bar")
     servicer.required_creds = {creds}
-    await Client.from_credentials.aio(*creds)
+    Client.from_credentials(*creds)
     # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
 
 
-@pytest.mark.asyncio
-async def test_from_credentials_container(servicer, container_env):
+def test_from_credentials_container(servicer, container_env):
     creds = ("ak-foo-2", "as-bar")
     servicer.required_creds = {creds}
-    await Client.from_credentials.aio(*creds)
+    Client.from_credentials(*creds)
     # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
