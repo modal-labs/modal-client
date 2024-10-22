@@ -1229,3 +1229,5 @@ def test_lazy_mounts_are_attached_to_sandboxes(servicer, client, test_dir, monke
 # are changed, even if those mounts are copied into the image)
 
 # TODO: test modal shell w/ lazy mounts
+# this works since the image is passed on as is to a sandbox which will load it and
+# transfer any virtual mount layers from the image as mounts to the sandbox
