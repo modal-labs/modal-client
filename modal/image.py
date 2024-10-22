@@ -5,6 +5,7 @@ import os
 import re
 import shlex
 import sys
+import textwrap
 import typing
 import warnings
 from dataclasses import dataclass
@@ -264,15 +265,79 @@ class _Image(_Object, type_prefix="im"):
 
     force_build: bool
     inside_exceptions: List[Exception]
+    _mounts: Tuple[_Mount]
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
+        self._mounts = ()
+        self.force_build = False
+
+    def _initialize_from_other(self, other):
+        # used by .clone()
+        self.inside_exceptions = other.inside_exceptions
+        self.force_build = other.force_build
+        self._mounts = other._mounts
 
     def _hydrate_metadata(self, message: Optional[Message]):
         env_image_id = config.get("image_id")
         if env_image_id == self.object_id:
             for exc in self.inside_exceptions:
                 raise exc
+
+    def _add_mount_layer(self, mounts: Sequence[_Mount] = ()):
+        base_image = self
+
+        async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+            self._hydrate_from_other(base_image)  # same image id as base image as long as it's lazy
+            self._mounts = base_image._mounts + tuple(mounts)
+
+        return _Image._from_loader(_load, "ImageWithMounts()", deps=lambda: [base_image] + list(mounts))
+
+    @property
+    def _mount_layers(self) -> typing.Tuple[_Mount]:
+        """Non-evaluated mount layers on the image
+
+        When the image is used by a Modal container, these mounts need to be attached as well to
+        represent the full image content, as they haven't yet been represented as a layer in the
+        image.
+
+        When the image is used as a base image for a new layer (that is not itself a mount layer)
+        these mounts need to first be inserted as a copy operation (.copy_mount) into the image.
+        """
+        return self._mounts
+
+    def materialize_added_files(self) -> "_Image":
+        """Builds image layers of all files added through `image.add_*()` methods
+
+        This is required to run before an non-add_* image operation can be run on the image.
+        For that reason, it's recommended to always run `iamge.add_*` operations last in the
+        image build, to avoid having to materialize such layers.
+        """
+        image = self
+        for mount in self._mount_layers:
+            image = image._materialize_mount(mount)
+        return image
+
+    def _assert_materialized(self):
+        if self._mount_layers:
+            print("mount layers", self._mount_layers)
+            raise InvalidError(
+                textwrap.dedent(
+                    """
+                It's recommended to run any `image.add_*` commands for adding local resources last
+                in your build chain, to prevent having to rebuild images on every local file change.
+
+                If you need local files available in earlier build steps, call image.materialize_added_files()
+                before adding any non-add image build steps, e.g.
+
+                my_image = (
+                    Image.debian_slim()
+                    .add_local_python_packages()  # an "add" virtual layer
+                    .materialize_added_files()  # this copies all virtual layers into the image
+                    .run_commands(...)  # this is now ok!
+                """
+                )
+            )
 
     @staticmethod
     def _from_args(
@@ -288,9 +353,11 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,
         # For internal use only.
         _namespace: int = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        _assert_materialized_mounts: bool = True,
     ):
         if base_images is None:
             base_images = {}
+
         if secrets is None:
             secrets = []
         if gpu_config is None:
@@ -316,6 +383,10 @@ class _Image(_Object, type_prefix="im"):
             return deps
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+            if _assert_materialized_mounts:
+                for image in base_images.values():
+                    image._assert_materialized()
+
             environment = await _get_environment_cached(resolver.environment_name or "", resolver.client)
             # A bit hacky,but assume that the environment provides a valid builder version
             image_builder_version = cast(ImageBuilderVersion, environment._settings.image_builder_version)
@@ -331,7 +402,9 @@ class _Image(_Object, type_prefix="im"):
                     "No commands were provided for the image — have you tried using modal.Image.debian_slim()?"
                 )
             if dockerfile.commands and build_function:
-                raise InvalidError("Cannot provide both a build function and Dockerfile commands!")
+                raise InvalidError(
+                    "Cannot provide both build function and Dockerfile commands in the same image layer!"
+                )
 
             base_images_pb2s = [
                 api_pb2.BaseImage(
@@ -460,7 +533,7 @@ class _Image(_Object, type_prefix="im"):
 
             self._hydrate(image_id, resolver.client, None)
 
-        rep = "Image()"
+        rep = f"Image({dockerfile_function})"
         obj = _Image._from_loader(_load, rep, deps=_deps)
         obj.force_build = force_build
         return obj
@@ -479,6 +552,18 @@ class _Image(_Object, type_prefix="im"):
             )
 
         return _Image._from_args(base_images={"base": self}, dockerfile_function=build_dockerfile, **kwargs)
+
+    def _materialize_mount(self, mount: _Mount) -> "_Image":
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+            commands = ["FROM base", "COPY . /"]  # copy everything from the supplied mount into the root
+            return DockerfileSpec(commands=commands, context_files={})
+
+        return _Image._from_args(
+            base_images={"base": self},
+            dockerfile_function=build_dockerfile,
+            context_mount=mount,
+            _assert_materialized_mounts=False,  # avoid recursion
+        )
 
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy the entire contents of a `modal.Mount` into an image.
@@ -525,6 +610,15 @@ class _Image(_Object, type_prefix="im"):
             dockerfile_function=build_dockerfile,
             context_mount=mount,
         )
+
+    def add_local_python_packages(self, *packages: Union[str, Path]) -> "_Image":
+        """Adds local Python packages to the image
+
+        Packages are added to the /root directory which is on the PYTHONPATH of any
+        executed Modal functions.
+        """
+        mount = _Mount.from_local_python_packages(*packages)
+        return self._add_mount_layer([mount])
 
     def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy a directory into the image as a part of building the image.
@@ -1578,6 +1672,9 @@ class _Image(_Object, type_prefix="im"):
             for task_log in response.task_logs:
                 if task_log.data:
                     yield task_log.data
+
+    def _layers(self) -> typing.Tuple["_Image"]:
+        pass
 
 
 Image = synchronize_api(_Image)
