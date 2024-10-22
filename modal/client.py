@@ -143,6 +143,7 @@ class _Client:
         self._owner_pid = os.getpid()
 
     async def _close(self, prep_for_restore: bool = False):
+        logger.debug(f"Client ({id(self)}): closing")
         self._closed = True
         await self._cancellation_context.__aexit__(None, None, None)  # wait for all rpcs to be finished/cancelled
         if self._channel is not None:
@@ -156,7 +157,7 @@ class _Client:
 
     async def _init(self):
         """Connect to server and retrieve version information; raise appropriate error for various failures."""
-        logger.debug("Client: Starting")
+        logger.debug(f"Client ({id(self)}): Starting")
         _check_config()
         try:
             req = empty_pb2.Empty()
@@ -302,7 +303,7 @@ class _Client:
 
         if self.is_closed():
             coro.close()  # prevent "was never awaited"
-            raise ClientClosed()
+            raise ClientClosed(id(self))
 
         current_event_loop = asyncio.get_running_loop()
         if current_event_loop == self._cancellation_context_event_loop:
@@ -312,7 +313,7 @@ class _Client:
                 return await self._cancellation_context.create_task(coro)
             except asyncio.CancelledError:
                 if self.is_closed():
-                    raise ClientClosed() from None
+                    raise ClientClosed(id(self)) from None
                 raise  # if the task is cancelled as part of synchronizer shutdown or similar, don't raise ClientClosed
         else:
             # this should be rare - mostly used in tests where rpc requests sometimes are triggered
@@ -406,6 +407,9 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         timeout: Optional[float] = None,
         metadata: Optional[_MetadataLike] = None,
     ) -> ResponseType:
+        if self.client._snapshotted:
+            logger.debug(f"refreshing client after snapshot for {self._wrapped_method_name}")
+            self.client = await _Client.from_env()
         return await self.client._call_unary(self._wrapped_method_name, req, timeout=timeout, metadata=metadata)
 
 
@@ -426,5 +430,8 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
         request,
         metadata: Optional[Any] = None,
     ):
+        if self.client._snapshotted:
+            logger.debug(f"refreshing client after snapshot for {self._wrapped_method_name}")
+            self.client = await _Client.from_env
         async for response in self.client._call_stream(self._wrapped_method_name, request, metadata=metadata):
             yield response
