@@ -31,9 +31,7 @@ def _run_serve(app_ref: str, existing_app_id: str, is_ready: Event, environment_
     _app = import_app(app_ref)
     blocking_app = synchronizer._translate_out(_app, Interface.BLOCKING)
 
-    ctx_mgr = enable_output(show_progress=show_progress)
-
-    with ctx_mgr:
+    with enable_output(show_progress=show_progress):
         serve_update(blocking_app, existing_app_id, is_ready, environment_name)
 
 
@@ -43,7 +41,7 @@ async def _restart_serve(
     ctx = multiprocessing.get_context("spawn")  # Needed to reload the interpreter
     is_ready = ctx.Event()
     output_mgr = OutputManager.get()
-    show_progress = output_mgr.get() is not None
+    show_progress = output_mgr is not None
     p = ctx.Process(target=_run_serve, args=(app_ref, existing_app_id, is_ready, environment_name, show_progress))
     p.start()
     await asyncify(is_ready.wait)(timeout)
