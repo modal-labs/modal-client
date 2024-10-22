@@ -134,7 +134,7 @@ class _Client:
         # Remove cached client.
         self.set_env_client(None)
 
-    async def _init(self):
+    async def hello(self):
         """Connect to server and retrieve version information; raise appropriate error for various failures."""
         logger.debug("Client: Starting")
         _check_config()
@@ -160,7 +160,7 @@ class _Client:
     async def __aenter__(self):
         await self._open()
         try:
-            await self._init()
+            await self.hello()
         except BaseException:
             await self._close()
             raise
@@ -179,7 +179,7 @@ class _Client:
         client = cls(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials=None)
         try:
             await client._open()
-            # Skip client._init
+            # Skip client.hello
             yield client
         finally:
             await client._close()
@@ -223,7 +223,7 @@ class _Client:
             client = _Client(server_url, client_type, credentials)
             await client._open()
             async_utils.on_shutdown(client._close())
-            await client._init()
+            await client.hello()
             cls._client_from_env = client
             return client
 
@@ -246,7 +246,7 @@ class _Client:
         client = _Client(server_url, client_type, credentials)
         await client._open()
         try:
-            await client._init()
+            await client.hello()
         except BaseException:
             await client._close()
             raise
@@ -307,7 +307,7 @@ class _Client:
             self.set_env_client(None)
             # TODO(elias): reset _cancellation_context in case ?
             await self._open()
-            # intentionally not doing self._init since we should already be authenticated etc.
+            # intentionally not doing self.hello since we should already be authenticated etc.
 
     async def _get_grpclib_method(self, method_name: str) -> Any:
         # safely get grcplib method that is bound to a valid channel
