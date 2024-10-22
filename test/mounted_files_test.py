@@ -53,8 +53,8 @@ async def env_mount_files():
     return filenames
 
 
-def test_mounted_files_script(servicer, supports_dir, env_mount_files, server_url_env):
-    helpers.deploy_app_externally(servicer, script_path, cwd=supports_dir)
+def test_mounted_files_script(servicer, credentials, supports_dir, env_mount_files, server_url_env):
+    helpers.deploy_app_externally(servicer, credentials, script_path, cwd=supports_dir)
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
@@ -72,8 +72,8 @@ def test_mounted_files_script(servicer, supports_dir, env_mount_files, server_ur
 serialized_fn_path = "pkg_a/serialized_fn.py"
 
 
-def test_mounted_files_serialized(servicer, supports_dir, env_mount_files, server_url_env):
-    helpers.deploy_app_externally(servicer, serialized_fn_path, cwd=supports_dir)
+def test_mounted_files_serialized(servicer, credentials, supports_dir, env_mount_files, server_url_env):
+    helpers.deploy_app_externally(servicer, credentials, serialized_fn_path, cwd=supports_dir)
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
@@ -202,8 +202,8 @@ def test_mounted_files_config(servicer, supports_dir, env_mount_files, server_ur
     }
 
 
-def test_e2e_modal_run_py_file_mounts(servicer, supports_dir):
-    helpers.deploy_app_externally(servicer, "hello.py", cwd=supports_dir)
+def test_e2e_modal_run_py_file_mounts(servicer, credentials, supports_dir):
+    helpers.deploy_app_externally(servicer, credentials, "hello.py", cwd=supports_dir)
     # Reactivate the following mount assertions when we remove auto-mounting of dev-installed packages
     # assert len(servicer.files_name2sha) == 1
     # assert servicer.n_mounts == 1  # there should be a single mount
@@ -211,8 +211,8 @@ def test_e2e_modal_run_py_file_mounts(servicer, supports_dir):
     assert "/root/hello.py" in servicer.files_name2sha
 
 
-def test_e2e_modal_run_py_module_mounts(servicer, supports_dir):
-    helpers.deploy_app_externally(servicer, "hello", cwd=supports_dir)
+def test_e2e_modal_run_py_module_mounts(servicer, credentials, supports_dir):
+    helpers.deploy_app_externally(servicer, credentials, "hello", cwd=supports_dir)
     # Reactivate the following mount assertions when we remove auto-mounting of dev-installed packages
     # assert len(servicer.files_name2sha) == 1
     # assert servicer.n_mounts == 1  # there should be a single mount
@@ -252,7 +252,7 @@ def test_mounts_are_not_traversed_on_declaration(test_dir, monkeypatch, client, 
     assert __file__ in files  # this test file should have been included
 
 
-def test_mount_dedupe(servicer, test_dir, server_url_env):
+def test_mount_dedupe(servicer, credentials, test_dir, server_url_env):
     supports_dir = test_dir / "supports"
     normally_not_included_file = supports_dir / "pkg_a" / "normally_not_included.pyc"
     normally_not_included_file.touch(exist_ok=True)
@@ -260,6 +260,7 @@ def test_mount_dedupe(servicer, test_dir, server_url_env):
         helpers.deploy_app_externally(
             # no explicit mounts, rely on auto-mounting
             servicer,
+            credentials,
             "mount_dedupe.py",
             cwd=test_dir / "supports",
             env={"USE_EXPLICIT": "0"},
@@ -273,7 +274,7 @@ def test_mount_dedupe(servicer, test_dir, server_url_env):
     assert "/root/pkg_a/normally_not_included.pyc" not in pkg_a_mount.keys()
 
 
-def test_mount_dedupe_explicit(servicer, test_dir, server_url_env):
+def test_mount_dedupe_explicit(servicer, credentials, test_dir, server_url_env):
     supports_dir = test_dir / "supports"
     normally_not_included_file = supports_dir / "pkg_a" / "normally_not_included.pyc"
     normally_not_included_file.touch(exist_ok=True)
@@ -281,6 +282,7 @@ def test_mount_dedupe_explicit(servicer, test_dir, server_url_env):
         helpers.deploy_app_externally(
             # two explicit mounts of the same package
             servicer,
+            credentials,
             "mount_dedupe.py",
             cwd=supports_dir,
             env={"USE_EXPLICIT": "1"},
