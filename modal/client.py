@@ -19,7 +19,6 @@ from typing import (
 )
 
 import grpclib.client
-from aiohttp import ClientConnectorError, ClientResponseError
 from google.protobuf import empty_pb2
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -32,7 +31,6 @@ from modal_version import __version__
 from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import create_channel, retry_transient_errors
-from ._utils.http_utils import ClientSessionRegistry
 from .config import _check_config, _is_remote, config, logger
 from .exception import AuthError, ClientClosed, ConnectionError, DeprecationError, VersionError
 
@@ -67,24 +65,6 @@ def _get_metadata(client_type: int, credentials: Optional[Tuple[str, str]], vers
             }
         )
     return metadata
-
-
-async def _http_check(url: str, timeout: float) -> str:
-    # Used for sanity checking connection issues
-    try:
-        async with ClientSessionRegistry.get_session().get(url) as resp:
-            return f"HTTP status: {resp.status}"
-    except ClientResponseError as exc:
-        return f"HTTP status: {exc.status}"
-    except ClientConnectorError as exc:
-        return f"HTTP exception: {exc.os_error.__class__.__name__}"
-    except Exception as exc:
-        return f"HTTP exception: {exc.__class__.__name__}"
-
-
-async def _grpc_exc_string(exc: GRPCError, method_name: str, server_url: str, timeout: float) -> str:
-    http_status = await _http_check(server_url, timeout=timeout)
-    return f"{method_name}: {exc.message} [gRPC status: {exc.status.name}, {http_status}]"
 
 
 ReturnType = TypeVar("ReturnType")
@@ -177,8 +157,7 @@ class _Client:
             elif exc.status == Status.UNAUTHENTICATED:
                 raise AuthError(exc.message)
             else:
-                exc_string = await _grpc_exc_string(exc, "ClientHello", self.server_url, CLIENT_CREATE_TOTAL_TIMEOUT)
-                raise ConnectionError(exc_string)
+                raise exc
         except (OSError, asyncio.TimeoutError) as exc:
             raise ConnectionError(str(exc))
 
