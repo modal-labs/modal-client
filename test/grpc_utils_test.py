@@ -10,6 +10,14 @@ from modal_proto import api_grpc, api_pb2
 
 from .supports.skip import skip_windows_unix_socket
 
+metadata = {
+    "x-modal-client-type": "1",
+    "x-modal-python-version": "3.12.1",
+    "x-modal-client-version": "0.99",
+    "x-modal-token-id": "ak-123",
+    "x-modal-token-secret": "as-123",
+}
+
 
 @pytest.mark.asyncio
 async def test_http_channel(servicer):
@@ -18,7 +26,7 @@ async def test_http_channel(servicer):
     client_stub = api_grpc.ModalClientStub(channel)
 
     req = api_pb2.BlobCreateRequest()
-    resp = await client_stub.BlobCreate(req)
+    resp = await client_stub.BlobCreate(req, metadata=metadata)
     assert resp.blob_id
 
     channel.close()
@@ -32,7 +40,7 @@ async def test_unix_channel(servicer):
     client_stub = api_grpc.ModalClientStub(channel)
 
     req = api_pb2.BlobCreateRequest()
-    resp = await client_stub.BlobCreate(req)
+    resp = await client_stub.BlobCreate(req, metadata=metadata)
     assert resp.blob_id
 
     channel.close()

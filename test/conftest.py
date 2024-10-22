@@ -27,6 +27,7 @@ import pkg_resources
 import pytest_asyncio
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
+from grpclib.events import RecvRequest, listen
 
 import modal._serialization
 from modal import __version__, config
@@ -236,9 +237,44 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.image_join_sleep_duration = None
 
+        self.required_creds = {("ak-123", "as-123")}
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
+
+    async def recv_request(self, event: RecvRequest):
+        # Make sure metadata is correct
+        for header in [
+            "x-modal-python-version",
+            "x-modal-client-version",
+            "x-modal-client-type",
+        ]:
+            if header not in event.metadata:
+                raise GRPCError(Status.FAILED_PRECONDITION, f"Missing {header} header")
+        if event.metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT):
+            if event.method_name in [
+                "/modal.client.ModalClient/TokenFlowCreate",
+                "/modal.client.ModalClient/TokenFlowWait",
+            ]:
+                pass  # Methods that don't require authentication
+            else:
+                creds = (event.metadata.get("x-modal-token-id"), event.metadata.get("x-modal-token-secret"))
+                if creds not in self.required_creds:
+                    raise GRPCError(
+                        Status.UNAUTHENTICATED, f"Incorrect auth token {creds} for method {event.method_name}"
+                    )
+        elif event.metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER):
+            for header in [
+                "x-modal-token-id",
+                "x-modal-token-secret",
+                "x-modal-task-id",  # old
+                "x-modal-task-secret",  # old
+            ]:
+                if header in event.metadata:
+                    raise GRPCError(Status.FAILED_PRECONDITION, f"Container client should not set header {header}")
+        else:
+            raise GRPCError(Status.FAILED_PRECONDITION, "Unknown client type")
 
     def function_body(self, func):
         """Decorator for setting the function that will be called for any FunctionGetOutputs calls"""
@@ -598,9 +634,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         client_version = stream.metadata["x-modal-client-version"]
         warning = ""
         assert stream.user_agent.startswith(f"modal-client/{__version__} ")
-        if stream.metadata.get("x-modal-token-id") == "bad":
-            raise GRPCError(Status.UNAUTHENTICATED, "bad bad bad")
-        elif client_version == "unauthenticated":
+        if client_version == "unauthenticated":
             raise GRPCError(Status.UNAUTHENTICATED, "failed authentication")
         elif client_version == "deprecated":
             warning = "SUPER OLD"
@@ -1708,6 +1742,7 @@ async def run_server(servicer, host=None, port=None, path=None):
     async def _start_servicer():
         nonlocal server
         server = grpclib.server.Server([servicer])
+        listen(server, RecvRequest, servicer.recv_request)
         await server.start(host=host, port=port, path=path)
 
     async def _stop_servicer():
@@ -1755,7 +1790,7 @@ async def servicer(blob_server, temporary_sock_path):
 
 @pytest_asyncio.fixture(scope="function")
 async def client(servicer):
-    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
+    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-123")) as client:
         yield client
 
 
@@ -1768,6 +1803,13 @@ async def container_client(servicer):
 @pytest_asyncio.fixture(scope="function")
 async def server_url_env(servicer, monkeypatch):
     monkeypatch.setenv("MODAL_SERVER_URL", servicer.client_addr)
+    yield
+
+
+@pytest_asyncio.fixture(scope="function")
+async def token_env(servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_TOKEN_ID", "ak-123")
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", "as-123")
     yield
 
 
