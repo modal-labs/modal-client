@@ -92,7 +92,7 @@ def test_mounted_files_serialized(servicer, supports_dir, env_mount_files, serve
     }
 
 
-def test_mounted_files_package(supports_dir, env_mount_files, servicer, server_url_env):
+def test_mounted_files_package(supports_dir, env_mount_files, servicer, server_url_env, token_env):
     p = subprocess.run(["modal", "run", "pkg_a.package"], cwd=supports_dir)
     assert p.returncode == 0
 
@@ -113,7 +113,7 @@ def test_mounted_files_package(supports_dir, env_mount_files, servicer, server_u
     }
 
 
-def test_mounted_files_package_no_automount(supports_dir, env_mount_files, servicer, server_url_env):
+def test_mounted_files_package_no_automount(supports_dir, env_mount_files, servicer, server_url_env, token_env):
     # when triggered like a module, the target module should be put at the correct package path
     p = subprocess.run(
         ["modal", "run", "pkg_a.package"],
@@ -130,7 +130,7 @@ def test_mounted_files_package_no_automount(supports_dir, env_mount_files, servi
 
 
 @skip_windows("venvs behave differently on Windows.")
-def test_mounted_files_sys_prefix(servicer, supports_dir, venv_path, env_mount_files, server_url_env):
+def test_mounted_files_sys_prefix(servicer, supports_dir, venv_path, env_mount_files, server_url_env, token_env):
     # Run with venv activated, so it's on sys.prefix, and modal is dev-installed in the VM
     subprocess.run(
         [venv_path / "bin" / "modal", "run", script_path],
@@ -183,7 +183,7 @@ def symlinked_python_installation_venv_path(tmp_path, repo_root):
 
 @skip_windows("venvs behave differently on Windows.")
 def test_mounted_files_symlinked_python_install(
-    symlinked_python_installation_venv_path, supports_dir, server_url_env, servicer
+    symlinked_python_installation_venv_path, supports_dir, server_url_env, token_env, servicer
 ):
     subprocess.check_call(
         [symlinked_python_installation_venv_path / "bin" / "modal", "run", supports_dir / "imports_ast.py"]
@@ -191,7 +191,7 @@ def test_mounted_files_symlinked_python_install(
     assert "/root/ast.py" not in servicer.files_name2sha
 
 
-def test_mounted_files_config(servicer, supports_dir, env_mount_files, server_url_env):
+def test_mounted_files_config(servicer, supports_dir, env_mount_files, server_url_env, token_env):
     p = subprocess.run(
         ["modal", "run", "pkg_a/script.py"], cwd=supports_dir, env={**os.environ, "MODAL_AUTOMOUNT": "0"}
     )
@@ -312,7 +312,7 @@ def test_mount_dedupe_explicit(servicer, test_dir, server_url_env):
 
 @skip_windows("pip-installed pdm seems somewhat broken on windows")
 @skip_old_py("some weird issues w/ pdm and Python 3.9", min_version=(3, 10, 0))
-def test_pdm_cache_automount_exclude(tmp_path, monkeypatch, supports_dir, servicer, server_url_env):
+def test_pdm_cache_automount_exclude(tmp_path, monkeypatch, supports_dir, servicer, server_url_env, token_env):
     # check that `pdm`'s cached packages are not included in automounts
     project_dir = Path(__file__).parent.parent
     monkeypatch.chdir(tmp_path)
