@@ -1137,15 +1137,17 @@ def test_add_local_python_packages(client, servicer, set_env_client, test_dir, m
     assert len(image_additional_mount._mount_layers) == 2  # another mount added to lazy layer
     assert len(image._mount_layers) == 1  # original image should not be affected
 
+    # running commands
     image_non_mount = image.run_commands("echo 'hello'")
+    with pytest.raises(InvalidError, match="image.materialize_added_files"):
+        hydrate_image(image_non_mount)
+
+    image_non_mount = image.materialize_added_files().run_commands("echo 'hello'")
     hydrate_image(image_non_mount)
+
     assert len(image_non_mount._mount_layers) == 0
-    # TODO: assert layers include copy of all mounts + echo
 
     layers = get_image_layers(image_non_mount.object_id, servicer)
-    for layer in layers:
-        print("===========LAYER========")
-        print(layer)
 
     echo_layer = layers[0]
     assert echo_layer.dockerfile_commands == ["FROM base", "RUN echo 'hello'"]
@@ -1223,4 +1225,7 @@ def test_lazy_mounts_are_attached_to_sandboxes(servicer, client, test_dir, monke
 
 # TODO: test build functions w/ lazy mounts
 
-# TODO: test modal serve w/ lazy mounts
+# TODO: test modal serve w/ lazy mounts + materialized lazy mounts (app needs to be rebuilt if mounts
+# are changed, even if those mounts are copied into the image)
+
+# TODO: test modal shell w/ lazy mounts

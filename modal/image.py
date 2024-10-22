@@ -5,6 +5,7 @@ import os
 import re
 import shlex
 import sys
+import textwrap
 import typing
 import warnings
 from dataclasses import dataclass
@@ -305,16 +306,38 @@ class _Image(_Object, type_prefix="im"):
         """
         return self._mounts
 
-    def _materialize_mounts(self) -> "_Image":
-        """Takes any stacked mounts on the image and makes them into actual image layers using COPY
+    def materialize_added_files(self) -> "_Image":
+        """Builds image layers of all files added through `image.add_*()` methods
 
-        This needs to be run before an image with mounts is used as a base image for anything
-        other than another "mount only" layer, e.g. a docker command.
+        This is required to run before an non-add_* image operation can be run on the image.
+        For that reason, it's recommended to always run `iamge.add_*` operations last in the
+        image build, to avoid having to materialize such layers.
         """
         image = self
         for mount in self._mount_layers:
             image = image._materialize_mount(mount)
         return image
+
+    def _assert_materialized(self):
+        if self._mount_layers:
+            print("mount layers", self._mount_layers)
+            raise InvalidError(
+                textwrap.dedent(
+                    """
+                It's recommended to run any `image.add_*` commands for adding local resources last
+                in your build chain, to prevent having to rebuild images on every local file change.
+
+                If you need local files available in earlier build steps, call image.materialize_added_files()
+                before adding any non-add image build steps, e.g.
+
+                my_image = (
+                    Image.debian_slim()
+                    .add_local_python_packages()  # an "add" virtual layer
+                    .materialize_added_files()  # this copies all virtual layers into the image
+                    .run_commands(...)  # this is now ok!
+                """
+                )
+            )
 
     @staticmethod
     def _from_args(
@@ -330,12 +353,11 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,
         # For internal use only.
         _namespace: int = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        _materialize_mounts: bool = True,
+        _assert_materialized_mounts: bool = True,
     ):
         if base_images is None:
             base_images = {}
-        else:
-            base_images = {k: v._materialize_mounts() if _materialize_mounts else v for k, v in base_images.items()}
+
         if secrets is None:
             secrets = []
         if gpu_config is None:
@@ -361,6 +383,10 @@ class _Image(_Object, type_prefix="im"):
             return deps
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+            if _assert_materialized_mounts:
+                for image in base_images.values():
+                    image._assert_materialized()
+
             environment = await _get_environment_cached(resolver.environment_name or "", resolver.client)
             # A bit hacky,but assume that the environment provides a valid builder version
             image_builder_version = cast(ImageBuilderVersion, environment._settings.image_builder_version)
@@ -536,7 +562,7 @@ class _Image(_Object, type_prefix="im"):
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
             context_mount=mount,
-            _materialize_mounts=False,  # avoid recursion
+            _assert_materialized_mounts=False,  # avoid recursion
         )
 
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
