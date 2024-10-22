@@ -13,6 +13,10 @@ from modal.config import Config, _lookup_workspace, config
 from modal.exception import InvalidError
 
 
+class CLIException(Exception):
+    pass
+
+
 def _cli(args, env={}):
     lib_dir = pathlib.Path(modal.__file__).parent.parent
     args = [sys.executable, "-m", "modal.cli.entry_point"] + args
@@ -26,7 +30,7 @@ def _cli(args, env={}):
     stdout = ret.stdout.decode()
     stderr = ret.stderr.decode()
     if ret.returncode != 0:
-        raise Exception(f"Failed with {ret.returncode} stdout: {stdout} stderr: {stderr}")
+        raise CLIException(f"Failed with {ret.returncode} stdout: {stdout} stderr: {stderr}")
     return stdout
 
 
@@ -49,12 +53,18 @@ def test_config_store_user(servicer, modal_config):
     with modal_config(show_on_error=True) as config_file_path:
         env = {"MODAL_SERVER_URL": servicer.client_addr}
 
+        servicer.required_creds = {("abc", "xyz"), ("foo", "bar1"), ("foo", "bar2"), ("ABC", "XYZ"), ("foo", "bar3")}
+
         # No token by default
         config = _get_config(env=env)
         assert config["token_id"] is None
 
         # Set creds to abc / xyz
         _cli(["token", "set", "--token-id", "abc", "--token-secret", "xyz"], env=env)
+
+        # Make sure an incorrect token fails
+        with pytest.raises(CLIException):
+            _cli(["token", "set", "--token-id", "abc", "--token-secret", "incorrect"], env=env)
 
         # Set creds to foo / bar1 for the prof_1 profile
         _cli(
@@ -135,6 +145,7 @@ def test_config_env_override_arbitrary_env():
 
 @pytest.mark.asyncio
 async def test_workspace_lookup(servicer, server_url_env):
+    servicer.required_creds = {("ak-abc", "as-xyz")}
     resp = await synchronize_api(_lookup_workspace).aio(servicer.client_addr, "ak-abc", "as-xyz")
     assert resp.username == "test-username"
 

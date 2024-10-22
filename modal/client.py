@@ -33,7 +33,7 @@ from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import create_channel, retry_transient_errors
 from ._utils.http_utils import ClientSessionRegistry
-from .config import _check_config, config, logger
+from .config import _check_config, _is_remote, config, logger
 from .exception import AuthError, ClientClosed, ConnectionError, DeprecationError, VersionError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
@@ -115,7 +115,6 @@ class _Client:
         self.client_type = client_type
         self._credentials = credentials
         self.version = version
-        self._authenticated = False
         self._closed = False
         self._channel: Optional[grpclib.client.Channel] = None
         self._stub: Optional[modal_api_grpc.ModalClientModal] = None
@@ -124,10 +123,6 @@ class _Client:
 
     def is_closed(self) -> bool:
         return self._closed
-
-    @property
-    def authenticated(self):
-        return self._authenticated
 
     @property
     def stub(self) -> modal_api_grpc.ModalClientModal:
@@ -175,7 +170,6 @@ class _Client:
             if resp.warning:
                 ALARM_EMOJI = chr(0x1F6A8)
                 warnings.warn(f"{ALARM_EMOJI} {resp.warning} {ALARM_EMOJI}", DeprecationError)
-            self._authenticated = True
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
                 raise VersionError(
@@ -227,19 +221,7 @@ class _Client:
         else:
             c = config
 
-        server_url = c["server_url"]
-
-        token_id = c["token_id"]
-        token_secret = c["token_secret"]
-        task_id = c["task_id"]
-        credentials = None
-
-        if task_id:
-            client_type = api_pb2.CLIENT_TYPE_CONTAINER
-        else:
-            client_type = api_pb2.CLIENT_TYPE_CLIENT
-            if token_id and token_secret:
-                credentials = (token_id, token_secret)
+        credentials: Optional[Tuple[str, str]]
 
         if cls._client_from_env_lock is None:
             cls._client_from_env_lock = asyncio.Lock()
@@ -247,24 +229,29 @@ class _Client:
         async with cls._client_from_env_lock:
             if cls._client_from_env:
                 return cls._client_from_env
+
+            if _is_remote():
+                client_type = api_pb2.CLIENT_TYPE_CONTAINER
+                credentials = None
             else:
-                client = _Client(server_url, client_type, credentials)
-                await client._open()
-                async_utils.on_shutdown(client._close())
-                try:
-                    await client._init()
-                except AuthError:
-                    if not credentials:
-                        creds_missing_msg = (
-                            "Token missing. Could not authenticate client."
-                            " If you have token credentials, see modal.com/docs/reference/modal.config for setup help."
-                            " If you are a new user, register an account at modal.com, then run `modal token new`."
-                        )
-                        raise AuthError(creds_missing_msg)
-                    else:
-                        raise
-                cls._client_from_env = client
-                return client
+                client_type = api_pb2.CLIENT_TYPE_CLIENT
+                token_id = c["token_id"]
+                token_secret = c["token_secret"]
+                if not token_id or not token_secret:
+                    raise AuthError(
+                        "Token missing. Could not authenticate client."
+                        " If you have token credentials, see modal.com/docs/reference/modal.config for setup help."
+                        " If you are a new user, register an account at modal.com, then run `modal token new`."
+                    )
+                credentials = (token_id, token_secret)
+
+            server_url = c["server_url"]
+            client = _Client(server_url, client_type, credentials)
+            await client._open()
+            async_utils.on_shutdown(client._close())
+            await client._init()
+            cls._client_from_env = client
+            return client
 
     @classmethod
     async def from_credentials(cls, token_id: str, token_secret: str) -> "_Client":

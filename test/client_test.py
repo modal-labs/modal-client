@@ -94,18 +94,16 @@ async def test_client_server_error(servicer):
 
 
 @pytest.mark.asyncio
-async def test_client_old_version(servicer):
+async def test_client_old_version(servicer, credentials):
     with pytest.raises(VersionError):
-        async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret"), version="0.0.0"):
+        async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials, version="0.0.0"):
             pass
 
 
 @pytest.mark.asyncio
-async def test_client_deprecated(servicer):
+async def test_client_deprecated(servicer, credentials):
     with pytest.warns(modal.exception.DeprecationError):
-        async with Client(
-            servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret"), version="deprecated"
-        ):
+        async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials, version="deprecated"):
             pass
 
 
@@ -116,26 +114,27 @@ async def test_client_unauthenticated(servicer):
             pass
 
 
-def client_from_env(client_addr):
+def client_from_env(client_addr, credentials):
+    token_id, token_secret = credentials
     _override_config = {
         "server_url": client_addr,
-        "token_id": "foo-id",
-        "token_secret": "foo-secret",
+        "token_id": token_id,
+        "token_secret": token_secret,
         "task_id": None,
         "task_secret": None,
     }
     return Client.from_env(_override_config=_override_config)
 
 
-def test_client_from_env(servicer):
+def test_client_from_env_client(servicer, credentials):
     try:
         # First, a failing one
         with pytest.raises(ConnectionError):
-            client_from_env("https://foo.invalid")
+            client_from_env("https://foo.invalid", credentials)
 
         # Make sure later clients can still succeed
-        client_1 = client_from_env(servicer.client_addr)
-        client_2 = client_from_env(servicer.client_addr)
+        client_1 = client_from_env(servicer.client_addr, credentials)
+        client_2 = client_from_env(servicer.client_addr, credentials)
         assert isinstance(client_1, Client)
         assert isinstance(client_2, Client)
         assert client_1 == client_2
@@ -145,8 +144,8 @@ def test_client_from_env(servicer):
 
     try:
         # After stopping, creating a new client should return a new one
-        client_3 = client_from_env(servicer.client_addr)
-        client_4 = client_from_env(servicer.client_addr)
+        client_3 = client_from_env(servicer.client_addr, credentials)
+        client_4 = client_from_env(servicer.client_addr, credentials)
         assert client_3 != client_1
         assert client_4 == client_3
     finally:
@@ -170,7 +169,7 @@ def test_multiple_profile_error(servicer, modal_config):
             Client.verify(servicer.client_addr, None)
 
 
-def test_implicit_default_profile_warning(servicer, modal_config):
+def test_implicit_default_profile_warning(servicer, modal_config, credentials):
     config = """
     [default]
     token_id = 'ak-abc'
@@ -191,7 +190,7 @@ def test_implicit_default_profile_warning(servicer, modal_config):
     """
     with modal_config(config):
         # A single profile should be fine, even if not explicitly active and named 'default'
-        Client.verify(servicer.client_addr, None)
+        Client.verify(servicer.client_addr, credentials)
 
 
 def test_import_modal_from_thread(supports_dir):
@@ -199,3 +198,24 @@ def test_import_modal_from_thread(supports_dir):
     # For example, in Python <3.10, creating loop-bound asyncio primitives in global scope would
     # trigger an exception if there is no event loop in the thread (and it's not the main thread)
     subprocess.check_call([sys.executable, supports_dir / "import_modal_from_thread.py"])
+
+
+def test_from_env_container(servicer, container_env):
+    servicer.required_creds = {}  # Disallow default client creds
+    Client.from_env()
+    # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
+
+
+def test_from_credentials_client(servicer, set_env_client, server_url_env, token_env):
+    # Note: this explicitly uses a lot of fixtures to make sure those are ignored
+    creds = ("ak-foo-1", "as-bar")
+    servicer.required_creds = {creds}
+    Client.from_credentials(*creds)
+    # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
+
+
+def test_from_credentials_container(servicer, container_env):
+    creds = ("ak-foo-2", "as-bar")
+    servicer.required_creds = {creds}
+    Client.from_credentials(*creds)
+    # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
