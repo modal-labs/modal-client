@@ -126,7 +126,7 @@ def client_from_env(client_addr, credentials):
     return Client.from_env(_override_config=_override_config)
 
 
-def test_client_from_env(servicer, credentials):
+def test_client_from_env_client(servicer, credentials):
     try:
         # First, a failing one
         with pytest.raises(ConnectionError):
@@ -198,3 +198,24 @@ def test_import_modal_from_thread(supports_dir):
     # For example, in Python <3.10, creating loop-bound asyncio primitives in global scope would
     # trigger an exception if there is no event loop in the thread (and it's not the main thread)
     subprocess.check_call([sys.executable, supports_dir / "import_modal_from_thread.py"])
+
+
+def test_from_env_container(servicer, container_env):
+    servicer.required_creds = {}  # Disallow default client creds
+    Client.from_env()
+    # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
+
+
+def test_from_credentials_client(servicer, set_env_client, server_url_env, token_env):
+    # Note: this explicitly uses a lot of fixtures to make sure those are ignored
+    creds = ("ak-foo-1", "as-bar")
+    servicer.required_creds = {creds}
+    Client.from_credentials(*creds)
+    # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
+
+
+def test_from_credentials_container(servicer, container_env):
+    creds = ("ak-foo-2", "as-bar")
+    servicer.required_creds = {creds}
+    Client.from_credentials(*creds)
+    # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
