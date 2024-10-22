@@ -280,7 +280,7 @@ def _run_container(
         is_class=is_class,
         class_parameter_info=class_parameter_info,
     )
-    with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
+    with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
         if inputs is None:
             servicer.container_inputs = _get_inputs()
         else:
@@ -306,6 +306,10 @@ def _run_container(
             # Override server URL to reproduce restore behavior.
             env["MODAL_SERVER_URL"] = servicer.container_addr
             env["MODAL_ENABLE_SNAP_RESTORE"] = "1"
+
+        # These env vars are always present in containers
+        env["MODAL_TASK_ID"] = "ta-123"
+        env["MODAL_IS_REMOTE"] = "1"
 
         # reset _App tracking state between runs
         _App._all_apps.clear()
@@ -1091,7 +1095,7 @@ def test_cli(servicer):
     servicer.container_inputs = _get_inputs()
 
     # Launch subprocess
-    env = {"MODAL_SERVER_URL": servicer.container_addr}
+    env = {"MODAL_SERVER_URL": servicer.container_addr, "MODAL_TOKEN_ID": "ak-123", "MODAL_TOKEN_SECRET": "as-123"}
     lib_dir = pathlib.Path(__file__).parent.parent
     args: List[str] = [sys.executable, "-m", "modal._container_entrypoint", data_base64]
     ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -1631,6 +1635,11 @@ def _run_container_process(
         serialized_params=serialize(cls_params),
         is_class=is_class,
     )
+
+    # These env vars are always present in containers
+    env["MODAL_TASK_ID"] = "ta-123"
+    env["MODAL_IS_REMOTE"] = "1"
+
     encoded_container_args = base64.b64encode(container_args.SerializeToString())
     servicer.container_inputs = _get_multi_inputs(inputs)
     return subprocess.Popen(

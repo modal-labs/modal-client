@@ -913,7 +913,7 @@ def test_image_builder_version(servicer, test_dir, modal_config):
             with mock.patch("modal.image._base_image_config", mock_base_image_config):
                 with mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"]):
                     with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
-                        with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-xyz")) as client:
+                        with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-123")) as client:
                             with modal_config():
                                 with app.run(client=client):
                                     assert servicer.image_builder_versions
@@ -929,7 +929,7 @@ def test_image_builder_supported_versions(servicer):
     with pytest.raises(VersionError, match=r"This version of the modal client supports.+{'2000.01'}"):
         with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
             with mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.11"]):
-                with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-xyz")) as client:
+                with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-123")) as client:
                     with app.run(client=client):
                         pass
 
