@@ -32,7 +32,7 @@ from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import create_channel, retry_transient_errors
 from .config import _check_config, _is_remote, config, logger
-from .exception import AuthError, ClientClosed, ConnectionError, DeprecationError, VersionError
+from .exception import AuthError, ClientClosed, DeprecationError, VersionError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
@@ -154,12 +154,8 @@ class _Client:
                 raise VersionError(
                     f"The client version ({self.version}) is too old. Please update (pip install --upgrade modal)."
                 )
-            elif exc.status == Status.UNAUTHENTICATED:
-                raise AuthError(exc.message)
             else:
                 raise exc
-        except (OSError, asyncio.TimeoutError) as exc:
-            raise ConnectionError(str(exc))
 
     async def __aenter__(self):
         await self._open()
