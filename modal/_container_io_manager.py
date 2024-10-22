@@ -401,9 +401,24 @@ class _ContainerIOManager:
 
             if input_ids_to_cancel:
                 if self._max_concurrency > 1:
+                    outputs = []
                     for input_id in input_ids_to_cancel:
                         if input_id in self.current_inputs:
                             self.current_inputs[input_id].cancel()
+                            outputs.append(
+                                api_pb2.FunctionPutOutputsItem(
+                                    input_id=input_id,
+                                    result=api_pb2.GenericResult(
+                                        status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
+                                    ),
+                                )
+                            )
+
+                    await retry_transient_errors(
+                        self._client.stub.FunctionPutOutputs,
+                        api_pb2.FunctionPutOutputsRequest(outputs=outputs),
+                        max_retries=None,  # Retry indefinitely, trying every 1s.
+                    )
 
                 elif self.current_input_id in input_ids_to_cancel:
                     # This goes to a registered signal handler for sync Modal functions, or to the
