@@ -33,7 +33,7 @@ from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import create_channel, retry_transient_errors
 from ._utils.http_utils import ClientSessionRegistry
-from .config import _check_config, config, logger
+from .config import _check_config, _is_remote, config, logger
 from .exception import AuthError, ClientClosed, ConnectionError, DeprecationError, VersionError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
@@ -220,19 +220,22 @@ class _Client:
         else:
             c = config
 
-        server_url = c["server_url"]
+        credentials: Optional[Tuple[str, str]]
 
-        token_id = c["token_id"]
-        token_secret = c["token_secret"]
-        task_id = c["task_id"]
-        credentials = None
-
-        if task_id:
+        if _is_remote():
             client_type = api_pb2.CLIENT_TYPE_CONTAINER
+            credentials = None
         else:
             client_type = api_pb2.CLIENT_TYPE_CLIENT
-            if token_id and token_secret:
-                credentials = (token_id, token_secret)
+            token_id = c["token_id"]
+            token_secret = c["token_secret"]
+            if not token_id or not token_secret:
+                raise AuthError(
+                    "Token missing. Could not authenticate client."
+                    " If you have token credentials, see modal.com/docs/reference/modal.config for setup help."
+                    " If you are a new user, register an account at modal.com, then run `modal token new`."
+                )
+            credentials = (token_id, token_secret)
 
         if cls._client_from_env_lock is None:
             cls._client_from_env_lock = asyncio.Lock()
@@ -241,21 +244,11 @@ class _Client:
             if cls._client_from_env:
                 return cls._client_from_env
             else:
+                server_url = c["server_url"]
                 client = _Client(server_url, client_type, credentials)
                 await client._open()
                 async_utils.on_shutdown(client._close())
-                try:
-                    await client._init()
-                except AuthError:
-                    if not credentials:
-                        creds_missing_msg = (
-                            "Token missing. Could not authenticate client."
-                            " If you have token credentials, see modal.com/docs/reference/modal.config for setup help."
-                            " If you are a new user, register an account at modal.com, then run `modal token new`."
-                        )
-                        raise AuthError(creds_missing_msg)
-                    else:
-                        raise
+                await client._init()
                 cls._client_from_env = client
                 return client
 
