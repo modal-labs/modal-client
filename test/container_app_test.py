@@ -127,7 +127,7 @@ def test_container_snapshot_restore_heartbeats(tmpdir, servicer, container_clien
 
 
 @pytest.mark.asyncio
-async def test_container_debug_snapshot(container_client, tmpdir, servicer, credentials):
+async def test_container_debug_snapshot(container_client, tmpdir, servicer):
     # Get an IO manager, where restore takes place
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
     restore_path = tmpdir.join("fake-restore-state.json")
@@ -140,15 +140,13 @@ async def test_container_debug_snapshot(container_client, tmpdir, servicer, cred
     # Test that the breakpoint was called
     test_breakpoint = mock.Mock()
     with mock.patch("sys.breakpointhook", test_breakpoint):
-        # TODO(erikbern): we should use a container client w/o credentials here
-        token_id, token_secret = credentials
         with mock.patch.dict(
             os.environ,
             {
                 "MODAL_RESTORE_STATE_PATH": str(restore_path),
                 "MODAL_SERVER_URL": servicer.container_addr,
-                "MODAL_TOKEN_ID": token_id,
-                "MODAL_TOKEN_SECRET": token_secret,
+                "MODAL_TASK_ID": "ta-123",
+                "MODAL_IS_REMOTE": "1",
             },
         ):
             io_manager.memory_snapshot()
