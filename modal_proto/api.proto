@@ -1203,6 +1203,10 @@ message FunctionData {
   // When the function is a "grouped" one, this records the # of tasks we want
   // to schedule in tandem.
   uint32 _experimental_group_size = 19;
+  // TODO(irfansharif): We're using this field to enable new gang-scheduling
+  // primitives. Remove it when it's only controlled through the
+  // _experimental_group_size field.
+  bool _experimental_boost = 21;
 
   Schedule schedule = 20;
 
