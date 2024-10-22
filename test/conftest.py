@@ -1822,6 +1822,14 @@ async def token_env(servicer, monkeypatch, credentials):
     yield
 
 
+@pytest_asyncio.fixture(scope="function")
+async def container_env(servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SERVER_URL", servicer.container_addr)
+    monkeypatch.setenv("MODAL_TASK_ID", "ta-123")
+    monkeypatch.setenv("MODAL_IS_REMOTE", "1")
+    yield
+
+
 @pytest_asyncio.fixture(scope="function", autouse=True)
 async def reset_default_client():
     Client.set_env_client(None)
