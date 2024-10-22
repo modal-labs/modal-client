@@ -655,61 +655,8 @@ async def test_async_map():
 
 
 @pytest.mark.asyncio
-async def test_async_map_input_cancellation_before_yield():
-    result = []
-    states = []
-
-    async def mapper_func(x):
-        await asyncio.sleep(0.1)
-        return x * 2
-
-    async def gen():
-        states.append("enter")
-        try:
-            raise SampleException("test")
-            for i in range(5):
-                await asyncio.sleep(0.1)
-                yield i
-        finally:
-            states.append("exit")
-
-    with pytest.raises(SampleException):
-        async for item in async_map(gen(), mapper_func, concurrency=3):
-            result.append(item)
-
-    assert sorted(result) == []
-    assert states == ["enter", "exit"]
-
-
-@pytest.mark.asyncio
-async def test_async_map_input_cancellation_after_yield():
-    result = []
-    states = []
-
-    async def mapper_func(x):
-        await asyncio.sleep(0.1)
-        return x * 2
-
-    async def gen():
-        states.append("enter")
-        try:
-            for i in range(5):
-                await asyncio.sleep(0.1)
-                yield i
-            raise SampleException("test")
-        finally:
-            states.append("exit")
-
-    with pytest.raises(SampleException):
-        async for item in async_map(gen(), mapper_func, concurrency=3):
-            result.append(item)
-
-    assert sorted(result) == [0, 2, 4, 6]
-    assert sorted(states) == ["enter", "exit"]
-
-
-@pytest.mark.asyncio
-async def test_async_map_input_cancellation_between_yields():
+async def test_async_map_input_exception_async_producer():
+    # test exception async producer
     result = []
     states = []
 
@@ -723,7 +670,6 @@ async def test_async_map_input_cancellation_between_yields():
             for i in range(5):
                 if i == 3:
                     raise SampleException("test")
-                await asyncio.sleep(0.1)
                 yield i
         finally:
             states.append("exit")
@@ -732,13 +678,41 @@ async def test_async_map_input_cancellation_between_yields():
         async for item in async_map(gen(), mapper_func, concurrency=3):
             result.append(item)
 
-    assert sorted(result) == [0, 2]
+    assert sorted(result) == []
     assert sorted(states) == ["enter", "exit"]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("cancelled_at_idx", [0, 1, 3])
-async def test_async_map_output_cancellation(cancelled_at_idx):
+async def test_async_map_input_exception_sync_producer():
+    # test exception sync producer
+    result = []
+    states = []
+
+    async def mapper_func(x):
+        await asyncio.sleep(0.1)
+        return x * 2
+
+    def gen():
+        states.append("enter")
+        try:
+            for i in range(5):
+                if i == 3:
+                    raise SampleException("test")
+                yield i
+        finally:
+            states.append("exit")
+
+    with pytest.raises(SampleException):
+        async for item in async_map(gen(), mapper_func, concurrency=3):
+            result.append(item)
+
+    assert sorted(result) == []
+    assert sorted(states) == ["enter", "exit"]
+
+
+@pytest.mark.asyncio
+async def test_async_map_output_exception_async_func():
+    # test cancelling async mapper function
     result = []
     states = []
 
@@ -752,7 +726,7 @@ async def test_async_map_output_cancellation(cancelled_at_idx):
 
     async def mapper_func(x):
         await asyncio.sleep(0.1)
-        if x == cancelled_at_idx:
+        if x == 3:
             raise SampleException("test")
         return x * 2
 
@@ -760,7 +734,42 @@ async def test_async_map_output_cancellation(cancelled_at_idx):
         async for item in async_map(gen(), mapper_func, concurrency=3):
             result.append(item)
 
-    assert sorted(result) == [0, 2, 4][:cancelled_at_idx]
+    assert sorted(result) == [0, 2, 4]
+    assert states == ["enter", "exit"]
+
+
+@pytest.mark.asyncio
+async def test_async_map_streaming_input():
+    # ensure we can stream input
+    # and dont buffer all the items and return them after
+    result = []
+    states = []
+
+    async def gen():
+        states.append("enter")
+        try:
+            yield 1
+            await asyncio.sleep(1)
+            yield 2
+            yield 3
+        finally:
+            states.append("exit")
+
+    async def mapper(x):
+        await asyncio.sleep(0.1)
+        return x * 2
+
+    import time
+
+    start = time.time()
+    async for item in async_map(gen(), mapper, concurrency=3):
+        if item == 2:
+            assert time.time() - start < 0.5
+        else:
+            assert time.time() - start > 0.5
+        result.append(item)
+
+    assert result == [2, 4, 6]
     assert states == ["enter", "exit"]
 
 
