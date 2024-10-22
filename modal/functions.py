@@ -846,6 +846,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     class_parameter_info=info.class_parameter_info(),
                     i6pn_enabled=i6pn_enabled,
                     schedule=schedule.proto_message if schedule is not None else None,
+                    snapshot_debug=config.get("snapshot_debug"),
                     _experimental_group_size=group_size or 0,  # Experimental: Grouped functions
                     _experimental_concurrent_cancellations=True,
                     _experimental_buffer_containers=_experimental_buffer_containers or 0,
