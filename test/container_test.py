@@ -1069,7 +1069,7 @@ def test_container_heartbeats(servicer):
 
 
 @skip_github_non_linux
-def test_cli(servicer):
+def test_cli(servicer, credentials):
     # This tests the container being invoked as a subprocess (the if __name__ == "__main__" block)
 
     # Build up payload we pass through sys args
@@ -1095,7 +1095,8 @@ def test_cli(servicer):
     servicer.container_inputs = _get_inputs()
 
     # Launch subprocess
-    env = {"MODAL_SERVER_URL": servicer.container_addr, "MODAL_TOKEN_ID": "ak-123", "MODAL_TOKEN_SECRET": "as-123"}
+    token_id, token_secret = credentials
+    env = {"MODAL_SERVER_URL": servicer.container_addr, "MODAL_TOKEN_ID": token_id, "MODAL_TOKEN_SECRET": token_secret}
     lib_dir = pathlib.Path(__file__).parent.parent
     args: List[str] = [sys.executable, "-m", "modal._container_entrypoint", data_base64]
     ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -1110,15 +1111,15 @@ def test_cli(servicer):
 
 
 @skip_github_non_linux
-def test_function_sibling_hydration(servicer):
-    deploy_app_externally(servicer, "test.supports.functions", "app", capture_output=False)
+def test_function_sibling_hydration(servicer, credentials):
+    deploy_app_externally(servicer, credentials, "test.supports.functions", "app", capture_output=False)
     ret = _run_container(servicer, "test.supports.functions", "check_sibling_hydration")
     assert _unwrap_scalar(ret) is None
 
 
 @skip_github_non_linux
-def test_multiapp(servicer, caplog):
-    deploy_app_externally(servicer, "test.supports.multiapp", "a")
+def test_multiapp(servicer, credentials, caplog):
+    deploy_app_externally(servicer, credentials, "test.supports.multiapp", "a")
     ret = _run_container(servicer, "test.supports.multiapp", "a_func")
     assert _unwrap_scalar(ret) is None
     assert len(caplog.messages) == 0
@@ -1426,8 +1427,8 @@ def test_derived_cls(servicer):
 
 
 @skip_github_non_linux
-def test_call_function_that_calls_function(servicer):
-    deploy_app_externally(servicer, "test.supports.functions", "app")
+def test_call_function_that_calls_function(servicer, credentials):
+    deploy_app_externally(servicer, credentials, "test.supports.functions", "app")
     ret = _run_container(
         servicer,
         "test.supports.functions",
@@ -1438,9 +1439,9 @@ def test_call_function_that_calls_function(servicer):
 
 
 @skip_github_non_linux
-def test_call_function_that_calls_method(servicer, set_env_client):
+def test_call_function_that_calls_method(servicer, credentials, set_env_client):
     # TODO (elias): Remove set_env_client fixture dependency - shouldn't need an env client here?
-    deploy_app_externally(servicer, "test.supports.functions", "app")
+    deploy_app_externally(servicer, credentials, "test.supports.functions", "app")
     ret = _run_container(
         servicer,
         "test.supports.functions",
@@ -2109,13 +2110,13 @@ def test_class_as_service_serialized(servicer):
 
 
 @skip_github_non_linux
-def test_function_lazy_resolution(servicer, set_env_client):
+def test_function_lazy_resolution(servicer, credentials, set_env_client):
     # Deploy some global objects
     Volume.from_name("my-vol", create_if_missing=True).resolve()
     Queue.from_name("my-queue", create_if_missing=True).resolve()
 
     # Run container
-    deploy_app_externally(servicer, "test.supports.lazy_hydration", "app", capture_output=False)
+    deploy_app_externally(servicer, credentials, "test.supports.lazy_hydration", "app", capture_output=False)
     ret = _run_container(servicer, "test.supports.lazy_hydration", "f", deps=["im-1", "vo-0"])
     assert _unwrap_scalar(ret) is None
 
