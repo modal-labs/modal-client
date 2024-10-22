@@ -16,6 +16,7 @@ import tempfile
 import textwrap
 import threading
 import traceback
+import uuid
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, get_args
@@ -101,7 +102,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     client_addr: str
     container_addr: str
 
-    def __init__(self, blob_host, blobs):
+    def __init__(self, blob_host, blobs, credentials):
         self.use_blob_outputs = False
         self.put_outputs_barrier = threading.Barrier(
             1, timeout=10
@@ -237,7 +238,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.image_join_sleep_duration = None
 
-        self.required_creds = {("ak-123", "as-123")}
+        self.required_creds = {credentials}  # Any of this will be accepted
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -1765,12 +1766,19 @@ async def run_server(servicer, host=None, port=None, path=None):
         await stop_servicer.aio()
 
 
+@pytest.fixture(scope="function")
+def credentials():
+    token_id = "ak-" + str(uuid.uuid4())
+    token_secret = "as-" + str(uuid.uuid4())
+    return (token_id, token_secret)
+
+
 @pytest_asyncio.fixture(scope="function")
-async def servicer(blob_server, temporary_sock_path):
+async def servicer(blob_server, temporary_sock_path, credentials):
     port = find_free_port()
 
     blob_host, blobs = blob_server
-    servicer = MockClientServicer(blob_host, blobs)  # type: ignore
+    servicer = MockClientServicer(blob_host, blobs, credentials)  # type: ignore
 
     if platform.system() != "Windows":
         async with run_server(servicer, host="0.0.0.0", port=port):
@@ -1789,8 +1797,8 @@ async def servicer(blob_server, temporary_sock_path):
 
 
 @pytest_asyncio.fixture(scope="function")
-async def client(servicer):
-    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-123")) as client:
+async def client(servicer, credentials):
+    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
         yield client
 
 
@@ -1807,9 +1815,10 @@ async def server_url_env(servicer, monkeypatch):
 
 
 @pytest_asyncio.fixture(scope="function")
-async def token_env(servicer, monkeypatch):
-    monkeypatch.setenv("MODAL_TOKEN_ID", "ak-123")
-    monkeypatch.setenv("MODAL_TOKEN_SECRET", "as-123")
+async def token_env(servicer, monkeypatch, credentials):
+    token_id, token_secret = credentials
+    monkeypatch.setenv("MODAL_TOKEN_ID", token_id)
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", token_secret)
     yield
 
 
