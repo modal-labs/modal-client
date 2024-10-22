@@ -2,9 +2,10 @@
 import pytest
 import typing
 
+from grpclib import GRPCError, Status
+
 import modal
 from modal.client import Client
-from modal.exception import ExecutionError
 from modal.runner import run_app
 from modal_proto import api_pb2
 
@@ -25,9 +26,10 @@ def test_run_app(servicer, client):
 def test_run_app_unauthenticated(servicer):
     dummy_app = modal.App()
     with Client.anonymous(servicer.client_addr) as client:
-        with pytest.raises(ExecutionError, match=".+unauthenticated client"):
+        with pytest.raises(GRPCError) as excinfo:
             with run_app(dummy_app, client=client):
                 pass
+        assert excinfo.value.status == Status.UNAUTHENTICATED
 
 
 def dummy():

@@ -115,7 +115,6 @@ class _Client:
         self.client_type = client_type
         self._credentials = credentials
         self.version = version
-        self._authenticated = False
         self._closed = False
         self._channel: Optional[grpclib.client.Channel] = None
         self._stub: Optional[modal_api_grpc.ModalClientModal] = None
@@ -124,10 +123,6 @@ class _Client:
 
     def is_closed(self) -> bool:
         return self._closed
-
-    @property
-    def authenticated(self):
-        return self._authenticated
 
     @property
     def stub(self) -> modal_api_grpc.ModalClientModal:
@@ -174,7 +169,6 @@ class _Client:
             if resp.warning:
                 ALARM_EMOJI = chr(0x1F6A8)
                 warnings.warn(f"{ALARM_EMOJI} {resp.warning} {ALARM_EMOJI}", DeprecationError)
-            self._authenticated = True
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
                 raise VersionError(
