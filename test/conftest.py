@@ -41,7 +41,6 @@ from modal._utils.http_utils import run_temporary_http_server
 from modal._vendor import cloudpickle
 from modal.app import _App
 from modal.client import Client
-from modal.config import _user_config
 from modal.image import ImageBuilderVersion
 from modal.mount import client_mount_name
 from modal_proto import api_grpc, api_pb2
@@ -68,7 +67,7 @@ def disable_app_run_warning(monkeypatch):
 @pytest.fixture(scope="function", autouse=True)
 def ignore_local_config():
     # When running tests locally, we don't want to pick up the local .modal.toml file
-    _user_config.clear()
+    config._user_config = {}
     yield
 
 
