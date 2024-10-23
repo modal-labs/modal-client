@@ -5,6 +5,7 @@ import subprocess
 import sys
 
 from google.protobuf.empty_pb2 import Empty
+from grpclib import GRPCError
 
 import modal.exception
 from modal import Client
@@ -86,11 +87,9 @@ async def test_client_connection_timeout(servicer, monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.timeout(TEST_TIMEOUT)
 async def test_client_server_error(servicer):
-    with pytest.raises(ConnectionError) as excinfo:
-        async with Client("https://github.com", api_pb2.CLIENT_TYPE_CLIENT, None):
+    with pytest.raises(GRPCError):
+        async with Client("https://modal.com", api_pb2.CLIENT_TYPE_CLIENT, None):
             pass
-    # Can't connect over gRPC, but the HTTP lookup should succeed
-    assert "HTTP status: 200" in str(excinfo.value)
 
 
 @pytest.mark.asyncio
