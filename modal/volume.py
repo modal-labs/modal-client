@@ -30,7 +30,7 @@ from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
 import modal_proto.api_pb2
-from modal.exception import InvalidError, VolumeUploadTimeoutError, deprecation_error, deprecation_warning
+from modal.exception import VolumeUploadTimeoutError, deprecation_error, deprecation_warning
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
@@ -516,31 +516,8 @@ class _Volume(_Object, type_prefix="vo"):
             self._client.stub.VolumeDelete, api_pb2.VolumeDeleteRequest(volume_id=self.object_id)
         )
 
-    # @staticmethod  # TODO uncomment when enforcing deprecation of instance method invocation
-    async def delete(*args, label: str = "", client: Optional[_Client] = None, environment_name: Optional[str] = None):
-        # -- Backwards-compatibility section
-        # TODO(michael) Upon enforcement of this deprecation, remove *args and the default argument for label=.
-        if args:
-            if isinstance(self := args[0], _Volume):
-                # TODO(michael) we have some second-thoughts about whether deletion methods
-                # should be static or instance. We might revert this, but there isn't consensus.
-                msg = (
-                    "Calling Volume.delete as an instance method is deprecated."
-                    " Please update your code to call it as a static method, passing"
-                    " the name of the volume to delete, e.g. `modal.Volume.delete('my-volume')`."
-                )
-                deprecation_warning((2024, 4, 23), msg)
-                await self._instance_delete()
-                return
-            elif isinstance(args[0], type):
-                args = args[1:]
-
-            if isinstance(args[0], str):
-                if label:
-                    raise InvalidError("`label` specified as both positional and keyword argument")
-                label = args[0]
-        # -- Backwards-compatibility code ends here
-
+    @staticmethod
+    async def delete(label: str, client: Optional[_Client] = None, environment_name: Optional[str] = None):
         obj = await _Volume.lookup(label, client=client, environment_name=environment_name)
         req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.VolumeDelete, req)
