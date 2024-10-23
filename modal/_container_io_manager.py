@@ -420,7 +420,7 @@ class _ContainerIOManager:
                         max_retries=None,  # Retry indefinitely, trying every 1s.
                     )
 
-                elif self.current_input_id in input_ids_to_cancel:
+                elif self.current_input_id and self.current_input_id in input_ids_to_cancel:
                     # This goes to a registered signal handler for sync Modal functions, or to the
                     # `SignalHandlingEventLoop` for async functions.
                     #
@@ -429,6 +429,20 @@ class _ContainerIOManager:
                     # SIGUSR1 signal should interrupt the main thread where user code is running,
                     # raising an InputCancellation() exception. On async functions, the signal should
                     # reach a handler in SignalHandlingEventLoop, which cancels the task.
+                    await retry_transient_errors(
+                        self._client.stub.FunctionPutOutputs,
+                        api_pb2.FunctionPutOutputsRequest(
+                            outputs=[
+                                api_pb2.FunctionPutOutputsItem(
+                                    input_id=self.current_input_id,
+                                    result=api_pb2.GenericResult(
+                                        status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
+                                    ),
+                                )
+                            ]
+                        ),
+                        max_retries=None,  # Retry indefinitely, trying every 1s.
+                    )
                     os.kill(os.getpid(), signal.SIGUSR1)
             return True
         return False
