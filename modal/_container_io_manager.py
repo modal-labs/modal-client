@@ -401,24 +401,13 @@ class _ContainerIOManager:
 
             if input_ids_to_cancel:
                 if self._max_concurrency > 1:
-                    outputs = []
-                    for input_id in input_ids_to_cancel:
-                        if input_id in self.current_inputs:
-                            self.current_inputs[input_id].cancel()
-                            outputs.append(
-                                api_pb2.FunctionPutOutputsItem(
-                                    input_id=input_id,
-                                    result=api_pb2.GenericResult(
-                                        status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
-                                    ),
-                                )
-                            )
+                    current_input_ids_to_cancel = [
+                        input_id for input_id in input_ids_to_cancel if input_id in self.current_inputs
+                    ]
+                    for input_id in current_input_ids_to_cancel:
+                        self.current_inputs[input_id].cancel()
 
-                    await retry_transient_errors(
-                        self._client.stub.FunctionPutOutputs,
-                        api_pb2.FunctionPutOutputsRequest(outputs=outputs),
-                        max_retries=None,  # Retry indefinitely, trying every 1s.
-                    )
+                    await self._push_terminated_outputs(current_input_ids_to_cancel)
 
                 elif self.current_input_id and self.current_input_id in input_ids_to_cancel:
                     # This goes to a registered signal handler for sync Modal functions, or to the
@@ -429,23 +418,24 @@ class _ContainerIOManager:
                     # SIGUSR1 signal should interrupt the main thread where user code is running,
                     # raising an InputCancellation() exception. On async functions, the signal should
                     # reach a handler in SignalHandlingEventLoop, which cancels the task.
-                    await retry_transient_errors(
-                        self._client.stub.FunctionPutOutputs,
-                        api_pb2.FunctionPutOutputsRequest(
-                            outputs=[
-                                api_pb2.FunctionPutOutputsItem(
-                                    input_id=self.current_input_id,
-                                    result=api_pb2.GenericResult(
-                                        status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
-                                    ),
-                                )
-                            ]
-                        ),
-                        max_retries=None,  # Retry indefinitely, trying every 1s.
-                    )
+                    await self._push_terminated_outputs([self.current_input_id])
                     os.kill(os.getpid(), signal.SIGUSR1)
             return True
         return False
+
+    async def _push_terminated_outputs(self, input_ids: List[str]) -> None:
+        outputs = [
+            api_pb2.FunctionPutOutputsItem(
+                input_id=input_id,
+                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED),
+            )
+            for input_id in input_ids
+        ]
+        await retry_transient_errors(
+            self._client.stub.FunctionPutOutputs,
+            api_pb2.FunctionPutOutputsRequest(outputs=outputs),
+            max_retries=None,  # Retry indefinitely, trying every 1s.
+        )
 
     @asynccontextmanager
     async def heartbeats(self, wait_for_mem_snap: bool) -> AsyncGenerator[None, None]:
