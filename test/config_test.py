@@ -53,7 +53,7 @@ def test_config_store_user(servicer, modal_config):
     with modal_config(show_on_error=True) as config_file_path:
         env = {"MODAL_SERVER_URL": servicer.client_addr}
 
-        servicer.required_creds = {("abc", "xyz"), ("foo", "bar1"), ("foo", "bar2"), ("ABC", "XYZ"), ("foo", "bar3")}
+        servicer.required_creds = {"abc": "xyz", "foo": "bar1", "foo2": "bar2", "ABC": "XYZ", "foo3": "bar3"}
 
         # No token by default
         config = _get_config(env=env)
@@ -72,9 +72,9 @@ def test_config_store_user(servicer, modal_config):
             env=env,
         )
 
-        # Set creds to foo / bar2 for the prof_2 profile (given as an env var)
+        # Set creds to foo2 / bar2 for the prof_2 profile (given as an env var)
         _cli(
-            ["token", "set", "--token-id", "foo", "--token-secret", "bar2", "--no-activate"],
+            ["token", "set", "--token-id", "foo2", "--token-secret", "bar2", "--no-activate"],
             env={"MODAL_PROFILE": "prof_2", **env},
         )
 
@@ -100,7 +100,7 @@ def test_config_store_user(servicer, modal_config):
 
         # Check that we can get the prof_2 env creds too
         config = _get_config(env={"MODAL_PROFILE": "prof_2", **env})
-        assert config["token_id"] == "foo"
+        assert config["token_id"] == "foo2"
         assert config["token_secret"] == "bar2"
 
         # Check that an empty string falls back to the active profile
@@ -120,7 +120,7 @@ def test_config_store_user(servicer, modal_config):
 
         # Check that we activate a profile by default while setting a token
         _cli(
-            ["token", "set", "--token-id", "foo", "--token-secret", "bar3", "--profile", "prof_3"],
+            ["token", "set", "--token-id", "foo3", "--token-secret", "bar3", "--profile", "prof_3"],
             env=env,
         )
         for profile, profile_config in toml.load(config_file_path).items():
@@ -145,7 +145,7 @@ def test_config_env_override_arbitrary_env():
 
 @pytest.mark.asyncio
 async def test_workspace_lookup(servicer, server_url_env):
-    servicer.required_creds = {("ak-abc", "as-xyz")}
+    servicer.required_creds = {"ak-abc": "as-xyz"}
     resp = await synchronize_api(_lookup_workspace).aio(servicer.client_addr, "ak-abc", "as-xyz")
     assert resp.username == "test-username"
 
