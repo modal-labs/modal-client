@@ -151,6 +151,18 @@ def test_client_from_env_client(servicer, credentials):
         Client.set_env_client(None)
 
 
+def test_client_token_auth_in_container(servicer, credentials, monkeypatch) -> None:
+    """Ensure that clients can connect with token credentials inside a container.
+
+    This test is needed so that modal.com/playground works, since it relies on
+    running a sandbox with token credentials. Also, `modal shell` uses this to
+    preserve its auth context inside the shell.
+    """
+    monkeypatch.setenv("MODAL_IS_REMOTE", "1")
+    _client = client_from_env(servicer.client_addr, credentials)
+    assert servicer.client_create_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
+
+
 def test_multiple_profile_error(servicer, modal_config):
     config = """
     [prof-1]
