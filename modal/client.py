@@ -33,7 +33,7 @@ from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import create_channel, retry_transient_errors
 from ._utils.http_utils import ClientSessionRegistry
-from .config import _check_config, config, logger
+from .config import _check_config, _is_remote, config, logger
 from .exception import AuthError, ClientClosed, ConnectionError, DeprecationError, VersionError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
@@ -115,7 +115,6 @@ class _Client:
         self.client_type = client_type
         self._credentials = credentials
         self.version = version
-        self._authenticated = False
         self._closed = False
         self._channel: Optional[grpclib.client.Channel] = None
         self._stub: Optional[modal_api_grpc.ModalClientModal] = None
@@ -124,10 +123,6 @@ class _Client:
 
     def is_closed(self) -> bool:
         return self._closed
-
-    @property
-    def authenticated(self):
-        return self._authenticated
 
     @property
     def stub(self) -> modal_api_grpc.ModalClientModal:
@@ -148,6 +143,7 @@ class _Client:
         self._owner_pid = os.getpid()
 
     async def _close(self, prep_for_restore: bool = False):
+        logger.debug(f"Client ({id(self)}): closing")
         self._closed = True
         await self._cancellation_context.__aexit__(None, None, None)  # wait for all rpcs to be finished/cancelled
         if self._channel is not None:
@@ -161,7 +157,7 @@ class _Client:
 
     async def _init(self):
         """Connect to server and retrieve version information; raise appropriate error for various failures."""
-        logger.debug("Client: Starting")
+        logger.debug(f"Client ({id(self)}): Starting")
         _check_config()
         try:
             req = empty_pb2.Empty()
@@ -174,7 +170,6 @@ class _Client:
             if resp.warning:
                 ALARM_EMOJI = chr(0x1F6A8)
                 warnings.warn(f"{ALARM_EMOJI} {resp.warning} {ALARM_EMOJI}", DeprecationError)
-            self._authenticated = True
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
                 raise VersionError(
@@ -226,19 +221,7 @@ class _Client:
         else:
             c = config
 
-        server_url = c["server_url"]
-
-        token_id = c["token_id"]
-        token_secret = c["token_secret"]
-        task_id = c["task_id"]
-        credentials = None
-
-        if task_id:
-            client_type = api_pb2.CLIENT_TYPE_CONTAINER
-        else:
-            client_type = api_pb2.CLIENT_TYPE_CLIENT
-            if token_id and token_secret:
-                credentials = (token_id, token_secret)
+        credentials: Optional[Tuple[str, str]]
 
         if cls._client_from_env_lock is None:
             cls._client_from_env_lock = asyncio.Lock()
@@ -246,24 +229,29 @@ class _Client:
         async with cls._client_from_env_lock:
             if cls._client_from_env:
                 return cls._client_from_env
+
+            if _is_remote():
+                client_type = api_pb2.CLIENT_TYPE_CONTAINER
+                credentials = None
             else:
-                client = _Client(server_url, client_type, credentials)
-                await client._open()
-                async_utils.on_shutdown(client._close())
-                try:
-                    await client._init()
-                except AuthError:
-                    if not credentials:
-                        creds_missing_msg = (
-                            "Token missing. Could not authenticate client."
-                            " If you have token credentials, see modal.com/docs/reference/modal.config for setup help."
-                            " If you are a new user, register an account at modal.com, then run `modal token new`."
-                        )
-                        raise AuthError(creds_missing_msg)
-                    else:
-                        raise
-                cls._client_from_env = client
-                return client
+                client_type = api_pb2.CLIENT_TYPE_CLIENT
+                token_id = c["token_id"]
+                token_secret = c["token_secret"]
+                if not token_id or not token_secret:
+                    raise AuthError(
+                        "Token missing. Could not authenticate client."
+                        " If you have token credentials, see modal.com/docs/reference/modal.config for setup help."
+                        " If you are a new user, register an account at modal.com, then run `modal token new`."
+                    )
+                credentials = (token_id, token_secret)
+
+            server_url = c["server_url"]
+            client = _Client(server_url, client_type, credentials)
+            await client._open()
+            async_utils.on_shutdown(client._close())
+            await client._init()
+            cls._client_from_env = client
+            return client
 
     @classmethod
     async def from_credentials(cls, token_id: str, token_secret: str) -> "_Client":
@@ -315,7 +303,7 @@ class _Client:
 
         if self.is_closed():
             coro.close()  # prevent "was never awaited"
-            raise ClientClosed()
+            raise ClientClosed(id(self))
 
         current_event_loop = asyncio.get_running_loop()
         if current_event_loop == self._cancellation_context_event_loop:
@@ -325,7 +313,7 @@ class _Client:
                 return await self._cancellation_context.create_task(coro)
             except asyncio.CancelledError:
                 if self.is_closed():
-                    raise ClientClosed() from None
+                    raise ClientClosed(id(self)) from None
                 raise  # if the task is cancelled as part of synchronizer shutdown or similar, don't raise ClientClosed
         else:
             # this should be rare - mostly used in tests where rpc requests sometimes are triggered
@@ -419,6 +407,9 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         timeout: Optional[float] = None,
         metadata: Optional[_MetadataLike] = None,
     ) -> ResponseType:
+        if self.client._snapshotted:
+            logger.debug(f"refreshing client after snapshot for {self._wrapped_method_name}")
+            self.client = await _Client.from_env()
         return await self.client._call_unary(self._wrapped_method_name, req, timeout=timeout, metadata=metadata)
 
 
@@ -439,5 +430,8 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
         request,
         metadata: Optional[Any] = None,
     ):
+        if self.client._snapshotted:
+            logger.debug(f"refreshing client after snapshot for {self._wrapped_method_name}")
+            self.client = await _Client.from_env
         async for response in self.client._call_stream(self._wrapped_method_name, request, metadata=metadata):
             yield response
