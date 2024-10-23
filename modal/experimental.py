@@ -46,8 +46,13 @@ def grouped(size: int):
 
     The underlying function is wrapper with _network to ensure that container
     i6pn addresses are synchronized across all machines.
-    When wrapped with app.function(), a _GroupedFunction will be produced instead of
-    a Function. The call logic for a _GroupedFunction is defined above.
+
+    Usage:
+
+    @app.function()
+    @modal.experimental.grouped(size=2)
+    def grouped_function():
+        ...
     """
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
