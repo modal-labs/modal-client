@@ -595,10 +595,12 @@ def _enter(
 
 
 ExitHandlerType = Union[
+    # NOTE: return types of these callables should be `Union[None, Awaitable[None]]` but
+    #       synchronicity type stubs would strip Awaitable so we use Any for now
     # Original, __exit__ style method signature (now deprecated)
-    Callable[[Any, Optional[Type[BaseException]], Optional[BaseException], Any], None],
+    Callable[[Any, Optional[Type[BaseException]], Optional[BaseException], Any], Any],
     # Forward-looking unparameterized method
-    Callable[[Any], None],
+    Callable[[Any], Any],
 ]
 
 
