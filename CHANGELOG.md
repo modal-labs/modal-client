@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.218 (2024-10-23)
+
+- Fix a regression introduced in client version 0.64.209, which affects client authentication within a container.
+
+
+
 ### 0.64.198 (2024-10-18)
 
 Fixes a bug where `Queue.put` and `Queue.put_many` would throw `queue.Full` even if `timeout=None`.
