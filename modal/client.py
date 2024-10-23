@@ -206,20 +206,20 @@ class _Client:
             if cls._client_from_env:
                 return cls._client_from_env
 
-            if _is_remote():
+            token_id = c["token_id"]
+            token_secret = c["token_secret"]
+            if token_id and token_secret:
+                client_type = api_pb2.CLIENT_TYPE_CLIENT
+                credentials = (token_id, token_secret)
+            elif _is_remote():
                 client_type = api_pb2.CLIENT_TYPE_CONTAINER
                 credentials = None
             else:
-                client_type = api_pb2.CLIENT_TYPE_CLIENT
-                token_id = c["token_id"]
-                token_secret = c["token_secret"]
-                if not token_id or not token_secret:
-                    raise AuthError(
-                        "Token missing. Could not authenticate client."
-                        " If you have token credentials, see modal.com/docs/reference/modal.config for setup help."
-                        " If you are a new user, register an account at modal.com, then run `modal token new`."
-                    )
-                credentials = (token_id, token_secret)
+                raise AuthError(
+                    "Token missing. Could not authenticate client."
+                    " If you have token credentials, see modal.com/docs/reference/modal.config for setup help."
+                    " If you are a new user, register an account at modal.com, then run `modal token new`."
+                )
 
             server_url = c["server_url"]
             client = _Client(server_url, client_type, credentials)
