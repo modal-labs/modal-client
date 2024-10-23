@@ -601,8 +601,8 @@ async def async_map(
     async_mapper_func: Callable[[T], Awaitable[V]],
     concurrency: int,
 ) -> AsyncGenerator[V, None]:
-    input_queue: asyncio.Queue[Union[ValueWrapper[T], StopSentinelType]] = asyncio.Queue()
-    output_queue: asyncio.Queue[Union[ValueWrapper[V], ExceptionWrapper]] = asyncio.Queue()
+    input_queue: asyncio.Queue[Union[ValueWrapper[T], StopSentinelType]] = asyncio.Queue(maxsize=concurrency * 2)
+    output_queue: asyncio.Queue[Union[ValueWrapper[V], ExceptionWrapper]] = asyncio.Queue(maxsize=concurrency * 2)
 
     async def producer():
         async for item in sync_or_async_iter(input_iterable):
