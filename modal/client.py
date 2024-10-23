@@ -409,6 +409,6 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
     ):
         if self.client._snapshotted:
             logger.debug(f"refreshing client after snapshot for {self._wrapped_method_name}")
-            self.client = await _Client.from_env
+            self.client = await _Client.from_env()
         async for response in self.client._call_stream(self._wrapped_method_name, request, metadata=metadata):
             yield response
