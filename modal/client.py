@@ -152,9 +152,6 @@ class _Client:
         if prep_for_restore:
             self._snapshotted = True
 
-        # Remove cached client.
-        self.set_env_client(None)
-
     async def _init(self):
         """Connect to server and retrieve version information; raise appropriate error for various failures."""
         logger.debug(f"Client ({id(self)}): Starting")
