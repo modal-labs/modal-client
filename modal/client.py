@@ -138,7 +138,6 @@ class _Client:
     async def hello(self):
         """Connect to server and retrieve version information; raise appropriate error for various failures."""
         logger.debug(f"Client ({id(self)}): Starting")
-        _check_config()
         try:
             req = empty_pb2.Empty()
             resp = await retry_transient_errors(
@@ -190,6 +189,8 @@ class _Client:
         """mdmd:hidden
         Singleton that is instantiated from the Modal config and reused on subsequent calls.
         """
+        _check_config()
+
         if _override_config:
             # Only used for testing
             c = _override_config
@@ -241,6 +242,7 @@ class _Client:
         modal.Sandbox.create("echo", "hi", client=client, app=app)
         ```
         """
+        _check_config()
         server_url = config["server_url"]
         client_type = api_pb2.CLIENT_TYPE_CLIENT
         credentials = (token_id, token_secret)

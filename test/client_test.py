@@ -165,10 +165,10 @@ def test_multiple_profile_error(servicer, modal_config):
     """
     with modal_config(config):
         with pytest.raises(InvalidError, match="More than one Modal profile is active"):
-            Client.verify(servicer.client_addr, None)
+            Client.from_env()
 
 
-def test_implicit_default_profile_warning(servicer, modal_config, credentials):
+def test_implicit_default_profile_warning(servicer, modal_config, server_url_env):
     config = """
     [default]
     token_id = 'ak-abc'
@@ -180,7 +180,7 @@ def test_implicit_default_profile_warning(servicer, modal_config, credentials):
     """
     with modal_config(config):
         with pytest.raises(DeprecationError, match="Support for using an implicit 'default' profile is deprecated."):
-            Client.verify(servicer.client_addr, None)
+            Client.from_env()
 
     config = """
     [default]
@@ -188,8 +188,9 @@ def test_implicit_default_profile_warning(servicer, modal_config, credentials):
     token_secret = 'as_xyz'
     """
     with modal_config(config):
+        servicer.required_creds = {("ak-abc", "as_xyz")}
         # A single profile should be fine, even if not explicitly active and named 'default'
-        Client.verify(servicer.client_addr, credentials)
+        Client.from_env()
 
 
 def test_import_modal_from_thread(supports_dir):
