@@ -1,23 +1,17 @@
 # Copyright Modal Labs 2022
-import typing
 from functools import wraps
 from typing import (
     Any,
     Callable,
-    List,
 )
 
 import modal
 
 from ._container_io_manager import _ContainerIOManager
-from ._utils.async_utils import (
-    synchronize_api,
-)
 from .exception import (
     InvalidError,
 )
-from .functions import Function, FunctionCall, OriginalReturnType, P, ReturnType, _Function
-from .object import _Object
+from .functions import _Function
 from .partial_function import _PartialFunction, _PartialFunctionFlags
 
 
@@ -45,78 +39,6 @@ def set_local_input_concurrency(concurrency: int):
 
 
 # START Experimental: Grouped functions
-
-
-class _GroupedFunctionCall(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type_prefix="gc"):
-    """Wrapper around _FunctionCall that allows for grouped functions to be spawned."""
-
-    def __init__(self, handles: List[FunctionCall]):
-        self.handles: List[FunctionCall] = handles
-
-    def get(self, *args: P.args, **kwargs: P.kwargs) -> List[ReturnType]:
-        """Get the result of a grouped function call."""
-        output: List[ReturnType] = []
-        for handle in self.handles:
-            output.append(handle.get())
-        return output
-
-    def __getattr__(self, name):
-        def unsupported_method(*args, **kwargs):
-            raise NotImplementedError(f"Grouped function does not support the '{name}' method")
-
-        return unsupported_method
-
-    def cancel(
-        self,
-        terminate_containers: bool = False,
-    ) -> None:
-        for handle in self.handles:
-            handle.cancel(terminate_containers)
-
-
-class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type_prefix="gf"):
-    """Experimental wrapper around _Function that allows for containers to be spun up concurrently."""
-
-    def __init__(self, f: _Function, size: int):
-        self.f = synchronize_api(f)
-        self.size = size
-        self._client = None
-
-    def remote(self, *args: P.args, **kwargs: P.kwargs) -> List[ReturnType]:
-        """
-        Calls the function remotely, executing it with the given arguments and returning the execution's result.
-        """
-        handler = self.spawn(*args, **kwargs)
-        return handler.get()
-
-    def spawn(self, *args: P.args, **kwargs: P.kwargs) -> _GroupedFunctionCall:
-        worker_handles: List[FunctionCall] = []
-        with modal.Queue.ephemeral(client=self.client) as q:
-            for i in range(self.size):
-                handle = self.f.spawn(*args, **kwargs, modal_rank=i, modal_size=self.size, modal_q=q)
-                worker_handles.append(handle)
-        handler: _GroupedFunctionCall = _GroupedFunctionCall(worker_handles)
-        return handler
-
-    def get_underlying_function(self) -> Function:
-        return self.f
-
-    def __getattr__(self, name):
-        def unsupported_method(*args, **kwargs):
-            raise NotImplementedError(f"Grouped function does not support the '{name}' method")
-
-        return unsupported_method
-
-    @property
-    def client(self):
-        return self._client
-
-    @client.setter
-    def client(self, value):
-        self._client = value
-
-
-GroupedFunction = synchronize_api(_GroupedFunction)
 
 
 def grouped(size: int):
@@ -170,9 +92,9 @@ def _networked(func):
         # See MOD-4067.
         os.environ["NCCL_HOSTID"] = f"{hostname}{addr_info}"
 
-        rank = kwargs.pop("modal_rank", None)
-        size = kwargs.pop("modal_size", None)
-        q = kwargs.pop("modal_q", None)
+        rank: int = kwargs.pop("modal_rank", None)
+        size: int = kwargs.pop("modal_size", None)
+        q: modal.Queue = kwargs.pop("modal_q", None)
 
         if rank is None or size is None or q is None:
             raise ValueError("Missing required arguments; `_networked` must be called using `grouped` decorator")
