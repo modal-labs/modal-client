@@ -498,6 +498,7 @@ async def sync_or_async_iter(iterable: Union[Iterable[T], AsyncIterable[T]]) -> 
         async for item in typing.cast(AsyncIterable[T], iterable):
             yield item
     else:
+        assert hasattr(iterable, "__iter__"), "sync_or_async_iter requires an iterable or async iterable"
         # This intentionally could block the event loop for the duration of calling __iter__ and __next__,
         # so in non-trivial cases (like passing lists and ranges) this could be quite a foot gun for users #
         # w/ async code (but they can work around it by always using async iterators)
@@ -610,21 +611,19 @@ async def async_map(
 
     async def worker():
         while True:
+            item = await input_queue.get()
             try:
-                item = await input_queue.get()
                 if isinstance(item, ValueWrapper):
                     try:
                         res = await async_mapper_func(item.value)
                     except Exception as e:
                         await output_queue.put(ExceptionWrapper(e))
-                    else:
-                        await output_queue.put(ValueWrapper(res))
+                        continue
+
+                    await output_queue.put(ValueWrapper(res))
                 else:
                     assert_type(item, StopSentinelType)
                     break
-
-            except Exception as e:
-                await output_queue.put(ExceptionWrapper(e))
             finally:
                 input_queue.task_done()
 
@@ -681,7 +680,10 @@ async def async_map(
     finally:
         for task in all_tasks:
             task.cancel()
-        await asyncio.gather(*all_tasks, return_exceptions=True)
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 
 async def async_map_ordered(

@@ -683,6 +683,67 @@ async def test_async_map_input_exception_async_producer():
 
 
 @pytest.mark.asyncio
+async def test_async_map_input_cancellation_async_producer():
+    # test cancelling async_map while waiting for input
+    result = []
+    states = []
+
+    async def mapper_func(x):
+        await asyncio.sleep(0.1)
+        return x * 2
+
+    async def gen():
+        states.append("enter")
+        try:
+            for i in range(5):
+                if i == 3:
+                    raise asyncio.CancelledError()
+                yield i
+        finally:
+            states.append("exit")
+
+    with pytest.raises(asyncio.CancelledError):
+        async for item in async_map(gen(), mapper_func, concurrency=3):
+            result.append(item)
+
+    assert sorted(result) == []
+    assert sorted(states) == ["enter", "exit"]
+
+
+@pytest.mark.asyncio
+async def test_async_map_cancellation_waiting_for_input():
+    # test cancelling async_map while waiting for input
+    result = []
+    states = []
+
+    async def mapper_func(x):
+        return x * 2
+
+    blocking_event = asyncio.Event()
+
+    async def gen():
+        states.append("enter")
+        try:
+            await blocking_event.wait()
+            yield 1
+        finally:
+            states.append("exit")
+
+    async def mapper_coro():
+        async for item in async_map(gen(), mapper_func, concurrency=3):
+            result.append(item)
+
+    mapper_task = asyncio.create_task(mapper_coro())
+    await asyncio.sleep(0.1)
+    mapper_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await mapper_task
+
+    assert sorted(result) == []
+    assert sorted(states) == ["enter", "exit"]
+
+
+@pytest.mark.asyncio
 async def test_async_map_input_exception_sync_producer():
     # test exception sync producer
     result = []
