@@ -200,7 +200,7 @@ def test_implicit_default_profile_warning(servicer, modal_config, server_url_env
     token_secret = 'as_xyz'
     """
     with modal_config(config):
-        servicer.required_creds = {("ak-abc", "as_xyz")}
+        servicer.required_creds = {"ak-abc": "as_xyz"}
         # A single profile should be fine, even if not explicitly active and named 'default'
         Client.from_env()
 
@@ -220,14 +220,16 @@ def test_from_env_container(servicer, container_env):
 
 def test_from_credentials_client(servicer, set_env_client, server_url_env, token_env):
     # Note: this explicitly uses a lot of fixtures to make sure those are ignored
-    creds = ("ak-foo-1", "as-bar")
-    servicer.required_creds = {creds}
-    Client.from_credentials(*creds)
+    token_id = "ak-foo-1"
+    token_secret = "as-bar"
+    servicer.required_creds = {token_id: token_secret}
+    Client.from_credentials(token_id, token_secret)
     # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
 
 
 def test_from_credentials_container(servicer, container_env):
-    creds = ("ak-foo-2", "as-bar")
-    servicer.required_creds = {creds}
-    Client.from_credentials(*creds)
+    token_id = "ak-foo-2"
+    token_secret = "as-bar"
+    servicer.required_creds = {token_id: token_secret}
+    Client.from_credentials(token_id, token_secret)
     # TODO(erikbern): once we no longer run ClientHello by default, add a ping here

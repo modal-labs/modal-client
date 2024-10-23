@@ -65,7 +65,7 @@ def test_auth_failure_last_line(servicer, credentials):
     )
     try:
         assert returncode != 0
-        assert "auth token" in err.strip().split("\n")[-1]  # err msg should be on the last line
+        assert "token" in err.strip().split("\n")[-1]  # err msg should be on the last line
     except Exception:
         print("out:", repr(out))
         print("err:", repr(err))

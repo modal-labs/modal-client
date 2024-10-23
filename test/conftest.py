@@ -245,7 +245,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.image_join_sleep_duration = None
 
-        self.required_creds = {credentials}  # Any of this will be accepted
+        token_id, token_secret = credentials
+        self.required_creds = {token_id: token_secret}  # Any of this will be accepted
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -267,11 +268,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
             ]:
                 pass  # Methods that don't require authentication
             else:
-                creds = (event.metadata.get("x-modal-token-id"), event.metadata.get("x-modal-token-secret"))
-                if creds not in self.required_creds:
-                    raise GRPCError(
-                        Status.UNAUTHENTICATED, f"Incorrect auth token {creds} for method {event.method_name}"
-                    )
+                token_id = event.metadata.get("x-modal-token-id")
+                token_secret = event.metadata.get("x-modal-token-secret")
+                if not token_id or not token_secret:
+                    raise GRPCError(Status.UNAUTHENTICATED, f"No credentials for method {event.method_name}")
+                elif token_id not in self.required_creds:
+                    raise GRPCError(Status.UNAUTHENTICATED, f"Invalid {token_id=!r} for method {event.method_name}")
+                elif self.required_creds[token_id] != token_secret:
+                    raise GRPCError(Status.UNAUTHENTICATED, f"Invalid token secret for for method {event.method_name}")
         elif event.metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER):
             for header in [
                 "x-modal-token-id",
