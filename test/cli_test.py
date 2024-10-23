@@ -113,14 +113,14 @@ def test_secret_list(servicer, set_env_client):
 
 
 def test_app_token_new(servicer, set_env_client, server_url_env, modal_config):
-    servicer.required_creds = {("abc", "xyz")}
+    servicer.required_creds = {"abc": "xyz"}
     with modal_config() as config_file_path:
         _run(["token", "new", "--profile", "_test"])
         assert "_test" in toml.load(config_file_path)
 
 
 def test_app_setup(servicer, set_env_client, server_url_env, modal_config):
-    servicer.required_creds = {("abc", "xyz")}
+    servicer.required_creds = {"abc": "xyz"}
     with modal_config() as config_file_path:
         _run(["setup", "--profile", "_test"])
         assert "_test" in toml.load(config_file_path)
@@ -756,7 +756,7 @@ def test_profile_list(servicer, server_url_env, modal_config):
     """
 
     with modal_config(config):
-        servicer.required_creds = {("ak-abc", "as-xyz"), ("ak-123", "as-789")}
+        servicer.required_creds = {"ak-abc": "as-xyz", "ak-123": "as-789"}
         res = _run(["profile", "list"])
         table_rows = res.stdout.split("\n")
         assert re.search("Profile .+ Workspace", table_rows[1])
@@ -774,7 +774,7 @@ def test_profile_list(servicer, server_url_env, modal_config):
         orig_env_token_secret = os.environ.get("MODAL_TOKEN_SECRET")
         os.environ["MODAL_TOKEN_ID"] = "ak-abc"
         os.environ["MODAL_TOKEN_SECRET"] = "as-xyz"
-        servicer.required_creds = {("ak-abc", "as-xyz")}
+        servicer.required_creds = {"ak-abc": "as-xyz"}
         try:
             res = _run(["profile", "list"])
             assert "Using test-username workspace based on environment variables" in res.stdout
