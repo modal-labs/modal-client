@@ -64,6 +64,13 @@ def disable_app_run_warning(monkeypatch):
     monkeypatch.setenv("MODAL_DISABLE_APP_RUN_OUTPUT_WARNING", "1")
 
 
+@pytest.fixture(scope="function", autouse=True)
+def ignore_local_config():
+    # When running tests locally, we don't want to pick up the local .modal.toml file
+    config._user_config = {}
+    yield
+
+
 class FunctionsRegistry:
     def __init__(self):
         self._functions: Dict[str, api_pb2.Function] = {}
@@ -238,7 +245,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.image_join_sleep_duration = None
 
-        self.required_creds = {credentials}  # Any of this will be accepted
+        token_id, token_secret = credentials
+        self.required_creds = {token_id: token_secret}  # Any of this will be accepted
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -260,11 +268,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
             ]:
                 pass  # Methods that don't require authentication
             else:
-                creds = (event.metadata.get("x-modal-token-id"), event.metadata.get("x-modal-token-secret"))
-                if creds not in self.required_creds:
-                    raise GRPCError(
-                        Status.UNAUTHENTICATED, f"Incorrect auth token {creds} for method {event.method_name}"
-                    )
+                token_id = event.metadata.get("x-modal-token-id")
+                token_secret = event.metadata.get("x-modal-token-secret")
+                if not token_id or not token_secret:
+                    raise GRPCError(Status.UNAUTHENTICATED, f"No credentials for method {event.method_name}")
+                elif token_id not in self.required_creds:
+                    raise GRPCError(Status.UNAUTHENTICATED, f"Invalid {token_id=!r} for method {event.method_name}")
+                elif self.required_creds[token_id] != token_secret:
+                    raise GRPCError(Status.UNAUTHENTICATED, f"Invalid token secret for for method {event.method_name}")
         elif event.metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER):
             for header in [
                 "x-modal-token-id",
@@ -1819,6 +1830,14 @@ async def token_env(servicer, monkeypatch, credentials):
     token_id, token_secret = credentials
     monkeypatch.setenv("MODAL_TOKEN_ID", token_id)
     monkeypatch.setenv("MODAL_TOKEN_SECRET", token_secret)
+    yield
+
+
+@pytest_asyncio.fixture(scope="function")
+async def container_env(servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SERVER_URL", servicer.container_addr)
+    monkeypatch.setenv("MODAL_TASK_ID", "ta-123")
+    monkeypatch.setenv("MODAL_IS_REMOTE", "1")
     yield
 
 

@@ -33,7 +33,7 @@ def dummy():
 
 
 def test_supported_python_series():
-    assert SUPPORTED_PYTHON_SERIES == PYTHON_STANDALONE_VERSIONS.keys()
+    assert SUPPORTED_PYTHON_SERIES == list(PYTHON_STANDALONE_VERSIONS)
 
 
 def get_image_layers(image_id: str, servicer) -> List[api_pb2.Image]:
