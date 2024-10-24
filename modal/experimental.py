@@ -135,7 +135,7 @@ def grouped(size: int):
                 f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
                 "@app.function()\n@modal.grouped()\ndef grouped_function():\n    ..."
             )
-        raw_f = _networked(raw_f)
+        # raw_f = _networked(raw_f)
         return _PartialFunction(raw_f, _PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.GROUPED, group_size=size)
 
     return wrapper

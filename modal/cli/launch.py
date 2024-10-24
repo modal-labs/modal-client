@@ -4,9 +4,9 @@ import inspect
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-from typer import Typer
+from typer import Argument, Context, Typer
 
 from ..app import App
 from ..exception import _CliUserExecutionError
@@ -89,3 +89,42 @@ def vscode(
         "volume": volume,
     }
     _launch_program("vscode", "vscode.py", args)
+
+
+@launch_cli.command(
+    name="torchrun",
+    help="TODO",
+    context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+)
+def torchrun(
+    ctx: Context,
+    cpu: int = 8,
+    memory: int = 32768,
+    gpu: Optional[str] = None,
+    volume: List[str] = [],
+    secret: List[str] = [],
+    retries: int = 3,
+    timeout: int = 24 * 60 * 60,
+    cuda: str = "12.4.0",
+    nodes: int = 1,
+    requirements: str = "",
+    script: str = Argument(),
+):
+    args = {
+        "cpu": cpu,
+        "memory": memory,
+        "gpu": gpu,
+        "nodes": nodes,
+        "volume": volume,
+        "secret": secret,
+        "retries": retries,
+        "timeout": timeout,
+        "cuda": cuda,
+        "requirements": requirements,
+        "script": script,
+        "extra_args": ctx.args,
+    }
+    print(args)
+    # TODO probably want to expose --detach?
+    # What other torchrun flags should we expose?
+    _launch_program("torchrun", "torchrun.py", args)

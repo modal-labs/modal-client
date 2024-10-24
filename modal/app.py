@@ -36,7 +36,6 @@ from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, parameter
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
-from .experimental import _GroupedFunction
 from .functions import Function, _Function
 from .gpu import GPU_T
 from .image import _Image
@@ -819,10 +818,10 @@ class _App:
             self._add_function(function, webhook_config is not None)
 
             # Experimental: Grouped functions
-            if group_size is not None:
-                if group_size <= 0:
-                    raise InvalidError("Group size must be positive")
-                function = _GroupedFunction(function, group_size)
+            # if group_size is not None:
+            #     if group_size <= 0:
+            #         raise InvalidError("Group size must be positive")
+            #     function = _GroupedFunction(function, group_size)
 
             return function
 
