@@ -383,6 +383,7 @@ async def _stream_function_call_data(
                 message = deserialize_data_format(message_bytes, chunk.data_format, client)
 
                 last_index = chunk.index
+                logger.info("message %s %s", type(message), message)
                 yield message
         except (GRPCError, StreamTerminatedError) as exc:
             if retries_remaining > 0:
