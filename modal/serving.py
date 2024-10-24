@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, AsyncGenerator, Optional, Set, TypeVar
 from synchronicity import Interface
 from synchronicity.async_wrap import asynccontextmanager
 
+from modal._output import OutputManager
+
 from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
 from ._utils.logger import logger
 from ._watcher import watch
@@ -15,7 +17,7 @@ from .cli.import_refs import import_app
 from .client import _Client
 from .config import config
 from .exception import deprecation_error
-from .output import _get_output_manager
+from .output import _get_output_manager, enable_output
 from .runner import _run_app, serve_update
 
 if TYPE_CHECKING:
@@ -24,11 +26,13 @@ else:
     _App = TypeVar("_App")
 
 
-def _run_serve(app_ref: str, existing_app_id: str, is_ready: Event, environment_name: str):
+def _run_serve(app_ref: str, existing_app_id: str, is_ready: Event, environment_name: str, show_progress: bool):
     # subprocess entrypoint
     _app = import_app(app_ref)
     blocking_app = synchronizer._translate_out(_app, Interface.BLOCKING)
-    serve_update(blocking_app, existing_app_id, is_ready, environment_name)
+
+    with enable_output(show_progress=show_progress):
+        serve_update(blocking_app, existing_app_id, is_ready, environment_name)
 
 
 async def _restart_serve(
@@ -36,7 +40,9 @@ async def _restart_serve(
 ) -> SpawnProcess:
     ctx = multiprocessing.get_context("spawn")  # Needed to reload the interpreter
     is_ready = ctx.Event()
-    p = ctx.Process(target=_run_serve, args=(app_ref, existing_app_id, is_ready, environment_name))
+    output_mgr = OutputManager.get()
+    show_progress = output_mgr is not None
+    p = ctx.Process(target=_run_serve, args=(app_ref, existing_app_id, is_ready, environment_name, show_progress))
     p.start()
     await asyncify(is_ready.wait)(timeout)
     # TODO(erikbern): we don't fail if the above times out, but that's somewhat intentional, since
