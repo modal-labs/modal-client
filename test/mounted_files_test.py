@@ -352,6 +352,10 @@ def test_module_with_dot_prefixed_parent_can_be_mounted(tmp_path, monkeypatch, s
     #    |---- foo.py
     #    |---- bar
     #    |------|--baz.py
+    #    |------|--.hidden_dir
+    #    |------|------|-----mod.py
+    #    |------|--.hidden_mod.py
+
     parent_dir = Path(tmp_path) / ".parent"
     parent_dir.mkdir()
     foo_py = parent_dir / "foo.py"
@@ -360,6 +364,9 @@ def test_module_with_dot_prefixed_parent_can_be_mounted(tmp_path, monkeypatch, s
     bar_package.mkdir()
     (bar_package / "__init__.py").touch()
     (bar_package / "baz.py").touch()
+    (bar_package / ".hidden_dir").mkdir()
+    (bar_package / ".hidden_dir" / "mod.py").touch()  # should be excluded
+    (bar_package / ".hidden_mod.py").touch()  # should be excluded
 
     monkeypatch.syspath_prepend(parent_dir)
     foo_mount = Mount.from_local_python_packages("foo")
