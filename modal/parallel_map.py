@@ -14,6 +14,7 @@ from modal._utils.async_utils import (
     async_merge,
     async_zip,
     queue_batch_iterator,
+    sync_or_async_iter,
     synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
@@ -252,11 +253,10 @@ async def _map_invocation(
 
     async with aclosing(drain_input_generator()) as drainer, aclosing(pump_inputs()) as pump, aclosing(
         poll_outputs()
-    ) as poller:
-        async with aclosing(async_merge(drainer, pump, poller)) as streamer:
-            async for response in streamer:
-                if response is not None:
-                    yield response.value
+    ) as poller, aclosing(async_merge(drainer, pump, poller)) as streamer:
+        async for response in streamer:
+            if response is not None:
+                yield response.value
 
 
 @warn_if_generator_is_not_consumed(function_name="Function.map")
@@ -390,7 +390,7 @@ async def _starmap_async(
 
     async def feed_queue():
         # This runs in a main thread event loop, so it doesn't block the synchronizer loop
-        async with stream.iterate(input_iterator).stream() as streamer:
+        async with aclosing(sync_or_async_iter(input_iterator)) as streamer:
             async for args in streamer:
                 await raw_input_queue.put.aio((args, kwargs))
         await raw_input_queue.put.aio(None)  # end-of-input sentinel
