@@ -19,7 +19,6 @@ from typing import (
 )
 
 import grpclib.client
-from aiohttp import ClientConnectorError, ClientResponseError
 from google.protobuf import empty_pb2
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -32,9 +31,8 @@ from modal_version import __version__
 from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import create_channel, retry_transient_errors
-from ._utils.http_utils import ClientSessionRegistry
 from .config import _check_config, _is_remote, config, logger
-from .exception import AuthError, ClientClosed, ConnectionError, DeprecationError, VersionError
+from .exception import AuthError, ClientClosed, DeprecationError, VersionError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
@@ -67,24 +65,6 @@ def _get_metadata(client_type: int, credentials: Optional[Tuple[str, str]], vers
             }
         )
     return metadata
-
-
-async def _http_check(url: str, timeout: float) -> str:
-    # Used for sanity checking connection issues
-    try:
-        async with ClientSessionRegistry.get_session().get(url) as resp:
-            return f"HTTP status: {resp.status}"
-    except ClientResponseError as exc:
-        return f"HTTP status: {exc.status}"
-    except ClientConnectorError as exc:
-        return f"HTTP exception: {exc.os_error.__class__.__name__}"
-    except Exception as exc:
-        return f"HTTP exception: {exc.__class__.__name__}"
-
-
-async def _grpc_exc_string(exc: GRPCError, method_name: str, server_url: str, timeout: float) -> str:
-    http_status = await _http_check(server_url, timeout=timeout)
-    return f"{method_name}: {exc.message} [gRPC status: {exc.status.name}, {http_status}]"
 
 
 ReturnType = TypeVar("ReturnType")
@@ -155,10 +135,9 @@ class _Client:
         # Remove cached client.
         self.set_env_client(None)
 
-    async def _init(self):
+    async def hello(self):
         """Connect to server and retrieve version information; raise appropriate error for various failures."""
         logger.debug(f"Client ({id(self)}): Starting")
-        _check_config()
         try:
             req = empty_pb2.Empty()
             resp = await retry_transient_errors(
@@ -175,18 +154,13 @@ class _Client:
                 raise VersionError(
                     f"The client version ({self.version}) is too old. Please update (pip install --upgrade modal)."
                 )
-            elif exc.status == Status.UNAUTHENTICATED:
-                raise AuthError(exc.message)
             else:
-                exc_string = await _grpc_exc_string(exc, "ClientHello", self.server_url, CLIENT_CREATE_TOTAL_TIMEOUT)
-                raise ConnectionError(exc_string)
-        except (OSError, asyncio.TimeoutError) as exc:
-            raise ConnectionError(str(exc))
+                raise exc
 
     async def __aenter__(self):
         await self._open()
         try:
-            await self._init()
+            await self.hello()
         except BaseException:
             await self._close()
             raise
@@ -205,7 +179,7 @@ class _Client:
         client = cls(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials=None)
         try:
             await client._open()
-            # Skip client._init
+            # Skip client.hello
             yield client
         finally:
             await client._close()
@@ -215,6 +189,8 @@ class _Client:
         """mdmd:hidden
         Singleton that is instantiated from the Modal config and reused on subsequent calls.
         """
+        _check_config()
+
         if _override_config:
             # Only used for testing
             c = _override_config
@@ -230,26 +206,26 @@ class _Client:
             if cls._client_from_env:
                 return cls._client_from_env
 
-            if _is_remote():
+            token_id = c["token_id"]
+            token_secret = c["token_secret"]
+            if token_id and token_secret:
+                client_type = api_pb2.CLIENT_TYPE_CLIENT
+                credentials = (token_id, token_secret)
+            elif _is_remote():
                 client_type = api_pb2.CLIENT_TYPE_CONTAINER
                 credentials = None
             else:
-                client_type = api_pb2.CLIENT_TYPE_CLIENT
-                token_id = c["token_id"]
-                token_secret = c["token_secret"]
-                if not token_id or not token_secret:
-                    raise AuthError(
-                        "Token missing. Could not authenticate client."
-                        " If you have token credentials, see modal.com/docs/reference/modal.config for setup help."
-                        " If you are a new user, register an account at modal.com, then run `modal token new`."
-                    )
-                credentials = (token_id, token_secret)
+                raise AuthError(
+                    "Token missing. Could not authenticate client."
+                    " If you have token credentials, see modal.com/docs/reference/modal.config for setup help."
+                    " If you are a new user, register an account at modal.com, then run `modal token new`."
+                )
 
             server_url = c["server_url"]
             client = _Client(server_url, client_type, credentials)
             await client._open()
             async_utils.on_shutdown(client._close())
-            await client._init()
+            await client.hello()
             cls._client_from_env = client
             return client
 
@@ -266,13 +242,14 @@ class _Client:
         modal.Sandbox.create("echo", "hi", client=client, app=app)
         ```
         """
+        _check_config()
         server_url = config["server_url"]
         client_type = api_pb2.CLIENT_TYPE_CLIENT
         credentials = (token_id, token_secret)
         client = _Client(server_url, client_type, credentials)
         await client._open()
         try:
-            await client._init()
+            await client.hello()
         except BaseException:
             await client._close()
             raise
@@ -333,7 +310,7 @@ class _Client:
             self.set_env_client(None)
             # TODO(elias): reset _cancellation_context in case ?
             await self._open()
-            # intentionally not doing self._init since we should already be authenticated etc.
+            # intentionally not doing self.hello since we should already be authenticated etc.
 
     async def _get_grpclib_method(self, method_name: str) -> Any:
         # safely get grcplib method that is bound to a valid channel
@@ -432,6 +409,6 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
     ):
         if self.client._snapshotted:
             logger.debug(f"refreshing client after snapshot for {self._wrapped_method_name}")
-            self.client = await _Client.from_env
+            self.client = await _Client.from_env()
         async for response in self.client._call_stream(self._wrapped_method_name, request, metadata=metadata):
             yield response

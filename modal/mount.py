@@ -154,13 +154,31 @@ class _MountDir(_MountEntry):
         return [(self.local_dir, self.remote_path)]
 
 
-def module_mount_condition(f: str):
-    path = Path(f)
-    if path.suffix == ".pyc":
-        return False
-    if any(p.name.startswith(".") or p.name == "__pycache__" for p in path.parents):
-        return False
-    return True
+def module_mount_condition(module_base: Path):
+    SKIP_BYTECODE = True  # hard coded for now
+    SKIP_DOT_PREFIXED = True
+
+    def condition(f: str):
+        path = Path(f)
+        if SKIP_BYTECODE and path.suffix == ".pyc":
+            return False
+
+        # Check parent dir names to see if file should be included,
+        # but ignore dir names above root of mounted module:
+        # /a/.venv/site-packages/mymod/foo.py should be included by default
+        # /a/my_mod/.config/foo.py should *not* be included by default
+        while path != module_base and path != path.parent:
+            if SKIP_BYTECODE and path.name == "__pycache__":
+                return False
+
+            if SKIP_DOT_PREFIXED and path.name.startswith("."):
+                return False
+
+            path = path.parent
+
+        return True
+
+    return condition
 
 
 @dataclasses.dataclass
@@ -185,9 +203,9 @@ class _MountedPythonModule(_MountEntry):
                 remote_dir = PurePosixPath(self.remote_dir, *self.module_name.split("."))
                 entries.append(
                     _MountDir(
-                        Path(base_path),
+                        base_path,
                         remote_path=remote_dir,
-                        condition=self.condition or module_mount_condition,
+                        condition=self.condition or module_mount_condition(base_path),
                         recursive=True,
                     )
                 )
@@ -405,9 +423,10 @@ class _Mount(_Object, type_prefix="mo"):
 
             futs = []
             for local_filename, remote_filename in all_files:
+                logger.debug(f"Mounting {local_filename} as {remote_filename}")
                 futs.append(loop.run_in_executor(exe, get_file_upload_spec_from_path, local_filename, remote_filename))
 
-            logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
+            logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} worker threads")
             for fut in asyncio.as_completed(futs):
                 try:
                     yield await fut
@@ -625,25 +644,27 @@ def _create_client_mount():
     import modal
 
     # Get the base_path because it also contains `modal_proto`.
-    base_path, _ = os.path.split(modal.__path__[0])
+    modal_parent_dir, _ = os.path.split(modal.__path__[0])
+    client_mount = _Mount._new()
 
-    # TODO(erikbern): this is incredibly dumb, but we only want to include packages that start with "modal"
-    # TODO(erikbern): merge functionality with function_utils._is_modal_path
-    prefix = os.path.join(base_path, "modal")
-
-    def condition(arg):
-        return module_mount_condition(arg) and arg.startswith(prefix)
-
-    return (
-        _Mount.from_local_dir(base_path, remote_path="/pkg/", condition=condition, recursive=True)
-        # Mount synchronicity, so version changes don't trigger image rebuilds for users.
-        .add_local_dir(
-            synchronicity.__path__[0],
-            remote_path="/pkg/synchronicity",
-            condition=module_mount_condition,
+    for pkg_name in MODAL_PACKAGES:
+        package_base_path = Path(modal_parent_dir) / pkg_name
+        client_mount = client_mount.add_local_dir(
+            package_base_path,
+            remote_path=f"/pkg/{pkg_name}",
+            condition=module_mount_condition(package_base_path),
             recursive=True,
         )
+
+    # Mount synchronicity, so version changes don't trigger image rebuilds for users.
+    synchronicity_base_path = Path(synchronicity.__path__[0])
+    client_mount = client_mount.add_local_dir(
+        synchronicity_base_path,
+        remote_path="/pkg/synchronicity",
+        condition=module_mount_condition(synchronicity_base_path),
+        recursive=True,
     )
+    return client_mount
 
 
 create_client_mount = synchronize_api(_create_client_mount)
@@ -670,19 +691,19 @@ SYS_PREFIXES = {
     )
 }
 
+
 SYS_PREFIXES |= {p.resolve() for p in SYS_PREFIXES}
+
+MODAL_PACKAGES = ["modal", "modal_proto", "modal_version"]
 
 
 def _is_modal_path(remote_path: PurePosixPath):
     path_prefix = remote_path.parts[:3]
     remote_python_paths = [("/", "root"), ("/", "pkg")]
     for base in remote_python_paths:
-        is_modal_path = path_prefix in [
-            base + ("modal",),
-            base + ("modal_proto",),
-            base + ("modal_version",),
-            base + ("synchronicity",),
-        ]
+        is_modal_path = path_prefix in [base + (mod,) for mod in MODAL_PACKAGES] or path_prefix == base + (
+            "synchronicity",
+        )
         if is_modal_path:
             return True
     return False

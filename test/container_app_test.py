@@ -221,6 +221,36 @@ async def test_container_snapshot_patching_err(weird_torch_module, container_cli
         io_manager.memory_snapshot()  # should not crash
 
 
+@pytest.mark.asyncio
+async def test_rpc_wrapping_restores(container_client, servicer, tmpdir):
+    from modal import Dict
+
+    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    restore_path = temp_restore_path(tmpdir)
+
+    d = Dict.lookup("my-amazing-dict", {"xyz": 123}, create_if_missing=True, client=container_client)
+    d["abc"] = 42
+
+    with set_env_vars(restore_path, servicer.container_addr):
+        io_manager.memory_snapshot()
+
+    # TODO(Jonathon): These RPC wrappers are tested directly because I could not
+    # find a way to construct in this test a UnaryStreamWrapper with a stale snapshotted client.
+    @synchronize_api
+    async def exercise_rpcs():
+        n = 0
+        # Test UnaryStreamWrapper
+        async for _ in container_client.stub.DictContents.unary_stream(
+            api_pb2.DictContentsRequest(dict_id=d.object_id, keys=True)
+        ):
+            n += 1
+        assert n == 2
+        # Test UnaryUnaryWrapper
+        await container_client.stub.DictClear(api_pb2.DictClearRequest(dict_id=d.object_id))
+
+    await exercise_rpcs.aio()
+
+
 def test_interact(container_client, servicer):
     # Initialize container singleton
     function_def = api_pb2.Function(pty_info=api_pb2.PTYInfo(pty_type=api_pb2.PTYInfo.PTY_TYPE_SHELL))
