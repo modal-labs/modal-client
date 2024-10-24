@@ -146,7 +146,7 @@ class _StreamReader:
                     iterator = _sandbox_logs_iterator(
                         self._object_id, self._file_descriptor, self._last_entry_id, self._client
                     )
-                else:
+                elif self._object_type == "container_process":
                     iterator = _container_process_logs_iterator(
                         self._object_id, self._file_descriptor, self._last_entry_id, self._client
                     )

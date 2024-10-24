@@ -214,3 +214,11 @@ class ModuleNotMountable(Exception):
 
 class ClientClosed(Error):
     pass
+
+
+class UnsupportedOperation(Error):
+    """Raised when an unsupported operation is performed on a file descriptor."""
+
+
+class FilesystemExecutionError(Error):
+    """Raised when an error occurs during a container filesystem operation."""

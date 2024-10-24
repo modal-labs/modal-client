@@ -21,6 +21,7 @@ from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
 from .exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError, deprecation_warning
+from .file_io import _FileIO
 from .gpu import GPU_T
 from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
@@ -424,6 +425,9 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
         )
         return _ContainerProcess(resp.exec_id, self._client)
+
+    def open(self, path: str, mode: str) -> _FileIO:
+        return _FileIO(path, mode, self._client)
 
     @property
     def stdout(self) -> _StreamReader:
