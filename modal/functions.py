@@ -27,6 +27,7 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
 
+from modal.queue import _Queue
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
@@ -315,6 +316,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _build_args: dict
     _can_use_base_function: bool = False  # whether we need to call FunctionBindParams
     _is_generator: Optional[bool] = None
+    _group_size: Optional[int] = None
 
     # when this is the method of a class/object function, invocation of this function
     # should be using another function id and supply the method name in the FunctionInput:
@@ -446,6 +448,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             )  # TODO: this shouldn't be set when actual parameters are used
             method_placeholder_fun._function_name = full_function_name
             method_placeholder_fun._is_generator = class_bound_method._is_generator
+            method_placeholder_fun._group_size = class_bound_method._group_size
             method_placeholder_fun._use_method_name = method_name
             method_placeholder_fun._use_function_id = instance_service_function.object_id
             method_placeholder_fun._is_method = True
@@ -938,6 +941,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._app = app  # needed for CLI right now
         obj._obj = None
         obj._is_generator = is_generator
+        obj._group_size = group_size
         obj._is_method = False
         obj._spec = function_spec  # needed for modal shell
 
@@ -1164,6 +1168,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # Overridden concrete implementation of base class method
         self._progress = None
         self._is_generator = None
+        self._group_size = None
         self._web_url = None
         self._function_name = None
         self._info = None
@@ -1314,7 +1319,18 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 "A generator function cannot be called with `.remote(...)`. Use `.remote_gen(...)` instead."
             )
 
+        if self._group_size and self._group_size > 1:
+            raise InvalidError(
+                "A grouped function cannot be called with `.remote(...)`. Use `.remote_grouped(...)` instead."
+            )
+
         return await self._call_function(args, kwargs)
+
+    @synchronizer.no_io_translation
+    @live_method
+    async def remote_grouped(self, *args: P.args, **kwargs: P.kwargs) -> List[ReturnType]:
+        fc = await self.spawn_grouped(*args, **kwargs)
+        return await fc.get()
 
     @synchronizer.no_io_translation
     @live_method_gen
@@ -1425,6 +1441,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
         """
         self._check_no_web_url("spawn")
+
+        if self._group_size and self._group_size > 1:
+            raise InvalidError(
+                "A grouped function cannot be called with `.spawn(...)`. Use `.spawn_grouped(...)` instead."
+            )
+
         if self._is_generator:
             invocation = await self._call_generator_nowait(args, kwargs)
         else:
@@ -1435,6 +1457,26 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fc = _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
         fc._is_generator = self._is_generator if self._is_generator else False
         return fc
+
+    @synchronizer.no_input_translation
+    @live_method
+    async def spawn_grouped(self, *args: P.args, **kwargs: P.kwargs) -> "_GroupedFunctionCall[ReturnType]":
+        assert self._group_size and self._group_size > 1, "Group size must be set"
+        assert not self._is_generator, "Grouped functions cannot be generators"
+
+        function_calls: List[_FunctionCall] = []
+        async with _Queue.ephemeral() as q:
+            for i in range(self._group_size):
+                invocation = await self._call_function_nowait(
+                    args,
+                    {**kwargs, "modal_rank": i, "modal_size": self._group_size, "modal_q": synchronize_api(q)},
+                    api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY,
+                )
+                fc = _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
+                fc._is_generator = self._is_generator if self._is_generator else False
+                function_calls.append(fc)
+
+        return _GroupedFunctionCall(function_calls)
 
     def get_raw_f(self) -> Callable[..., Any]:
         """Return the inner Python object wrapped by this Modal Function."""
@@ -1546,6 +1588,38 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
 
 FunctionCall = synchronize_api(_FunctionCall)
+
+
+class _GroupedFunctionCall(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type_prefix="gc"):
+    """Wrapper around _FunctionCall that allows for grouped functions to be spawned."""
+
+    def __init__(self, handles: List[_FunctionCall]):
+        self.handles: List[_FunctionCall] = handles
+
+    async def get(self, *args: P.args, **kwargs: P.kwargs) -> List[ReturnType]:
+        """Get the result of a grouped function call."""
+        output: List[ReturnType] = []
+        for handle in self.handles:
+            # todo don't block
+            output.append(await handle.get())
+        return output
+
+    def __getattr__(self, name):
+        def unsupported_method(*args, **kwargs):
+            raise NotImplementedError(f"Grouped function does not support the '{name}' method")
+
+        return unsupported_method
+
+    async def cancel(
+        self,
+        terminate_containers: bool = False,
+    ) -> None:
+        for handle in self.handles:
+            # todo concurrent?
+            await handle.cancel(terminate_containers)
+
+
+GroupedFunctionCall = synchronize_api(_GroupedFunctionCall)
 
 
 async def _gather(*function_calls: _FunctionCall[ReturnType]) -> typing.Sequence[ReturnType]:

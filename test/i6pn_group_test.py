@@ -47,9 +47,4 @@ def test_spawn_experimental_group(client, servicer, monkeypatch):
         return sum(args)
 
     with app.run(client=client):
-        # Needed for type checker to be happy. This isn't the best solution, but
-        # the feature is experimental anyway...
-        assert isinstance(f1, modal.experimental.GroupedFunction)
-        f1.client = client
-
-        assert f1.remote(2, 4) == [6] * 2
+        assert f1.remote_grouped(2, 4) == [6] * 2
