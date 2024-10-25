@@ -210,6 +210,11 @@ class _Client:
             token_id = c["token_id"]
             token_secret = c["token_secret"]
             if task_secret:
+                if token_id or token_secret:
+                    warnings.warn(
+                        "Modal tokens provided by MODAL_TOKEN_ID and MODAL_TOKEN_SECRET"
+                        " (or through the config file) are ignored inside containers."
+                    )
                 client_type = api_pb2.CLIENT_TYPE_CONTAINER
                 credentials = None
             elif token_id and token_secret:

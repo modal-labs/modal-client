@@ -247,6 +247,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         token_id, token_secret = credentials
         self.required_creds = {token_id: token_secret}  # Any of this will be accepted
+        self.last_metadata = None
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -254,6 +255,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def recv_request(self, event: RecvRequest):
         # Make sure metadata is correct
+        self.last_metadata = event.metadata
         for header in [
             "x-modal-python-version",
             "x-modal-client-version",
@@ -642,7 +644,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def ClientHello(self, stream):
         request: Empty = await stream.recv_message()
         self.requests.append(request)
-        self.client_create_metadata = stream.metadata
         client_version = stream.metadata["x-modal-client-version"]
         warning = ""
         assert stream.user_agent.startswith(f"modal-client/{__version__} ")
