@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2024
-from typing import AsyncIterator, Optional, Tuple
+from typing import AsyncIterator, Optional, Tuple, Union
 
 from modal_proto import api_pb2
 
@@ -14,6 +14,7 @@ from .exception import FilesystemExecutionError, UnsupportedOperation
 # TODO: add delete to the entire file
 # TODO: add list_dir to the Sandbox
 class _FileIO:
+    _binary = False
     _readable = False
     _writable = False
     _appended = False
@@ -23,28 +24,39 @@ class _FileIO:
     _file_descriptor: Optional[str] = None
 
     def _validate_mode(self, mode: str) -> None:
-        valid_modes = ["r", "w", "a", "x", "r+", "w+", "a+", "x+"]
-        if mode not in valid_modes:
-            raise ValueError(f"Unsupported file mode: {mode}")
-        self._readable = any(m in mode for m in ["r", "r+", "w+", "a+", "x+"])
-        self._writable = any(m in mode for m in ["w", "w+", "a", "a+", "x", "x+"])
+        if not any(char in mode for char in "rwax"):
+            raise ValueError(f"Invalid file mode: {mode}")
+
+        self._readable = "r" in mode or "+" in mode
+        self._writable = "w" in mode or "a" in mode or "x" in mode or "+" in mode
         self._appended = "a" in mode
+        self._binary = "b" in mode
+
+        valid_chars = set("rwaxb+")
+        if any(char not in valid_chars for char in mode):
+            raise ValueError(f"Invalid file mode: {mode}")
+
+        seen_chars = set()
+        for char in mode:
+            if char in seen_chars:
+                raise ValueError(f"Invalid file mode: {mode}")
+            seen_chars.add(char)
 
     async def _consume_output(self, exec_id: str, file_descriptor: int) -> AsyncIterator[Tuple[Optional[str], int]]:
-        req = api_pb2.ContainerExecGetOutputRequest(
+        req = api_pb2.ContainerFilesystemExecGetOutputRequest(
             exec_id=exec_id,
             timeout=55,
             last_batch_index=0,
             file_descriptor=file_descriptor,
         )
-        async for batch in self._client.stub.ContainerExecGetOutput.unary_stream(req):
+        async for batch in self._client.stub.ContainerFilesystemExecGetOutput.unary_stream(req):
             if batch.HasField("exit_code"):
                 yield (None, batch.exit_code)
                 break
             for item in batch.items:
                 yield (item.message, batch.batch_index)
 
-    async def _wait(self, exec_id: str) -> str:
+    async def _wait(self, exec_id: str) -> Union[bytes, str]:
         stdout = ""
         stderr = ""
         # The filesystem API shouldn't involve any long-running processes,
@@ -62,12 +74,21 @@ class _FileIO:
             stderr += data
         if errored:
             raise FilesystemExecutionError(stderr)
+        if self._binary:
+            return stdout.encode("utf-8")
         return stdout
+
+    def _validate_type(self, data: Union[bytes, str]) -> None:
+        if self._binary and isinstance(data, str):
+            raise TypeError("Expected bytes when in binary mode")
+        if not self._binary and isinstance(data, bytes):
+            raise TypeError("Expected str when in text mode")
 
     async def _open_file(self, path: str, mode: str) -> None:
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
-                file_open_request=api_pb2.ContainerFileOpenRequest(path=path, mode=mode, task_id=self._task_id)
+                file_open_request=api_pb2.ContainerFileOpenRequest(path=path, mode=mode),
+                task_id=self._task_id,
             )
         )
         if not resp.HasField("file_descriptor"):
@@ -85,48 +106,47 @@ class _FileIO:
         self._closed = False
         return self
 
-    async def read(self, n: int | None = None) -> bytes:
+    async def read(self, n: int | None = None) -> Union[bytes, str]:
         """Read n bytes from the current position, or the entire remaining file if n is None."""
         self._check_readable()
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
-                file_read_request=api_pb2.ContainerFileReadRequest(
-                    task_id=self._task_id, file_descriptor=self._file_descriptor, n=n
-                )
+                file_read_request=api_pb2.ContainerFileReadRequest(file_descriptor=self._file_descriptor, n=n),
+                task_id=self._task_id,
             )
         )
         return await self._wait(resp.exec_id)
 
-    async def readline(self) -> bytes:
+    async def readline(self) -> Union[bytes, str]:
         """Read a single line from the current position."""
         self._check_readable()
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
-                file_read_line_request=api_pb2.ContainerFileReadLineRequest(
-                    task_id=self._task_id, file_descriptor=self._file_descriptor
-                )
+                file_read_line_request=api_pb2.ContainerFileReadLineRequest(file_descriptor=self._file_descriptor),
+                task_id=self._task_id,
             )
         )
         return await self._wait(resp.exec_id)
 
-    async def readlines(self) -> list[bytes]:
+    async def readlines(self) -> list[Union[bytes, str]]:
         """Read all lines from the current position."""
         self._check_readable()
         return await self.read().split(b"\n")
 
-    async def write(self, data: bytes) -> None:
+    async def write(self, data: Union[bytes, str]) -> None:
         """Write data to the current position.
 
-        NOTE: Writes may not appear until the entire buffer is flushed, which
+        Writes may not appear until the entire buffer is flushed, which
         can be done manually with `flush()` or automatically when the file is
         closed.
         """
         self._check_writable()
+        if isinstance(data, str):
+            data = data.encode("utf-8")
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
-                file_write_request=api_pb2.ContainerFileWriteRequest(
-                    task_id=self._task_id, file_descriptor=self._file_descriptor, data=data
-                )
+                file_write_request=api_pb2.ContainerFileWriteRequest(file_descriptor=self._file_descriptor, data=data),
+                task_id=self._task_id,
             )
         )
         await self._wait(resp.exec_id)
@@ -136,9 +156,8 @@ class _FileIO:
         self._check_writable()
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
-                file_flush_request=api_pb2.ContainerFileFlushRequest(
-                    task_id=self._task_id, file_descriptor=self._file_descriptor
-                )
+                file_flush_request=api_pb2.ContainerFileFlushRequest(file_descriptor=self._file_descriptor),
+                task_id=self._task_id,
             )
         )
         await self._wait(resp.exec_id)
@@ -159,15 +178,14 @@ class _FileIO:
         `whence` defaults to 0 (absolute file positioning); other values are 1
         (relative to the current position) and 2 (relative to the file's end).
         """
-        self._check_seekable()
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_seek_request=api_pb2.ContainerFileSeekRequest(
-                    task_id=self._task_id,
                     file_descriptor=self._file_descriptor,
                     offset=offset,
                     whence=self._get_whence(whence),
-                )
+                ),
+                task_id=self._task_id,
             )
         )
         await self._wait(resp.exec_id)
@@ -180,15 +198,14 @@ class _FileIO:
 
         Resets the file pointer to the start of the file.
         """
-        self._check_seekable()
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_delete_bytes_request=api_pb2.ContainerFileDeleteBytesRequest(
-                    task_id=self._task_id,
                     file_descriptor=self._file_descriptor,
                     start_inclusive=start_inclusive,
                     end_exclusive=end_exclusive,
-                )
+                ),
+                task_id=self._task_id,
             )
         )
         await self._wait(resp.exec_id)
@@ -203,16 +220,15 @@ class _FileIO:
 
         Resets the file pointer to the start of the file.
         """
-        self._check_seekable()
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_write_replace_bytes_request=api_pb2.ContainerFileWriteReplaceBytesRequest(
-                    task_id=self._task_id,
                     file_descriptor=self._file_descriptor,
                     data=data,
                     start_inclusive=start_inclusive,
                     end_exclusive=end_exclusive,
-                )
+                ),
+                task_id=self._task_id,
             )
         )
         await self._wait(resp.exec_id)
@@ -221,9 +237,8 @@ class _FileIO:
         # Buffer is flushed by the runner on close
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
-                file_close_request=api_pb2.ContainerFileCloseRequest(
-                    task_id=self._task_id, file_descriptor=self._file_descriptor
-                )
+                file_close_request=api_pb2.ContainerFileCloseRequest(file_descriptor=self._file_descriptor),
+                task_id=self._task_id,
             )
         )
         await self._wait(resp.exec_id)
