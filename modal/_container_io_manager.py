@@ -404,10 +404,9 @@ class _ContainerIOManager:
                     current_input_ids_to_cancel = [
                         input_id for input_id in input_ids_to_cancel if input_id in self.current_inputs
                     ]
+                    await self._push_terminated_outputs(current_input_ids_to_cancel)
                     for input_id in current_input_ids_to_cancel:
                         self.current_inputs[input_id].cancel()
-
-                    await self._push_terminated_outputs(current_input_ids_to_cancel)
 
                 elif self.current_input_id and self.current_input_id in input_ids_to_cancel:
                     # This goes to a registered signal handler for sync Modal functions, or to the
