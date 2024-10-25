@@ -5,6 +5,10 @@ import logging
 import os
 import platform
 import pytest
+import signal
+import subprocess
+import sys
+import textwrap
 
 import pytest_asyncio
 from synchronicity import Synchronizer
@@ -624,3 +628,47 @@ async def test_callable_to_agen():
     async for item in callable_to_agen(foo):
         result.append(item)
     assert result == [await foo()]
+
+
+def test_sigint_run_async_gen_shuts_down_gracefully():
+    code = textwrap.dedent(
+        """
+    import asyncio
+    from itertools import count
+    from modal._utils.async_utils import Runner
+    async def async_gen():
+        print("enter")
+        try:
+            for i in count():
+                yield i
+                await asyncio.sleep(0.1)
+        except asyncio.CancelledError:
+            print("cancel")
+            await asyncio.sleep(0.1)
+            print("bye")
+
+    try:
+        with Runner() as runner:
+            for res in runner.run_async_gen(async_gen()):
+                print("res", res)
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt")
+    """
+    )
+    p = subprocess.Popen(
+        [sys.executable, "-u", "-c", code], encoding="utf8", stdout=subprocess.PIPE, stderr=subprocess.PIPE
+    )
+    assert p.stdout.readline() == "enter\n"
+    assert p.stdout.readline() == "res 0\n"
+    assert p.stdout.readline() == "res 1\n"
+
+    p.send_signal(signal.SIGINT)
+    assert p.wait(1) == 0
+
+    while (nextline := p.stdout.readline()).startswith("res"):
+        pass
+    assert nextline == "cancel\n"
+    assert p.stdout.readline() == "bye\n"
+    assert p.stdout.readline() == "KeyboardInterrupt\n"
+    assert p.stdout.read() == ""
+    assert p.stderr.read() == ""

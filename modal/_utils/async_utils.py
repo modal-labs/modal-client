@@ -3,6 +3,9 @@ import asyncio
 import concurrent.futures
 import functools
 import inspect
+import signal
+import sys
+import threading
 import time
 import typing
 from contextlib import asynccontextmanager
@@ -384,8 +387,9 @@ class AsyncOrSyncIterable:
 
     def __iter__(self):
         try:
-            for output in run_generator_sync(self._async_iterable):  # type: ignore
-                yield output
+            with Runner() as runner:
+                for output in runner.run_async_gen(self._async_iterable):
+                    yield output
         except NestedAsyncCalls:
             raise InvalidError(self.nested_async_message)
 
@@ -454,16 +458,80 @@ class NestedAsyncCalls(Exception):
     pass
 
 
-def run_generator_sync(
-    gen: typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE],
-) -> typing.Generator[YIELD_TYPE, SEND_TYPE, None]:
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        pass  # no event loop - this is what we expect!
-    else:
-        raise NestedAsyncCalls()
-    with asyncio.Runner() as runner:
+class Runner:
+    """Simplified backport of asyncio.Runner from Python 3.11
+
+    Like asyncio.run() but allows multiple calls to the same event loop
+    before teardown.
+
+    Difference from running new_event_loop().run_until_complete is that
+    this catches SIGINTs and propagates it as task cancellations rather
+    than raising KeyboardInterrupt inside of the event loop code.
+    """
+
+    # TODO: unify this with modal._container_entrypoint.UserCodeEventLoop
+    #       which does very similar things but has some additional SIGUSR1
+    #       logic
+
+    def __enter__(self) -> "Runner":
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            pass  # no event loop - this is what we expect!
+        else:
+            raise NestedAsyncCalls()
+
+        self._loop = asyncio.new_event_loop()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback) -> bool:
+        self._loop.run_until_complete(self._loop.shutdown_asyncgens())
+        if sys.version_info[:2] >= (3, 9):
+            # Introduced in Python 3.9
+            self._loop.run_until_complete(self._loop.shutdown_default_executor())
+
+        self._loop.close()
+        return False
+
+    def run(self, coro: typing.Coroutine[None, None, T]) -> T:
+        is_main_thread = threading.current_thread() == threading.main_thread()
+        task = asyncio.ensure_future(coro, loop=self._loop)
+        self._num_sigints = 0
+
+        def _sigint_handler():
+            # cancel the task in order to have run_until_complete return soon and
+            # prevent a bunch of unwanted tracebacks when shutting down the
+            # event loop.
+
+            # this basically replicates the sigint handler installed by asyncio.run()
+            self._num_sigints += 1
+            if self._num_sigints == 1:
+                # first sigint is graceful
+                self._loop.call_soon_threadsafe(task.cancel)
+                return
+
+            # this should normally not happen, but the second sigint would "hard kill" the event loop
+            # by raising KeyboardInterrupt inside of it
+            raise KeyboardInterrupt()
+
+        handle_sigint = is_main_thread and signal.getsignal(signal.SIGINT) != signal.SIG_IGN
+
+        if handle_sigint:
+            self._loop.add_signal_handler(signal.SIGINT, _sigint_handler)
+        try:
+            return self._loop.run_until_complete(task)
+        except asyncio.CancelledError:
+            if self._num_sigints > 0:
+                raise KeyboardInterrupt()
+        finally:
+            if handle_sigint:
+                self._loop.remove_signal_handler(signal.SIGINT)
+
+    def run_async_gen(
+        self,
+        gen: typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE],
+    ) -> typing.Generator[YIELD_TYPE, SEND_TYPE, None]:
+        """Convert an async generator into a sync one"""
         # more or less copied from synchronicity's implementation:
         next_send: typing.Union[SEND_TYPE, None] = None
         next_yield: YIELD_TYPE
@@ -471,13 +539,17 @@ def run_generator_sync(
         while True:
             try:
                 if exc:
-                    next_yield = runner.run(gen.athrow(exc))
+                    next_yield = self.run(gen.athrow(exc))
                 else:
-                    next_yield = runner.run(gen.asend(next_send))  # type: ignore[arg-type]
+                    next_yield = self.run(gen.asend(next_send))  # type: ignore[arg-type]
             except KeyboardInterrupt as e:
                 raise e from None
             except StopAsyncIteration:
-                break
+                if self._num_sigints > 0:
+                    # the cancellation of `gen.asend` is converted into
+                    # StopAsyncIteration, so we re-convert it here to KeyboardInterrupt
+                    raise KeyboardInterrupt()
+                break  # typically a graceful exit of the async generator
             try:
                 next_send = yield next_yield
                 exc = None
