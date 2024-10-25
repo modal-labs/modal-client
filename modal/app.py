@@ -919,6 +919,14 @@ class _App:
             ):
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
 
+            method_web_endpoint_info = {}
+            partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
+                user_cls, _PartialFunctionFlags.FUNCTION
+            )
+            for method_name, partial_function in partial_functions.items():
+                web_endpoint_info = api_pb2.WebEndpointInfo(webhook_config=partial_function.webhook_config)
+                method_web_endpoint_info[method_name] = web_endpoint_info
+
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             cls_func = _Function.from_args(
@@ -944,6 +952,7 @@ class _App:
                 cpu=cpu,
                 keep_warm=keep_warm,
                 cloud=cloud,
+                method_web_endpoint_info=method_web_endpoint_info,
                 enable_memory_snapshot=enable_memory_snapshot,
                 checkpointing_enabled=checkpointing_enabled,
                 block_network=block_network,

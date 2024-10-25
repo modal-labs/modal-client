@@ -499,6 +499,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         allow_cross_region_volumes: bool = False,
         volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
+        method_web_endpoint_info: Optional[Dict[str, api_pb2.WebEndpointInfo]] = None,
         memory: Optional[Union[int, Tuple[int, int]]] = None,
         proxy: Optional[_Proxy] = None,
         retries: Optional[Union[int, Retries]] = None,
@@ -537,6 +538,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         else:
             # must be a "class service function"
             assert info.user_cls
+            assert method_web_endpoint_info
             assert not webhook_config
             assert not schedule
 
@@ -796,8 +798,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         raise Exception(f"Dependency {dep} isn't hydrated")
                     object_dependencies.append(api_pb2.ObjectDependency(object_id=dep.object_id))
 
-                method_webhook_configs = {}
-
                 function_data: Optional[api_pb2.FunctionData] = None
                 function_definition: Optional[api_pb2.Function] = None
 
@@ -813,7 +813,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     class_serialized=class_serialized or b"",
                     function_type=function_type,
                     webhook_config=webhook_config,
-                    method_webhook_configs=method_webhook_configs if info.is_service_class() else None,
+                    method_web_endpoint_info=method_web_endpoint_info,
                     shared_volume_mounts=network_file_system_mount_protos(
                         validated_network_file_systems, allow_cross_region_volumes
                     ),
