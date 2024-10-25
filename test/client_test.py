@@ -20,11 +20,11 @@ TEST_TIMEOUT = 4.0  # align this with the container client timeout in client.py
 def test_client_type(servicer, client):
     assert len(servicer.requests) == 1
     assert isinstance(servicer.requests[0], Empty)
-    assert servicer.client_create_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
+    assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
 
 
 def test_client_platform_string(servicer, client):
-    platform_str = servicer.client_create_metadata["x-modal-platform"]
+    platform_str = servicer.last_metadata["x-modal-platform"]
     system, release, machine = platform_str.split("-")
     if platform.system() == "Darwin":
         assert system == "macOS"
@@ -39,7 +39,7 @@ def test_client_platform_string(servicer, client):
 async def test_container_client_type(servicer, container_client):
     assert len(servicer.requests) == 1  # no heartbeat, just ClientHello
     assert isinstance(servicer.requests[0], Empty)
-    assert servicer.client_create_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
+    assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
 
 
 @pytest.mark.asyncio
@@ -160,7 +160,7 @@ def test_client_token_auth_in_container(servicer, credentials, monkeypatch) -> N
     """
     monkeypatch.setenv("MODAL_IS_REMOTE", "1")
     _client = client_from_env(servicer.client_addr, credentials)
-    assert servicer.client_create_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
+    assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
 
 
 def test_multiple_profile_error(servicer, modal_config):
@@ -216,6 +216,7 @@ def test_from_env_container(servicer, container_env):
     servicer.required_creds = {}  # Disallow default client creds
     Client.from_env()
     # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
+    assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
 
 
 def test_from_env_container_with_tokens(servicer, container_env, token_env):
@@ -224,6 +225,7 @@ def test_from_env_container_with_tokens(servicer, container_env, token_env):
     with pytest.warns(match="token"):
         Client.from_env()
     # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
+    assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
 
 
 def test_from_credentials_client(servicer, set_env_client, server_url_env, token_env):
@@ -233,6 +235,7 @@ def test_from_credentials_client(servicer, set_env_client, server_url_env, token
     servicer.required_creds = {token_id: token_secret}
     Client.from_credentials(token_id, token_secret)
     # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
+    assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
 
 
 def test_from_credentials_container(servicer, container_env):
@@ -241,3 +244,4 @@ def test_from_credentials_container(servicer, container_env):
     servicer.required_creds = {token_id: token_secret}
     Client.from_credentials(token_id, token_secret)
     # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
+    assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
