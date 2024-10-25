@@ -2078,9 +2078,10 @@ message ContainerFileDeleteBytesResponse {
 
 message ContainerFileWriteReplaceBytesRequest {
   string task_id = 1;
-  bytes data = 2;
-  optional uint32 start_inclusive = 3;
-  optional uint32 end_exclusive = 4;
+  string file_descriptor = 2;
+  bytes data = 3;
+  optional uint32 start_inclusive = 4;
+  optional uint32 end_exclusive = 5;
 }
 
 message ContainerFileWriteReplaceBytesResponse {
