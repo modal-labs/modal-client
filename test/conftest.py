@@ -40,6 +40,7 @@ from modal._utils.async_utils import asyncify, synchronize_api
 from modal._utils.grpc_testing import patch_mock_servicer
 from modal._utils.grpc_utils import find_free_port
 from modal._utils.http_utils import run_temporary_http_server
+from modal._utils.jwt_utils import decode_function_call_jwt, decode_input_jwt, encode_input_jwt
 from modal._vendor import cloudpickle
 from modal.app import _App
 from modal.client import Client
@@ -86,6 +87,15 @@ class FunctionsRegistry:
 
     def __len__(self):
         return len(self._functions) + len(self._functions_data)
+
+    def __contains__(self, key):
+        return key in self._functions or key in self._functions_data
+
+    def get(self, key, default=None):
+        try:
+            return self._functions[key]
+        except KeyError:
+            return self._functions_data.get(key, default)
 
     def values(self):
         return list(self._functions.values()) + list(self._functions_data.values())
@@ -1006,7 +1016,28 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.FunctionMapRequest = await stream.recv_message()
         function_call_id = f"fc-{self.fcidx}"
         self.function_id_for_function_call[function_call_id] = request.function_id
-        await stream.send_message(api_pb2.FunctionMapResponse(function_call_id=function_call_id))
+        fn_definition = self.app_functions.get(request.function_id)
+        retry_policy = fn_definition.retry_policy if fn_definition else None
+        function_call_jwt = f"{request.function_id}:{function_call_id}"
+        await stream.send_message(
+            api_pb2.FunctionMapResponse(
+                function_call_id=function_call_id, retry_policy=retry_policy, function_call_jwt=function_call_jwt
+            )
+        )
+
+    async def FunctionRetryInputs(self, stream):
+        request: api_pb2.FunctionRetryInputsRequest = await stream.recv_message()
+        function_id, function_call_id = decode_function_call_jwt(request.function_call_jwt)
+        function_call_inputs = self.client_calls.setdefault(function_call_id, [])
+        for item in request.inputs:
+            if item.input.WhichOneof("args_oneof") == "args":
+                args, kwargs = modal._serialization.deserialize(item.input.args, None)
+            else:
+                args, kwargs = modal._serialization.deserialize(self.blobs[item.input.args_blob_id], None)
+            self.n_inputs += 1
+            idx, input_id = decode_input_jwt(item.input_jwt)
+            function_call_inputs.append(((idx, input_id), (args, kwargs)))
+        await stream.send_message(api_pb2.FunctionRetryInputsResponse())
 
     async def FunctionPutInputs(self, stream):
         request: api_pb2.FunctionPutInputsRequest = await stream.recv_message()
@@ -1020,7 +1051,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
             input_id = f"in-{self.n_inputs}"
             self.n_inputs += 1
-            response_items.append(api_pb2.FunctionPutInputsResponseItem(input_id=input_id, idx=item.idx))
+            response_items.append(
+                api_pb2.FunctionPutInputsResponseItem(
+                    input_id=input_id, idx=item.idx, input_jwt=encode_input_jwt(item.idx, input_id)
+                )
+            )
             function_call_inputs.append(((item.idx, input_id), (args, kwargs)))
         if self.slow_put_inputs:
             await asyncio.sleep(0.001)

@@ -1,9 +1,13 @@
 # Copyright Modal Labs 2022
+import asyncio
 from datetime import timedelta
 
 from modal_proto import api_pb2
 
 from .exception import InvalidError
+
+MIN_INPUT_RETRY_DELAY_MS = 1000
+MAX_INPUT_RETRY_DELAY_MS = 24 * 60 * 60 * 1000
 
 
 class Retries:
@@ -103,3 +107,37 @@ class Retries:
             initial_delay_ms=self.initial_delay // timedelta(milliseconds=1),
             max_delay_ms=self.max_delay // timedelta(milliseconds=1),
         )
+
+
+class RetryManager:
+    """
+    Helper class to apply the specified retry policy.
+    """
+
+    def __init__(self, retry_policy: api_pb2.FunctionRetryPolicy):
+        self.retry_policy = retry_policy
+        self.attempt_count = 0
+
+    async def raise_or_sleep(self, exc: Exception):
+        """
+        Raises an exception if the maximum retry count has been reached, otherwise sleeps for calculated delay.
+        """
+        self.attempt_count += 1
+        if self.attempt_count > self.retry_policy.retries:
+            raise exc
+        delay_ms = self._retry_delay_ms(self.attempt_count, self.retry_policy)
+        await asyncio.sleep(delay_ms / 1000)
+
+    @staticmethod
+    def _retry_delay_ms(attempt_count: int, retry_policy: api_pb2.FunctionRetryPolicy) -> float:
+        """
+        Computes the amount of time to sleep before retrying based on the backend_coefficient and initial_delay_ms args.
+        """
+        if attempt_count < 1:
+            raise ValueError(f"Cannot compute retry delay. attempt_count must be at least 1, but was {attempt_count}")
+        delay_ms = retry_policy.initial_delay_ms * (retry_policy.backoff_coefficient ** (attempt_count - 1))
+        if delay_ms < MIN_INPUT_RETRY_DELAY_MS:
+            return MIN_INPUT_RETRY_DELAY_MS
+        if delay_ms > MAX_INPUT_RETRY_DELAY_MS:
+            return MAX_INPUT_RETRY_DELAY_MS
+        return delay_ms

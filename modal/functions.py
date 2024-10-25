@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2023
+import dataclasses
 import inspect
 import textwrap
 import time
@@ -26,6 +27,7 @@ import typing_extensions
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
+from synchronicity.exceptions import UserCodeException
 
 from modal._utils.async_utils import aclosing
 from modal_proto import api_pb2
@@ -64,6 +66,7 @@ from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from .config import config
 from .exception import (
     ExecutionError,
+    FunctionTimeoutError,
     InvalidError,
     NotFoundError,
     OutputExpiredError,
@@ -86,7 +89,7 @@ from .parallel_map import (
     _SynchronizedQueue,
 )
 from .proxy import _Proxy
-from .retries import Retries
+from .retries import Retries, RetryManager
 from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
@@ -98,15 +101,32 @@ if TYPE_CHECKING:
     import modal.partial_function
 
 
+@dataclasses.dataclass
+class _RetryContext:
+    function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType"
+    retry_policy: api_pb2.FunctionRetryPolicy
+    function_call_jwt: str
+    input_jwt: str
+    input_id: str
+    item: api_pb2.FunctionPutInputsItem
+
+
 class _Invocation:
     """Internal client representation of a single-input call to a Modal Function or Generator"""
 
     stub: ModalClientModal
 
-    def __init__(self, stub: ModalClientModal, function_call_id: str, client: _Client):
+    def __init__(
+        self,
+        stub: ModalClientModal,
+        function_call_id: str,
+        client: _Client,
+        retry_context: Optional[_RetryContext] = None,
+    ):
         self.stub = stub
         self.client = client  # Used by the deserializer.
         self.function_call_id = function_call_id  # TODO: remove and use only input_id
+        self._retry_context = retry_context
 
     @staticmethod
     async def create(
@@ -132,7 +152,16 @@ class _Invocation:
         function_call_id = response.function_call_id
 
         if response.pipelined_inputs:
-            return _Invocation(client.stub, function_call_id, client)
+            input = response.pipelined_inputs[0]
+            retry_context = _RetryContext(
+                function_call_invocation_type=function_call_invocation_type,
+                retry_policy=response.retry_policy,
+                function_call_jwt=response.function_call_jwt,
+                input_jwt=input.input_jwt,
+                input_id=input.input_id,
+                item=item,
+            )
+            return _Invocation(client.stub, function_call_id, client, retry_context)
 
         request_put = api_pb2.FunctionPutInputsRequest(
             function_id=function_id, inputs=[item], function_call_id=function_call_id
@@ -144,7 +173,16 @@ class _Invocation:
         processed_inputs = inputs_response.inputs
         if not processed_inputs:
             raise Exception("Could not create function call - the input queue seems to be full")
-        return _Invocation(client.stub, function_call_id, client)
+        input = inputs_response.inputs[0]
+        retry_context = _RetryContext(
+            function_call_invocation_type=function_call_invocation_type,
+            retry_policy=response.retry_policy,
+            function_call_jwt=response.function_call_jwt,
+            input_jwt=input.input_jwt,
+            input_id=input.input_id,
+            item=item,
+        )
+        return _Invocation(client.stub, function_call_id, client, retry_context)
 
     async def pop_function_call_outputs(
         self, timeout: Optional[float], clear_on_success: bool
@@ -180,12 +218,45 @@ class _Invocation:
                     # return the last response to check for state of num_unfinished_inputs
                     return response
 
-    async def run_function(self) -> Any:
+    async def _retry_input(self) -> None:
+        ctx = self._retry_context
+        if not ctx:
+            raise ValueError("Cannot retry input when _retry_context is empty.")
+
+        item = api_pb2.FunctionRetryInputsItem(input_jwt=ctx.input_jwt, input=ctx.item.input)
+        request = api_pb2.FunctionRetryInputsRequest(function_call_jwt=ctx.function_call_jwt, inputs=[item])
+        await retry_transient_errors(
+            self.client.stub.FunctionRetryInputs,
+            request,
+        )
+
+    async def _get_single_output(self) -> Any:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
             await self.pop_function_call_outputs(timeout=None, clear_on_success=True)
         ).outputs[0]
         return await _process_result(item.result, item.data_format, self.stub, self.client)
+
+    async def run_function(self) -> Any:
+        # Use retry logic only if retry policy is specified and
+        ctx = self._retry_context
+        if (
+            not ctx
+            or not ctx.retry_policy
+            or ctx.retry_policy.retries == 0
+            or ctx.function_call_invocation_type != api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
+        ):
+            return await self._get_single_output()
+
+        # User errors including timeouts are managed by the user specified retry policy.
+        user_retry_manager = RetryManager(ctx.retry_policy)
+
+        while True:
+            try:
+                return await self._get_single_output()
+            except (UserCodeException, FunctionTimeoutError) as exc:
+                await user_retry_manager.raise_or_sleep(exc)
+            await self._retry_input()
 
     async def poll_function(self, timeout: Optional[float] = None):
         """Waits up to timeout for a result from a function.
@@ -1325,14 +1396,20 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             async for item in stream:
                 yield item
 
-    async def _call_function(self, args, kwargs) -> ReturnType:
+    async def _call_function(
+        self,
+        args,
+        kwargs,
+        function_call_invocation_type,
+    ) -> ReturnType:
         invocation = await _Invocation.create(
             self,
             args,
             kwargs,
             client=self._client,
-            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY,
+            function_call_invocation_type=function_call_invocation_type,
         )
+
         return await invocation.run_function()
 
     async def _call_function_nowait(
@@ -1368,6 +1445,26 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     @synchronizer.no_io_translation
     @live_method
+    async def _experimental_remote(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
+        """
+        [Experimental] Calls the function remotely, executing it with the given arguments and returning the
+        execution's result. Retries are handled by the client.
+        """
+        # TODO: Generics/TypeVars
+        self._check_no_web_url("remote")
+        if self._is_generator:
+            raise InvalidError(
+                "A generator function cannot be called with `.remote(...)`. Use `.remote_gen(...)` instead."
+            )
+
+        return await self._call_function(
+            args,
+            kwargs,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
+        )
+
+    @synchronizer.no_io_translation
+    @live_method
     async def remote(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
@@ -1379,7 +1476,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 "A generator function cannot be called with `.remote(...)`. Use `.remote_gen(...)` instead."
             )
 
-        return await self._call_function(args, kwargs)
+        return await self._call_function(
+            args, kwargs, function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY
+        )
 
     @synchronizer.no_io_translation
     @live_method_gen
