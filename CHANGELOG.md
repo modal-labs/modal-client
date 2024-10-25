@@ -10,6 +10,72 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.64.223 (2024-10-24)
+
+* Fix for `modal serve` not showing progress when reloading apps on file changes since v0.63.79
+
+
+
+### 0.64.218 (2024-10-23)
+
+- Fix a regression introduced in client version 0.64.209, which affects client authentication within a container.
+
+
+
+### 0.64.198 (2024-10-18)
+
+Fixes a bug where `Queue.put` and `Queue.put_many` would throw `queue.Full` even if `timeout=None`.
+
+
+
+### 0.64.194 (2024-10-18)
+
+- The previously-deprecated `--confirm` flag has been removed from the `modal volume delete` CLI. Use `--yes` to force deletion without a confirmation prompt.
+
+
+
+### 0.64.193 (2024-10-18)
+
+- Passing `wait_for_response=False` in Modal webhook decorators is no longer supported. See [the docs](https://modal.com/docs/guide/webhook-timeouts#polling-solutions) for alternatives.
+
+
+
+### 0.64.187 (2024-10-16)
+
+When writing to a `StreamWriter` that has already had EOF written, a ValueError is now raised instead of an `EOFError`.
+
+
+
+### 0.64.185 (2024-10-15)
+
+Memory snapshotting can now be used with parameterized functions.
+
+
+
+### 0.64.184 (2024-10-15)
+
+StreamWriters now accept strings as input.
+
+
+
+### 0.64.182 (2024-10-15)
+
+- Fixed a bug where app rollbacks would not restart a schedule that had been removed in an intervening deployment.
+
+
+
+### 0.64.181 (2024-10-14)
+
+- The `modal shell` CLI command now takes a container ID, allowing you to shell into a running container.
+
+
+
+### 0.64.180 (2024-10-14)
+
+- `modal shell --cmd` now can be shortened to `modal shell -c`. This means you can use it like `modal shell -c "uname -a"` to quickly run a command within the remote environment.
+
+
+
 ### 0.64.168 (2024-10-03)
 
 - The `Image.conda`, `Image.conda_install`, and `Image.conda_update_from_environment` methods are now fully deprecated. We recommend using `micromamba` (via `Image.micromamba` and `Image.micromamba_install`) instead, or manually installing and using conda with `Image.run_commands` when strictly necessary.

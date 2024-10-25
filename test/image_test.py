@@ -17,7 +17,7 @@ from modal.exception import DeprecationError, InvalidError, VersionError
 from modal.image import (
     SUPPORTED_PYTHON_SERIES,
     ImageBuilderVersion,
-    _dockerhub_debian_codename,
+    _base_image_config,
     _dockerhub_python_version,
     _get_modal_requirements_path,
     _validate_python_version,
@@ -33,7 +33,7 @@ def dummy():
 
 
 def test_supported_python_series():
-    assert SUPPORTED_PYTHON_SERIES == PYTHON_STANDALONE_VERSIONS.keys()
+    assert SUPPORTED_PYTHON_SERIES == list(PYTHON_STANDALONE_VERSIONS)
 
 
 def get_image_layers(image_id: str, servicer) -> List[api_pb2.Image]:
@@ -139,7 +139,7 @@ def test_python_version(builder_version, servicer, client, python_version):
     image = Image.debian_slim() if python_version is None else Image.debian_slim(python_version)
     app.function(image=image)(dummy)
     expected_dockerhub_python = _dockerhub_python_version(builder_version, expected_python)
-    expected_dockerhub_debian = _dockerhub_debian_codename(builder_version)
+    expected_dockerhub_debian = _base_image_config("debian", builder_version)
     assert expected_dockerhub_python.startswith(expected_python)
     with app.run(client):
         commands = get_all_dockerfile_commands(image.object_id, servicer)
@@ -894,18 +894,26 @@ def test_get_modal_requirements_path(builder_version, python_version):
         assert path.endswith(f"{builder_version}.txt")
 
 
-def test_image_builder_version(servicer, test_dir, modal_config):
+def test_image_builder_version(servicer, credentials, test_dir, modal_config):
     app = App(image=Image.debian_slim())
     app.function()(dummy)
+
+    def mock_base_image_config(group, version):
+        config = {
+            "debian": "bookworm",
+            "python": "3.11.0",
+            "package_tools": "pip wheel uv",
+        }
+        return config[group]
 
     # TODO use a single with statement and tuple of managers when we drop Py3.8
     test_requirements = str(test_dir / "supports" / "test-requirements.txt")
     with mock.patch("modal.image._get_modal_requirements_path", lambda *_, **__: test_requirements):
         with mock.patch("modal.image._dockerhub_python_version", lambda *_, **__: "3.11.0"):
-            with mock.patch("modal.image._dockerhub_debian_codename", lambda *_, **__: "bullseye"):
+            with mock.patch("modal.image._base_image_config", mock_base_image_config):
                 with mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"]):
                     with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
-                        with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-xyz")) as client:
+                        with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
                             with modal_config():
                                 with app.run(client=client):
                                     assert servicer.image_builder_versions
@@ -913,7 +921,7 @@ def test_image_builder_version(servicer, test_dir, modal_config):
                                         assert version == "2000.01"
 
 
-def test_image_builder_supported_versions(servicer):
+def test_image_builder_supported_versions(servicer, credentials):
     app = App(image=Image.debian_slim())
     app.function()(dummy)
 
@@ -921,7 +929,7 @@ def test_image_builder_supported_versions(servicer):
     with pytest.raises(VersionError, match=r"This version of the modal client supports.+{'2000.01'}"):
         with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
             with mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.11"]):
-                with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-xyz")) as client:
+                with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
                     with app.run(client=client):
                         pass
 

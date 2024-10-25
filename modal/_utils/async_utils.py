@@ -6,7 +6,23 @@ import inspect
 import time
 import typing
 from contextlib import asynccontextmanager
-from typing import Any, AsyncGenerator, Awaitable, Callable, Iterator, List, Optional, Set, TypeVar, cast
+from dataclasses import dataclass
+from typing import (
+    Any,
+    AsyncGenerator,
+    AsyncIterable,
+    Awaitable,
+    Callable,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+)
 
 import synchronicity
 from typing_extensions import ParamSpec
@@ -391,6 +407,7 @@ def on_shutdown(coro):
 
 T = TypeVar("T")
 P = ParamSpec("P")
+V = TypeVar("V")
 
 
 def asyncify(f: Callable[P, T]) -> Callable[P, typing.Coroutine[None, None, T]]:
@@ -477,3 +494,106 @@ async def aclosing(agen: AsyncGenerator[T, None]) -> AsyncGenerator[AsyncGenerat
         yield agen
     finally:
         await agen.aclose()
+
+
+async def sync_or_async_iter(iterable: Union[Iterable[T], AsyncIterable[T]]) -> AsyncGenerator[T, None]:
+    if hasattr(iterable, "__aiter__"):
+        async for item in typing.cast(AsyncIterable[T], iterable):
+            yield item
+    else:
+        assert hasattr(iterable, "__iter__"), "sync_or_async_iter requires an iterable or async iterable"
+        # This intentionally could block the event loop for the duration of calling __iter__ and __next__,
+        # so in non-trivial cases (like passing lists and ranges) this could be quite a foot gun for users #
+        # w/ async code (but they can work around it by always using async iterators)
+        for item in typing.cast(Iterable[T], iterable):
+            yield item
+
+
+@typing.overload
+def async_zip(
+    i1: Union[AsyncIterable[T], Iterable[T]], i2: Union[AsyncIterable[V], Iterable[V]], /
+) -> AsyncGenerator[Tuple[T, V], None]:
+    ...
+
+
+@typing.overload
+def async_zip(*iterables: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerator[Tuple[T, ...], None]:
+    ...
+
+
+async def async_zip(*iterables):
+    tasks = []
+    generators = [sync_or_async_iter(it) for it in iterables]
+    try:
+        while True:
+            try:
+
+                async def next_item(gen):
+                    return await gen.__anext__()
+
+                tasks = [asyncio.create_task(next_item(gen)) for gen in generators]
+                items = await asyncio.gather(*tasks)
+                yield tuple(items)
+            except StopAsyncIteration:
+                break
+    finally:
+        cancelled_tasks = []
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+                cancelled_tasks.append(task)
+        try:
+            await asyncio.gather(*cancelled_tasks)
+        except asyncio.CancelledError:
+            pass
+
+
+@dataclass
+class ValueWrapper(typing.Generic[T]):
+    value: T
+
+
+@dataclass
+class ExceptionWrapper:
+    value: Exception
+
+
+class StopSentinelType:
+    ...
+
+
+STOP_SENTINEL = StopSentinelType()
+
+
+async def async_merge(*inputs: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerator[T, None]:
+    queue: asyncio.Queue[Tuple[int, Union[ValueWrapper[T], ExceptionWrapper, StopSentinelType]]] = asyncio.Queue()
+
+    async def producer(producer_id: int, iterable: Union[AsyncIterable[T], Iterable[T]]):
+        try:
+            async for item in sync_or_async_iter(iterable):
+                await queue.put((producer_id, ValueWrapper(item)))
+        except Exception as e:
+            await queue.put((producer_id, ExceptionWrapper(e)))
+        finally:
+            await queue.put((producer_id, STOP_SENTINEL))
+
+    tasks = [asyncio.create_task(producer(i, it)) for i, it in enumerate(inputs)]
+    active_producers = set(range(len(inputs)))
+
+    try:
+        while active_producers:
+            producer_id, item = await queue.get()
+            if isinstance(item, ExceptionWrapper):
+                raise item.value
+            elif isinstance(item, StopSentinelType):
+                active_producers.remove(producer_id)
+            else:
+                yield item.value
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
+async def callable_to_agen(awaitable: Callable[[], Awaitable[T]]) -> AsyncGenerator[T, None]:
+    yield await awaitable()

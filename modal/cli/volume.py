@@ -19,7 +19,6 @@ from modal.cli._download import _volume_download
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
-from modal.exception import deprecation_warning
 from modal.volume import _Volume, _VolumeUploadContextManager
 from modal_proto import api_pb2
 
@@ -278,17 +277,8 @@ async def cp(
 async def delete(
     volume_name: str = Argument(help="Name of the modal.Volume to be deleted. Case sensitive"),
     yes: bool = YES_OPTION,
-    confirm: bool = Option(default=False, help="DEPRECATED: See `--yes` option"),
     env: Optional[str] = ENV_OPTION,
 ):
-    if confirm:
-        deprecation_warning(
-            (2024, 4, 24),
-            "The `--confirm` option is deprecated; use `--yes` to delete without prompting.",
-            show_source=False,
-        )
-        yes = True
-
     if not yes:
         typer.confirm(
             f"Are you sure you want to irrevocably delete the modal.Volume '{volume_name}'?",
