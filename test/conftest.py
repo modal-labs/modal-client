@@ -16,6 +16,7 @@ import tempfile
 import textwrap
 import threading
 import traceback
+import uuid
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, get_args
@@ -27,6 +28,7 @@ import pkg_resources
 import pytest_asyncio
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
+from grpclib.events import RecvRequest, listen
 
 import modal._serialization
 from modal import __version__, config
@@ -60,6 +62,13 @@ def set_env(monkeypatch):
 @pytest.fixture(scope="function", autouse=True)
 def disable_app_run_warning(monkeypatch):
     monkeypatch.setenv("MODAL_DISABLE_APP_RUN_OUTPUT_WARNING", "1")
+
+
+@pytest.fixture(scope="function", autouse=True)
+def ignore_local_config():
+    # When running tests locally, we don't want to pick up the local .modal.toml file
+    config._user_config = {}
+    yield
 
 
 class FunctionsRegistry:
@@ -100,7 +109,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     client_addr: str
     container_addr: str
 
-    def __init__(self, blob_host, blobs):
+    def __init__(self, blob_host, blobs, credentials):
         self.use_blob_outputs = False
         self.put_outputs_barrier = threading.Barrier(
             1, timeout=10
@@ -236,9 +245,50 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.image_join_sleep_duration = None
 
+        token_id, token_secret = credentials
+        self.required_creds = {token_id: token_secret}  # Any of this will be accepted
+        self.last_metadata = None
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
+
+    async def recv_request(self, event: RecvRequest):
+        # Make sure metadata is correct
+        self.last_metadata = event.metadata
+        for header in [
+            "x-modal-python-version",
+            "x-modal-client-version",
+            "x-modal-client-type",
+        ]:
+            if header not in event.metadata:
+                raise GRPCError(Status.FAILED_PRECONDITION, f"Missing {header} header")
+        if event.metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT):
+            if event.method_name in [
+                "/modal.client.ModalClient/TokenFlowCreate",
+                "/modal.client.ModalClient/TokenFlowWait",
+            ]:
+                pass  # Methods that don't require authentication
+            else:
+                token_id = event.metadata.get("x-modal-token-id")
+                token_secret = event.metadata.get("x-modal-token-secret")
+                if not token_id or not token_secret:
+                    raise GRPCError(Status.UNAUTHENTICATED, f"No credentials for method {event.method_name}")
+                elif token_id not in self.required_creds:
+                    raise GRPCError(Status.UNAUTHENTICATED, f"Invalid {token_id=!r} for method {event.method_name}")
+                elif self.required_creds[token_id] != token_secret:
+                    raise GRPCError(Status.UNAUTHENTICATED, f"Invalid token secret for for method {event.method_name}")
+        elif event.metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER):
+            for header in [
+                "x-modal-token-id",
+                "x-modal-token-secret",
+                "x-modal-task-id",  # old
+                "x-modal-task-secret",  # old
+            ]:
+                if header in event.metadata:
+                    raise GRPCError(Status.FAILED_PRECONDITION, f"Container client should not set header {header}")
+        else:
+            raise GRPCError(Status.FAILED_PRECONDITION, "Unknown client type")
 
     def function_body(self, func):
         """Decorator for setting the function that will be called for any FunctionGetOutputs calls"""
@@ -594,13 +644,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def ClientHello(self, stream):
         request: Empty = await stream.recv_message()
         self.requests.append(request)
-        self.client_create_metadata = stream.metadata
         client_version = stream.metadata["x-modal-client-version"]
         warning = ""
         assert stream.user_agent.startswith(f"modal-client/{__version__} ")
-        if stream.metadata.get("x-modal-token-id") == "bad":
-            raise GRPCError(Status.UNAUTHENTICATED, "bad bad bad")
-        elif client_version == "unauthenticated":
+        if client_version == "unauthenticated":
             raise GRPCError(Status.UNAUTHENTICATED, "failed authentication")
         elif client_version == "deprecated":
             warning = "SUPER OLD"
@@ -1708,6 +1755,7 @@ async def run_server(servicer, host=None, port=None, path=None):
     async def _start_servicer():
         nonlocal server
         server = grpclib.server.Server([servicer])
+        listen(server, RecvRequest, servicer.recv_request)
         await server.start(host=host, port=port, path=path)
 
     async def _stop_servicer():
@@ -1730,12 +1778,19 @@ async def run_server(servicer, host=None, port=None, path=None):
         await stop_servicer.aio()
 
 
+@pytest.fixture(scope="function")
+def credentials():
+    token_id = "ak-" + str(uuid.uuid4())
+    token_secret = "as-" + str(uuid.uuid4())
+    return (token_id, token_secret)
+
+
 @pytest_asyncio.fixture(scope="function")
-async def servicer(blob_server, temporary_sock_path):
+async def servicer(blob_server, temporary_sock_path, credentials):
     port = find_free_port()
 
     blob_host, blobs = blob_server
-    servicer = MockClientServicer(blob_host, blobs)  # type: ignore
+    servicer = MockClientServicer(blob_host, blobs, credentials)  # type: ignore
 
     if platform.system() != "Windows":
         async with run_server(servicer, host="0.0.0.0", port=port):
@@ -1754,8 +1809,8 @@ async def servicer(blob_server, temporary_sock_path):
 
 
 @pytest_asyncio.fixture(scope="function")
-async def client(servicer):
-    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
+async def client(servicer, credentials):
+    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
         yield client
 
 
@@ -1768,6 +1823,23 @@ async def container_client(servicer):
 @pytest_asyncio.fixture(scope="function")
 async def server_url_env(servicer, monkeypatch):
     monkeypatch.setenv("MODAL_SERVER_URL", servicer.client_addr)
+    yield
+
+
+@pytest_asyncio.fixture(scope="function")
+async def token_env(servicer, monkeypatch, credentials):
+    token_id, token_secret = credentials
+    monkeypatch.setenv("MODAL_TOKEN_ID", token_id)
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", token_secret)
+    yield
+
+
+@pytest_asyncio.fixture(scope="function")
+async def container_env(servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SERVER_URL", servicer.container_addr)
+    monkeypatch.setenv("MODAL_TASK_ID", "ta-123")
+    monkeypatch.setenv("MODAL_TASK_SECRET", "1")  # TODO(erikbern): remove
+    monkeypatch.setenv("MODAL_IS_REMOTE", "1")
     yield
 
 

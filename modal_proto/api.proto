@@ -78,6 +78,7 @@ enum CheckpointStatus {
 enum ClientType {
   CLIENT_TYPE_UNSPECIFIED = 0;
   CLIENT_TYPE_CLIENT = 1;
+  CLIENT_TYPE_WORKER = 2;
   CLIENT_TYPE_CONTAINER = 3;
   CLIENT_TYPE_WEB_SERVER = 5;
 }
@@ -1081,9 +1082,10 @@ message Function {
 
   Schedule schedule = 72;
 
-  // Need a mapping of method names to webhook configs, e.g. {"method_name": WebhookConfig}
-  map<string, WebhookConfig> method_webhook_configs = 73;
+  bool snapshot_debug = 73; // For internal debugging use only.
 
+  // Need a mapping of method names to web endpoint info
+  map<string, WebEndpointInfo> method_web_endpoint_info = 74;
 }
 
 message FunctionBindParamsRequest {
@@ -1206,6 +1208,10 @@ message FunctionData {
   // When the function is a "grouped" one, this records the # of tasks we want
   // to schedule in tandem.
   uint32 _experimental_group_size = 19;
+  // TODO(irfansharif): We're using this field to enable new gang-scheduling
+  // primitives. Remove it when it's only controlled through the
+  // _experimental_group_size field.
+  bool _experimental_boost = 21;
 
   Schedule schedule = 20;
 
@@ -2158,7 +2164,9 @@ message TaskInfo {
   double enqueued_at = 5;
 }
 
-message TaskListRequest {}
+message TaskListRequest {
+  string environment_name = 1;
+}
 
 message TaskListResponse {
   repeated TaskStats tasks = 1;
@@ -2377,6 +2385,12 @@ message VolumeRemoveFileRequest {
   string volume_id = 1 [ (modal.options.audit_target_attr) = true ];
   string path = 2;
   bool recursive = 3;
+}
+
+message WebEndpointInfo {
+  WebhookConfig webhook_config = 1;
+  string web_url = 2;
+  WebUrlInfo web_url_info = 3;
 }
 
 message WebUrlInfo {

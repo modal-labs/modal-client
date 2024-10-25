@@ -211,18 +211,17 @@ class _Invocation:
         items_total: Union[int, None] = None  # populated when self.run_function() completes
         async with aclosing(
             _stream_function_call_data(self.client, self.function_call_id, variant="data_out")
-        ) as data_stream:
-            async with aclosing(async_merge(data_stream, callable_to_agen(self.run_function))) as streamer:
-                async for item in streamer:
-                    if isinstance(item, api_pb2.GeneratorDone):
-                        items_total = item.items_total
-                    else:
-                        yield item
-                        items_received += 1
-                    # The comparison avoids infinite loops if a non-deterministic generator is retried
-                    # and produces less data in the second run than what was already sent.
-                    if items_total is not None and items_received >= items_total:
-                        break
+        ) as data_stream, aclosing(async_merge(data_stream, callable_to_agen(self.run_function))) as streamer:
+            async for item in streamer:
+                if isinstance(item, api_pb2.GeneratorDone):
+                    items_total = item.items_total
+                else:
+                    yield item
+                    items_received += 1
+                # The comparison avoids infinite loops if a non-deterministic generator is retried
+                # and produces less data in the second run than what was already sent.
+                if items_total is not None and items_received >= items_total:
+                    break
 
 
 # Wrapper type for api_pb2.FunctionStats
@@ -849,6 +848,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     class_parameter_info=info.class_parameter_info(),
                     i6pn_enabled=i6pn_enabled,
                     schedule=schedule.proto_message if schedule is not None else None,
+                    snapshot_debug=config.get("snapshot_debug"),
                     _experimental_group_size=group_size or 0,  # Experimental: Grouped functions
                     _experimental_concurrent_cancellations=True,
                     _experimental_buffer_containers=_experimental_buffer_containers or 0,

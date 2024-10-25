@@ -203,6 +203,7 @@ _SETTINGS = {
     "token_id": _Setting(),
     "token_secret": _Setting(),
     "task_id": _Setting(),
+    "task_secret": _Setting(),  # TODO(erikbern): delete very soon
     "serve_timeout": _Setting(transform=float),
     "sync_entrypoint": _Setting(),
     "logs_timeout": _Setting(10, float),
@@ -220,6 +221,7 @@ _SETTINGS = {
     "traceback": _Setting(False, transform=_to_boolean),
     "image_builder_version": _Setting(),
     "strict_parameters": _Setting(False, transform=_to_boolean),  # For internal/experimental use
+    "snapshot_debug": _Setting(False, transform=_to_boolean),
 }
 
 

@@ -61,7 +61,7 @@ ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10"]
 # so that we fail fast / clearly in unsupported containers. Additionally, we enumerate the supported
 # Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
 # Consider consolidating these multiple sources of truth?
-SUPPORTED_PYTHON_SERIES: Set[str] = {"3.8", "3.9", "3.10", "3.11", "3.12"}
+SUPPORTED_PYTHON_SERIES: List[str] = ["3.8", "3.9", "3.10", "3.11", "3.12"]
 
 LOCAL_REQUIREMENTS_DIR = Path(__file__).parent / "requirements"
 CONTAINER_REQUIREMENTS_PATH = "/modal_requirements.txt"
