@@ -219,8 +219,10 @@ def test_from_env_container(servicer, container_env):
 
 
 def test_from_env_container_with_tokens(servicer, container_env, token_env):
+    # Even if MODAL_TOKEN_ID and MODAL_TOKEN_SECRET are set, if we're in a containers, ignore those
     servicer.required_creds = {}  # Disallow default client creds
-    Client.from_env()
+    with pytest.warns(match="token"):
+        Client.from_env()
     # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
 
 
