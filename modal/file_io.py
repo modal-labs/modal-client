@@ -17,7 +17,6 @@ class _FileIO:
     _readable = False
     _writable = False
     _appended = False
-    _seekable = False
     _closed = True
 
     _task_id: Optional[str] = None
@@ -29,7 +28,6 @@ class _FileIO:
             raise ValueError(f"Unsupported file mode: {mode}")
         self._readable = any(m in mode for m in ["r", "r+", "w+", "a+", "x+"])
         self._writable = any(m in mode for m in ["w", "w+", "a", "a+", "x", "x+"])
-        self._seekable = any(m in mode for m in ["r+", "w+", "a+", "x+"])
         self._appended = "a" in mode
 
     async def _consume_output(self, exec_id: str, file_descriptor: int) -> AsyncIterator[Tuple[Optional[str], int]]:
@@ -67,9 +65,13 @@ class _FileIO:
         return stdout
 
     async def _open_file(self, path: str, mode: str) -> None:
-        resp = await self._client.stub.ContainerFileOpen(
-            api_pb2.ContainerFileOpenRequest(path=path, mode=mode, task_id=self._task_id)
+        resp = await self._client.stub.ContainerFilesystemExec(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_open_request=api_pb2.ContainerFileOpenRequest(path=path, mode=mode, task_id=self._task_id)
+            )
         )
+        if not resp.HasField("file_descriptor"):
+            raise FilesystemExecutionError("Failed to open file")
         self._file_descriptor = resp.file_descriptor
         await self._wait(resp.exec_id)
 
@@ -86,16 +88,24 @@ class _FileIO:
     async def read(self, n: int | None = None) -> bytes:
         """Read n bytes from the current position, or the entire remaining file if n is None."""
         self._check_readable()
-        resp = await self._client.stub.ContainerFileRead(
-            api_pb2.ContainerFileReadRequest(task_id=self._task_id, file_descriptor=self._file_descriptor, n=n)
+        resp = await self._client.stub.ContainerFilesystemExec(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_read_request=api_pb2.ContainerFileReadRequest(
+                    task_id=self._task_id, file_descriptor=self._file_descriptor, n=n
+                )
+            )
         )
         return await self._wait(resp.exec_id)
 
     async def readline(self) -> bytes:
         """Read a single line from the current position."""
         self._check_readable()
-        resp = await self._client.stub.ContainerFileReadLine(
-            api_pb2.ContainerFileReadLineRequest(task_id=self._task_id, file_descriptor=self._file_descriptor)
+        resp = await self._client.stub.ContainerFilesystemExec(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_read_line_request=api_pb2.ContainerFileReadLineRequest(
+                    task_id=self._task_id, file_descriptor=self._file_descriptor
+                )
+            )
         )
         return await self._wait(resp.exec_id)
 
@@ -112,16 +122,24 @@ class _FileIO:
         closed.
         """
         self._check_writable()
-        resp = await self._client.stub.ContainerFileWrite(
-            api_pb2.ContainerFileWriteRequest(task_id=self._task_id, file_descriptor=self._file_descriptor, data=data)
+        resp = await self._client.stub.ContainerFilesystemExec(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_write_request=api_pb2.ContainerFileWriteRequest(
+                    task_id=self._task_id, file_descriptor=self._file_descriptor, data=data
+                )
+            )
         )
         await self._wait(resp.exec_id)
 
     async def flush(self) -> None:
         """Flush the buffer to disk."""
         self._check_writable()
-        resp = await self._client.stub.ContainerFileFlush(
-            api_pb2.ContainerFileFlushRequest(task_id=self._task_id, file_descriptor=self._file_descriptor)
+        resp = await self._client.stub.ContainerFilesystemExec(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_flush_request=api_pb2.ContainerFileFlushRequest(
+                    task_id=self._task_id, file_descriptor=self._file_descriptor
+                )
+            )
         )
         await self._wait(resp.exec_id)
 
@@ -142,12 +160,14 @@ class _FileIO:
         (relative to the current position) and 2 (relative to the file's end).
         """
         self._check_seekable()
-        resp = await self._client.stub.ContainerFileSeek(
-            api_pb2.ContainerFileSeekRequest(
-                task_id=self._task_id,
-                file_descriptor=self._file_descriptor,
-                offset=offset,
-                whence=self._get_whence(whence),
+        resp = await self._client.stub.ContainerFilesystemExec(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_seek_request=api_pb2.ContainerFileSeekRequest(
+                    task_id=self._task_id,
+                    file_descriptor=self._file_descriptor,
+                    offset=offset,
+                    whence=self._get_whence(whence),
+                )
             )
         )
         await self._wait(resp.exec_id)
@@ -161,12 +181,14 @@ class _FileIO:
         Resets the file pointer to the start of the file.
         """
         self._check_seekable()
-        resp = await self._client.stub.ContainerFileDeleteBytes(
-            api_pb2.ContainerFileDeleteBytesRequest(
-                task_id=self._task_id,
-                file_descriptor=self._file_descriptor,
-                start_inclusive=start_inclusive,
-                end_exclusive=end_exclusive,
+        resp = await self._client.stub.ContainerFilesystemExec(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_delete_bytes_request=api_pb2.ContainerFileDeleteBytesRequest(
+                    task_id=self._task_id,
+                    file_descriptor=self._file_descriptor,
+                    start_inclusive=start_inclusive,
+                    end_exclusive=end_exclusive,
+                )
             )
         )
         await self._wait(resp.exec_id)
@@ -182,21 +204,27 @@ class _FileIO:
         Resets the file pointer to the start of the file.
         """
         self._check_seekable()
-        resp = await self._client.stub.ContainerFileWriteReplaceBytes(
-            api_pb2.ContainerFileWriteReplaceBytesRequest(
-                task_id=self._task_id,
-                file_descriptor=self._file_descriptor,
-                data=data,
-                start_inclusive=start_inclusive,
-                end_exclusive=end_exclusive,
+        resp = await self._client.stub.ContainerFilesystemExec(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_write_replace_bytes_request=api_pb2.ContainerFileWriteReplaceBytesRequest(
+                    task_id=self._task_id,
+                    file_descriptor=self._file_descriptor,
+                    data=data,
+                    start_inclusive=start_inclusive,
+                    end_exclusive=end_exclusive,
+                )
             )
         )
         await self._wait(resp.exec_id)
 
     async def _close(self) -> None:
         # Buffer is flushed by the runner on close
-        resp = await self._client.stub.ContainerCloseFile(
-            api_pb2.ContainerCloseFileRequest(exec_id=self._task_id, file_descriptor=self._file_descriptor)
+        resp = await self._client.stub.ContainerFilesystemExec(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_close_request=api_pb2.ContainerFileCloseRequest(
+                    task_id=self._task_id, file_descriptor=self._file_descriptor
+                )
+            )
         )
         await self._wait(resp.exec_id)
         self._closed = True
@@ -219,11 +247,6 @@ class _FileIO:
     def _check_closed(self) -> None:
         if self._closed:
             raise ValueError("Cannot perform I/O on a closed file")
-
-    # This is also validated in the runner, but we check in the client to catch errors early
-    def _check_seekable(self) -> None:
-        if not self._seekable:
-            raise UnsupportedOperation("File is not seekable. Add '+' to the file mode to make it seekable.")
 
     def __enter__(self) -> "_FileIO":
         self._check_closed()

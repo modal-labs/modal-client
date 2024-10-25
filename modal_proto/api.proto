@@ -2028,18 +2028,9 @@ message ContainerFileOpenRequest {
   string mode = 4;
 }
 
-message ContainerFileOpenResponse {
-  string exec_id = 1;
-  string file_descriptor = 2;
-}
-
 message ContainerFileCloseRequest {
   string task_id = 1;
   string file_descriptor = 2;
-}
-
-message ContainerFileCloseResponse {
-  string exec_id = 1;
 }
 
 message ContainerFilesystemGetOutputRequest {
@@ -2061,19 +2052,11 @@ message ContainerFileSeekRequest {
   SeekWhence whence = 4;
 }
 
-message ContainerFileSeekResponse {
-  string exec_id = 1;
-}
-
 message ContainerFileDeleteBytesRequest {
   string task_id = 1;
   string file_descriptor = 2;
   optional uint32 start_inclusive = 3;
   optional uint32 end_exclusive = 4;
-}
-
-message ContainerFileDeleteBytesResponse {
-  string exec_id = 1;
 }
 
 message ContainerFileWriteReplaceBytesRequest {
@@ -2084,8 +2067,24 @@ message ContainerFileWriteReplaceBytesRequest {
   optional uint32 end_exclusive = 5;
 }
 
-message ContainerFileWriteReplaceBytesResponse {
+message ContainerFilesystemExecRequest {
+  oneof file_exec_request_oneof {
+    ContainerFileOpenRequest file_open_request = 1;
+    ContainerFileWriteRequest file_write_request = 2;
+    ContainerFileReadRequest file_read_request = 3;
+    ContainerFileFlushRequest file_flush_request = 4;
+    ContainerFileReadLineRequest file_read_line_request = 5;
+    ContainerFileSeekRequest file_seek_request = 6;
+    ContainerFileDeleteBytesRequest file_delete_bytes_request = 7;
+    ContainerFileWriteReplaceBytesRequest file_write_replace_bytes_request = 8;
+    ContainerFileCloseRequest file_close_request = 9;
+  }
+}
+
+message ContainerFilesystemExecResponse {
   string exec_id = 1;
+  // only set when the request opens a new file, i.e., ContainerFileOpenRequest
+  optional string file_descriptor = 2;
 }
 
 message Schedule {
@@ -2537,21 +2536,14 @@ service ModalClient {
 
   // Container
   rpc ContainerCheckpoint(ContainerCheckpointRequest) returns (google.protobuf.Empty);
-  rpc ContainerFileClose(ContainerFileCloseRequest) returns (ContainerFileCloseResponse);
-  rpc ContainerFileDeleteBytes(ContainerFileDeleteBytesRequest) returns (ContainerFileDeleteBytesResponse);
   rpc ContainerExec(ContainerExecRequest) returns (ContainerExecResponse);
   rpc ContainerExecGetOutput(ContainerExecGetOutputRequest) returns (stream RuntimeOutputBatch);
   rpc ContainerExecPutInput(ContainerExecPutInputRequest) returns (google.protobuf.Empty);
+  rpc ContainerFilesystemExec(ContainerFilesystemExecRequest) returns (ContainerFilesystemExecResponse);
   rpc ContainerExecWait(ContainerExecWaitRequest) returns (ContainerExecWaitResponse);
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (ContainerHeartbeatResponse);
   rpc ContainerLog(ContainerLogRequest) returns (google.protobuf.Empty);
-  rpc ContainerFileOpen(ContainerFileOpenRequest) returns (ContainerFileOpenResponse);
-  rpc ContainerFileRead(ContainerFileReadRequest) returns (ContainerFileReadResponse);
-  rpc ContainerFileReadLine(ContainerFileReadLineRequest) returns (ContainerFileReadLineResponse);
-  rpc ContainerFileSeek(ContainerFileSeekRequest) returns (ContainerFileSeekResponse);
   rpc ContainerStop(ContainerStopRequest) returns (ContainerStopResponse);
-  rpc ContainerFileWrite(ContainerFileWriteRequest) returns (ContainerFileWriteResponse);
-  rpc ContainerFileWriteReplaceBytes(ContainerFileWriteReplaceBytesRequest) returns (ContainerFileWriteReplaceBytesResponse);
 
   // Dicts
   rpc DictClear(DictClearRequest) returns (google.protobuf.Empty);
