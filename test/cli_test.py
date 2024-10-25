@@ -799,7 +799,7 @@ def test_config_show(servicer, server_url_env, modal_config):
     with modal_config(config):
         res = _run(["config", "show"])
         assert "'token_id': 'ak-abc'" in res.stdout
-        assert "'token_secret': '...'" in res.stdout
+        assert "'token_secret': '***'" in res.stdout
 
 
 def test_app_list(servicer, mock_dir, set_env_client):

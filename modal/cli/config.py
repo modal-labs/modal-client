@@ -21,7 +21,7 @@ def show(redact: bool = typer.Option(True, help="Redact the `token_secret` value
     # This is just a test command
     config_dict = config.to_dict()
     if redact and config_dict.get("token_secret"):
-        config_dict["token_secret"] = "..."
+        config_dict["token_secret"] = "***"
 
     console = Console()
     console.print(config_dict)
