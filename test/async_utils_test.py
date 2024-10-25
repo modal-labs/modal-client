@@ -467,7 +467,6 @@ async def test_async_zip_exception():
 
 @pytest.mark.asyncio
 async def test_async_zip_parallel():
-    print()
     ev1 = asyncio.Event()
     ev2 = asyncio.Event()
 

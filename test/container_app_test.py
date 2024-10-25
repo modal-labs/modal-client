@@ -81,6 +81,7 @@ def set_env_vars(restore_path, container_addr):
             "MODAL_SERVER_URL": container_addr,
             "MODAL_TASK_ID": "ta-123",
             "MODAL_IS_REMOTE": "1",
+            "MODAL_TASK_SECRET": "1",
         },
     ):
         yield

@@ -218,6 +218,12 @@ def test_from_env_container(servicer, container_env):
     # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
 
 
+def test_from_env_container_with_tokens(servicer, container_env, token_env):
+    servicer.required_creds = {}  # Disallow default client creds
+    Client.from_env()
+    # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
+
+
 def test_from_credentials_client(servicer, set_env_client, server_url_env, token_env):
     # Note: this explicitly uses a lot of fixtures to make sure those are ignored
     token_id = "ak-foo-1"

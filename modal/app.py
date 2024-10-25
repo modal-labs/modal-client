@@ -874,7 +874,7 @@ class _App:
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_buffer_containers: Optional[int] = None,  # Number of additional, idle containers to keep around.
-        _experimental_proxy_ip: Optional[int] = None,  # IP address of proxy
+        _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
     ) -> Callable[[CLS_T], CLS_T]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
