@@ -378,7 +378,7 @@ class AsyncOrSyncIterable:
     from an already async context, since that would otherwise deadlock the event loop
     """
 
-    def __init__(self, async_iterable: typing.AsyncIterable[Any], nested_async_message):
+    def __init__(self, async_iterable: typing.AsyncGenerator[Any, None], nested_async_message):
         self._async_iterable = async_iterable
         self.nested_async_message = nested_async_message
 
@@ -389,7 +389,7 @@ class AsyncOrSyncIterable:
         try:
             with Runner() as runner:
                 for output in runner.run_async_gen(self._async_iterable):
-                    yield output
+                    yield output  # type: ignore
         except NestedAsyncCalls:
             raise InvalidError(self.nested_async_message)
 
@@ -484,7 +484,7 @@ class Runner:
         self._loop = asyncio.new_event_loop()
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback) -> bool:
+    def __exit__(self, exc_type, exc_value, traceback):
         self._loop.run_until_complete(self._loop.shutdown_asyncgens())
         if sys.version_info[:2] >= (3, 9):
             # Introduced in Python 3.9
@@ -493,7 +493,7 @@ class Runner:
         self._loop.close()
         return False
 
-    def run(self, coro: typing.Coroutine[None, None, T]) -> T:
+    def run(self, coro: typing.Awaitable[T]) -> T:
         is_main_thread = threading.current_thread() == threading.main_thread()
 
         coro_task = asyncio.ensure_future(coro, loop=self._loop)
@@ -529,6 +529,7 @@ class Runner:
         except asyncio.CancelledError:
             if self._num_sigints > 0:
                 raise KeyboardInterrupt()
+            raise  # internal cancellations
         finally:
             if handle_sigint:
                 self._loop.remove_signal_handler(signal.SIGINT)
