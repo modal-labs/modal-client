@@ -9,7 +9,8 @@ from .object import _get_environment_name, _Object
 
 
 class _Proxy(_Object, type_prefix="pr"):
-    """
+    """This is deprecated. Please use the **Proxy IP** feature, available on the team plan instead.
+
     Proxy objects are used to setup secure tunnel connections to a private remote address, for example
     a database.
 
