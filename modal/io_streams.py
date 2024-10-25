@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
 async def _sandbox_logs_iterator(
     sandbox_id: str, file_descriptor: int, last_entry_id: Optional[str], client: _Client
-) -> AsyncIterator[Tuple[Optional[api_pb2.TaskLogs], str]]:
+) -> AsyncIterator[Tuple[Optional[str], str]]:
     req = api_pb2.SandboxGetLogsRequest(
         sandbox_id=sandbox_id,
         file_descriptor=file_descriptor,
@@ -35,22 +35,19 @@ async def _sandbox_logs_iterator(
 
 
 async def _container_process_logs_iterator(
-    process_id: str, file_descriptor: int, last_entry_id: Optional[str], client: _Client
-):
+    process_id: str, file_descriptor: int, client: _Client
+) -> AsyncIterator[Optional[str]]:
     req = api_pb2.ContainerExecGetOutputRequest(
         exec_id=process_id,
         timeout=55,
-        last_batch_index=last_entry_id or 0,
         file_descriptor=file_descriptor,
     )
     async for batch in client.stub.ContainerExecGetOutput.unary_stream(req):
         if batch.HasField("exit_code"):
-            yield (None, batch.batch_index)
+            yield None
             break
         for item in batch.items:
-            # TODO: do this on the server.
-            if item.file_descriptor == file_descriptor:
-                yield (item.message, batch.batch_index)
+            yield item.message
 
 
 class _StreamReader:
@@ -89,11 +86,18 @@ class _StreamReader:
         self._client = client
         self._stream = None
         self._last_entry_id = None
-        self._buffer = ""
+        self._line_buffer = ""
         self._by_line = by_line
         # Whether the reader received an EOF. Once EOF is True, it returns
         # an empty string for any subsequent reads (including async for)
         self.eof = False
+
+        if self._object_type == "container_process":
+            # Container process streams need to be consumed as they are produced,
+            # otherwise the process will block. Use a buffer to store the stream
+            # until the client consumes it.
+            self._container_process_buffer = []
+            asyncio.create_task(self._consume_container_process_stream())
 
     @property
     def file_descriptor(self):
@@ -124,6 +128,54 @@ class _StreamReader:
 
         return data
 
+    async def _consume_container_process_stream(self):
+        """mdmd:hidden
+        Consumes the container process stream and stores the messages in the buffer.
+        """
+        completed = False
+        retries_remaining = 10
+        while not completed:
+            try:
+                iterator = _container_process_logs_iterator(self._object_id, self._file_descriptor, self._client)
+
+                async for message in iterator:
+                    self._container_process_buffer.append(message)
+                    if message is None:
+                        completed = True
+                        break
+
+            except (GRPCError, StreamTerminatedError) as exc:
+                if retries_remaining > 0:
+                    retries_remaining -= 1
+                    if isinstance(exc, GRPCError):
+                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                            await asyncio.sleep(1.0)
+                            continue
+                    elif isinstance(exc, StreamTerminatedError):
+                        continue
+                raise exc
+
+    async def _stream_container_process(self) -> AsyncIterator[Tuple[Optional[str], str]]:
+        """mdmd:hidden
+        Streams the container process buffer to the reader.
+        """
+        entry_id = 0
+        if self._last_entry_id:
+            entry_id = int(self._last_entry_id) + 1
+
+        while True:
+            if entry_id >= len(self._container_process_buffer):
+                await asyncio.sleep(0.1)
+                continue
+
+            item = self._container_process_buffer[entry_id]
+
+            yield (item, str(entry_id))
+            if item is None:
+                break
+
+            entry_id += 1
+
     async def _get_logs(self) -> AsyncIterator[Optional[str]]:
         """mdmd:hidden
         Streams sandbox or process logs from the server to the reader.
@@ -147,9 +199,7 @@ class _StreamReader:
                         self._object_id, self._file_descriptor, self._last_entry_id, self._client
                     )
                 else:
-                    iterator = _container_process_logs_iterator(
-                        self._object_id, self._file_descriptor, self._last_entry_id, self._client
-                    )
+                    iterator = self._stream_container_process()
 
                 async for message, entry_id in iterator:
                     self._last_entry_id = entry_id
@@ -175,22 +225,23 @@ class _StreamReader:
         """
         async for message in self._get_logs():
             if message is None:
-                if self._buffer:
-                    yield self._buffer
-                    self._buffer = ""
+                if self._line_buffer:
+                    yield self._line_buffer
+                    self._line_buffer = ""
                 yield None
             else:
-                self._buffer += message
-                while "\n" in self._buffer:
-                    line, self._buffer = self._buffer.split("\n", 1)
+                self._line_buffer += message
+                while "\n" in self._line_buffer:
+                    line, self._line_buffer = self._line_buffer.split("\n", 1)
                     yield line + "\n"
 
     def __aiter__(self):
         """mdmd:hidden"""
-        if self._by_line:
-            self._stream = self._get_logs_by_line()
-        else:
-            self._stream = self._get_logs()
+        if not self._stream:
+            if self._by_line:
+                self._stream = self._get_logs_by_line()
+            else:
+                self._stream = self._get_logs()
         return self
 
     async def __anext__(self):
