@@ -503,8 +503,6 @@ class Runner:
             # this wrapper is needed since run_coroutine_threadsafe *only* accepts coroutines
             return await coro_task
 
-        original_handler = None
-
         def _sigint_handler(signum, frame):
             # cancel the task in order to have run_until_complete return soon and
             # prevent a bunch of unwanted tracebacks when shutting down the
@@ -521,6 +519,7 @@ class Runner:
             # by raising KeyboardInterrupt inside of it
             raise KeyboardInterrupt()
 
+        original_sigint_handler = None
         try:
             # only install signal handler if running from main thread and we haven't disabled sigint
             handle_sigint = is_main_thread and signal.getsignal(signal.SIGINT) != signal.SIG_IGN
@@ -529,7 +528,7 @@ class Runner:
                 # intentionally not using _loop.add_signal_handler since it's slow (?)
                 # and not available on Windows. We just don't want the sigint to
                 # mess with the event loop anyways
-                original_handler = signal.signal(signal.SIGINT, _sigint_handler)
+                original_sigint_handler = signal.signal(signal.SIGINT, _sigint_handler)
         except KeyboardInterrupt:
             # this is quite unlikely, but with bad timing we could get interrupted before
             # installing the sigint handler and this has happened repeatedly in unit tests
@@ -539,11 +538,12 @@ class Runner:
             return self._loop.run_until_complete(wrapper_coro())
         except asyncio.CancelledError:
             if self._num_sigints > 0:
-                raise KeyboardInterrupt()  # might want to use original_handler here instead?
+                raise KeyboardInterrupt()  # might want to use original_sigint_handler here instead?
             raise  # internal cancellations
         finally:
-            if handle_sigint:
-                signal.signal(signal.SIGINT, original_handler)
+            if original_sigint_handler:
+                # reset signal handler
+                signal.signal(signal.SIGINT, original_sigint_handler)
 
     def run_async_gen(
         self,
