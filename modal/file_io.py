@@ -10,7 +10,7 @@ from .exception import FilesystemExecutionError, UnsupportedOperation
 
 # The Sandbox file handling API is designed to mimic Python's io.FileIO
 # See https://github.com/python/cpython/blob/main/Lib/_pyio.py#L1459
-# Unlike io.FileIO, it also implements some higher level APIs, like `delete` and `write_replace`.
+# Unlike io.FileIO, it also implements some higher level APIs, like `delete_bytes` and `write_replace_bytes`.
 # TODO: add delete to the entire file
 # TODO: add list_dir to the Sandbox
 class _FileIO:
@@ -20,7 +20,8 @@ class _FileIO:
     _seekable = False
     _closed = True
 
-    _exec_id: Optional[str] = None
+    _task_id: Optional[str] = None
+    _file_descriptor: Optional[str] = None
 
     def _validate_mode(self, mode: str) -> None:
         valid_modes = ["r", "w", "a", "x", "r+", "w+", "a+", "x+"]
@@ -66,31 +67,39 @@ class _FileIO:
         return stdout
 
     async def _open_file(self, path: str, mode: str) -> None:
-        resp = await self._client.stub.ContainerOpenFile(api_pb2.ContainerOpenFileRequest(path=path, mode=mode))
-        self._exec_id = resp.exec_id
-        await self._wait(self._exec_id)
+        resp = await self._client.stub.ContainerFileOpen(
+            api_pb2.ContainerFileOpenRequest(path=path, mode=mode, exec_id=self._task_id)
+        )
+        self._file_descriptor = resp.file_descriptor
+        await self._wait(resp.exec_id)
 
     @classmethod
-    async def create(cls, path: str, mode: str, client: _Client) -> "_FileIO":
+    async def create(cls, path: str, mode: str, client: _Client, task_id: str) -> "_FileIO":
         self = cls.__new__(cls)
         self._validate_mode(mode)
+        self._client = client
+        self._task_id = task_id
         await self._open_file(path, mode)
         self._closed = False
         return self
 
     # TODO
-    async def read(self, n: int = -1) -> bytes:
-        """Read n bytes from the current position. Returns the entire remaining file if n < 0."""
+    async def read(self, n: int | None = None) -> bytes:
+        """Read n bytes from the current position, or the entire remaining file if n is None."""
         self._check_readable()
-        await self._client.stub.ContainerReadFile(api_pb2.ContainerReadFileRequest(exec_id=self._exec_id, n=n))
-        return await self._wait(self._exec_id)
+        resp = await self._client.stub.ContainerFileRead(
+            api_pb2.ContainerFileReadRequest(task_id=self._task_id, file_descriptor=self._file_descriptor, n=n)
+        )
+        return await self._wait(resp.exec_id)
 
     # TODO
     async def readline(self) -> bytes:
         """Read a single line from the current position."""
         self._check_readable()
-        await self._client.stub.ContainerReadFileLine(api_pb2.ContainerReadFileLineRequest(exec_id=self._exec_id))
-        return await self._wait(self._exec_id)
+        resp = await self._client.stub.ContainerReadFileLine(
+            api_pb2.ContainerReadFileLineRequest(exec_id=self._task_id)
+        )
+        return await self._wait(resp.exec_id)
 
     # TODO
     async def readlines(self) -> list[bytes]:
@@ -107,15 +116,17 @@ class _FileIO:
         closed.
         """
         self._check_writable()
-        await self._client.stub.ContainerWriteFile(api_pb2.ContainerWriteFileRequest(exec_id=self._exec_id, data=data))
-        await self._wait(self._exec_id)
+        resp = await self._client.stub.ContainerWriteFile(
+            api_pb2.ContainerWriteFileRequest(exec_id=self._task_id, data=data)
+        )
+        await self._wait(resp.exec_id)
 
     # TODO
     async def flush(self) -> None:
         """Flush the buffer to disk."""
         self._check_writable()
-        await self._client.stub.ContainerFlushFile(api_pb2.ContainerFlushFileRequest(exec_id=self._exec_id))
-        await self._wait(self._exec_id)
+        resp = await self._client.stub.ContainerFlushFile(api_pb2.ContainerFlushFileRequest(exec_id=self._task_id))
+        await self._wait(resp.exec_id)
 
     # TODO
     async def seek(self, offset: int, whence: int = 0) -> None:
@@ -125,45 +136,49 @@ class _FileIO:
         (relative to the current position) and 2 (relative to the file's end).
         """
         self._check_seekable()
-        await self._client.stub.ContainerSeekFile(
-            api_pb2.ContainerSeekFileRequest(exec_id=self._exec_id, offset=offset, whence=whence)
+        resp = await self._client.stub.ContainerSeekFile(
+            api_pb2.ContainerSeekFileRequest(exec_id=self._task_id, offset=offset, whence=whence)
         )
-        await self._wait(self._exec_id)
+        await self._wait(resp.exec_id)
 
     # TODO
-    async def delete_bytes(self, start_inclusive: int = -1, end_exclusive: int = -1) -> None:
+    async def delete_bytes(self, start_inclusive: int | None = None, end_exclusive: int | None = None) -> None:
         """Delete a range of bytes from the file.
 
         `start_inclusive` and `end_exclusive` are byte offsets. If either is
-        -1, the start or end of the file is used, respectively.
+        None, the start or end of the file is used, respectively.
         """
         self._check_seekable()
-        await self._client.stub.ContainerDeleteBytes(
+        resp = await self._client.stub.ContainerDeleteBytes(
             api_pb2.ContainerDeleteBytesRequest(
-                exec_id=self._exec_id, start_inclusive=start_inclusive, end_exclusive=end_exclusive
+                exec_id=self._task_id, start_inclusive=start_inclusive, end_exclusive=end_exclusive
             )
         )
-        await self._wait(self._exec_id)
+        await self._wait(resp.exec_id)
 
     # TODO
-    async def write_replace_bytes(self, data: bytes, start_inclusive: int = -1, end_exclusive: int = -1) -> None:
+    async def write_replace_bytes(
+        self, data: bytes, start_inclusive: int | None = None, end_exclusive: int | None = None
+    ) -> None:
         """Replace a range of bytes in the file with new data.
 
         `start_inclusive` and `end_exclusive` are byte offsets. If either is
-        -1, the start or end of the file is used, respectively.
+        None, the start or end of the file is used, respectively.
         """
         self._check_seekable()
-        await self._client.stub.ContainerWriteReplaceBytes(
+        resp = await self._client.stub.ContainerWriteReplaceBytes(
             api_pb2.ContainerWriteReplaceBytesRequest(
-                exec_id=self._exec_id, data=data, start_inclusive=start_inclusive, end_exclusive=end_exclusive
+                exec_id=self._task_id, data=data, start_inclusive=start_inclusive, end_exclusive=end_exclusive
             )
         )
-        await self._wait(self._exec_id)
+        await self._wait(resp.exec_id)
 
     async def _close(self) -> None:
         # Buffer is flushed by the runner on close
-        await self._client.stub.ContainerCloseFile(api_pb2.ContainerCloseFileRequest(exec_id=self._exec_id))
-        await self._wait(self._exec_id)
+        resp = await self._client.stub.ContainerCloseFile(
+            api_pb2.ContainerCloseFileRequest(exec_id=self._task_id, file_descriptor=self._file_descriptor)
+        )
+        await self._wait(resp.exec_id)
         self._closed = True
 
     async def close(self) -> None:

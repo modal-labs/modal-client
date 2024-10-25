@@ -426,8 +426,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
         return _ContainerProcess(resp.exec_id, self._client)
 
-    def open(self, path: str, mode: str) -> _FileIO:
-        return _FileIO(path, mode, self._client)
+    async def open(self, path: str, mode: str = "r") -> _FileIO:
+        task_id = await self._get_task_id()
+        return await _FileIO.create(path, mode, self._client, task_id)
 
     @property
     def stdout(self) -> _StreamReader:

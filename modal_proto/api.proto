@@ -1983,84 +1983,102 @@ message SandboxWaitResponse {
 }
 
 message ContainerFileWriteRequest {
-  string exec_id = 1;
-  bytes data = 2;
+  string task_id = 1;
+  string file_descriptor = 2;
+  bytes data = 3;
 }
 
 message ContainerFileWriteResponse {
+  string exec_id = 1;
 }
 
 message ContainerFileReadRequest {
-  string exec_id = 1;
-  optional uint32 n = 2;
+  string task_id = 1;
+  string file_descriptor = 2; 
+  optional uint32 n = 3;
 }
 
 message ContainerFileReadResponse {
+  string exec_id = 1;
 }
 
 message ContainerFileFlushRequest {
-  string exec_id = 1;
+  string task_id = 1;
+  string file_descriptor = 2;
 }
 
 message ContainerFileFlushResponse {
+  string exec_id = 1;
 }
 
 message ContainerFileReadLineRequest {
-  string exec_id = 1;
+  string task_id = 1;
+  string file_descriptor = 2;
 }
 
 message ContainerFileReadLineResponse {
+  string exec_id = 1;
 }
 
 message ContainerFileOpenRequest {
-  string exec_id = 1;
-  string path = 2;
-  string mode = 3;
+  string task_id = 1;
+  // file descriptor is hydrated when sent from server -> worker
+  optional string file_descriptor = 2;
+  string path = 3;
+  string mode = 4;
 }
 
 message ContainerFileOpenResponse {
-}
-
-message ContainerFileCloseRequest {
   string exec_id = 1;
   string file_descriptor = 2;
 }
 
+message ContainerFileCloseRequest {
+  string task_id = 1;
+  string file_descriptor = 2;
+}
+
 message ContainerFileCloseResponse {
+  string exec_id = 1;
 }
 
 message ContainerFilesystemGetOutputRequest {
-  string exec_id = 1;
+  string task_id = 1;
   float timeout = 2;
   uint64 last_batch_index = 3;
 }
 
 message ContainerFileSeekRequest {
-  string exec_id = 1;
-  int32 offset = 2;
-  int32 whence = 3;
+  string task_id = 1;
+  string file_descriptor = 2;
+  int32 offset = 3;
+  int32 whence = 4;
 }
 
 message ContainerFileSeekResponse {
+  string exec_id = 1;
 }
 
 message ContainerFileDeleteBytesRequest {
-  string exec_id = 1;
-  int32 start_inclusive = 2;
-  int32 end_exclusive = 3;
+  string task_id = 1;
+  string file_descriptor = 2;
+  int32 start_inclusive = 3;
+  int32 end_exclusive = 4;
 }
 
 message ContainerFileDeleteBytesResponse {
+  string exec_id = 1;
 }
 
 message ContainerFileWriteReplaceBytesRequest {
-  string exec_id = 1;
+  string task_id = 1;
   bytes data = 2;
   int32 start_inclusive = 3;
   int32 end_exclusive = 4;
 }
 
 message ContainerFileWriteReplaceBytesResponse {
+  string exec_id = 1;
 }
 
 message Schedule {
