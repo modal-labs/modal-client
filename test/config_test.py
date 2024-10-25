@@ -35,7 +35,7 @@ def _cli(args, env={}):
 
 
 def _get_config(env={}):
-    stdout = _cli(["config", "show"], env=env)
+    stdout = _cli(["config", "show", "--no-redact"], env=env)
     return eval(stdout)
 
 

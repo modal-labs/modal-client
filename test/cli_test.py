@@ -789,6 +789,19 @@ def test_profile_list(servicer, server_url_env, modal_config):
                 del os.environ["MODAL_TOKEN_SECRET"]
 
 
+def test_config_show(servicer, server_url_env, modal_config):
+    config = """
+    [test-profile]
+    token_id = "ak-abc"
+    token_secret = "as-xyz"
+    active = true
+    """
+    with modal_config(config):
+        res = _run(["config", "show"])
+        assert "'token_id': 'ak-abc'" in res.stdout
+        assert "'token_secret': '...'" in res.stdout
+
+
 def test_app_list(servicer, mock_dir, set_env_client):
     res = _run(["app", "list"])
     assert "my_app_foo" not in res.stdout
