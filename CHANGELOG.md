@@ -12,7 +12,7 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 ### 0.64.227 (2024-10-25)
 
-- The `modal container list` CLI command now only shows containers for your active environment. You can pass `--env` to list containers in other environments.
+- The `modal container list` CLI command now only shows containers for the active profile's environment if there is one, otherwise it uses the default environment. You can pass `--env` to list containers in other environments.
 
 ### 0.64.223 (2024-10-24)
 
