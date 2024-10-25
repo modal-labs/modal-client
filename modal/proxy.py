@@ -9,7 +9,7 @@ from .object import _get_environment_name, _Object
 
 
 class _Proxy(_Object, type_prefix="pr"):
-    """Proxy objects are used to give your Modal containers a static outbound IP address.
+    """Proxy objects give your Modal containers a static outbound IP address.
     
     This can be used for connecting to a remote address with network whitelist, for example
     a database. See [the guide](/docs/guide/proxy-ips) for more information.
