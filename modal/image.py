@@ -130,11 +130,16 @@ def _get_modal_requirements_path(builder_version: ImageBuilderVersion, python_ve
 
 
 def _get_modal_requirements_command(version: ImageBuilderVersion) -> str:
-    command = "pip install"
+    if version <= "2024.04":
+        command = "pip install"
+    else:
+        command = "uv pip install --system --compile-bytecode"
+
     if version <= "2023.12":
         args = f"-r {CONTAINER_REQUIREMENTS_PATH}"
     else:
         args = f"--no-cache --no-deps -r {CONTAINER_REQUIREMENTS_PATH}"
+
     return f"{command} {args}"
 
 
