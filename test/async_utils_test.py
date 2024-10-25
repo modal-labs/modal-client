@@ -658,12 +658,19 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
         print("KeyboardInterrupt")
     """
     )
+    if sys.platform == "win32":
+        creationflags = (subprocess.CREATE_NEW_PROCESS_GROUP,)  # type: ignore
+        sigint = signal.CTRL_C_EVENT  # type: ignore
+    else:
+        creationflags = 0
+        sigint = signal.SIGINT
+
     p = subprocess.Popen(
         [sys.executable, "-u", "-c", code],
         encoding="utf8",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,  # windows signals that don't affect the test process
+        creationflags=creationflags,
     )
 
     def line():
@@ -674,10 +681,8 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     assert line() == "enter"
     assert line() == "res 0"
     assert line() == "res 1"
-    if os.name == "nt":
-        p.send_signal(signal.CTRL_C_EVENT)  # type: ignore
-    else:
-        p.send_signal(signal.SIGINT)
+
+    p.send_signal(sigint)
 
     while (nextline := line()).startswith("res"):
         pass
