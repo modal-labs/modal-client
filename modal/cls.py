@@ -318,7 +318,7 @@ class _Cls(_Object, type_prefix="cs"):
 
         for method_name, partial_function in partial_functions.items():
             method_function = class_service_function._bind_method(user_cls, method_name, partial_function)
-            app._add_function(method_function, is_web_endpoint=partial_function.webhook_config is not None)
+            # app._add_function(method_function, is_web_endpoint=partial_function.webhook_config is not None)
             partial_function.wrapped = True
             functions[method_name] = method_function
 
@@ -332,7 +332,8 @@ class _Cls(_Object, type_prefix="cs"):
         }
 
         def _deps() -> List[_Function]:
-            return [class_service_function] + list(functions.values())
+            # return [class_service_function] + list(functions.values())
+            return [class_service_function]
 
         async def _load(self: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.ClassCreateRequest(app_id=resolver.app_id, existing_class_id=existing_object_id)
