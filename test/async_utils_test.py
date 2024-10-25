@@ -670,7 +670,11 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     assert line() == "enter"
     assert line() == "res 0"
     assert line() == "res 1"
-    p.send_signal(signal.SIGINT)
+    if os.name == "nt":
+        p.send_signal(signal.CTRL_C_EVENT)
+    else:
+        p.send_signal(signal.SIGINT)
+
     while (nextline := line()).startswith("res"):
         pass
     assert nextline == "cancel"
