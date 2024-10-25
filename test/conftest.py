@@ -1837,6 +1837,7 @@ async def token_env(servicer, monkeypatch, credentials):
 async def container_env(servicer, monkeypatch):
     monkeypatch.setenv("MODAL_SERVER_URL", servicer.container_addr)
     monkeypatch.setenv("MODAL_TASK_ID", "ta-123")
+    monkeypatch.setenv("MODAL_TASK_SECRET", "1")  # TODO(erikbern): remove
     monkeypatch.setenv("MODAL_IS_REMOTE", "1")
     yield
 

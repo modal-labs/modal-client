@@ -2160,7 +2160,9 @@ message TaskInfo {
   double enqueued_at = 5;
 }
 
-message TaskListRequest {}
+message TaskListRequest {
+  string environment_name = 1;
+}
 
 message TaskListResponse {
   repeated TaskStats tasks = 1;
