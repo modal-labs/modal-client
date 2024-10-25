@@ -495,7 +495,13 @@ class Runner:
 
     def run(self, coro: typing.Coroutine[None, None, T]) -> T:
         is_main_thread = threading.current_thread() == threading.main_thread()
-        task = asyncio.ensure_future(coro, loop=self._loop)
+
+        coro_task = asyncio.ensure_future(coro, loop=self._loop)
+
+        async def wrapper_coro():
+            # this wrapper is needed since run_coroutine_threadsafe *only* accepts coroutines
+            return await coro_task
+
         self._num_sigints = 0
 
         def _sigint_handler():
@@ -507,7 +513,7 @@ class Runner:
             self._num_sigints += 1
             if self._num_sigints == 1:
                 # first sigint is graceful
-                self._loop.call_soon_threadsafe(task.cancel)
+                self._loop.call_soon_threadsafe(coro_task.cancel)
                 return
 
             # this should normally not happen, but the second sigint would "hard kill" the event loop
@@ -519,7 +525,7 @@ class Runner:
         if handle_sigint:
             self._loop.add_signal_handler(signal.SIGINT, _sigint_handler)
         try:
-            return self._loop.run_until_complete(task)
+            return self._loop.run_until_complete(wrapper_coro())
         except asyncio.CancelledError:
             if self._num_sigints > 0:
                 raise KeyboardInterrupt()
