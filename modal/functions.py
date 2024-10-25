@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2023
+import asyncio
 import inspect
 import textwrap
 import time
@@ -26,6 +27,7 @@ import typing_extensions
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
+from synchronicity.exceptions import UserCodeException
 
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
@@ -96,16 +98,28 @@ if TYPE_CHECKING:
     import modal.cls
     import modal.partial_function
 
+MIN_INPUT_RETRY_DELAY_MS = 1000
+MAX_INPUT_RETRY_DELAY_MS = 24 * 60 * 60 * 1000
+
 
 class _Invocation:
     """Internal client representation of a single-input call to a Modal Function or Generator"""
 
     stub: ModalClientModal
 
-    def __init__(self, stub: ModalClientModal, function_call_id: str, client: _Client):
+    def __init__(
+        self,
+        stub: ModalClientModal,
+        function_call_id: str,
+        client: _Client,
+        function_id: Optional[str] = None,
+        item: Optional[api_pb2.FunctionPutInputsItem] = None,
+    ):
         self.stub = stub
         self.client = client  # Used by the deserializer.
         self.function_call_id = function_call_id  # TODO: remove and use only input_id
+        self._function_id = function_id
+        self._item = item
 
     @staticmethod
     async def create(
@@ -131,7 +145,7 @@ class _Invocation:
         function_call_id = response.function_call_id
 
         if response.pipelined_inputs:
-            return _Invocation(client.stub, function_call_id, client)
+            return _Invocation(client.stub, function_call_id, client, function_id, item)
 
         request_put = api_pb2.FunctionPutInputsRequest(
             function_id=function_id, inputs=[item], function_call_id=function_call_id
@@ -143,7 +157,7 @@ class _Invocation:
         processed_inputs = inputs_response.inputs
         if not processed_inputs:
             raise Exception("Could not create function call - the input queue seems to be full")
-        return _Invocation(client.stub, function_call_id, client)
+        return _Invocation(client.stub, function_call_id, client, function_id, item)
 
     async def pop_function_call_outputs(
         self, timeout: Optional[float], clear_on_success: bool
@@ -178,6 +192,33 @@ class _Invocation:
                 if backend_timeout < 0:
                     # return the last response to check for state of num_unfinished_inputs
                     return response
+
+    async def retry_input(self) -> None:
+        if not self._function_id or not self._item:
+            raise ValueError("_function_id and _item must not be empty when retrying an input")
+
+        request_put = api_pb2.FunctionPutInputsRequest(
+            function_id=self._function_id, inputs=[self._item], function_call_id=self.function_call_id
+        )
+        inputs_response: api_pb2.FunctionPutInputsResponse = await retry_transient_errors(
+            self.client.stub.FunctionPutInputs,
+            request_put,
+        )
+        processed_inputs = inputs_response.inputs
+        if not processed_inputs:
+            raise Exception(f"Could not retry input {self._item.idx} - the input queue seems to be full")
+
+    async def get_sync_output(self) -> Any:
+        # TODO(ryan): What should timeout be?
+        get_outputs_timeout = 120
+        response: api_pb2.FunctionGetOutputsResponse = await self.pop_function_call_outputs(
+            timeout=get_outputs_timeout, clear_on_success=True
+        )
+        if response.outputs:
+            item: api_pb2.FunctionGetOutputsItem = response.outputs[0]
+            return await _process_result(item.result, item.data_format, self.stub, self.client)
+        else:
+            raise TimeoutError(f"Received zero outputs in {get_outputs_timeout} seconds")
 
     async def run_function(self) -> Any:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
@@ -315,6 +356,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _build_args: dict
     _can_use_base_function: bool = False  # whether we need to call FunctionBindParams
     _is_generator: Optional[bool] = None
+    _retry_policy: Optional[api_pb2.FunctionRetryPolicy]
 
     # when this is the method of a class/object function, invocation of this function
     # should be using another function id and supply the method name in the FunctionInput:
@@ -940,6 +982,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._is_generator = is_generator
         obj._is_method = False
         obj._spec = function_spec  # needed for modal shell
+        obj._retry_policy = retry_policy
 
         # Used to check whether we should rebuild a modal.Image which uses `run_function`.
         gpus: List[GPU_T] = gpu if isinstance(gpu, list) else [gpu]
@@ -1268,7 +1311,33 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             client=self._client,
             function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY,
         )
-        return await invocation.run_function()
+        if not self._retry_policy:
+            return await invocation.run_function()
+
+        retry_policy = self._retry_policy
+        max_retry_count = retry_policy.retries if retry_policy else 1
+        attempt_count = 0
+        while True:
+            try:
+                return await invocation.get_sync_output()
+            except UserCodeException as exc:
+                attempt_count += 1
+                if attempt_count >= max_retry_count:
+                    raise exc
+                delay_ms = self._retry_delay_ms(attempt_count, retry_policy)
+                await asyncio.sleep(delay_ms / 1000)
+                await invocation.retry_input()
+
+    @staticmethod
+    def _retry_delay_ms(attempt_count: int, retry_policy: api_pb2.FunctionRetryPolicy) -> float:
+        if attempt_count < 1:
+            raise ValueError(f"Cannot compute retry delay. attempt_count must be at least 1, but was {attempt_count}")
+        delay_ms = retry_policy.initial_delay_ms * (retry_policy.backoff_coefficient ** (attempt_count - 1))
+        if delay_ms < MIN_INPUT_RETRY_DELAY_MS:
+            return MIN_INPUT_RETRY_DELAY_MS
+        if delay_ms > MAX_INPUT_RETRY_DELAY_MS:
+            return MAX_INPUT_RETRY_DELAY_MS
+        return delay_ms
 
     async def _call_function_nowait(
         self, args, kwargs, function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType"
