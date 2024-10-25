@@ -2048,11 +2048,17 @@ message ContainerFilesystemGetOutputRequest {
   uint64 last_batch_index = 3;
 }
 
+enum SeekWhence {
+  SEEK_SET = 0;
+  SEEK_CUR = 1;
+  SEEK_END = 2;
+}
+
 message ContainerFileSeekRequest {
   string task_id = 1;
   string file_descriptor = 2;
-  int32 offset = 3;
-  int32 whence = 4;
+  uint32 offset = 3;
+  SeekWhence whence = 4;
 }
 
 message ContainerFileSeekResponse {
@@ -2062,8 +2068,8 @@ message ContainerFileSeekResponse {
 message ContainerFileDeleteBytesRequest {
   string task_id = 1;
   string file_descriptor = 2;
-  int32 start_inclusive = 3;
-  int32 end_exclusive = 4;
+  optional uint32 start_inclusive = 3;
+  optional uint32 end_exclusive = 4;
 }
 
 message ContainerFileDeleteBytesResponse {
@@ -2073,8 +2079,8 @@ message ContainerFileDeleteBytesResponse {
 message ContainerFileWriteReplaceBytesRequest {
   string task_id = 1;
   bytes data = 2;
-  int32 start_inclusive = 3;
-  int32 end_exclusive = 4;
+  optional uint32 start_inclusive = 3;
+  optional uint32 end_exclusive = 4;
 }
 
 message ContainerFileWriteReplaceBytesResponse {

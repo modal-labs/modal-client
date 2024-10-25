@@ -63,12 +63,12 @@ class _FileIO:
                 break
             stderr += data
         if errored:
-            raise FilesystemExecutionError(f"Error executing filesystem command: {stderr}")
+            raise FilesystemExecutionError(stderr)
         return stdout
 
     async def _open_file(self, path: str, mode: str) -> None:
         resp = await self._client.stub.ContainerFileOpen(
-            api_pb2.ContainerFileOpenRequest(path=path, mode=mode, exec_id=self._task_id)
+            api_pb2.ContainerFileOpenRequest(path=path, mode=mode, task_id=self._task_id)
         )
         self._file_descriptor = resp.file_descriptor
         await self._wait(resp.exec_id)
@@ -128,6 +128,16 @@ class _FileIO:
         resp = await self._client.stub.ContainerFlushFile(api_pb2.ContainerFlushFileRequest(exec_id=self._task_id))
         await self._wait(resp.exec_id)
 
+    def _get_whence(self, whence: int) -> api_pb2.SeekWhence:
+        if whence == 0:
+            return api_pb2.SeekWhence.SEEK_SET
+        elif whence == 1:
+            return api_pb2.SeekWhence.SEEK_CUR
+        elif whence == 2:
+            return api_pb2.SeekWhence.SEEK_END
+        else:
+            raise ValueError(f"Invalid whence value: {whence}")
+
     # TODO
     async def seek(self, offset: int, whence: int = 0) -> None:
         """Move to a new position in the file.
@@ -137,7 +147,7 @@ class _FileIO:
         """
         self._check_seekable()
         resp = await self._client.stub.ContainerSeekFile(
-            api_pb2.ContainerSeekFileRequest(exec_id=self._task_id, offset=offset, whence=whence)
+            api_pb2.ContainerSeekFileRequest(exec_id=self._task_id, offset=offset, whence=self._get_whence(whence))
         )
         await self._wait(resp.exec_id)
 
