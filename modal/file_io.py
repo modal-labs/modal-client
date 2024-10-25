@@ -50,10 +50,15 @@ class _FileIO:
             file_descriptor=file_descriptor,
         )
         async for batch in self._client.stub.ContainerFilesystemExecGetOutput.unary_stream(req):
+            if file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
+                output = batch.output
+            elif file_descriptor == api_pb2.FILE_DESCRIPTOR_STDERR:
+                output = batch.error
+
             if batch.HasField("exit_code"):
                 yield (None, batch.exit_code)
                 break
-            for item in batch.items:
+            for item in output:
                 yield (item.message, batch.batch_index)
 
     async def _wait(self, exec_id: str) -> Union[bytes, str]:
@@ -141,6 +146,7 @@ class _FileIO:
         closed.
         """
         self._check_writable()
+        self._validate_type(data)
         if isinstance(data, str):
             data = data.encode("utf-8")
         resp = await self._client.stub.ContainerFilesystemExec(
