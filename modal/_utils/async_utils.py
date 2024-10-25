@@ -495,6 +495,7 @@ class Runner:
 
     def run(self, coro: typing.Awaitable[T]) -> T:
         is_main_thread = threading.current_thread() == threading.main_thread()
+        self._num_sigints = 0
 
         coro_task = asyncio.ensure_future(coro, loop=self._loop)
 
@@ -502,9 +503,9 @@ class Runner:
             # this wrapper is needed since run_coroutine_threadsafe *only* accepts coroutines
             return await coro_task
 
-        self._num_sigints = 0
+        original_handler = None
 
-        def _sigint_handler():
+        def _sigint_handler(signum, frame):
             # cancel the task in order to have run_until_complete return soon and
             # prevent a bunch of unwanted tracebacks when shutting down the
             # event loop.
@@ -520,19 +521,29 @@ class Runner:
             # by raising KeyboardInterrupt inside of it
             raise KeyboardInterrupt()
 
-        handle_sigint = is_main_thread and signal.getsignal(signal.SIGINT) != signal.SIG_IGN
+        try:
+            # only install signal handler if running from main thread and we haven't disabled sigint
+            handle_sigint = is_main_thread and signal.getsignal(signal.SIGINT) != signal.SIG_IGN
 
-        if handle_sigint:
-            self._loop.add_signal_handler(signal.SIGINT, _sigint_handler)
+            if handle_sigint:
+                # intentionally not using _loop.add_signal_handler since it's slow (?)
+                # and not available on Windows. We just don't want the sigint to
+                # mess with the event loop anyways
+                original_handler = signal.signal(signal.SIGINT, _sigint_handler)
+        except KeyboardInterrupt:
+            # this is quite unlikely, but with bad timing we could get interrupted before
+            # installing the sigint handler and this has happened repeatedly in unit tests
+            _sigint_handler(signal.SIGINT, None)
+
         try:
             return self._loop.run_until_complete(wrapper_coro())
         except asyncio.CancelledError:
             if self._num_sigints > 0:
-                raise KeyboardInterrupt()
+                raise KeyboardInterrupt()  # might want to use original_handler here instead?
             raise  # internal cancellations
         finally:
             if handle_sigint:
-                self._loop.remove_signal_handler(signal.SIGINT)
+                signal.signal(signal.SIGINT, original_handler)
 
     def run_async_gen(
         self,

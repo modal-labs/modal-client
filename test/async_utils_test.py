@@ -634,19 +634,22 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     code = textwrap.dedent(
         """
     import asyncio
+    import time
     from itertools import count
-    from modal._utils.async_utils import Runner
+    from modal._utils.async_utils import Runner, aclosing
     async def async_gen():
         print("enter")
         try:
             for i in count():
                 yield i
                 await asyncio.sleep(0.1)
-        except asyncio.CancelledError:
+        finally:
+            # this could be either CancelledError or GeneratorExit depending on timing
+            # CancelledError happens if sigint is during this generator's await
+            # GeneratorExit is during the yielded block in the sync caller
             print("cancel")
             await asyncio.sleep(0.1)
             print("bye")
-
     try:
         with Runner() as runner:
             for res in runner.run_async_gen(async_gen()):
@@ -658,17 +661,21 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     p = subprocess.Popen(
         [sys.executable, "-u", "-c", code], encoding="utf8", stdout=subprocess.PIPE, stderr=subprocess.PIPE
     )
-    assert p.stdout.readline() == "enter\n"
-    assert p.stdout.readline() == "res 0\n"
-    assert p.stdout.readline() == "res 1\n"
 
+    def line():
+        s = p.stdout.readline().rstrip("\n")
+        print(s)
+        return s
+
+    assert line() == "enter"
+    assert line() == "res 0"
+    assert line() == "res 1"
     p.send_signal(signal.SIGINT)
-    assert p.wait(1) == 0
-
-    while (nextline := p.stdout.readline()).startswith("res"):
+    while (nextline := line()).startswith("res"):
         pass
-    assert nextline == "cancel\n"
-    assert p.stdout.readline() == "bye\n"
-    assert p.stdout.readline() == "KeyboardInterrupt\n"
+    assert nextline == "cancel"
+    assert line() == "bye"
+    assert line() == "KeyboardInterrupt"
+    assert p.wait() == 0
     assert p.stdout.read() == ""
     assert p.stderr.read() == ""
