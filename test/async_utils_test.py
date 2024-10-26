@@ -10,7 +10,6 @@ import subprocess
 import sys
 import textwrap
 
-import console_ctrl
 import pytest_asyncio
 from synchronicity import Synchronizer
 
@@ -631,7 +630,6 @@ async def test_callable_to_agen():
     assert result == [await foo()]
 
 
-
 def test_sigint_run_async_gen_shuts_down_gracefully():
     code = textwrap.dedent(
         """
@@ -661,11 +659,14 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     """
     )
     if sys.platform == "win32":
+        # workaround to be able to _test_ Ctrl-C response on windows
+        import console_ctrl
+
         creationflags = subprocess.CREATE_NEW_CONSOLE  # type: ignore
-        platform_sigint = lambda p: console_ctrl.send_ctrl_c(p.pid)
+        platform_sigint = lambda p: console_ctrl.send_ctrl_c(p.pid)  # noqa [E731]
     else:
         creationflags = 0
-        platform_sigint = lambda p: p.send_signal(signal.SIGINT)
+        platform_sigint = lambda p: p.send_signal(signal.SIGINT)  # noqa [E731]
 
     p = subprocess.Popen(
         [sys.executable, "-u", "-c", code],
