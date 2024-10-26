@@ -216,9 +216,5 @@ class ClientClosed(Error):
     pass
 
 
-class UnsupportedOperation(Error):
-    """Raised when an unsupported operation is performed on a file descriptor."""
-
-
 class FilesystemExecutionError(Error):
-    """Raised when an error occurs during a container filesystem operation."""
+    """Raised when an unknown error is thrown during a container filesystem operation."""

@@ -1,11 +1,12 @@
 # Copyright Modal Labs 2024
+import io
 from typing import AsyncIterator, Optional, Tuple, Union
 
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
 from .client import _Client
-from .exception import FilesystemExecutionError, UnsupportedOperation
+from .exception import FilesystemExecutionError
 
 
 # The Sandbox file handling API is designed to mimic Python's io.FileIO
@@ -254,20 +255,20 @@ class _FileIO:
         """Flush the buffer and close the file."""
         await self._close()
 
-    # This is also validated in the runner, but we check in the client to catch errors early
+    # also validated in the runner, but checked in the client to catch errors early
     def _check_writable(self) -> None:
         if not self._writable:
-            raise UnsupportedOperation("File is not writable. Add 'w' to the file mode to make it writable.")
+            raise io.UnsupportedOperation("not writeable")
 
-    # This is also validated in the runner, but we check in the client to catch errors early
+    # also validated in the runner, but checked in the client to catch errors early
     def _check_readable(self) -> None:
         if not self._readable:
-            raise UnsupportedOperation("File is not readable. Add 'r' to the file mode to make it readable.")
+            raise io.UnsupportedOperation("not readable")
 
-    # This is also validated in the runner, but we check in the client to catch errors early
+    # also validated in the runner, but checked in the client to catch errors early
     def _check_closed(self) -> None:
         if self._closed:
-            raise ValueError("Cannot perform I/O on a closed file")
+            raise ValueError("I/O operation on closed file")
 
     def __enter__(self) -> "_FileIO":
         self._check_closed()

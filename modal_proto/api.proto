@@ -118,6 +118,22 @@ enum FileDescriptor {
   FILE_DESCRIPTOR_INFO = 3;
 }
 
+enum SystemErrorCode {
+  SYSTEM_ERROR_CODE_UNSPECIFIED = 0;
+  SYSTEM_ERROR_CODE_PERM = 1;           // EPERM: Operation not permitted
+  SYSTEM_ERROR_CODE_NOENT = 2;          // ENOENT: No such file or directory
+  SYSTEM_ERROR_CODE_IO = 5;             // EIO: Input/output error
+  SYSTEM_ERROR_CODE_NXIO = 6;           // ENXIO: No such device or address
+  SYSTEM_ERROR_CODE_NOMEM = 12;         // ENOMEM: Out of memory
+  SYSTEM_ERROR_CODE_ACCES = 13;         // EACCES: Permission denied
+  SYSTEM_ERROR_CODE_EXIST = 17;         // EEXIST: File exists
+  SYSTEM_ERROR_CODE_NOTDIR = 20;        // ENOTDIR: Not a directory
+  SYSTEM_ERROR_CODE_ISDIR = 21;         // EISDIR: Is a directory
+  SYSTEM_ERROR_CODE_MFILE = 24;         // EMFILE: Too many open files
+  SYSTEM_ERROR_CODE_FBIG = 27;          // EFBIG: File too large
+  SYSTEM_ERROR_CODE_NOSPC = 28;         // ENOSPC: No space left on device
+}
+
 enum FunctionCallInvocationType {
   FUNCTION_CALL_INVOCATION_TYPE_UNSPECIFIED = 0;
   FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY = 1;
@@ -1836,22 +1852,20 @@ message RuntimeOutputBatch {
 }
 
 message FilesystemRuntimeOutputBatch {
-  repeated FilesystemRuntimeOutputMessage output = 1;
-  repeated FilesystemRuntimeOutputMessage error = 2;
+  repeated string output = 1;
+  SystemErrorMessage error = 2;
   uint64 batch_index = 3;
-  optional int32 exit_code = 4;
+  bool eof = 4;
+}
+
+message SystemErrorMessage {
+  SystemErrorCode error_code = 1;
+  string error_message = 2;
 }
 
 // Used for `modal container exec`, `modal shell`, and Sandboxes
 message RuntimeOutputMessage {
   // only stdout / stderr is used
-  FileDescriptor file_descriptor = 1;
-  string message = 2;
-}
-
-message FilesystemRuntimeOutputMessage {
-  // using FileDescriptor isn't totally correct here,
-  // we just need to distinguish between true output and error output
   FileDescriptor file_descriptor = 1;
   string message = 2;
 }
