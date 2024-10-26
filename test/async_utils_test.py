@@ -659,7 +659,7 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     """
     )
     if sys.platform == "win32":
-        creationflags = (subprocess.CREATE_NEW_PROCESS_GROUP,)  # type: ignore
+        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore
         sigint = signal.CTRL_C_EVENT  # type: ignore
     else:
         creationflags = 0
