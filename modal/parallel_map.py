@@ -368,11 +368,8 @@ def _for_each_sync(self, *input_iterators, kwargs={}, ignore_exceptions: bool = 
     """
     # TODO(erikbern): it would be better if this is more like a map_spawn that immediately exits
     # rather than iterating over the result
-    try:
-        for _ in self.map(*input_iterators, kwargs=kwargs, order_outputs=False, return_exceptions=ignore_exceptions):
-            pass
-    except KeyboardInterrupt as e:
-        raise e from None
+    for _ in self.map(*input_iterators, kwargs=kwargs, order_outputs=False, return_exceptions=ignore_exceptions):
+        pass
 
 
 async def _for_each_async(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
