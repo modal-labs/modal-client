@@ -539,7 +539,7 @@ class Runner:
         except asyncio.CancelledError:
             if self._num_sigints > 0:
                 raise KeyboardInterrupt()  # might want to use original_sigint_handler here instead?
-            raise  # internal cancellations
+            raise  # "internal" cancellations, not triggered by KeyboardInterrupt
         finally:
             if original_sigint_handler:
                 # reset signal handler

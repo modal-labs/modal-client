@@ -9,6 +9,7 @@ import signal
 import subprocess
 import sys
 import textwrap
+from test.supports.skip import skip_windows
 
 import pytest_asyncio
 from synchronicity import Synchronizer
@@ -630,6 +631,7 @@ async def test_callable_to_agen():
     assert result == [await foo()]
 
 
+@skip_windows("sending CTRL_C_EVENT in test doesn't seem to have any effect. need to debug on windows machine")
 def test_sigint_run_async_gen_shuts_down_gracefully():
     code = textwrap.dedent(
         """
@@ -659,18 +661,18 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     """
     )
     if sys.platform == "win32":
-        # creationflags = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore
-        sigint = signal.CTRL_C_EVENT  # type: ignore
+        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore
+        platform_sigint = signal.CTRL_C_EVENT  # type: ignore
     else:
-        # creationflags = 0
-        sigint = signal.SIGINT
+        creationflags = 0
+        platform_sigint = signal.SIGINT
 
     p = subprocess.Popen(
         [sys.executable, "-u", "-c", code],
         encoding="utf8",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        # creationflags=creationflags,
+        creationflags=creationflags,
     )
 
     def line():
@@ -682,12 +684,7 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     assert line() == "res 0"
     assert line() == "res 1"
 
-    try:
-        p.send_signal(sigint)
-    except KeyboardInterrupt:
-        # on windows, the Ctrl-C-event affects the parent too
-        # since it's tied to the console...
-        pass
+    p.send_signal(platform_sigint)
 
     while (nextline := line()).startswith("res"):
         pass
