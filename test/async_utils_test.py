@@ -9,8 +9,8 @@ import signal
 import subprocess
 import sys
 import textwrap
-from test.supports.skip import skip_windows
 
+import console_ctrl
 import pytest_asyncio
 from synchronicity import Synchronizer
 
@@ -631,7 +631,7 @@ async def test_callable_to_agen():
     assert result == [await foo()]
 
 
-@skip_windows("sending CTRL_C_EVENT in test doesn't seem to have any effect. need to debug on windows machine")
+
 def test_sigint_run_async_gen_shuts_down_gracefully():
     code = textwrap.dedent(
         """
@@ -661,11 +661,11 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     """
     )
     if sys.platform == "win32":
-        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore
-        platform_sigint = signal.CTRL_C_EVENT  # type: ignore
+        creationflags = subprocess.CREATE_NEW_CONSOLE  # type: ignore
+        platform_sigint = lambda p: console_ctrl.send_ctrl_c(p.pid)
     else:
         creationflags = 0
-        platform_sigint = signal.SIGINT
+        platform_sigint = lambda p: p.send_signal(signal.SIGINT)
 
     p = subprocess.Popen(
         [sys.executable, "-u", "-c", code],
@@ -684,8 +684,8 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     assert line() == "res 0"
     assert line() == "res 1"
 
-    p.send_signal(platform_sigint)
-
+    platform_sigint(p)
+    print("sent ctrl-C")
     while (nextline := line()).startswith("res"):
         pass
     assert nextline == "cancel"
