@@ -659,10 +659,10 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     """
     )
     if sys.platform == "win32":
-        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore
+        # creationflags = subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore
         sigint = signal.CTRL_C_EVENT  # type: ignore
     else:
-        creationflags = 0
+        # creationflags = 0
         sigint = signal.SIGINT
 
     p = subprocess.Popen(
@@ -670,7 +670,7 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
         encoding="utf8",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        creationflags=creationflags,
+        # creationflags=creationflags,
     )
 
     def line():
@@ -682,7 +682,12 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     assert line() == "res 0"
     assert line() == "res 1"
 
-    p.send_signal(sigint)
+    try:
+        p.send_signal(sigint)
+    except KeyboardInterrupt:
+        # on windows, the Ctrl-C-event affects the parent too
+        # since it's tied to the console...
+        pass
 
     while (nextline := line()).startswith("res"):
         pass

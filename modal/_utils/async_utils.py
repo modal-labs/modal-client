@@ -564,6 +564,7 @@ class Runner:
                 raise e from None
             except StopAsyncIteration:
                 if self._num_sigints > 0:
+                    # TODO: untie this from _num_sigints if possible?
                     # the cancellation of `gen.asend` is converted into
                     # StopAsyncIteration, so we re-convert it here to KeyboardInterrupt
                     raise KeyboardInterrupt()
