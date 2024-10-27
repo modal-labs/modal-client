@@ -953,6 +953,12 @@ message FileEntry {
   uint64 size = 4;
 }
 
+enum FunctionType {
+  FUNCTION_TYPE_UNSPECIFIED = 0;
+  FUNCTION_TYPE_GENERATOR = 1;
+  FUNCTION_TYPE_FUNCTION = 2;
+}
+
 message Function {
   string module_name = 1;
   string function_name = 2;
@@ -967,11 +973,6 @@ message Function {
   }
   DefinitionType definition_type = 7;
 
-  enum FunctionType {
-    FUNCTION_TYPE_UNSPECIFIED = 0;
-    FUNCTION_TYPE_GENERATOR = 1;
-    FUNCTION_TYPE_FUNCTION = 2;
-  }
   FunctionType function_type = 8;
 
   Resources resources = 9;
@@ -1084,8 +1085,8 @@ message Function {
 
   bool snapshot_debug = 73; // For internal debugging use only.
 
-  // Need a mapping of method names to web endpoint info
-  map<string, WebEndpointInfo> method_web_endpoint_info = 74;
+  // Need a mapping of method names to method definitions
+  map<string, MethodDefinition> method_definitions = 74;
 }
 
 message FunctionBindParamsRequest {
@@ -1177,7 +1178,7 @@ message FunctionData {
   string module_name = 1;
   string function_name = 2;
 
-  Function.FunctionType function_type = 3;
+  FunctionType function_type = 3;
 
   // Scheduling related fields.
   uint32 warm_pool_size = 4;
@@ -1333,13 +1334,14 @@ message FunctionHandleMetadata {
 
   // Should be a subset and use IDs/types from `Function` above
   string function_name = 2;
-  Function.FunctionType function_type = 8;
+  FunctionType function_type = 8;
   string web_url = 28;
   bool is_method = 39;
   string use_function_id = 40; // used for methods
   string use_method_name = 41; // used for methods
   string definition_id = 42;
   ClassParameterInfo class_parameter_info = 43;
+  map<string, FunctionHandleMetadata> method_handle_metadata = 44;
 }
 
 message FunctionInput {
@@ -1386,10 +1388,11 @@ message FunctionPrecreateRequest {
   string app_id = 1;
   string function_name = 2  [ (modal.options.audit_target_attr) = true ];
   string existing_function_id = 3;
-  Function.FunctionType function_type = 4;
+  FunctionType function_type = 4;
   WebhookConfig webhook_config = 5;
   string use_function_id = 6;  // for class methods - use this function id instead for invocations - the *referenced* function should have is_class=True
   string use_method_name = 7;  // for class methods - this method name needs to be included in the FunctionInput
+  map<string, WebhookConfig> method_webhook_configs = 8;
 }
 
 message FunctionPrecreateResponse {
@@ -2387,10 +2390,11 @@ message VolumeRemoveFileRequest {
   bool recursive = 3;
 }
 
-message WebEndpointInfo {
-  WebhookConfig webhook_config = 1;
-  string web_url = 2;
-  WebUrlInfo web_url_info = 3;
+message MethodDefinition {
+  FunctionType function_type = 1;
+  WebhookConfig webhook_config = 2;
+  string web_url = 3;
+  WebUrlInfo web_url_info = 4;
 }
 
 message WebUrlInfo {

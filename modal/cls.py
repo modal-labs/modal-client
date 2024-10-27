@@ -259,26 +259,26 @@ class _Cls(_Object, type_prefix="cs"):
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
 
-        for method in metadata.methods:
-            if method.function_name in self._method_functions:
-                # This happens when the class is loaded locally
-                # since each function will already be a loaded dependency _Function
-                self._method_functions[method.function_name]._hydrate(
-                    method.function_id, self._client, method.function_handle_metadata
-                )
-            else:
-                self._method_functions[method.function_name] = _Function._new_hydrated(
-                    method.function_id, self._client, method.function_handle_metadata
-                )
+        # for method in metadata.methods:
+        #     if method.function_name in self._method_functions:
+        #         # This happens when the class is loaded locally
+        #         # since each function will already be a loaded dependency _Function
+        #         self._method_functions[method.function_name]._hydrate(
+        #             method.function_id, self._client, method.function_handle_metadata
+        #         )
+        #     else:
+        #         self._method_functions[method.function_name] = _Function._new_hydrated(
+        #             method.function_id, self._client, method.function_handle_metadata
+        #         )
 
     def _get_metadata(self) -> api_pb2.ClassHandleMetadata:
         class_handle_metadata = api_pb2.ClassHandleMetadata()
-        for f_name, f in self._method_functions.items():
-            class_handle_metadata.methods.append(
-                api_pb2.ClassMethod(
-                    function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata()
-                )
-            )
+        # for f_name, f in self._method_functions.items():
+        #     class_handle_metadata.methods.append(
+        #         api_pb2.ClassMethod(
+        #             function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata()
+        #         )
+        #     )
         return class_handle_metadata
 
     @staticmethod
@@ -311,16 +311,16 @@ class _Cls(_Object, type_prefix="cs"):
         # validate signature
         _Cls.validate_construction_mechanism(user_cls)
 
-        functions: Dict[str, _Function] = {}
-        partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
-            user_cls, _PartialFunctionFlags.FUNCTION
-        )
+        # functions: Dict[str, _Function] = {}
+        # partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
+        #     user_cls, _PartialFunctionFlags.FUNCTION
+        # )
 
-        for method_name, partial_function in partial_functions.items():
-            method_function = class_service_function._bind_method(user_cls, method_name, partial_function)
-            # app._add_function(method_function, is_web_endpoint=partial_function.webhook_config is not None)
-            partial_function.wrapped = True
-            functions[method_name] = method_function
+        # for method_name, partial_function in partial_functions.items():
+        #     method_function = class_service_function._bind_method(user_cls, method_name, partial_function)
+        #     # app._add_function(method_function, is_web_endpoint=partial_function.webhook_config is not None)
+        #     partial_function.wrapped = True
+        #     functions[method_name] = method_function
 
         # Disable the warning that these are not wrapped
         for partial_function in _find_partial_methods_for_user_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():
@@ -337,12 +337,12 @@ class _Cls(_Object, type_prefix="cs"):
 
         async def _load(self: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.ClassCreateRequest(app_id=resolver.app_id, existing_class_id=existing_object_id)
-            for f_name, f in self._method_functions.items():
-                req.methods.append(
-                    api_pb2.ClassMethod(
-                        function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata()
-                    )
-                )
+            # for f_name, f in self._method_functions.items():
+            #     req.methods.append(
+            #         api_pb2.ClassMethod(
+            #             function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata()
+            #         )
+            #     )
             resp = await resolver.client.stub.ClassCreate(req)
             # Even though we already have the function_handle_metadata for this method locally,
             # The RPC is going to replace it with function_handle_metadata derived from the server.
@@ -351,9 +351,9 @@ class _Cls(_Object, type_prefix="cs"):
             # The problem is that this metadata propagates back and overwrites the metadata on the Function
             # object itself. This is really messy. Maybe better to exclusively populate the method metadata
             # from the function metadata we already have locally? Really a lot to clean up here...
-            for method in resp.handle_metadata.methods:
-                f_metadata = self._method_functions[method.function_name]._get_metadata()
-                method.function_handle_metadata.definition_id = f_metadata.definition_id
+            # for method in resp.handle_metadata.methods:
+            #     f_metadata = self._method_functions[method.function_name]._get_metadata()
+            #     method.function_handle_metadata.definition_id = f_metadata.definition_id
             self._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"
@@ -361,7 +361,7 @@ class _Cls(_Object, type_prefix="cs"):
         cls._app = app
         cls._user_cls = user_cls
         cls._class_service_function = class_service_function
-        cls._method_functions = functions
+        # cls._method_functions = functions
         cls._callables = callables
         cls._from_other_workspace = False
         return cls
@@ -523,8 +523,8 @@ class _Cls(_Object, type_prefix="cs"):
 
     def __getattr__(self, k):
         # Used by CLI and container entrypoint
-        if k in self._method_functions:
-            return self._method_functions[k]
+        if k in self._class_service_function._method_functions:
+            return self._class_service_function._method_functions[k]
         return getattr(self._user_cls, k)
 
 

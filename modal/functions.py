@@ -325,6 +325,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _parent: Optional["_Function"] = None
 
     _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
+    _method_functions: Dict[str, "_Function"]  # Placeholder _Functions for each method
 
     def _bind_method(
         self,
@@ -348,65 +349,61 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         assert not class_service_function._obj  # should only be used on base function / class service function
         full_name = f"{user_cls.__name__}.{method_name}"
 
-        if partial_function.is_generator:
-            function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
-        else:
-            function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
+        # async def _load(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+        #     from ._output import FunctionCreationStatus  # Deferred import to avoid Rich dependency in container
 
-        async def _load(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
-            from ._output import FunctionCreationStatus  # Deferred import to avoid Rich dependency in container
+        #     function_definition = api_pb2.Function(
+        #         function_name=full_name,
+        #         webhook_config=partial_function.webhook_config,
+        #         function_type=function_type,
+        #         is_method=True,
+        #         use_function_id=class_service_function.object_id,
+        #         use_method_name=method_name,
+        #         batch_max_size=partial_function.batch_max_size or 0,
+        #         batch_linger_ms=partial_function.batch_wait_ms or 0,
+        #     )
+        #     assert resolver.app_id
+        #     request = api_pb2.FunctionCreateRequest(
+        #         app_id=resolver.app_id,
+        #         function=function_definition,
+        #         #  method_bound_function.object_id usually gets set by preload
+        #         existing_function_id=existing_object_id or method_bound_function.object_id or "",
+        #         defer_updates=True,
+        #     )
+        #     assert resolver.client.stub is not None  # client should be connected when load is called
+        #     with FunctionCreationStatus(resolver, full_name) as function_creation_status:
+        #         response = await resolver.client.stub.FunctionCreate(request)
+        #         method_bound_function._hydrate(
+        #             response.function_id,
+        #             resolver.client,
+        #             response.handle_metadata,
+        #         )
+        #         function_creation_status.set_response(response)
 
-            function_definition = api_pb2.Function(
-                function_name=full_name,
-                webhook_config=partial_function.webhook_config,
-                function_type=function_type,
-                is_method=True,
-                use_function_id=class_service_function.object_id,
-                use_method_name=method_name,
-                batch_max_size=partial_function.batch_max_size or 0,
-                batch_linger_ms=partial_function.batch_wait_ms or 0,
-            )
-            assert resolver.app_id
-            request = api_pb2.FunctionCreateRequest(
-                app_id=resolver.app_id,
-                function=function_definition,
-                #  method_bound_function.object_id usually gets set by preload
-                existing_function_id=existing_object_id or method_bound_function.object_id or "",
-                defer_updates=True,
-            )
-            assert resolver.client.stub is not None  # client should be connected when load is called
-            with FunctionCreationStatus(resolver, full_name) as function_creation_status:
-                response = await resolver.client.stub.FunctionCreate(request)
-                method_bound_function._hydrate(
-                    response.function_id,
-                    resolver.client,
-                    response.handle_metadata,
-                )
-                function_creation_status.set_response(response)
+        # async def _preload(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+        #     if class_service_function._use_method_name:
+        #         raise ExecutionError(f"Can't bind method to already bound {class_service_function}")
+        #     assert resolver.app_id
+        #     req = api_pb2.FunctionPrecreateRequest(
+        #         app_id=resolver.app_id,
+        #         function_name=full_name,
+        #         function_type=function_type,
+        #         webhook_config=partial_function.webhook_config,
+        #         use_function_id=class_service_function.object_id,
+        #         use_method_name=method_name,
+        #         existing_function_id=existing_object_id or "",
+        #     )
+        #     assert resolver.client.stub  # client should be connected at this point
+        #     response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
+        #     method_bound_function._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
-        async def _preload(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
-            if class_service_function._use_method_name:
-                raise ExecutionError(f"Can't bind method to already bound {class_service_function}")
-            assert resolver.app_id
-            req = api_pb2.FunctionPrecreateRequest(
-                app_id=resolver.app_id,
-                function_name=full_name,
-                function_type=function_type,
-                webhook_config=partial_function.webhook_config,
-                use_function_id=class_service_function.object_id,
-                use_method_name=method_name,
-                existing_function_id=existing_object_id or "",
-            )
-            assert resolver.client.stub  # client should be connected at this point
-            response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
-            method_bound_function._hydrate(response.function_id, resolver.client, response.handle_metadata)
-
-        def _deps():
-            return [class_service_function]
+        # def _deps():
+        #     return [class_service_function]
 
         rep = f"Method({full_name})"
 
-        fun = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
+        fun = _Function(rep)
+        # fun = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
         fun._tag = full_name
         fun._raw_f = partial_function.raw_f
         fun._info = FunctionInfo(
@@ -499,7 +496,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         allow_cross_region_volumes: bool = False,
         volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
-        method_web_endpoint_info: Optional[Dict[str, api_pb2.WebEndpointInfo]] = None,
+        method_definitions: Optional[Dict[str, api_pb2.MethodDefinition]] = None,
         memory: Optional[Union[int, Tuple[int, int]]] = None,
         proxy: Optional[_Proxy] = None,
         retries: Optional[Union[int, Retries]] = None,
@@ -538,7 +535,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         else:
             # must be a "class service function"
             assert info.user_cls
-            assert method_web_endpoint_info
+            assert method_definitions
             assert not webhook_config
             assert not schedule
 
@@ -727,11 +724,20 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 app_id=resolver.app_id,
                 function_name=info.function_name,
                 function_type=function_type,
-                webhook_config=webhook_config,
                 existing_function_id=existing_object_id or "",
             )
+            if method_definitions:
+                method_webhook_configs = {
+                    method_name: method_def.webhook_config for method_name, method_def in method_definitions.items()
+                }
+                req.method_webhook_configs.update(method_webhook_configs)
+            else:
+                req.webhook_config = webhook_config
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            for method_name, method_function in self._method_functions:
+                method_handle_metadata = response.handle_metadata.method_handle_metadata[method_name]
+                method_function._hydrate(response.function_id, resolver.client, method_handle_metadata)
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             from ._output import FunctionCreationStatus  # Deferred import to avoid Rich dependency in container
@@ -813,7 +819,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     class_serialized=class_serialized or b"",
                     function_type=function_type,
                     webhook_config=webhook_config,
-                    method_web_endpoint_info=method_web_endpoint_info,
+                    method_definitions=method_definitions,
                     shared_volume_mounts=network_file_system_mount_protos(
                         validated_network_file_systems, allow_cross_region_volumes
                     ),
@@ -929,6 +935,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_creation_status.set_response(response)
 
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            for method_name, method_function in self._method_functions:
+                method_handle_metadata = response.handle_metadata.method_handle_metadata[method_name]
+                method_function._hydrate(response.function_id, resolver.client, method_handle_metadata)
 
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
