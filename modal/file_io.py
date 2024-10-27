@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2024
 import io
-from typing import AsyncIterator, Optional, Union
+from typing import AsyncIterator, Optional, Union, cast
 
 from modal_proto import api_pb2
 
@@ -43,8 +43,6 @@ class _FileIO:
             seen_chars.add(char)
 
     def _handle_error(self, error: api_pb2.SystemErrorMessage) -> None:
-        print("error_code", error.error_code)
-        print("error_message", error.error_message)
         raise FilesystemExecutionError(error.error_message)
 
     async def _consume_output(self, exec_id: str) -> AsyncIterator[Optional[str]]:
@@ -64,8 +62,6 @@ class _FileIO:
 
     async def _wait(self, exec_id: str) -> Union[bytes, str]:
         output = ""
-        # The filesystem API shouldn't involve any long-running processes,
-        # so it should be safe to consume output/err separately here.
         async for data in self._consume_output(exec_id):
             if data is None:
                 break
@@ -102,8 +98,9 @@ class _FileIO:
         self._closed = False
         return self
 
-    async def read(self, n: int | None = None) -> Union[bytes, str]:
+    async def read(self, n: Union[int, None] = None) -> Union[bytes, str]:
         """Read n bytes from the current position, or the entire remaining file if n is None."""
+        self._check_closed()
         self._check_readable()
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
@@ -115,6 +112,7 @@ class _FileIO:
 
     async def readline(self) -> Union[bytes, str]:
         """Read a single line from the current position."""
+        self._check_closed()
         self._check_readable()
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
@@ -124,10 +122,14 @@ class _FileIO:
         )
         return await self._wait(resp.exec_id)
 
-    async def readlines(self) -> list[Union[bytes, str]]:
+    async def readlines(self) -> Union[list[bytes], list[str]]:
         """Read all lines from the current position."""
+        self._check_closed()
         self._check_readable()
-        return await self.read().split(b"\n")
+        data = await self.read()
+        if self._binary:
+            return cast(bytes, data).split(b"\n")
+        return cast(str, data).split("\n")
 
     async def write(self, data: Union[bytes, str]) -> None:
         """Write data to the current position.
@@ -136,6 +138,7 @@ class _FileIO:
         can be done manually with `flush()` or automatically when the file is
         closed.
         """
+        self._check_closed()
         self._check_writable()
         self._validate_type(data)
         if isinstance(data, str):
@@ -150,6 +153,7 @@ class _FileIO:
 
     async def flush(self) -> None:
         """Flush the buffer to disk."""
+        self._check_closed()
         self._check_writable()
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
@@ -159,7 +163,7 @@ class _FileIO:
         )
         await self._wait(resp.exec_id)
 
-    def _get_whence(self, whence: int) -> api_pb2.SeekWhence:
+    def _get_whence(self, whence: int) -> api_pb2.SeekWhence.ValueType:
         if whence == 0:
             return api_pb2.SeekWhence.SEEK_SET
         elif whence == 1:
@@ -175,6 +179,7 @@ class _FileIO:
         `whence` defaults to 0 (absolute file positioning); other values are 1
         (relative to the current position) and 2 (relative to the file's end).
         """
+        self._check_closed()
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_seek_request=api_pb2.ContainerFileSeekRequest(
@@ -187,7 +192,9 @@ class _FileIO:
         )
         await self._wait(resp.exec_id)
 
-    async def delete_bytes(self, start_inclusive: int | None = None, end_exclusive: int | None = None) -> None:
+    async def delete_bytes(
+        self, start_inclusive: Union[int, None] = None, end_exclusive: Union[int, None] = None
+    ) -> None:
         """Delete a range of bytes from the file.
 
         `start_inclusive` and `end_exclusive` are byte offsets. If either is
@@ -195,6 +202,8 @@ class _FileIO:
 
         Resets the file pointer to the start of the file.
         """
+        self._check_closed()
+        self._check_writable()
         if start_inclusive is not None and end_exclusive is not None:
             if start_inclusive >= end_exclusive:
                 raise ValueError("start_inclusive must be less than end_exclusive")
@@ -211,7 +220,7 @@ class _FileIO:
         await self._wait(resp.exec_id)
 
     async def write_replace_bytes(
-        self, data: bytes, start_inclusive: int | None = None, end_exclusive: int | None = None
+        self, data: bytes, start_inclusive: Union[int, None] = None, end_exclusive: Union[int, None] = None
     ) -> None:
         """Replace a range of bytes in the file with new data.
 
@@ -220,6 +229,8 @@ class _FileIO:
 
         Resets the file pointer to the start of the file.
         """
+        self._check_closed()
+        self._check_writable()
         if start_inclusive is not None and end_exclusive is not None:
             if start_inclusive >= end_exclusive:
                 raise ValueError("start_inclusive must be less than end_exclusive")
@@ -244,8 +255,8 @@ class _FileIO:
                 task_id=self._task_id,
             )
         )
-        await self._wait(resp.exec_id)
         self._closed = True
+        await self._wait(resp.exec_id)
 
     async def close(self) -> None:
         """Flush the buffer and close the file."""
