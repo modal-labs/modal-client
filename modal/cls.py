@@ -312,15 +312,15 @@ class _Cls(_Object, type_prefix="cs"):
         _Cls.validate_construction_mechanism(user_cls)
 
         # functions: Dict[str, _Function] = {}
-        # partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
-        #     user_cls, _PartialFunctionFlags.FUNCTION
-        # )
+        partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
+            user_cls, _PartialFunctionFlags.FUNCTION
+        )
 
-        # for method_name, partial_function in partial_functions.items():
-        #     method_function = class_service_function._bind_method(user_cls, method_name, partial_function)
-        #     # app._add_function(method_function, is_web_endpoint=partial_function.webhook_config is not None)
-        #     partial_function.wrapped = True
-        #     functions[method_name] = method_function
+        for partial_function in partial_functions.values():
+            # method_function = class_service_function._bind_method(user_cls, method_name, partial_function)
+            # app._add_function(method_function, is_web_endpoint=partial_function.webhook_config is not None)
+            partial_function.wrapped = True
+            # functions[method_name] = method_function
 
         # Disable the warning that these are not wrapped
         for partial_function in _find_partial_methods_for_user_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():

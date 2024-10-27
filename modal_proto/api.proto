@@ -1392,7 +1392,7 @@ message FunctionPrecreateRequest {
   WebhookConfig webhook_config = 5;
   string use_function_id = 6;  // for class methods - use this function id instead for invocations - the *referenced* function should have is_class=True
   string use_method_name = 7;  // for class methods - this method name needs to be included in the FunctionInput
-  map<string, WebhookConfig> method_webhook_configs = 8;
+  map<string, MethodDefinition> method_definitions = 8;
 }
 
 message FunctionPrecreateResponse {
@@ -2391,10 +2391,11 @@ message VolumeRemoveFileRequest {
 }
 
 message MethodDefinition {
-  Function.FunctionType function_type = 1;
-  WebhookConfig webhook_config = 2;
-  string web_url = 3;
-  WebUrlInfo web_url_info = 4;
+  string function_name = 1;
+  Function.FunctionType function_type = 2;
+  WebhookConfig webhook_config = 3;
+  string web_url = 4;
+  WebUrlInfo web_url_info = 5;
 }
 
 message WebUrlInfo {

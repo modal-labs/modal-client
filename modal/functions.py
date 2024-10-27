@@ -318,8 +318,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     # when this is the method of a class/object function, invocation of this function
     # should be using another function id and supply the method name in the FunctionInput:
-    _use_function_id: str  # The function to invoke
-    _use_method_name: str = ""
+    # _use_function_id: str  # The function to invoke
+    # _use_method_name: str = ""
 
     # TODO (elias): remove _parent. In case of instance functions, and methods bound on those,
     #  this references the parent class-function and is used to infer the client for lazy-loaded methods
@@ -691,13 +691,17 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         method_definitions: Optional[Dict[str, api_pb2.MethodDefinition]] = None
         if info.user_cls:
+            method_definitions = {}
             partial_functions: Dict[
                 str, "modal.partial_function._PartialFunction"
             ] = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.FUNCTION)
             for method_name, partial_function in partial_functions.items():
                 function_type = get_function_type(partial_function.is_generator)
+                function_name = f"{info.user_cls.__name__}.{method_name}"
                 method_definition = api_pb2.MethodDefinition(
-                    webhook_config=partial_function.webhook_config, function_type=function_type
+                    webhook_config=partial_function.webhook_config,
+                    function_type=function_type,
+                    function_name=function_name,
                 )
                 method_definitions[method_name] = method_definition
 
@@ -740,8 +744,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 existing_function_id=existing_object_id or "",
             )
             if method_definitions:
-                for method_name, method_def in method_definitions.items():
-                    req.method_webhook_configs[method_name].CopyFrom(method_def.webhook_config)
+                req.method_definitions = method_definitions
+                # for method_name, method_def in method_definitions.items():
+                #     req.method_webhook_configs[method_name].CopyFrom(method_def.webhook_config)
             else:
                 req.webhook_config = webhook_config
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
@@ -955,6 +960,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         obj._raw_f = info.raw_f
         obj._info = info
+        obj._function_name = info.function_name
         obj._tag = tag
         obj._all_mounts = all_mounts  # needed for modal.serve file watching
         obj._app = app  # needed for CLI right now
@@ -1208,8 +1214,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
         self._is_method = metadata.is_method
-        self._use_function_id = metadata.use_function_id
-        self._use_method_name = metadata.use_method_name
+        # self._use_function_id = metadata.use_function_id
+        # self._use_method_name = metadata.use_method_name
         self._class_parameter_info = metadata.class_parameter_info
         self._definition_id = metadata.definition_id
 
@@ -1219,19 +1225,26 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
         assert self._function_name, f"Function name must be set before metadata can be retrieved for {self}"
+
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
-            function_type=(
-                api_pb2.Function.FUNCTION_TYPE_GENERATOR
-                if self._is_generator
-                else api_pb2.Function.FUNCTION_TYPE_FUNCTION
-            ),
+            function_type=get_function_type(self._is_generator),
             web_url=self._web_url or "",
-            use_method_name=self._use_method_name,
-            use_function_id=self._use_function_id,
+            # use_method_name=self._use_method_name,
+            # use_function_id=self._use_function_id,
             is_method=self._is_method,
             class_parameter_info=self._class_parameter_info,
             definition_id=self._definition_id,
+            method_handle_metadata=[
+                api_pb2.FunctionHandleMetadata(
+                    function_name=method_function._function_name,
+                    function_type=get_function_type(method_function._is_generator),
+                    web_url=method_function._web_url or "",
+                    is_method=method_function._is_method,
+                    definition_id=method_function._definition_id,
+                )
+                for method_function in self._method_functions.values()
+            ],
         )
 
     def _check_no_web_url(self, fn_name: str):
