@@ -241,9 +241,15 @@ async def test_unhydrate(servicer, client):
 def test_keyboard_interrupt(servicer, client):
     app = App()
     app.function()(square)
-    with app.run(client=client):
-        # The exit handler should catch this interrupt and exit gracefully
-        raise KeyboardInterrupt()
+
+    with servicer.intercept() as ctx:
+        with pytest.raises(KeyboardInterrupt):
+            with app.run(client=client):
+                # The exit handler should catch this interrupt and exit gracefully
+                raise KeyboardInterrupt()
+
+        req = ctx.pop_request("AppClientDisconnect")
+        assert req.reason == api_pb2.APP_DISCONNECT_REASON_KEYBOARD_INTERRUPT
 
 
 def test_function_image_positional():
