@@ -16,6 +16,7 @@ import tempfile
 import textwrap
 import threading
 import traceback
+import uuid
 from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional, Tuple, get_args
@@ -27,6 +28,7 @@ import pkg_resources
 import pytest_asyncio
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
+from grpclib.events import RecvRequest, listen
 
 import modal._serialization
 from modal import __version__, config
@@ -60,6 +62,13 @@ def set_env(monkeypatch):
 @pytest.fixture(scope="function", autouse=True)
 def disable_app_run_warning(monkeypatch):
     monkeypatch.setenv("MODAL_DISABLE_APP_RUN_OUTPUT_WARNING", "1")
+
+
+@pytest.fixture(scope="function", autouse=True)
+def ignore_local_config():
+    # When running tests locally, we don't want to pick up the local .modal.toml file
+    config._user_config = {}
+    yield
 
 
 class FunctionsRegistry:
@@ -100,7 +109,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     client_addr: str
     container_addr: str
 
-    def __init__(self, blob_host, blobs):
+    def __init__(self, blob_host, blobs, credentials):
         self.use_blob_outputs = False
         self.put_outputs_barrier = threading.Barrier(
             1, timeout=10
@@ -166,6 +175,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.heartbeat_status_code = None
         self.n_apps = 0
         self.classes = {}
+        self.environments = {"main": "en-1"}
 
         self.task_result = None
 
@@ -235,9 +245,50 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.image_join_sleep_duration = None
 
+        token_id, token_secret = credentials
+        self.required_creds = {token_id: token_secret}  # Any of this will be accepted
+        self.last_metadata = None
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
+
+    async def recv_request(self, event: RecvRequest):
+        # Make sure metadata is correct
+        self.last_metadata = event.metadata
+        for header in [
+            "x-modal-python-version",
+            "x-modal-client-version",
+            "x-modal-client-type",
+        ]:
+            if header not in event.metadata:
+                raise GRPCError(Status.FAILED_PRECONDITION, f"Missing {header} header")
+        if event.metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT):
+            if event.method_name in [
+                "/modal.client.ModalClient/TokenFlowCreate",
+                "/modal.client.ModalClient/TokenFlowWait",
+            ]:
+                pass  # Methods that don't require authentication
+            else:
+                token_id = event.metadata.get("x-modal-token-id")
+                token_secret = event.metadata.get("x-modal-token-secret")
+                if not token_id or not token_secret:
+                    raise GRPCError(Status.UNAUTHENTICATED, f"No credentials for method {event.method_name}")
+                elif token_id not in self.required_creds:
+                    raise GRPCError(Status.UNAUTHENTICATED, f"Invalid {token_id=!r} for method {event.method_name}")
+                elif self.required_creds[token_id] != token_secret:
+                    raise GRPCError(Status.UNAUTHENTICATED, f"Invalid token secret for for method {event.method_name}")
+        elif event.metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER):
+            for header in [
+                "x-modal-token-id",
+                "x-modal-token-secret",
+                "x-modal-task-id",  # old
+                "x-modal-task-secret",  # old
+            ]:
+                if header in event.metadata:
+                    raise GRPCError(Status.FAILED_PRECONDITION, f"Container client should not set header {header}")
+        else:
+            raise GRPCError(Status.FAILED_PRECONDITION, "Unknown client type")
 
     def function_body(self, func):
         """Decorator for setting the function that will be called for any FunctionGetOutputs calls"""
@@ -593,14 +644,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def ClientHello(self, stream):
         request: Empty = await stream.recv_message()
         self.requests.append(request)
-        self.client_create_metadata = stream.metadata
         client_version = stream.metadata["x-modal-client-version"]
-        image_builder_version = max(get_args(ImageBuilderVersion))
         warning = ""
         assert stream.user_agent.startswith(f"modal-client/{__version__} ")
-        if stream.metadata.get("x-modal-token-id") == "bad":
-            raise GRPCError(Status.UNAUTHENTICATED, "bad bad bad")
-        elif client_version == "unauthenticated":
+        if client_version == "unauthenticated":
             raise GRPCError(Status.UNAUTHENTICATED, "failed authentication")
         elif client_version == "deprecated":
             warning = "SUPER OLD"
@@ -608,7 +655,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await asyncio.sleep(60)
         elif pkg_resources.parse_version(client_version) < pkg_resources.parse_version(__version__):
             raise GRPCError(Status.FAILED_PRECONDITION, "Old client")
-        resp = api_pb2.ClientHelloResponse(warning=warning, image_builder_version=image_builder_version)
+        resp = api_pb2.ClientHelloResponse(warning=warning)
         await stream.send_message(resp)
 
     # Container
@@ -680,15 +727,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Dict
 
-    async def DictCreate(self, stream):
-        request: api_pb2.DictCreateRequest = await stream.recv_message()
-        if request.existing_dict_id:
-            dict_id = request.existing_dict_id
-        else:
-            dict_id = f"di-{len(self.dicts)}"
-            self.dicts[dict_id] = {}
-        await stream.send_message(api_pb2.DictCreateResponse(dict_id=dict_id))
-
     async def DictGetOrCreate(self, stream):
         request: api_pb2.DictGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, request.namespace, request.environment_name)
@@ -756,6 +794,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def EnvironmentUpdate(self, stream):
         await stream.send_message(api_pb2.EnvironmentListItem())
+
+    async def EnvironmentGetOrCreate(self, stream):
+        request: api_pb2.EnvironmentGetOrCreateRequest = await stream.recv_message()
+        name = request.deployment_name
+        if name in self.environments:
+            environment_id = self.environments[name]
+        else:
+            environment_id = f"en-{len(self.environments) + 1}"
+            self.environments[name] = environment_id
+        image_builder_version = max(get_args(ImageBuilderVersion))
+        settings = api_pb2.EnvironmentSettings(image_builder_version=image_builder_version)
+        metadata = api_pb2.EnvironmentMetadata(name=name, settings=settings)
+        await stream.send_message(
+            api_pb2.EnvironmentGetOrCreateResponse(environment_id=environment_id, metadata=metadata)
+        )
 
     ### Function
 
@@ -864,8 +917,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             self.n_functions += 1
             function_id = f"fu-{self.n_functions}"
-        if request.schedule:
-            self.function2schedule[function_id] = request.schedule
 
         function: Optional[api_pb2.Function] = None
         function_data: Optional[api_pb2.FunctionData] = None
@@ -884,7 +935,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         assert (function is None) != (function_data is None)
         function_defn = function or function_data
+        assert function_defn
         self.app_functions[function_id] = function_defn
+
+        if function_defn.schedule:
+            self.function2schedule[function_id] = function_defn.schedule
 
         await stream.send_message(
             api_pb2.FunctionCreateResponse(
@@ -1146,15 +1201,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 self.queue[request.partition_key] = []
         await stream.send_message(Empty())
 
-    async def QueueCreate(self, stream):
-        request: api_pb2.QueueCreateRequest = await stream.recv_message()
-        if request.existing_queue_id:
-            queue_id = request.existing_queue_id
-        else:
-            self.n_queues += 1
-            queue_id = f"qu-{self.n_queues}"
-        await stream.send_message(api_pb2.QueueCreateResponse(queue_id=queue_id))
-
     async def QueueGetOrCreate(self, stream):
         request: api_pb2.QueueGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, request.namespace, request.environment_name)
@@ -1330,6 +1376,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SandboxStdinWrite(self, stream):
         request: api_pb2.SandboxStdinWriteRequest = await stream.recv_message()
 
+        if self.sandbox.returncode is not None:
+            raise GRPCError(Status.FAILED_PRECONDITION, "Sandbox has already terminated")
+
         self.sandbox.stdin.write(request.input)
         await self.sandbox.stdin.drain()
 
@@ -1374,11 +1423,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.SecretListResponse(items=items))
 
     ### Network File System (née Shared volume)
-
-    async def SharedVolumeCreate(self, stream):
-        nfs_id = f"sv-{len(self.nfs_files)}"
-        self.nfs_files[nfs_id] = {}
-        await stream.send_message(api_pb2.SharedVolumeCreateResponse(shared_volume_id=nfs_id))
 
     async def SharedVolumeGetOrCreate(self, stream):
         request: api_pb2.SharedVolumeGetOrCreateRequest = await stream.recv_message()
@@ -1482,14 +1526,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.TunnelStopResponse(exists=True))
 
     ### Volume
-
-    async def VolumeCreate(self, stream):
-        req = await stream.recv_message()
-        self.requests.append(req)
-        self.volume_counter += 1
-        volume_id = f"vo-{self.volume_counter}"
-        self.volume_files[volume_id] = {}
-        await stream.send_message(api_pb2.VolumeCreateResponse(volume_id=volume_id))
 
     async def VolumeGetOrCreate(self, stream):
         request: api_pb2.VolumeGetOrCreateRequest = await stream.recv_message()
@@ -1719,6 +1755,7 @@ async def run_server(servicer, host=None, port=None, path=None):
     async def _start_servicer():
         nonlocal server
         server = grpclib.server.Server([servicer])
+        listen(server, RecvRequest, servicer.recv_request)
         await server.start(host=host, port=port, path=path)
 
     async def _stop_servicer():
@@ -1741,12 +1778,19 @@ async def run_server(servicer, host=None, port=None, path=None):
         await stop_servicer.aio()
 
 
+@pytest.fixture(scope="function")
+def credentials():
+    token_id = "ak-" + str(uuid.uuid4())
+    token_secret = "as-" + str(uuid.uuid4())
+    return (token_id, token_secret)
+
+
 @pytest_asyncio.fixture(scope="function")
-async def servicer(blob_server, temporary_sock_path):
+async def servicer(blob_server, temporary_sock_path, credentials):
     port = find_free_port()
 
     blob_host, blobs = blob_server
-    servicer = MockClientServicer(blob_host, blobs)  # type: ignore
+    servicer = MockClientServicer(blob_host, blobs, credentials)  # type: ignore
 
     if platform.system() != "Windows":
         async with run_server(servicer, host="0.0.0.0", port=port):
@@ -1765,20 +1809,37 @@ async def servicer(blob_server, temporary_sock_path):
 
 
 @pytest_asyncio.fixture(scope="function")
-async def client(servicer):
-    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret")) as client:
+async def client(servicer, credentials):
+    with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
         yield client
 
 
 @pytest_asyncio.fixture(scope="function")
 async def container_client(servicer):
-    async with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
+    async with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
         yield client
 
 
 @pytest_asyncio.fixture(scope="function")
 async def server_url_env(servicer, monkeypatch):
     monkeypatch.setenv("MODAL_SERVER_URL", servicer.client_addr)
+    yield
+
+
+@pytest_asyncio.fixture(scope="function")
+async def token_env(servicer, monkeypatch, credentials):
+    token_id, token_secret = credentials
+    monkeypatch.setenv("MODAL_TOKEN_ID", token_id)
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", token_secret)
+    yield
+
+
+@pytest_asyncio.fixture(scope="function")
+async def container_env(servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_SERVER_URL", servicer.container_addr)
+    monkeypatch.setenv("MODAL_TASK_ID", "ta-123")
+    monkeypatch.setenv("MODAL_TASK_SECRET", "1")  # TODO(erikbern): remove
+    monkeypatch.setenv("MODAL_IS_REMOTE", "1")
     yield
 
 

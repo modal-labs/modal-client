@@ -16,7 +16,7 @@ from ._utils.async_utils import (
 from .exception import (
     InvalidError,
 )
-from .functions import FunctionCall, OriginalReturnType, P, ReturnType, _Function
+from .functions import Function, FunctionCall, OriginalReturnType, P, ReturnType, _Function
 from .object import _Object
 from .partial_function import _PartialFunction, _PartialFunctionFlags
 
@@ -80,6 +80,7 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
     def __init__(self, f: _Function, size: int):
         self.f = synchronize_api(f)
         self.size = size
+        self._client = None
 
     def remote(self, *args: P.args, **kwargs: P.kwargs) -> List[ReturnType]:
         """
@@ -90,21 +91,32 @@ class _GroupedFunction(typing.Generic[P, ReturnType, OriginalReturnType], _Objec
 
     def spawn(self, *args: P.args, **kwargs: P.kwargs) -> _GroupedFunctionCall:
         worker_handles: List[FunctionCall] = []
-        with modal.Queue.ephemeral() as q:
+        with modal.Queue.ephemeral(client=self.client) as q:
             for i in range(self.size):
                 handle = self.f.spawn(*args, **kwargs, modal_rank=i, modal_size=self.size, modal_q=q)
                 worker_handles.append(handle)
         handler: _GroupedFunctionCall = _GroupedFunctionCall(worker_handles)
         return handler
 
-    def get_raw_f(self) -> Callable[..., Any]:
-        return self.get_raw_f()
+    def get_underlying_function(self) -> Function:
+        return self.f
 
     def __getattr__(self, name):
         def unsupported_method(*args, **kwargs):
             raise NotImplementedError(f"Grouped function does not support the '{name}' method")
 
         return unsupported_method
+
+    @property
+    def client(self):
+        return self._client
+
+    @client.setter
+    def client(self, value):
+        self._client = value
+
+
+GroupedFunction = synchronize_api(_GroupedFunction)
 
 
 def grouped(size: int):
@@ -143,6 +155,20 @@ def _networked(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
         import os
+        import socket
+
+        def get_i6pn():
+            """Returns the ipv6 address assigned to this container."""
+            return socket.getaddrinfo("i6pn.modal.local", None, socket.AF_INET6)[0][4][0]
+
+        hostname = socket.gethostname()
+        addr_info = get_i6pn()
+        # nccl's default host ID is $(hostname)$(cat /proc/sys/kernel/random/boot_id).
+        # on runc, if two i6pn-linked containers get scheduled on the same worker,
+        # their boot ID and hostname will both be identical, causing nccl to break.
+        # As a workaround, we can explicitly specify a unique host ID here.
+        # See MOD-4067.
+        os.environ["NCCL_HOSTID"] = f"{hostname}{addr_info}"
 
         rank = kwargs.pop("modal_rank", None)
         size = kwargs.pop("modal_size", None)
@@ -151,16 +177,9 @@ def _networked(func):
         if rank is None or size is None or q is None:
             raise ValueError("Missing required arguments; `_networked` must be called using `grouped` decorator")
         elif rank == 0:
-            import socket
-
-            addr_info = socket.getaddrinfo("i6pn.modal.local", None, socket.AF_INET6)
-            # Extract IPv6 addresses from the results
-            ipv6_addresses = [
-                addr[4][0] for addr in addr_info if addr[1] == socket.SOCK_STREAM and "fdaa" in addr[4][0]
-            ]
-            main_ip = ipv6_addresses[0]
-            q.put_many([main_ip for _ in range(size)])
+            q.put_many([addr_info for _ in range(size)])
         main_ip = q.get()
+        assert main_ip is not None, "Failed to get main i6pn address"
 
         os.environ["MODAL_MAIN_I6PN"] = f"{main_ip}"
         os.environ["MODAL_WORLD_SIZE"] = f"{size}"

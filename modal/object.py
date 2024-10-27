@@ -8,7 +8,7 @@ from google.protobuf.message import Message
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
 from .client import _Client
-from .config import config
+from .config import config, logger
 from .exception import ExecutionError, InvalidError
 
 O = TypeVar("O", bound="_Object")
@@ -123,7 +123,7 @@ class _Object:
             object_type = self.__class__.__name__.strip("_")
             if hasattr(self, "_app") and getattr(self._app, "_running_app", "") is None:
                 # The most common cause of this error: e.g., user called a Function without using App.run()
-                reason = ", because the App it is defined on is not running."
+                reason = ", because the App it is defined on is not running"
             else:
                 # Technically possible, but with an ambiguous cause.
                 reason = ""
@@ -157,6 +157,20 @@ class _Object:
         return obj
 
     @classmethod
+    def _get_type_from_id(cls: Type[O], object_id: str) -> Type[O]:
+        parts = object_id.split("-")
+        if len(parts) != 2:
+            raise InvalidError(f"Object id {object_id} has no dash in it")
+        prefix = parts[0]
+        if prefix not in cls._prefix_to_type:
+            raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
+        return cls._prefix_to_type[prefix]
+
+    @classmethod
+    def _is_id_type(cls: Type[O], object_id) -> bool:
+        return cls._get_type_from_id(object_id) == cls
+
+    @classmethod
     def _new_hydrated(
         cls: Type[O], object_id: str, client: _Client, handle_metadata: Optional[Message], is_another_app: bool = False
     ) -> O:
@@ -164,18 +178,12 @@ class _Object:
             # This is called directly on a subclass, e.g. Secret.from_id
             if not object_id.startswith(cls._type_prefix + "-"):
                 raise InvalidError(f"Object {object_id} does not start with {cls._type_prefix}")
-            prefix = cls._type_prefix
+            obj_cls = cls
         else:
             # This is called on the base class, e.g. Handle.from_id
-            parts = object_id.split("-")
-            if len(parts) != 2:
-                raise InvalidError(f"Object id {object_id} has no dash in it")
-            prefix = parts[0]
-            if prefix not in cls._prefix_to_type:
-                raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
+            obj_cls = cls._get_type_from_id(object_id)
 
         # Instantiate provider
-        obj_cls = cls._prefix_to_type[prefix]
         obj = _Object.__new__(obj_cls)
         rep = f"Object({object_id})"  # TODO(erikbern): dumb
         obj._init(rep, is_another_app=is_another_app)
@@ -215,10 +223,13 @@ class _Object:
             # memory snapshots capture references which must be rehydrated
             # on restore to handle staleness.
             if self._client._snapshotted and not self._is_rehydrated:
+                logger.debug(f"rehydrating {self} after snapshot")
                 self._is_hydrated = False  # un-hydrate and re-resolve
-                resolver = Resolver(await _Client.from_env())
+                c = await _Client.from_env()
+                resolver = Resolver(c)
                 await resolver.load(self)
                 self._is_rehydrated = True
+                logger.debug(f"rehydrated {self} with client {id(c)}")
             return
         elif not self._hydrate_lazily:
             self._validate_is_hydrated()

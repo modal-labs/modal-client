@@ -4,6 +4,7 @@ import json
 import os
 import pytest
 import time
+from contextlib import contextmanager
 from typing import Dict
 from unittest import mock
 
@@ -61,20 +62,6 @@ async def test_container_function_lazily_imported(container_client):
     assert await my_f_container.remote.aio(42) == 1764  # type: ignore
 
 
-@pytest.mark.asyncio
-async def test_container_snapshot_restore(container_client, tmpdir, servicer):
-    # Get a reference to a Client instance in memory
-    old_client = container_client
-    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
-    restore_path = temp_restore_path(tmpdir)
-    with mock.patch.dict(
-        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
-    ):
-        io_manager.memory_snapshot()
-        # In-memory Client instance should have updated credentials, not old credentials
-        assert old_client.credentials == ("ta-i-am-restored", "ts-i-am-restored")
-
-
 def square(x):
     pass
 
@@ -83,6 +70,21 @@ def square(x):
 async def stop_app(client, app_id):
     # helper to ensur we run the rpc from the synchronicity loop - otherwise we can run into weird deadlocks
     return await retry_transient_errors(client.stub.AppStop, api_pb2.AppStopRequest(app_id=app_id))
+
+
+@contextmanager
+def set_env_vars(restore_path, container_addr):
+    with mock.patch.dict(
+        os.environ,
+        {
+            "MODAL_RESTORE_STATE_PATH": str(restore_path),
+            "MODAL_SERVER_URL": container_addr,
+            "MODAL_TASK_ID": "ta-123",
+            "MODAL_IS_REMOTE": "1",
+            "MODAL_TASK_SECRET": "1",
+        },
+    ):
+        yield
 
 
 @pytest.mark.asyncio
@@ -100,9 +102,7 @@ async def test_container_snapshot_reference_capture(container_client, tmpdir, se
     assert f.object_id == "fu-1"
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
     restore_path = temp_restore_path(tmpdir)
-    with mock.patch.dict(
-        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
-    ):
+    with set_env_vars(restore_path, servicer.container_addr):
         io_manager.memory_snapshot()
 
     # Stop the App, invalidating the fu- ID stored in `f`.
@@ -126,10 +126,7 @@ def test_container_snapshot_restore_heartbeats(tmpdir, servicer, container_clien
     # Ensure that heartbeats only run after the snapshot
     heartbeat_interval_secs = 0.01
     with io_manager.heartbeats(True):
-        with mock.patch.dict(
-            os.environ,
-            {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr},
-        ):
+        with set_env_vars(restore_path, servicer.container_addr):
             with mock.patch("modal.runner.HEARTBEAT_INTERVAL", heartbeat_interval_secs):
                 time.sleep(heartbeat_interval_secs * 2)
                 assert not list(
@@ -154,9 +151,7 @@ async def test_container_debug_snapshot(container_client, tmpdir, servicer):
     # Test that the breakpoint was called
     test_breakpoint = mock.Mock()
     with mock.patch("sys.breakpointhook", test_breakpoint):
-        with mock.patch.dict(
-            os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
-        ):
+        with set_env_vars(restore_path, servicer.container_addr):
             io_manager.memory_snapshot()
             test_breakpoint.assert_called_once()
 
@@ -206,9 +201,7 @@ async def test_container_snapshot_patching(fake_torch_module, container_client, 
 
     # Write out a restore file so that snapshot+restore will complete
     restore_path = temp_restore_path(tmpdir)
-    with mock.patch.dict(
-        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
-    ):
+    with set_env_vars(restore_path, servicer.container_addr):
         io_manager.memory_snapshot()
         assert torch.cuda.device_count() == 2
 
@@ -225,10 +218,38 @@ async def test_container_snapshot_patching_err(weird_torch_module, container_cli
 
     assert torch.IM_WEIRD == 42
 
-    with mock.patch.dict(
-        os.environ, {"MODAL_RESTORE_STATE_PATH": str(restore_path), "MODAL_SERVER_URL": servicer.container_addr}
-    ):
+    with set_env_vars(restore_path, servicer.container_addr):
         io_manager.memory_snapshot()  # should not crash
+
+
+@pytest.mark.asyncio
+async def test_rpc_wrapping_restores(container_client, servicer, tmpdir):
+    from modal import Dict
+
+    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    restore_path = temp_restore_path(tmpdir)
+
+    d = Dict.lookup("my-amazing-dict", {"xyz": 123}, create_if_missing=True, client=container_client)
+    d["abc"] = 42
+
+    with set_env_vars(restore_path, servicer.container_addr):
+        io_manager.memory_snapshot()
+
+    # TODO(Jonathon): These RPC wrappers are tested directly because I could not
+    # find a way to construct in this test a UnaryStreamWrapper with a stale snapshotted client.
+    @synchronize_api
+    async def exercise_rpcs():
+        n = 0
+        # Test UnaryStreamWrapper
+        async for _ in container_client.stub.DictContents.unary_stream(
+            api_pb2.DictContentsRequest(dict_id=d.object_id, keys=True)
+        ):
+            n += 1
+        assert n == 2
+        # Test UnaryUnaryWrapper
+        await container_client.stub.DictClear(api_pb2.DictClearRequest(dict_id=d.object_id))
+
+    await exercise_rpcs.aio()
 
 
 def test_interact(container_client, servicer):

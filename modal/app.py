@@ -27,14 +27,13 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal_proto import api_pb2
 
 from ._ipython import is_notebook
-from ._output import OutputManager
 from ._utils.async_utils import synchronize_api
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
-from .cls import _Cls, _get_class_constructor_signature, parameter
+from .cls import _Cls, parameter
 from .config import logger
 from .exception import InvalidError, deprecation_error, deprecation_warning
 from .experimental import _GroupedFunction
@@ -44,6 +43,7 @@ from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .object import _get_environment_name, _Object
+from .output import _get_output_manager, enable_output
 from .partial_function import (
     PartialFunction,
     _find_partial_methods_for_user_cls,
@@ -52,7 +52,6 @@ from .partial_function import (
 )
 from .proxy import _Proxy
 from .retries import Retries
-from .runner import _run_app
 from .running_app import RunningApp
 from .sandbox import _Sandbox
 from .schedule import Schedule
@@ -135,7 +134,7 @@ class _App:
 
     * A unit of deployment for functions and classes.
     * Syncing of identities of (primarily) functions and classes across processes
-      (your local Python interpreter and every Modal containerr active in your application).
+      (your local Python interpreter and every Modal container active in your application).
     * Manage log collection for everything that happens inside your code.
 
     **Registering functions with an app**
@@ -440,6 +439,7 @@ class _App:
         If you don't want output, and you want to to suppress this warning,
         use `app.run(..., show_progress=False)`.
         """
+        from .runner import _run_app  # Defer import of runner.py, which imports a lot from Rich
 
         # See Github discussion here: https://github.com/modal-labs/modal-client/pull/2030#issuecomment-2237266186
 
@@ -447,23 +447,23 @@ class _App:
 
         if "MODAL_DISABLE_APP_RUN_OUTPUT_WARNING" not in os.environ:
             if show_progress is None:
-                if OutputManager.get() is None:
+                if _get_output_manager() is None:
                     deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
                     auto_enable_output = True
             elif show_progress is True:
-                if OutputManager.get() is None:
+                if _get_output_manager() is None:
                     deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
                     auto_enable_output = True
                 else:
                     deprecation_warning((2024, 7, 18), "`show_progress=True` is deprecated and no longer needed.")
             elif show_progress is False:
-                if OutputManager.get() is not None:
+                if _get_output_manager() is not None:
                     deprecation_warning(
                         (2024, 7, 18), "`show_progress=False` will have no effect since output is enabled."
                     )
 
         if auto_enable_output:
-            with OutputManager.enable_output():
+            with enable_output():
                 async with _run_app(self, client=client, detach=detach, interactive=interactive):
                     yield self
         else:
@@ -874,20 +874,22 @@ class _App:
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_buffer_containers: Optional[int] = None,  # Number of additional, idle containers to keep around.
-        _experimental_proxy_ip: Optional[int] = None,  # IP address of proxy
+        _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
     ) -> Callable[[CLS_T], CLS_T]:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
 
+        # Argument validation
         if interactive:
             deprecation_error(
                 (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
             )
 
-        if image is None:
-            image = self._get_default_image()
-
-        secrets = [*self._secrets, *secrets]
+        scheduler_placement = _experimental_scheduler_placement
+        if region:
+            if scheduler_placement:
+                raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
+            scheduler_placement = SchedulerPlacement(region=region)
 
         def wrapper(user_cls: CLS_T) -> CLS_T:
             nonlocal keep_warm
@@ -895,14 +897,6 @@ class _App:
             # Check if the decorated object is a class
             if not inspect.isclass(user_cls):
                 raise TypeError("The @app.cls decorator must be used on a class.")
-
-            info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
-
-            scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
-            if region:
-                if scheduler_placement:
-                    raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
-                scheduler_placement = SchedulerPlacement(region=region)
 
             batch_functions = _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.BATCHED)
             if batch_functions:
@@ -919,11 +913,19 @@ class _App:
                 batch_max_size = None
                 batch_wait_ms = None
 
+            if (
+                _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
+                and not enable_memory_snapshot
+            ):
+                raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
+
+            info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
+
             cls_func = _Function.from_args(
                 info,
                 app=self,
-                image=image,
-                secrets=secrets,
+                image=image or self._get_default_image(),
+                secrets=[*self._secrets, *secrets],
                 gpu=gpu,
                 mounts=[*self._mounts, *mounts],
                 network_file_systems=network_file_systems,
@@ -947,10 +949,6 @@ class _App:
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
-                # class service function, so the following attributes which relate to
-                # the callable itself are invalid and set to defaults:
-                webhook_config=None,
-                is_generator=False,
                 _experimental_buffer_containers=_experimental_buffer_containers,
                 _experimental_proxy_ip=_experimental_proxy_ip,
             )
@@ -958,22 +956,6 @@ class _App:
             self._add_function(cls_func, is_web_endpoint=False)
 
             cls: _Cls = _Cls.from_local(user_cls, self, cls_func)
-
-            if (
-                _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
-                and not enable_memory_snapshot
-            ):
-                raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
-
-            # Disallow enable_memory_snapshot for parameterized classes
-            # TODO(matt) Temporary fix for MOD-3048
-            if enable_memory_snapshot:
-                signature = _get_class_constructor_signature(user_cls)
-                if len(signature.parameters) > 0:
-                    name = user_cls.__name__
-                    raise InvalidError(
-                        f"Cannot use class parameterization in class {name} with `enable_memory_snapshot=True`."
-                    )
 
             tag: str = user_cls.__name__
             self._add_object(tag, cls)
@@ -1006,20 +988,11 @@ class _App:
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
     ) -> _Sandbox:
-        """Sandboxes are a way to run arbitrary commands in dynamically defined environments.
+        """`App.spawn_sandbox` is deprecated in favor of `Sandbox.create(app=...)`.
 
-        This function returns a [SandboxHandle](/docs/reference/modal.Sandbox#modalsandboxsandbox),
-        which can be used to interact with the running sandbox.
-
-        Refer to the [docs](/docs/guide/sandbox) on how to spawn and use sandboxes.
+        See https://modal.com/docs/guide/sandbox for more info on working with sandboxes.
         """
-        deprecation_warning(
-            (2024, 7, 5),
-            """`App.spawn_sandbox` is deprecated in favor of `Sandbox.create`.
-
-            See https://modal.com/docs/guide/sandbox for more info.
-            """,
-        )
+        deprecation_warning((2024, 7, 5), _App.spawn_sandbox.__doc__ or "")
         if not self._running_app:
             raise InvalidError("`app.spawn_sandbox` requires a running app.")
 

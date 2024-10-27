@@ -974,22 +974,14 @@ def test_batch_function_invalid_error():
             return [x_i**2 for x_i in x]
 
 
-@pytest.mark.parametrize("feature_flag", [True, False, None])
-def test_spawn_extended_feature_flag(client, servicer, monkeypatch, feature_flag):
+def test_experimental_spawn(client, servicer):
     app = App()
     dummy_modal = app.function()(dummy)
 
-    if feature_flag is not None:
-        monkeypatch.setenv("MODAL_SPAWN_EXTENDED", str(feature_flag))
-
     with servicer.intercept() as ctx:
         with app.run(client=client):
-            dummy_modal.spawn(1, 2)
+            dummy_modal._experimental_spawn(1, 2)
 
-    # Verify the correct invocation type is set based on the feature flag
+    # Verify the correct invocation type is set
     function_map = ctx.pop_request("FunctionMap")
-    if feature_flag:
-        expected_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
-    else:
-        expected_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY
-    assert function_map.function_call_invocation_type == expected_invocation_type
+    assert function_map.function_call_invocation_type == api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC

@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2024
 import asyncio
+import time
 import typing
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Set, Tuple
@@ -9,7 +10,11 @@ from grpclib import GRPCError, Status
 
 from modal._utils.async_utils import (
     AsyncOrSyncIterable,
+    aclosing,
+    async_merge,
+    async_zip,
     queue_batch_iterator,
+    sync_or_async_iter,
     synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
@@ -174,6 +179,7 @@ async def _map_invocation(
                 timeout=OUTPUTS_TIMEOUT,
                 last_entry_id=last_entry_id,
                 clear_on_success=False,
+                requested_at=time.time(),
             )
             response = await retry_transient_errors(
                 client.stub.FunctionGetOutputs,
@@ -208,6 +214,7 @@ async def _map_invocation(
                 timeout=0,
                 last_entry_id="0-0",
                 clear_on_success=True,
+                requested_at=time.time(),
             )
             await retry_transient_errors(client.stub.FunctionGetOutputs, request)
 
@@ -244,9 +251,9 @@ async def _map_invocation(
 
         assert len(received_outputs) == 0
 
-    response_gen = stream.merge(drain_input_generator(), pump_inputs(), poll_outputs())
-
-    async with response_gen.stream() as streamer:
+    async with aclosing(drain_input_generator()) as drainer, aclosing(pump_inputs()) as pump, aclosing(
+        poll_outputs()
+    ) as poller, aclosing(async_merge(drainer, pump, poller)) as streamer:
         async for response in streamer:
             if response is not None:
                 yield response.value
@@ -333,7 +340,7 @@ async def _map_async(
 
     async def feed_queue():
         # This runs in a main thread event loop, so it doesn't block the synchronizer loop
-        async with stream.zip(*[stream.iterate(it) for it in input_iterators]).stream() as streamer:
+        async with aclosing(async_zip(*input_iterators)) as streamer:
             async for args in streamer:
                 await raw_input_queue.put.aio((args, kwargs))
         await raw_input_queue.put.aio(None)  # end-of-input sentinel
@@ -383,7 +390,7 @@ async def _starmap_async(
 
     async def feed_queue():
         # This runs in a main thread event loop, so it doesn't block the synchronizer loop
-        async with stream.iterate(input_iterator).stream() as streamer:
+        async with aclosing(sync_or_async_iter(input_iterator)) as streamer:
             async for args in streamer:
                 await raw_input_queue.put.aio((args, kwargs))
         await raw_input_queue.put.aio(None)  # end-of-input sentinel

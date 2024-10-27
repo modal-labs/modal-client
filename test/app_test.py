@@ -8,8 +8,8 @@ from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
 from modal import App, Dict, Image, Mount, Secret, Stub, Volume, enable_output, web_endpoint
-from modal._output import OutputManager
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
+from modal.output import _get_output_manager
 from modal.partial_function import _parse_custom_domains
 from modal.runner import deploy_app, deploy_stub
 from modal_proto import api_pb2
@@ -375,7 +375,7 @@ def test_app_interactive(servicer, client, capsys):
     with servicer.intercept() as ctx:
         ctx.set_responder("AppGetLogs", app_logs_pty)
 
-        with OutputManager.enable_output():
+        with enable_output():
             with app.run(client=client):
                 time.sleep(0.1)
 
@@ -392,7 +392,7 @@ def test_show_progress_deprecations(client, monkeypatch):
     # If show_progress is not provided, and output is not enabled, warn
     with pytest.warns(DeprecationError, match="enable_output"):
         with app.run(client=client):
-            assert OutputManager.get() is not None  # Should be auto-enabled
+            assert _get_output_manager() is not None  # Should be auto-enabled
 
     # If show_progress is not provided, and output is enabled, no warning
     with enable_output():
@@ -402,7 +402,7 @@ def test_show_progress_deprecations(client, monkeypatch):
     # If show_progress is set to True, and output is not enabled, warn
     with pytest.warns(DeprecationError, match="enable_output"):
         with app.run(client=client, show_progress=True):
-            assert OutputManager.get() is not None  # Should be auto-enabled
+            assert _get_output_manager() is not None  # Should be auto-enabled
 
     # If show_progress is set to True, and output is enabled, warn the flag is superfluous
     with pytest.warns(DeprecationError, match="`show_progress=True` is deprecated"):
@@ -413,10 +413,22 @@ def test_show_progress_deprecations(client, monkeypatch):
     # If show_progress is set to False, and output is not enabled, no warning
     # This mode is currently used to suppress deprecation warnings, but will in itself be deprecated later.
     with app.run(client=client, show_progress=False):
-        assert OutputManager.get() is None
+        assert _get_output_manager() is None
 
     # If show_progress is set to False, and output is enabled, warn that it has no effect
     with pytest.warns(DeprecationError, match="no effect"):
         with enable_output():
             with app.run(client=client, show_progress=False):
                 pass
+
+
+@pytest.mark.asyncio
+async def test_deploy_from_container(servicer, container_client):
+    app = App(image=Image.debian_slim().pip_install("pandas"))
+    app.function()(square)
+
+    # Deploy app
+    res = await deploy_app.aio(app, "my-app", client=container_client)
+    assert res.app_id == "ap-1"
+    assert servicer.app_objects["ap-1"]["square"] == "fu-1"
+    assert servicer.app_state_history[res.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]

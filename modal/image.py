@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import contextlib
+import json
 import os
 import re
 import shlex
@@ -9,14 +10,27 @@ import warnings
 from dataclasses import dataclass
 from inspect import isfunction
 from pathlib import Path, PurePosixPath
-from typing import Any, AsyncGenerator, Callable, Dict, List, Literal, Optional, Sequence, Set, Tuple, Union, get_args
+from typing import (
+    Any,
+    AsyncGenerator,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+    Union,
+    cast,
+    get_args,
+)
 
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal_proto import api_pb2
 
-from ._output import OutputManager
 from ._resolver import Resolver
 from ._serialization import serialize
 from ._utils.async_utils import synchronize_api
@@ -25,11 +39,13 @@ from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
+from .environments import _get_environment_cached
 from .exception import InvalidError, NotFoundError, RemoteError, VersionError, deprecation_error, deprecation_warning
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
 from .object import _Object, live_method_gen
+from .output import _get_output_manager
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 from .volume import _Volume
@@ -39,14 +55,15 @@ if typing.TYPE_CHECKING:
 
 
 # This is used for both type checking and runtime validation
-ImageBuilderVersion = Literal["2023.12", "2024.04"]
+ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10"]
 
 # Note: we also define supported Python versions via logic at the top of the package __init__.py
 # so that we fail fast / clearly in unsupported containers. Additionally, we enumerate the supported
 # Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
 # Consider consolidating these multiple sources of truth?
-SUPPORTED_PYTHON_SERIES: Set[str] = {"3.8", "3.9", "3.10", "3.11", "3.12"}
+SUPPORTED_PYTHON_SERIES: List[str] = ["3.8", "3.9", "3.10", "3.11", "3.12"]
 
+LOCAL_REQUIREMENTS_DIR = Path(__file__).parent / "requirements"
 CONTAINER_REQUIREMENTS_PATH = "/modal_requirements.txt"
 
 
@@ -77,46 +94,29 @@ def _validate_python_version(version: Optional[str], allow_micro_granularity: bo
 
 def _dockerhub_python_version(builder_version: ImageBuilderVersion, python_version: Optional[str] = None) -> str:
     python_version = _validate_python_version(python_version)
-    components = python_version.split(".")
+    version_components = python_version.split(".")
 
     # When user specifies a full Python version, use that
-    if len(components) > 2:
+    if len(version_components) > 2:
         return python_version
 
     # Otherwise, use the same series, but a specific micro version, corresponding to the latest
     # available from https://hub.docker.com/_/python at the time of each image builder release.
-    latest_micro_version = {
-        "2023.12": {
-            "3.12": "1",
-            "3.11": "0",
-            "3.10": "8",
-            "3.9": "15",
-            "3.8": "15",
-        },
-        "2024.04": {
-            "3.12": "2",
-            "3.11": "8",
-            "3.10": "14",
-            "3.9": "19",
-            "3.8": "19",
-        },
-    }
-    python_series = "{0}.{1}".format(*components)
-    micro_version = latest_micro_version[builder_version][python_series]
-    python_version = f"{python_series}.{micro_version}"
-    return python_version
+    # This allows us to publish one pre-built debian-slim image per Python series.
+    python_versions = _base_image_config("python", builder_version)
+    series_to_micro_version = dict(tuple(v.rsplit(".", 1)) for v in python_versions)
+    python_series_requested = "{0}.{1}".format(*version_components)
+    micro_version = series_to_micro_version[python_series_requested]
+    return f"{python_series_requested}.{micro_version}"
 
 
-def _dockerhub_debian_codename(builder_version: ImageBuilderVersion) -> str:
-    return {"2023.12": "bullseye", "2024.04": "bookworm"}[builder_version]
+def _base_image_config(group: str, builder_version: ImageBuilderVersion) -> Any:
+    with open(LOCAL_REQUIREMENTS_DIR / "base-images.json", "r") as f:
+        data = json.load(f)
+    return data[group][builder_version]
 
 
 def _get_modal_requirements_path(builder_version: ImageBuilderVersion, python_version: Optional[str] = None) -> str:
-    # Locate Modal client requirements data
-    import modal
-
-    modal_path = Path(modal.__path__[0])
-
     # When we added Python 3.12 support, we needed to update a few dependencies but did not yet
     # support versioned builds, so we put them in a separate 3.12-specific requirements file.
     # When the python_version is not specified in the Image API, we fall back to the local version.
@@ -126,7 +126,7 @@ def _get_modal_requirements_path(builder_version: ImageBuilderVersion, python_ve
     python_version = python_version or sys.version
     suffix = ".312" if builder_version == "2023.12" and python_version.startswith("3.12") else ""
 
-    return str(modal_path / "requirements" / f"{builder_version}{suffix}.txt")
+    return str(LOCAL_REQUIREMENTS_DIR / f"{builder_version}{suffix}.txt")
 
 
 def _get_modal_requirements_command(version: ImageBuilderVersion) -> str:
@@ -200,20 +200,20 @@ def _make_pip_install_args(
     return args
 
 
-def _get_image_builder_version(client_version: str) -> ImageBuilderVersion:
-    if config_version := config.get("image_builder_version"):
-        version = config_version
+def _get_image_builder_version(server_version: ImageBuilderVersion) -> ImageBuilderVersion:
+    if local_config_version := config.get("image_builder_version"):
+        version = local_config_version
         if (env_var := "MODAL_IMAGE_BUILDER_VERSION") in os.environ:
             version_source = f" (based on your `{env_var}` environment variable)"
         else:
             version_source = f" (based on your local config file at `{user_config_path}`)"
     else:
-        version = client_version
         version_source = ""
+        version = server_version
 
     supported_versions: Set[ImageBuilderVersion] = set(get_args(ImageBuilderVersion))
     if version not in supported_versions:
-        if config_version is not None:
+        if local_config_version is not None:
             update_suggestion = "or remove your local configuration"
         elif version < min(supported_versions):
             update_suggestion = "your image builder version using the Modal dashboard"
@@ -316,7 +316,10 @@ class _Image(_Object, type_prefix="im"):
             return deps
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
-            builder_version = _get_image_builder_version(resolver.client.image_builder_version)
+            environment = await _get_environment_cached(resolver.environment_name or "", resolver.client)
+            # A bit hacky,but assume that the environment provides a valid builder version
+            image_builder_version = cast(ImageBuilderVersion, environment._settings.image_builder_version)
+            builder_version = _get_image_builder_version(image_builder_version)
 
             if dockerfile_function is None:
                 dockerfile = DockerfileSpec(commands=[], context_files={})
@@ -422,12 +425,12 @@ class _Image(_Object, type_prefix="im"):
                     for task_log in response.task_logs:
                         if task_log.task_progress.pos or task_log.task_progress.len:
                             assert task_log.task_progress.progress_type == api_pb2.IMAGE_SNAPSHOT_UPLOAD
-                            if output_mgr := OutputManager.get():
+                            if output_mgr := _get_output_manager():
                                 output_mgr.update_snapshot_progress(image_id, task_log.task_progress)
                         elif task_log.data:
-                            if output_mgr := OutputManager.get():
+                            if output_mgr := _get_output_manager():
                                 await output_mgr.put_log_content(task_log)
-                if output_mgr := OutputManager.get():
+                if output_mgr := _get_output_manager():
                     output_mgr.flush_lines()
 
             # Handle up to n exceptions while fetching logs
@@ -959,85 +962,9 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
-    def conda(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
-        """
-        DEPRECATED A Conda base image, using miniconda3.
-
-        This constructor has been deprecated in favor of [`Image.micromamba()`](/docs/reference/modal.Image#micromamba),
-        which can be used with [`micromamba_install`](/docs/reference/modal.Image#micromamba_install).
-        Images will build faster and more reliably with `micromamba`.
-        """
-        msg = (
-            "The `Image.conda` constructor has deprecated in favor of the faster and more reliable `Image.micromamba`."
-        )
-        deprecation_warning((2024, 5, 2), msg)
-
-        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            nonlocal python_version
-            if version == "2023.12" and python_version is None:
-                python_version = "3.9"  # Backcompat for old hardcoded default param
-            validated_python_version = _validate_python_version(python_version)
-            debian_codename = _dockerhub_debian_codename(version)
-            requirements_path = _get_modal_requirements_path(version, python_version)
-            context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
-
-            # Doesn't use the official continuumio/miniconda3 image as a base. That image has maintenance
-            # issues (https://github.com/ContinuumIO/docker-images/issues) and building our own is more flexible.
-            conda_install_script = "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
-            commands = [
-                f"FROM debian:{debian_codename}",  # the -slim images lack files required by Conda.
-                # Temporarily add utility packages for conda installation.
-                "RUN apt-get --quiet update && apt-get --quiet --yes install curl bzip2 \\",
-                f"&& curl --silent --show-error --location {conda_install_script} --output /tmp/miniconda.sh \\",
-                # Install miniconda to a filesystem location on the $PATH of Modal container tasks.
-                # -b = install in batch mode w/o manual intervention.
-                # -f = allow install prefix to already exist.
-                # -p = the install prefix location.
-                "&& bash /tmp/miniconda.sh -bfp /usr/local \\ ",
-                "&& rm -rf /tmp/miniconda.sh",
-                # Biggest and most stable community-led Conda channel.
-                "RUN conda config --add channels conda-forge \\ ",
-                # softlinking can put conda in a broken state, surfacing error on uninstall like:
-                # `No such device or address: '/usr/local/lib/libz.so' -> '/usr/local/lib/libz.so.c~'`
-                "&& conda config --set allow_softlinks false \\ ",
-                # Install requested Python version from conda-forge channel; base debian image has only 3.7.
-                f"&& conda install --yes --channel conda-forge python={validated_python_version} \\ ",
-                "&& conda update conda \\ ",
-                # Remove now unneeded packages and files.
-                "&& apt-get --quiet --yes remove curl bzip2 \\ ",
-                "&& apt-get --quiet --yes autoremove \\ ",
-                "&& apt-get autoclean \\ ",
-                "&& rm -rf /var/lib/apt/lists/* /var/log/dpkg.log \\ ",
-                "&& conda clean --all --yes",
-                # Setup .bashrc for conda.
-                "RUN conda init bash --verbose",
-                f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
-                # .bashrc is explicitly sourced because RUN is a non-login shell and doesn't run bash.
-                "RUN . /root/.bashrc && conda activate base \\ ",
-                # Ensure that packaging tools are up to date and install client dependenices
-                f"&& python -m pip install --upgrade {'pip' if version == '2023.12' else 'pip wheel uv'} \\ ",
-                f"&& python -m {_get_modal_requirements_command(version)}",
-            ]
-            if version > "2023.12":
-                commands.append(f"RUN rm {CONTAINER_REQUIREMENTS_PATH}")
-            return DockerfileSpec(commands=commands, context_files=context_files)
-
-        base = _Image._from_args(
-            dockerfile_function=build_dockerfile,
-            force_build=force_build,
-            _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
-        )
-
-        return base.dockerfile_commands(
-            [
-                "ENV CONDA_EXE=/usr/local/bin/conda",
-                "ENV CONDA_PREFIX=/usr/local",
-                "ENV CONDA_PROMPT_MODIFIER=(base)",
-                "ENV CONDA_SHLVL=1",
-                "ENV CONDA_PYTHON_EXE=/usr/local/bin/python",
-                "ENV CONDA_DEFAULT_ENV=base",
-            ]
-        )
+    def conda(python_version: Optional[str] = None, force_build: bool = False):
+        """DEPRECATED: Removed in favor of the faster and more reliable `Image.micromamba` constructor."""
+        deprecation_error((2024, 5, 2), _Image.conda.__doc__ or "")
 
     def conda_install(
         self,
@@ -1046,42 +973,9 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
-    ) -> "_Image":
-        """DEPRECATED Install additional packages using Conda.
-
-        Deprecated in favor of [`micromamba_install`](/docs/reference/modal.Image#micromamba_install),
-        which should be used with the [`Image.micromamba()`](/docs/reference/modal.Image#micromamba) constructor.
-        Images will build faster and more reliably with `micromamba`.
-        """
-
-        msg = (
-            "The `Image.conda_install` method has deprecated in favor of the faster "
-            "and more reliable `Image.micromamba_install`."
-        )
-        deprecation_warning((2024, 5, 2), msg)
-
-        pkgs = _flatten_str_args("conda_install", "packages", packages)
-        if not pkgs:
-            return self
-
-        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
-            channel_args = "".join(f" -c {channel}" for channel in channels)
-
-            commands = [
-                "FROM base",
-                f"RUN conda install {package_args}{channel_args} --yes \\ ",
-                "&& conda clean --yes --index-cache --tarballs --tempfiles --logfiles",
-            ]
-            return DockerfileSpec(commands=commands, context_files={})
-
-        return _Image._from_args(
-            base_images={"base": self},
-            dockerfile_function=build_dockerfile,
-            force_build=self.force_build or force_build,
-            secrets=secrets,
-            gpu_config=parse_gpu_config(gpu),
-        )
+    ):
+        """DEPRECATED: Removed in favor of the faster and more reliable `Image.micromamba_install` method."""
+        deprecation_error((2024, 5, 2), _Image.conda_install.__doc__ or "")
 
     def conda_update_from_environment(
         self,
@@ -1090,36 +984,9 @@ class _Image(_Object, type_prefix="im"):
         *,
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
-    ) -> "_Image":
-        """DEPRECATED Update a Conda environment using dependencies from a given environment.yml file.
-
-        This method has been deprecated in favor of the faster and more reliable `Image.micromamba_install`
-        method and its `spec_file` parameter.
-        """
-        msg = (
-            "The `Image.conda_install_update_from_environment` method has deprecated in favor of the faster"
-            " and more reliable `Image.micromamba_install` and its `spec_file` parameter."
-        )
-        deprecation_warning((2024, 5, 2), msg)
-
-        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            context_files = {"/environment.yml": os.path.expanduser(environment_yml)}
-
-            commands = [
-                "FROM base",
-                "COPY /environment.yml /environment.yml",
-                "RUN conda env update --name base -f /environment.yml \\ ",
-                "&& conda clean --yes --index-cache --tarballs --tempfiles --logfiles",
-            ]
-            return DockerfileSpec(commands=commands, context_files=context_files)
-
-        return _Image._from_args(
-            base_images={"base": self},
-            dockerfile_function=build_dockerfile,
-            force_build=self.force_build or force_build,
-            secrets=secrets,
-            gpu_config=parse_gpu_config(gpu),
-        )
+    ):
+        """DEPRECATED: Removed in favor of the `Image.micromamba_install` method (using the `spec_file` parameter)."""
+        deprecation_error((2024, 5, 2), _Image.conda_update_from_environment.__doc__ or "")
 
     @staticmethod
     def micromamba(
@@ -1133,8 +1000,8 @@ class _Image(_Object, type_prefix="im"):
             if version == "2023.12" and python_version is None:
                 python_version = "3.9"  # Backcompat for old hardcoded default param
             validated_python_version = _validate_python_version(python_version)
-            micromamba_version = {"2023.12": "1.3.1", "2024.04": "1.5.8"}[version]
-            debian_codename = _dockerhub_debian_codename(version)
+            micromamba_version = _base_image_config("micromamba", version)
+            debian_codename = _base_image_config("debian", version)
             tag = f"mambaorg/micromamba:{micromamba_version}-{debian_codename}-slim"
             setup_commands = [
                 'SHELL ["/usr/local/bin/_dockerfile_shell.sh"]',
@@ -1211,7 +1078,7 @@ class _Image(_Object, type_prefix="im"):
 
         modal_requirements_commands = [
             f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
-            f"RUN python -m pip install --upgrade {'pip' if builder_version == '2023.12' else 'pip wheel uv'}",
+            f"RUN python -m pip install --upgrade {_base_image_config('package_tools', builder_version)}",
             f"RUN python -m {_get_modal_requirements_command(builder_version)}",
         ]
         if builder_version > "2023.12":
@@ -1414,7 +1281,6 @@ class _Image(_Object, type_prefix="im"):
         ```
 
         The context mount will allow a `COPY src/ src/` instruction to succeed in Modal's remote builder.
-        ```
         """
 
         # --- Build the base dockerfile
@@ -1467,14 +1333,14 @@ class _Image(_Object, type_prefix="im"):
             requirements_path = _get_modal_requirements_path(version, python_version)
             context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
             full_python_version = _dockerhub_python_version(version, python_version)
-            debian_codename = _dockerhub_debian_codename(version)
+            debian_codename = _base_image_config("debian", version)
 
             commands = [
                 f"FROM python:{full_python_version}-slim-{debian_codename}",
                 f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
                 "RUN apt-get update",
                 "RUN apt-get install -y gcc gfortran build-essential",
-                f"RUN pip install --upgrade {'pip' if version == '2023.12' else 'pip wheel uv'}",
+                f"RUN pip install --upgrade {_base_image_config('package_tools', version)}",
                 f"RUN {_get_modal_requirements_command(version)}",
                 # Set debian front-end to non-interactive to avoid users getting stuck with input prompts.
                 "RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections",

@@ -23,23 +23,23 @@ from typing import (
 )
 
 import typing_extensions
-from aiostream import stream
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
 
-from modal._output import FunctionCreationStatus
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
 from ._location import parse_cloud_provider
-from ._output import OutputManager
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._serialization import serialize, serialize_proto_params
 from ._utils.async_utils import (
     TaskContext,
+    aclosing,
+    async_merge,
+    callable_to_agen,
     synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
@@ -73,6 +73,7 @@ from .image import _Image
 from .mount import _get_client_mount, _Mount, get_auto_mounts
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import _get_environment_name, _Object, live_method, live_method_gen
+from .output import _get_output_manager
 from .parallel_map import (
     _for_each_async,
     _for_each_sync,
@@ -160,6 +161,7 @@ class _Invocation:
                 timeout=backend_timeout,
                 last_entry_id="0-0",
                 clear_on_success=clear_on_success,
+                requested_at=time.time(),
             )
             response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
@@ -205,12 +207,11 @@ class _Invocation:
         )
 
     async def run_generator(self):
-        data_stream = _stream_function_call_data(self.client, self.function_call_id, variant="data_out")
-        combined_stream = stream.merge(data_stream, stream.call(self.run_function))  # type: ignore
-
         items_received = 0
         items_total: Union[int, None] = None  # populated when self.run_function() completes
-        async with combined_stream.stream() as streamer:
+        async with aclosing(
+            _stream_function_call_data(self.client, self.function_call_id, variant="data_out")
+        ) as data_stream, aclosing(async_merge(data_stream, callable_to_agen(self.run_function))) as streamer:
             async for item in streamer:
                 if isinstance(item, api_pb2.GeneratorDone):
                     items_total = item.items_total
@@ -353,6 +354,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
         async def _load(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+            from ._output import FunctionCreationStatus  # Deferred import to avoid Rich dependency in container
+
             function_definition = api_pb2.Function(
                 function_name=full_name,
                 webhook_config=partial_function.webhook_config,
@@ -729,6 +732,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            from ._output import FunctionCreationStatus  # Deferred import to avoid Rich dependency in container
+
             assert resolver.client and resolver.client.stub
             with FunctionCreationStatus(resolver, tag) as function_creation_status:
                 if is_generator:
@@ -820,6 +825,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     warm_pool_size=keep_warm or 0,
                     runtime=config.get("function_runtime"),
                     runtime_debug=config.get("function_runtime_debug"),
+                    runtime_perf_record=config.get("runtime_perf_record"),
                     app_name=app_name,
                     is_builder_function=is_builder_function,
                     target_concurrent_inputs=allow_concurrent_inputs or 0,
@@ -838,6 +844,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     is_class=info.is_service_class(),
                     class_parameter_info=info.class_parameter_info(),
                     i6pn_enabled=i6pn_enabled,
+                    schedule=schedule.proto_message if schedule is not None else None,
+                    snapshot_debug=config.get("snapshot_debug"),
                     _experimental_group_size=group_size or 0,  # Experimental: Grouped functions
                     _experimental_concurrent_cancellations=True,
                     _experimental_buffer_containers=_experimental_buffer_containers or 0,
@@ -858,6 +866,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         web_url_info=function_definition.web_url_info,
                         webhook_config=function_definition.webhook_config,
                         custom_domain_info=function_definition.custom_domain_info,
+                        schedule=schedule.proto_message if schedule is not None else None,
                         is_class=function_definition.is_class,
                         class_parameter_info=function_definition.class_parameter_info,
                         is_method=function_definition.is_method,
@@ -899,7 +908,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     app_id=resolver.app_id,
                     function=function_definition,
                     function_data=function_data,
-                    schedule=schedule.proto_message if schedule is not None else None,
                     existing_function_id=existing_object_id or "",
                     defer_updates=True,
                 )
@@ -1236,7 +1244,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             raise InvalidError("A generator function cannot be called with `.map(...)`.")
 
         assert self._function_name
-        if output_mgr := OutputManager.get():
+        if output_mgr := _get_output_manager():
             count_update_callback = output_mgr.function_progress_callback(self._function_name, total=None)
         else:
             count_update_callback = None
@@ -1261,12 +1269,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         )
         return await invocation.run_function()
 
-    async def _call_function_nowait(self, args, kwargs) -> _Invocation:
-        # This feature flag allows users to put a large number of inputs
-        if config.get("spawn_extended"):
-            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
-        else:
-            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY
+    async def _call_function_nowait(
+        self, args, kwargs, function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType"
+    ) -> _Invocation:
         return await _Invocation.create(
             self, args, kwargs, client=self._client, function_call_invocation_type=function_call_invocation_type
         )
@@ -1388,21 +1393,43 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     @synchronizer.no_input_translation
     @live_method
+    async def _experimental_spawn(self, *args: P.args, **kwargs: P.kwargs) -> "_FunctionCall[ReturnType]":
+        """[Experimental] Calls the function with the given arguments, without waiting for the results.
+
+        This experimental version of the spawn method allows up to 1 million inputs to be spawned.
+
+        Returns a `modal.functions.FunctionCall` object, that can later be polled or
+        waited for using `.get(timeout=...)`.
+        Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
+        """
+        self._check_no_web_url("_experimental_spawn")
+        if self._is_generator:
+            invocation = await self._call_generator_nowait(args, kwargs)
+        else:
+            invocation = await self._call_function_nowait(
+                args, kwargs, function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
+            )
+
+        fc = _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
+        fc._is_generator = self._is_generator if self._is_generator else False
+        return fc
+
+    @synchronizer.no_input_translation
+    @live_method
     async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> "_FunctionCall[ReturnType]":
         """Calls the function with the given arguments, without waiting for the results.
 
         Returns a `modal.functions.FunctionCall` object, that can later be polled or
         waited for using `.get(timeout=...)`.
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
-
-        *Note:* `.spawn()` on a modal generator function does call and execute the generator, but does not currently
-        return a function handle for polling the result.
         """
         self._check_no_web_url("spawn")
         if self._is_generator:
             invocation = await self._call_generator_nowait(args, kwargs)
         else:
-            invocation = await self._call_function_nowait(args, kwargs)
+            invocation = await self._call_function_nowait(
+                args, kwargs, api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY
+            )
 
         fc = _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
         fc._is_generator = self._is_generator if self._is_generator else False

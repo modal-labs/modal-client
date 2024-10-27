@@ -10,14 +10,14 @@ from tempfile import NamedTemporaryFile
 from typing import List, Literal, get_args
 from unittest import mock
 
-from modal import App, Image, Mount, Secret, build, gpu, method
+from modal import App, Image, Mount, Secret, build, environments, gpu, method
 from modal._serialization import serialize
 from modal.client import Client
 from modal.exception import DeprecationError, InvalidError, VersionError
 from modal.image import (
     SUPPORTED_PYTHON_SERIES,
     ImageBuilderVersion,
-    _dockerhub_debian_codename,
+    _base_image_config,
     _dockerhub_python_version,
     _get_modal_requirements_path,
     _validate_python_version,
@@ -33,7 +33,7 @@ def dummy():
 
 
 def test_supported_python_series():
-    assert SUPPORTED_PYTHON_SERIES == PYTHON_STANDALONE_VERSIONS.keys()
+    assert SUPPORTED_PYTHON_SERIES == list(PYTHON_STANDALONE_VERSIONS)
 
 
 def get_image_layers(image_id: str, servicer) -> List[api_pb2.Image]:
@@ -70,6 +70,13 @@ def builder_version(request, server_url_env, modal_config):
             yield version
 
 
+@pytest.fixture(autouse=True)
+def clear_environment_cache():
+    # Clear the environment cache so we can mock the server returning different image builder versions
+    # Alternatively could rewrite some of those tests to use different environments?
+    environments.ENVIRONMENT_CACHE.clear()
+
+
 def test_python_version_validation():
     assert _validate_python_version(None) == "{0}.{1}".format(*sys.version_info)
     assert _validate_python_version("3.12") == "3.12"
@@ -94,7 +101,7 @@ def test_python_version_validation():
 def test_dockerhub_python_version(builder_version):
     assert _dockerhub_python_version(builder_version, "3.9.1") == "3.9.1"
 
-    expected_39_full = {"2023.12": "3.9.15", "2024.04": "3.9.19"}[builder_version]
+    expected_39_full = {"2023.12": "3.9.15", "2024.04": "3.9.19", "2024.10": "3.9.20"}[builder_version]
     assert _dockerhub_python_version(builder_version, "3.9") == expected_39_full
 
     v = _dockerhub_python_version(builder_version, None).split(".")
@@ -132,7 +139,7 @@ def test_python_version(builder_version, servicer, client, python_version):
     image = Image.debian_slim() if python_version is None else Image.debian_slim(python_version)
     app.function(image=image)(dummy)
     expected_dockerhub_python = _dockerhub_python_version(builder_version, expected_python)
-    expected_dockerhub_debian = _dockerhub_debian_codename(builder_version)
+    expected_dockerhub_debian = _base_image_config("debian", builder_version)
     assert expected_dockerhub_python.startswith(expected_python)
     with app.run(client):
         commands = get_all_dockerfile_commands(image.object_id, servicer)
@@ -341,35 +348,6 @@ def test_dockerfile_image(builder_version, servicer, client):
         layers = get_image_layers(app.image.object_id, servicer)
 
         assert any("RUN pip install numpy" in cmd for cmd in layers[1].dockerfile_commands)
-
-
-def test_conda_install(builder_version, servicer, client):
-    with pytest.warns(DeprecationError, match="Image.micromamba"):
-        image = Image.conda().pip_install("numpy").conda_install("pymc3", "theano").pip_install("scikit-learn")
-    app = App(image=image)
-    app.function(image=image)(dummy)
-
-    with app.run(client=client):
-        layers = get_image_layers(image.object_id, servicer)
-
-        assert any("pip install scikit-learn" in cmd for cmd in layers[0].dockerfile_commands)
-        assert any("conda install pymc3 theano --yes" in cmd for cmd in layers[1].dockerfile_commands)
-        assert any("pip install numpy" in cmd for cmd in layers[2].dockerfile_commands)
-
-
-def test_conda_update_from_environment(builder_version, servicer, client):
-    path = os.path.join(os.path.dirname(__file__), "supports/test-conda-environment.yml")
-
-    with pytest.warns(DeprecationError, match="Image.micromamba"):
-        app = App(image=Image.conda().conda_update_from_environment(path))
-
-    app.function()(dummy)
-    with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
-
-        assert any("RUN conda env update" in cmd for cmd in layers[0].dockerfile_commands)
-        assert any(b"foo=1.0" in f.data for f in layers[0].context_files)
-        assert any(b"bar=2.1" in f.data for f in layers[0].context_files)
 
 
 def test_micromamba_install(builder_version, servicer, client):
@@ -916,18 +894,26 @@ def test_get_modal_requirements_path(builder_version, python_version):
         assert path.endswith(f"{builder_version}.txt")
 
 
-def test_image_builder_version(servicer, test_dir, modal_config):
+def test_image_builder_version(servicer, credentials, test_dir, modal_config):
     app = App(image=Image.debian_slim())
     app.function()(dummy)
+
+    def mock_base_image_config(group, version):
+        config = {
+            "debian": "bookworm",
+            "python": "3.11.0",
+            "package_tools": "pip wheel uv",
+        }
+        return config[group]
 
     # TODO use a single with statement and tuple of managers when we drop Py3.8
     test_requirements = str(test_dir / "supports" / "test-requirements.txt")
     with mock.patch("modal.image._get_modal_requirements_path", lambda *_, **__: test_requirements):
         with mock.patch("modal.image._dockerhub_python_version", lambda *_, **__: "3.11.0"):
-            with mock.patch("modal.image._dockerhub_debian_codename", lambda *_, **__: "bullseye"):
+            with mock.patch("modal.image._base_image_config", mock_base_image_config):
                 with mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"]):
                     with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
-                        with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-xyz")) as client:
+                        with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
                             with modal_config():
                                 with app.run(client=client):
                                     assert servicer.image_builder_versions
@@ -935,7 +921,7 @@ def test_image_builder_version(servicer, test_dir, modal_config):
                                         assert version == "2000.01"
 
 
-def test_image_builder_supported_versions(servicer):
+def test_image_builder_supported_versions(servicer, credentials):
     app = App(image=Image.debian_slim())
     app.function()(dummy)
 
@@ -943,7 +929,7 @@ def test_image_builder_supported_versions(servicer):
     with pytest.raises(VersionError, match=r"This version of the modal client supports.+{'2000.01'}"):
         with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
             with mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.11"]):
-                with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-xyz")) as client:
+                with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
                     with app.run(client=client):
                         pass
 
@@ -979,19 +965,11 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
         img = Image.from_registry("ubuntu:22.04")
         assert get_hash(img) == "b5f1cc544a412d1b23a5ebf9a8859ea9a86975ecbc7325b83defc0ce3fe956d3"
 
-        with pytest.warns(DeprecationError):
-            img = Image.conda()
-        assert get_hash(img) == "f69d6af66fb5f1a2372a61836e6166ce79ebe2cd628d12addea8e8e80cc98dc1"
-
         img = Image.micromamba()
         assert get_hash(img) == "fa883741544ea191ecd197c8f83a1ffe9912575faa8c107c66b3dda761b2e401"
 
         img = Image.from_dockerfile(test_dir / "supports" / "test-dockerfile")
         assert get_hash(img) == "0aec2f66f28ee7511c1b36604214ae7b40d9bc1fa3e6b8883001e933a966ff78"
-
-    with pytest.warns(DeprecationError):
-        img = Image.conda(python_version="3.12")
-    assert get_hash(img) == "c4b3f7350116d323dded29c9c9b78b62593f0fc943ccf83a09b27185bfdc2a07"
 
     img = Image.micromamba(python_version="3.12")
     assert get_hash(img) == "468befe16f703a3ae1a794dfe54c1a3445ca0ffda233f55f1d66c45ad608e8aa"
@@ -1004,16 +982,8 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
     img = base.pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
     assert get_hash(img) == "2a4fa8e3b32c70a41b3a3efd5416540b1953430543f6c27c984e7f969c2ca874"
 
-    with pytest.warns(DeprecationError):
-        img = base.conda_install("torch=2.2", "transformers<4.23.0", channels=["conda-forge", "my-channel"])
-    assert get_hash(img) == "dd6f27f636293996a64a98c250161d8092cb23d02629d9070493f00aad8d7266"
-
     img = base.pip_install_from_requirements(test_dir / "supports" / "test-requirements.txt")
     assert get_hash(img) == "69d41e699d4ecef399e51e8460f8857aa0ec57f71f00eca81c8886ec062e5c2b"
-
-    with pytest.warns(DeprecationError):
-        img = base.conda_update_from_environment(test_dir / "supports" / "test-conda-environment.yml")
-    assert get_hash(img) == "00940e0ee2998bfe0a337f51a5fdf5f4b29bf9d42dda3635641d44bfeb42537e"
 
     img = base.poetry_install_from_file(
         test_dir / "supports" / "test-pyproject.toml",
@@ -1054,18 +1024,6 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
     img = Image.from_dockerfile(test_dir / "supports" / "test-dockerfile")
     assert get_hash(img) == "a683ed2a2fd9ca960d818aebd7459932494da63aa27d5d84443c578a5ba3fe05"
 
-    with pytest.warns(DeprecationError):
-        img = Image.conda()
-    if sys.version_info[:2] == (3, 11):
-        assert get_hash(img) == "404e1d80bd639321d1115ae00b8d1b6f3d257be7d400bad46d3c39da09c193c8"
-    elif sys.version_info[:2] == (3, 10):
-        # Assert that we follow the local Python, which is a new behavior in 2024.04
-        assert get_hash(img) == "9299b7935461e021ea6a3749adac8ea4de333fd443e74192739fbdd60da3b0b5"
-
-    with pytest.warns(DeprecationError):
-        img = Image.conda(python_version="3.12")
-    assert get_hash(img) == "113d959483ff099ba161438f02a370322bc53a68d5c5989245f4002b08e3be9d"
-
     img = Image.micromamba()
     if sys.version_info[:2] == (3, 11):
         assert get_hash(img) == "8c0a30c7d14eb709953161cae39aa7d39afe3bb5014b7c6cf5dd93de56dcb32b"
@@ -1084,16 +1042,8 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
     img = base.pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
     assert get_hash(img) == "4e8cea916369fc545a5139312a9633691f7624ec2b6d4075014a7602b23584c0"
 
-    with pytest.warns(DeprecationError):
-        img = base.conda_install("torch=2.2", "transformers<4.23.0", channels=["conda-forge", "my-channel"])
-    assert get_hash(img) == "bd9fb2b86a39886d618b37950d1a7c4d8826048f191fa00c5f87c71be88bf8f7"
-
     img = base.pip_install_from_requirements(test_dir / "supports" / "test-requirements.txt")
     assert get_hash(img) == "78392aca4ea135ab53b9d183eedbb2a7e32f9b3c0cfb42b03a7bd7c4f013f3c8"
-
-    with pytest.warns(DeprecationError):
-        img = base.conda_update_from_environment(test_dir / "supports" / "test-conda-environment.yml")
-    assert get_hash(img) == "4bb5fd232956050e66256d7e00c088e1c7cd4d7217bc0d15bcc4fbd08aa2f3b6"
 
     img = base.micromamba_install(
         "torch=2.2",

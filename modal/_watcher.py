@@ -8,7 +8,7 @@ from watchfiles import Change, DefaultFilter, awatch
 
 from modal.mount import _Mount
 
-from ._output import OutputManager
+from .output import _get_output_manager
 
 _TIMEOUT_SENTINEL = object()
 
@@ -72,7 +72,7 @@ def _print_watched_paths(paths: Set[Path]):
     for path in paths:
         output_tree.add(f"Watching {path}.")
 
-    if output_mgr := OutputManager.get():
+    if output_mgr := _get_output_manager():
         output_mgr.print(output_tree)
 
 

@@ -272,10 +272,10 @@ def _web_endpoint(
     method: str = "GET",  # REST method for the created endpoint.
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     docs: bool = False,  # Whether to enable interactive documentation for this endpoint at /docs.
-    wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     custom_domains: Optional[
         Iterable[str]
     ] = None,  # Create an endpoint using a custom domain fully-qualified domain name (FQDN).
+    wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[P, ReturnType]], _PartialFunction[P, ReturnType, ReturnType]]:
     """Register a basic web endpoint with this application.
 
@@ -307,14 +307,11 @@ def _web_endpoint(
                 "@app.function()\n@app.web_endpoint()\ndef my_webhook():\n    ..."
             )
         if not wait_for_response:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 5, 13),
                 "wait_for_response=False has been deprecated on web endpoints. See "
-                + "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives",
+                "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives.",
             )
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
-        else:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
         # self._loose_webhook_configs.add(raw_f)
 
@@ -326,7 +323,7 @@ def _web_endpoint(
                 method=method,
                 web_endpoint_docs=docs,
                 requested_suffix=label,
-                async_mode=_response_mode,
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
                 custom_domains=_parse_custom_domains(custom_domains),
             ),
         )
@@ -338,8 +335,8 @@ def _asgi_app(
     _warn_parentheses_missing=None,
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
-    wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
+    wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering an ASGI app with a Modal function.
 
@@ -383,14 +380,11 @@ def _asgi_app(
                 )
 
         if not wait_for_response:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 5, 13),
                 "wait_for_response=False has been deprecated on web endpoints. See "
-                + "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives",
+                "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives",
             )
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
-        else:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
         return _PartialFunction(
             raw_f,
@@ -398,7 +392,7 @@ def _asgi_app(
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
                 requested_suffix=label,
-                async_mode=_response_mode,
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
                 custom_domains=_parse_custom_domains(custom_domains),
             ),
         )
@@ -410,8 +404,8 @@ def _wsgi_app(
     _warn_parentheses_missing=None,
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
-    wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
+    wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering a WSGI app with a Modal function.
 
@@ -455,14 +449,11 @@ def _wsgi_app(
                 )
 
         if not wait_for_response:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 5, 13),
                 "wait_for_response=False has been deprecated on web endpoints. See "
-                + "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives",
+                "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives",
             )
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
-        else:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
         return _PartialFunction(
             raw_f,
@@ -470,7 +461,7 @@ def _wsgi_app(
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
                 requested_suffix=label,
-                async_mode=_response_mode,
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
                 custom_domains=_parse_custom_domains(custom_domains),
             ),
         )
@@ -604,10 +595,12 @@ def _enter(
 
 
 ExitHandlerType = Union[
+    # NOTE: return types of these callables should be `Union[None, Awaitable[None]]` but
+    #       synchronicity type stubs would strip Awaitable so we use Any for now
     # Original, __exit__ style method signature (now deprecated)
-    Callable[[Any, Optional[Type[BaseException]], Optional[BaseException], Any], None],
+    Callable[[Any, Optional[Type[BaseException]], Optional[BaseException], Any], Any],
     # Forward-looking unparameterized method
-    Callable[[Any], None],
+    Callable[[Any], Any],
 ]
 
 
