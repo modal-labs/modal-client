@@ -2075,7 +2075,7 @@ enum SeekWhence {
 
 message ContainerFileSeekRequest {
   string file_descriptor = 1;
-  uint32 offset = 2;
+  int32 offset = 2;
   SeekWhence whence = 3;
 }
 

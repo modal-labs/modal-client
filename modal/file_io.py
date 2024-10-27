@@ -8,6 +8,22 @@ from ._utils.async_utils import synchronize_api
 from .client import _Client
 from .exception import FilesystemExecutionError
 
+ERROR_MAPPING = {
+    api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_PERM: PermissionError,
+    api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_NOENT: FileNotFoundError,
+    api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_IO: IOError,
+    api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_NXIO: IOError,
+    api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_NOMEM: MemoryError,
+    api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_ACCES: PermissionError,
+    api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_EXIST: FileExistsError,
+    api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_NOTDIR: NotADirectoryError,
+    api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_ISDIR: IsADirectoryError,
+    api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_INVAL: OSError,
+    api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_MFILE: OSError,
+    api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_FBIG: OSError,
+    api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_NOSPC: OSError,
+}
+
 
 # The Sandbox file handling API is designed to mimic Python's io.FileIO
 # See https://github.com/python/cpython/blob/main/Lib/_pyio.py#L1459
@@ -43,7 +59,11 @@ class _FileIO:
             seen_chars.add(char)
 
     def _handle_error(self, error: api_pb2.SystemErrorMessage) -> None:
-        raise FilesystemExecutionError(error.error_message)
+        if error.error_code == api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_UNSPECIFIED:
+            raise FilesystemExecutionError(error.error_message)
+
+        error_class = ERROR_MAPPING.get(error.error_code, FilesystemExecutionError)
+        raise error_class(error.error_message)
 
     async def _consume_output(self, exec_id: str) -> AsyncIterator[Optional[str]]:
         req = api_pb2.ContainerFilesystemExecGetOutputRequest(
@@ -203,7 +223,6 @@ class _FileIO:
         Resets the file pointer to the start of the file.
         """
         self._check_closed()
-        self._check_writable()
         if start_inclusive is not None and end_exclusive is not None:
             if start_inclusive >= end_exclusive:
                 raise ValueError("start_inclusive must be less than end_exclusive")
@@ -230,7 +249,6 @@ class _FileIO:
         Resets the file pointer to the start of the file.
         """
         self._check_closed()
-        self._check_writable()
         if start_inclusive is not None and end_exclusive is not None:
             if start_inclusive >= end_exclusive:
                 raise ValueError("start_inclusive must be less than end_exclusive")
