@@ -919,15 +919,15 @@ class _App:
             ):
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
 
-            method_definitions = {}
+            method_definitions: Dict[str, api_pb2.MethodDefinition] = {}
             partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
                 user_cls, _PartialFunctionFlags.FUNCTION
             )
             for method_name, partial_function in partial_functions.items():
                 if partial_function.is_generator:
-                    function_type = api_pb2.FunctionType.FUNCTION_TYPE_GENERATOR
+                    function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
                 else:
-                    function_type = api_pb2.FunctionType.FUNCTION_TYPE_FUNCTION
+                    function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
                 method_definition = api_pb2.MethodDefinition(
                     webhook_config=partial_function.webhook_config, function_type=function_type
                 )
@@ -968,7 +968,7 @@ class _App:
                 _experimental_proxy_ip=_experimental_proxy_ip,
             )
 
-            cls_func._method_functions = {}
+            cls_func._method_functions: Dict[str, _Function] = {}
             for method_name, partial_function in partial_functions.items():
                 method_function = cls_func._bind_method(user_cls, method_name, partial_function)
                 cls_func._method_functions[method_name] = method_function

@@ -717,9 +717,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
             if is_generator:
-                function_type = api_pb2.FunctionType.FUNCTION_TYPE_GENERATOR
+                function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
             else:
-                function_type = api_pb2.FunctionType.FUNCTION_TYPE_FUNCTION
+                function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
             assert resolver.app_id
             req = api_pb2.FunctionPrecreateRequest(
@@ -745,9 +745,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             assert resolver.client and resolver.client.stub
             with FunctionCreationStatus(resolver, tag) as function_creation_status:
                 if is_generator:
-                    function_type = api_pb2.FunctionType.FUNCTION_TYPE_GENERATOR
+                    function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
                 else:
-                    function_type = api_pb2.FunctionType.FUNCTION_TYPE_FUNCTION
+                    function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
                 timeout_secs = timeout
 
@@ -1184,7 +1184,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
         assert metadata and isinstance(metadata, api_pb2.FunctionHandleMetadata)
-        self._is_generator = metadata.function_type == api_pb2.FunctionType.FUNCTION_TYPE_GENERATOR
+        self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
         self._is_method = metadata.is_method
@@ -1202,9 +1202,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
             function_type=(
-                api_pb2.FunctionType.FUNCTION_TYPE_GENERATOR
+                api_pb2.Function.FUNCTION_TYPE_GENERATOR
                 if self._is_generator
-                else api_pb2.FunctionType.FUNCTION_TYPE_FUNCTION
+                else api_pb2.Function.FUNCTION_TYPE_FUNCTION
             ),
             web_url=self._web_url or "",
             use_method_name=self._use_method_name,
