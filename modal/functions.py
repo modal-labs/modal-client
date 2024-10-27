@@ -729,15 +729,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 existing_function_id=existing_object_id or "",
             )
             if method_definitions:
-                method_webhook_configs = {
-                    method_name: method_def.webhook_config for method_name, method_def in method_definitions.items()
-                }
-                req.method_webhook_configs.update(method_webhook_configs)
+                for method_name, method_def in method_definitions.items():
+                    req.method_webhook_configs[method_name].CopyFrom(method_def.webhook_config)
             else:
                 req.webhook_config = webhook_config
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
-            for method_name, method_function in self._method_functions:
+            for method_name, method_function in self._method_functions.items():
                 method_handle_metadata = response.handle_metadata.method_handle_metadata[method_name]
                 method_function._hydrate(response.function_id, resolver.client, method_handle_metadata)
 
@@ -937,7 +935,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_creation_status.set_response(response)
 
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
-            for method_name, method_function in self._method_functions:
+            for method_name, method_function in self._method_functions.items():
                 method_handle_metadata = response.handle_metadata.method_handle_metadata[method_name]
                 method_function._hydrate(response.function_id, resolver.client, method_handle_metadata)
 
