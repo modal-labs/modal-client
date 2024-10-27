@@ -514,7 +514,7 @@ class _Cls(_Object, type_prefix="cs"):
         return _Obj(
             self._user_cls,
             self._class_service_function,
-            self._method_functions,
+            self._class_service_function._method_functions,
             self._from_other_workspace,
             self._options,
             args,
