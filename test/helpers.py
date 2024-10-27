@@ -66,6 +66,7 @@ class PopenWithCtrlC(subprocess.Popen):
         super().__init__(*args, **kwargs, creationflags=creationflags)
 
     def send_ctrl_c(self):
+        # platform independent way to replicate the behavior of Ctrl-C:ing a cli app
         if sys.platform == "win32":
             # windows doesn't support sigint, and subprocess.CTRL_C_EVENT has a bunch
             # of gotchas since it's bound to a console which is the same for the parent
