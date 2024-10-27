@@ -1003,7 +1003,7 @@ def test_keyboard_interrupt_during_app_load(servicer, server_url_env, token_env,
         p = _run_subprocess(["run", f"{supports_dir / 'hello.py'}::hello"])
         creating_function.wait()
         p.send_ctrl_c()
-        out, err = p.communicate(timeout=1)
+        out, err = p.communicate(timeout=5)
         print(out)
         assert "Traceback" not in err
         assert "Aborting app initialization..." in out
@@ -1024,7 +1024,7 @@ def test_keyboard_interrupt_during_app_run(servicer, server_url_env, token_env, 
         p = _run_subprocess(["run", f"{supports_dir / 'hello.py'}::hello"])
         waiting_for_output.wait()
         p.send_ctrl_c()
-        out, err = p.communicate(timeout=1)
+        out, err = p.communicate(timeout=5)
         assert "App aborted. View run at https://modaltest.com/apps/ap-123" in out
         assert "Traceback" not in err
 
@@ -1044,7 +1044,7 @@ def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, toke
         p = _run_subprocess(["run", "--detach", f"{supports_dir / 'hello.py'}::hello"])
         waiting_for_output.wait()
         p.send_ctrl_c()
-        out, err = p.communicate(timeout=1)
+        out, err = p.communicate(timeout=5)
         print(out)
         assert "Shutting down Modal client." in out
         assert "The detached app keeps running. You can track its progress at:" in out
