@@ -65,7 +65,7 @@ class _FileIO:
         error_class = ERROR_MAPPING.get(error.error_code, FilesystemExecutionError)
         raise error_class(error.error_message)
 
-    async def _consume_output(self, exec_id: str) -> AsyncIterator[Optional[str]]:
+    async def _consume_output(self, exec_id: str) -> AsyncIterator[Optional[bytes]]:
         req = api_pb2.ContainerFilesystemExecGetOutputRequest(
             exec_id=exec_id,
             timeout=55,
@@ -81,14 +81,14 @@ class _FileIO:
                 yield message
 
     async def _wait(self, exec_id: str) -> Union[bytes, str]:
-        output = ""
+        output = b""
         async for data in self._consume_output(exec_id):
             if data is None:
                 break
             output += data
         if self._binary:
-            return output.encode("utf-8")
-        return output
+            return output
+        return output.decode("utf-8")
 
     def _validate_type(self, data: Union[bytes, str]) -> None:
         if self._binary and isinstance(data, str):
