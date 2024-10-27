@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2024
 import io
-from typing import AsyncIterator, Optional, Tuple, Union
+from typing import AsyncIterator, Optional, Union
 
 from modal_proto import api_pb2
 
@@ -12,8 +12,6 @@ from .exception import FilesystemExecutionError
 # The Sandbox file handling API is designed to mimic Python's io.FileIO
 # See https://github.com/python/cpython/blob/main/Lib/_pyio.py#L1459
 # Unlike io.FileIO, it also implements some higher level APIs, like `delete_bytes` and `write_replace_bytes`.
-# TODO: add delete to the entire file
-# TODO: add list_dir to the Sandbox
 class _FileIO:
     _binary = False
     _readable = False
@@ -23,6 +21,7 @@ class _FileIO:
 
     _task_id: Optional[str] = None
     _file_descriptor: Optional[str] = None
+    _client: Optional[_Client] = None
 
     def _validate_mode(self, mode: str) -> None:
         if not any(char in mode for char in "rwax"):
@@ -43,46 +42,37 @@ class _FileIO:
                 raise ValueError(f"Invalid file mode: {mode}")
             seen_chars.add(char)
 
-    async def _consume_output(self, exec_id: str, file_descriptor: int) -> AsyncIterator[Tuple[Optional[str], int]]:
+    def _handle_error(self, error: api_pb2.SystemErrorMessage) -> None:
+        print("error_code", error.error_code)
+        print("error_message", error.error_message)
+        raise FilesystemExecutionError(error.error_message)
+
+    async def _consume_output(self, exec_id: str) -> AsyncIterator[Optional[str]]:
         req = api_pb2.ContainerFilesystemExecGetOutputRequest(
             exec_id=exec_id,
             timeout=55,
             last_batch_index=0,
-            file_descriptor=file_descriptor,
         )
         async for batch in self._client.stub.ContainerFilesystemExecGetOutput.unary_stream(req):
-            if file_descriptor == api_pb2.FILE_DESCRIPTOR_STDOUT:
-                output = batch.output
-            elif file_descriptor == api_pb2.FILE_DESCRIPTOR_STDERR:
-                output = batch.error
-
-            if batch.HasField("exit_code"):
-                yield (None, batch.exit_code)
+            if batch.eof:
+                yield None
                 break
-            for item in output:
-                yield (item.message, batch.batch_index)
+            if batch.HasField("error"):
+                self._handle_error(batch.error)
+            for message in batch.output:
+                yield message
 
     async def _wait(self, exec_id: str) -> Union[bytes, str]:
-        stdout = ""
-        stderr = ""
+        output = ""
         # The filesystem API shouldn't involve any long-running processes,
         # so it should be safe to consume output/err separately here.
-        errored = False
-        async for data, exit_code in self._consume_output(exec_id, api_pb2.FILE_DESCRIPTOR_STDOUT):
+        async for data in self._consume_output(exec_id):
             if data is None:
-                errored = exit_code != 0
                 break
-            stdout += data
-        async for data, exit_code in self._consume_output(exec_id, api_pb2.FILE_DESCRIPTOR_STDERR):
-            if data is None:
-                errored = exit_code != 0
-                break
-            stderr += data
-        if errored:
-            raise FilesystemExecutionError(stderr)
+            output += data
         if self._binary:
-            return stdout.encode("utf-8")
-        return stdout
+            return output.encode("utf-8")
+        return output
 
     def _validate_type(self, data: Union[bytes, str]) -> None:
         if self._binary and isinstance(data, str):
@@ -205,6 +195,9 @@ class _FileIO:
 
         Resets the file pointer to the start of the file.
         """
+        if start_inclusive is not None and end_exclusive is not None:
+            if start_inclusive >= end_exclusive:
+                raise ValueError("start_inclusive must be less than end_exclusive")
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_delete_bytes_request=api_pb2.ContainerFileDeleteBytesRequest(
@@ -227,6 +220,9 @@ class _FileIO:
 
         Resets the file pointer to the start of the file.
         """
+        if start_inclusive is not None and end_exclusive is not None:
+            if start_inclusive >= end_exclusive:
+                raise ValueError("start_inclusive must be less than end_exclusive")
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_write_replace_bytes_request=api_pb2.ContainerFileWriteReplaceBytesRequest(
