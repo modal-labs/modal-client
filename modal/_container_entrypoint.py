@@ -137,7 +137,7 @@ class ImportedFunction(Service):
         # Check this property before we turn it into a method (overriden by webhooks)
         is_async = get_is_async(self._user_defined_callable)
         # Use the function definition for whether this is a generator (overriden by webhooks)
-        is_generator = fun_def.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+        is_generator = fun_def.function_type == api_pb2.FunctionType.FUNCTION_TYPE_GENERATOR
 
         webhook_config = fun_def.webhook_config
         if not webhook_config.type:

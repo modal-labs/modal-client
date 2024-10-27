@@ -925,9 +925,9 @@ class _App:
             )
             for method_name, partial_function in partial_functions.items():
                 if partial_function.is_generator:
-                    function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
+                    function_type = api_pb2.FunctionType.FUNCTION_TYPE_GENERATOR
                 else:
-                    function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
+                    function_type = api_pb2.FunctionType.FUNCTION_TYPE_FUNCTION
                 method_definition = api_pb2.MethodDefinition(
                     webhook_config=partial_function.webhook_config, function_type=function_type
                 )

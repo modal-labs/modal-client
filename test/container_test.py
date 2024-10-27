@@ -167,7 +167,7 @@ def _get_multi_inputs_with_methods(args: List[Tuple[str, Tuple, Dict]] = []) -> 
 def _container_args(
     module_name,
     function_name,
-    function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
+    function_type=api_pb2.FunctionType.FUNCTION_TYPE_FUNCTION,
     webhook_type=api_pb2.WEBHOOK_TYPE_UNSPECIFIED,
     definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
     app_name: str = "",
@@ -239,7 +239,7 @@ def _run_container(
     function_name,
     fail_get_inputs=False,
     inputs=None,
-    function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
+    function_type=api_pb2.FunctionType.FUNCTION_TYPE_FUNCTION,
     webhook_type=api_pb2.WEBHOOK_TYPE_UNSPECIFIED,
     definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
     app_name: str = "",
@@ -420,7 +420,7 @@ def test_generator_success(servicer, event_loop):
         servicer,
         "test.supports.functions",
         "gen_n",
-        function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
+        function_type=api_pb2.FunctionType.FUNCTION_TYPE_GENERATOR,
     )
 
     items, exc = _unwrap_generator(ret)
@@ -435,7 +435,7 @@ def test_generator_failure(servicer, capsys):
         servicer,
         "test.supports.functions",
         "gen_n_fail_on_m",
-        function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
+        function_type=api_pb2.FunctionType.FUNCTION_TYPE_GENERATOR,
         inputs=inputs,
     )
     items, exc = _unwrap_generator(ret)
@@ -643,7 +643,7 @@ def test_function_returning_generator(servicer):
         servicer,
         "test.supports.functions",
         "fun_returning_gen",
-        function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
+        function_type=api_pb2.FunctionType.FUNCTION_TYPE_GENERATOR,
     )
     items, exc = _unwrap_generator(ret)
     assert len(items) == 42
@@ -851,7 +851,7 @@ def test_webhook_streaming_sync(servicer):
         "webhook_streaming",
         inputs=inputs,
         webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
-        function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
+        function_type=api_pb2.FunctionType.FUNCTION_TYPE_GENERATOR,
     )
     data = _unwrap_asgi(ret)
     bodies = [d["body"].decode() for d in data if d.get("body")]
@@ -868,7 +868,7 @@ def test_webhook_streaming_async(servicer):
         "webhook_streaming_async",
         inputs=inputs,
         webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
-        function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
+        function_type=api_pb2.FunctionType.FUNCTION_TYPE_GENERATOR,
     )
 
     data = _unwrap_asgi(ret)
@@ -1022,7 +1022,7 @@ def test_cls_generator(servicer):
         servicer,
         "test.supports.functions",
         "Cls.*",
-        function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
+        function_type=api_pb2.FunctionType.FUNCTION_TYPE_GENERATOR,
         is_class=True,
         inputs=_get_inputs(method_name="generator"),
     )
@@ -1077,7 +1077,7 @@ def test_cli(servicer, credentials):
     function_def = api_pb2.Function(
         module_name="test.supports.functions",
         function_name="square",
-        function_type=api_pb2.Function.FUNCTION_TYPE_FUNCTION,
+        function_type=api_pb2.FunctionType.FUNCTION_TYPE_FUNCTION,
         definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
         object_dependencies=[api_pb2.ObjectDependency(object_id="im-123")],
     )
