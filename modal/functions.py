@@ -51,6 +51,7 @@ from ._utils.function_utils import (
     _create_input,
     _process_result,
     _stream_function_call_data,
+    get_function_type,
     is_async,
 )
 from ._utils.grpc_utils import retry_transient_errors
@@ -498,7 +499,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         allow_cross_region_volumes: bool = False,
         volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
-        method_definitions: Optional[Dict[str, api_pb2.MethodDefinition]] = None,
         memory: Optional[Union[int, Tuple[int, int]]] = None,
         proxy: Optional[_Proxy] = None,
         retries: Optional[Union[int, Retries]] = None,
@@ -525,6 +525,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         _experimental_proxy_ip: Optional[str] = None,
     ) -> None:
         """mdmd:hidden"""
+        # Needed to avoid circular imports
+        from .partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
+
         tag = info.get_tag()
 
         if info.raw_f:
@@ -537,7 +540,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         else:
             # must be a "class service function"
             assert info.user_cls
-            assert method_definitions
             assert not webhook_config
             assert not schedule
 
@@ -601,8 +603,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         )
 
         if info.user_cls and not is_auto_snapshot:
-            # Needed to avoid circular imports
-            from .partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
+            # # Needed to avoid circular imports
+            # from .partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 
             build_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.BUILD).items()
             for k, pf in build_functions:
@@ -687,6 +689,18 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if image is not None and not isinstance(image, _Image):
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
+        method_definitions: Optional[Dict[str, api_pb2.MethodDefinition]] = None
+        if info.user_cls:
+            partial_functions: Dict[
+                str, "modal.partial_function._PartialFunction"
+            ] = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.FUNCTION)
+            for method_name, partial_function in partial_functions.items():
+                function_type = get_function_type(partial_function.is_generator)
+                method_definition = api_pb2.MethodDefinition(
+                    webhook_config=partial_function.webhook_config, function_type=function_type
+                )
+                method_definitions[method_name] = method_definition
+
         def _deps(only_explicit_mounts=False) -> List[_Object]:
             deps: List[_Object] = list(secrets)
             if only_explicit_mounts:
@@ -716,10 +730,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
-            if is_generator:
-                function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
-            else:
-                function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
+            function_type = get_function_type(is_generator)
 
             assert resolver.app_id
             req = api_pb2.FunctionPrecreateRequest(
@@ -951,6 +962,15 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._is_generator = is_generator
         obj._is_method = False
         obj._spec = function_spec  # needed for modal shell
+
+        if info.user_cls:
+            partial_functions: Dict[
+                str, "modal.partial_function._PartialFunction"
+            ] = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.FUNCTION)
+            obj._method_functions = {}
+            for method_name, partial_function in partial_functions.items():
+                method_function = obj._bind_method(info.user_cls, method_name, partial_function)
+                obj._method_functions[method_name] = method_function
 
         # Used to check whether we should rebuild a modal.Image which uses `run_function`.
         gpus: List[GPU_T] = gpu if isinstance(gpu, list) else [gpu]
