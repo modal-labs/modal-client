@@ -5,10 +5,10 @@ import logging
 import os
 import platform
 import pytest
-import signal
 import subprocess
 import sys
 import textwrap
+from test import helpers
 
 import pytest_asyncio
 from synchronicity import Synchronizer
@@ -658,22 +658,12 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
         print("KeyboardInterrupt")
     """
     )
-    if sys.platform == "win32":
-        # workaround to be able to _test_ Ctrl-C response on windows
-        import console_ctrl
 
-        creationflags = subprocess.CREATE_NEW_CONSOLE  # type: ignore
-        platform_sigint = lambda p: console_ctrl.send_ctrl_c(p.pid)  # noqa [E731]
-    else:
-        creationflags = 0
-        platform_sigint = lambda p: p.send_signal(signal.SIGINT)  # noqa [E731]
-
-    p = subprocess.Popen(
+    p = helpers.PopenWithCtrlC(
         [sys.executable, "-u", "-c", code],
         encoding="utf8",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        creationflags=creationflags,
     )
 
     def line():
@@ -685,7 +675,7 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     assert line() == "res 0"
     assert line() == "res 1"
 
-    platform_sigint(p)
+    p.send_ctrl_c()
     print("sent ctrl-C")
     while (nextline := line()).startswith("res"):
         pass
