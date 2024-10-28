@@ -374,7 +374,7 @@ def shell(
         ),
     ),
 ):
-    """Run an interactive shell inside a Modal image.
+    """Run an interactive shell inside a Modal container.
 
     **Examples:**
 
@@ -384,10 +384,16 @@ def shell(
     modal shell
     ```
 
-    Start a bash shell using the spec for `my_function` in your app:
+    Start a bash shell using the spec for `my_function` in your App:
 
     ```
     modal shell hello_world.py::my_function
+    ```
+
+    Or, if you're using a [modal.Cls](/docs/reference/modal.Cls), you can refer to a `@modal.method` directly:
+
+    ```
+    modal shell hello_world.py::MyClass.my_method
     ```
 
     Start a `python` shell:
