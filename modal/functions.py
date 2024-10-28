@@ -705,6 +705,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 )
                 method_definitions[method_name] = method_definition
 
+        function_type = get_function_type(is_generator)
+
         def _deps(only_explicit_mounts=False) -> List[_Object]:
             deps: List[_Object] = list(secrets)
             if only_explicit_mounts:
@@ -734,7 +736,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
-            function_type = get_function_type(is_generator)
 
             assert resolver.app_id
             req = api_pb2.FunctionPrecreateRequest(
@@ -756,11 +757,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
             assert resolver.client and resolver.client.stub
             with FunctionCreationStatus(resolver, tag) as function_creation_status:
-                if is_generator:
-                    function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
-                else:
-                    function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
-
                 timeout_secs = timeout
 
                 if app and app.is_interactive and not is_builder_function:
