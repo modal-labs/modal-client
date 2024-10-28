@@ -122,22 +122,24 @@ def test_import_tracing(monkeypatch):
 
 
 # For manual testing
-def generate_import_telemetry(telemetry_socket):
+def generate_import_telemetry(import_name, telemetry_socket):
     instrument_imports(telemetry_socket)
     t0 = time.monotonic()
-    import kubernetes  # noqa
+    __import__(import_name)
 
     return time.monotonic() - t0
 
 
 # For manual testing
 def main():
+    import_name = sys.argv[1] if len(sys.argv) >= 2 else "kubernetes"
     telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
     if telemetry_socket:
-        latency = generate_import_telemetry(telemetry_socket)
+        latency = generate_import_telemetry(import_name, telemetry_socket)
     else:
         with TelemetryConsumer() as consumer:
-            latency = generate_import_telemetry(consumer.socket_filename.absolute().as_posix())
+            telemetry_socket = consumer.socket_filename.absolute().as_posix()
+            latency = generate_import_telemetry(import_name, telemetry_socket)
 
             while True:
                 try:
@@ -146,7 +148,7 @@ def main():
                 except queue.Empty:
                     break
 
-    print(f"import kubernetes took {latency:.02}s")
+    print(f"'import {import_name}' took {latency:.02}s")
 
 
 if __name__ == "__main__":
