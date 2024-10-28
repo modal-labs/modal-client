@@ -31,7 +31,7 @@ from modal_version import __version__
 from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import create_channel, retry_transient_errors
-from .config import _check_config, config, logger
+from .config import _check_config, _is_remote, config, logger
 from .exception import AuthError, ClientClosed, DeprecationError, VersionError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
@@ -206,10 +206,9 @@ class _Client:
             if cls._client_from_env:
                 return cls._client_from_env
 
-            task_secret = c["task_secret"]  # Only used to detect if we're running inside a "Modal container"
             token_id = c["token_id"]
             token_secret = c["token_secret"]
-            if task_secret:
+            if _is_remote():
                 if token_id or token_secret:
                     warnings.warn(
                         "Modal tokens provided by MODAL_TOKEN_ID and MODAL_TOKEN_SECRET"
