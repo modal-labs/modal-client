@@ -208,7 +208,7 @@ def _method(
     keep_warm: Optional[int] = None,  # Deprecated: Use keep_warm on @app.cls() instead
 ) -> _MethodDecoratorType:
     # TODO(elias): fix support for coroutine type unwrapping for methods (static typing)
-    """Decorator for methods that should be transformed into a Modal Function registered against this class's app.
+    """Decorator for methods that should be transformed into a Modal Function registered against this class's App.
 
     **Usage:**
 
