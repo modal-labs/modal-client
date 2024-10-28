@@ -13,6 +13,7 @@ from modal._utils import async_utils
 from modal._utils.async_utils import (
     TaskContext,
     aclosing,
+    async_concat,
     async_merge,
     async_zip,
     callable_to_agen,
@@ -464,6 +465,33 @@ async def test_async_zip_exception():
 
 
 @pytest.mark.asyncio
+async def test_async_zip_cancellation():
+    ev = asyncio.Event()
+
+    async def gen1():
+        await asyncio.sleep(0.1)
+        yield 1
+        await ev.wait()
+        raise asyncio.CancelledError()
+        yield 2
+
+    async def gen2():
+        yield 3
+        await asyncio.sleep(0.1)
+        yield 4
+
+    async def zip_coro():
+        async for _ in async_zip(gen1(), gen2()):
+            pass
+
+    zip_task = asyncio.create_task(zip_coro())
+    await asyncio.sleep(0.1)
+    zip_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await zip_task
+
+
+@pytest.mark.asyncio
 async def test_async_zip_parallel():
     ev1 = asyncio.Event()
     ev2 = asyncio.Event()
@@ -615,6 +643,33 @@ async def test_async_merge_exception():
 
 
 @pytest.mark.asyncio
+async def test_async_merge_cancellation():
+    ev = asyncio.Event()
+
+    async def gen1():
+        await asyncio.sleep(0.1)
+        yield 1
+        await ev.wait()
+        raise asyncio.CancelledError()
+        yield 2
+
+    async def gen2():
+        yield 3
+        await asyncio.sleep(0.1)
+        yield 4
+
+    async def merge_coro():
+        async for _ in async_merge(gen1(), gen2()):
+            pass
+
+    merge_task = asyncio.create_task(merge_coro())
+    await asyncio.sleep(0.1)
+    merge_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await merge_task
+
+
+@pytest.mark.asyncio
 async def test_callable_to_agen():
     async def foo():
         await asyncio.sleep(0.1)
@@ -624,3 +679,150 @@ async def test_callable_to_agen():
     async for item in callable_to_agen(foo):
         result.append(item)
     assert result == [await foo()]
+
+
+@pytest.mark.asyncio
+async def test_async_concat():
+    async def gen1():
+        await asyncio.sleep(0.1)
+        yield 1
+        yield 2
+
+    async def gen2():
+        yield 3
+        await asyncio.sleep(0.1)
+        yield 4
+
+    async def gen3():
+        yield 5
+        yield 6
+
+    result = []
+    async for item in async_concat(gen1(), gen2(), gen3()):
+        result.append(item)
+
+    assert result == [1, 2, 3, 4, 5, 6]
+
+
+@pytest.mark.asyncio
+async def test_async_concat_parallel():
+    # test run in parallel and results are in order
+
+    ev1 = asyncio.Event()
+    ev2 = asyncio.Event()
+
+    async def gen1():
+        await asyncio.sleep(0.1)
+        ev1.set()
+        yield 1
+        await ev2.wait()
+        yield 2
+
+    async def gen2():
+        await ev1.wait()
+        yield 3
+        await asyncio.sleep(0.1)
+        ev2.set()
+        yield 4
+
+    result = []
+    async for item in async_concat(gen1(), gen2()):
+        result.append(item)
+
+    assert result == [1, 2, 3, 4]
+
+
+@pytest.mark.asyncio
+async def test_async_concat_exception():
+    # test exception bubbling up
+    result = []
+    states = []
+
+    async def gen1():
+        states.append("enter 1")
+        try:
+            for i in range(5):
+                if i == 3:
+                    raise SampleException("test")
+                yield i
+        finally:
+            states.append("exit 1")
+
+    async def gen2():
+        states.append("enter 2")
+        try:
+            yield 3
+            await asyncio.sleep(0.1)
+            yield 4
+        finally:
+            await asyncio.sleep(0)
+            states.append("exit 2")
+
+    with pytest.raises(SampleException):
+        async for item in async_concat(gen1(), gen2()):
+            result.append(item)
+
+    assert sorted(result) == [0, 1, 2]
+    assert sorted(states) == ["enter 1", "enter 2", "exit 1", "exit 2"]
+
+
+@pytest.mark.asyncio
+async def test_async_concat_cancellation():
+    # test asyncio cancellation bubbles up
+    ev = asyncio.Event()
+
+    async def gen1():
+        await asyncio.sleep(0.1)
+        yield 1
+        await ev.wait()
+        raise asyncio.CancelledError()
+        yield 2
+
+    async def gen2():
+        yield 3
+        await asyncio.sleep(0.1)
+        yield 4
+
+    async def concat_coro():
+        async for _ in async_concat(gen1(), gen2()):
+            pass
+
+    concat_task = asyncio.create_task(concat_coro())
+    await asyncio.sleep(0.1)
+    concat_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await concat_task
+
+
+@pytest.mark.asyncio
+async def test_async_concat_cleanup():
+    # test cleanup of generators
+    result = []
+    states = []
+
+    async def gen1():
+        states.append("enter 1")
+        try:
+            await asyncio.sleep(0.1)
+            yield 1
+            yield 2
+        finally:
+            await asyncio.sleep(0)
+            states.append("exit 1")
+
+    async def gen2():
+        states.append("enter 2")
+        try:
+            yield 3
+            await asyncio.sleep(0.1)
+            yield 4
+        finally:
+            await asyncio.sleep(0)
+            states.append("exit 2")
+
+    async with aclosing(gen1()) as g1, aclosing(gen2()) as g2, aclosing(async_concat(g1, g2)) as stream:
+        async for _ in stream:
+            break
+
+    assert result == []
+    assert states == ["enter 1", "exit 1", "enter 2", "exit 2"]
