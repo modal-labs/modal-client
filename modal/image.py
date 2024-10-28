@@ -130,17 +130,14 @@ def _get_modal_requirements_path(builder_version: ImageBuilderVersion, python_ve
 
 
 def _get_modal_requirements_command(version: ImageBuilderVersion) -> str:
-    if version <= "2024.04":
-        command = "pip install"
-    else:
-        command = "uv pip install --system --compile-bytecode"
+    if version == "2023.12":
+        prefix = "pip install"
+    elif version == "2024.04":
+        prefix = "pip install --no-cache --no-deps"
+    else:  # Currently, 2024.10+
+        prefix = "uv pip install --system --compile-bytecode --no-cache --no-deps"
 
-    if version <= "2023.12":
-        args = f"-r {CONTAINER_REQUIREMENTS_PATH}"
-    else:
-        args = f"--no-cache --no-deps -r {CONTAINER_REQUIREMENTS_PATH}"
-
-    return f"{command} {args}"
+    return f"{prefix} -r {CONTAINER_REQUIREMENTS_PATH}"
 
 
 def _flatten_str_args(function_name: str, arg_name: str, args: Tuple[Union[str, List[str]], ...]) -> List[str]:
