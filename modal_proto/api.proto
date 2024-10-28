@@ -757,10 +757,6 @@ message ContainerFileFlushRequest {
   string file_descriptor = 1;
 }
 
-message ContainerFileFlushResponse {
-  string exec_id = 1;
-}
-
 message ContainerFileOpenRequest {
   // file descriptor is hydrated when sent from server -> worker
   optional string file_descriptor = 1;
@@ -772,17 +768,9 @@ message ContainerFileReadLineRequest {
   string file_descriptor = 1;
 }
 
-message ContainerFileReadLineResponse {
-  string exec_id = 1;
-}
-
 message ContainerFileReadRequest {
   string file_descriptor = 1; 
   optional uint32 n = 2;
-}
-
-message ContainerFileReadResponse {
-  string exec_id = 1;
 }
 
 message ContainerFileSeekRequest {
@@ -803,14 +791,9 @@ message ContainerFileWriteRequest {
   bytes data = 2;
 }
 
-message ContainerFileWriteResponse {
-  string exec_id = 1;
-}
-
 message ContainerFilesystemExecGetOutputRequest {
   string exec_id = 1;
   float timeout = 2;
-  uint64 last_batch_index = 3;
 }
 
 message ContainerFilesystemExecRequest {
@@ -832,11 +815,6 @@ message ContainerFilesystemExecResponse {
   string exec_id = 1;
   // only set when the request opens a new file, i.e., ContainerFileOpenRequest
   optional string file_descriptor = 2;
-}
-
-message ContainerFilesystemGetOutputRequest {
-  float timeout = 1;
-  uint64 last_batch_index = 2;
 }
 
 message ContainerHeartbeatRequest {
