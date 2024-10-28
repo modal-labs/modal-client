@@ -111,6 +111,13 @@ enum DeploymentNamespace {
   DEPLOYMENT_NAMESPACE_GLOBAL = 3;
 }
 
+enum ExecOutputOption {
+  EXEC_OUTPUT_OPTION_UNSPECIFIED = 0;
+  EXEC_OUTPUT_OPTION_DEVNULL = 1;
+  EXEC_OUTPUT_OPTION_PIPE = 2;
+  EXEC_OUTPUT_OPTION_STDOUT = 3;
+}
+
 enum FileDescriptor {
   FILE_DESCRIPTOR_UNSPECIFIED = 0;
   FILE_DESCRIPTOR_STDOUT = 1;
@@ -703,6 +710,8 @@ message ContainerExecRequest {
   // Send SIGTERM to running container on exit of exec command.
   bool terminate_container_on_exit = 4;
   bool runtime_debug = 5; // For internal debugging use only.
+  ExecOutputOption stdout_output = 6;
+  ExecOutputOption stderr_output = 7;
 }
 
 message ContainerExecResponse {
