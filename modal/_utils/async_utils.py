@@ -618,7 +618,6 @@ async def async_concat(*iterables):
     async def producer(producer_idx: int, iterable: Union[AsyncIterable[T], Iterable[T]]):
         try:
             async for item in sync_or_async_iter(iterable):
-                print(f"producer {producer_idx} put {item}")
                 await queue.put((producer_idx, ValueWrapper(item)))
         except Exception as e:
             await queue.put((producer_idx, ExceptionWrapper(e)))
@@ -639,7 +638,6 @@ async def async_concat(*iterables):
             while buffer[next_idx]:
                 next_item = buffer[next_idx].pop(0)
                 if isinstance(next_item, ExceptionWrapper):
-                    print(f"ExceptionWrapper {next_idx=}")
                     raise next_item.value
                 elif isinstance(next_item, StopSentinelType):
                     active_producers.remove(next_idx)
