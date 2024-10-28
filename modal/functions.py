@@ -748,7 +748,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 for method_name, method_definition in method_definitions.items():
                     req.method_definitions[method_name].CopyFrom(method_definition)
             else:
-                req.webhook_config = webhook_config
+                req.webhook_config.CopyFrom(webhook_config)
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
@@ -1196,6 +1196,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._all_mounts = []  # used for file watching
         # self._use_function_id = ""
         self._use_method_name = ""
+        self._method_functions = {}
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
