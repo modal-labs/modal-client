@@ -69,7 +69,6 @@ class _FileIO:
         req = api_pb2.ContainerFilesystemExecGetOutputRequest(
             exec_id=exec_id,
             timeout=55,
-            last_batch_index=0,
         )
         async for batch in self._client.stub.ContainerFilesystemExecGetOutput.unary_stream(req):
             if batch.eof:
