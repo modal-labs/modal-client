@@ -751,6 +751,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 req.webhook_config.CopyFrom(webhook_config)
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            for method_name, method_function in self._method_functions.items():
+                method_function._hydrate(
+                    response.function_id, resolver.client, response.handle_metadata.method_handle_metadata[method_name]
+                )
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             from ._output import FunctionCreationStatus  # Deferred import to avoid Rich dependency in container
@@ -943,6 +947,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_creation_status.set_response(response)
 
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            for method_name, method_function in self._method_functions.items():
+                method_function._hydrate(
+                    response.function_id, resolver.client, response.handle_metadata.method_handle_metadata[method_name]
+                )
 
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
@@ -1209,16 +1217,16 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._use_method_name = metadata.use_method_name
         self._class_parameter_info = metadata.class_parameter_info
         self._definition_id = metadata.definition_id
-        for method_name, method_handle_metadata in metadata.method_handle_metadata.items():
-            method_function = self._method_functions[method_name]
-            method_function._is_generator = (
-                method_handle_metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
-            )
-            method_function._web_url = method_handle_metadata.web_url
-            method_function._function_name = method_handle_metadata.function_name
-            method_function._is_method = method_handle_metadata.is_method
-            method_function._use_method_name = method_handle_metadata.use_method_name
-            # method_function._definition_id = method_handle_metadata.definition_id
+        # for method_name, method_handle_metadata in metadata.method_handle_metadata.items():
+        #     method_function = self._method_functions[method_name]
+        #     method_function._is_generator = (
+        #         method_handle_metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+        #     )
+        #     method_function._web_url = method_handle_metadata.web_url
+        #     method_function._function_name = method_handle_metadata.function_name
+        #     method_function._is_method = method_handle_metadata.is_method
+        #     method_function._use_method_name = method_handle_metadata.use_method_name
+        #     method_function._definition_id = method_handle_metadata.definition_id
 
     def _invocation_function_id(self) -> str:
         # return self._use_function_id or self.object_id
