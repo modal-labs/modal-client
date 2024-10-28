@@ -310,7 +310,6 @@ def _run_container(
         # These env vars are always present in containers
         env["MODAL_TASK_ID"] = "ta-123"
         env["MODAL_IS_REMOTE"] = "1"
-        env["MODAL_TASK_SECRET"] = "1"  # TODO(erikbern): fix
 
         # reset _App tracking state between runs
         _App._all_apps.clear()
@@ -1640,7 +1639,6 @@ def _run_container_process(
 
     # These env vars are always present in containers
     env["MODAL_TASK_ID"] = "ta-123"
-    env["MODAL_TASK_SECRET"] = "1"  # TODO(erikbern): remove
     env["MODAL_IS_REMOTE"] = "1"
 
     encoded_container_args = base64.b64encode(container_args.SerializeToString())
