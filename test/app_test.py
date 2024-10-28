@@ -420,3 +420,15 @@ def test_show_progress_deprecations(client, monkeypatch):
         with enable_output():
             with app.run(client=client, show_progress=False):
                 pass
+
+
+@pytest.mark.asyncio
+async def test_deploy_from_container(servicer, container_client):
+    app = App(image=Image.debian_slim().pip_install("pandas"))
+    app.function()(square)
+
+    # Deploy app
+    res = await deploy_app.aio(app, "my-app", client=container_client)
+    assert res.app_id == "ap-1"
+    assert servicer.app_objects["ap-1"]["square"] == "fu-1"
+    assert servicer.app_state_history[res.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]

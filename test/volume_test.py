@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 import modal
-from modal.exception import DeprecationError, InvalidError, NotFoundError, VolumeUploadTimeoutError
+from modal.exception import InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal.volume import _open_files_error_annotation
 from modal_proto import api_pb2
 
@@ -207,6 +207,7 @@ async def test_volume_upload_large_file(client, tmp_path, servicer, blob_server,
         _, blobs = blob_server
         assert blobs["bl-1"] == b"hello world, this is a lot of text"
 
+
 @pytest.mark.asyncio
 async def test_volume_upload_large_stream(client, servicer, blob_server, *args):
     with mock.patch("modal._utils.blob_utils.LARGE_FILE_LIMIT", 10):
@@ -223,6 +224,7 @@ async def test_volume_upload_large_stream(client, servicer, blob_server, *args):
 
         _, blobs = blob_server
         assert blobs["bl-1"] == b"hello world, this is a lot of text"
+
 
 @pytest.mark.asyncio
 async def test_volume_upload_file_timeout(client, tmp_path, servicer, blob_server, *args):
@@ -311,14 +313,10 @@ def test_persisted(servicer, client, delete_as_instance_method):
     modal.Volume.lookup("xyz", create_if_missing=True, client=client)
 
     # Lookup should succeed now
-    v = modal.Volume.lookup("xyz", client=client)
+    modal.Volume.lookup("xyz", client=client)
 
     # Delete it
-    if delete_as_instance_method:
-        with pytest.warns(DeprecationError):
-            v.delete()
-    else:
-        modal.Volume.delete("xyz", client=client)
+    modal.Volume.delete("xyz", client=client)
 
     # Lookup should fail again
     with pytest.raises(NotFoundError):

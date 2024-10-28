@@ -3,11 +3,12 @@ import os
 import pathlib
 import subprocess
 import sys
-from typing import Optional
+from typing import Optional, Tuple
 
 
 def deploy_app_externally(
     servicer,
+    credentials: Tuple[str, str],
     file_or_module: str,
     app_variable: Optional[str] = None,
     deployment_name="Deployment",
@@ -26,7 +27,15 @@ def deploy_app_externally(
             **{"PYTHONUTF8": "1"},
         }  # windows apparently needs a bunch of env vars to start python...
 
-    env = {**windows_support, "MODAL_SERVER_URL": servicer.client_addr, "MODAL_ENVIRONMENT": "main", **env}
+    token_id, token_secret = credentials
+    env = {
+        **windows_support,
+        "MODAL_SERVER_URL": servicer.client_addr,
+        "MODAL_TOKEN_ID": token_id,
+        "MODAL_TOKEN_SECRET": token_secret,
+        "MODAL_ENVIRONMENT": "main",
+        **env,
+    }
     if cwd is None:
         cwd = pathlib.Path(__file__).parent.parent
 
