@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2024
 import io
-from typing import AsyncIterator, Optional, Union, cast
+from typing import AsyncIterator, List, Optional, Union, cast
 
 from modal_proto import api_pb2
 
@@ -142,7 +142,7 @@ class _FileIO:
         )
         return await self._wait(resp.exec_id)
 
-    async def readlines(self) -> Union[list[bytes], list[str]]:
+    async def readlines(self) -> Union[List[bytes], List[str]]:
         """Read all lines from the current position."""
         self._check_closed()
         self._check_readable()
