@@ -139,7 +139,7 @@ class ImportInterceptor(importlib.abc.MetaPathFinder):
                 logger.debug(f"failed to send event: {e}")
 
     def install(self):
-        sys.meta_path = [self] + sys.meta_path  # type: ignore
+        sys.meta_path.insert(0, self)  # type: ignore
 
     def remove(self):
         sys.meta_path.remove(self)  # type: ignore
