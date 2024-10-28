@@ -102,9 +102,9 @@ def test_import_tracing(monkeypatch):
         from .telemetry import tracing_module_1  # noqa
 
         expected_messages: list[typing.Dict[str, typing.Any]] = [
-            {"event": "module_load_start", "attributes": {"name": "test.telemetry.tracing_module_1"}},
             {"event": "module_load_start", "attributes": {"name": "test.telemetry.tracing_module_2"}},
             {"event": "module_load_end", "attributes": {"name": "test.telemetry.tracing_module_2"}},
+            {"event": "module_load_start", "attributes": {"name": "test.telemetry.tracing_module_1"}},
             {"event": "module_load_end", "attributes": {"name": "test.telemetry.tracing_module_1"}},
         ]
 

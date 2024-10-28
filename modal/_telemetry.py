@@ -65,7 +65,7 @@ class InterceptedModuleLoader(importlib.abc.Loader):
 
 
 class ImportInterceptor(importlib.abc.MetaPathFinder):
-    loading: typing.Dict[str, typing.Tuple[str, float]]
+    loading: typing.Dict[str, float]
     tracing_socket: socket.socket
     events: queue.Queue
 
@@ -78,7 +78,7 @@ class ImportInterceptor(importlib.abc.MetaPathFinder):
     def __init__(self, tracing_socket: socket.socket):
         self.loading = {}
         self.tracing_socket = tracing_socket
-        self.events = queue.Queue(maxsize=16 * 1024)
+        self.events = queue.Queue(maxsize=8 * 1024)
         sender = threading.Thread(target=self._send, daemon=True)
         sender.start()
 
@@ -95,48 +95,57 @@ class ImportInterceptor(importlib.abc.MetaPathFinder):
 
     def load_start(self, name):
         t0 = time.monotonic()
-        span_id = str(uuid.uuid4())
-        self.emit(
-            {"span_id": span_id, "timestamp": time.time(), "event": MODULE_LOAD_START, "attributes": {"name": name}}
-        )
-        self.loading[name] = (span_id, t0)
+        self.loading[name] = t0
 
     def load_end(self, name):
-        span_id, t0 = self.loading.pop(name, (None, None))
+        t1 = time.monotonic()
+        timestamp1 = time.time()
+
+        t0 = self.loading.pop(name, None)
         if t0 is None:
             return
-        latency = time.monotonic() - t0
-        self.emit(
-            {
-                "span_id": span_id,
-                "timestamp": time.time(),
-                "event": MODULE_LOAD_END,
-                "attributes": {
-                    "name": name,
-                    "latency": latency,
-                },
-            }
-        )
 
-    def emit(self, event):
+        span_id = str(uuid.uuid4())
+        latency = t1 - t0
+        timestamp0 = timestamp1 - latency
+
+        event_start = {
+            "span_id": span_id,
+            "timestamp": timestamp0,
+            "event": MODULE_LOAD_START,
+            "attributes": {"name": name},
+        }
+        event_end = {
+            "span_id": span_id,
+            "timestamp": timestamp1,
+            "event": MODULE_LOAD_END,
+            "attributes": {
+                "name": name,
+                "latency": latency,
+            },
+        }
+        self.emit((event_start, event_end))
+
+    def emit(self, events):
         try:
-            self.events.put_nowait(event)
+            self.events.put_nowait(events)
         except queue.Full:
             logger.debug("failed to emit event: queue full")
 
     def _send(self):
         while True:
-            event = self.events.get()
-            try:
-                msg = json.dumps(event).encode("utf-8")
-            except BaseException as e:
-                logger.debug(f"failed to serialize event: {e}")
-                continue
-            try:
-                encoded_len = pack(MESSAGE_HEADER_FORMAT, len(msg))
-                self.tracing_socket.send(encoded_len + msg)
-            except OSError as e:
-                logger.debug(f"failed to send event: {e}")
+            events = self.events.get()
+            for event in events:
+                try:
+                    msg = json.dumps(event).encode("utf-8")
+                except BaseException as e:
+                    logger.debug(f"failed to serialize event: {e}")
+                    continue
+                try:
+                    encoded_len = pack(MESSAGE_HEADER_FORMAT, len(msg))
+                    self.tracing_socket.send(encoded_len + msg)
+                except OSError as e:
+                    logger.debug(f"failed to send event: {e}")
 
     def install(self):
         sys.meta_path.insert(0, self)  # type: ignore
