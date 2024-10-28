@@ -328,7 +328,7 @@ class _Cls(_Object, type_prefix="cs"):
 
         # Get all callables
         callables: Dict[str, Callable] = {
-            k: pf.raw_f for k, pf in _find_partial_methods_for_user_cls(user_cls, ~_PartialFunctionFlags(0)).items()
+            k: pf.raw_f for k, pf in _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.all()).items()
         }
 
         def _deps() -> List[_Function]:

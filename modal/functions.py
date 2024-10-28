@@ -319,7 +319,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     # when this is the method of a class/object function, invocation of this function
     # should be using another function id and supply the method name in the FunctionInput:
     # _use_function_id: str  # The function to invoke
-    # _use_method_name: str = ""
+    _use_method_name: str = ""
 
     # TODO (elias): remove _parent. In case of instance functions, and methods bound on those,
     #  this references the parent class-function and is used to infer the client for lazy-loaded methods
@@ -745,15 +745,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             )
             if method_definitions:
                 req.method_definitions = method_definitions
-                # for method_name, method_def in method_definitions.items():
-                #     req.method_webhook_configs[method_name].CopyFrom(method_def.webhook_config)
             else:
                 req.webhook_config = webhook_config
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
-            for method_name, method_function in self._method_functions.items():
-                method_handle_metadata = response.handle_metadata.method_handle_metadata[method_name]
-                method_function._hydrate(response.function_id, resolver.client, method_handle_metadata)
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             from ._output import FunctionCreationStatus  # Deferred import to avoid Rich dependency in container
@@ -951,9 +946,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_creation_status.set_response(response)
 
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
-            for method_name, method_function in self._method_functions.items():
-                method_handle_metadata = response.handle_metadata.method_handle_metadata[method_name]
-                method_function._hydrate(response.function_id, resolver.client, method_handle_metadata)
 
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
@@ -1205,7 +1197,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._function_name = None
         self._info = None
         self._all_mounts = []  # used for file watching
-        self._use_function_id = ""
+        # self._use_function_id = ""
+        self._use_method_name = ""
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
@@ -1215,12 +1208,23 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._function_name = metadata.function_name
         self._is_method = metadata.is_method
         # self._use_function_id = metadata.use_function_id
-        # self._use_method_name = metadata.use_method_name
+        self._use_method_name = metadata.use_method_name
         self._class_parameter_info = metadata.class_parameter_info
         self._definition_id = metadata.definition_id
+        for method_name, method_handle_metadata in metadata.method_handle_metadata.items():
+            method_function = self._method_functions[method_name]
+            method_function._is_generator = (
+                method_handle_metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
+            )
+            method_function._web_url = method_handle_metadata.web_url
+            method_function._function_name = method_handle_metadata.function_name
+            method_function._is_method = method_handle_metadata.is_method
+            method_function._use_method_name = method_handle_metadata.use_method_name
+            method_function._definition_id = method_handle_metadata.definition_id
 
     def _invocation_function_id(self) -> str:
-        return self._use_function_id or self.object_id
+        # return self._use_function_id or self.object_id
+        return self.object_id
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
@@ -1230,7 +1234,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             function_name=self._function_name,
             function_type=get_function_type(self._is_generator),
             web_url=self._web_url or "",
-            # use_method_name=self._use_method_name,
+            use_method_name=self._use_method_name,
             # use_function_id=self._use_function_id,
             is_method=self._is_method,
             class_parameter_info=self._class_parameter_info,
@@ -1242,6 +1246,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     web_url=method_function._web_url or "",
                     is_method=method_function._is_method,
                     definition_id=method_function._definition_id,
+                    use_method_name=method_function._use_method_name,
                 )
                 for method_function in self._method_functions.values()
             ],
