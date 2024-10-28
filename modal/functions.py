@@ -211,18 +211,17 @@ class _Invocation:
         items_total: Union[int, None] = None  # populated when self.run_function() completes
         async with aclosing(
             _stream_function_call_data(self.client, self.function_call_id, variant="data_out")
-        ) as data_stream:
-            async with aclosing(async_merge(data_stream, callable_to_agen(self.run_function))) as streamer:
-                async for item in streamer:
-                    if isinstance(item, api_pb2.GeneratorDone):
-                        items_total = item.items_total
-                    else:
-                        yield item
-                        items_received += 1
-                    # The comparison avoids infinite loops if a non-deterministic generator is retried
-                    # and produces less data in the second run than what was already sent.
-                    if items_total is not None and items_received >= items_total:
-                        break
+        ) as data_stream, aclosing(async_merge(data_stream, callable_to_agen(self.run_function))) as streamer:
+            async for item in streamer:
+                if isinstance(item, api_pb2.GeneratorDone):
+                    items_total = item.items_total
+                else:
+                    yield item
+                    items_received += 1
+                # The comparison avoids infinite loops if a non-deterministic generator is retried
+                # and produces less data in the second run than what was already sent.
+                if items_total is not None and items_received >= items_total:
+                    break
 
 
 # Wrapper type for api_pb2.FunctionStats
@@ -846,6 +845,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     class_parameter_info=info.class_parameter_info(),
                     i6pn_enabled=i6pn_enabled,
                     schedule=schedule.proto_message if schedule is not None else None,
+                    snapshot_debug=config.get("snapshot_debug"),
                     _experimental_group_size=group_size or 0,  # Experimental: Grouped functions
                     _experimental_concurrent_cancellations=True,
                     _experimental_buffer_containers=_experimental_buffer_containers or 0,
@@ -1269,12 +1269,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         )
         return await invocation.run_function()
 
-    async def _call_function_nowait(self, args, kwargs) -> _Invocation:
-        # This feature flag allows users to put a large number of inputs
-        if config.get("spawn_extended"):
-            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
-        else:
-            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY
+    async def _call_function_nowait(
+        self, args, kwargs, function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType"
+    ) -> _Invocation:
         return await _Invocation.create(
             self, args, kwargs, client=self._client, function_call_invocation_type=function_call_invocation_type
         )
@@ -1396,21 +1393,43 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     @synchronizer.no_input_translation
     @live_method
+    async def _experimental_spawn(self, *args: P.args, **kwargs: P.kwargs) -> "_FunctionCall[ReturnType]":
+        """[Experimental] Calls the function with the given arguments, without waiting for the results.
+
+        This experimental version of the spawn method allows up to 1 million inputs to be spawned.
+
+        Returns a `modal.functions.FunctionCall` object, that can later be polled or
+        waited for using `.get(timeout=...)`.
+        Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
+        """
+        self._check_no_web_url("_experimental_spawn")
+        if self._is_generator:
+            invocation = await self._call_generator_nowait(args, kwargs)
+        else:
+            invocation = await self._call_function_nowait(
+                args, kwargs, function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
+            )
+
+        fc = _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
+        fc._is_generator = self._is_generator if self._is_generator else False
+        return fc
+
+    @synchronizer.no_input_translation
+    @live_method
     async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> "_FunctionCall[ReturnType]":
         """Calls the function with the given arguments, without waiting for the results.
 
         Returns a `modal.functions.FunctionCall` object, that can later be polled or
         waited for using `.get(timeout=...)`.
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
-
-        *Note:* `.spawn()` on a modal generator function does call and execute the generator, but does not currently
-        return a function handle for polling the result.
         """
         self._check_no_web_url("spawn")
         if self._is_generator:
             invocation = await self._call_generator_nowait(args, kwargs)
         else:
-            invocation = await self._call_function_nowait(args, kwargs)
+            invocation = await self._call_function_nowait(
+                args, kwargs, api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY
+            )
 
         fc = _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
         fc._is_generator = self._is_generator if self._is_generator else False
