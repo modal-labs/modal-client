@@ -183,7 +183,7 @@ class _FileIO:
         )
         await self._wait(resp.exec_id)
 
-    def _get_whence(self, whence: int) -> api_pb2.SeekWhence.ValueType:
+    def _get_whence(self, whence: int):
         if whence == 0:
             return api_pb2.SeekWhence.SEEK_SET
         elif whence == 1:
