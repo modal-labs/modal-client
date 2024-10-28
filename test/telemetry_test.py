@@ -62,9 +62,9 @@ class TelemetryConsumer:
         while not self.stopped:
             try:
                 conn, _ = self.server.accept()
+                self.connections.add(conn)
                 receiver = threading.Thread(target=self._recv, args=(conn,), daemon=True)
                 receiver.start()
-                self.connections.add(conn)
             except OSError as e:
                 logging.debug(f"listener got exception, exiting: {e}")
                 return
