@@ -744,7 +744,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 existing_function_id=existing_object_id or "",
             )
             if method_definitions:
-                req.method_definitions = method_definitions
+                for method_name, method_definition in method_definitions.items():
+                    req.method_definitions[method_name].CopyFrom(method_definition)
             else:
                 req.webhook_config = webhook_config
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
@@ -1220,7 +1221,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             method_function._function_name = method_handle_metadata.function_name
             method_function._is_method = method_handle_metadata.is_method
             method_function._use_method_name = method_handle_metadata.use_method_name
-            method_function._definition_id = method_handle_metadata.definition_id
+            # method_function._definition_id = method_handle_metadata.definition_id
 
     def _invocation_function_id(self) -> str:
         # return self._use_function_id or self.object_id
@@ -1239,17 +1240,17 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             is_method=self._is_method,
             class_parameter_info=self._class_parameter_info,
             definition_id=self._definition_id,
-            method_handle_metadata=[
-                api_pb2.FunctionHandleMetadata(
+            method_handle_metadata={
+                method_name: api_pb2.FunctionHandleMetadata(
                     function_name=method_function._function_name,
                     function_type=get_function_type(method_function._is_generator),
                     web_url=method_function._web_url or "",
                     is_method=method_function._is_method,
-                    definition_id=method_function._definition_id,
+                    # definition_id=method_function._definition_id,
                     use_method_name=method_function._use_method_name,
                 )
-                for method_function in self._method_functions.values()
-            ],
+                for method_name, method_function in self._method_functions.items()
+            },
         )
 
     def _check_no_web_url(self, fn_name: str):
