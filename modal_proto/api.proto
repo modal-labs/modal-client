@@ -212,7 +212,6 @@ enum SystemErrorCode {
   SYSTEM_ERROR_CODE_NOSPC = 28;         // ENOSPC: No space left on device
 }
 
-
 enum TaskState {
   TASK_STATE_UNSPECIFIED = 0;
   TASK_STATE_CREATED = 6;
