@@ -194,3 +194,97 @@ def test_file_readlines_multiple_newline_end(servicer, client):
         f.write(content)
         assert f.readlines() == lines
         f.close()
+
+
+def test_file_flush(servicer, client):
+    """Test file flushing."""
+
+    async def container_filesystem_exec_get_output(servicer, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(eof=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
+        ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
+
+        f = FileIO.create("/test.txt", "w+", client, "task-123")
+        f.write("foo")
+        f.flush()
+        f.close()
+
+
+def test_file_seek(servicer, client):
+    """Test file seeking."""
+    index = 0
+    expected_outputs = ["foo\nbar\nbaz\n", "bar\nbaz\n", "baz\n", ""]
+
+    async def container_filesystem_exec_get_output(servicer, stream):
+        nonlocal index
+        req = await stream.recv_message()
+        if req.exec_id == READ_EXEC_ID:
+            await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(output=[expected_outputs[index].encode()]))
+            index += 1
+        await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(eof=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
+        ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
+
+        f = FileIO.create("/test.txt", "a+", client, "task-123")
+        f.write("foo\nbar\nbaz\n")
+        f.close()
+        f = FileIO.create("/test.txt", "r", client, "task-123")
+        for i in range(4):
+            f.seek(3)
+            assert f.read() == expected_outputs[i]
+        f.close()
+
+
+def test_file_write_replace_bytes(servicer, client):
+    """Test file write replace bytes."""
+    index = 0
+    expected_outputs = ["foo\nbar\nbaz\n", "foo\nbarbar\nbaz\n"]
+
+    async def container_filesystem_exec_get_output(servicer, stream):
+        nonlocal index
+        req = await stream.recv_message()
+        if req.exec_id == READ_EXEC_ID:
+            await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(output=[expected_outputs[index].encode()]))
+            index += 1
+        await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(eof=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
+        ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
+
+        f = FileIO.create("/test.txt", "a+", client, "task-123")
+        f.write("foo\nbar\nbaz\n")
+        assert f.read() == expected_outputs[0]
+        f.overwrite_bytes(data=b"barbar", start=4, end=7)
+        assert f.read() == expected_outputs[1]
+        f.close()
+
+
+def test_file_delete_bytes(servicer, client):
+    """Test file delete bytes."""
+    index = 0
+    expected_outputs = ["foo\nbar\nbaz\n", "foo\nbaz\n"]
+
+    async def container_filesystem_exec_get_output(servicer, stream):
+        nonlocal index
+        req = await stream.recv_message()
+        if req.exec_id == READ_EXEC_ID:
+            await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(output=[expected_outputs[index].encode()]))
+            index += 1
+        await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(eof=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
+        ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
+
+        f = FileIO.create("/test.txt", "a+", client, "task-123")
+        f.write("foo\nbar\nbaz\n")
+        assert f.read() == expected_outputs[0]
+        f.delete_bytes(start=4, end=7)
+        assert f.read() == expected_outputs[1]
+        f.close()
