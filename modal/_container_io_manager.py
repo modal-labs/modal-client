@@ -392,15 +392,8 @@ class _ContainerIOManager:
             )
 
         if response.HasField("cancel_input_event"):
-            # Pause processing of the current input by signaling self a SIGUSR1.
+            # The worker handles termination when response.cancel_input_event.terminate_containers is True.
             input_ids_to_cancel = response.cancel_input_event.input_ids
-            if response.cancel_input_event.terminate_containers:
-                await self._push_terminated_outputs(list(self.current_inputs.keys()))
-
-                # This should typically never happen since the task should have been killed
-                logger.warning("Force-terminating container due to input cancellation")
-                os.kill(os.getpid(), signal.SIGINT)
-
             if input_ids_to_cancel:
                 if self._max_concurrency > 1:
                     current_input_ids_to_cancel = [
