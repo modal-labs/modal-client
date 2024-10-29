@@ -1088,7 +1088,6 @@ message Function {
     FUNCTION_TYPE_GENERATOR = 1;
     FUNCTION_TYPE_FUNCTION = 2;
   }
-
   FunctionType function_type = 8;
 
   Resources resources = 9;
