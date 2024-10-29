@@ -626,7 +626,7 @@ async def callable_to_agen(awaitable: Callable[[], Awaitable[T]]) -> AsyncGenera
 
 
 async def _async_map(
-    queue: asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper, StopSentinelType]],
+    queue: "asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper, StopSentinelType]]",
     async_mapper_func: Callable[[T], Awaitable[V]],
 ) -> AsyncGenerator[V, None]:
     while True:
@@ -648,7 +648,7 @@ async def async_map(
     async_mapper_func: Callable[[T], Awaitable[V]],
     concurrency: int,
 ) -> AsyncGenerator[V, None]:
-    queue: asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper, StopSentinelType]] = asyncio.Queue(
+    queue: "asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper, StopSentinelType]]" = asyncio.Queue(
         maxsize=concurrency * 2
     )
 
