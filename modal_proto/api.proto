@@ -2187,6 +2187,10 @@ message SecretListResponse {
   string environment_name = 2; // the environment that was listed (useful when relying on "default" logic)
 }
 
+message SharedVolumeDeleteRequest {
+  string shared_volume_id = 1;
+}
+
 message SharedVolumeGetFileRequest {
   string shared_volume_id = 1;
   string path = 2;
@@ -2672,6 +2676,7 @@ service ModalClient {
   rpc SecretList(SecretListRequest) returns (SecretListResponse);
 
   // SharedVolumes
+  rpc SharedVolumeDelete(SharedVolumeDeleteRequest) returns (google.protobuf.Empty);
   rpc SharedVolumeGetFile(SharedVolumeGetFileRequest) returns (SharedVolumeGetFileResponse);
   rpc SharedVolumeGetOrCreate(SharedVolumeGetOrCreateRequest) returns (SharedVolumeGetOrCreateResponse);
   rpc SharedVolumeHeartbeat(SharedVolumeHeartbeatRequest) returns (google.protobuf.Empty);
