@@ -225,6 +225,14 @@ Obj = synchronize_api(_Obj)
 
 
 class _Cls(_Object, type_prefix="cs"):
+    """
+    Cls adds method pooling and [lifecycle hook](/docs/guide/lifecycle-functions) behavior
+    to [modal.Function](/docs/reference/modal.Function).
+
+    Generally, you will not construct a Cls directly.
+    Instead, use the [`@app.cls()`](/docs/reference/modal.App#cls) decorator on the App object.
+    """
+
     _user_cls: Optional[type]
     _class_service_function: Optional[
         _Function
@@ -283,6 +291,7 @@ class _Cls(_Object, type_prefix="cs"):
 
     @staticmethod
     def validate_construction_mechanism(user_cls):
+        """mdmd:hidden"""
         params = {k: v for k, v in user_cls.__dict__.items() if is_parameter(v)}
         has_custom_constructor = user_cls.__init__ != object.__init__
         if params and has_custom_constructor:
@@ -441,7 +450,7 @@ class _Cls(_Object, type_prefix="cs"):
         container_idle_timeout: Optional[int] = None,
     ) -> "_Cls":
         """
-        Beta: Allows for the runtime modification of a modal.Cls's configuration.
+        **Beta:** Allows for the runtime modification of a modal.Cls's configuration.
 
         This is a beta feature and may be unstable.
 
