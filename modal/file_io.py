@@ -27,7 +27,7 @@ ERROR_MAPPING = {
 
 # The Sandbox file handling API is designed to mimic Python's io.FileIO
 # See https://github.com/python/cpython/blob/main/Lib/_pyio.py#L1459
-# Unlike io.FileIO, it also implements some higher level APIs, like `delete_bytes` and `write_replace_bytes`.
+# Unlike io.FileIO, it also implements some higher level APIs, like `delete_bytes` and `overwrite_bytes`.
 class _FileIO:
     _binary = False
     _readable = False
@@ -51,6 +51,10 @@ class _FileIO:
         valid_chars = set("rwaxb+")
         if any(char not in valid_chars for char in mode):
             raise ValueError(f"Invalid file mode: {mode}")
+
+        mode_count = sum(1 for c in mode if c in "rwax")
+        if mode_count > 1:
+            raise ValueError("must have exactly one of create/read/write/append mode")
 
         seen_chars = set()
         for char in mode:

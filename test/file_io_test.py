@@ -1,4 +1,6 @@
 # Copyright Modal Labs 2024
+import pytest
+
 from modal.file_io import FileIO
 from modal_proto import api_pb2
 
@@ -288,3 +290,26 @@ def test_file_delete_bytes(servicer, client):
         f.delete_bytes(start=4, end=7)
         assert f.read() == expected_outputs[1]
         f.close()
+
+
+def test_invalid_mode(servicer, client):
+    """Test a variety of invalid modes."""
+    invalid_modes = [
+        "",  # empty mode
+        "invalid",  # invalid mode
+        "rr",  # duplicate letters
+        "rab",  # too many modes
+        "r++",  # too many modes
+        "+",  # plus without read/write mode
+        "x+r",  # too many modes
+        "wx",  # too many modes
+        "rbb",  # too many binary flags
+        " r",  # whitespace
+        "r ",  # whitespace
+        "R",  # uppercase
+        "W",  # uppercase
+        "\n",  # newline
+    ]
+    for mode in invalid_modes:
+        with pytest.raises(ValueError):
+            FileIO.create("/test.txt", mode, client, "task-123")
