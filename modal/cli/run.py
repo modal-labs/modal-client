@@ -177,7 +177,7 @@ def _get_click_command_for_function(app: App, function_tag):
                         method: Function = getattr(instance, method_name)
                         method.remote(**fun_kwargs)
         except KeyboardInterrupt:
-            pass  # handled within run_app
+            pass  # don't raise into the cli tool. Output is handled by the run_app contextmanager
 
     with_click_options = _add_click_options(f, signature)
     return click.command(with_click_options)
@@ -212,7 +212,7 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
                     except Exception as exc:
                         raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
             except KeyboardInterrupt:
-                pass  # handled within run_app
+                pass  # don't raise into the cli tool. Output is handled by the run_app contextmanager
 
     with_click_options = _add_click_options(f, _get_signature(func))
     return click.command(with_click_options)
