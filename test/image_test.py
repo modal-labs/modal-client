@@ -1139,15 +1139,15 @@ def test_add_local_python_packages(client, servicer, set_env_client, test_dir, m
 
     # running commands
     image_non_mount = image.run_commands("echo 'hello'")
-    with pytest.raises(InvalidError, match="image.materialize_added_files"):
+    with pytest.raises(InvalidError, match="copy=True"):
         hydrate_image(image_non_mount)
 
-    image_non_mount = image.materialize_added_files().run_commands("echo 'hello'")
-    hydrate_image(image_non_mount)
+    image_using_copy = deb.add_local_python_packages("pkg_a", copy=True).run_commands("echo 'hello'")
+    hydrate_image(image_using_copy)
 
-    assert len(image_non_mount._mount_layers) == 0
+    assert len(image_using_copy._mount_layers) == 0
 
-    layers = get_image_layers(image_non_mount.object_id, servicer)
+    layers = get_image_layers(image_using_copy.object_id, servicer)
 
     echo_layer = layers[0]
     assert echo_layer.dockerfile_commands == ["FROM base", "RUN echo 'hello'"]

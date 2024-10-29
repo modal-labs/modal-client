@@ -306,18 +306,6 @@ class _Image(_Object, type_prefix="im"):
         """
         return self._mounts
 
-    def materialize_added_files(self) -> "_Image":
-        """Builds image layers of all files added through `image.add_*()` methods
-
-        This is required to run before an non-add_* image operation can be run on the image.
-        For that reason, it's recommended to always run `iamge.add_*` operations last in the
-        image build, to avoid having to materialize such layers.
-        """
-        image = self
-        for mount in self._mount_layers:
-            image = image._materialize_mount(mount)
-        return image
-
     def _assert_materialized(self):
         if self._mount_layers:
             print("mount layers", self._mount_layers)
@@ -611,14 +599,20 @@ class _Image(_Object, type_prefix="im"):
             context_mount=mount,
         )
 
-    def add_local_python_packages(self, *packages: Union[str, Path]) -> "_Image":
+    def add_local_python_packages(self, *packages: Union[str, Path], copy: bool = False) -> "_Image":
         """Adds local Python packages to the image
 
         Packages are added to the /root directory which is on the PYTHONPATH of any
         executed Modal functions.
+
+        Set copy=True to force the package to be added as an image layer rather than
+        mounted as a light-weight mount (the default). This can be slower since it
+        requires a rebuild of the image whenever the required package files change
+        , but it allows you to run additional build steps after this operation.
         """
         mount = _Mount.from_local_python_packages(*packages)
-        return self._add_mount_layer([mount])
+        img = self._add_mount_layer([mount])
+        if img._m
 
     def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy a directory into the image as a part of building the image.
