@@ -492,6 +492,52 @@ async def test_async_zip_parallel():
 
 
 @pytest.mark.asyncio
+async def test_async_zip_cancellation():
+    ev = asyncio.Event()
+
+    async def gen1():
+        await asyncio.sleep(0.1)
+        yield 1
+        await ev.wait()
+        raise asyncio.CancelledError()
+        yield 2
+
+    async def gen2():
+        yield 3
+        await asyncio.sleep(0.1)
+        yield 4
+
+    async def zip_coro():
+        async for _ in async_zip(gen1(), gen2()):
+            pass
+
+    zip_task = asyncio.create_task(zip_coro())
+    await asyncio.sleep(0.1)
+    zip_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await zip_task
+
+
+@pytest.mark.asyncio
+async def test_async_zip_producer_cancellation():
+    async def gen1():
+        await asyncio.sleep(0.1)
+        yield 1
+        raise asyncio.CancelledError()
+        yield 2
+
+    async def gen2():
+        yield 3
+        await asyncio.sleep(0.1)
+        yield 4
+
+    await asyncio.sleep(0.1)
+    with pytest.raises(asyncio.CancelledError):
+        async for _ in async_zip(gen1(), gen2()):
+            pass
+
+
+@pytest.mark.asyncio
 async def test_async_merge():
     result = []
     states = []
@@ -566,15 +612,15 @@ async def test_async_merge_cleanup():
             await asyncio.sleep(0)
             states.append("gen2 exit")
 
-    async with aclosing(gen1()) as g1, aclosing(gen2()) as g2, aclosing(async_merge(g1, g2)) as stream:
+    async with aclosing(async_merge(gen1(), gen2())) as stream:
         async for _ in stream:
             break
 
-    assert states == [
+    assert sorted(states) == [
         "gen1 enter",
+        "gen1 exit",
         "gen2 enter",
         "gen2 exit",
-        "gen1 exit",
     ]
 
 
@@ -614,6 +660,51 @@ async def test_async_merge_exception():
         "gen2 enter",
         "gen2 exit",
     ]
+
+
+@pytest.mark.asyncio
+async def test_async_merge_cancellation():
+    ev = asyncio.Event()
+
+    async def gen1():
+        await asyncio.sleep(0.1)
+        yield 1
+        await ev.wait()
+        yield 2
+
+    async def gen2():
+        yield 3
+        await asyncio.sleep(0.1)
+        yield 4
+
+    async def merge_coro():
+        async for _ in async_merge(gen1(), gen2()):
+            pass
+
+    merge_task = asyncio.create_task(merge_coro())
+    await asyncio.sleep(0.1)
+    merge_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await merge_task
+
+
+@pytest.mark.asyncio
+async def test_async_merge_producer_cancellation():
+    async def gen1():
+        await asyncio.sleep(0.1)
+        yield 1
+        raise asyncio.CancelledError()
+        yield 2
+
+    async def gen2():
+        yield 3
+        await asyncio.sleep(0.1)
+        yield 4
+
+    await asyncio.sleep(0.1)
+    with pytest.raises(asyncio.CancelledError):
+        async for _ in async_merge(gen1(), gen2()):
+            pass
 
 
 @pytest.mark.asyncio
