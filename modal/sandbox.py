@@ -427,6 +427,18 @@ class _Sandbox(_Object, type_prefix="sb"):
         return _ContainerProcess(resp.exec_id, self._client)
 
     async def open(self, path: str, mode: str = "r") -> _FileIO:
+        """Open a file in the Sandbox and return
+        a [`FileIO`](/docs/reference/modal.FileIO#modalfile_io) handle.
+
+        **Usage**
+
+        ```python
+        sb = modal.Sandbox.create("sleep", "infinity")
+        f = sb.open("/test.txt", "w")
+        f.write("hello")
+        f.close()
+        ```
+        """
         task_id = await self._get_task_id()
         return await _FileIO.create(path, mode, self._client, task_id)
 
