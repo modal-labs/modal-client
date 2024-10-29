@@ -147,8 +147,11 @@ class _FileIO:
         self._check_readable()
         data = await self.read()
         if self._binary:
-            return cast(bytes, data).split(b"\n")
-        return cast(str, data).split("\n")
+            lines = cast(bytes, data).split(b"\n")
+            return [line + b"\n" for line in lines[:-1]] + ([lines[-1]] if lines[-1] else [])
+        else:
+            lines = cast(str, data).split("\n")
+            return [line + "\n" for line in lines[:-1]] + ([lines[-1]] if lines[-1] else [])
 
     async def write(self, data: Union[bytes, str]) -> None:
         """Write data to the current position.
