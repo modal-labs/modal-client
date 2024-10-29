@@ -832,6 +832,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     function_type=function_type,
                     webhook_config=webhook_config,
                     method_definitions=method_definitions,
+                    method_definitions_set=True,
                     shared_volume_mounts=network_file_system_mount_protos(
                         validated_network_file_systems, allow_cross_region_volumes
                     ),

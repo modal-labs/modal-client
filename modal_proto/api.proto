@@ -1202,6 +1202,7 @@ message Function {
 
   // Need a mapping of method names to method definitions
   map<string, MethodDefinition> method_definitions = 74;
+  bool method_definitions_set = 75;
 }
 
 message FunctionBindParamsRequest {
