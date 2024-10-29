@@ -467,7 +467,7 @@ class _ContainerIOManager:
             await asyncio.sleep(DYNAMIC_CONCURRENCY_INTERVAL_SECS)
 
     async def get_app_objects(self) -> RunningApp:
-        req = api_pb2.AppGetObjectsRequest(app_id=self.app_id, include_unindexed=True)
+        req = api_pb2.AppGetObjectsRequest(app_id=self.app_id, include_unindexed=True, only_class_function=True)
         resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
         logger.debug(f"AppGetObjects received {len(resp.items)} objects for app {self.app_id}")
 

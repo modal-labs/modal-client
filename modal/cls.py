@@ -345,7 +345,9 @@ class _Cls(_Object, type_prefix="cs"):
             return [class_service_function]
 
         async def _load(self: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
-            req = api_pb2.ClassCreateRequest(app_id=resolver.app_id, existing_class_id=existing_object_id)
+            req = api_pb2.ClassCreateRequest(
+                app_id=resolver.app_id, existing_class_id=existing_object_id, only_class_function=True
+            )
             # for f_name, f in self._method_functions.items():
             #     req.methods.append(
             #         api_pb2.ClassMethod(
@@ -405,6 +407,7 @@ class _Cls(_Object, type_prefix="cs"):
                 environment_name=_environment_name,
                 lookup_published=workspace is not None,
                 workspace_name=workspace,
+                only_class_function=True,
             )
             try:
                 response = await retry_transient_errors(resolver.client.stub.ClassGet, request)
