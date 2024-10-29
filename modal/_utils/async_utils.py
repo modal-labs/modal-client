@@ -3,6 +3,7 @@ import asyncio
 import concurrent.futures
 import functools
 import inspect
+import itertools
 import time
 import typing
 from contextlib import asynccontextmanager
@@ -622,3 +623,86 @@ async def async_merge(*iterables: Union[AsyncIterable[T], Iterable[T]]) -> Async
 
 async def callable_to_agen(awaitable: Callable[[], Awaitable[T]]) -> AsyncGenerator[T, None]:
     yield await awaitable()
+
+
+async def _async_map(
+    queue: asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper, StopSentinelType]],
+    async_mapper_func: Callable[[T], Awaitable[V]],
+) -> AsyncGenerator[V, None]:
+    while True:
+        item = await queue.get()
+        try:
+            if isinstance(item, ValueWrapper):
+                yield await async_mapper_func(item.value)
+            elif isinstance(item, ExceptionWrapper):
+                raise item.value
+            else:
+                assert_type(item, StopSentinelType)
+                break
+        finally:
+            queue.task_done()
+
+
+async def async_map(
+    input_iterable: Union[AsyncIterable[T], Iterable[T]],
+    async_mapper_func: Callable[[T], Awaitable[V]],
+    concurrency: int,
+) -> AsyncGenerator[V, None]:
+    queue: asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper, StopSentinelType]] = asyncio.Queue(
+        maxsize=concurrency * 2
+    )
+
+    # Start the producer
+    async def producer():
+        try:
+            async for item in sync_or_async_iter(input_iterable):
+                await queue.put(ValueWrapper(item))
+        except asyncio.CancelledError:
+            # Ensure CancelledError is propagated
+            await queue.put(ExceptionWrapper(asyncio.CancelledError()))
+            raise
+        except Exception as e:
+            await queue.put(ExceptionWrapper(e))
+            raise
+        finally:
+            for _ in range(concurrency):
+                await queue.put(STOP_SENTINEL)
+
+    producer_task = asyncio.create_task(producer())
+
+    # Create separate mappers
+    mappers = [_async_map(queue, async_mapper_func) for _ in range(concurrency)]
+    try:
+        async for item in async_merge(*mappers):
+            yield item
+    finally:
+        if not producer_task.done():
+            producer_task.cancel()
+        await asyncio.gather(producer_task, return_exceptions=True)
+
+
+async def async_map_ordered(
+    input_iterable: Union[AsyncIterable[T], Iterable[T]],
+    async_mapper_func: Callable[[T], Awaitable[V]],
+    concurrency: int,
+) -> AsyncGenerator[V, None]:
+    async def mapper_func_wrapper(tup: Tuple[int, T]) -> Tuple[int, V]:
+        return (tup[0], await async_mapper_func(tup[1]))
+
+    async def counter() -> AsyncGenerator[int, None]:
+        for i in itertools.count():
+            yield i
+
+    next_idx = 0
+    buffer = {}
+
+    async with aclosing(counter()) as counter_gen, aclosing(
+        async_zip(counter_gen, input_iterable)
+    ) as zipped_input, aclosing(async_map(zipped_input, mapper_func_wrapper, concurrency)) as stream:
+        async for output_idx, output_item in stream:
+            buffer[output_idx] = output_item
+
+            while next_idx in buffer:
+                yield buffer[next_idx]
+                del buffer[next_idx]
+                next_idx += 1
