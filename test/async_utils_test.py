@@ -761,10 +761,20 @@ async def test_async_concat_sequential():
         await asyncio.sleep(0.1)
         yield 4
 
-    with pytest.raises(asyncio.TimeoutError):
-        async with asyncio.timeout(1):
-            async for _ in async_concat(gen1(), gen2()):
-                pass
+    results = []
+
+    async def concat_coro():
+        async with aclosing(async_concat(gen1(), gen2())) as stream:
+            async for item in stream:
+                results.append(item)
+
+    concat_task = asyncio.create_task(concat_coro())
+    await asyncio.sleep(0.5)
+    concat_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await concat_task
+
+    assert results == [1]
 
 
 @pytest.mark.asyncio
@@ -821,11 +831,11 @@ async def test_async_concat_cancellation():
             async for _ in stream:
                 pass
 
-    zip_task = asyncio.create_task(concat_coro())
+    concat_task = asyncio.create_task(concat_coro())
     await asyncio.sleep(0.1)
-    zip_task.cancel()
+    concat_task.cancel()
     with pytest.raises(asyncio.CancelledError):
-        await zip_task
+        await concat_task
 
 
 @pytest.mark.asyncio
