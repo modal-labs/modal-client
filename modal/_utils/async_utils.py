@@ -552,7 +552,7 @@ class ValueWrapper(typing.Generic[T]):
 
 @dataclass
 class ExceptionWrapper:
-    value: Exception
+    value: Union[Exception, asyncio.CancelledError]
 
 
 class StopSentinelType:
