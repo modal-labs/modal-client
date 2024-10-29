@@ -251,9 +251,7 @@ async def _map_invocation(
 
         assert len(received_outputs) == 0
 
-    async with aclosing(drain_input_generator()) as drainer, aclosing(pump_inputs()) as pump, aclosing(
-        poll_outputs()
-    ) as poller, aclosing(async_merge(drainer, pump, poller)) as streamer:
+    async with aclosing(async_merge(drain_input_generator(), pump_inputs(), poll_outputs())) as streamer:
         async for response in streamer:
             if response is not None:
                 yield response.value

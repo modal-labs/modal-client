@@ -562,9 +562,7 @@ STOP_SENTINEL = StopSentinelType()
 
 
 async def async_merge(*iterables: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerator[T, None]:
-    queue: asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper, StopSentinelType]] = asyncio.Queue(
-        maxsize=len(iterables) * 10
-    )
+    queue: asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper]] = asyncio.Queue(maxsize=len(iterables) * 10)
 
     async def producer(iterable: Union[AsyncIterable[T], Iterable[T]]):
         try:
@@ -598,15 +596,28 @@ async def async_merge(*iterables: Union[AsyncIterable[T], Iterable[T]]) -> Async
             for finished_producer in finished_producers:
                 # this is done in order to catch potential raised errors/cancellations
                 # from within worker tasks as soon as they happen.
-
                 await finished_producer
 
-        new_output_task.cancel()
+        while not queue.empty():
+            item = await new_output_task
+            if isinstance(item, ValueWrapper):
+                yield item.value
+            else:
+                assert_type(item, ExceptionWrapper)
+                raise item.value
+
+            new_output_task = asyncio.create_task(queue.get())
 
     finally:
+        if not new_output_task.done():
+            new_output_task.cancel()
         for task in tasks:
             if not task.done():
-                task.cancel()
+                try:
+                    task.cancel()
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
 
 async def callable_to_agen(awaitable: Callable[[], Awaitable[T]]) -> AsyncGenerator[T, None]:
@@ -621,20 +632,11 @@ def async_concat(
 
 
 @typing.overload
-def async_concat(*iterables: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerator[T, None]:
+def async_concat(*iterables: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerator[Tuple[T, ...], None]:
     ...
 
 
 async def async_concat(*iterables):
-    generators = [sync_or_async_iter(it) for it in iterables]
-    try:
-        while True:
-            for i, gen in enumerate(generators):
-                try:
-                    async for item in gen:
-                        yield item
-                except StopAsyncIteration:
-                    pass
-    finally:
-        for gen in generators:
-            gen.aclose()
+    for it in iterables:
+        async for item in sync_or_async_iter(it):
+            yield item
