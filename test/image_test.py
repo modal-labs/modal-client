@@ -126,8 +126,13 @@ def test_image_base(builder_version, servicer, client, test_dir):
             if builder_version == "2023.12":
                 assert "pip install -r /modal_requirements.txt" in commands
             else:
-                assert "pip install --no-cache --no-deps -r /modal_requirements.txt" in commands
                 assert "rm /modal_requirements.txt" in commands
+                if builder_version == "2024.04":
+                    assert "pip install --no-cache --no-deps -r /modal_requirements.txt" in commands
+                else:
+                    assert (
+                        "uv pip install --system --compile-bytecode" " --no-cache --no-deps -r /modal_requirements.txt"
+                    ) in commands
 
 
 @pytest.mark.parametrize("python_version", [None, "3.10", "3.11.4"])
