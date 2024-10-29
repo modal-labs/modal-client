@@ -1100,7 +1100,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     def from_name(
         cls: Type["_Function"],
         app_name: str,
-        tag: Optional[str] = None,
+        tag: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
     ) -> "_Function":
@@ -1115,7 +1115,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             assert resolver.client and resolver.client.stub
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
-                object_tag=tag or "",
+                object_tag=tag,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver) or "",
             )
@@ -1128,14 +1128,38 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     raise
 
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            for method_name, method_handle_metadata in response.handle_metadata.method_handle_metadata.items():
+                # Construct the method function
+                async def _load(
+                    method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]
+                ):
+                    pass
 
-        rep = f"Ref({app_name})"
+                class_name = tag[:-2]  # remove the .* suffix from the class service function tag to get the class name
+                full_name = f"{class_name}.{method_name}"
+                rep = f"Method({full_name})"
+                method_function = _Function._from_loader(_load, rep)
+                method_function._tag = full_name
+                # fun._raw_f = partial_function.raw_f
+                # fun._info = FunctionInfo(
+                #     partial_function.raw_f, user_cls=user_cls, serialized=class_service_function.info.is_serialized()
+                # )  # needed for .local()
+                method_function._use_method_name = method_name
+                method_function._app = self._app
+                # fun._is_generator = partial_function.is_generator
+                method_function._all_mounts = self._all_mounts
+                method_function._spec = self._spec
+                method_function._is_method = True
+                method_function._hydrate(response.function_id, resolver.client, method_handle_metadata)
+                self._method_functions[method_name] = method_function
+
+        rep = f"Ref({tag})"
         return cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
     async def lookup(
         app_name: str,
-        tag: Optional[str] = None,
+        tag: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,

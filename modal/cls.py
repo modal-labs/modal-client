@@ -237,7 +237,7 @@ class _Cls(_Object, type_prefix="cs"):
     _class_service_function: Optional[
         _Function
     ]  # The _Function serving *all* methods of the class, used for version >=v0.63
-    _method_functions: Dict[str, _Function]  # Placeholder _Functions for each method
+    # _method_functions: Dict[str, _Function]  # Placeholder _Functions for each method
     _options: Optional[api_pb2.FunctionOptions]
     _callables: Dict[str, Callable[..., Any]]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
@@ -246,7 +246,7 @@ class _Cls(_Object, type_prefix="cs"):
     def _initialize_from_empty(self):
         self._user_cls = None
         self._class_service_function = None
-        self._method_functions = {}
+        # self._method_functions = {}
         self._options = None
         self._callables = {}
         self._from_other_workspace = None
@@ -254,7 +254,7 @@ class _Cls(_Object, type_prefix="cs"):
     def _initialize_from_other(self, other: "_Cls"):
         self._user_cls = other._user_cls
         self._class_service_function = other._class_service_function
-        self._method_functions = other._method_functions
+        # self._method_functions = other._method_functions
         self._options = other._options
         self._callables = other._callables
         self._from_other_workspace = other._from_other_workspace
@@ -384,7 +384,7 @@ class _Cls(_Object, type_prefix="cs"):
     def from_name(
         cls: Type["_Cls"],
         app_name: str,
-        tag: Optional[str] = None,
+        tag: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         workspace: Optional[str] = None,
@@ -432,7 +432,7 @@ class _Cls(_Object, type_prefix="cs"):
 
             obj._hydrate(response.class_id, resolver.client, response.handle_metadata)
 
-        rep = f"Ref({app_name})"
+        rep = f"Ref({tag})"
         cls = cls._from_loader(_load_remote, rep, is_another_app=True)
         cls._from_other_workspace = bool(workspace is not None)
         return cls
@@ -499,7 +499,7 @@ class _Cls(_Object, type_prefix="cs"):
     @staticmethod
     async def lookup(
         app_name: str,
-        tag: Optional[str] = None,
+        tag: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
