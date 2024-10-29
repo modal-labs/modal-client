@@ -211,53 +211,50 @@ class _FileIO:
         )
         await self._wait(resp.exec_id)
 
-    async def delete_bytes(
-        self, start_inclusive: Union[int, None] = None, end_exclusive: Union[int, None] = None
-    ) -> None:
+    async def delete_bytes(self, start: Union[int, None] = None, end: Union[int, None] = None) -> None:
         """Delete a range of bytes from the file.
 
-        `start_inclusive` and `end_exclusive` are byte offsets. If either is
-        None, the start or end of the file is used, respectively.
+        `start` and `end` are byte offsets. `start` is inclusive, `end` is exclusive.
+        If either is None, the start or end of the file is used, respectively.
 
         Resets the file pointer to the start of the file.
         """
         self._check_closed()
-        if start_inclusive is not None and end_exclusive is not None:
-            if start_inclusive >= end_exclusive:
-                raise ValueError("start_inclusive must be less than end_exclusive")
+        if start is not None and end is not None:
+            if start >= end:
+                raise ValueError("start must be less than end")
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_delete_bytes_request=api_pb2.ContainerFileDeleteBytesRequest(
                     file_descriptor=self._file_descriptor,
-                    start_inclusive=start_inclusive,
-                    end_exclusive=end_exclusive,
+                    start_inclusive=start,
+                    end_exclusive=end,
                 ),
                 task_id=self._task_id,
             )
         )
         await self._wait(resp.exec_id)
 
-    async def write_replace_bytes(
-        self, data: bytes, start_inclusive: Union[int, None] = None, end_exclusive: Union[int, None] = None
-    ) -> None:
-        """Replace a range of bytes in the file with new data.
+    async def overwrite_bytes(self, data: bytes, start: Union[int, None] = None, end: Union[int, None] = None) -> None:
+        """Overwrite a range of bytes in the file with new data. The length of the data does not
+        have to be the same as the length of the range being overwritten.
 
-        `start_inclusive` and `end_exclusive` are byte offsets. If either is
-        None, the start or end of the file is used, respectively.
+        `start` and `end` are byte offsets. `start` is inclusive, `end` is exclusive.
+        If either is None, the start or end of the file is used, respectively.
 
         Resets the file pointer to the start of the file.
         """
         self._check_closed()
-        if start_inclusive is not None and end_exclusive is not None:
-            if start_inclusive >= end_exclusive:
-                raise ValueError("start_inclusive must be less than end_exclusive")
+        if start is not None and end is not None:
+            if start >= end:
+                raise ValueError("start must be less than end")
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_write_replace_bytes_request=api_pb2.ContainerFileWriteReplaceBytesRequest(
                     file_descriptor=self._file_descriptor,
                     data=data,
-                    start_inclusive=start_inclusive,
-                    end_exclusive=end_exclusive,
+                    start_inclusive=start,
+                    end_exclusive=end,
                 ),
                 task_id=self._task_id,
             )
