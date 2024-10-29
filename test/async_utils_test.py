@@ -506,8 +506,9 @@ async def test_async_zip_cancellation():
         yield 4
 
     async def zip_coro():
-        async for _ in async_zip(gen1(), gen2()):
-            pass
+        async with aclosing(async_zip(gen1(), gen2())) as stream:
+            async for _ in stream:
+                pass
 
     zip_task = asyncio.create_task(zip_coro())
     await asyncio.sleep(0.1)
@@ -531,8 +532,9 @@ async def test_async_zip_producer_cancellation():
 
     await asyncio.sleep(0.1)
     with pytest.raises(asyncio.CancelledError):
-        async for _ in async_zip(gen1(), gen2()):
-            pass
+        async with aclosing(async_zip(gen1(), gen2())) as stream:
+            async for _ in stream:
+                pass
 
 
 @pytest.mark.asyncio
@@ -676,8 +678,9 @@ async def test_async_merge_cancellation():
         yield 4
 
     async def merge_coro():
-        async for _ in async_merge(gen1(), gen2()):
-            pass
+        async with aclosing(async_merge(gen1(), gen2())) as stream:
+            async for _ in stream:
+                pass
 
     merge_task = asyncio.create_task(merge_coro())
     await asyncio.sleep(0.1)
@@ -701,8 +704,9 @@ async def test_async_merge_producer_cancellation():
 
     await asyncio.sleep(0.1)
     with pytest.raises(asyncio.CancelledError):
-        async for _ in async_merge(gen1(), gen2()):
-            pass
+        async with aclosing(async_merge(gen1(), gen2())) as stream:
+            async for _ in stream:
+                pass
 
 
 @pytest.mark.asyncio
