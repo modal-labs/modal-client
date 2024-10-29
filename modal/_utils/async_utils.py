@@ -562,9 +562,7 @@ STOP_SENTINEL = StopSentinelType()
 
 
 async def async_merge(*iterables: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerator[T, None]:
-    queue: asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper, StopSentinelType]] = asyncio.Queue(
-        maxsize=len(iterables) * 10
-    )
+    queue: asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper]] = asyncio.Queue(maxsize=len(iterables) * 10)
 
     async def producer(iterable: Union[AsyncIterable[T], Iterable[T]]):
         try:
