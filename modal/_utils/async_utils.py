@@ -494,8 +494,12 @@ async def aclosing(
 
 async def sync_or_async_iter(iterable: Union[Iterable[T], AsyncIterable[T]]) -> AsyncGenerator[T, None]:
     if hasattr(iterable, "__aiter__"):
-        async for item in typing.cast(AsyncIterable[T], iterable):
-            yield item
+        agen = typing.cast(AsyncGenerator[T, None], iterable)
+        try:
+            async for item in agen:
+                yield item
+        finally:
+            await agen.aclose()
     else:
         assert hasattr(iterable, "__iter__"), "sync_or_async_iter requires an iterable or async iterable"
         # This intentionally could block the event loop for the duration of calling __iter__ and __next__,
@@ -506,12 +510,12 @@ async def sync_or_async_iter(iterable: Union[Iterable[T], AsyncIterable[T]]) -> 
 
 
 @typing.overload
-def async_zip(i1: AsyncGenerator[T, None], i2: AsyncGenerator[V, None], /) -> AsyncGenerator[Tuple[T, V], None]:
+def async_zip(g1: AsyncGenerator[T, None], g2: AsyncGenerator[V, None], /) -> AsyncGenerator[Tuple[T, V], None]:
     ...
 
 
 @typing.overload
-def async_zip(*iterables: AsyncGenerator[T, None]) -> AsyncGenerator[Tuple[T, ...], None]:
+def async_zip(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[Tuple[T, ...], None]:
     ...
 
 
@@ -539,6 +543,9 @@ async def async_zip(*generators):
             await asyncio.gather(*cancelled_tasks)
         except asyncio.CancelledError:
             pass
+
+        for gen in generators:
+            await gen.aclose()
 
 
 @dataclass
