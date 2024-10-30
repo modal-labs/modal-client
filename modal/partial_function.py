@@ -545,7 +545,7 @@ def _build(
     @app.cls(gpu="A10G")
     class AlpacaLoRAModel:
         @build()
-        def download_models(self):
+        def download_models(self) -> None:
             model = LlamaForCausalLM.from_pretrained(
                 base_model,
             )

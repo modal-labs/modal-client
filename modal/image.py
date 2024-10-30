@@ -1396,7 +1396,7 @@ class _Image(_Object, type_prefix="im"):
 
     def run_function(
         self,
-        raw_f: Callable[..., Any],
+        raw_f: Callable[..., None],
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: Union[
             GPU_T, List[GPU_T]
@@ -1415,7 +1415,8 @@ class _Image(_Object, type_prefix="im"):
     ) -> "_Image":
         """Run user-defined function `raw_f` as an image build step. The function runs just like an ordinary Modal
         function, and any kwargs accepted by `@app.function` (such as `Mount`s, `NetworkFileSystem`s,
-        and resource requests) can be supplied to it.
+        and resource requests) can be supplied to it. The function should return `None`.
+
         After it finishes execution, a snapshot of the resulting container file system is saved as an image.
 
         **Note**
@@ -1429,7 +1430,7 @@ class _Image(_Object, type_prefix="im"):
 
         ```python notest
 
-        def my_build_function():
+        def my_build_function() -> None:
             open("model.pt", "w").write("parameters!")
 
         image = (
