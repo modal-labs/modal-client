@@ -333,7 +333,9 @@ async def _run_app(
                 output_mgr.print("Aborting app initialization...\n")
 
             await _status_based_disconnect(client, running_app.app_id, e)
-            app._uncreate_all_objects()
+            raise
+        except BaseException as e:
+            await _status_based_disconnect(client, running_app.app_id, e)
             raise
 
         try:
@@ -384,14 +386,15 @@ async def _run_app(
                     )
             return
         except BaseException as e:
-            # TODO: unexpected error - log something?
+            logger.info("Exception during app run")
             await _status_based_disconnect(client, running_app.app_id, e)
             raise
-        finally:
-            app._uncreate_all_objects()
 
         # successful completion!
         await _status_based_disconnect(client, running_app.app_id, exc_info=None)
+        # wait for logs gracefully, even though the task context would do the same
+        # this allows us to log a more specific warning in case the app doesn't
+        # provide all logs before exit
         if logs_loop:
             try:
                 await asyncio.wait_for(logs_loop, timeout=logs_timeout)
