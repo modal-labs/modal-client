@@ -390,8 +390,6 @@ async def _run_app(
             await _status_based_disconnect(client, running_app.app_id, e)
             raise
 
-        # successful completion!
-        await _status_based_disconnect(client, running_app.app_id, exc_info=None)
         # wait for logs gracefully, even though the task context would do the same
         # this allows us to log a more specific warning in case the app doesn't
         # provide all logs before exit
