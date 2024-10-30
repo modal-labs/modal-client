@@ -778,7 +778,7 @@ message ContainerFileReadLineRequest {
 }
 
 message ContainerFileReadRequest {
-  string file_descriptor = 1; 
+  string file_descriptor = 1;
   optional uint32 n = 2;
 }
 
@@ -1152,7 +1152,7 @@ message Function {
   repeated S3Mount s3_mounts = 47;
   repeated CloudBucketMount cloud_bucket_mounts = 51;
 
-  bool _experimental_boost = 48;
+  reserved 48; // _experimental_boost
 
   // If set, tasks will be scheduled using the new scheduler, which also knows
   // to look at fine-grained placement constraints.
@@ -1318,13 +1318,10 @@ message FunctionData {
   // When the function is a "grouped" one, this records the # of tasks we want
   // to schedule in tandem.
   uint32 _experimental_group_size = 19;
-  // TODO(irfansharif): We're using this field to enable new gang-scheduling
-  // primitives. Remove it when it's only controlled through the
-  // _experimental_group_size field.
-  bool _experimental_boost = 21;
 
   Schedule schedule = 20;
 
+  reserved 21;
 }
 
 message FunctionExtended {
