@@ -372,6 +372,7 @@ class _App:
         finally:
             self._running_app = None
             self._client = None
+            self._uncreate_all_objects()
 
     @asynccontextmanager
     async def run(
