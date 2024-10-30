@@ -13,7 +13,7 @@ from modal._utils import async_utils
 from modal._utils.async_utils import (
     TaskContext,
     aclosing,
-    async_concat,
+    async_chain,
     async_merge,
     async_zip,
     callable_to_agen,
@@ -737,7 +737,7 @@ async def test_async_concat():
         yield 6
 
     result = []
-    async for item in async_concat(gen1(), gen2(), gen3()):
+    async for item in async_chain(gen1(), gen2(), gen3()):
         result.append(item)
 
     assert result == [1, 2, 3, 4, 5, 6]
@@ -762,7 +762,7 @@ async def test_async_concat_sequential():
     results = []
 
     async def concat_coro():
-        async with aclosing(async_concat(gen1(), gen2())) as stream:
+        async with aclosing(async_chain(gen1(), gen2())) as stream:
             async for item in stream:
                 results.append(item)
 
@@ -801,7 +801,7 @@ async def test_async_concat_exception():
             states.append("exit 2")
 
     with pytest.raises(SampleException):
-        async for item in async_concat(gen1(), gen2()):
+        async for item in async_chain(gen1(), gen2()):
             result.append(item)
 
     assert result == [1, 2, 3]
@@ -825,7 +825,7 @@ async def test_async_concat_cancellation():
         yield 4
 
     async def concat_coro():
-        async with aclosing(async_concat(gen1(), gen2())) as stream:
+        async with aclosing(async_chain(gen1(), gen2())) as stream:
             async for _ in stream:
                 pass
 
@@ -851,7 +851,7 @@ async def test_async_concat_producer_cancellation():
 
     await asyncio.sleep(0.1)
     with pytest.raises(asyncio.CancelledError):
-        async with aclosing(async_concat(gen1(), gen2())) as stream:
+        async with aclosing(async_chain(gen1(), gen2())) as stream:
             async for _ in stream:
                 pass
 
@@ -882,7 +882,7 @@ async def test_async_concat_cleanup():
             await asyncio.sleep(0)
             states.append("exit 2")
 
-    async with aclosing(gen1()) as g1, aclosing(gen2()) as g2, aclosing(async_concat(g1, g2)) as stream:
+    async with aclosing(gen1()) as g1, aclosing(gen2()) as g2, aclosing(async_chain(g1, g2)) as stream:
         async for item in stream:
             result.append(item)
             if item == 3:

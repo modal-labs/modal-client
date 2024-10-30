@@ -621,19 +621,7 @@ async def callable_to_agen(awaitable: Callable[[], Awaitable[T]]) -> AsyncGenera
     yield await awaitable()
 
 
-@typing.overload
-def async_concat(
-    i1: Union[AsyncIterable[T], Iterable[T]], i2: Union[AsyncIterable[V], Iterable[V]], /
-) -> AsyncGenerator[Tuple[T, V], None]:
-    ...
-
-
-@typing.overload
-def async_concat(*iterables: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerator[Tuple[T, ...], None]:
-    ...
-
-
-async def async_concat(*iterables):
-    for it in iterables:
-        async for item in sync_or_async_iter(it):
+async def async_chain(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T, None]:
+    for gen in generators:
+        async for item in gen:
             yield item
