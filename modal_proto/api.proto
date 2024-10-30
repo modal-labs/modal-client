@@ -174,6 +174,12 @@ enum ProxyIpStatus {
   PROXY_IP_STATUS_UNHEALTHY = 4;
 }
 
+enum ProxyType {
+  PROXY_TYPE_UNSPECIFIED = 0;
+  PROXY_TYPE_LEGACY = 1;
+  PROXY_TYPE_VPROX = 2;
+}
+
 enum RateLimitInterval {
   RATE_LIMIT_INTERVAL_UNSPECIFIED = 0;
   RATE_LIMIT_INTERVAL_SECOND = 1;
@@ -1689,14 +1695,11 @@ message ProxyGetOrCreateResponse {
 }
 
 message ProxyInfo {
-  // old system
   string elastic_ip = 1;
   string proxy_key = 2;
   string remote_addr = 3;
   int32 remote_port = 4;
-
-  // new system
-  optional string proxy_ip = 5;
+  ProxyType proxy_type = 5;
 }
 
 message ProxyIp {
