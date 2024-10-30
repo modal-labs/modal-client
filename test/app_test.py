@@ -76,6 +76,7 @@ def test_create_object_internal_exception(servicer, client):
 
     assert len(ctx.get_requests("FunctionCreate")) == 4  # some retries are applied to internal errors
     assert excinfo.value.status == Status.INTERNAL
+    assert len(ctx.get_requests("AppClientDisconnect")) == 1
 
 
 @pytest.mark.timeout(5)
@@ -91,6 +92,7 @@ def test_create_object_invalid_exception(servicer, client):
                 with app.run(client=client):
                     pass
     assert len(ctx.get_requests("FunctionCreate")) == 1  # no retries on an invalid request
+    assert len(ctx.get_requests("AppClientDisconnect")) == 1
 
 
 def test_deploy_falls_back_to_app_name(servicer, client):
