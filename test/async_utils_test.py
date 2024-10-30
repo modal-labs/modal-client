@@ -371,7 +371,7 @@ async def test_sync_or_async_iter_async_gen():
     # test that things are cleaned up when we exit the context manager without fully exhausting the generator
     result.clear()
     states.clear()
-    async with aclosing(async_gen()) as agen, aclosing(sync_or_async_iter(agen)) as stream:
+    async with aclosing(sync_or_async_iter(async_gen())) as stream:
         async for _ in stream:
             break
     assert states == ["enter", "exit"]
@@ -393,9 +393,7 @@ async def test_async_zip():
             await asyncio.sleep(0)
             states.append(f"exit {x}")
 
-    async with aclosing(gen(1)) as g1, aclosing(gen(5)) as g2, aclosing(gen(10)) as g3, aclosing(
-        async_zip(g1, g2, g3)
-    ) as stream:
+    async with aclosing(async_zip(gen(1), gen(5), gen(10))) as stream:
         async for item in stream:
             result.append(item)
 
@@ -431,7 +429,7 @@ async def test_async_zip_different_lengths():
             await asyncio.sleep(0)
             states.append("exit long")
 
-    async with aclosing(gen_short()) as g1, aclosing(gen_long()) as g2, aclosing(async_zip(g1, g2)) as stream:
+    async with aclosing(async_zip(gen_short(), gen_long())) as stream:
         async for item in stream:
             result.append(item)
 
@@ -457,7 +455,7 @@ async def test_async_zip_exception():
             states.append(f"exit {x}")
 
     with pytest.raises(SampleException):
-        async with aclosing(gen(1)) as g1, aclosing(gen(5)) as g2, aclosing(async_zip(g1, g2)) as stream:
+        async with aclosing(async_zip(gen(1), gen(5))) as stream:
             async for item in stream:
                 result.append(item)
 
