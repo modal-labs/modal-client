@@ -636,7 +636,8 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     import asyncio
     import time
     from itertools import count
-    from modal._utils.async_utils import Runner, aclosing
+    from synchronicity.async_utils import Runner
+    from modal._utils.async_utils import run_async_gen
     async def async_gen():
         print("enter")
         try:
@@ -652,7 +653,7 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
             print("bye")
     try:
         with Runner() as runner:
-            for res in runner.run_async_gen(async_gen()):
+            for res in run_async_gen(runner, async_gen()):
                 print("res", res)
     except KeyboardInterrupt:
         print("KeyboardInterrupt")
@@ -668,6 +669,9 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
 
     def line():
         s = p.stdout.readline().rstrip("\n")
+        if s == "":
+            print(p.stderr.read())
+            raise Exception("no stdout")
         print(s)
         return s
 
