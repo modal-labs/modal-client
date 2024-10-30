@@ -827,9 +827,9 @@ message ContainerFilesystemExecResponse {
 }
 
 message ContainerHeartbeatRequest {
-  string current_input_id = 1;
-  double current_input_started_at = 2;
-  bool supports_graceful_input_cancellation = 3; // implicitly also means we support long polling. Can be removed once v0.57 is no longer supported
+  bool canceled_inputs_return_outputs = 4;
+
+  reserved 1, 2, 3;
 }
 
 message ContainerHeartbeatResponse {
