@@ -315,6 +315,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _build_args: dict
     _can_use_base_function: bool = False  # whether we need to call FunctionBindParams
     _is_generator: Optional[bool] = None
+    _definition_id: str
 
     # when this is the method of a class/object function, invocation of this function
     # should be using another function id and supply the method name in the FunctionInput:
@@ -1151,6 +1152,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 method_function._all_mounts = self._all_mounts
                 method_function._spec = self._spec
                 method_function._is_method = True
+                method_function._definition_id = self._definition_id
                 method_function._hydrate(response.function_id, resolver.client, method_handle_metadata)
                 self._method_functions[method_name] = method_function
 
@@ -1230,6 +1232,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # self._use_function_id = ""
         self._use_method_name = ""
         self._method_functions = {}
+        self._definition_id = ""
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method

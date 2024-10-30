@@ -266,18 +266,22 @@ class _Cls(_Object, type_prefix="cs"):
 
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
-
-        # for method in metadata.methods:
-        #     if method.function_name in self._method_functions:
-        #         # This happens when the class is loaded locally
-        #         # since each function will already be a loaded dependency _Function
-        #         self._method_functions[method.function_name]._hydrate(
-        #             method.function_id, self._client, method.function_handle_metadata
-        #         )
-        #     else:
-        #         self._method_functions[method.function_name] = _Function._new_hydrated(
-        #             method.function_id, self._client, method.function_handle_metadata
-        #         )
+        if self._class_service_function:
+            if self._class_service_function._method_functions:
+                # The class only has a class service service function and no method placeholders.
+                return
+            else:
+                for method in metadata.methods:
+                    if method.function_name in self._class_service_function._method_functions:
+                        # This happens when the class is loaded locally
+                        # since each function will already be a loaded dependency _Function
+                        self._class_service_function._method_functions[method.function_name]._hydrate(
+                            method.function_id, self._client, method.function_handle_metadata
+                        )
+                    else:
+                        self._class_service_function._method_functions[method.function_name] = _Function._new_hydrated(
+                            method.function_id, self._client, method.function_handle_metadata
+                        )
 
     def _get_metadata(self) -> api_pb2.ClassHandleMetadata:
         class_handle_metadata = api_pb2.ClassHandleMetadata()
