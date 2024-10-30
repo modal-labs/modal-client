@@ -392,7 +392,7 @@ class _ContainerIOManager:
             )
 
         if response.HasField("cancel_input_event"):
-            # The worker handles termination when response.cancel_input_event.terminate_containers is True.
+            # response.cancel_input_event.terminate_containers is never set, the server gets the worker to handle it.
             input_ids_to_cancel = response.cancel_input_event.input_ids
             if input_ids_to_cancel:
                 if self._max_concurrency > 1:
