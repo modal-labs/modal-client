@@ -171,7 +171,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_functions = 0
         self.n_schedules = 0
         self.function2schedule = {}
-        self.function_create_error = False
+        self.function_create_error: Optional[BaseException] = None
         self.heartbeat_status_code = None
         self.n_apps = 0
         self.classes = {}
