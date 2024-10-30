@@ -381,7 +381,7 @@ class _ContainerIOManager:
 
             request = api_pb2.ContainerHeartbeatRequest(canceled_inputs_return_outputs=True)
             response = await retry_transient_errors(
-                self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT, max_retries=None
+                self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT
             )
 
         if response.HasField("cancel_input_event"):
