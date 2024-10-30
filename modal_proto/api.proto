@@ -182,6 +182,12 @@ enum ProxyIpStatus {
   PROXY_IP_STATUS_UNHEALTHY = 4;
 }
 
+enum ProxyType {
+  PROXY_TYPE_UNSPECIFIED = 0;
+  PROXY_TYPE_LEGACY = 1;
+  PROXY_TYPE_VPROX = 2;
+}
+
 enum RateLimitInterval {
   RATE_LIMIT_INTERVAL_UNSPECIFIED = 0;
   RATE_LIMIT_INTERVAL_SECOND = 1;
@@ -1192,6 +1198,8 @@ message Function {
 
   uint32 _experimental_buffer_containers = 69;
 
+  // _experimental_proxy_ip -> ProxyInfo
+  // TODO: deprecate.
   optional string _experimental_proxy_ip = 70;
 
   bool runtime_perf_record = 71; // For internal debugging use only.
@@ -1815,6 +1823,7 @@ message ProxyInfo {
   string proxy_key = 2;
   string remote_addr = 3;
   int32 remote_port = 4;
+  ProxyType proxy_type = 5;
 }
 
 message ProxyIp {
