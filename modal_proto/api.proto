@@ -1075,7 +1075,8 @@ message Function {
 
   uint32 _experimental_buffer_containers = 69;
 
-  optional string _experimental_proxy_ip = 70;
+  // _experimental_proxy_ip -> ProxyInfo.proxy_ip
+  optional string _experimental_proxy_ip = 70 [deprecated=true];
 
   bool runtime_perf_record = 71; // For internal debugging use only.
 
@@ -1688,10 +1689,14 @@ message ProxyGetOrCreateResponse {
 }
 
 message ProxyInfo {
+  // old system
   string elastic_ip = 1;
   string proxy_key = 2;
   string remote_addr = 3;
   int32 remote_port = 4;
+
+  // new system
+  optional string proxy_ip = 5;
 }
 
 message ProxyIp {
