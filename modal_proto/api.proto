@@ -1082,7 +1082,8 @@ message Function {
   uint32 _experimental_buffer_containers = 69;
 
   // _experimental_proxy_ip -> ProxyInfo.proxy_ip
-  optional string _experimental_proxy_ip = 70 [deprecated=true];
+  // TODO: deprecate.
+  optional string _experimental_proxy_ip = 70;
 
   bool runtime_perf_record = 71; // For internal debugging use only.
 
