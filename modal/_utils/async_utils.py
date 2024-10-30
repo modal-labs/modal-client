@@ -25,8 +25,8 @@ from typing import (
 )
 
 import synchronicity
-from exceptions import NestedEventLoops
 from synchronicity.async_utils import Runner
+from synchronicity.exceptions import NestedEventLoops
 from typing_extensions import ParamSpec
 
 from ..exception import InvalidError
