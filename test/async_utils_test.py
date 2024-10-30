@@ -427,7 +427,8 @@ async def test_async_zip_different_lengths():
             await asyncio.sleep(0)
             states.append("exit long")
 
-    async with aclosing(async_zip(gen_short(), gen_long())) as stream:
+    # wrapping the longer generator with aclosing as it will not be exhausted otherwise
+    async with aclosing(gen_long()) as g2, aclosing(async_zip(gen_short(), g2)) as stream:
         async for item in stream:
             result.append(item)
 
@@ -453,7 +454,8 @@ async def test_async_zip_exception():
             states.append(f"exit {x}")
 
     with pytest.raises(SampleException):
-        async with aclosing(async_zip(gen(1), gen(5))) as stream:
+        # wrapping the longer generator with aclosing as it will not be exhausted otherwise
+        async with aclosing(gen(5)) as g5, aclosing(async_zip(gen(1), g5)) as stream:
             async for item in stream:
                 result.append(item)
 
