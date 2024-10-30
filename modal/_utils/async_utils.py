@@ -506,20 +506,17 @@ async def sync_or_async_iter(iterable: Union[Iterable[T], AsyncIterable[T]]) -> 
 
 
 @typing.overload
-def async_zip(
-    i1: Union[AsyncIterable[T], Iterable[T]], i2: Union[AsyncIterable[V], Iterable[V]], /
-) -> AsyncGenerator[Tuple[T, V], None]:
+def async_zip(i1: AsyncGenerator[T, None], i2: AsyncGenerator[V, None], /) -> AsyncGenerator[Tuple[T, V], None]:
     ...
 
 
 @typing.overload
-def async_zip(*iterables: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerator[Tuple[T, ...], None]:
+def async_zip(*iterables: AsyncGenerator[T, None]) -> AsyncGenerator[Tuple[T, ...], None]:
     ...
 
 
-async def async_zip(*iterables):
+async def async_zip(*generators):
     tasks = []
-    generators = [sync_or_async_iter(it) for it in iterables]
     try:
         while True:
             try:
@@ -561,17 +558,17 @@ class StopSentinelType:
 STOP_SENTINEL = StopSentinelType()
 
 
-async def async_merge(*iterables: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerator[T, None]:
-    queue: asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper]] = asyncio.Queue(maxsize=len(iterables) * 10)
+async def async_merge(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T, None]:
+    queue: asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper]] = asyncio.Queue(maxsize=len(generators) * 10)
 
-    async def producer(iterable: Union[AsyncIterable[T], Iterable[T]]):
+    async def producer(generator: AsyncGenerator[T, None]):
         try:
-            async for item in sync_or_async_iter(iterable):
+            async for item in generator:
                 await queue.put(ValueWrapper(item))
         except Exception as e:
             await queue.put(ExceptionWrapper(e))
 
-    tasks = set([asyncio.create_task(producer(it)) for it in iterables])
+    tasks = set([asyncio.create_task(producer(gen)) for gen in generators])
     new_output_task = asyncio.create_task(queue.get())
 
     try:
