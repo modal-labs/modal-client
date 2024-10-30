@@ -62,17 +62,37 @@ def dummy():
 
 # Should exit without waiting for the "logs_timeout" grace period.
 @pytest.mark.timeout(5)
-def test_create_object_exception(servicer, client):
-    servicer.function_create_error = True
+def test_create_object_internal_exception(servicer, client):
+    servicer.function_create_error = GRPCError(Status.INTERNAL, "Function create failed")
 
     app = App()
     app.function()(dummy)
 
-    with pytest.raises(GRPCError) as excinfo:
-        with app.run(client=client):
-            pass
+    with servicer.intercept() as ctx:
+        with pytest.raises(GRPCError) as excinfo:
+            with enable_output():  # this activates the log streaming loop, which could potentially hold up context exit
+                with app.run(client=client):
+                    pass
 
+    assert len(ctx.get_requests("FunctionCreate")) == 4  # some retries are applied to internal errors
     assert excinfo.value.status == Status.INTERNAL
+    assert len(ctx.get_requests("AppClientDisconnect")) == 1
+
+
+@pytest.mark.timeout(5)
+def test_create_object_invalid_exception(servicer, client):
+    servicer.function_create_error = GRPCError(Status.INVALID_ARGUMENT, "something was invalid")
+
+    app = App()
+    app.function()(dummy)
+
+    with servicer.intercept() as ctx:
+        with pytest.raises(InvalidError, match="something was invalid"):  # error should be converted
+            with enable_output():  # this activates the log streaming loop, which could potentially hold up context exit
+                with app.run(client=client):
+                    pass
+    assert len(ctx.get_requests("FunctionCreate")) == 1  # no retries on an invalid request
+    assert len(ctx.get_requests("AppClientDisconnect")) == 1
 
 
 def test_deploy_falls_back_to_app_name(servicer, client):
