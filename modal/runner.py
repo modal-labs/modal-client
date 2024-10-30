@@ -328,7 +328,7 @@ async def _run_app(
             # Publish the app
             await _publish_app(client, running_app, app_state, app._indexed_objects)
         except asyncio.CancelledError as e:
-            # this typically happens on sigint/ctrl-C during setup (they KeyboardInterrupt happens in the main thread)
+            # this typically happens on sigint/ctrl-C during setup (the KeyboardInterrupt happens in the main thread)
             if output_mgr := _get_output_manager():
                 output_mgr.print("Aborting app initialization...\n")
 
@@ -348,6 +348,8 @@ async def _run_app(
                     yield app
             else:
                 yield app
+            # successful completion!
+            await _status_based_disconnect(client, running_app.app_id, exc_info=None)
         except KeyboardInterrupt as e:
             # this happens only if sigint comes in during the yield block above
             if detach:

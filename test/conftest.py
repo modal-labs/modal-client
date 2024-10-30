@@ -911,7 +911,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def FunctionCreate(self, stream):
         request: api_pb2.FunctionCreateRequest = await stream.recv_message()
         if self.function_create_error:
-            raise GRPCError(Status.INTERNAL, "Function create failed")
+            raise self.function_create_error
         if request.existing_function_id:
             function_id = request.existing_function_id
         else:
