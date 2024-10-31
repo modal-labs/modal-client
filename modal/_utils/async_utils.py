@@ -561,7 +561,7 @@ class ValueWrapper(typing.Generic[T]):
 
 @dataclass
 class ExceptionWrapper:
-    value: Union[Exception, asyncio.CancelledError]
+    value: Exception
 
 
 class StopSentinelType:
@@ -647,16 +647,14 @@ async def async_map(
         try:
             async for item in input_generator:
                 await queue.put(ValueWrapper(item))
-        except asyncio.CancelledError:
-            # Ensure CancelledError is propagated
-            await queue.put(ExceptionWrapper(asyncio.CancelledError()))
-            raise
         except Exception as e:
             await queue.put(ExceptionWrapper(e))
-            raise
         finally:
             for _ in range(concurrency):
                 await queue.put(STOP_SENTINEL)
+
+        return
+        yield  # noqa
 
     async def worker() -> AsyncGenerator[V, None]:
         while True:
@@ -672,16 +670,9 @@ async def async_map(
             finally:
                 queue.task_done()
 
-    producer_task = asyncio.create_task(producer())
-
     mappers = [worker() for _ in range(concurrency)]
-    try:
-        async for item in async_merge(*mappers):
-            yield item
-    finally:
-        if not producer_task.done():
-            producer_task.cancel()
-        await asyncio.gather(producer_task, return_exceptions=True)
+    async for item in async_merge(*mappers, producer()):
+        yield item
 
 
 async def async_map_ordered(
