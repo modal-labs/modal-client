@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.65.9 (2024-10-31)
+
+Output from `Sandbox.exec` can now be directed to `/dev/null`, `stdout`, or stored for consumption. This behavior can be controlled via the new `StreamType` arguments.
+
+
+
 ### 0.65.8 (2024-10-31)
 
 - Fixed a bug where the `Image.imports` context manager would not correctly propagate ImportError when using a `modal.Cls`.
