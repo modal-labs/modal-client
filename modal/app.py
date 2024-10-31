@@ -478,6 +478,9 @@ class _App:
             return _default_image
 
     def _get_watch_mounts(self):
+        if not self._running_app:
+            raise InvalidError("`_get_watch_mounts` requires a running app.")
+
         all_mounts = [
             *self._mounts,
         ]
