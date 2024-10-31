@@ -647,8 +647,6 @@ async def async_map(
         try:
             async for item in input_generator:
                 await queue.put(ValueWrapper(item))
-        except Exception as e:
-            await queue.put(ExceptionWrapper(e))
         finally:
             for _ in range(concurrency):
                 await queue.put(STOP_SENTINEL)
@@ -670,8 +668,7 @@ async def async_map(
             finally:
                 queue.task_done()
 
-    mappers = [worker() for _ in range(concurrency)]
-    async for item in async_merge(*mappers, producer()):
+    async for item in async_merge(*[worker() for _ in range(concurrency)], producer()):
         yield item
 
 
