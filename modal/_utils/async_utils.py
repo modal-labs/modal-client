@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from typing import (
     Any,
     AsyncGenerator,
-    AsyncIterable,
     Awaitable,
     Callable,
     Iterable,
@@ -493,20 +492,20 @@ async def aclosing(
         await agen.aclose()
 
 
-async def sync_or_async_iter(iterable: Union[Iterable[T], AsyncIterable[T]]) -> AsyncGenerator[T, None]:
-    if hasattr(iterable, "__aiter__"):
-        agen = typing.cast(AsyncGenerator[T, None], iterable)
+async def sync_or_async_iter(iter: Union[Iterable[T], AsyncGenerator[T, None]]) -> AsyncGenerator[T, None]:
+    if hasattr(iter, "__aiter__"):
+        agen = typing.cast(AsyncGenerator[T, None], iter)
         try:
             async for item in agen:
                 yield item
         finally:
             await agen.aclose()
     else:
-        assert hasattr(iterable, "__iter__"), "sync_or_async_iter requires an iterable or async iterable"
+        assert hasattr(iter, "__iter__"), "sync_or_async_iter requires an Iterable or AsyncGenerator"
         # This intentionally could block the event loop for the duration of calling __iter__ and __next__,
         # so in non-trivial cases (like passing lists and ranges) this could be quite a foot gun for users #
         # w/ async code (but they can work around it by always using async iterators)
-        for item in typing.cast(Iterable[T], iterable):
+        for item in typing.cast(Iterable[T], iter):
             yield item
 
 
@@ -545,8 +544,16 @@ async def async_zip(*generators):
         except asyncio.CancelledError:
             pass
 
+        first_exception = None
         for gen in generators:
-            await gen.aclose()
+            try:
+                await gen.aclose()
+            except BaseException as e:
+                if first_exception is None:
+                    first_exception = e
+                logger.exception(f"Error closing async generator: {e}")
+        if first_exception is not None:
+            raise first_exception
 
 
 @dataclass
@@ -648,7 +655,7 @@ async def _async_map(
 
 
 async def async_map(
-    input_iterable: Union[AsyncIterable[T], Iterable[T]],
+    input_generator: AsyncGenerator[T, None],
     async_mapper_func: Callable[[T], Awaitable[V]],
     concurrency: int,
 ) -> AsyncGenerator[V, None]:
@@ -659,7 +666,7 @@ async def async_map(
     # Start the producer
     async def producer():
         try:
-            async for item in sync_or_async_iter(input_iterable):
+            async for item in input_generator:
                 await queue.put(ValueWrapper(item))
         except asyncio.CancelledError:
             # Ensure CancelledError is propagated
@@ -686,7 +693,7 @@ async def async_map(
 
 
 async def async_map_ordered(
-    input_iterable: Union[AsyncIterable[T], Iterable[T]],
+    input_generator: AsyncGenerator[T, None],
     async_mapper_func: Callable[[T], Awaitable[V]],
     concurrency: int,
 ) -> AsyncGenerator[V, None]:
@@ -701,7 +708,7 @@ async def async_map_ordered(
     buffer = {}
 
     async with aclosing(counter()) as counter_gen, aclosing(
-        async_zip(counter_gen, input_iterable)
+        async_zip(counter_gen, input_generator)
     ) as zipped_input, aclosing(async_map(zipped_input, mapper_func_wrapper, concurrency)) as stream:
         async for output_idx, output_item in stream:
             buffer[output_idx] = output_item
