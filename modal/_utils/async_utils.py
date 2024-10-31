@@ -656,16 +656,13 @@ async def async_map(
     async def worker() -> AsyncGenerator[V, None]:
         while True:
             item = await queue.get()
-            try:
-                if isinstance(item, ValueWrapper):
-                    yield await async_mapper_func(item.value)
-                elif isinstance(item, ExceptionWrapper):
-                    raise item.value
-                else:
-                    assert_type(item, StopSentinelType)
-                    break
-            finally:
-                queue.task_done()
+            if isinstance(item, ValueWrapper):
+                yield await async_mapper_func(item.value)
+            elif isinstance(item, ExceptionWrapper):
+                raise item.value
+            else:
+                assert_type(item, StopSentinelType)
+                break
 
     async with aclosing(async_merge(*[worker() for _ in range(concurrency)], producer())) as stream:
         async for item in stream:
