@@ -8,7 +8,10 @@ from ._utils.async_utils import synchronize_api
 from .client import _Client
 from .exception import FilesystemExecutionError
 
+LARGE_FILE_SIZE_LIMIT = 16 * 1024 * 1024  # 16MB
+
 ERROR_MAPPING = {
+    api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_UNSPECIFIED: FilesystemExecutionError,
     api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_PERM: PermissionError,
     api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_NOENT: FileNotFoundError,
     api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_IO: IOError,
@@ -63,9 +66,6 @@ class _FileIO:
             seen_chars.add(char)
 
     def _handle_error(self, error: api_pb2.SystemErrorMessage) -> None:
-        if error.error_code == api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_UNSPECIFIED:
-            raise FilesystemExecutionError(error.error_message)
-
         error_class = ERROR_MAPPING.get(error.error_code, FilesystemExecutionError)
         raise error_class(error.error_message)
 
@@ -169,6 +169,8 @@ class _FileIO:
         self._validate_type(data)
         if isinstance(data, str):
             data = data.encode("utf-8")
+        if len(data) > LARGE_FILE_SIZE_LIMIT:
+            raise ValueError("Write request payload exceeds 16MB limit")
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_write_request=api_pb2.ContainerFileWriteRequest(file_descriptor=self._file_descriptor, data=data),
@@ -255,6 +257,8 @@ class _FileIO:
         if start is not None and end is not None:
             if start >= end:
                 raise ValueError("start must be less than end")
+        if len(data) > LARGE_FILE_SIZE_LIMIT:
+            raise ValueError("Write request payload exceeds 16MB limit")
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_write_replace_bytes_request=api_pb2.ContainerFileWriteReplaceBytesRequest(
