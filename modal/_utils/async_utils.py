@@ -636,6 +636,18 @@ async def callable_to_agen(awaitable: Callable[[], Awaitable[T]]) -> AsyncGenera
 
 
 async def async_chain(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T, None]:
-    for gen in generators:
-        async for item in gen:
-            yield item
+    try:
+        for gen in generators:
+            async for item in gen:
+                yield item
+    finally:
+        first_exception = None
+        for gen in generators:
+            try:
+                await gen.aclose()
+            except BaseException as e:
+                if first_exception is None:
+                    first_exception = e
+                logger.exception(f"Error closing async generator: {e}")
+        if first_exception is not None:
+            raise first_exception
