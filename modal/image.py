@@ -266,6 +266,7 @@ class _Image(_Object, type_prefix="im"):
 
     force_build: bool
     inside_exceptions: List[Exception]
+    _used_local_mounts: Optional[Sequence[_Mount]] = ()  # used for mounts watching
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
