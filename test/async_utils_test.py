@@ -882,7 +882,7 @@ async def test_async_chain_cleanup():
             await asyncio.sleep(0)
             states.append("exit 2")
 
-    async with aclosing(gen1()) as g1, aclosing(gen2()) as g2, aclosing(async_chain(g1, g2)) as stream:
+    async with aclosing(async_chain(gen1(), gen2())) as stream:
         async for item in stream:
             result.append(item)
             if item == 3:
