@@ -353,9 +353,9 @@ async def _map_async(
         # they accept executable code in the form of
         # iterators that we don't want to run inside the synchronicity thread.
         # Instead, we delegate to `._map()` with a safer Queue as input
-        streamer = self._map.aio(raw_input_queue, order_outputs, return_exceptions)
-        async for output in streamer:  # type: ignore[reportFunctionMemberAccess]
-            yield output
+        async with aclosing(self._map.aio(raw_input_queue, order_outputs, return_exceptions)) as map_output_stream:
+            async for output in map_output_stream:
+                yield output
     finally:
         feed_input_task.cancel()  # should only be needed in case of exceptions
 
