@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.65.8 (2024-10-31)
+
+- Fixed a bug where the `Image.imports` context manager would not correctly propagate ImportError when using a `modal.Cls`.
+
+
+
 ### 0.65.2 (2024-10-30)
 
 * Fix issue where `modal run` wouldn't exit for 10s if there was a failure during app creation
