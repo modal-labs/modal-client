@@ -284,14 +284,17 @@ class _Image(_Object, type_prefix="im"):
             for exc in self.inside_exceptions:
                 raise exc
 
-    def _add_mount_layer(self, mounts: Sequence[_Mount] = ()):
+    def _add_mount_layer_or_copy(self, mount: _Mount, copy: bool = False):
+        if copy:
+            return self.copy_mount(mount, remote_path="/")
+
         base_image = self
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
             self._hydrate_from_other(base_image)  # same image id as base image as long as it's lazy
-            self._mounts = base_image._mounts + tuple(mounts)
+            self._mounts = base_image._mounts + (mount,)
 
-        return _Image._from_loader(_load, "ImageWithMounts()", deps=lambda: [base_image] + list(mounts))
+        return _Image._from_loader(_load, "ImageWithMounts()", deps=lambda: [base_image, mount])
 
     @property
     def _mount_layers(self) -> typing.Tuple[_Mount]:
@@ -313,16 +316,20 @@ class _Image(_Object, type_prefix="im"):
                 textwrap.dedent(
                     """
                 It's recommended to run any `image.add_*` commands for adding local resources last
-                in your build chain, to prevent having to rebuild images on every local file change.
+                in your build chain to prevent having to rebuild images on every local file change.
+                Modal then optimizes these files to be added as a thin mount layer when starting your
+                container, without having the rebuild an image whenever you change the data.
 
-                If you need local files available in earlier build steps, call image.materialize_added_files()
-                before adding any non-add image build steps, e.g.
+                If you need the files in earlier build steps and are ok with the added build time,
+                you can explicitly enable that using the `copy=True` option, which copies all
+                relevant files into the image itself.
+
+                E.g:
 
                 my_image = (
                     Image.debian_slim()
-                    .add_local_python_packages()  # an "add" virtual layer
-                    .materialize_added_files()  # this copies all virtual layers into the image
-                    .run_commands(...)  # this is now ok!
+                    .add_local_python_packages("mypak", copy=True)
+                    .run_commands("python -m mypak")  # this is now ok!
                 """
                 )
             )
@@ -611,8 +618,7 @@ class _Image(_Object, type_prefix="im"):
         , but it allows you to run additional build steps after this operation.
         """
         mount = _Mount.from_local_python_packages(*packages)
-        img = self._add_mount_layer([mount])
-        if img._m
+        return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy a directory into the image as a part of building the image.
