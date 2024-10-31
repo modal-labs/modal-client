@@ -543,8 +543,8 @@ async def async_zip(*generators):
         except asyncio.CancelledError:
             pass
 
+        first_exception = None
         for gen in generators:
-            first_exception = None
             try:
                 await gen.aclose()
             except BaseException as e:
