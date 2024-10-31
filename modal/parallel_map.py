@@ -205,8 +205,9 @@ async def _map_invocation(
     async def get_all_outputs_and_clean_up():
         assert client.stub
         try:
-            async for item in get_all_outputs():
-                yield item
+            async with aclosing(get_all_outputs()) as output_items:
+                async for item in output_items:
+                    yield item
         finally:
             # "ack" that we have all outputs we are interested in and let backend clear results
             request = api_pb2.FunctionGetOutputsRequest(
@@ -350,8 +351,9 @@ async def _map_async(
         # they accept executable code in the form of
         # iterators that we don't want to run inside the synchronicity thread.
         # Instead, we delegate to `._map()` with a safer Queue as input
-        async for output in self._map.aio(raw_input_queue, order_outputs, return_exceptions):  # type: ignore[reportFunctionMemberAccess]
-            yield output
+        async with aclosing(self._map.aio(raw_input_queue, order_outputs, return_exceptions)) as map_output_stream:
+            async for output in map_output_stream:
+                yield output
     finally:
         feed_input_task.cancel()  # should only be needed in case of exceptions
 

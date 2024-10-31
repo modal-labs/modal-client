@@ -5,8 +5,6 @@ import typing
 from dataclasses import dataclass
 from typing import Any
 
-from synchronicity.synchronizer import Interface
-
 from modal._utils.async_utils import synchronizer
 from modal_proto import api_pb2
 
@@ -69,7 +67,7 @@ class Unpickler(pickle.Unpickler):
                 impl_class, attributes = obj_data
                 impl_instance = impl_class.__new__(impl_class)
                 impl_instance.__dict__.update(attributes)
-                return synchronizer._translate_out(impl_instance, interface=Interface.BLOCKING)
+                return synchronizer._translate_out(impl_instance)
             else:
                 raise ExecutionError("Unknown serialization format")
 

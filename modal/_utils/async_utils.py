@@ -24,6 +24,8 @@ from typing import (
 )
 
 import synchronicity
+from synchronicity.async_utils import Runner
+from synchronicity.exceptions import NestedEventLoops
 from typing_extensions import ParamSpec, assert_type
 
 from ..exception import InvalidError
@@ -325,6 +327,9 @@ class _WarnIfGeneratorIsNotConsumed:
     async def athrow(self, exc):
         return await self.gen.athrow(exc)
 
+    async def aclose(self):
+        return await self.gen.aclose()
+
 
 synchronize_api(_WarnIfGeneratorIsNotConsumed)
 
@@ -371,7 +376,7 @@ class AsyncOrSyncIterable:
     from an already async context, since that would otherwise deadlock the event loop
     """
 
-    def __init__(self, async_iterable: typing.AsyncIterable[Any], nested_async_message):
+    def __init__(self, async_iterable: typing.AsyncGenerator[Any, None], nested_async_message):
         self._async_iterable = async_iterable
         self.nested_async_message = nested_async_message
 
@@ -380,9 +385,10 @@ class AsyncOrSyncIterable:
 
     def __iter__(self):
         try:
-            for output in run_generator_sync(self._async_iterable):  # type: ignore
-                yield output
-        except NestedAsyncCalls:
+            with Runner() as runner:
+                for output in run_async_gen(runner, self._async_iterable):
+                    yield output  # type: ignore
+        except NestedEventLoops:
             raise InvalidError(self.nested_async_message)
 
 
@@ -446,21 +452,11 @@ YIELD_TYPE = typing.TypeVar("YIELD_TYPE")
 SEND_TYPE = typing.TypeVar("SEND_TYPE")
 
 
-class NestedAsyncCalls(Exception):
-    pass
-
-
-def run_generator_sync(
+def run_async_gen(
+    runner: Runner,
     gen: typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE],
 ) -> typing.Generator[YIELD_TYPE, SEND_TYPE, None]:
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        pass  # no event loop - this is what we expect!
-    else:
-        raise NestedAsyncCalls()
-    loop = asyncio.new_event_loop()  # set up new event loop for the map so we can use async logic
-
+    """Convert an async generator into a sync one"""
     # more or less copied from synchronicity's implementation:
     next_send: typing.Union[SEND_TYPE, None] = None
     next_yield: YIELD_TYPE
@@ -468,23 +464,25 @@ def run_generator_sync(
     while True:
         try:
             if exc:
-                next_yield = loop.run_until_complete(gen.athrow(exc))
+                next_yield = runner.run(gen.athrow(exc))
             else:
-                next_yield = loop.run_until_complete(gen.asend(next_send))  # type: ignore[arg-type]
+                next_yield = runner.run(gen.asend(next_send))  # type: ignore[arg-type]
+        except KeyboardInterrupt as e:
+            raise e from None
         except StopAsyncIteration:
-            break
+            break  # typically a graceful exit of the async generator
         try:
             next_send = yield next_yield
             exc = None
         except BaseException as err:
             exc = err
-    loop.close()
 
 
 @asynccontextmanager
-async def aclosing(
-    agen: AsyncGenerator[T, None],
-) -> AsyncGenerator[AsyncGenerator[T, None], None]:
+async def aclosing(agen: AsyncGenerator[T, None]) -> AsyncGenerator[AsyncGenerator[T, None], None]:
+    # ensure aclose is called asynchronously after context manager is closed
+    # call to ensure cleanup after stateful generators since they can't
+    # always be cleaned up by garbage collection
     try:
         yield agen
     finally:

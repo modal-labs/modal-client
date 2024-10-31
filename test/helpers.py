@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import os
 import pathlib
+import signal
 import subprocess
 import sys
 from typing import Optional, Tuple
@@ -54,3 +55,25 @@ def deploy_app_externally(
         print(f"Deploying app failed!\n### stdout ###\n{stdout_s}\n### stderr ###\n{stderr_s}")
         raise Exception("Test helper failed to deploy app")
     return stdout_s
+
+
+class PopenWithCtrlC(subprocess.Popen):
+    def __init__(self, *args, creationflags=0, **kwargs):
+        if sys.platform == "win32":
+            # needed on windows to separate ctrl-c lifecycle of subprocess from parent:
+            creationflags = creationflags | subprocess.CREATE_NEW_CONSOLE  # type: ignore
+
+        super().__init__(*args, **kwargs, creationflags=creationflags)
+
+    def send_ctrl_c(self):
+        # platform independent way to replicate the behavior of Ctrl-C:ing a cli app
+        if sys.platform == "win32":
+            # windows doesn't support sigint, and subprocess.CTRL_C_EVENT has a bunch
+            # of gotchas since it's bound to a console which is the same for the parent
+            # process by default, and can't be sent using the python standard library
+            # to a separate process's console
+            import console_ctrl
+
+            console_ctrl.send_ctrl_c(self.pid)  # noqa [E731]
+        else:
+            self.send_signal(signal.SIGINT)

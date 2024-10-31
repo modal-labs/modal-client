@@ -24,7 +24,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from google.protobuf.message import Message
-from synchronicity import Interface
 
 from modal_proto import api_pb2
 
@@ -793,7 +792,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Initialize objects on the app.
         # This is basically only functions and classes - anything else is deprecated and will be unsupported soon
         if active_app is not None:
-            app: App = synchronizer._translate_out(active_app, Interface.BLOCKING)
+            app: App = synchronizer._translate_out(active_app)
             app._init_container(client, container_app)
 
         # Hydrate all function dependencies.

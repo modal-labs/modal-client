@@ -31,3 +31,4 @@ notebook==6.5.1
 jupytext==1.14.1
 pyright==1.1.351
 pdm==2.12.4  # used for testing pdm cache behavior w/ automounts
+console-ctrl==0.1.0
