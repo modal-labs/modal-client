@@ -634,24 +634,6 @@ async def callable_to_agen(awaitable: Callable[[], Awaitable[T]]) -> AsyncGenera
     yield await awaitable()
 
 
-async def _async_map(
-    queue: "asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper, StopSentinelType]]",
-    async_mapper_func: Callable[[T], Awaitable[V]],
-) -> AsyncGenerator[V, None]:
-    while True:
-        item = await queue.get()
-        try:
-            if isinstance(item, ValueWrapper):
-                yield await async_mapper_func(item.value)
-            elif isinstance(item, ExceptionWrapper):
-                raise item.value
-            else:
-                assert_type(item, StopSentinelType)
-                break
-        finally:
-            queue.task_done()
-
-
 async def async_map(
     input_generator: AsyncGenerator[T, None],
     async_mapper_func: Callable[[T], Awaitable[V]],
@@ -661,7 +643,6 @@ async def async_map(
         maxsize=concurrency * 2
     )
 
-    # Start the producer
     async def producer():
         try:
             async for item in input_generator:
@@ -677,10 +658,23 @@ async def async_map(
             for _ in range(concurrency):
                 await queue.put(STOP_SENTINEL)
 
+    async def worker() -> AsyncGenerator[V, None]:
+        while True:
+            item = await queue.get()
+            try:
+                if isinstance(item, ValueWrapper):
+                    yield await async_mapper_func(item.value)
+                elif isinstance(item, ExceptionWrapper):
+                    raise item.value
+                else:
+                    assert_type(item, StopSentinelType)
+                    break
+            finally:
+                queue.task_done()
+
     producer_task = asyncio.create_task(producer())
 
-    # Create separate mappers
-    mappers = [_async_map(queue, async_mapper_func) for _ in range(concurrency)]
+    mappers = [worker() for _ in range(concurrency)]
     try:
         async for item in async_merge(*mappers):
             yield item
