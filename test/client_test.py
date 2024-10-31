@@ -5,6 +5,7 @@ import subprocess
 import sys
 
 from google.protobuf.empty_pb2 import Empty
+from grpclib import GRPCError
 
 import modal.exception
 from modal import Client
@@ -19,11 +20,11 @@ TEST_TIMEOUT = 4.0  # align this with the container client timeout in client.py
 def test_client_type(servicer, client):
     assert len(servicer.requests) == 1
     assert isinstance(servicer.requests[0], Empty)
-    assert servicer.client_create_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
+    assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
 
 
 def test_client_platform_string(servicer, client):
-    platform_str = servicer.client_create_metadata["x-modal-platform"]
+    platform_str = servicer.last_metadata["x-modal-platform"]
     system, release, machine = platform_str.split("-")
     if platform.system() == "Darwin":
         assert system == "macOS"
@@ -38,7 +39,7 @@ def test_client_platform_string(servicer, client):
 async def test_container_client_type(servicer, container_client):
     assert len(servicer.requests) == 1  # no heartbeat, just ClientHello
     assert isinstance(servicer.requests[0], Empty)
-    assert servicer.client_create_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
+    assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
 
 
 @pytest.mark.asyncio
@@ -86,26 +87,22 @@ async def test_client_connection_timeout(servicer, monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.timeout(TEST_TIMEOUT)
 async def test_client_server_error(servicer):
-    with pytest.raises(ConnectionError) as excinfo:
-        async with Client("https://github.com", api_pb2.CLIENT_TYPE_CLIENT, None):
+    with pytest.raises(GRPCError):
+        async with Client("https://modal.com", api_pb2.CLIENT_TYPE_CLIENT, None):
             pass
-    # Can't connect over gRPC, but the HTTP lookup should succeed
-    assert "HTTP status: 200" in str(excinfo.value)
 
 
 @pytest.mark.asyncio
-async def test_client_old_version(servicer):
+async def test_client_old_version(servicer, credentials):
     with pytest.raises(VersionError):
-        async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret"), version="0.0.0"):
+        async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials, version="0.0.0"):
             pass
 
 
 @pytest.mark.asyncio
-async def test_client_deprecated(servicer):
+async def test_client_deprecated(servicer, credentials):
     with pytest.warns(modal.exception.DeprecationError):
-        async with Client(
-            servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("foo-id", "foo-secret"), version="deprecated"
-        ):
+        async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials, version="deprecated"):
             pass
 
 
@@ -116,26 +113,27 @@ async def test_client_unauthenticated(servicer):
             pass
 
 
-def client_from_env(client_addr):
+def client_from_env(client_addr, credentials):
+    token_id, token_secret = credentials
     _override_config = {
         "server_url": client_addr,
-        "token_id": "foo-id",
-        "token_secret": "foo-secret",
+        "token_id": token_id,
+        "token_secret": token_secret,
         "task_id": None,
         "task_secret": None,
     }
     return Client.from_env(_override_config=_override_config)
 
 
-def test_client_from_env(servicer):
+def test_client_from_env_client(servicer, credentials):
     try:
         # First, a failing one
         with pytest.raises(ConnectionError):
-            client_from_env("https://foo.invalid")
+            client_from_env("https://foo.invalid", credentials)
 
         # Make sure later clients can still succeed
-        client_1 = client_from_env(servicer.client_addr)
-        client_2 = client_from_env(servicer.client_addr)
+        client_1 = client_from_env(servicer.client_addr, credentials)
+        client_2 = client_from_env(servicer.client_addr, credentials)
         assert isinstance(client_1, Client)
         assert isinstance(client_2, Client)
         assert client_1 == client_2
@@ -145,12 +143,24 @@ def test_client_from_env(servicer):
 
     try:
         # After stopping, creating a new client should return a new one
-        client_3 = client_from_env(servicer.client_addr)
-        client_4 = client_from_env(servicer.client_addr)
+        client_3 = client_from_env(servicer.client_addr, credentials)
+        client_4 = client_from_env(servicer.client_addr, credentials)
         assert client_3 != client_1
         assert client_4 == client_3
     finally:
         Client.set_env_client(None)
+
+
+def test_client_token_auth_in_sandbox(servicer, credentials, monkeypatch) -> None:
+    """Ensure that clients can connect with token credentials inside a sandbox.
+
+    This test is needed so that modal.com/playground works, since it relies on
+    running a sandbox with token credentials. Also, `modal shell` uses this to
+    preserve its auth context inside the shell.
+    """
+    monkeypatch.setenv("MODAL_TASK_ID", "ta-123")
+    _client = client_from_env(servicer.client_addr, credentials)
+    assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
 
 
 def test_multiple_profile_error(servicer, modal_config):
@@ -167,10 +177,10 @@ def test_multiple_profile_error(servicer, modal_config):
     """
     with modal_config(config):
         with pytest.raises(InvalidError, match="More than one Modal profile is active"):
-            Client.verify(servicer.client_addr, None)
+            Client.from_env()
 
 
-def test_implicit_default_profile_warning(servicer, modal_config):
+def test_implicit_default_profile_warning(servicer, modal_config, server_url_env):
     config = """
     [default]
     token_id = 'ak-abc'
@@ -182,7 +192,7 @@ def test_implicit_default_profile_warning(servicer, modal_config):
     """
     with modal_config(config):
         with pytest.raises(DeprecationError, match="Support for using an implicit 'default' profile is deprecated."):
-            Client.verify(servicer.client_addr, None)
+            Client.from_env()
 
     config = """
     [default]
@@ -190,8 +200,9 @@ def test_implicit_default_profile_warning(servicer, modal_config):
     token_secret = 'as_xyz'
     """
     with modal_config(config):
+        servicer.required_creds = {"ak-abc": "as_xyz"}
         # A single profile should be fine, even if not explicitly active and named 'default'
-        Client.verify(servicer.client_addr, None)
+        Client.from_env()
 
 
 def test_import_modal_from_thread(supports_dir):
@@ -199,3 +210,38 @@ def test_import_modal_from_thread(supports_dir):
     # For example, in Python <3.10, creating loop-bound asyncio primitives in global scope would
     # trigger an exception if there is no event loop in the thread (and it's not the main thread)
     subprocess.check_call([sys.executable, supports_dir / "import_modal_from_thread.py"])
+
+
+def test_from_env_container(servicer, container_env):
+    servicer.required_creds = {}  # Disallow default client creds
+    Client.from_env()
+    # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
+    assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
+
+
+def test_from_env_container_with_tokens(servicer, container_env, token_env):
+    # Even if MODAL_TOKEN_ID and MODAL_TOKEN_SECRET are set, if we're in a containers, ignore those
+    servicer.required_creds = {}  # Disallow default client creds
+    with pytest.warns(match="token"):
+        Client.from_env()
+    # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
+    assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
+
+
+def test_from_credentials_client(servicer, set_env_client, server_url_env, token_env):
+    # Note: this explicitly uses a lot of fixtures to make sure those are ignored
+    token_id = "ak-foo-1"
+    token_secret = "as-bar"
+    servicer.required_creds = {token_id: token_secret}
+    Client.from_credentials(token_id, token_secret)
+    # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
+    assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
+
+
+def test_from_credentials_container(servicer, container_env):
+    token_id = "ak-foo-2"
+    token_secret = "as-bar"
+    servicer.required_creds = {token_id: token_secret}
+    Client.from_credentials(token_id, token_secret)
+    # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
+    assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)

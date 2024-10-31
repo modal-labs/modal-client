@@ -62,7 +62,7 @@ ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10"]
 # so that we fail fast / clearly in unsupported containers. Additionally, we enumerate the supported
 # Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
 # Consider consolidating these multiple sources of truth?
-SUPPORTED_PYTHON_SERIES: Set[str] = {"3.8", "3.9", "3.10", "3.11", "3.12"}
+SUPPORTED_PYTHON_SERIES: List[str] = ["3.8", "3.9", "3.10", "3.11", "3.12"]
 
 LOCAL_REQUIREMENTS_DIR = Path(__file__).parent / "requirements"
 CONTAINER_REQUIREMENTS_PATH = "/modal_requirements.txt"
@@ -131,12 +131,14 @@ def _get_modal_requirements_path(builder_version: ImageBuilderVersion, python_ve
 
 
 def _get_modal_requirements_command(version: ImageBuilderVersion) -> str:
-    command = "pip install"
-    if version <= "2023.12":
-        args = f"-r {CONTAINER_REQUIREMENTS_PATH}"
-    else:
-        args = f"--no-cache --no-deps -r {CONTAINER_REQUIREMENTS_PATH}"
-    return f"{command} {args}"
+    if version == "2023.12":
+        prefix = "pip install"
+    elif version == "2024.04":
+        prefix = "pip install --no-cache --no-deps"
+    else:  # Currently, 2024.10+
+        prefix = "uv pip install --system --compile-bytecode --no-cache --no-deps"
+
+    return f"{prefix} -r {CONTAINER_REQUIREMENTS_PATH}"
 
 
 def _flatten_str_args(function_name: str, arg_name: str, args: Tuple[Union[str, List[str]], ...]) -> List[str]:

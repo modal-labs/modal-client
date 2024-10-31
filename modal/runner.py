@@ -25,7 +25,6 @@ from .cls import _Cls
 from .config import config, logger
 from .environments import _get_environment_cached
 from .exception import (
-    ExecutionError,
     InteractiveTimeoutError,
     InvalidError,
     RemoteError,
@@ -129,9 +128,6 @@ async def _create_all_objects(
     environment_name: str,
 ) -> None:
     """Create objects that have been defined but not created on the server."""
-    if not client.authenticated:
-        raise ExecutionError("Objects cannot be created with an unauthenticated client")
-
     resolver = Resolver(
         client,
         environment_name=environment_name,
@@ -291,6 +287,7 @@ async def _run_app(
 
     if client is None:
         client = await _Client.from_env()
+
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
     running_app: RunningApp = await _init_local_app_new(
         client,
@@ -331,12 +328,14 @@ async def _run_app(
             # Publish the app
             await _publish_app(client, running_app, app_state, app._indexed_objects)
         except asyncio.CancelledError as e:
-            # this typically happens on sigint/ctrl-C during setup (they KeyboardInterrupt happens in the main thread)
+            # this typically happens on sigint/ctrl-C during setup (the KeyboardInterrupt happens in the main thread)
             if output_mgr := _get_output_manager():
                 output_mgr.print("Aborting app initialization...\n")
 
             await _status_based_disconnect(client, running_app.app_id, e)
-            app._uncreate_all_objects()
+            raise
+        except BaseException as e:
+            await _status_based_disconnect(client, running_app.app_id, e)
             raise
 
         try:
@@ -351,6 +350,8 @@ async def _run_app(
                     yield app
             else:
                 yield app
+            # successful completion!
+            await _status_based_disconnect(client, running_app.app_id, exc_info=None)
         except KeyboardInterrupt as e:
             # this happens only if sigint comes in during the yield block above
             if detach:
@@ -385,14 +386,13 @@ async def _run_app(
                     )
             return
         except BaseException as e:
-            # TODO: unexpected error - log something?
+            logger.info("Exception during app run")
             await _status_based_disconnect(client, running_app.app_id, e)
             raise
-        finally:
-            app._uncreate_all_objects()
 
-        # successful completion!
-        await _status_based_disconnect(client, running_app.app_id, exc_info=None)
+        # wait for logs gracefully, even though the task context would do the same
+        # this allows us to log a more specific warning in case the app doesn't
+        # provide all logs before exit
         if logs_loop:
             try:
                 await asyncio.wait_for(logs_loop, timeout=logs_timeout)

@@ -43,7 +43,7 @@ def dummy() -> None:
 
 
 def test_supported_python_series():
-    assert SUPPORTED_PYTHON_SERIES == PYTHON_STANDALONE_VERSIONS.keys()
+    assert SUPPORTED_PYTHON_SERIES == list(PYTHON_STANDALONE_VERSIONS)
 
 
 def get_image_layers(image_id: str, servicer) -> List[api_pb2.Image]:
@@ -136,8 +136,13 @@ def test_image_base(builder_version, servicer, client, test_dir):
             if builder_version == "2023.12":
                 assert "pip install -r /modal_requirements.txt" in commands
             else:
-                assert "pip install --no-cache --no-deps -r /modal_requirements.txt" in commands
                 assert "rm /modal_requirements.txt" in commands
+                if builder_version == "2024.04":
+                    assert "pip install --no-cache --no-deps -r /modal_requirements.txt" in commands
+                else:
+                    assert (
+                        "uv pip install --system --compile-bytecode" " --no-cache --no-deps -r /modal_requirements.txt"
+                    ) in commands
 
 
 @pytest.mark.parametrize("python_version", [None, "3.10", "3.11.4"])
@@ -904,7 +909,7 @@ def test_get_modal_requirements_path(builder_version, python_version):
         assert path.endswith(f"{builder_version}.txt")
 
 
-def test_image_builder_version(servicer, test_dir, modal_config):
+def test_image_builder_version(servicer, credentials, test_dir, modal_config):
     app = App(image=Image.debian_slim())
     app.function()(dummy)
 
@@ -923,7 +928,7 @@ def test_image_builder_version(servicer, test_dir, modal_config):
             with mock.patch("modal.image._base_image_config", mock_base_image_config):
                 with mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"]):
                     with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
-                        with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-xyz")) as client:
+                        with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
                             with modal_config():
                                 with app.run(client=client):
                                     assert servicer.image_builder_versions
@@ -931,7 +936,7 @@ def test_image_builder_version(servicer, test_dir, modal_config):
                                         assert version == "2000.01"
 
 
-def test_image_builder_supported_versions(servicer):
+def test_image_builder_supported_versions(servicer, credentials):
     app = App(image=Image.debian_slim())
     app.function()(dummy)
 
@@ -939,7 +944,7 @@ def test_image_builder_supported_versions(servicer):
     with pytest.raises(VersionError, match=r"This version of the modal client supports.+{'2000.01'}"):
         with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
             with mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.11"]):
-                with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-xyz")) as client:
+                with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
                     with app.run(client=client):
                         pass
 
