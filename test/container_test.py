@@ -1060,6 +1060,18 @@ def test_cls_enter_uses_event_loop(servicer):
 
 
 @skip_github_non_linux
+def test_cls_with_image(servicer):
+    ret = _run_container(
+        servicer,
+        "test.supports.class_with_image",
+        "ClassWithImage.*",
+        inputs=_get_inputs(((), {}), method_name="image_is_hydrated"),
+        is_class=True,
+    )
+    assert _unwrap_scalar(ret) == True
+
+
+@skip_github_non_linux
 def test_container_heartbeats(servicer):
     _run_container(servicer, "test.supports.functions", "square")
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in servicer.requests)
