@@ -241,10 +241,6 @@ enum TaskState {
 }
 
 enum VolumeFsVersion {
-  option allow_alias = true;
-  UNSPECIFIED = 0;
-  V1 = 1;
-  V2 = 2;
   VOLUME_FS_VERSION_UNSPECIFIED = 0;
   VOLUME_FS_VERSION_V1 = 1;
   VOLUME_FS_VERSION_V2 = 2;
