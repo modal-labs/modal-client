@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from typing import (
     Any,
     AsyncGenerator,
-    AsyncIterable,
     Awaitable,
     Callable,
     Iterable,
@@ -492,20 +491,20 @@ async def aclosing(
         await agen.aclose()
 
 
-async def sync_or_async_iter(iterable: Union[Iterable[T], AsyncIterable[T]]) -> AsyncGenerator[T, None]:
-    if hasattr(iterable, "__aiter__"):
-        agen = typing.cast(AsyncGenerator[T, None], iterable)
+async def sync_or_async_iter(iter: Union[Iterable[T], AsyncGenerator[T, None]]) -> AsyncGenerator[T, None]:
+    if hasattr(iter, "__aiter__"):
+        agen = typing.cast(AsyncGenerator[T, None], iter)
         try:
             async for item in agen:
                 yield item
         finally:
             await agen.aclose()
     else:
-        assert hasattr(iterable, "__iter__"), "sync_or_async_iter requires an iterable or async iterable"
+        assert hasattr(iter, "__iter__"), "sync_or_async_iter requires an Iterable or AsyncGenerator"
         # This intentionally could block the event loop for the duration of calling __iter__ and __next__,
         # so in non-trivial cases (like passing lists and ranges) this could be quite a foot gun for users #
         # w/ async code (but they can work around it by always using async iterators)
-        for item in typing.cast(Iterable[T], iterable):
+        for item in typing.cast(Iterable[T], iter):
             yield item
 
 
