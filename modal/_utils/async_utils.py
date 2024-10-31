@@ -639,17 +639,14 @@ async def async_map(
     async_mapper_func: Callable[[T], Awaitable[V]],
     concurrency: int,
 ) -> AsyncGenerator[V, None]:
-    queue: "asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper, StopSentinelType]]" = asyncio.Queue(
-        maxsize=concurrency * 2
-    )
+    queue: asyncio.Queue[Union[ValueWrapper[T], StopSentinelType]] = asyncio.Queue(maxsize=concurrency * 2)
 
     async def producer():
-        try:
-            async for item in input_generator:
-                await queue.put(ValueWrapper(item))
-        finally:
-            for _ in range(concurrency):
-                await queue.put(STOP_SENTINEL)
+        async for item in input_generator:
+            await queue.put(ValueWrapper(item))
+
+        for _ in range(concurrency):
+            await queue.put(STOP_SENTINEL)
 
         return
         yield  # noqa
@@ -668,8 +665,9 @@ async def async_map(
             finally:
                 queue.task_done()
 
-    async for item in async_merge(*[worker() for _ in range(concurrency)], producer()):
-        yield item
+    async with aclosing(async_merge(*[worker() for _ in range(concurrency)], producer())) as stream:
+        async for item in stream:
+            yield item
 
 
 async def async_map_ordered(
