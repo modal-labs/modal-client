@@ -721,7 +721,7 @@ async def test_callable_to_agen():
 
 
 @pytest.mark.asyncio
-async def test_async_concat():
+async def test_async_chain():
     async def gen1():
         await asyncio.sleep(0.1)
         yield 1
@@ -744,7 +744,7 @@ async def test_async_concat():
 
 
 @pytest.mark.asyncio
-async def test_async_concat_sequential():
+async def test_async_chain_sequential():
     ev = asyncio.Event()
 
     async def gen1():
@@ -776,7 +776,7 @@ async def test_async_concat_sequential():
 
 
 @pytest.mark.asyncio
-async def test_async_concat_exception():
+async def test_async_chain_exception():
     # test exception bubbling up
     result = []
     states = []
@@ -809,7 +809,7 @@ async def test_async_concat_exception():
 
 
 @pytest.mark.asyncio
-async def test_async_concat_cancellation():
+async def test_async_chain_cancellation():
     ev = asyncio.Event()
 
     async def gen1():
@@ -837,7 +837,7 @@ async def test_async_concat_cancellation():
 
 
 @pytest.mark.asyncio
-async def test_async_concat_producer_cancellation():
+async def test_async_chain_producer_cancellation():
     async def gen1():
         await asyncio.sleep(0.1)
         yield 1
@@ -857,7 +857,7 @@ async def test_async_concat_producer_cancellation():
 
 
 @pytest.mark.asyncio
-async def test_async_concat_cleanup():
+async def test_async_chain_cleanup():
     # test cleanup of generators
     result = []
     states = []
