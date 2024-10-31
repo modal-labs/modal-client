@@ -6,7 +6,6 @@ import os
 import platform
 import pytest
 import re
-import signal
 import subprocess
 import sys
 import tempfile
@@ -25,6 +24,7 @@ from modal.cli.entry_point import entrypoint_cli
 from modal.exception import InvalidError
 from modal_proto import api_pb2
 
+from . import helpers
 from .supports.skip import skip_windows
 
 dummy_app_file = """
@@ -981,15 +981,14 @@ def test_call_update_environment_suffix(servicer, set_env_client):
     _run(["environment", "update", "main", "--set-web-suffix", "_"])
 
 
-def _run_subprocess(cli_cmd: List[str]) -> subprocess.Popen:
-    p = subprocess.Popen(
+def _run_subprocess(cli_cmd: List[str]) -> helpers.PopenWithCtrlC:
+    p = helpers.PopenWithCtrlC(
         [sys.executable, "-m", "modal"] + cli_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf8"
     )
     return p
 
 
 @pytest.mark.timeout(10)
-@skip_windows("no sigint on windows")
 def test_keyboard_interrupt_during_app_load(servicer, server_url_env, token_env, supports_dir):
     ctx: InterceptionContext
     creating_function = threading.Event()
@@ -1003,15 +1002,14 @@ def test_keyboard_interrupt_during_app_load(servicer, server_url_env, token_env,
 
         p = _run_subprocess(["run", f"{supports_dir / 'hello.py'}::hello"])
         creating_function.wait()
-        p.send_signal(signal.SIGINT)
-        out, err = p.communicate(timeout=1)
+        p.send_ctrl_c()
+        out, err = p.communicate(timeout=5)
         print(out)
         assert "Traceback" not in err
         assert "Aborting app initialization..." in out
 
 
 @pytest.mark.timeout(10)
-@skip_windows("no sigint on windows")
 def test_keyboard_interrupt_during_app_run(servicer, server_url_env, token_env, supports_dir):
     ctx: InterceptionContext
     waiting_for_output = threading.Event()
@@ -1025,14 +1023,13 @@ def test_keyboard_interrupt_during_app_run(servicer, server_url_env, token_env, 
 
         p = _run_subprocess(["run", f"{supports_dir / 'hello.py'}::hello"])
         waiting_for_output.wait()
-        p.send_signal(signal.SIGINT)
-        out, err = p.communicate(timeout=1)
+        p.send_ctrl_c()
+        out, err = p.communicate(timeout=5)
         assert "App aborted. View run at https://modaltest.com/apps/ap-123" in out
         assert "Traceback" not in err
 
 
 @pytest.mark.timeout(10)
-@skip_windows("no sigint on windows")
 def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, token_env, supports_dir):
     ctx: InterceptionContext
     waiting_for_output = threading.Event()
@@ -1046,8 +1043,8 @@ def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, toke
 
         p = _run_subprocess(["run", "--detach", f"{supports_dir / 'hello.py'}::hello"])
         waiting_for_output.wait()
-        p.send_signal(signal.SIGINT)
-        out, err = p.communicate(timeout=1)
+        p.send_ctrl_c()
+        out, err = p.communicate(timeout=5)
         print(out)
         assert "Shutting down Modal client." in out
         assert "The detached app keeps running. You can track its progress at:" in out

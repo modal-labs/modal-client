@@ -5,10 +5,10 @@ import logging
 import os
 import platform
 import pytest
-import signal
 import subprocess
 import sys
 import textwrap
+from test import helpers
 
 import pytest_asyncio
 from synchronicity import Synchronizer
@@ -636,7 +636,8 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     import asyncio
     import time
     from itertools import count
-    from modal._utils.async_utils import Runner, aclosing
+    from synchronicity.async_utils import Runner
+    from modal._utils.async_utils import run_async_gen
     async def async_gen():
         print("enter")
         try:
@@ -652,32 +653,25 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
             print("bye")
     try:
         with Runner() as runner:
-            for res in runner.run_async_gen(async_gen()):
+            for res in run_async_gen(runner, async_gen()):
                 print("res", res)
     except KeyboardInterrupt:
         print("KeyboardInterrupt")
     """
     )
-    if sys.platform == "win32":
-        # workaround to be able to _test_ Ctrl-C response on windows
-        import console_ctrl
 
-        creationflags = subprocess.CREATE_NEW_CONSOLE  # type: ignore
-        platform_sigint = lambda p: console_ctrl.send_ctrl_c(p.pid)  # noqa [E731]
-    else:
-        creationflags = 0
-        platform_sigint = lambda p: p.send_signal(signal.SIGINT)  # noqa [E731]
-
-    p = subprocess.Popen(
+    p = helpers.PopenWithCtrlC(
         [sys.executable, "-u", "-c", code],
         encoding="utf8",
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        creationflags=creationflags,
     )
 
     def line():
         s = p.stdout.readline().rstrip("\n")
+        if s == "":
+            print(p.stderr.read())
+            raise Exception("no stdout")
         print(s)
         return s
 
@@ -685,7 +679,7 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     assert line() == "res 0"
     assert line() == "res 1"
 
-    platform_sigint(p)
+    p.send_ctrl_c()
     print("sent ctrl-C")
     while (nextline := line()).startswith("res"):
         pass
