@@ -641,7 +641,7 @@ async def async_map(
 ) -> AsyncGenerator[V, None]:
     queue: asyncio.Queue[Union[ValueWrapper[T], StopSentinelType]] = asyncio.Queue(maxsize=concurrency * 2)
 
-    async def producer() -> AsyncGenerator[None, None]:
+    async def producer() -> AsyncGenerator[V, None]:
         async for item in input_generator:
             await queue.put(ValueWrapper(item))
 
@@ -649,7 +649,8 @@ async def async_map(
             await queue.put(STOP_SENTINEL)
 
         if False:
-            # This is just here to make the type checker happy
+            # Need it to be an async generator for async_merge
+            # but we don't want to yield anything
             yield
 
     async def worker() -> AsyncGenerator[V, None]:
@@ -686,9 +687,7 @@ async def async_map_ordered(
     next_idx = 0
     buffer = {}
 
-    async with aclosing(counter()) as counter_gen, aclosing(
-        async_zip(counter_gen, input_generator)
-    ) as zipped_input, aclosing(async_map(zipped_input, mapper_func_wrapper, concurrency)) as stream:
+    async with aclosing(async_map(async_zip(counter(), input_generator), mapper_func_wrapper, concurrency)) as stream:
         async for output_idx, output_item in stream:
             buffer[output_idx] = output_item
 
