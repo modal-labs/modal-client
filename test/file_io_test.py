@@ -1,6 +1,9 @@
 # Copyright Modal Labs 2024
 import pytest
 
+from grpclib import Status
+from grpclib.exceptions import GRPCError
+
 from modal.file_io import FileIO
 from modal_proto import api_pb2
 
@@ -313,3 +316,28 @@ def test_invalid_mode(servicer, client):
     for mode in invalid_modes:
         with pytest.raises(ValueError):
             FileIO.create("/test.txt", mode, client, "task-123")
+
+
+def test_client_retry(servicer, client):
+    """Test client retry."""
+    retries = 5
+    content = "foo\nbar\nbaz\n"
+
+    async def container_filesystem_exec_get_output(servicer, stream):
+        nonlocal retries
+        req = await stream.recv_message()
+        if req.exec_id == READ_EXEC_ID:
+            if retries > 0:
+                retries -= 1
+                raise GRPCError(Status.UNAVAILABLE, "test")
+            await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(output=[content.encode()]))
+        await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(eof=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
+        ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
+
+        f = FileIO.create("/test.txt", "w+", client, "task-123")
+        f.write(content)
+        assert f.read() == content
+        f.close()

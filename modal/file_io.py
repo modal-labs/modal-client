@@ -1,10 +1,14 @@
 # Copyright Modal Labs 2024
+import asyncio
 import io
 from typing import AsyncIterator, List, Optional, Union, cast
+
+from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
+from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from .client import _Client
 from .exception import FilesystemExecutionError
 
@@ -86,10 +90,25 @@ class _FileIO:
 
     async def _wait(self, exec_id: str) -> Union[bytes, str]:
         output = b""
-        async for data in self._consume_output(exec_id):
-            if data is None:
-                break
-            output += data
+        completed = False
+        retries_remaining = 10
+        while not completed:
+            try:
+                async for data in self._consume_output(exec_id):
+                    if data is None:
+                        completed = True
+                        break
+                    output += data
+            except (GRPCError, StreamTerminatedError) as exc:
+                if retries_remaining > 0:
+                    retries_remaining -= 1
+                    if isinstance(exc, GRPCError):
+                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                            await asyncio.sleep(1.0)
+                            continue
+                    elif isinstance(exc, StreamTerminatedError):
+                        continue
+                raise
         if self._binary:
             return output
         return output.decode("utf-8")
