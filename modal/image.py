@@ -313,7 +313,6 @@ class _Image(_Object, type_prefix="im"):
 
     def _assert_materialized(self):
         if self._mount_layers:
-            print("mount layers", self._mount_layers)
             raise InvalidError(
                 textwrap.dedent(
                     """
