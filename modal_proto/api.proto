@@ -78,6 +78,7 @@ enum CheckpointStatus {
 enum ClientType {
   CLIENT_TYPE_UNSPECIFIED = 0;
   CLIENT_TYPE_CLIENT = 1;
+  CLIENT_TYPE_WORKER = 2;
   CLIENT_TYPE_CONTAINER = 3;
   CLIENT_TYPE_WEB_SERVER = 5;
 }
@@ -109,6 +110,13 @@ enum DeploymentNamespace {
   DEPLOYMENT_NAMESPACE_UNSPECIFIED = 0;
   DEPLOYMENT_NAMESPACE_WORKSPACE = 1;
   DEPLOYMENT_NAMESPACE_GLOBAL = 3;
+}
+
+enum ExecOutputOption {
+  EXEC_OUTPUT_OPTION_UNSPECIFIED = 0;
+  EXEC_OUTPUT_OPTION_DEVNULL = 1;
+  EXEC_OUTPUT_OPTION_PIPE = 2;
+  EXEC_OUTPUT_OPTION_STDOUT = 3;
 }
 
 enum FileDescriptor {
@@ -174,6 +182,12 @@ enum ProxyIpStatus {
   PROXY_IP_STATUS_UNHEALTHY = 4;
 }
 
+enum ProxyType {
+  PROXY_TYPE_UNSPECIFIED = 0;
+  PROXY_TYPE_LEGACY = 1;
+  PROXY_TYPE_VPROX = 2;
+}
+
 enum RateLimitInterval {
   RATE_LIMIT_INTERVAL_UNSPECIFIED = 0;
   RATE_LIMIT_INTERVAL_SECOND = 1;
@@ -186,6 +200,29 @@ enum RegistryAuthType {
   REGISTRY_AUTH_TYPE_GCP = 2;
   REGISTRY_AUTH_TYPE_PUBLIC = 3;
   REGISTRY_AUTH_TYPE_STATIC_CREDS = 4;
+}
+
+enum SeekWhence {
+  SEEK_SET = 0;
+  SEEK_CUR = 1;
+  SEEK_END = 2;
+}
+
+enum SystemErrorCode {
+  SYSTEM_ERROR_CODE_UNSPECIFIED = 0;
+  SYSTEM_ERROR_CODE_PERM = 1;           // EPERM: Operation not permitted
+  SYSTEM_ERROR_CODE_NOENT = 2;          // ENOENT: No such file or directory
+  SYSTEM_ERROR_CODE_IO = 5;             // EIO: Input/output error
+  SYSTEM_ERROR_CODE_NXIO = 6;           // ENXIO: No such device or address
+  SYSTEM_ERROR_CODE_NOMEM = 12;         // ENOMEM: Out of memory
+  SYSTEM_ERROR_CODE_ACCES = 13;         // EACCES: Permission denied
+  SYSTEM_ERROR_CODE_EXIST = 17;         // EEXIST: File exists
+  SYSTEM_ERROR_CODE_NOTDIR = 20;        // ENOTDIR: Not a directory
+  SYSTEM_ERROR_CODE_ISDIR = 21;         // EISDIR: Is a directory
+  SYSTEM_ERROR_CODE_INVAL = 22;         // EINVAL: Invalid argument
+  SYSTEM_ERROR_CODE_MFILE = 24;         // EMFILE: Too many open files
+  SYSTEM_ERROR_CODE_FBIG = 27;          // EFBIG: File too large
+  SYSTEM_ERROR_CODE_NOSPC = 28;         // ENOSPC: No space left on device
 }
 
 enum TaskState {
@@ -703,6 +740,8 @@ message ContainerExecRequest {
   // Send SIGTERM to running container on exit of exec command.
   bool terminate_container_on_exit = 4;
   bool runtime_debug = 5; // For internal debugging use only.
+  ExecOutputOption stdout_output = 6;
+  ExecOutputOption stderr_output = 7;
 }
 
 message ContainerExecResponse {
@@ -717,6 +756,80 @@ message ContainerExecWaitRequest {
 message ContainerExecWaitResponse {
   optional int32 exit_code = 1;
   bool completed = 2;
+}
+
+message ContainerFileCloseRequest {
+  string file_descriptor = 1;
+}
+
+message ContainerFileDeleteBytesRequest {
+  string file_descriptor = 1;
+  optional uint32 start_inclusive = 2;
+  optional uint32 end_exclusive = 3;
+}
+
+message ContainerFileFlushRequest {
+  string file_descriptor = 1;
+}
+
+message ContainerFileOpenRequest {
+  // file descriptor is hydrated when sent from server -> worker
+  optional string file_descriptor = 1;
+  string path = 2;
+  string mode = 3;
+}
+
+message ContainerFileReadLineRequest {
+  string file_descriptor = 1;
+}
+
+message ContainerFileReadRequest {
+  string file_descriptor = 1;
+  optional uint32 n = 2;
+}
+
+message ContainerFileSeekRequest {
+  string file_descriptor = 1;
+  int32 offset = 2;
+  SeekWhence whence = 3;
+}
+
+message ContainerFileWriteReplaceBytesRequest {
+  string file_descriptor = 1;
+  bytes data = 2;
+  optional uint32 start_inclusive = 3;
+  optional uint32 end_exclusive = 4;
+}
+
+message ContainerFileWriteRequest {
+  string file_descriptor = 1;
+  bytes data = 2;
+}
+
+message ContainerFilesystemExecGetOutputRequest {
+  string exec_id = 1;
+  float timeout = 2;
+}
+
+message ContainerFilesystemExecRequest {
+  oneof file_exec_request_oneof {
+    ContainerFileOpenRequest file_open_request = 1;
+    ContainerFileWriteRequest file_write_request = 2;
+    ContainerFileReadRequest file_read_request = 3;
+    ContainerFileFlushRequest file_flush_request = 4;
+    ContainerFileReadLineRequest file_read_line_request = 5;
+    ContainerFileSeekRequest file_seek_request = 6;
+    ContainerFileDeleteBytesRequest file_delete_bytes_request = 7;
+    ContainerFileWriteReplaceBytesRequest file_write_replace_bytes_request = 8;
+    ContainerFileCloseRequest file_close_request = 9;
+  }
+  string task_id = 10;
+}
+
+message ContainerFilesystemExecResponse {
+  string exec_id = 1;
+  // only set when the request opens a new file, i.e., ContainerFileOpenRequest
+  optional string file_descriptor = 2;
 }
 
 message ContainerHeartbeatRequest {
@@ -952,6 +1065,13 @@ message FileEntry {
   uint64 size = 4;
 }
 
+message FilesystemRuntimeOutputBatch {
+  repeated bytes output = 1;
+  optional SystemErrorMessage error = 2;
+  uint64 batch_index = 3;
+  bool eof = 4;
+}
+
 message Function {
   string module_name = 1;
   string function_name = 2;
@@ -1038,7 +1158,7 @@ message Function {
   repeated S3Mount s3_mounts = 47;
   repeated CloudBucketMount cloud_bucket_mounts = 51;
 
-  bool _experimental_boost = 48;
+  reserved 48; // _experimental_boost
 
   // If set, tasks will be scheduled using the new scheduler, which also knows
   // to look at fine-grained placement constraints.
@@ -1075,6 +1195,8 @@ message Function {
 
   uint32 _experimental_buffer_containers = 69;
 
+  // _experimental_proxy_ip -> ProxyInfo
+  // TODO: deprecate.
   optional string _experimental_proxy_ip = 70;
 
   bool runtime_perf_record = 71; // For internal debugging use only.
@@ -1204,13 +1326,10 @@ message FunctionData {
   // When the function is a "grouped" one, this records the # of tasks we want
   // to schedule in tandem.
   uint32 _experimental_group_size = 19;
-  // TODO(irfansharif): We're using this field to enable new gang-scheduling
-  // primitives. Remove it when it's only controlled through the
-  // _experimental_group_size field.
-  bool _experimental_boost = 21;
 
   Schedule schedule = 20;
 
+  reserved 21;
 }
 
 message FunctionExtended {
@@ -1692,6 +1811,7 @@ message ProxyInfo {
   string proxy_key = 2;
   string remote_addr = 3;
   int32 remote_port = 4;
+  ProxyType proxy_type = 5;
 }
 
 message ProxyIp {
@@ -2067,6 +2187,10 @@ message SecretListResponse {
   string environment_name = 2; // the environment that was listed (useful when relying on "default" logic)
 }
 
+message SharedVolumeDeleteRequest {
+  string shared_volume_id = 1;
+}
+
 message SharedVolumeGetFileRequest {
   string shared_volume_id = 1;
   string path = 2;
@@ -2146,6 +2270,11 @@ message SharedVolumeRemoveFileRequest {
   string shared_volume_id = 1 [ (modal.options.audit_target_attr) = true ];
   string path = 2;
   bool recursive = 3;
+}
+
+message SystemErrorMessage {
+  SystemErrorCode error_code = 1;
+  string error_message = 2;
 }
 
 message TaskCurrentInputsResponse {
@@ -2442,6 +2571,8 @@ service ModalClient {
   rpc ContainerExecGetOutput(ContainerExecGetOutputRequest) returns (stream RuntimeOutputBatch);
   rpc ContainerExecPutInput(ContainerExecPutInputRequest) returns (google.protobuf.Empty);
   rpc ContainerExecWait(ContainerExecWaitRequest) returns (ContainerExecWaitResponse);
+  rpc ContainerFilesystemExec(ContainerFilesystemExecRequest) returns (ContainerFilesystemExecResponse);
+  rpc ContainerFilesystemExecGetOutput(ContainerFilesystemExecGetOutputRequest) returns (stream FilesystemRuntimeOutputBatch);
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (ContainerHeartbeatResponse);
   rpc ContainerLog(ContainerLogRequest) returns (google.protobuf.Empty);
   rpc ContainerStop(ContainerStopRequest) returns (ContainerStopResponse);
@@ -2537,6 +2668,7 @@ service ModalClient {
   rpc SecretList(SecretListRequest) returns (SecretListResponse);
 
   // SharedVolumes
+  rpc SharedVolumeDelete(SharedVolumeDeleteRequest) returns (google.protobuf.Empty);
   rpc SharedVolumeGetFile(SharedVolumeGetFileRequest) returns (SharedVolumeGetFileResponse);
   rpc SharedVolumeGetOrCreate(SharedVolumeGetOrCreateRequest) returns (SharedVolumeGetOrCreateResponse);
   rpc SharedVolumeHeartbeat(SharedVolumeHeartbeatRequest) returns (google.protobuf.Empty);

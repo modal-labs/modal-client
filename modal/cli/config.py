@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
-import pprint
-
 import typer
+from rich.console import Console
 
 from modal.config import _profile, _store_user_config, config
 
@@ -17,10 +16,15 @@ config_cli = typer.Typer(
 )
 
 
-@config_cli.command(help="Show configuration values for the current profile (debug command).")
-def show():
+@config_cli.command(help="Show current configuration values (debugging command).")
+def show(redact: bool = typer.Option(True, help="Redact the `token_secret` value.")):
     # This is just a test command
-    pprint.pprint(config.to_dict())
+    config_dict = config.to_dict()
+    if redact and config_dict.get("token_secret"):
+        config_dict["token_secret"] = "***"
+
+    console = Console()
+    console.print(config_dict)
 
 
 SET_DEFAULT_ENV_HELP = """Set the default Modal environment for the active profile

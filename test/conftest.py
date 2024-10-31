@@ -171,7 +171,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_functions = 0
         self.n_schedules = 0
         self.function2schedule = {}
-        self.function_create_error = False
+        self.function_create_error: Optional[BaseException] = None
         self.heartbeat_status_code = None
         self.n_apps = 0
         self.classes = {}
@@ -247,6 +247,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         token_id, token_secret = credentials
         self.required_creds = {token_id: token_secret}  # Any of this will be accepted
+        self.last_metadata = None
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -254,6 +255,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def recv_request(self, event: RecvRequest):
         # Make sure metadata is correct
+        self.last_metadata = event.metadata
         for header in [
             "x-modal-python-version",
             "x-modal-client-version",
@@ -642,7 +644,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def ClientHello(self, stream):
         request: Empty = await stream.recv_message()
         self.requests.append(request)
-        self.client_create_metadata = stream.metadata
         client_version = stream.metadata["x-modal-client-version"]
         warning = ""
         assert stream.user_agent.startswith(f"modal-client/{__version__} ")
@@ -910,7 +911,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def FunctionCreate(self, stream):
         request: api_pb2.FunctionCreateRequest = await stream.recv_message()
         if self.function_create_error:
-            raise GRPCError(Status.INTERNAL, "Function create failed")
+            raise self.function_create_error
         if request.existing_function_id:
             function_id = request.existing_function_id
         else:
@@ -1837,7 +1838,6 @@ async def token_env(servicer, monkeypatch, credentials):
 async def container_env(servicer, monkeypatch):
     monkeypatch.setenv("MODAL_SERVER_URL", servicer.container_addr)
     monkeypatch.setenv("MODAL_TASK_ID", "ta-123")
-    monkeypatch.setenv("MODAL_TASK_SECRET", "1")  # TODO(erikbern): remove
     monkeypatch.setenv("MODAL_IS_REMOTE", "1")
     yield
 

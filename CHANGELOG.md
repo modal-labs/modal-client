@@ -10,6 +10,16 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.65.2 (2024-10-30)
+
+* Fix issue where `modal run` wouldn't exit for 10s if there was a failure during app creation
+
+
+
+### 0.64.227 (2024-10-25)
+
+- The `modal container list` CLI command now only shows containers for the active profile's environment if there is one, otherwise it uses the default environment. You can pass `--env` to list containers in other environments.
+
 ### 0.64.223 (2024-10-24)
 
 * Fix for `modal serve` not showing progress when reloading apps on file changes since v0.63.79

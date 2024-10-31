@@ -372,6 +372,7 @@ class _App:
         finally:
             self._running_app = None
             self._client = None
+            self._uncreate_all_objects()
 
     @asynccontextmanager
     async def run(
@@ -665,7 +666,7 @@ class _App:
         _experimental_buffer_containers: Optional[int] = None,  # Number of additional, idle containers to keep around.
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
     ) -> _FunctionDecoratorType:
-        """Decorator to register a new Modal function with this app."""
+        """Decorator to register a new Modal [Function](/docs/reference/modal.Function) with this App."""
         if isinstance(_warn_parentheses_missing, _Image):
             # Handle edge case where maybe (?) some users passed image as a positional arg
             raise InvalidError("`image` needs to be a keyword argument: `@app.function(image=image)`.")
@@ -876,6 +877,9 @@ class _App:
         _experimental_buffer_containers: Optional[int] = None,  # Number of additional, idle containers to keep around.
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
     ) -> Callable[[CLS_T], CLS_T]:
+        """
+        Decorator to register a new Modal [Cls](/docs/reference/modal.Cls) with this App.
+        """
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
 
@@ -1019,9 +1023,9 @@ class _App:
         )
 
     def include(self, /, other_app: "_App"):
-        """Include another app's objects in this one.
+        """Include another App's objects in this one.
 
-        Useful splitting up Modal apps across different self-contained files
+        Useful for splitting up Modal Apps across different self-contained files.
 
         ```python
         app_a = modal.App("a")
