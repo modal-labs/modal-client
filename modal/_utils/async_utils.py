@@ -544,7 +544,15 @@ async def async_zip(*generators):
             pass
 
         for gen in generators:
-            await gen.aclose()
+            first_exception = None
+            try:
+                await gen.aclose()
+            except BaseException as e:
+                if first_exception is None:
+                    first_exception = e
+                logger.exception(f"Error closing async generator: {e}")
+        if first_exception is not None:
+            raise first_exception
 
 
 @dataclass
