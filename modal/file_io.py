@@ -9,6 +9,7 @@ from .client import _Client
 from .exception import FilesystemExecutionError
 
 LARGE_FILE_SIZE_LIMIT = 16 * 1024 * 1024  # 16MB
+READ_FILE_SIZE_LIMIT = 100 * 1024 * 1024  # 100MB
 
 ERROR_MAPPING = {
     api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_UNSPECIFIED: FilesystemExecutionError,
@@ -125,6 +126,8 @@ class _FileIO:
         """Read n bytes from the current position, or the entire remaining file if n is None."""
         self._check_closed()
         self._check_readable()
+        if n is not None and n > READ_FILE_SIZE_LIMIT:
+            raise ValueError("Read request payload exceeds 100MB limit")
         resp = await self._client.stub.ContainerFilesystemExec(
             api_pb2.ContainerFilesystemExecRequest(
                 file_read_request=api_pb2.ContainerFileReadRequest(file_descriptor=self._file_descriptor, n=n),
