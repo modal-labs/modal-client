@@ -210,8 +210,11 @@ class _Invocation:
         items_received = 0
         items_total: Union[int, None] = None  # populated when self.run_function() completes
         async with aclosing(
-            _stream_function_call_data(self.client, self.function_call_id, variant="data_out")
-        ) as data_stream, aclosing(async_merge(data_stream, callable_to_agen(self.run_function))) as streamer:
+            async_merge(
+                _stream_function_call_data(self.client, self.function_call_id, variant="data_out"),
+                callable_to_agen(self.run_function),
+            )
+        ) as streamer:
             async for item in streamer:
                 if isinstance(item, api_pb2.GeneratorDone):
                     items_total = item.items_total
