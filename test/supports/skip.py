@@ -14,7 +14,6 @@ def skip_macos(msg: str):
 
 
 skip_windows_unix_socket = skip_windows("Windows doesn't have UNIX sockets")
-skip_windows_signals = skip_windows("Windows doesn't support UNIX signal handling")
 
 
 def skip_old_py(msg: str, min_version: tuple):

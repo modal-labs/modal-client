@@ -5,6 +5,8 @@ from typing import Awaitable, Callable, ClassVar, Dict, Hashable, List, Optional
 
 from google.protobuf.message import Message
 
+from modal._utils.async_utils import aclosing
+
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
 from .client import _Client
@@ -255,7 +257,8 @@ def live_method_gen(method):
     @wraps(method)
     async def wrapped(self, *args, **kwargs):
         await self.resolve()
-        async for item in method(self, *args, **kwargs):
-            yield item
+        async with aclosing(method(self, *args, **kwargs)) as stream:
+            async for item in stream:
+                yield item
 
     return wrapped
