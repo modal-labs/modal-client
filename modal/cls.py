@@ -267,6 +267,7 @@ class _Cls(_Object, type_prefix="cs"):
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
         if self._class_service_function:
+            print("foo")
             if self._class_service_function._method_functions:
                 # The class only has a class service service function and no method placeholders.
                 return
@@ -282,6 +283,17 @@ class _Cls(_Object, type_prefix="cs"):
                         self._class_service_function._method_functions[method.function_name] = _Function._new_hydrated(
                             method.function_id, self._client, method.function_handle_metadata
                         )
+        else:
+            # We are dealing with a pre 0.63 class that does not have a class service function and only method functions
+            async def _load():
+                pass
+
+            rep = "Function(class_function)"
+            self._class_service_function = _Function._from_loader(_load, rep)
+            for method in metadata.methods:
+                self._class_service_function._method_functions[method.function_name] = _Function._new_hydrated(
+                    method.function_id, self._client, method.function_handle_metadata
+                )
 
     def _get_metadata(self) -> api_pb2.ClassHandleMetadata:
         class_handle_metadata = api_pb2.ClassHandleMetadata()
