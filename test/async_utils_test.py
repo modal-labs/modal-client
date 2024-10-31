@@ -5,6 +5,10 @@ import logging
 import os
 import platform
 import pytest
+import subprocess
+import sys
+import textwrap
+from test import helpers
 
 import pytest_asyncio
 from synchronicity import Synchronizer
@@ -890,3 +894,64 @@ async def test_async_chain_cleanup():
 
     assert result == [1, 2, 3]
     assert states == ["enter 1", "exit 1", "enter 2", "exit 2"]
+
+
+def test_sigint_run_async_gen_shuts_down_gracefully():
+    code = textwrap.dedent(
+        """
+    import asyncio
+    import time
+    from itertools import count
+    from synchronicity.async_utils import Runner
+    from modal._utils.async_utils import run_async_gen
+    async def async_gen():
+        print("enter")
+        try:
+            for i in count():
+                yield i
+                await asyncio.sleep(0.1)
+        finally:
+            # this could be either CancelledError or GeneratorExit depending on timing
+            # CancelledError happens if sigint is during this generator's await
+            # GeneratorExit is during the yielded block in the sync caller
+            print("cancel")
+            await asyncio.sleep(0.1)
+            print("bye")
+    try:
+        with Runner() as runner:
+            for res in run_async_gen(runner, async_gen()):
+                print("res", res)
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt")
+    """
+    )
+
+    p = helpers.PopenWithCtrlC(
+        [sys.executable, "-u", "-c", code],
+        encoding="utf8",
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    def line():
+        s = p.stdout.readline().rstrip("\n")
+        if s == "":
+            print(p.stderr.read())
+            raise Exception("no stdout")
+        print(s)
+        return s
+
+    assert line() == "enter"
+    assert line() == "res 0"
+    assert line() == "res 1"
+
+    p.send_ctrl_c()
+    print("sent ctrl-C")
+    while (nextline := line()).startswith("res"):
+        pass
+    assert nextline == "cancel"
+    assert line() == "bye"
+    assert line() == "KeyboardInterrupt"
+    assert p.wait() == 0
+    assert p.stdout.read() == ""
+    assert p.stderr.read() == ""
