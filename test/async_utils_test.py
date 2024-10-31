@@ -766,7 +766,7 @@ async def test_async_map_input_exception_async_producer():
             states.append("exit")
 
     with pytest.raises(SampleException):
-        async for item in async_map(gen(), mapper_func, concurrency=3):
+        async for _ in async_map(gen(), mapper_func, concurrency=3):
             pass
 
     assert sorted(states) == ["enter", "exit"]
@@ -792,7 +792,7 @@ async def test_async_map_input_cancellation_async_producer():
             states.append("exit")
 
     with pytest.raises(asyncio.CancelledError):
-        async for item in async_map(gen(), mapper_func, concurrency=3):
+        async for _ in async_map(gen(), mapper_func, concurrency=3):
             pass
 
     assert sorted(states) == ["enter", "exit"]
@@ -851,7 +851,7 @@ async def test_async_map_input_exception_sync_producer():
             states.append("exit")
 
     with pytest.raises(SampleException):
-        async for item in async_map(gen(), mapper_func, concurrency=3):
+        async for _ in async_map(sync_or_async_iter(gen()), mapper_func, concurrency=3):
             pass
 
     assert sorted(states) == ["enter", "exit"]
@@ -878,7 +878,7 @@ async def test_async_map_output_exception_async_func():
         return x * 2
 
     with pytest.raises(SampleException):
-        async for item in async_map(gen(), mapper_func, concurrency=3):
+        async for item in async_map(sync_or_async_iter(gen()), mapper_func, concurrency=3):
             result.append(item)
 
     assert sorted(result) == [0, 2, 4]
@@ -935,9 +935,9 @@ async def test_async_map_concurrency(in_order):
         return x * 2
 
     if in_order:
-        result = [item async for item in async_map_ordered(range(10), mapper, concurrency=3)]
+        result = [item async for item in async_map_ordered(sync_or_async_iter(range(10)), mapper, concurrency=3)]
     else:
-        result = [item async for item in async_map(range(10), mapper, concurrency=3)]
+        result = [item async for item in async_map(sync_or_async_iter(range(10)), mapper, concurrency=3)]
     assert sorted(result) == [x * 2 for x in range(10)]
     assert max(active_mappers_history) == 3
     assert active_mappers_history.count(3) >= 7  # 2, ... 3, 4, 5 and 6, 7, 8 (9 *could* also be active with 3)
