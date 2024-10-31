@@ -641,15 +641,16 @@ async def async_map(
 ) -> AsyncGenerator[V, None]:
     queue: asyncio.Queue[Union[ValueWrapper[T], StopSentinelType]] = asyncio.Queue(maxsize=concurrency * 2)
 
-    async def producer():
+    async def producer() -> AsyncGenerator[None, None]:
         async for item in input_generator:
             await queue.put(ValueWrapper(item))
 
         for _ in range(concurrency):
             await queue.put(STOP_SENTINEL)
 
-        return
-        yield  # noqa
+        if False:
+            # This is just here to make the type checker happy
+            yield
 
     async def worker() -> AsyncGenerator[V, None]:
         while True:
