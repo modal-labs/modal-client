@@ -673,8 +673,12 @@ async def async_map_ordered(
     input_generator: AsyncGenerator[T, None],
     async_mapper_func: Callable[[T], Awaitable[V]],
     concurrency: int,
+    buffer_size: Optional[int] = None,
 ) -> AsyncGenerator[V, None]:
+    semaphore = asyncio.Semaphore(buffer_size or concurrency)
+
     async def mapper_func_wrapper(tup: Tuple[int, T]) -> Tuple[int, V]:
+        await semaphore.acquire()
         return (tup[0], await async_mapper_func(tup[1]))
 
     async def counter() -> AsyncGenerator[int, None]:
@@ -690,5 +694,6 @@ async def async_map_ordered(
 
             while next_idx in buffer:
                 yield buffer[next_idx]
+                semaphore.release()
                 del buffer[next_idx]
                 next_idx += 1
