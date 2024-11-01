@@ -1799,6 +1799,7 @@ message Proxy {
   string name = 1;
   double created_at = 2;
   string environment_name = 3;
+  string proxy_id = 5;
   repeated ProxyIp proxy_ips = 4;
 }
 
