@@ -1804,6 +1804,13 @@ message PortSpecs {
   repeated PortSpec ports = 1;
 }
 
+message Proxy {
+  string name = 1;
+  double created_at = 2;
+  string environment_name = 3;
+  repeated ProxyIp proxy_ips = 4;
+}
+
 message ProxyDeleteRequest {
   string proxy_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
@@ -1852,7 +1859,7 @@ message ProxyIpListResponse {
 }
 
 message ProxyListResponse {
-  repeated ProxyIp proxies = 1;
+  repeated Proxy proxies = 1;
 }
 
 message QueueClearRequest {
