@@ -5,12 +5,12 @@ import typing
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Optional, Set, Tuple
 
-from aiostream import pipe, stream
 from grpclib import GRPCError, Status
 
 from modal._utils.async_utils import (
     AsyncOrSyncIterable,
     aclosing,
+    async_map_ordered,
     async_merge,
     async_zip,
     queue_batch_iterator,
@@ -111,17 +111,14 @@ async def _map_invocation(
         while 1:
             raw_input = await raw_input_queue.get()
             if raw_input is None:  # end of input sentinel
-                return
+                break
             yield raw_input  # args, kwargs
 
     async def drain_input_generator():
         # Parallelize uploading blobs
-        proto_input_stream = stream.iterate(input_iter()) | pipe.map(
-            create_input,  # type: ignore[reportArgumentType]
-            ordered=True,
-            task_limit=BLOB_MAX_PARALLELISM,
-        )
-        async with proto_input_stream.stream() as streamer:
+        async with aclosing(
+            async_map_ordered(input_iter(), create_input, concurrency=BLOB_MAX_PARALLELISM)
+        ) as streamer:
             async for item in streamer:
                 await input_queue.put(item)
 
@@ -230,14 +227,13 @@ async def _map_invocation(
         return (item.idx, output)
 
     async def poll_outputs():
-        outputs = stream.iterate(get_all_outputs_and_clean_up())
-        outputs_fetched = outputs | pipe.map(fetch_output, ordered=True, task_limit=BLOB_MAX_PARALLELISM)  # type: ignore
-
         # map to store out-of-order outputs received
         received_outputs = {}
         output_idx = 0
 
-        async with outputs_fetched.stream() as streamer:
+        async with aclosing(
+            async_map_ordered(get_all_outputs_and_clean_up(), fetch_output, concurrency=BLOB_MAX_PARALLELISM)
+        ) as streamer:
             async for idx, output in streamer:
                 count_update()
                 if not order_outputs:

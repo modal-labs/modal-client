@@ -12,7 +12,6 @@ import typing
 from pathlib import Path, PurePosixPath
 from typing import AsyncGenerator, Callable, List, Optional, Tuple, Type, Union
 
-import aiostream
 from google.protobuf.message import Message
 
 import modal.exception
@@ -20,7 +19,7 @@ from modal_proto import api_pb2
 from modal_version import __version__
 
 from ._resolver import Resolver
-from ._utils.async_utils import synchronize_api
+from ._utils.async_utils import aclosing, async_map, synchronize_api
 from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
@@ -499,13 +498,14 @@ class _Mount(_Object, type_prefix="mo"):
 
             raise modal.exception.MountUploadTimeoutError(f"Mounting of {file_spec.source_description} timed out")
 
-        # Create the asynchronous iterable for file specs.
-        file_specs = aiostream.stream.iterate(_Mount._get_files(self._entries))
-
         # Upload files, or check if they already exist.
         n_concurrent_uploads = 512
-        uploads_stream = aiostream.stream.map(file_specs, _put_file, task_limit=n_concurrent_uploads)
-        files: List[api_pb2.MountFile] = await aiostream.stream.list(uploads_stream)
+        files: List[api_pb2.MountFile] = []
+        async with aclosing(
+            async_map(_Mount._get_files(self._entries), _put_file, concurrency=n_concurrent_uploads)
+        ) as stream:
+            async for file in stream:
+                files.append(file)
 
         if not files:
             logger.warning(f"Mount of '{message_label}' is empty.")
