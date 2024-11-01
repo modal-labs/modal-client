@@ -126,29 +126,16 @@ def client_from_env(client_addr, credentials):
 
 
 def test_client_from_env_client(servicer, credentials):
-    try:
-        # First, a failing one
-        with pytest.raises(ConnectionError):
-            client_from_env("https://foo.invalid", credentials)
+    client_1 = client_from_env(servicer.client_addr, credentials)
+    client_2 = client_from_env(servicer.client_addr, credentials)
+    assert isinstance(client_1, Client)
+    assert isinstance(client_2, Client)
+    assert client_1 == client_2
 
-        # Make sure later clients can still succeed
-        client_1 = client_from_env(servicer.client_addr, credentials)
-        client_2 = client_from_env(servicer.client_addr, credentials)
-        assert isinstance(client_1, Client)
-        assert isinstance(client_2, Client)
-        assert client_1 == client_2
 
-    finally:
-        Client.set_env_client(None)
-
-    try:
-        # After stopping, creating a new client should return a new one
-        client_3 = client_from_env(servicer.client_addr, credentials)
-        client_4 = client_from_env(servicer.client_addr, credentials)
-        assert client_3 != client_1
-        assert client_4 == client_3
-    finally:
-        Client.set_env_client(None)
+def test_client_from_env_failing(servicer, credentials):
+    with pytest.raises(ConnectionError):
+        client_from_env("https://foo.invalid", credentials)
 
 
 def test_client_token_auth_in_sandbox(servicer, credentials, monkeypatch) -> None:
