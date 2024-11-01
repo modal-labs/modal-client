@@ -744,9 +744,12 @@ async def test_async_map(in_order):
         await asyncio.sleep(0.1)  # Simulate some async work
         return x * 2
 
-    async_mapper = async_map_ordered if in_order else async_map
-    async for item in async_mapper(foo(), mapper, concurrency=3):
-        result.append(item)
+    if in_order:
+        async for item in async_map_ordered(foo(), mapper, concurrency=3):
+            result.append(item)
+    else:
+        async for item in async_map(foo(), mapper, concurrency=3):
+            result.append(item)
 
     assert sorted(result) == [2, 4, 6]
     assert states == ["enter", "exit"]
@@ -772,10 +775,13 @@ async def test_async_map_input_exception_async_producer(in_order):
         finally:
             states.append("exit")
 
-    async_mapper = async_map_ordered if in_order else async_map
     with pytest.raises(SampleException):
-        async for _ in async_mapper(gen(), mapper_func, concurrency=3):
-            pass
+        if in_order:
+            async for _ in async_map_ordered(gen(), mapper_func, concurrency=3):
+                pass
+        else:
+            async for _ in async_map(gen(), mapper_func, concurrency=3):
+                pass
 
     assert sorted(states) == ["enter", "exit"]
 
@@ -800,10 +806,13 @@ async def test_async_map_input_cancellation_async_producer(in_order):
         finally:
             states.append("exit")
 
-    async_mapper = async_map_ordered if in_order else async_map
     with pytest.raises(asyncio.CancelledError):
-        async for _ in async_mapper(gen(), mapper_func, concurrency=3):
-            pass
+        if in_order:
+            async for _ in async_map_ordered(gen(), mapper_func, concurrency=3):
+                pass
+        else:
+            async for _ in async_map(gen(), mapper_func, concurrency=3):
+                pass
 
     assert sorted(states) == ["enter", "exit"]
 
@@ -828,11 +837,13 @@ async def test_async_map_cancellation_waiting_for_input(in_order):
         finally:
             states.append("exit")
 
-    async_mapper = async_map_ordered if in_order else async_map
-
     async def mapper_coro():
-        async for item in async_mapper(gen(), mapper_func, concurrency=3):
-            result.append(item)
+        if in_order:
+            async for item in async_map_ordered(gen(), mapper_func, concurrency=3):
+                result.append(item)
+        else:
+            async for item in async_map(gen(), mapper_func, concurrency=3):
+                result.append(item)
 
     mapper_task = asyncio.create_task(mapper_coro())
     await asyncio.sleep(0.1)
@@ -864,10 +875,13 @@ async def test_async_map_input_exception_sync_producer(in_order):
         finally:
             states.append("exit")
 
-    async_mapper = async_map_ordered if in_order else async_map
     with pytest.raises(SampleException):
-        async for _ in async_mapper(sync_or_async_iter(gen()), mapper_func, concurrency=3):
-            pass
+        if in_order:
+            async for _ in async_map_ordered(sync_or_async_iter(gen()), mapper_func, concurrency=3):
+                pass
+        else:
+            async for _ in async_map(sync_or_async_iter(gen()), mapper_func, concurrency=3):
+                pass
 
     assert sorted(states) == ["enter", "exit"]
 
@@ -893,10 +907,13 @@ async def test_async_map_output_exception_async_func(in_order):
             raise SampleException("test")
         return x * 2
 
-    async_mapper = async_map_ordered if in_order else async_map
     with pytest.raises(SampleException):
-        async for item in async_mapper(sync_or_async_iter(gen()), mapper_func, concurrency=3):
-            result.append(item)
+        if in_order:
+            async for item in async_map_ordered(sync_or_async_iter(gen()), mapper_func, concurrency=3):
+                result.append(item)
+        else:
+            async for item in async_map(sync_or_async_iter(gen()), mapper_func, concurrency=3):
+                result.append(item)
 
     assert sorted(result) == [0, 2, 4]
     assert states == ["enter", "exit"]
@@ -926,15 +943,21 @@ async def test_async_map_streaming_input(in_order):
 
     import time
 
-    async_mapper = async_map_ordered if in_order else async_map
-
     start = time.time()
-    async for item in async_mapper(gen(), mapper, concurrency=3):
-        if item == 2:
-            assert time.time() - start < 0.5
-        else:
-            assert time.time() - start > 0.5
-        result.append(item)
+    if in_order:
+        async for item in async_map_ordered(gen(), mapper, concurrency=3):
+            if item == 2:
+                assert time.time() - start < 0.5
+            else:
+                assert time.time() - start > 0.5
+            result.append(item)
+    else:
+        async for item in async_map(gen(), mapper, concurrency=3):
+            if item == 2:
+                assert time.time() - start < 0.5
+            else:
+                assert time.time() - start > 0.5
+            result.append(item)
 
     assert result == [2, 4, 6]
     assert states == ["enter", "exit"]
