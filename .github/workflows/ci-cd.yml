@@ -63,7 +63,8 @@ jobs:
         run: pytest -v
 
       - name: Run docstring tests
-        if: github.event.pull_request.head.repo.fork != 'true'
+        # TODO(michael) disable doctests on 3.13 until workspace is updated to new Image Builder Version
+        if: github.event.pull_request.head.repo.fork == 'false' && matrix.python-version != '3.13'
         env:
           MODAL_ENVIRONMENT: client-doc-tests
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
