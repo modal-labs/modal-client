@@ -18,12 +18,15 @@ TEST_TIMEOUT = 4.0  # align this with the container client timeout in client.py
 
 
 def test_client_type(servicer, client):
+    assert len(servicer.requests) == 0
+    client.hello()
     assert len(servicer.requests) == 1
     assert isinstance(servicer.requests[0], Empty)
     assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
 
 
 def test_client_platform_string(servicer, client):
+    client.hello()
     platform_str = servicer.last_metadata["x-modal-platform"]
     system, release, machine = platform_str.split("-")
     if platform.system() == "Darwin":
@@ -37,7 +40,8 @@ def test_client_platform_string(servicer, client):
 
 @pytest.mark.asyncio
 async def test_container_client_type(servicer, container_client):
-    assert len(servicer.requests) == 1  # no heartbeat, just ClientHello
+    await container_client.hello.aio()
+    assert len(servicer.requests) == 1
     assert isinstance(servicer.requests[0], Empty)
     assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
 
@@ -45,9 +49,9 @@ async def test_container_client_type(servicer, container_client):
 @pytest.mark.asyncio
 @pytest.mark.timeout(TEST_TIMEOUT)
 async def test_client_dns_failure():
-    with pytest.raises(ConnectionError) as excinfo:
-        async with Client("https://xyz.invalid", api_pb2.CLIENT_TYPE_CONTAINER, None):
-            pass
+    async with Client("https://xyz.invalid", api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
+        with pytest.raises(ConnectionError) as excinfo:
+            await client.hello.aio()
     assert excinfo.value
 
 
@@ -55,9 +59,9 @@ async def test_client_dns_failure():
 @pytest.mark.timeout(TEST_TIMEOUT)
 @skip_windows("Windows test crashes on connection failure")
 async def test_client_connection_failure():
-    with pytest.raises(ConnectionError) as excinfo:
-        async with Client("https://localhost:443", api_pb2.CLIENT_TYPE_CONTAINER, None):
-            pass
+    async with Client("https://localhost:443", api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
+        with pytest.raises(ConnectionError) as excinfo:
+            await client.hello.aio()
     assert excinfo.value
 
 
@@ -65,9 +69,9 @@ async def test_client_connection_failure():
 @pytest.mark.timeout(TEST_TIMEOUT)
 @skip_windows_unix_socket
 async def test_client_connection_failure_unix_socket():
-    with pytest.raises(ConnectionError) as excinfo:
-        async with Client("unix:/tmp/xyz.txt", api_pb2.CLIENT_TYPE_CONTAINER, None):
-            pass
+    async with Client("unix:/tmp/xyz.txt", api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
+        with pytest.raises(ConnectionError) as excinfo:
+            await client.hello.aio()
     assert excinfo.value
 
 
@@ -76,9 +80,9 @@ async def test_client_connection_failure_unix_socket():
 async def test_client_connection_timeout(servicer, monkeypatch):
     monkeypatch.setattr("modal.client.CLIENT_CREATE_ATTEMPT_TIMEOUT", 1.0)
     monkeypatch.setattr("modal.client.CLIENT_CREATE_TOTAL_TIMEOUT", 3.0)
-    with pytest.raises(ConnectionError) as excinfo:
-        async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CONTAINER, None, version="timeout"):
-            pass
+    async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CONTAINER, None, version="timeout") as client:
+        with pytest.raises(ConnectionError) as excinfo:
+            await client.hello.aio()
 
     # The HTTP lookup will return 400 because the GRPC server rejects the http request
     assert "deadline" in str(excinfo.value).lower()
@@ -87,30 +91,30 @@ async def test_client_connection_timeout(servicer, monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.timeout(TEST_TIMEOUT)
 async def test_client_server_error(servicer):
-    with pytest.raises(GRPCError):
-        async with Client("https://modal.com", api_pb2.CLIENT_TYPE_CLIENT, None):
-            pass
+    async with Client("https://modal.com", api_pb2.CLIENT_TYPE_CLIENT, None) as client:
+        with pytest.raises(GRPCError):
+            await client.hello.aio()
 
 
 @pytest.mark.asyncio
 async def test_client_old_version(servicer, credentials):
-    with pytest.raises(VersionError):
-        async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials, version="0.0.0"):
-            pass
+    async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials, version="0.0.0") as client:
+        with pytest.raises(VersionError):
+            await client.hello.aio()
 
 
 @pytest.mark.asyncio
 async def test_client_deprecated(servicer, credentials):
-    with pytest.warns(modal.exception.DeprecationError):
-        async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials, version="deprecated"):
-            pass
+    async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials, version="deprecated") as client:
+        with pytest.warns(modal.exception.DeprecationError):
+            await client.hello.aio()
 
 
 @pytest.mark.asyncio
 async def test_client_unauthenticated(servicer):
     with pytest.raises(AuthError):
-        async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, None, version="unauthenticated"):
-            pass
+        async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, None, version="unauthenticated") as client:
+            await client.hello.aio()
 
 
 def client_from_env(client_addr, credentials):
@@ -122,7 +126,9 @@ def client_from_env(client_addr, credentials):
         "task_id": None,
         "task_secret": None,
     }
-    return Client.from_env(_override_config=_override_config)
+    client = Client.from_env(_override_config=_override_config)
+    client.hello()
+    return client
 
 
 def test_client_from_env_client(servicer, credentials):
@@ -208,8 +214,8 @@ def test_import_modal_from_thread(supports_dir):
 
 def test_from_env_container(servicer, container_env):
     servicer.required_creds = {}  # Disallow default client creds
-    Client.from_env()
-    # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
+    client = Client.from_env()
+    client.hello()
     assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
 
 
@@ -217,8 +223,8 @@ def test_from_env_container_with_tokens(servicer, container_env, token_env):
     # Even if MODAL_TOKEN_ID and MODAL_TOKEN_SECRET are set, if we're in a containers, ignore those
     servicer.required_creds = {}  # Disallow default client creds
     with pytest.warns(match="token"):
-        Client.from_env()
-    # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
+        client = Client.from_env()
+    client.hello()
     assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
 
 
@@ -227,8 +233,8 @@ def test_from_credentials_client(servicer, set_env_client, server_url_env, token
     token_id = "ak-foo-1"
     token_secret = "as-bar"
     servicer.required_creds = {token_id: token_secret}
-    Client.from_credentials(token_id, token_secret)
-    # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
+    client = Client.from_credentials(token_id, token_secret)
+    client.hello()
     assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
 
 
@@ -236,6 +242,6 @@ def test_from_credentials_container(servicer, container_env):
     token_id = "ak-foo-2"
     token_secret = "as-bar"
     servicer.required_creds = {token_id: token_secret}
-    Client.from_credentials(token_id, token_secret)
-    # TODO(erikbern): once we no longer run ClientHello by default, add a ping here
+    client = Client.from_credentials(token_id, token_secret)
+    client.hello()
     assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
