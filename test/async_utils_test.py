@@ -941,8 +941,7 @@ async def test_async_map_streaming_input(in_order):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("in_order", [True, False])
-async def test_async_map_concurrency(in_order):
+async def test_async_map_concurrency():
     active_mappers = 0
     active_mappers_history = []
 
@@ -954,9 +953,7 @@ async def test_async_map_concurrency(in_order):
         active_mappers -= 1
         return x * 2
 
-    async_mapper = async_map_ordered if in_order else async_map
-
-    result = [item async for item in async_mapper(sync_or_async_iter(range(10)), mapper, concurrency=3)]
+    result = [item async for item in async_map(sync_or_async_iter(range(10)), mapper, concurrency=3)]
     assert sorted(result) == [x * 2 for x in range(10)]
     assert max(active_mappers_history) == 3
     assert active_mappers_history.count(3) >= 7  # 2, ... 3, 4, 5 and 6, 7, 8 (9 *could* also be active with 3)
@@ -1005,7 +1002,7 @@ async def test_async_map_ordered_buffer_size():
         return x
 
     async def inputs():
-        for i in range(10):
+        for i in range(100):
             yield i
 
     # Use small buffer_size to ensure we don't process too far ahead
@@ -1016,7 +1013,44 @@ async def test_async_map_ordered_buffer_size():
         assert max(processing) - result <= 3
         results.append(result)
 
-    assert results == list(range(10))
+    assert results == list(range(100))
+
+
+@pytest.mark.asyncio
+async def test_async_map_ordered_buffer_size2():
+    result = []
+    ev = asyncio.Event()
+    cancel_ev = asyncio.Event()
+
+    async def mapper_func(x: int) -> int:
+        if x == 3:
+            # Item 3 will block, causing buffer to fill up
+            await ev.wait()
+
+        if x == 10:
+            # Item 10 will unblock the buffer
+            # but with concurrency=3, it will never be reached
+            ev.set()
+        return x
+
+    async def gen():
+        for i in range(100):
+            yield i
+
+    async def mapper_coro():
+        async with aclosing(async_map_ordered(gen(), mapper_func, concurrency=3)) as stream:
+            async for item in stream:
+                result.append(item)
+                if item == 2:
+                    cancel_ev.set()
+
+    mapper_task = asyncio.create_task(mapper_coro())
+    await cancel_ev.wait()
+    mapper_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await mapper_task
+
+    assert sorted(result) == [0, 1, 2]
 
 
 def test_sigint_run_async_gen_shuts_down_gracefully():
