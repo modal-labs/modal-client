@@ -1204,6 +1204,10 @@ message Function {
   Schedule schedule = 72;
 
   bool snapshot_debug = 73; // For internal debugging use only.
+
+  // Mapping of method names to method definitions
+  map<string, MethodDefinition> method_definitions = 74;
+  bool method_definitions_set = 75;
 }
 
 message FunctionBindParamsRequest {
@@ -1700,6 +1704,14 @@ message InputInfo {
   double finished_at = 5;
   double task_startup_time = 6;
   bool task_first_input = 7;
+}
+
+message MethodDefinition {
+  string function_name = 1;
+  Function.FunctionType function_type = 2;
+  WebhookConfig webhook_config = 3;
+  string web_url = 4;
+  WebUrlInfo web_url_info = 5;
 }
 
 message MountFile {
