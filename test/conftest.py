@@ -265,6 +265,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 raise GRPCError(Status.FAILED_PRECONDITION, f"Missing {header} header")
 
         client_version = event.metadata["x-modal-client-version"]
+        assert isinstance(client_version, str)
         if client_version == "unauthenticated":
             raise GRPCError(Status.UNAUTHENTICATED, "failed authentication")
         elif client_version == "timeout":
