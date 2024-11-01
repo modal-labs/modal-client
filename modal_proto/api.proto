@@ -1822,6 +1822,7 @@ message ProxyIp {
   string proxy_ip = 1;
   ProxyIpStatus status = 2;
   double created_at = 3;
+  string environment_name = 4;
 }
 
 message ProxyIpDeleteRequest {
