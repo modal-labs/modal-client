@@ -1060,6 +1060,18 @@ def test_cls_enter_uses_event_loop(servicer):
 
 
 @skip_github_non_linux
+def test_cls_with_image(servicer):
+    ret = _run_container(
+        servicer,
+        "test.supports.class_with_image",
+        "ClassWithImage.*",
+        inputs=_get_inputs(((), {}), method_name="image_is_hydrated"),
+        is_class=True,
+    )
+    assert _unwrap_scalar(ret) == True
+
+
+@skip_github_non_linux
 def test_container_heartbeats(servicer):
     _run_container(servicer, "test.supports.functions", "square")
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in servicer.requests)
@@ -1656,9 +1668,10 @@ def _run_container_process(
 @pytest.mark.parametrize(
     ["function_name", "input_args", "cancelled_input_ids", "expected_container_output", "live_cancellations"],
     [
+        # We use None to indicate that we expect a terminated output.
         # the 10 second inputs here are to be cancelled:
-        ("delay", [0.01, 20, 0.02], ["in-001"], [0.01, 0.02], 1),  # cancel second input
-        ("delay_async", [0.01, 20, 0.02], ["in-001"], [0.01, 0.02], 1),  # async variant
+        ("delay", [0.01, 20, 0.02], ["in-001"], [0.01, None, 0.02], 1),  # cancel second input
+        ("delay_async", [0.01, 20, 0.02], ["in-001"], [0.01, None, 0.02], 1),  # async variant
         # cancel first input, but it has already been processed, so all three should come through:
         ("delay", [0.01, 0.5, 0.03], ["in-000"], [0.01, 0.5, 0.03], 0),
         ("delay_async", [0.01, 0.5, 0.03], ["in-000"], [0.01, 0.5, 0.03], 0),
@@ -1700,8 +1713,13 @@ def test_cancellation_aborts_current_input_on_match(
 
     items = _flatten_outputs(servicer.container_outputs)
     assert len(items) == len(expected_container_output)
-    data = [deserialize(i.result.data, client=None) for i in items]
-    assert data == expected_container_output
+    for i, item in enumerate(items):
+        if item.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
+            assert not expected_container_output[i]
+        else:
+            data = deserialize(item.result.data, client=None)
+            assert data == expected_container_output[i]
+
     # should never run for ~20s, which is what the input would take if the sleep isn't interrupted
     assert duration < 10  # should typically be < 1s, but for some reason in gh actions, it takes a really long time!
 
@@ -1709,13 +1727,14 @@ def test_cancellation_aborts_current_input_on_match(
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
 def test_cancellation_stops_subset_of_async_concurrent_inputs(servicer):
+    num_inputs = 2
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
             servicer,
             "test.supports.functions",
             "delay_async",
-            inputs=[("", (1,), {})] * 2,  # two inputs
-            allow_concurrent_inputs=2,
+            inputs=[("", (1,), {})] * num_inputs,
+            allow_concurrent_inputs=num_inputs,
         )
         input_lock.wait()
         input_lock.wait()
@@ -1726,14 +1745,12 @@ def test_cancellation_stops_subset_of_async_concurrent_inputs(servicer):
     )
     # container should exit soon!
     exit_code = container_process.wait(5)
-    assert (
-        len(servicer.container_outputs) == 1
-    )  # should not fail the outputs, as they would have been cancelled in backend already
+    items = _flatten_outputs(servicer.container_outputs)
+    assert len(items) == num_inputs  # should not fail the outputs, as they would have been cancelled in backend already
+    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
+    assert deserialize(items[1].result.data, client=None) == 1
 
-    outputs: List[api_pb2.FunctionPutOutputsRequest] = servicer.container_outputs
-    assert deserialize(outputs[0].outputs[0].result.data, None) == 1
     container_stderr = container_process.stderr.read().decode("utf8")
-    print(container_stderr)
     assert "Traceback" not in container_stderr
     assert exit_code == 0  # container should exit gracefully
 
@@ -1782,11 +1799,11 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer):
     )
     # container should exit immediately, stopping execution of both inputs
     exit_code = container_process.wait(5)
-    assert (
-        len(servicer.container_outputs) == 0
-    )  # should not fail the outputs, as they would have been cancelled in backend already
+    items = _flatten_outputs(servicer.container_outputs)
+    assert len(items) == 1  # should not fail the outputs, as they would have been cancelled in backend already
+    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
+
     container_stderr = container_process.stderr.read().decode("utf8")
-    print(container_stderr)
     assert "Traceback" not in container_stderr
     assert exit_code == 0  # container should exit gracefully
 
