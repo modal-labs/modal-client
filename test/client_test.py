@@ -138,6 +138,13 @@ def test_client_from_env_failing(servicer, credentials):
         client_from_env("https://foo.invalid", credentials)
 
 
+def test_client_from_env_reset(servicer, credentials):
+    client_1 = client_from_env(servicer.client_addr, credentials)
+    Client.set_env_client(None)
+    client_2 = client_from_env(servicer.client_addr, credentials)
+    assert client_1 != client_2
+
+
 def test_client_token_auth_in_sandbox(servicer, credentials, monkeypatch) -> None:
     """Ensure that clients can connect with token credentials inside a sandbox.
 
