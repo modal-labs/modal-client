@@ -205,8 +205,9 @@ async def _map_invocation(
     async def get_all_outputs_and_clean_up():
         assert client.stub
         try:
-            async for item in get_all_outputs():
-                yield item
+            async with aclosing(get_all_outputs()) as output_items:
+                async for item in output_items:
+                    yield item
         finally:
             # "ack" that we have all outputs we are interested in and let backend clear results
             request = api_pb2.FunctionGetOutputsRequest(
@@ -251,9 +252,7 @@ async def _map_invocation(
 
         assert len(received_outputs) == 0
 
-    async with aclosing(drain_input_generator()) as drainer, aclosing(pump_inputs()) as pump, aclosing(
-        poll_outputs()
-    ) as poller, aclosing(async_merge(drainer, pump, poller)) as streamer:
+    async with aclosing(async_merge(drain_input_generator(), pump_inputs(), poll_outputs())) as streamer:
         async for response in streamer:
             if response is not None:
                 yield response.value
@@ -340,7 +339,7 @@ async def _map_async(
 
     async def feed_queue():
         # This runs in a main thread event loop, so it doesn't block the synchronizer loop
-        async with aclosing(async_zip(*input_iterators)) as streamer:
+        async with aclosing(async_zip(*[sync_or_async_iter(it) for it in input_iterators])) as streamer:
             async for args in streamer:
                 await raw_input_queue.put.aio((args, kwargs))
         await raw_input_queue.put.aio(None)  # end-of-input sentinel
@@ -352,8 +351,9 @@ async def _map_async(
         # they accept executable code in the form of
         # iterators that we don't want to run inside the synchronicity thread.
         # Instead, we delegate to `._map()` with a safer Queue as input
-        async for output in self._map.aio(raw_input_queue, order_outputs, return_exceptions):  # type: ignore[reportFunctionMemberAccess]
-            yield output
+        async with aclosing(self._map.aio(raw_input_queue, order_outputs, return_exceptions)) as map_output_stream:
+            async for output in map_output_stream:
+                yield output
     finally:
         feed_input_task.cancel()  # should only be needed in case of exceptions
 

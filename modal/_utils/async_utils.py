@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from typing import (
     Any,
     AsyncGenerator,
-    AsyncIterable,
     Awaitable,
     Callable,
     Iterable,
@@ -25,7 +24,9 @@ from typing import (
 )
 
 import synchronicity
-from typing_extensions import ParamSpec
+from synchronicity.async_utils import Runner
+from synchronicity.exceptions import NestedEventLoops
+from typing_extensions import ParamSpec, assert_type
 
 from ..exception import InvalidError
 from .logger import logger
@@ -326,6 +327,9 @@ class _WarnIfGeneratorIsNotConsumed:
     async def athrow(self, exc):
         return await self.gen.athrow(exc)
 
+    async def aclose(self):
+        return await self.gen.aclose()
+
 
 synchronize_api(_WarnIfGeneratorIsNotConsumed)
 
@@ -372,7 +376,7 @@ class AsyncOrSyncIterable:
     from an already async context, since that would otherwise deadlock the event loop
     """
 
-    def __init__(self, async_iterable: typing.AsyncIterable[Any], nested_async_message):
+    def __init__(self, async_iterable: typing.AsyncGenerator[Any, None], nested_async_message):
         self._async_iterable = async_iterable
         self.nested_async_message = nested_async_message
 
@@ -381,9 +385,10 @@ class AsyncOrSyncIterable:
 
     def __iter__(self):
         try:
-            for output in run_generator_sync(self._async_iterable):  # type: ignore
-                yield output
-        except NestedAsyncCalls:
+            with Runner() as runner:
+                for output in run_async_gen(runner, self._async_iterable):
+                    yield output  # type: ignore
+        except NestedEventLoops:
             raise InvalidError(self.nested_async_message)
 
 
@@ -447,21 +452,11 @@ YIELD_TYPE = typing.TypeVar("YIELD_TYPE")
 SEND_TYPE = typing.TypeVar("SEND_TYPE")
 
 
-class NestedAsyncCalls(Exception):
-    pass
-
-
-def run_generator_sync(
+def run_async_gen(
+    runner: Runner,
     gen: typing.AsyncGenerator[YIELD_TYPE, SEND_TYPE],
 ) -> typing.Generator[YIELD_TYPE, SEND_TYPE, None]:
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        pass  # no event loop - this is what we expect!
-    else:
-        raise NestedAsyncCalls()
-    loop = asyncio.new_event_loop()  # set up new event loop for the map so we can use async logic
-
+    """Convert an async generator into a sync one"""
     # more or less copied from synchronicity's implementation:
     next_send: typing.Union[SEND_TYPE, None] = None
     next_yield: YIELD_TYPE
@@ -469,57 +464,60 @@ def run_generator_sync(
     while True:
         try:
             if exc:
-                next_yield = loop.run_until_complete(gen.athrow(exc))
+                next_yield = runner.run(gen.athrow(exc))
             else:
-                next_yield = loop.run_until_complete(gen.asend(next_send))  # type: ignore[arg-type]
+                next_yield = runner.run(gen.asend(next_send))  # type: ignore[arg-type]
+        except KeyboardInterrupt as e:
+            raise e from None
         except StopAsyncIteration:
-            break
+            break  # typically a graceful exit of the async generator
         try:
             next_send = yield next_yield
             exc = None
         except BaseException as err:
             exc = err
-    loop.close()
 
 
 @asynccontextmanager
-async def aclosing(
-    agen: AsyncGenerator[T, None],
-) -> AsyncGenerator[AsyncGenerator[T, None], None]:
+async def aclosing(agen: AsyncGenerator[T, None]) -> AsyncGenerator[AsyncGenerator[T, None], None]:
+    # ensure aclose is called asynchronously after context manager is closed
+    # call to ensure cleanup after stateful generators since they can't
+    # always be cleaned up by garbage collection
     try:
         yield agen
     finally:
         await agen.aclose()
 
 
-async def sync_or_async_iter(iterable: Union[Iterable[T], AsyncIterable[T]]) -> AsyncGenerator[T, None]:
-    if hasattr(iterable, "__aiter__"):
-        async for item in typing.cast(AsyncIterable[T], iterable):
-            yield item
+async def sync_or_async_iter(iter: Union[Iterable[T], AsyncGenerator[T, None]]) -> AsyncGenerator[T, None]:
+    if hasattr(iter, "__aiter__"):
+        agen = typing.cast(AsyncGenerator[T, None], iter)
+        try:
+            async for item in agen:
+                yield item
+        finally:
+            await agen.aclose()
     else:
-        assert hasattr(iterable, "__iter__"), "sync_or_async_iter requires an iterable or async iterable"
+        assert hasattr(iter, "__iter__"), "sync_or_async_iter requires an Iterable or AsyncGenerator"
         # This intentionally could block the event loop for the duration of calling __iter__ and __next__,
         # so in non-trivial cases (like passing lists and ranges) this could be quite a foot gun for users #
         # w/ async code (but they can work around it by always using async iterators)
-        for item in typing.cast(Iterable[T], iterable):
+        for item in typing.cast(Iterable[T], iter):
             yield item
 
 
 @typing.overload
-def async_zip(
-    i1: Union[AsyncIterable[T], Iterable[T]], i2: Union[AsyncIterable[V], Iterable[V]], /
-) -> AsyncGenerator[Tuple[T, V], None]:
+def async_zip(g1: AsyncGenerator[T, None], g2: AsyncGenerator[V, None], /) -> AsyncGenerator[Tuple[T, V], None]:
     ...
 
 
 @typing.overload
-def async_zip(*iterables: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerator[Tuple[T, ...], None]:
+def async_zip(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[Tuple[T, ...], None]:
     ...
 
 
-async def async_zip(*iterables):
+async def async_zip(*generators):
     tasks = []
-    generators = [sync_or_async_iter(it) for it in iterables]
     try:
         while True:
             try:
@@ -543,6 +541,17 @@ async def async_zip(*iterables):
         except asyncio.CancelledError:
             pass
 
+        first_exception = None
+        for gen in generators:
+            try:
+                await gen.aclose()
+            except BaseException as e:
+                if first_exception is None:
+                    first_exception = e
+                logger.exception(f"Error closing async generator: {e}")
+        if first_exception is not None:
+            raise first_exception
+
 
 @dataclass
 class ValueWrapper(typing.Generic[T]):
@@ -561,34 +570,63 @@ class StopSentinelType:
 STOP_SENTINEL = StopSentinelType()
 
 
-async def async_merge(*inputs: Union[AsyncIterable[T], Iterable[T]]) -> AsyncGenerator[T, None]:
-    queue: asyncio.Queue[Tuple[int, Union[ValueWrapper[T], ExceptionWrapper, StopSentinelType]]] = asyncio.Queue()
+async def async_merge(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T, None]:
+    queue: asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper]] = asyncio.Queue(maxsize=len(generators) * 10)
 
-    async def producer(producer_id: int, iterable: Union[AsyncIterable[T], Iterable[T]]):
+    async def producer(generator: AsyncGenerator[T, None]):
         try:
-            async for item in sync_or_async_iter(iterable):
-                await queue.put((producer_id, ValueWrapper(item)))
+            async for item in generator:
+                await queue.put(ValueWrapper(item))
         except Exception as e:
-            await queue.put((producer_id, ExceptionWrapper(e)))
-        finally:
-            await queue.put((producer_id, STOP_SENTINEL))
+            await queue.put(ExceptionWrapper(e))
 
-    tasks = [asyncio.create_task(producer(i, it)) for i, it in enumerate(inputs)]
-    active_producers = set(range(len(inputs)))
+    tasks = set([asyncio.create_task(producer(gen)) for gen in generators])
+    new_output_task = asyncio.create_task(queue.get())
 
     try:
-        while active_producers:
-            producer_id, item = await queue.get()
-            if isinstance(item, ExceptionWrapper):
-                raise item.value
-            elif isinstance(item, StopSentinelType):
-                active_producers.remove(producer_id)
-            else:
+        while tasks:
+            done, _ = await asyncio.wait(
+                [*tasks, new_output_task],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            if new_output_task in done:
+                item = new_output_task.result()
+                if isinstance(item, ValueWrapper):
+                    yield item.value
+                else:
+                    assert_type(item, ExceptionWrapper)
+                    raise item.value
+
+                new_output_task = asyncio.create_task(queue.get())
+
+            finished_producers = done & tasks
+            tasks -= finished_producers
+            for finished_producer in finished_producers:
+                # this is done in order to catch potential raised errors/cancellations
+                # from within worker tasks as soon as they happen.
+                await finished_producer
+
+        while not queue.empty():
+            item = await new_output_task
+            if isinstance(item, ValueWrapper):
                 yield item.value
+            else:
+                assert_type(item, ExceptionWrapper)
+                raise item.value
+
+            new_output_task = asyncio.create_task(queue.get())
+
     finally:
+        if not new_output_task.done():
+            new_output_task.cancel()
         for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+            if not task.done():
+                try:
+                    task.cancel()
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
 
 async def callable_to_agen(awaitable: Callable[[], Awaitable[T]]) -> AsyncGenerator[T, None]:

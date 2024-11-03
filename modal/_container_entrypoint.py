@@ -24,7 +24,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from google.protobuf.message import Message
-from synchronicity import Interface
 
 from modal_proto import api_pb2
 
@@ -630,10 +629,16 @@ def import_class_service(
 
     if isinstance(cls, Cls):
         # The cls decorator is in global scope
-        method_partials = synchronizer._translate_in(cls._get_partial_functions())
+        _cls = synchronizer._translate_in(cls)
+        method_partials = _cls._get_partial_functions()
+        function = _cls._class_service_function
     else:
         # Undecorated user class - find all methods
         method_partials = _find_partial_methods_for_user_cls(cls, _PartialFunctionFlags.all())
+        function = None
+
+    if function:
+        code_deps = function.deps(only_explicit_mounts=True)
 
     user_cls_instance = get_user_class_instance(cls, cls_args, cls_kwargs)
 
@@ -793,7 +798,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # Initialize objects on the app.
         # This is basically only functions and classes - anything else is deprecated and will be unsupported soon
         if active_app is not None:
-            app: App = synchronizer._translate_out(active_app, Interface.BLOCKING)
+            app: App = synchronizer._translate_out(active_app)
             app._init_container(client, container_app)
 
         # Hydrate all function dependencies.

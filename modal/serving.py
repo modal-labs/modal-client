@@ -5,7 +5,6 @@ from multiprocessing.context import SpawnProcess
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, AsyncGenerator, Optional, Set, TypeVar
 
-from synchronicity import Interface
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal._output import OutputManager
@@ -29,7 +28,7 @@ else:
 def _run_serve(app_ref: str, existing_app_id: str, is_ready: Event, environment_name: str, show_progress: bool):
     # subprocess entrypoint
     _app = import_app(app_ref)
-    blocking_app = synchronizer._translate_out(_app, Interface.BLOCKING)
+    blocking_app = synchronizer._translate_out(_app)
 
     with enable_output(show_progress=show_progress):
         serve_update(blocking_app, existing_app_id, is_ready, environment_name)

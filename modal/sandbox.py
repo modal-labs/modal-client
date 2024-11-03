@@ -30,6 +30,7 @@ from .network_file_system import _NetworkFileSystem, network_file_system_mount_p
 from .object import _get_environment_name, _Object
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
+from .stream_type import StreamType
 
 _default_image: _Image = _Image.debian_slim()
 
@@ -397,7 +398,16 @@ class _Sandbox(_Object, type_prefix="sb"):
                 await asyncio.sleep(0.5)
         return self._task_id
 
-    async def exec(self, *cmds: str, pty_info: Optional[api_pb2.PTYInfo] = None):
+    async def exec(
+        self,
+        *cmds: str,
+        # Deprecated: internal use only
+        pty_info: Optional[api_pb2.PTYInfo] = None,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        # Internal option to set terminal size and metadata
+        _pty_info: Optional[api_pb2.PTYInfo] = None,
+    ):
         """Execute a command in the Sandbox and return
         a [`ContainerProcess`](/docs/reference/modal.ContainerProcess#modalcontainer_process) handle.
 
@@ -420,11 +430,11 @@ class _Sandbox(_Object, type_prefix="sb"):
             api_pb2.ContainerExecRequest(
                 task_id=task_id,
                 command=cmds,
-                pty_info=pty_info,
+                pty_info=_pty_info or pty_info,
                 runtime_debug=config.get("function_runtime_debug"),
             )
         )
-        return _ContainerProcess(resp.exec_id, self._client)
+        return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr)
 
     async def open(self, path: str, mode: str = "r") -> _FileIO:
         """Open a file in the Sandbox and return

@@ -27,6 +27,7 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
 
+from modal._utils.async_utils import aclosing
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
@@ -37,7 +38,6 @@ from ._resources import convert_fn_config_to_resources_config
 from ._serialization import serialize, serialize_proto_params
 from ._utils.async_utils import (
     TaskContext,
-    aclosing,
     async_merge,
     callable_to_agen,
     synchronize_api,
@@ -210,8 +210,11 @@ class _Invocation:
         items_received = 0
         items_total: Union[int, None] = None  # populated when self.run_function() completes
         async with aclosing(
-            _stream_function_call_data(self.client, self.function_call_id, variant="data_out")
-        ) as data_stream, aclosing(async_merge(data_stream, callable_to_agen(self.run_function))) as streamer:
+            async_merge(
+                _stream_function_call_data(self.client, self.function_call_id, variant="data_out"),
+                callable_to_agen(self.run_function),
+            )
+        ) as streamer:
             async for item in streamer:
                 if isinstance(item, api_pb2.GeneratorDone):
                     items_total = item.items_total
@@ -1249,15 +1252,18 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         else:
             count_update_callback = None
 
-        async for item in _map_invocation(
-            self,  # type: ignore
-            input_queue,
-            self._client,
-            order_outputs,
-            return_exceptions,
-            count_update_callback,
-        ):
-            yield item
+        async with aclosing(
+            _map_invocation(
+                self,  # type: ignore
+                input_queue,
+                self._client,
+                order_outputs,
+                return_exceptions,
+                count_update_callback,
+            )
+        ) as stream:
+            async for item in stream:
+                yield item
 
     async def _call_function(self, args, kwargs) -> ReturnType:
         invocation = await _Invocation.create(
