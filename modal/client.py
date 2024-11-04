@@ -30,7 +30,7 @@ from modal_version import __version__
 
 from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.grpc_utils import create_channel, retry_transient_errors
+from ._utils.grpc_utils import connect_channel, create_channel, retry_transient_errors
 from .config import _check_config, _is_remote, config, logger
 from .exception import AuthError, ClientClosed, ConnectionError, DeprecationError, VersionError
 
@@ -114,8 +114,9 @@ class _Client:
         self._closed = False
         assert self._stub is None
         metadata = _get_metadata(self.client_type, self._credentials, self.version)
+        self._channel = create_channel(self.server_url, metadata=metadata)
         try:
-            self._channel = await create_channel(self.server_url, metadata=metadata)
+            await connect_channel(self._channel)
         except OSError as exc:
             raise ConnectionError(str(exc))
         self._cancellation_context = TaskContext(grace=0.5)  # allow running rpcs to finish in 0.5s when closing client
