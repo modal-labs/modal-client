@@ -185,7 +185,6 @@ class _Invocation:
         item: api_pb2.FunctionGetOutputsItem = (
             await self.pop_function_call_outputs(timeout=None, clear_on_success=True)
         ).outputs[0]
-        assert not item.result.gen_status
         return await _process_result(item.result, item.data_format, self.stub, self.client)
 
     async def poll_function(self, timeout: Optional[float] = None):

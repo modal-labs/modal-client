@@ -145,9 +145,6 @@ enum GPUType {
   GPU_TYPE_A100 = 2;
   GPU_TYPE_A10G = 3;
   GPU_TYPE_ANY = 4;
-  GPU_TYPE_A100_20G = 5 [deprecated=true];
-  GPU_TYPE_A100_40GB_MANY = 6 [deprecated=true];
-  GPU_TYPE_INFERENTIA2 = 7 [deprecated=true];
   GPU_TYPE_A100_80GB = 8;
   GPU_TYPE_L4 = 9;
   GPU_TYPE_H100 = 10;
@@ -836,9 +833,9 @@ message ContainerFilesystemExecResponse {
 }
 
 message ContainerHeartbeatRequest {
-  string current_input_id = 1;
-  double current_input_started_at = 2;
-  bool supports_graceful_input_cancellation = 3; // implicitly also means we support long polling. Can be removed once v0.57 is no longer supported
+  bool canceled_inputs_return_outputs = 4;
+
+  reserved 1, 2, 3;
 }
 
 message ContainerHeartbeatResponse {
@@ -1208,7 +1205,7 @@ message Function {
 
   bool snapshot_debug = 73; // For internal debugging use only.
 
-  // Need a mapping of method names to method definitions
+  // Mapping of method names to method definitions, only non-empty for class service functions
   map<string, MethodDefinition> method_definitions = 74;
   bool method_definitions_set = 75;
 }
@@ -1273,7 +1270,7 @@ message FunctionCallPutDataRequest {
 message FunctionCreateRequest {
   Function function = 1;
   string app_id = 2  [ (modal.options.audit_target_attr) = true ];
-  Schedule schedule = 6; // Deprecated: now passed in the Function definition
+  Schedule schedule = 6 [deprecated=true]; // Deprecated: now passed in the Function definition
   string existing_function_id = 7;
   // This flag tells the server to avoid doing updates in FunctionCreate that should now
   // be done in AppPublish. Provides a smoother migration onto atomic deployments with 0.64,
@@ -1404,7 +1401,6 @@ message FunctionGetOutputsItem {
   GenericResult result = 1;
   int32 idx = 2;
   string input_id = 3;
-  int32 gen_index = 4;  // Deprecated, only used in client version <0.57
   DataFormat data_format = 5; // for result.data_oneof
   string task_id = 6;
   double input_started_at = 7;
@@ -1462,6 +1458,7 @@ message FunctionHandleMetadata {
   string use_method_name = 41; // used for methods
   string definition_id = 42;
   ClassParameterInfo class_parameter_info = 43;
+  // Mapping of method names to their metadata, only non-empty for class service functions
   map<string, FunctionHandleMetadata> method_handle_metadata = 44;
 }
 
@@ -1513,6 +1510,7 @@ message FunctionPrecreateRequest {
   WebhookConfig webhook_config = 5;
   string use_function_id = 6;  // for class methods - use this function id instead for invocations - the *referenced* function should have is_class=True
   string use_method_name = 7;  // for class methods - this method name needs to be included in the FunctionInput
+  // Mapping of method names to method definitions, only non-empty for class service functions
   map<string, MethodDefinition> method_definitions = 8;
 }
 
@@ -1546,7 +1544,6 @@ message FunctionPutOutputsItem {
   GenericResult result = 2;
   double input_started_at = 3;
   double output_created_at = 4;
-  int32 gen_index = 6;  // Deprecated, only used in client version <0.57
   DataFormat data_format = 7; // for result.data_oneof
 }
 
@@ -1611,13 +1608,6 @@ message GenericResult {  // Used for both tasks and function outputs
     bytes data = 5; // Inline data of the result.
     string data_blob_id = 10; // Blob ID for large data.
   }
-
-  enum GeneratorStatus {
-    GENERATOR_STATUS_UNSPECIFIED = 0;
-    GENERATOR_STATUS_INCOMPLETE = 1;
-    GENERATOR_STATUS_COMPLETE = 2;
-  }
-  GeneratorStatus gen_status = 7;  // Deprecated, only used in client version <0.57
 
   string propagation_reason = 13; // (?)
 }
@@ -1709,6 +1699,14 @@ message InputInfo {
   double finished_at = 5;
   double task_startup_time = 6;
   bool task_first_input = 7;
+}
+
+message MethodDefinition {
+  string function_name = 1;
+  Function.FunctionType function_type = 2;
+  WebhookConfig webhook_config = 3;
+  string web_url = 4;
+  WebUrlInfo web_url_info = 5;
 }
 
 message MountFile {
@@ -1808,6 +1806,7 @@ message Proxy {
   string name = 1;
   double created_at = 2;
   string environment_name = 3;
+  string proxy_id = 5;
   repeated ProxyIp proxy_ips = 4;
 }
 
