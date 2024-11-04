@@ -27,6 +27,12 @@ from modal_proto import api_pb2
 
 from .supports.skip import skip_windows
 
+# Avoid parameterizing tests over ImageBuilderVersion not supported by current Python
+PYTHON_MAJOR_MINOR = "{0}.{1}".format(*sys.version_info)
+SUPPORTED_IMAGE_BUILDER_VERSIONS = [
+    v for v in get_args(ImageBuilderVersion) if PYTHON_MAJOR_MINOR in SUPPORTED_PYTHON_SERIES[v]
+]
+
 
 def dummy():
     ...
@@ -63,12 +69,9 @@ def get_all_dockerfile_commands(image_id: str, servicer) -> str:
     return "\n".join([cmd for layer in layers for cmd in layer.dockerfile_commands])
 
 
-@pytest.fixture(params=get_args(ImageBuilderVersion))
+@pytest.fixture(params=SUPPORTED_IMAGE_BUILDER_VERSIONS)
 def builder_version(request, server_url_env, modal_config):
     builder_version = request.param
-    python_version = f"{0}.{1}".format(sys.version_info)
-    if python_version not in SUPPORTED_PYTHON_SERIES[builder_version]:
-        pytest.skip("Python version not supported by Image Builder version")
     with modal_config():
         with mock.patch("test.conftest.ImageBuilderVersion", Literal[builder_version]):  # type: ignore
             yield builder_version
