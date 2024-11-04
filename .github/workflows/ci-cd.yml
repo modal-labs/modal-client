@@ -114,8 +114,7 @@ jobs:
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
     strategy:
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
-        image-builder-version: ["2023.12", "2024.04"]
+        image-builder-version: ["2023.12", "2024.04", "2024.10"]
         image-name: ["debian_slim", "micromamba"]
 
     steps:
@@ -139,7 +138,7 @@ jobs:
           MODAL_IMAGE_BUILDER_VERSION: ${{ matrix.image-builder-version }}
           MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT: "1"
         run: |
-          python -m modal_global_objects.images.${{ matrix.image-name }} ${{ matrix.python-version }}
+          python -m modal_global_objects.images.base_images ${{ matrix.image-name }}
 
   publish-client:
     name: Publish client package
