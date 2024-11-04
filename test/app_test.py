@@ -6,9 +6,9 @@ import time
 
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
-from type_stub_helpers.e2e_example_export import synchronizer
 
 from modal import App, Dict, Image, Mount, Secret, Stub, Volume, enable_output, web_endpoint
+from modal._utils.async_utils import synchronizer
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.output import _get_output_manager
 from modal.partial_function import _parse_custom_domains
