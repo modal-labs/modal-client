@@ -479,12 +479,12 @@ def run_async_gen(
             exc = err
 
 
-class aclosing:  # noqa
+class aclosing(typing.Generic[T]):  # noqa
     # backport of Python contextlib.aclosing from Python 3.10
     def __init__(self, agen: AsyncGenerator[T, None]):
         self.agen = agen
 
-    async def __aenter__(self):
+    async def __aenter__(self) -> AsyncGenerator[T, None]:
         return self.agen
 
     async def __aexit__(self, exc, exc_type, tb):
