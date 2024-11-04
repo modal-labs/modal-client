@@ -292,7 +292,9 @@ class _Client:
             # make request cancellable if we are in the same event loop as the rpc context
             # this should usually be the case!
             try:
-                return await self._cancellation_context.create_task(coro)
+                request_task = self._cancellation_context.create_task(coro)
+                request_task.set_name(readable_method)
+                return await request_task
             except asyncio.CancelledError:
                 if self.is_closed():
                     raise ClientClosed(id(self)) from None

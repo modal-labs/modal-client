@@ -59,7 +59,7 @@ async def _heartbeat(client: _Client, app_id: str) -> None:
 async def _init_local_app_existing(client: _Client, existing_app_id: str, environment_name: str) -> RunningApp:
     # Get all the objects first
     obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
-    obj_resp, _ = await asyncio.gather(
+    obj_resp, _ = await gather_cancel_on_exc(
         retry_transient_errors(client.stub.AppGetObjects, obj_req),
         # Cache the environment associated with the app now as we will use it later
         _get_environment_cached(environment_name, client),
@@ -81,7 +81,7 @@ async def _init_local_app_new(
         environment_name=environment_name,
         app_state=app_state,  # type: ignore
     )
-    app_resp, _ = await gather_cancel_on_exc(
+    app_resp, _ = await gather_cancel_on_exc(  # TODO: use TaskGroup?
         retry_transient_errors(client.stub.AppCreate, app_req),
         # Cache the environment associated with the app now as we will use it later
         _get_environment_cached(environment_name, client),
