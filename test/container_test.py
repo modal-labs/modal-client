@@ -383,6 +383,7 @@ def _unwrap_batch_exception(ret: ContainerResult, batch_size):
 def _unwrap_generator(ret: ContainerResult) -> Tuple[List[Any], Optional[Exception]]:
     assert len(ret.items) == 1
     item = ret.items[0]
+    assert item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_UNSPECIFIED
 
     values: List[Any] = [deserialize_data_format(chunk.data, chunk.data_format, None) for chunk in ret.data_chunks]
 
