@@ -678,11 +678,11 @@ async def async_map_ordered(
     semaphore = asyncio.Semaphore(buffer_size or concurrency)
 
     async def mapper_func_wrapper(tup: Tuple[int, T]) -> Tuple[int, V]:
-        await semaphore.acquire()
         return (tup[0], await async_mapper_func(tup[1]))
 
     async def counter() -> AsyncGenerator[int, None]:
         for i in itertools.count():
+            await semaphore.acquire()
             yield i
 
     next_idx = 0
