@@ -726,178 +726,6 @@ async def test_callable_to_agen():
     assert result == [await foo()]
 
 
-@pytest.mark.asyncio
-async def test_async_chain():
-    async def gen1():
-        await asyncio.sleep(0.1)
-        yield 1
-        yield 2
-
-    async def gen2():
-        yield 3
-        await asyncio.sleep(0.1)
-        yield 4
-
-    async def gen3():
-        yield 5
-        yield 6
-
-    result = []
-    async for item in async_chain(gen1(), gen2(), gen3()):
-        result.append(item)
-
-    assert result == [1, 2, 3, 4, 5, 6]
-
-
-@pytest.mark.asyncio
-async def test_async_chain_sequential():
-    ev = asyncio.Event()
-
-    async def gen1():
-        await asyncio.sleep(0.1)
-        yield 1
-        await ev.wait()
-        yield 2
-
-    async def gen2():
-        yield 3
-        ev.set()
-        await asyncio.sleep(0.1)
-        yield 4
-
-    results = []
-
-    async def concat_coro():
-        async with aclosing(async_chain(gen1(), gen2())) as stream:
-            async for item in stream:
-                results.append(item)
-
-    concat_task = asyncio.create_task(concat_coro())
-    await asyncio.sleep(0.5)
-    concat_task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await concat_task
-
-    assert results == [1]
-
-
-@pytest.mark.asyncio
-async def test_async_chain_exception():
-    # test exception bubbling up
-    result = []
-    states = []
-
-    async def gen1():
-        states.append("enter 1")
-        try:
-            yield 1
-            yield 2
-        finally:
-            states.append("exit 1")
-
-    async def gen2():
-        states.append("enter 2")
-        try:
-            await asyncio.sleep(0.1)
-            yield 3
-            raise SampleException("test")
-            yield 4
-        finally:
-            await asyncio.sleep(0)
-            states.append("exit 2")
-
-    with pytest.raises(SampleException):
-        async for item in async_chain(gen1(), gen2()):
-            result.append(item)
-
-    assert result == [1, 2, 3]
-    assert states == ["enter 1", "exit 1", "enter 2", "exit 2"]
-
-
-@pytest.mark.asyncio
-async def test_async_chain_cancellation():
-    ev = asyncio.Event()
-
-    async def gen1():
-        await asyncio.sleep(0.1)
-        yield 1
-        await ev.wait()
-        raise asyncio.CancelledError()
-        yield 2
-
-    async def gen2():
-        yield 3
-        await asyncio.sleep(0.1)
-        yield 4
-
-    async def concat_coro():
-        async with aclosing(async_chain(gen1(), gen2())) as stream:
-            async for _ in stream:
-                pass
-
-    concat_task = asyncio.create_task(concat_coro())
-    await asyncio.sleep(0.1)
-    concat_task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await concat_task
-
-
-@pytest.mark.asyncio
-async def test_async_chain_producer_cancellation():
-    async def gen1():
-        await asyncio.sleep(0.1)
-        yield 1
-        raise asyncio.CancelledError()
-        yield 2
-
-    async def gen2():
-        yield 3
-        await asyncio.sleep(0.1)
-        yield 4
-
-    await asyncio.sleep(0.1)
-    with pytest.raises(asyncio.CancelledError):
-        async with aclosing(async_chain(gen1(), gen2())) as stream:
-            async for _ in stream:
-                pass
-
-
-@pytest.mark.asyncio
-async def test_async_chain_cleanup():
-    # test cleanup of generators
-    result = []
-    states = []
-
-    async def gen1():
-        states.append("enter 1")
-        try:
-            await asyncio.sleep(0.1)
-            yield 1
-            yield 2
-        finally:
-            await asyncio.sleep(0)
-            states.append("exit 1")
-
-    async def gen2():
-        states.append("enter 2")
-        try:
-            yield 3
-            await asyncio.sleep(0.1)
-            yield 4
-        finally:
-            await asyncio.sleep(0)
-            states.append("exit 2")
-
-    async with aclosing(async_chain(gen1(), gen2())) as stream:
-        async for item in stream:
-            result.append(item)
-            if item == 3:
-                break
-
-    assert result == [1, 2, 3]
-    assert states == ["enter 1", "exit 1", "enter 2", "exit 2"]
-
-
 @pytest.mark.parametrize("in_order", [True, False])
 async def test_async_map(in_order):
     result = []
@@ -1246,6 +1074,178 @@ async def test_async_map_ordered_buffer_size2():
         await mapper_task
 
     assert sorted(result) == [0, 1, 2]
+
+
+@pytest.mark.asyncio
+async def test_async_chain():
+    async def gen1():
+        await asyncio.sleep(0.1)
+        yield 1
+        yield 2
+
+    async def gen2():
+        yield 3
+        await asyncio.sleep(0.1)
+        yield 4
+
+    async def gen3():
+        yield 5
+        yield 6
+
+    result = []
+    async for item in async_chain(gen1(), gen2(), gen3()):
+        result.append(item)
+
+    assert result == [1, 2, 3, 4, 5, 6]
+
+
+@pytest.mark.asyncio
+async def test_async_chain_sequential():
+    ev = asyncio.Event()
+
+    async def gen1():
+        await asyncio.sleep(0.1)
+        yield 1
+        await ev.wait()
+        yield 2
+
+    async def gen2():
+        yield 3
+        ev.set()
+        await asyncio.sleep(0.1)
+        yield 4
+
+    results = []
+
+    async def concat_coro():
+        async with aclosing(async_chain(gen1(), gen2())) as stream:
+            async for item in stream:
+                results.append(item)
+
+    concat_task = asyncio.create_task(concat_coro())
+    await asyncio.sleep(0.5)
+    concat_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await concat_task
+
+    assert results == [1]
+
+
+@pytest.mark.asyncio
+async def test_async_chain_exception():
+    # test exception bubbling up
+    result = []
+    states = []
+
+    async def gen1():
+        states.append("enter 1")
+        try:
+            yield 1
+            yield 2
+        finally:
+            states.append("exit 1")
+
+    async def gen2():
+        states.append("enter 2")
+        try:
+            await asyncio.sleep(0.1)
+            yield 3
+            raise SampleException("test")
+            yield 4
+        finally:
+            await asyncio.sleep(0)
+            states.append("exit 2")
+
+    with pytest.raises(SampleException):
+        async for item in async_chain(gen1(), gen2()):
+            result.append(item)
+
+    assert result == [1, 2, 3]
+    assert states == ["enter 1", "exit 1", "enter 2", "exit 2"]
+
+
+@pytest.mark.asyncio
+async def test_async_chain_cancellation():
+    ev = asyncio.Event()
+
+    async def gen1():
+        await asyncio.sleep(0.1)
+        yield 1
+        await ev.wait()
+        raise asyncio.CancelledError()
+        yield 2
+
+    async def gen2():
+        yield 3
+        await asyncio.sleep(0.1)
+        yield 4
+
+    async def concat_coro():
+        async with aclosing(async_chain(gen1(), gen2())) as stream:
+            async for _ in stream:
+                pass
+
+    concat_task = asyncio.create_task(concat_coro())
+    await asyncio.sleep(0.1)
+    concat_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await concat_task
+
+
+@pytest.mark.asyncio
+async def test_async_chain_producer_cancellation():
+    async def gen1():
+        await asyncio.sleep(0.1)
+        yield 1
+        raise asyncio.CancelledError()
+        yield 2
+
+    async def gen2():
+        yield 3
+        await asyncio.sleep(0.1)
+        yield 4
+
+    await asyncio.sleep(0.1)
+    with pytest.raises(asyncio.CancelledError):
+        async with aclosing(async_chain(gen1(), gen2())) as stream:
+            async for _ in stream:
+                pass
+
+
+@pytest.mark.asyncio
+async def test_async_chain_cleanup():
+    # test cleanup of generators
+    result = []
+    states = []
+
+    async def gen1():
+        states.append("enter 1")
+        try:
+            await asyncio.sleep(0.1)
+            yield 1
+            yield 2
+        finally:
+            await asyncio.sleep(0)
+            states.append("exit 1")
+
+    async def gen2():
+        states.append("enter 2")
+        try:
+            yield 3
+            await asyncio.sleep(0.1)
+            yield 4
+        finally:
+            await asyncio.sleep(0)
+            states.append("exit 2")
+
+    async with aclosing(async_chain(gen1(), gen2())) as stream:
+        async for item in stream:
+            result.append(item)
+            if item == 3:
+                break
+
+    assert result == [1, 2, 3]
+    assert states == ["enter 1", "exit 1", "enter 2", "exit 2"]
 
 
 def test_sigint_run_async_gen_shuts_down_gracefully():
