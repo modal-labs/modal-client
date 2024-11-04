@@ -631,3 +631,14 @@ async def async_merge(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T,
 
 async def callable_to_agen(awaitable: Callable[[], Awaitable[T]]) -> AsyncGenerator[T, None]:
     yield await awaitable()
+
+
+async def gather_cancel_on_exc(*coros_or_futures):
+    input_tasks = [asyncio.ensure_future(t) for t in coros_or_futures]
+    try:
+        return await asyncio.gather(*input_tasks)
+    except BaseException:
+        for t in input_tasks:
+            t.cancel()
+        await asyncio.gather(*input_tasks, return_exceptions=False)  # handle cancellations
+        raise

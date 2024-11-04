@@ -17,7 +17,7 @@ from ._output import get_app_logs_loop, step_completed, step_progress
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._traceback import traceback_contains_remote_call
-from ._utils.async_utils import TaskContext, synchronize_api
+from ._utils.async_utils import TaskContext, gather_cancel_on_exc, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name, is_valid_tag
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
@@ -81,7 +81,7 @@ async def _init_local_app_new(
         environment_name=environment_name,
         app_state=app_state,  # type: ignore
     )
-    app_resp, _ = await asyncio.gather(
+    app_resp, _ = await gather_cancel_on_exc(
         retry_transient_errors(client.stub.AppCreate, app_req),
         # Cache the environment associated with the app now as we will use it later
         _get_environment_cached(environment_name, client),
