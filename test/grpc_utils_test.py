@@ -22,7 +22,7 @@ async def test_http_channel(servicer, credentials):
         "x-modal-token-secret": token_secret,
     }
     assert servicer.client_addr.startswith("http://")
-    channel = create_channel(servicer.client_addr)
+    channel = await create_channel(servicer.client_addr)
     client_stub = api_grpc.ModalClientStub(channel)
 
     req = api_pb2.BlobCreateRequest()
@@ -41,7 +41,7 @@ async def test_unix_channel(servicer):
         "x-modal-client-version": "0.99",
     }
     assert servicer.container_addr.startswith("unix://")
-    channel = create_channel(servicer.container_addr)
+    channel = await create_channel(servicer.container_addr)
     client_stub = api_grpc.ModalClientStub(channel)
 
     req = api_pb2.BlobCreateRequest()
@@ -49,6 +49,12 @@ async def test_unix_channel(servicer):
     assert resp.blob_id
 
     channel.close()
+
+
+@pytest.mark.asyncio
+async def test_http_broken_channel():
+    with pytest.raises(OSError):
+        await create_channel("https://xyz.invalid")
 
 
 @pytest.mark.asyncio

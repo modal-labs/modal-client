@@ -70,7 +70,7 @@ RETRYABLE_GRPC_STATUS_CODES = [
 ]
 
 
-def create_channel(
+async def create_channel(
     server_url: str,
     metadata: Dict[str, str] = {},
 ) -> grpclib.client.Channel:
@@ -111,6 +111,10 @@ def create_channel(
         logger.debug(f"Sending request to {event.method_name}")
 
     grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
+
+    # Open socket
+    await channel.__connect__()
+
     return channel
 
 
