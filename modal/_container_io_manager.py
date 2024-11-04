@@ -371,13 +371,6 @@ class _ContainerIOManager:
     async def _heartbeat_handle_cancellations(self) -> bool:
         # Return True if a cancellation event was received, in that case
         # we shouldn't wait too long for another heartbeat
-
-        request = api_pb2.ContainerHeartbeatRequest(supports_graceful_input_cancellation=True)
-        if self.current_input_id is not None:
-            request.current_input_id = self.current_input_id
-        if self.current_input_started_at is not None:
-            request.current_input_started_at = self.current_input_started_at
-
         async with self.heartbeat_condition:
             # Continuously wait until `waiting_for_memory_snapshot` is false.
             # TODO(matt): Verify that a `while` is necessary over an `if`. Spurious
@@ -386,7 +379,7 @@ class _ContainerIOManager:
             while self._waiting_for_memory_snapshot:
                 await self.heartbeat_condition.wait()
 
-            # TODO(erikbern): capture exceptions?
+            request = api_pb2.ContainerHeartbeatRequest(canceled_inputs_return_outputs=True)
             response = await retry_transient_errors(
                 self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT
             )
