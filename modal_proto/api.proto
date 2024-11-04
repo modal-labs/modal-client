@@ -145,9 +145,6 @@ enum GPUType {
   GPU_TYPE_A100 = 2;
   GPU_TYPE_A10G = 3;
   GPU_TYPE_ANY = 4;
-  GPU_TYPE_A100_20G = 5 [deprecated=true];
-  GPU_TYPE_A100_40GB_MANY = 6 [deprecated=true];
-  GPU_TYPE_INFERENTIA2 = 7 [deprecated=true];
   GPU_TYPE_A100_80GB = 8;
   GPU_TYPE_L4 = 9;
   GPU_TYPE_H100 = 10;
@@ -1270,7 +1267,7 @@ message FunctionCallPutDataRequest {
 message FunctionCreateRequest {
   Function function = 1;
   string app_id = 2  [ (modal.options.audit_target_attr) = true ];
-  Schedule schedule = 6; // Deprecated: now passed in the Function definition
+  Schedule schedule = 6 [deprecated=true]; // Deprecated: now passed in the Function definition
   string existing_function_id = 7;
   // This flag tells the server to avoid doing updates in FunctionCreate that should now
   // be done in AppPublish. Provides a smoother migration onto atomic deployments with 0.64,
@@ -1401,7 +1398,6 @@ message FunctionGetOutputsItem {
   GenericResult result = 1;
   int32 idx = 2;
   string input_id = 3;
-  int32 gen_index = 4;  // Deprecated, only used in client version <0.57
   DataFormat data_format = 5; // for result.data_oneof
   string task_id = 6;
   double input_started_at = 7;
@@ -1545,7 +1541,6 @@ message FunctionPutOutputsItem {
   GenericResult result = 2;
   double input_started_at = 3;
   double output_created_at = 4;
-  int32 gen_index = 6;  // Deprecated, only used in client version <0.57
   DataFormat data_format = 7; // for result.data_oneof
 }
 
@@ -1611,13 +1606,6 @@ message GenericResult {  // Used for both tasks and function outputs
     string data_blob_id = 10; // Blob ID for large data.
   }
 
-  enum GeneratorStatus {
-    GENERATOR_STATUS_UNSPECIFIED = 0;
-    GENERATOR_STATUS_INCOMPLETE = 1;
-    GENERATOR_STATUS_COMPLETE = 2;
-  }
-  GeneratorStatus gen_status = 7;  // Deprecated, only used in client version <0.57
-
   string propagation_reason = 13; // (?)
 }
 
@@ -1635,9 +1623,6 @@ message Image {
   string context_mount_id = 15;
   GPUConfig gpu_config = 16;
   ImageRegistryConfig image_registry_config = 17;
-
-  string build_function_def = 14; // deprecated after 0.58.96
-  bytes build_function_globals = 18; // deprecated after 0.58.96
 
   // If set, overrides the runtime used by the function. Specify either "runc" or "gvisor".
   string runtime = 19;
