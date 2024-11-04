@@ -742,6 +742,9 @@ message ContainerExecRequest {
   bool runtime_debug = 5; // For internal debugging use only.
   ExecOutputOption stdout_output = 6;
   ExecOutputOption stderr_output = 7;
+  uint32 timeout_secs = 8;
+  optional string workdir = 9;
+  repeated string secret_ids = 10;
 }
 
 message ContainerExecResponse {
