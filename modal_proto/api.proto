@@ -2536,14 +2536,6 @@ message VolumeRemoveFileRequest {
   bool recursive = 3;
 }
 
-message MethodDefinition {
-  string function_name = 1;
-  Function.FunctionType function_type = 2;
-  WebhookConfig webhook_config = 3;
-  string web_url = 4;
-  WebUrlInfo web_url_info = 5;
-}
-
 message WebUrlInfo {
   bool truncated = 1;
   bool has_unique_hash = 2 [deprecated=true];
