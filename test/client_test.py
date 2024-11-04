@@ -49,9 +49,9 @@ async def test_container_client_type(servicer, container_client):
 @pytest.mark.asyncio
 @pytest.mark.timeout(TEST_TIMEOUT)
 async def test_client_dns_failure():
-    async with Client("https://xyz.invalid", api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
-        with pytest.raises(ConnectionError) as excinfo:
-            await client.hello.aio()
+    with pytest.raises(ConnectionError) as excinfo:
+        async with Client("https://xyz.invalid", api_pb2.CLIENT_TYPE_CONTAINER, None):
+            pass
     assert excinfo.value
 
 
@@ -59,9 +59,9 @@ async def test_client_dns_failure():
 @pytest.mark.timeout(TEST_TIMEOUT)
 @skip_windows("Windows test crashes on connection failure")
 async def test_client_connection_failure():
-    async with Client("https://localhost:443", api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
-        with pytest.raises(ConnectionError) as excinfo:
-            await client.hello.aio()
+    with pytest.raises(ConnectionError) as excinfo:
+        async with Client("https://localhost:443", api_pb2.CLIENT_TYPE_CONTAINER, None):
+            pass
     assert excinfo.value
 
 
@@ -69,9 +69,9 @@ async def test_client_connection_failure():
 @pytest.mark.timeout(TEST_TIMEOUT)
 @skip_windows_unix_socket
 async def test_client_connection_failure_unix_socket():
-    async with Client("unix:/tmp/xyz.txt", api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
-        with pytest.raises(ConnectionError) as excinfo:
-            await client.hello.aio()
+    with pytest.raises(ConnectionError) as excinfo:
+        async with Client("unix:/tmp/xyz.txt", api_pb2.CLIENT_TYPE_CONTAINER, None):
+            pass
     assert excinfo.value
 
 
