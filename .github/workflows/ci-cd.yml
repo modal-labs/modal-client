@@ -28,9 +28,6 @@ jobs:
         os: ["ubuntu-20.04"]
         proto-version: ["latest"]
         include:
-          - os: "macos-12" # x86-64
-            python-version: "3.10"
-            proto-version: "latest"
           - os: "macos-14" # ARM64 (M1)
             python-version: "3.10"
             proto-version: "latest"
