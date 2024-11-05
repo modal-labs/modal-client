@@ -479,15 +479,16 @@ def run_async_gen(
             exc = err
 
 
-@asynccontextmanager
-async def aclosing(agen: AsyncGenerator[T, None]) -> AsyncGenerator[AsyncGenerator[T, None], None]:
-    # ensure aclose is called asynchronously after context manager is closed
-    # call to ensure cleanup after stateful generators since they can't
-    # always be cleaned up by garbage collection
-    try:
-        yield agen
-    finally:
-        await agen.aclose()
+class aclosing(typing.Generic[T]):  # noqa
+    # backport of Python contextlib.aclosing from Python 3.10
+    def __init__(self, agen: AsyncGenerator[T, None]):
+        self.agen = agen
+
+    async def __aenter__(self) -> AsyncGenerator[T, None]:
+        return self.agen
+
+    async def __aexit__(self, exc, exc_type, tb):
+        await self.agen.aclose()
 
 
 async def sync_or_async_iter(iter: Union[Iterable[T], AsyncGenerator[T, None]]) -> AsyncGenerator[T, None]:
