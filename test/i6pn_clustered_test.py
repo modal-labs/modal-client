@@ -7,7 +7,7 @@ app = App()
 
 
 @app.function()
-@modal.experimental.grouped(size=2)
+@modal.experimental.clustered(size=2)
 def f1():
     pass
 
@@ -22,7 +22,7 @@ def f3():
     pass
 
 
-def test_experimental_group(servicer, client):
+def test_experimental_cluster(servicer, client):
     with app.run(client=client):
         assert len(servicer.app_functions) == 3
 
@@ -39,17 +39,6 @@ def test_experimental_group(servicer, client):
         assert fn3.i6pn_enabled is True
 
 
-def test_spawn_experimental_group(client, servicer, monkeypatch):
-    # We need to set a custom function body here since grouped function's kwargs
-    # aren't compatible with the default servicer function body.
-    @servicer.function_body
-    def grouped_func(*args, **kwargs):
-        return sum(args)
-
+def test_spawn_experimental_cluster(client, servicer, monkeypatch):
     with app.run(client=client):
-        # Needed for type checker to be happy. This isn't the best solution, but
-        # the feature is experimental anyway...
-        assert isinstance(f1, modal.experimental.GroupedFunction)
-        f1.client = client
-
-        assert f1.remote(2, 4) == [6] * 2
+        assert f1.remote(2, 4) == 2**2 + 4**2

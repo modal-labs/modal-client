@@ -2,6 +2,8 @@
 # ruff: noqa: E402
 import os
 
+from modal._clustered_functions import initialize_clustered_function
+
 telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
 if telemetry_socket:
     from ._telemetry import instrument_imports
@@ -814,8 +816,18 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 obj._hydrate(object_id, _client, metadata)
 
         # Initialize clustered functions.
-        if function_def.cluster_size > 1:
-            print("running clustered function")
+        if function_def._experimental_group_size > 1:
+            if not container_args.HasField("cluster_id"):
+                raise ExecutionError(
+                    "Function is a clustered function but no cluster ID was provided to _container_entrypoint"
+                )
+            if not container_args.HasField("cluster_rank"):
+                raise ExecutionError(
+                    "Function is a clustered function but no cluster rank was provided to _container_entrypoint"
+                )
+            initialize_clustered_function(
+                container_args.cluster_id, container_args.cluster_rank, function_def._experimental_group_size
+            )
 
         # Identify all "enter" methods that need to run before we snapshot.
         if service.user_cls_instance is not None and not is_auto_snapshot:

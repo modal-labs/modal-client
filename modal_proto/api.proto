@@ -730,6 +730,8 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   string runtime = 11;
   string environment_name = 13;
   optional string checkpoint_id = 14;
+  optional string cluster_id = 15;
+  optional uint32 cluster_rank = 16;
 }
 
 message ContainerCheckpointRequest {
