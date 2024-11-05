@@ -111,7 +111,13 @@ def create_channel(
         logger.debug(f"Sending request to {event.method_name}")
 
     grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
+
     return channel
+
+
+async def connect_channel(channel: grpclib.client.Channel):
+    """Connects socket (potentially raising errors raising to connectivity."""
+    await channel.__connect__()
 
 
 if typing.TYPE_CHECKING:

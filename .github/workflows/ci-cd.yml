@@ -19,16 +19,16 @@ env:
 jobs:
   client-test:
     name: Unit tests on ${{ matrix.python-version }} and ${{ matrix.os }} (protobuf=${{ matrix.proto-version }})
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     strategy:
       fail-fast: false # run all variants across python versions/os to completion
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
         os: ["ubuntu-20.04"]
         proto-version: ["latest"]
         include:
-          - os: "macos-12" # x86-64
+          - os: "macos-13" # x86-64
             python-version: "3.10"
             proto-version: "latest"
           - os: "macos-14" # ARM64 (M1)
@@ -63,7 +63,8 @@ jobs:
         run: pytest -v
 
       - name: Run docstring tests
-        if: github.event.pull_request.head.repo.fork != 'true'
+        # TODO(michael) disable doctests on 3.13 until workspace is updated to new Image Builder Version
+        if: github.event.pull_request.head.repo.fork == 'false' && matrix.python-version != '3.13'
         env:
           MODAL_ENVIRONMENT: client-doc-tests
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
@@ -77,7 +78,7 @@ jobs:
     strategy:
       matrix:
         image-builder-version: ["2024.04", "2024.10"]
-        python-version: ["3.8", "3.12"]
+        python-version: ["3.8", "3.13"]
     steps:
       - uses: actions/checkout@v3
 
@@ -113,8 +114,7 @@ jobs:
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
     strategy:
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
-        image-builder-version: ["2023.12", "2024.04"]
+        image-builder-version: ["2023.12", "2024.04", "2024.10"]
         image-name: ["debian_slim", "micromamba"]
 
     steps:
@@ -138,7 +138,7 @@ jobs:
           MODAL_IMAGE_BUILDER_VERSION: ${{ matrix.image-builder-version }}
           MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT: "1"
         run: |
-          python -m modal_global_objects.images.${{ matrix.image-name }} ${{ matrix.python-version }}
+          python -m modal_global_objects.images.base_images ${{ matrix.image-name }}
 
   publish-client:
     name: Publish client package

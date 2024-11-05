@@ -27,13 +27,20 @@ from modal_proto import api_pb2
 
 from .supports.skip import skip_windows
 
+# Avoid parameterizing tests over ImageBuilderVersion not supported by current Python
+PYTHON_MAJOR_MINOR = "{0}.{1}".format(*sys.version_info)
+SUPPORTED_IMAGE_BUILDER_VERSIONS = [
+    v for v in get_args(ImageBuilderVersion) if PYTHON_MAJOR_MINOR in SUPPORTED_PYTHON_SERIES[v]
+]
+
 
 def dummy():
     ...
 
 
 def test_supported_python_series():
-    assert SUPPORTED_PYTHON_SERIES == list(PYTHON_STANDALONE_VERSIONS)
+    for builder_version in get_args(ImageBuilderVersion):
+        assert SUPPORTED_PYTHON_SERIES[builder_version] <= list(PYTHON_STANDALONE_VERSIONS)
 
 
 def get_image_layers(image_id: str, servicer) -> List[api_pb2.Image]:
@@ -62,12 +69,12 @@ def get_all_dockerfile_commands(image_id: str, servicer) -> str:
     return "\n".join([cmd for layer in layers for cmd in layer.dockerfile_commands])
 
 
-@pytest.fixture(params=get_args(ImageBuilderVersion))
+@pytest.fixture(params=SUPPORTED_IMAGE_BUILDER_VERSIONS)
 def builder_version(request, server_url_env, modal_config):
-    version = request.param
+    builder_version = request.param
     with modal_config():
-        with mock.patch("test.conftest.ImageBuilderVersion", Literal[version]):  # type: ignore
-            yield version
+        with mock.patch("test.conftest.ImageBuilderVersion", Literal[builder_version]):  # type: ignore
+            yield builder_version
 
 
 @pytest.fixture(autouse=True)
@@ -77,25 +84,25 @@ def clear_environment_cache():
     environments.ENVIRONMENT_CACHE.clear()
 
 
-def test_python_version_validation():
-    assert _validate_python_version(None) == "{0}.{1}".format(*sys.version_info)
-    assert _validate_python_version("3.12") == "3.12"
-    assert _validate_python_version("3.12.0") == "3.12.0"
+def test_python_version_validation(builder_version):
+    assert _validate_python_version(None, builder_version) == "{0}.{1}".format(*sys.version_info)
+    assert _validate_python_version("3.12", builder_version) == "3.12"
+    assert _validate_python_version("3.12.0", builder_version) == "3.12.0"
 
     with pytest.raises(InvalidError, match="Unsupported Python version"):
-        _validate_python_version("3.7")
+        _validate_python_version("3.7", builder_version)
 
     with pytest.raises(InvalidError, match="Python version must be specified as a string"):
-        _validate_python_version(3.10)  # type: ignore
+        _validate_python_version(3.10, builder_version)  # type: ignore
 
     with pytest.raises(InvalidError, match="Invalid Python version"):
-        _validate_python_version("3.10.2.9")
+        _validate_python_version("3.10.2.9", builder_version)
 
     with pytest.raises(InvalidError, match="Invalid Python version"):
-        _validate_python_version("3.10.x")
+        _validate_python_version("3.10.x", builder_version)
 
     with pytest.raises(InvalidError, match="Python version must be specified as 'major.minor'"):
-        _validate_python_version("3.10.5", allow_micro_granularity=False)
+        _validate_python_version("3.10.5", builder_version, allow_micro_granularity=False)
 
 
 def test_dockerhub_python_version(builder_version):
@@ -1063,6 +1070,74 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
         poetry_lockfile=test_dir / "supports" / "special_poetry.lock",
     )
     assert get_hash(img) == "bfce5811c04c1243f12cbb9cca1522cb901f52410986925bcfa3b3c2d7adc7a0"
+
+
+@pytest.fixture
+def force_2024_10(modal_config):
+    with mock.patch("test.conftest.ImageBuilderVersion", Literal["2024.10"]):
+        with modal_config():
+            yield
+
+
+@skip_windows("Different hash values for context file paths")
+def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
+    def get_hash(img: Image) -> str:
+        app = App(image=img)
+        app.function()(dummy)
+        with app.run(client=client):
+            layers = get_image_layers(app.image.object_id, servicer)
+            commands = [layer.dockerfile_commands for layer in layers]
+            context_files = [[(f.filename, f.data) for f in layer.context_files] for layer in layers]
+        return sha256(repr(list(zip(commands, context_files))).encode()).hexdigest()
+
+    if sys.version_info[:2] == (3, 11):
+        # Matches my development environment — default is to match Python version from local system
+        img = Image.debian_slim()
+        assert get_hash(img) == "f03d3a2bd1a859349320b216311902982aebad30f135b1bef68e3c6cc8a6bfbe"
+
+    img = Image.debian_slim(python_version="3.12")
+    assert get_hash(img) == "385413df75dffe57f41d4c8eef45ce6cec6de54dda348f3b93c3b7d36fdf0973"
+
+    img = Image.from_registry("ubuntu:22.04")
+    assert get_hash(img) == "40ff7675fd5ecca1d851887c6a3553008704f901748de1fb3c02035eb9c46f56"
+
+    img = Image.from_dockerfile(test_dir / "supports" / "test-dockerfile")
+    assert get_hash(img) == "acfe80cb17592600c62578e9e38fab25450f962104ee7fe4e128585ea6fbfe33"
+
+    img = Image.micromamba()
+    if sys.version_info[:2] == (3, 11):
+        assert get_hash(img) == "83fbb2ccdb1c55b6e390be4fcd0b846534424f178df0134a3b3ee999912f9a3e"
+    elif sys.version_info[:2] == (3, 10):
+        # Assert that we follow the local Python, which is a new behavior in 2024.04
+        assert get_hash(img) == "4461541c726a61ba05b74b282649de56c9e99eca44337c08bba202fe19a42383"
+
+    img = Image.micromamba(python_version="3.12")
+    assert get_hash(img) == "180fb16300d4a8bbb03bed534a297350e5e8147fb240f34e86164bb7d884481c"
+
+    base = Image.debian_slim(python_version="3.12")
+
+    img = base.run_commands("echo 'Hello Modal'", "rm /usr/local/bin/kubectl")
+    assert get_hash(img) == "bee3ae0a37ea24925e616d5a90bc7564848b15fac85a3d8d12c2be88038f3011"
+
+    img = base.pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
+    assert get_hash(img) == "b3f271b826547d5c2a62a58765e7456ad957c982c2dd2fd0a1d6d472b4a2e928"
+
+    img = base.pip_install_from_requirements(test_dir / "supports" / "test-requirements.txt")
+    assert get_hash(img) == "94960315ff71d9521890a0472ea389c4ef3be76b9b439a6bcb28d7e17a4ee7ea"
+
+    img = base.micromamba_install(
+        "torch=2.2",
+        "transformers<4.23.0",
+        spec_file=test_dir / "supports" / "test-conda-environment.yml",
+        channels=["conda-forge", "my-channel"],
+    )
+    assert get_hash(img) == "769bdbb5aaeb4f6c7eda77e59ee81c6adac9b03ff7e479036b83ec414e8cfec6"
+
+    img = base.poetry_install_from_file(
+        test_dir / "supports" / "test-pyproject.toml",
+        poetry_lockfile=test_dir / "supports" / "special_poetry.lock",
+    )
+    assert get_hash(img) == "78d579f243c21dcaa59e5daf97f732e2453b004bc2122de692617d4d725c6184"
 
 
 parallel_app = App()
