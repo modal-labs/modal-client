@@ -836,7 +836,8 @@ message ContainerFilesystemExecResponse {
 }
 
 message ContainerHeartbeatRequest {
-  bool canceled_inputs_return_outputs = 4;
+  bool canceled_inputs_return_outputs = 4; // Bad client version.
+  bool canceled_inputs_return_outputs_v2 = 5;
 
   reserved 1, 2, 3;
 }
