@@ -774,7 +774,7 @@ class _ContainerIOManager:
             #    for the yield. Typically on event loop shutdown
             raise
         except (InputCancellation, asyncio.CancelledError):
-            # Create terminated outputs for these inputs to signal that the cancellation has been completed.
+            # Create terminated outputs for these inputs to signal that the cancellations have been completed.
             logger.warning(f"Received a cancellation signal while processing input {io_context.input_ids}")
             results = [
                 api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
