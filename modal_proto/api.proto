@@ -1211,6 +1211,8 @@ message Function {
   // Mapping of method names to method definitions, only non-empty for class service functions
   map<string, MethodDefinition> method_definitions = 74;
   bool method_definitions_set = 75;
+
+  bool _experimental_custom_scaling = 76;
 }
 
 message FunctionBindParamsRequest {
