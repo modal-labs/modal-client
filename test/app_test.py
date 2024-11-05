@@ -8,10 +8,11 @@ from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
 from modal import App, Dict, Image, Mount, Secret, Stub, Volume, enable_output, web_endpoint
+from modal._utils.async_utils import synchronizer
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.output import _get_output_manager
 from modal.partial_function import _parse_custom_domains
-from modal.runner import deploy_app, deploy_stub
+from modal.runner import deploy_app, deploy_stub, run_app
 from modal_proto import api_pb2
 
 from .supports import module_1, module_2
@@ -452,3 +453,15 @@ async def test_deploy_from_container(servicer, container_client):
     assert res.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["square"] == "fu-1"
     assert servicer.app_state_history[res.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
+
+
+def test_app_create_bad_environment_name_error(client):
+    environment_name = "this=is@not.allowed"
+    app = App()
+    with pytest.raises(InvalidError, match="Invalid Environment name"):
+        with run_app(
+            app, environment_name=environment_name, client=client
+        ):  # TODO: why isn't environment_name an argument to app.run?
+            pass
+
+    assert len(asyncio.all_tasks(synchronizer._loop)) == 1  # no trailing tasks, except the `loop_inner` ever-task

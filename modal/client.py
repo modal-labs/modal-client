@@ -30,9 +30,9 @@ from modal_version import __version__
 
 from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.grpc_utils import create_channel, retry_transient_errors
+from ._utils.grpc_utils import connect_channel, create_channel, retry_transient_errors
 from .config import _check_config, _is_remote, config, logger
-from .exception import AuthError, ClientClosed, DeprecationError, VersionError
+from .exception import AuthError, ClientClosed, ConnectionError, DeprecationError, VersionError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
@@ -115,6 +115,10 @@ class _Client:
         assert self._stub is None
         metadata = _get_metadata(self.client_type, self._credentials, self.version)
         self._channel = create_channel(self.server_url, metadata=metadata)
+        try:
+            await connect_channel(self._channel)
+        except OSError as exc:
+            raise ConnectionError(str(exc))
         self._cancellation_context = TaskContext(grace=0.5)  # allow running rpcs to finish in 0.5s when closing client
         self._cancellation_context_event_loop = asyncio.get_running_loop()
         await self._cancellation_context.__aenter__()
@@ -292,7 +296,9 @@ class _Client:
             # make request cancellable if we are in the same event loop as the rpc context
             # this should usually be the case!
             try:
-                return await self._cancellation_context.create_task(coro)
+                request_task = self._cancellation_context.create_task(coro)
+                request_task.set_name(readable_method)
+                return await request_task
             except asyncio.CancelledError:
                 if self.is_closed():
                     raise ClientClosed(id(self)) from None
