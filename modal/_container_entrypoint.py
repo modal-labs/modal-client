@@ -51,7 +51,6 @@ from .cls import Cls, Obj
 from .config import logger
 from .exception import ExecutionError, InputCancellation, InvalidError, deprecation_warning
 from .execution_context import _set_current_context_ids
-from .experimental import GroupedFunction
 from .functions import Function, _Function
 from .partial_function import (
     _find_callables_for_obj,
@@ -543,8 +542,6 @@ def import_single_function_service(
             # This is a function
             cls = None
             f = getattr(module, qual_name)
-            if isinstance(f, GroupedFunction):
-                f = f.get_underlying_function()
             if isinstance(f, Function):
                 function = synchronizer._translate_in(f)
                 user_defined_callable = function.get_raw_f()
@@ -815,6 +812,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             for object_id, obj in zip(dep_object_ids, service.code_deps):
                 metadata: Message = container_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, _client, metadata)
+
+        # Initialize clustered functions.
+        if function_def.cluster_size > 1:
+            print("running clustered function")
 
         # Identify all "enter" methods that need to run before we snapshot.
         if service.user_cls_instance is not None and not is_auto_snapshot:

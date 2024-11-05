@@ -35,8 +35,7 @@ from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, parameter
 from .config import logger
-from .exception import ExecutionError, InvalidError, deprecation_error, deprecation_warning
-from .experimental import _GroupedFunction
+from .exception import InvalidError, deprecation_error, deprecation_warning
 from .functions import Function, _Function
 from .gpu import GPU_T
 from .image import _Image
@@ -712,8 +711,8 @@ class _App:
                         "        ...\n"
                         "```\n"
                     )
-                i6pn_enabled = i6pn or (f.flags & _PartialFunctionFlags.GROUPED)
-                group_size = f.group_size  # Experimental: Grouped functions
+                i6pn_enabled = i6pn or (f.flags & _PartialFunctionFlags.CLUSTERED)
+                cluster_size = f.cluster_size  # Experimental: Clustered functions
 
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
@@ -758,7 +757,7 @@ class _App:
                 batch_wait_ms = None
                 raw_f = f
 
-                group_size = None  # Experimental: Grouped functions
+                cluster_size = None  # Experimental: Clustered functions
                 i6pn_enabled = i6pn
 
             if info.function_name.endswith(".app"):
@@ -809,17 +808,10 @@ class _App:
                 _experimental_buffer_containers=_experimental_buffer_containers,
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 i6pn_enabled=i6pn_enabled,
-                group_size=group_size,  # Experimental: Grouped functions
-                _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
+                cluster_size=cluster_size,  # Experimental: Clustered functions
             )
 
             self._add_function(function, webhook_config is not None)
-
-            # Experimental: Grouped functions
-            if group_size is not None:
-                if group_size <= 0:
-                    raise InvalidError("Group size must be positive")
-                function = _GroupedFunction(function, group_size)
 
             return function
 
