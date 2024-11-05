@@ -479,15 +479,16 @@ def run_async_gen(
             exc = err
 
 
-@asynccontextmanager
-async def aclosing(agen: AsyncGenerator[T, None]) -> AsyncGenerator[AsyncGenerator[T, None], None]:
-    # ensure aclose is called asynchronously after context manager is closed
-    # call to ensure cleanup after stateful generators since they can't
-    # always be cleaned up by garbage collection
-    try:
-        yield agen
-    finally:
-        await agen.aclose()
+class aclosing(typing.Generic[T]):  # noqa
+    # backport of Python contextlib.aclosing from Python 3.10
+    def __init__(self, agen: AsyncGenerator[T, None]):
+        self.agen = agen
+
+    async def __aenter__(self) -> AsyncGenerator[T, None]:
+        return self.agen
+
+    async def __aexit__(self, exc, exc_type, tb):
+        await self.agen.aclose()
 
 
 async def sync_or_async_iter(iter: Union[Iterable[T], AsyncGenerator[T, None]]) -> AsyncGenerator[T, None]:
@@ -632,6 +633,17 @@ async def async_merge(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T,
 
 async def callable_to_agen(awaitable: Callable[[], Awaitable[T]]) -> AsyncGenerator[T, None]:
     yield await awaitable()
+
+
+async def gather_cancel_on_exc(*coros_or_futures):
+    input_tasks = [asyncio.ensure_future(t) for t in coros_or_futures]
+    try:
+        return await asyncio.gather(*input_tasks)
+    except BaseException:
+        for t in input_tasks:
+            t.cancel()
+        await asyncio.gather(*input_tasks, return_exceptions=False)  # handle cancellations
+        raise
 
 
 async def async_map(
