@@ -349,6 +349,7 @@ message AppGetObjectsItem {
 message AppGetObjectsRequest {
   string app_id = 1;
   bool include_unindexed = 2;
+  bool only_class_function = 3;
 }
 
 message AppGetObjectsResponse {
@@ -603,6 +604,7 @@ message ClassCreateRequest {
   string existing_class_id = 2;
   repeated ClassMethod methods = 3;
   reserved 4; // removed class_function_id
+  bool only_class_function = 5;
 }
 
 message ClassCreateResponse {
@@ -618,6 +620,7 @@ message ClassGetRequest {
 
   bool lookup_published = 8; // Lookup class on app published by another workspace
   string workspace_name = 9;
+  bool only_class_function = 10;
 }
 
 message ClassGetResponse {
