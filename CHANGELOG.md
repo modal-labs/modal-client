@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.65.30 (2024-11-05)
+
+* The `checkpointing_enabled`, deprecated in March 2024, is now removed.
+
+
+
 ### 0.65.9 (2024-10-31)
 
 Output from `Sandbox.exec` can now be directed to `/dev/null`, `stdout`, or stored for consumption. This behavior can be controlled via the new `StreamType` arguments.
