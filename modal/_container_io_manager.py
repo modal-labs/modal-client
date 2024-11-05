@@ -379,7 +379,7 @@ class _ContainerIOManager:
             while self._waiting_for_memory_snapshot:
                 await self.heartbeat_condition.wait()
 
-            request = api_pb2.ContainerHeartbeatRequest(canceled_inputs_return_outputs=True)
+            request = api_pb2.ContainerHeartbeatRequest(canceled_inputs_return_outputs_v2=True)
             response = await retry_transient_errors(
                 self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT
             )
@@ -389,12 +389,9 @@ class _ContainerIOManager:
             input_ids_to_cancel = response.cancel_input_event.input_ids
             if input_ids_to_cancel:
                 if self._max_concurrency > 1:
-                    current_input_ids_to_cancel = [
-                        input_id for input_id in input_ids_to_cancel if input_id in self.current_inputs
-                    ]
-                    await self._push_terminated_outputs(current_input_ids_to_cancel)
-                    for input_id in current_input_ids_to_cancel:
-                        self.current_inputs[input_id].cancel()
+                    for input_id in input_ids_to_cancel:
+                        if input_id in self.current_inputs:
+                            self.current_inputs[input_id].cancel()
 
                 elif self.current_input_id and self.current_input_id in input_ids_to_cancel:
                     # This goes to a registered signal handler for sync Modal functions, or to the
@@ -405,24 +402,9 @@ class _ContainerIOManager:
                     # SIGUSR1 signal should interrupt the main thread where user code is running,
                     # raising an InputCancellation() exception. On async functions, the signal should
                     # reach a handler in SignalHandlingEventLoop, which cancels the task.
-                    await self._push_terminated_outputs([self.current_input_id])
                     os.kill(os.getpid(), signal.SIGUSR1)
             return True
         return False
-
-    async def _push_terminated_outputs(self, input_ids: List[str]) -> None:
-        outputs = [
-            api_pb2.FunctionPutOutputsItem(
-                input_id=input_id,
-                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED),
-            )
-            for input_id in input_ids
-        ]
-        await retry_transient_errors(
-            self._client.stub.FunctionPutOutputs,
-            api_pb2.FunctionPutOutputsRequest(outputs=outputs),
-            max_retries=None,  # Retry indefinitely, trying every 1s.
-        )
 
     @asynccontextmanager
     async def heartbeats(self, wait_for_mem_snap: bool) -> AsyncGenerator[None, None]:
@@ -792,10 +774,18 @@ class _ContainerIOManager:
             #    for the yield. Typically on event loop shutdown
             raise
         except (InputCancellation, asyncio.CancelledError):
-            # just skip creating any output for this input and keep going with the next instead
-            # it should have been marked as cancelled already in the backend at this point so it
-            # won't be retried
+            # Create terminated outputs for these inputs to signal that the cancellation has been completed.
             logger.warning(f"Received a cancellation signal while processing input {io_context.input_ids}")
+            results = [
+                api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
+                for _ in io_context.input_ids
+            ]
+            await self._push_outputs(
+                io_context=io_context,
+                started_at=started_at,
+                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                results=results,
+            )
             await self.exit_context(started_at, io_context.input_ids)
             return
         except BaseException as exc:
