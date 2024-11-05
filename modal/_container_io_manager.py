@@ -1003,7 +1003,7 @@ class _ContainerIOManager:
         try:
             await self._client.stub.FunctionStartPtyShell(Empty())
         except Exception as e:
-            print("Error: Failed to start PTY shell.")
+            logger.error("Failed to start PTY shell.")
             raise e
 
     @property
