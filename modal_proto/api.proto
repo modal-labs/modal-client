@@ -89,7 +89,7 @@ enum CloudProvider {
   CLOUD_PROVIDER_GCP = 2;
   CLOUD_PROVIDER_AUTO = 3;
   CLOUD_PROVIDER_OCI = 4;
-  reserved 5, 6, 7; // now unused internal experimental values
+  reserved 5, 6, 7, 8; // now unused internal experimental values
 }
 
 enum DNSRecordType {
