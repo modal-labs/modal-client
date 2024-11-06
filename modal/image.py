@@ -328,22 +328,22 @@ class _Image(_Object, type_prefix="im"):
             raise InvalidError(
                 textwrap.dedent(
                     """
-                It's recommended to run any `image.add_*` commands for adding local resources last
-                in your build chain to prevent having to rebuild images on every local file change.
-                Modal then optimizes these files to be added as a thin mount layer when starting your
-                container, without having the rebuild an image whenever you change the data.
+            An image tried to run a build step after using `image.add_*` to include local files.
 
-                If you need the files in earlier build steps and are ok with the added build time,
-                you can explicitly enable that using the `copy=True` option, which copies all
-                relevant files into the image itself.
+            Run `image.add_*` commands last in your image build to avoid rebuilding images with every local filechange.
+            Modal will then mount these files as a thin layer when starting your container, saving build time.
 
-                E.g:
+            If you need these files earlier in the build, set `copy=True` to copy the files directly into the image,
+            though this will increase build time.
 
-                my_image = (
-                    Image.debian_slim()
-                    .add_local_python_packages("mypak", copy=True)
-                    .run_commands("python -m mypak")  # this is now ok!
-                """
+            Example:
+
+            my_image = (
+                Image.debian_slim()
+                .add_local_python_packages("mypak", copy=True)
+                .run_commands("python -m mypak")  # this now works!
+            )
+            """
                 )
             )
 
