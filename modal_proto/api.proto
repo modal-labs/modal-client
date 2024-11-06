@@ -349,6 +349,7 @@ message AppGetObjectsItem {
 message AppGetObjectsRequest {
   string app_id = 1;
   bool include_unindexed = 2;
+  bool only_class_function = 3;
 }
 
 message AppGetObjectsResponse {
@@ -603,6 +604,7 @@ message ClassCreateRequest {
   string existing_class_id = 2;
   repeated ClassMethod methods = 3;
   reserved 4; // removed class_function_id
+  bool only_class_function = 5;
 }
 
 message ClassCreateResponse {
@@ -618,6 +620,7 @@ message ClassGetRequest {
 
   bool lookup_published = 8; // Lookup class on app published by another workspace
   string workspace_name = 9;
+  bool only_class_function = 10;
 }
 
 message ClassGetResponse {
@@ -833,7 +836,8 @@ message ContainerFilesystemExecResponse {
 }
 
 message ContainerHeartbeatRequest {
-  bool canceled_inputs_return_outputs = 4;
+  bool canceled_inputs_return_outputs = 4; // Bad client version.
+  bool canceled_inputs_return_outputs_v2 = 5;
 
   reserved 1, 2, 3;
 }
@@ -1208,6 +1212,8 @@ message Function {
   // Mapping of method names to method definitions, only non-empty for class service functions
   map<string, MethodDefinition> method_definitions = 74;
   bool method_definitions_set = 75;
+
+  bool _experimental_custom_scaling = 76;
 }
 
 message FunctionBindParamsRequest {

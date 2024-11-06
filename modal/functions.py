@@ -64,7 +64,6 @@ from .exception import (
     InvalidError,
     NotFoundError,
     OutputExpiredError,
-    deprecation_error,
     deprecation_warning,
 )
 from .execution_context import current_input_id, is_local
@@ -517,7 +516,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
         enable_memory_snapshot: bool = False,
-        checkpointing_enabled: Optional[bool] = None,
         block_network: bool = False,
         i6pn_enabled: bool = False,
         group_size: Optional[int] = None,  # Experimental: Grouped functions
@@ -541,13 +539,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             assert info.user_cls
             assert not webhook_config
             assert not schedule
-
-        if checkpointing_enabled is not None:
-            deprecation_error(
-                (2024, 3, 4),
-                "The argument `checkpointing_enabled` is now deprecated. Use `enable_memory_snapshot` instead.",
-            )
-            enable_memory_snapshot = checkpointing_enabled
 
         explicit_mounts = mounts
 
@@ -837,7 +828,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     is_auto_snapshot=is_auto_snapshot,
                     is_method=bool(info.user_cls) and not info.is_service_class(),
                     checkpointing_enabled=enable_memory_snapshot,
-                    is_checkpointing_function=False,
                     object_dependencies=object_dependencies,
                     block_network=block_network,
                     max_inputs=max_inputs or 0,
