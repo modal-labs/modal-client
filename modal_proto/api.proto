@@ -112,13 +112,6 @@ enum DeploymentNamespace {
   DEPLOYMENT_NAMESPACE_GLOBAL = 3;
 }
 
-// Encoding type used for user telemetry data.
-enum TelemetryEncodingType {
-  TELEMETRY_ENCODING_TYPE_UNSPECIFIED = 0;
-  TELEMETRY_ENCODING_TYPE_PROTOBUF = 1;
-  TELEMETRY_ENCODING_TYPE_JSON = 2;
-}
-
 enum ExecOutputOption {
   EXEC_OUTPUT_OPTION_UNSPECIFIED = 0;
   EXEC_OUTPUT_OPTION_DEVNULL = 1;
@@ -251,6 +244,13 @@ enum TaskState {
   TASK_STATE_PREEMPTIBLE = 9;
   TASK_STATE_PREEMPTED = 10;
   TASK_STATE_LOADING_CHECKPOINT_IMAGE = 11;
+}
+
+// Encoding type used for user telemetry data.
+enum TelemetryEncodingType {
+  TELEMETRY_ENCODING_TYPE_UNSPECIFIED = 0;
+  TELEMETRY_ENCODING_TYPE_PROTOBUF = 1;
+  TELEMETRY_ENCODING_TYPE_JSON = 2;
 }
 
 enum VolumeFsVersion {
