@@ -384,7 +384,7 @@ async def _run_app(
                             f"[grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
                         )
                     )
-            return
+            raise
         except BaseException as e:
             logger.info("Exception during app run")
             await _status_based_disconnect(client, running_app.app_id, e)
@@ -531,6 +531,11 @@ async def _deploy_app(
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
             await _disconnect(client, running_app.app_id, reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
             raise e
+        except asyncio.CancelledError as e:
+            if output_mgr := _get_output_manager():
+                output_mgr.print("\n[red]Aborted app deploy[/red]")
+            await _status_based_disconnect(client, running_app.app_id, e)
+            raise
 
     if output_mgr := _get_output_manager():
         t = time.time() - t0
