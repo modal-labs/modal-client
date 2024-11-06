@@ -836,7 +836,8 @@ message ContainerFilesystemExecResponse {
 }
 
 message ContainerHeartbeatRequest {
-  bool canceled_inputs_return_outputs = 4;
+  bool canceled_inputs_return_outputs = 4; // Bad client version.
+  bool canceled_inputs_return_outputs_v2 = 5;
 
   reserved 1, 2, 3;
 }
@@ -1211,6 +1212,8 @@ message Function {
   // Mapping of method names to method definitions, only non-empty for class service functions
   map<string, MethodDefinition> method_definitions = 74;
   bool method_definitions_set = 75;
+
+  bool _experimental_custom_scaling = 76;
 }
 
 message FunctionBindParamsRequest {
@@ -1826,6 +1829,15 @@ message ProxyGetOrCreateRequest {
 
 message ProxyGetOrCreateResponse {
   string proxy_id = 1;
+}
+
+message ProxyGetRequest {
+  string name = 1 [ (modal.options.audit_target_attr) = true ];
+  string environment_name = 2;
+}
+
+message ProxyGetResponse {
+  Proxy proxy = 1;
 }
 
 message ProxyInfo {
@@ -2661,6 +2673,7 @@ service ModalClient {
 
   // Proxies
   rpc ProxyDelete(ProxyDeleteRequest) returns (google.protobuf.Empty);
+  rpc ProxyGet(ProxyGetRequest) returns (ProxyGetResponse);
   rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);
 
   // Proxy IPs
