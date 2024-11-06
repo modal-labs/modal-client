@@ -412,6 +412,7 @@ message AppPublishRequest {
 
 message AppPublishResponse {
   string url = 1;
+  repeated string warnings = 2;
 }
 
 message AppRollbackRequest {
