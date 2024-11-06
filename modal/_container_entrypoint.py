@@ -826,7 +826,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                     "Function is a clustered function but no cluster rank was provided to _container_entrypoint"
                 )
             initialize_clustered_function(
-                container_args.cluster_id, container_args.cluster_rank, function_def._experimental_group_size
+                client, container_args.cluster_id, container_args.cluster_rank, function_def._experimental_group_size
             )
 
         # Identify all "enter" methods that need to run before we snapshot.
