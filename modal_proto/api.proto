@@ -701,16 +701,6 @@ message ClientHelloResponse {
   string image_builder_version = 2;  // Deprecated, no longer used in client
 }
 
-message ClusterHelloRequest {
-  string cluster_id = 1;
-  uint32 cluster_rank = 2;
-  string container_ip = 3;
-}
-
-message ClusterHelloResponse {
-  repeated string container_ips = 1;
-}
-
 message CloudBucketMount {
   enum BucketType {
     UNSPECIFIED = 0;
@@ -729,6 +719,18 @@ message CloudBucketMount {
   optional string key_prefix = 8;
 }
 
+message ClusterHelloRequest {
+  string task_id = 1;
+  string container_ip = 2;
+}
+
+message ClusterHelloResponse {
+  string cluster_id = 1;
+  uint32 cluster_size = 2;
+  uint32 cluster_rank = 3;
+  repeated string container_ips = 4;
+}
+
 message ContainerArguments {  // This is used to pass data from the worker to the container
   string task_id = 1;
   string function_id = 2;
@@ -740,8 +742,6 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   string runtime = 11;
   string environment_name = 13;
   optional string checkpoint_id = 14;
-  optional string cluster_id = 15;
-  optional uint32 cluster_rank = 16;
 }
 
 message ContainerCheckpointRequest {
