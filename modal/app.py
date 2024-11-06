@@ -165,7 +165,7 @@ class _App:
     _name: Optional[str]
     _description: Optional[str]
     _indexed_objects: Dict[str, _Object]
-    _function_mounts: Dict[str, _Mount]
+
     _image: Optional[_Image]
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
@@ -485,7 +485,7 @@ class _App:
             *self._mounts,
         ]
         for function in self.registered_functions.values():
-            all_mounts.extend(function._all_mounts)
+            all_mounts.extend(function._used_local_mounts)
 
         return [m for m in all_mounts if m.is_local()]
 

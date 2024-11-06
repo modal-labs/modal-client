@@ -104,13 +104,12 @@ async def _serve_app(
 
     client = await _Client.from_env()
 
-    if _watcher is not None:
-        watcher = _watcher  # Only used by tests
-    else:
-        mounts_to_watch = app._get_watch_mounts()
-        watcher = watch(mounts_to_watch)
-
     async with _run_app(app, client=client, environment_name=environment_name):
+        if _watcher is not None:
+            watcher = _watcher  # Only used by tests
+        else:
+            mounts_to_watch = app._get_watch_mounts()
+            watcher = watch(mounts_to_watch)
         async with TaskContext(grace=0.1) as tc:
             tc.create_task(_run_watch_loop(app_ref, app.app_id, watcher, environment_name))
             yield app
