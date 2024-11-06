@@ -1681,8 +1681,5 @@ class _Image(_Object, type_prefix="im"):
                 if task_log.data:
                     yield task_log.data
 
-    def _layers(self) -> typing.Tuple["_Image"]:
-        pass
-
 
 Image = synchronize_api(_Image)

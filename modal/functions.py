@@ -575,7 +575,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if proxy:
             # HACK: remove this once we stop using ssh tunnels for this.
             if image:
-                # TODO(elias): this breaks lazy mounts by materializing them, which isn't great
+                # TODO(elias): this will cause an error if users use prior `.add_*` commands without copy=True
                 image = image.apt_install("autossh")
 
         function_spec = _FunctionSpec(
