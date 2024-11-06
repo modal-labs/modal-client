@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.65.33 (2024-11-06)
+
+Remove `interactive` parameter from `function` and `cls` decorators. `interactive` has been deprecated since May 2024. Instead of specifying Modal Functions as interactive, use `modal run --interactive`.
+
+
+
 ### 0.65.30 (2024-11-05)
 
 * The `checkpointing_enabled`, deprecated in March 2024, is now removed.
