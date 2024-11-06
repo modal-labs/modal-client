@@ -80,7 +80,8 @@ class _StreamReader:
         object_type: Literal["sandbox", "container_process"],
         client: _Client,
         stream_type: StreamType = StreamType.PIPE,
-        by_line: bool = False,  # if True, streamed logs are further processed into complete lines.
+        text: bool = True,
+        by_line: bool = False,
     ) -> None:
         """mdmd:hidden"""
 
@@ -91,6 +92,7 @@ class _StreamReader:
         self._stream = None
         self._last_entry_id = None
         self._line_buffer = ""
+        self._text = text
         self._by_line = by_line
         # Whether the reader received an EOF. Once EOF is True, it returns
         # an empty string for any subsequent reads (including async for)
@@ -116,7 +118,7 @@ class _StreamReader:
     def file_descriptor(self):
         return self._file_descriptor
 
-    async def read(self) -> str:
+    async def read(self) -> Union[str, bytes]:
         """Fetch and return contents of the entire stream. If EOF was received,
         return an empty string.
 
@@ -139,7 +141,10 @@ class _StreamReader:
                 break
             data += message
 
-        return data
+        if self._text:
+            return data
+        else:
+            return bytes(data, "utf-8")
 
     async def _consume_container_process_stream(self):
         """
@@ -277,7 +282,10 @@ class _StreamReader:
         if value is None:
             raise StopAsyncIteration
 
-        return value
+        if self._text:
+            return value
+        else:
+            return bytes(value, "utf-8")
 
 
 MAX_BUFFER_SIZE = 2 * 1024 * 1024

@@ -19,6 +19,8 @@ class _ContainerProcess:
     _stdout: _StreamReader
     _stderr: _StreamReader
     _stdin: _StreamWriter
+    _text: bool
+    _by_line: bool
     _returncode: Optional[int] = None
 
     def __init__(
@@ -27,14 +29,30 @@ class _ContainerProcess:
         client: _Client,
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
+        text: bool = True,
+        by_line: bool = False,
     ) -> None:
         self._process_id = process_id
         self._client = client
+        self._text = text
+        self._by_line = by_line
         self._stdout = _StreamReader(
-            api_pb2.FILE_DESCRIPTOR_STDOUT, process_id, "container_process", self._client, stream_type=stdout
+            api_pb2.FILE_DESCRIPTOR_STDOUT,
+            process_id,
+            "container_process",
+            self._client,
+            stream_type=stdout,
+            text=text,
+            by_line=by_line,
         )
         self._stderr = _StreamReader(
-            api_pb2.FILE_DESCRIPTOR_STDERR, process_id, "container_process", self._client, stream_type=stderr
+            api_pb2.FILE_DESCRIPTOR_STDERR,
+            process_id,
+            "container_process",
+            self._client,
+            stream_type=stderr,
+            text=text,
+            by_line=by_line,
         )
         self._stdin = _StreamWriter(process_id, "container_process", self._client)
 

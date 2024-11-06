@@ -400,12 +400,12 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def exec(
         self,
         *cmds: str,
-        # Deprecated: internal use only
-        pty_info: Optional[api_pb2.PTYInfo] = None,
+        pty_info: Optional[api_pb2.PTYInfo] = None,  # Deprecated: internal use only
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
-        # Internal option to set terminal size and metadata
-        _pty_info: Optional[api_pb2.PTYInfo] = None,
+        text: bool = True,  # Encode output as text
+        by_line: bool = False,  # Line-buffered output
+        _pty_info: Optional[api_pb2.PTYInfo] = None,  # Internal option to set terminal size and metadata
     ):
         """Execute a command in the Sandbox and return
         a [`ContainerProcess`](/docs/reference/modal.ContainerProcess#modalcontainer_process) handle.
@@ -433,7 +433,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 runtime_debug=config.get("function_runtime_debug"),
             )
         )
-        return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr)
+        return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr, text=text, by_line=by_line)
 
     @property
     def stdout(self) -> _StreamReader:

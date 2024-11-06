@@ -233,6 +233,20 @@ async def test_sandbox_async_for(app, servicer):
 
 
 @skip_non_linux
+def test_sandbox_stdout_bytes_mode(app, servicer):
+    """Test that the stream reader works in bytes mode."""
+
+    sb = Sandbox.create(app=app)
+
+    p = sb.exec("echo", "foo", text=False)
+    assert p.stdout.read() == b"foo\n"
+
+    p = sb.exec("echo", "foo", text=False)
+    for line in p.stdout:
+        assert line == b"foo\n"
+
+
+@skip_non_linux
 def test_app_sandbox(client, servicer):
     image = Image.debian_slim().pip_install("xyz")
     secret = Secret.from_dict({"FOO": "bar"})
