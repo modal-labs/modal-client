@@ -1057,7 +1057,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     def from_name(
         cls: Type["_Function"],
         app_name: str,
-        tag: Optional[str] = None,
+        tag: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
     ) -> "_Function":
@@ -1072,7 +1072,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             assert resolver.client and resolver.client.stub
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
-                object_tag=tag or "",
+                object_tag=tag,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver) or "",
             )
@@ -1092,7 +1092,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     @staticmethod
     async def lookup(
         app_name: str,
-        tag: Optional[str] = None,
+        tag: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
