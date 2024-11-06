@@ -26,8 +26,8 @@ class _Proxy(_Object, type_prefix="pr"):
                 name=label,
                 environment_name=_get_environment_name(environment_name, resolver),
             )
-            response = await resolver.client.stub.ProxyGet(req)
-            self._hydrate(response.proxy_id, resolver.client, None)
+            response: api_pb2.ProxyGetResponse = await resolver.client.stub.ProxyGet(req)
+            self._hydrate(response.proxy.proxy_id, resolver.client, None)
 
         return _Proxy._from_loader(_load, "Proxy()", is_another_app=True)
 
