@@ -283,6 +283,8 @@ class _ContainerIOManager:
     _is_interactivity_enabled: bool
     _fetching_inputs: bool
 
+    _in_progress_canceled_inputs: List[str]
+
     _client: _Client
 
     _GENERATOR_STOP_SENTINEL: ClassVar[Sentinel] = Sentinel()
@@ -321,6 +323,8 @@ class _ContainerIOManager:
 
         self._is_interactivity_enabled = False
         self._fetching_inputs = True
+
+        self._in_progress_canceled_inputs = []
 
         self._client = client
         assert isinstance(self._client, _Client)
@@ -388,12 +392,18 @@ class _ContainerIOManager:
             # response.cancel_input_event.terminate_containers is never set, the server gets the worker to handle it.
             input_ids_to_cancel = response.cancel_input_event.input_ids
             if input_ids_to_cancel:
+                # Avoid issuing cancellation signals for the same inputs repeatedly.
+                new_input_ids_to_cancel = [
+                    input_id for input_id in input_ids_to_cancel if input_id not in self._in_progress_canceled_inputs
+                ]
+                self._in_progress_canceled_inputs.extend(new_input_ids_to_cancel)
+
                 if self._max_concurrency > 1:
-                    for input_id in input_ids_to_cancel:
+                    for input_id in new_input_ids_to_cancel:
                         if input_id in self.current_inputs:
                             self.current_inputs[input_id].cancel()
 
-                elif self.current_input_id and self.current_input_id in input_ids_to_cancel:
+                elif self.current_input_id and self.current_input_id in new_input_ids_to_cancel:
                     # This goes to a registered signal handler for sync Modal functions, or to the
                     # `SignalHandlingEventLoop` for async functions.
                     #
@@ -403,7 +413,12 @@ class _ContainerIOManager:
                     # raising an InputCancellation() exception. On async functions, the signal should
                     # reach a handler in SignalHandlingEventLoop, which cancels the task.
                     os.kill(os.getpid(), signal.SIGUSR1)
+            else:
+                self._in_progress_canceled_inputs = []
+
             return True
+
+        self._in_progress_canceled_inputs = []
         return False
 
     @asynccontextmanager
