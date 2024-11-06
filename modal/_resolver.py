@@ -19,13 +19,11 @@ if TYPE_CHECKING:
 
 class StatusRow:
     def __init__(self, progress: "typing.Optional[Tree]"):
-        from ._output import (
-            step_progress,
-        )
-
         self._spinner = None
         self._step_node = None
         if progress is not None:
+            from ._output import step_progress
+
             self._spinner = step_progress()
             self._step_node = progress.add(self._spinner)
 
@@ -55,12 +53,20 @@ class Resolver:
         environment_name: Optional[str] = None,
         app_id: Optional[str] = None,
     ):
-        from rich.tree import Tree
+        try:
+            # TODO(michael) If we don't clean this up more thoroughly, it would probably
+            # be good to have a single source of truth for "rich is installed" rather than
+            # doing a try/catch everywhere we want to use it.
+            from rich.tree import Tree
 
-        from ._output import step_progress
+            from ._output import step_progress
+
+            tree = Tree(step_progress("Creating objects..."), guide_style="gray50")
+        except ImportError:
+            tree = None
 
         self._local_uuid_to_future = {}
-        self._tree = Tree(step_progress("Creating objects..."), guide_style="gray50")
+        self._tree = tree
         self._client = client
         self._app_id = app_id
         self._environment_name = environment_name
@@ -157,10 +163,11 @@ class Resolver:
     @contextlib.contextmanager
     def display(self):
         # TODO(erikbern): get rid of this wrapper
-        from ._output import step_completed
         from .output import _get_output_manager
 
-        if output_mgr := _get_output_manager():
+        if self._tree and (output_mgr := _get_output_manager()):
+            from ._output import step_completed
+
             with output_mgr.make_live(self._tree):
                 yield
             self._tree.label = step_completed("Created objects.")
