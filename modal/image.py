@@ -466,7 +466,7 @@ class _Image(_Object, type_prefix="im"):
             self._used_local_mounts = set()
             for base in base_images.values():
                 self._used_local_mounts |= base._used_local_mounts
-            if context_mount:
+            if context_mount and context_mount.is_local():
                 self._used_local_mounts.add(context_mount)
 
         rep = "Image()"
