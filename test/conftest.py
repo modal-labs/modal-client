@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import builtins
 import contextlib
 import dataclasses
 import datetime
@@ -19,6 +20,7 @@ import traceback
 import uuid
 from collections import defaultdict
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Dict, Iterator, List, Optional, Tuple, get_args
 
 import aiohttp.web
@@ -263,6 +265,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
         ]:
             if header not in event.metadata:
                 raise GRPCError(Status.FAILED_PRECONDITION, f"Missing {header} header")
+
+        client_version = event.metadata["x-modal-client-version"]
+        assert isinstance(client_version, str)
+        if client_version == "unauthenticated":
+            raise GRPCError(Status.UNAUTHENTICATED, "failed authentication")
+        elif client_version == "timeout":
+            await asyncio.sleep(60)
+        elif client_version == "deprecated":
+            pass  # dumb magic fixture constant
+        elif pkg_resources.parse_version(client_version) < pkg_resources.parse_version(__version__):
+            raise GRPCError(Status.FAILED_PRECONDITION, "Old client")
+
         if event.metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT):
             if event.method_name in [
                 "/modal.client.ModalClient/TokenFlowCreate",
@@ -644,17 +658,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def ClientHello(self, stream):
         request: Empty = await stream.recv_message()
         self.requests.append(request)
-        client_version = stream.metadata["x-modal-client-version"]
         warning = ""
-        assert stream.user_agent.startswith(f"modal-client/{__version__} ")
-        if client_version == "unauthenticated":
-            raise GRPCError(Status.UNAUTHENTICATED, "failed authentication")
-        elif client_version == "deprecated":
+        if stream.metadata["x-modal-client-version"] == "deprecated":
             warning = "SUPER OLD"
-        elif client_version == "timeout":
-            await asyncio.sleep(60)
-        elif pkg_resources.parse_version(client_version) < pkg_resources.parse_version(__version__):
-            raise GRPCError(Status.FAILED_PRECONDITION, "Old client")
         resp = api_pb2.ClientHelloResponse(warning=warning)
         await stream.send_message(resp)
 
@@ -1033,7 +1039,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
                 )
                 output_exc = api_pb2.FunctionGetOutputsItem(
-                    input_id=input_id, idx=idx, result=result, gen_index=0, data_format=api_pb2.DATA_FORMAT_PICKLE
+                    input_id=input_id, idx=idx, result=result, data_format=api_pb2.DATA_FORMAT_PICKLE
                 )
 
             if output_exc:
@@ -1960,3 +1966,17 @@ async def set_env_client(client):
         yield
     finally:
         Client.set_env_client(None)
+
+
+@pytest.fixture
+def no_rich(monkeypatch):
+    normal_import = __import__
+
+    def import_fail_for_rich(name: str, *args, **kwargs) -> ModuleType:
+        if name.startswith("rich"):
+            raise ModuleNotFoundError("No module named 'rich'")
+        else:
+            return normal_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", import_fail_for_rich)
+    yield

@@ -64,7 +64,6 @@ from .exception import (
     InvalidError,
     NotFoundError,
     OutputExpiredError,
-    deprecation_error,
     deprecation_warning,
 )
 from .execution_context import current_input_id, is_local
@@ -184,7 +183,6 @@ class _Invocation:
         item: api_pb2.FunctionGetOutputsItem = (
             await self.pop_function_call_outputs(timeout=None, clear_on_success=True)
         ).outputs[0]
-        assert not item.result.gen_status
         return await _process_result(item.result, item.data_format, self.stub, self.client)
 
     async def poll_function(self, timeout: Optional[float] = None):
@@ -518,7 +516,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
         enable_memory_snapshot: bool = False,
-        checkpointing_enabled: Optional[bool] = None,
         block_network: bool = False,
         i6pn_enabled: bool = False,
         group_size: Optional[int] = None,  # Experimental: Grouped functions
@@ -526,6 +523,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         ephemeral_disk: Optional[int] = None,
         _experimental_buffer_containers: Optional[int] = None,
         _experimental_proxy_ip: Optional[str] = None,
+        _experimental_custom_scaling_factor: Optional[float] = None,
     ) -> None:
         """mdmd:hidden"""
         tag = info.get_tag()
@@ -542,13 +540,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             assert info.user_cls
             assert not webhook_config
             assert not schedule
-
-        if checkpointing_enabled is not None:
-            deprecation_error(
-                (2024, 3, 4),
-                "The argument `checkpointing_enabled` is now deprecated. Use `enable_memory_snapshot` instead.",
-            )
-            enable_memory_snapshot = checkpointing_enabled
 
         explicit_mounts = mounts
 
@@ -641,6 +632,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 f"Function `{info.function_name}` has `{concurrency_limit=}`, "
                 f"strictly less than its `{keep_warm=}` parameter."
             )
+
+        if _experimental_custom_scaling_factor is not None and (
+            _experimental_custom_scaling_factor < 0 or _experimental_custom_scaling_factor > 1
+        ):
+            raise InvalidError("`_experimental_custom_scaling_factor` must be between 0.0 and 1.0 inclusive.")
 
         if not cloud and not is_builder_function:
             cloud = config.get("default_cloud")
@@ -838,7 +834,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     is_auto_snapshot=is_auto_snapshot,
                     is_method=bool(info.user_cls) and not info.is_service_class(),
                     checkpointing_enabled=enable_memory_snapshot,
-                    is_checkpointing_function=False,
                     object_dependencies=object_dependencies,
                     block_network=block_network,
                     max_inputs=max_inputs or 0,
@@ -853,6 +848,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     _experimental_concurrent_cancellations=True,
                     _experimental_buffer_containers=_experimental_buffer_containers or 0,
                     _experimental_proxy_ip=_experimental_proxy_ip,
+                    _experimental_custom_scaling=_experimental_custom_scaling_factor is not None,
                 )
 
                 if isinstance(gpu, list):
@@ -1068,7 +1064,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     def from_name(
         cls: Type["_Function"],
         app_name: str,
-        tag: Optional[str] = None,
+        tag: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
     ) -> "_Function":
@@ -1083,7 +1079,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             assert resolver.client and resolver.client.stub
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
-                object_tag=tag or "",
+                object_tag=tag,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver) or "",
             )
@@ -1103,7 +1099,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     @staticmethod
     async def lookup(
         app_name: str,
-        tag: Optional[str] = None,
+        tag: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,

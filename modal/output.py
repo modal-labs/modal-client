@@ -13,6 +13,9 @@ if TYPE_CHECKING:
     from ._output import OutputManager
 
 
+OUTPUT_ENABLED = False
+
+
 @contextlib.contextmanager
 def enable_output(show_progress: bool = True) -> Generator[None, None, None]:
     """Context manager that enable output when using the Python SDK.
@@ -32,14 +35,28 @@ def enable_output(show_progress: bool = True) -> Generator[None, None, None]:
     """
     from ._output import OutputManager
 
-    with OutputManager.enable_output(show_progress):
-        yield
+    # Toggle the output flag from within this function so that we can
+    # call _get_output_manager from within the library and only import
+    # the _output module if output is explicitly enabled. That prevents
+    # us from trying to import rich inside a container environment where
+    # it might not be installed. This is sort of hacky and I would prefer
+    # a more thorough refactor where the OutputManager is fully useable
+    # without rich installed, but that's a larger project.
+    global OUTPUT_ENABLED
+
+    try:
+        with OutputManager.enable_output(show_progress):
+            OUTPUT_ENABLED = True
+            yield
+    finally:
+        OUTPUT_ENABLED = False
 
 
 def _get_output_manager() -> Optional["OutputManager"]:
-    """Interface to the OutputManager with a deferred import."""
-    from ._output import OutputManager
+    """Interface to the OutputManager that returns None when output is not enabled."""
+    if OUTPUT_ENABLED:
+        from ._output import OutputManager
 
-    # This will return None when output has not been enabled,
-    # as should generally be the case when using Modal in a container
-    return OutputManager.get()
+        return OutputManager.get()
+    else:
+        return None

@@ -5,7 +5,7 @@ import time
 from grpclib import GRPCError, Status
 
 from modal._utils.async_utils import synchronize_api
-from modal._utils.grpc_utils import create_channel, retry_transient_errors
+from modal._utils.grpc_utils import connect_channel, create_channel, retry_transient_errors
 from modal_proto import api_grpc, api_pb2
 
 from .supports.skip import skip_windows_unix_socket
@@ -49,6 +49,13 @@ async def test_unix_channel(servicer):
     assert resp.blob_id
 
     channel.close()
+
+
+@pytest.mark.asyncio
+async def test_http_broken_channel():
+    ch = create_channel("https://xyz.invalid")
+    with pytest.raises(OSError):
+        await connect_channel(ch)
 
 
 @pytest.mark.asyncio
