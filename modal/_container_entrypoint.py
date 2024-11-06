@@ -817,16 +817,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Initialize clustered functions.
         if function_def._experimental_group_size > 1:
-            if not container_args.HasField("cluster_id"):
-                raise ExecutionError(
-                    "Function is a clustered function but no cluster ID was provided to _container_entrypoint"
-                )
-            if not container_args.HasField("cluster_rank"):
-                raise ExecutionError(
-                    "Function is a clustered function but no cluster rank was provided to _container_entrypoint"
-                )
             initialize_clustered_function(
-                client, container_args.cluster_id, container_args.cluster_rank, function_def._experimental_group_size
+                client,
+                container_args.task_id,
             )
 
         # Identify all "enter" methods that need to run before we snapshot.
