@@ -7,6 +7,7 @@ from pathlib import Path
 from watchfiles import Change
 
 import modal
+from modal import method
 from modal._watcher import _watch_args_from_mounts
 from modal.exception import InvalidError
 from modal.mount import _get_client_mount, _Mount
@@ -52,6 +53,22 @@ def test_watch_mounts_includes_function_mounts(client, supports_dir, monkeypatch
     @app.function(mounts=[pkg_a_mount], serialized=True)
     def f():
         pass
+
+    with app.run(client=client):
+        watch_mounts = app._get_watch_mounts()
+    assert watch_mounts == [pkg_a_mount]
+
+
+def test_watch_mounts_includes_cls_mounts(client, supports_dir, monkeypatch, disable_auto_mount):
+    monkeypatch.syspath_prepend(supports_dir)
+    app = modal.App()
+    pkg_a_mount = modal.Mount.from_local_python_packages("pkg_a")
+
+    @app.cls(mounts=[pkg_a_mount], serialized=True)
+    class A:
+        @method()
+        def foo(self):
+            pass
 
     with app.run(client=client):
         watch_mounts = app._get_watch_mounts()
