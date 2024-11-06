@@ -1831,6 +1831,15 @@ message ProxyGetOrCreateResponse {
   string proxy_id = 1;
 }
 
+message ProxyGetRequest {
+  string name = 1 [ (modal.options.audit_target_attr) = true ];
+  string environment_name = 2;
+}
+
+message ProxyGetResponse {
+  Proxy proxy = 1;
+}
+
 message ProxyInfo {
   string elastic_ip = 1;
   string proxy_key = 2;
@@ -2664,6 +2673,7 @@ service ModalClient {
 
   // Proxies
   rpc ProxyDelete(ProxyDeleteRequest) returns (google.protobuf.Empty);
+  rpc ProxyGet(ProxyGetRequest) returns (ProxyGetResponse);
   rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);
 
   // Proxy IPs
