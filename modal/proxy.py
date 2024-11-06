@@ -22,12 +22,11 @@ class _Proxy(_Object, type_prefix="pr"):
         environment_name: Optional[str] = None,
     ) -> "_Proxy":
         async def _load(self: _Proxy, resolver: Resolver, existing_object_id: Optional[str]):
-            req = api_pb2.ProxyGetOrCreateRequest(
-                deployment_name=label,
-                namespace=namespace,
+            req = api_pb2.ProxyGetRequest(
+                name=label,
                 environment_name=_get_environment_name(environment_name, resolver),
             )
-            response = await resolver.client.stub.ProxyGetOrCreate(req)
+            response = await resolver.client.stub.ProxyGet(req)
             self._hydrate(response.proxy_id, resolver.client, None)
 
         return _Proxy._from_loader(_load, "Proxy()", is_another_app=True)
