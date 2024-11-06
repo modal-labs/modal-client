@@ -11,6 +11,7 @@ from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from .client import _Client
 from .exception import InteractiveTimeoutError, InvalidError
 from .io_streams import _StreamReader, _StreamWriter
+from .stream_type import StreamType
 
 
 class _ContainerProcess:
@@ -20,11 +21,21 @@ class _ContainerProcess:
     _stdin: _StreamWriter
     _returncode: Optional[int] = None
 
-    def __init__(self, process_id: str, client: _Client) -> None:
+    def __init__(
+        self,
+        process_id: str,
+        client: _Client,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+    ) -> None:
         self._process_id = process_id
         self._client = client
-        self._stdout = _StreamReader(api_pb2.FILE_DESCRIPTOR_STDOUT, process_id, "container_process", self._client)
-        self._stderr = _StreamReader(api_pb2.FILE_DESCRIPTOR_STDERR, process_id, "container_process", self._client)
+        self._stdout = _StreamReader(
+            api_pb2.FILE_DESCRIPTOR_STDOUT, process_id, "container_process", self._client, stream_type=stdout
+        )
+        self._stderr = _StreamReader(
+            api_pb2.FILE_DESCRIPTOR_STDERR, process_id, "container_process", self._client, stream_type=stderr
+        )
         self._stdin = _StreamWriter(process_id, "container_process", self._client)
 
     @property

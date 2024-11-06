@@ -654,14 +654,11 @@ class _App:
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
-        checkpointing_enabled: Optional[bool] = None,  # Deprecated
         block_network: bool = False,  # Whether to block network access
         # Maximum number of inputs a container should handle before shutting down.
         # With `max_inputs = 1`, containers will be single-use.
         max_inputs: Optional[int] = None,
         i6pn: Optional[bool] = None,  # Whether to enable IPv6 container networking within the region.
-        # The next group of parameters are deprecated; do not use in any new code
-        interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         # Parameters below here are experimental. Use with caution!
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
@@ -675,11 +672,6 @@ class _App:
             raise InvalidError("`image` needs to be a keyword argument: `@app.function(image=image)`.")
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.function()`.")
-
-        if interactive:
-            deprecation_error(
-                (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
-            )
 
         if image is None:
             image = self._get_default_image()
@@ -726,9 +718,6 @@ class _App:
                 keep_warm = f.keep_warm or keep_warm
                 batch_max_size = f.batch_max_size
                 batch_wait_ms = f.batch_wait_ms
-
-                if webhook_config and interactive:
-                    raise InvalidError("interactive=True is not supported with web endpoint functions")
             else:
                 if not is_global_object(f.__qualname__) and not serialized:
                     raise InvalidError(
@@ -810,7 +799,6 @@ class _App:
                 cloud=cloud,
                 webhook_config=webhook_config,
                 enable_memory_snapshot=enable_memory_snapshot,
-                checkpointing_enabled=checkpointing_enabled,
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
@@ -866,13 +854,10 @@ class _App:
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
-        checkpointing_enabled: Optional[bool] = None,  # Deprecated
         block_network: bool = False,  # Whether to block network access
         # Limits the number of inputs a container handles before shutting down.
         # Use `max_inputs = 1` for single-use containers.
         max_inputs: Optional[int] = None,
-        # The next group of parameters are deprecated; do not use in any new code
-        interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
         # Parameters below here are experimental. Use with caution!
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
@@ -885,12 +870,6 @@ class _App:
         """
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
-
-        # Argument validation
-        if interactive:
-            deprecation_error(
-                (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
-            )
 
         scheduler_placement = _experimental_scheduler_placement
         if region:
@@ -952,7 +931,6 @@ class _App:
                 keep_warm=keep_warm,
                 cloud=cloud,
                 enable_memory_snapshot=enable_memory_snapshot,
-                checkpointing_enabled=checkpointing_enabled,
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
