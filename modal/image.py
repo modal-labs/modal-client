@@ -275,10 +275,12 @@ class _Image(_Object, type_prefix="im"):
 
     force_build: bool
     inside_exceptions: List[Exception]
-    _mounts: Tuple[_Mount]
+    _used_local_mounts: Set[_Mount]  # used for mounts watching
+    _mounts: Sequence[_Mount]
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
+        self._used_local_mounts = set()
         self._mounts = ()
         self.force_build = False
 
@@ -536,6 +538,11 @@ class _Image(_Object, type_prefix="im"):
                 raise RemoteError("Unknown status %s!" % result.status)
 
             self._hydrate(image_id, resolver.client, None)
+            self._used_local_mounts = set()
+            for base in base_images.values():
+                self._used_local_mounts |= base._used_local_mounts
+            if context_mount and context_mount.is_local():
+                self._used_local_mounts.add(context_mount)
 
         rep = f"Image({dockerfile_function})"
         obj = _Image._from_loader(_load, rep, deps=_deps)

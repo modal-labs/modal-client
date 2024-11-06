@@ -1964,3 +1964,9 @@ async def set_env_client(client):
         yield
     finally:
         Client.set_env_client(None)
+
+
+@pytest.fixture
+def disable_auto_mount(monkeypatch):
+    monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
+    yield

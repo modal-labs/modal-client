@@ -2,14 +2,14 @@
 import pytest
 import random
 import string
-import sys
 from pathlib import Path
 
 from watchfiles import Change
 
 import modal
 from modal._watcher import _watch_args_from_mounts
-from modal.mount import Mount, _Mount
+from modal.exception import InvalidError
+from modal.mount import _get_client_mount, _Mount
 
 
 @pytest.mark.asyncio
@@ -36,23 +36,53 @@ def dummy():
     pass
 
 
-@pytest.fixture()
-def clean_sys_modules(monkeypatch):
-    # run test assuming no user-defined modules have been loaded
-    module_names = set()
-    for name, mod in sys.modules.items():
-        if getattr(mod, "__file__", None) and not ("/lib/" in mod.__file__ or "/site-packages/" in mod.__file__):
-            module_names.add(name)
-
-    for m in module_names:
-        monkeypatch.delitem(sys.modules, m)
-
-
-@pytest.mark.usefixtures("clean_sys_modules")
-@pytest.mark.skip("not working in ci for some reason. deactivating for now")  # TODO(elias) fix
-def test_watch_mounts_ignore_local():
+def test_watch_mounts_requires_running_app():
+    # requires running app to make sure the mounts have been loaded
     app = modal.App()
-    app.function(mounts=[Mount.from_name("some-published-mount")])(dummy)
+    with pytest.raises(InvalidError):
+        # _get_watch_mounts needs to be called on a hydrated app
+        app._get_watch_mounts()
 
-    mounts = app._get_watch_mounts()
+
+def test_watch_mounts_includes_function_mounts(client, supports_dir, monkeypatch, disable_auto_mount):
+    monkeypatch.syspath_prepend(supports_dir)
+    app = modal.App()
+    pkg_a_mount = modal.Mount.from_local_python_packages("pkg_a")
+
+    @app.function(mounts=[pkg_a_mount], serialized=True)
+    def f():
+        pass
+
+    with app.run(client=client):
+        watch_mounts = app._get_watch_mounts()
+    assert watch_mounts == [pkg_a_mount]
+
+
+def test_watch_mounts_includes_image_mounts(client, supports_dir, monkeypatch, disable_auto_mount):
+    monkeypatch.syspath_prepend(supports_dir)
+    app = modal.App()
+    pkg_a_mount = modal.Mount.from_local_python_packages("pkg_a")
+    image = modal.Image.debian_slim().copy_mount(pkg_a_mount)
+
+    @app.function(image=image, serialized=True)
+    def f():
+        pass
+
+    with app.run(client=client):
+        watch_mounts = app._get_watch_mounts()
+    assert watch_mounts == [pkg_a_mount]
+
+
+def test_watch_mounts_ignore_non_local(disable_auto_mount, client, servicer):
+    app = modal.App()
+
+    # uses the published client mount - should not be included in watch items
+    # serialized=True avoids auto-mounting the entrypoint
+    @app.function(mounts=[_get_client_mount()], serialized=True)
+    def dummy():
+        pass
+
+    with app.run(client=client):
+        mounts = app._get_watch_mounts()
+
     assert len(mounts) == 0
