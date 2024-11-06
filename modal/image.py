@@ -276,8 +276,7 @@ class _Image(_Object, type_prefix="im"):
     force_build: bool
     inside_exceptions: List[Exception]
     _used_local_mounts: typing.FrozenSet[_Mount]  # used for mounts watching
-    _used_local_mounts: Set[_Mount]  # used for mounts watching
-    _mounts: Sequence[_Mount]
+    _mounts: Sequence[_Mount]  # added as mounts on any container referencing the Image, see `def _mount_layers`
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
@@ -304,9 +303,10 @@ class _Image(_Object, type_prefix="im"):
 
         base_image = self
 
-        async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
-            self._hydrate_from_other(base_image)  # same image id as base image as long as it's lazy
-            self._mounts = base_image._mounts + (mount,)
+        async def _load(self2: "_Image", resolver: Resolver, existing_object_id: Optional[str]):
+            self2._hydrate_from_other(base_image)  # same image id as base image as long as it's lazy
+            self2._mounts = tuple(base_image._mounts) + (mount,)
+            self2._used_local_mounts = base_image._used_local_mounts | ({mount} if mount.is_local() else set())
 
         return _Image._from_loader(_load, "ImageWithMounts()", deps=lambda: [base_image, mount])
 
@@ -323,7 +323,7 @@ class _Image(_Object, type_prefix="im"):
         """
         return self._mounts
 
-    def _assert_materialized(self):
+    def _assert_no_mount_layers(self):
         if self._mount_layers:
             raise InvalidError(
                 textwrap.dedent(
@@ -361,7 +361,7 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,
         # For internal use only.
         _namespace: int = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        _assert_materialized_mounts: bool = True,
+        _do_assert_no_mount_layers: bool = True,
     ):
         if base_images is None:
             base_images = {}
@@ -391,9 +391,10 @@ class _Image(_Object, type_prefix="im"):
             return deps
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
-            if _assert_materialized_mounts:
+            if _do_assert_no_mount_layers:
                 for image in base_images.values():
-                    image._assert_materialized()
+                    # base images can't have
+                    image._assert_no_mount_layers()
 
             environment = await _get_environment_cached(resolver.environment_name or "", resolver.client)
             # A bit hacky,but assume that the environment provides a valid builder version
@@ -566,18 +567,6 @@ class _Image(_Object, type_prefix="im"):
             )
 
         return _Image._from_args(base_images={"base": self}, dockerfile_function=build_dockerfile, **kwargs)
-
-    def _materialize_mount(self, mount: _Mount) -> "_Image":
-        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            commands = ["FROM base", "COPY . /"]  # copy everything from the supplied mount into the root
-            return DockerfileSpec(commands=commands, context_files={})
-
-        return _Image._from_args(
-            base_images={"base": self},
-            dockerfile_function=build_dockerfile,
-            context_mount=mount,
-            _assert_materialized_mounts=False,  # avoid recursion
-        )
 
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy the entire contents of a `modal.Mount` into an image.

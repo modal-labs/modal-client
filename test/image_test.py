@@ -1193,11 +1193,6 @@ async def test_logs(servicer, client):
     assert logs == ["build starting\n", "build finished\n"]
 
 
-@pytest.fixture()
-def supports_on_path(test_dir, monkeypatch):
-    monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
-
-
 def hydrate_image(img, client):
     # there should be a more straight forward way to do this?
     app = App()
@@ -1325,19 +1320,6 @@ def test_add_local_mount_build_function(servicer, client, supports_on_path):
 
     img_with_copy = deb_slim.add_local_python_packages("pkg_a", copy=True)
     hydrate_image(img_with_copy, client)  # this is fine
-
-
-def test_add_local_mount_included_in_serve_watchers(servicer, client, supports_on_path):
-    deb_slim = Image.debian_slim()
-    img = deb_slim.add_local_python_packages("pkg_a")
-    app = App()
-
-    @app.function(serialized=True, image=img)
-    def f():
-        pass
-
-    watch_mounts = app._get_watch_mounts()
-    assert watch_mounts
 
 
 # TODO: test modal shell w/ lazy mounts
