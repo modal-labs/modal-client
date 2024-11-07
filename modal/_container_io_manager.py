@@ -284,6 +284,8 @@ class _ContainerIOManager:
     _is_interactivity_enabled: bool
     _fetching_inputs: bool
 
+    _is_clustered: bool
+
     _client: _Client
 
     _GENERATOR_STOP_SENTINEL: ClassVar[Sentinel] = Sentinel()
@@ -322,6 +324,11 @@ class _ContainerIOManager:
 
         self._is_interactivity_enabled = False
         self._fetching_inputs = True
+
+        self._is_clustered = (
+            container_args.function_def._experimental_group_size is not None
+            and container_args.function_def._experimental_group_size > 1
+        )
 
         self._client = client
         assert isinstance(self._client, _Client)
@@ -614,10 +621,6 @@ class _ContainerIOManager:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         iteration = 0
 
-        is_clustered = (
-            self.function_def._experimental_group_size is not None and self.function_def._experimental_group_size > 1
-        )
-
         while self._fetching_inputs:
             await self._input_slots.acquire()
 
@@ -667,7 +670,7 @@ class _ContainerIOManager:
                         return
 
                     # Clustered functions only support max_inputs = 1 at the moment.
-                    if is_clustered:
+                    if self._is_clustered:
                         return
             finally:
                 if not yielded:
@@ -708,11 +711,7 @@ class _ContainerIOManager:
         data_format: "modal_proto.api_pb2.DataFormat.ValueType",
         results: List[api_pb2.GenericResult],
     ) -> None:
-        is_clustered = (
-            self.function_def._experimental_group_size is not None and self.function_def._experimental_group_size > 1
-        )
-
-        if is_clustered and get_cluster_info().rank > 0:
+        if self._is_clustered and get_cluster_info().rank > 0:
             # Only rank 0 should send outputs.
             return
 
@@ -854,12 +853,20 @@ class _ContainerIOManager:
                 )
                 for _ in io_context.input_ids
             ]
-            await self._push_outputs(
-                io_context=io_context,
-                started_at=started_at,
-                data_format=api_pb2.DATA_FORMAT_PICKLE,
-                results=results,
-            )
+
+            if self._is_clustered and get_cluster_info().rank > 0:
+                # Only rank 0 should report input results, so instead report
+                # this error as a task failure.
+                req = api_pb2.TaskResultRequest(result=results[0])
+                await retry_transient_errors(self._client.stub.TaskResult, req)
+            else:
+                await self._push_outputs(
+                    io_context=io_context,
+                    started_at=started_at,
+                    data_format=api_pb2.DATA_FORMAT_PICKLE,
+                    results=results,
+                )
+
             await self.exit_context(started_at, io_context.input_ids)
 
     async def exit_context(self, started_at, input_ids: List[str]):
