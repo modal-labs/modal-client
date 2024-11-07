@@ -139,9 +139,9 @@ def _get_modal_requirements_path(builder_version: ImageBuilderVersion, python_ve
 
 def _get_modal_requirements_command(version: ImageBuilderVersion) -> str:
     if version == "2023.12":
-        prefix = "python -m pip install"
+        prefix = "pip install"
     elif version == "2024.04":
-        prefix = "python -m pip install --no-cache --no-deps"
+        prefix = "pip install --no-cache --no-deps"
     else:  # Currently, 2024.10+
         prefix = "uv pip install --system --compile-bytecode --no-cache --no-deps"
 
