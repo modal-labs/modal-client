@@ -35,7 +35,7 @@ from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, parameter
 from .config import logger
-from .exception import InvalidError, deprecation_error, deprecation_warning
+from .exception import ExecutionError, InvalidError, deprecation_error, deprecation_warning
 from .experimental import _GroupedFunction
 from .functions import Function, _Function
 from .gpu import GPU_T
@@ -479,7 +479,7 @@ class _App:
 
     def _get_watch_mounts(self):
         if not self._running_app:
-            raise InvalidError("`_get_watch_mounts` requires a running app.")
+            raise ExecutionError("`_get_watch_mounts` requires a running app.")
 
         all_mounts = [
             *self._mounts,
