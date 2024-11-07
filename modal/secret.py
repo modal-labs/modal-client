@@ -89,7 +89,7 @@ class _Secret(_Object, type_prefix="st"):
             except KeyError as exc:
                 missing_key = exc.args[0]
                 raise InvalidError(
-                    f"Could not find local environment variable '{missing_key}' for Secret.from_local_env_vars"
+                    f"Could not find local environment variable '{missing_key}' for Secret.from_local_environ"
                 )
 
         return _Secret.from_dict({})
