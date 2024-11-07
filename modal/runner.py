@@ -8,6 +8,8 @@ from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Dict, List, Optional, TypeVar
 
 from grpclib import GRPCError, Status
+from rich.console import Console
+from rich.panel import Panel
 from synchronicity.async_wrap import asynccontextmanager
 
 import modal_proto.api_pb2
@@ -204,6 +206,13 @@ async def _publish_app(
         if exc.status == Status.INVALID_ARGUMENT or exc.status == Status.FAILED_PRECONDITION:
             raise InvalidError(exc.message)
         raise
+
+    warnings = response.warnings
+    if warnings:
+        console = Console()
+        for warning in warnings:
+            panel = Panel(warning, title="Warning", title_align="left", border_style="yellow")
+            console.print(panel, highlight=False)
 
     return response.url
 
