@@ -49,7 +49,12 @@ async def _container_process_logs_iterator(
             yield None
             break
         for item in batch.items:
-            yield item.message
+            # TODO(azliu): remove branching logic once all workers are updated
+            # This needs to be merged first because new workers will immediately start sending over message_bytes
+            if len(item.message) > 0:
+                yield item.message
+            else:
+                yield item.message_bytes.decode("utf-8")
 
 
 class _StreamReader:
