@@ -31,6 +31,7 @@ from grpclib import Status
 from synchronicity.async_wrap import asynccontextmanager
 
 import modal_proto.api_pb2
+from modal._clustered_functions import get_cluster_info
 from modal_proto import api_pb2
 
 from ._serialization import deserialize, serialize, serialize_data_format
@@ -707,6 +708,14 @@ class _ContainerIOManager:
         data_format: "modal_proto.api_pb2.DataFormat.ValueType",
         results: List[api_pb2.GenericResult],
     ) -> None:
+        is_clustered = (
+            self.function_def._experimental_group_size is not None and self.function_def._experimental_group_size > 1
+        )
+
+        if is_clustered and get_cluster_info().rank > 0:
+            # Only rank 0 should send outputs.
+            return
+
         output_created_at = time.time()
         outputs = [
             api_pb2.FunctionPutOutputsItem(
