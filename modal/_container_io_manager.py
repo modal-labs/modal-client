@@ -612,6 +612,11 @@ class _ContainerIOManager:
     ) -> AsyncIterator[List[Tuple[str, str, api_pb2.FunctionInput]]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         iteration = 0
+
+        is_clustered = (
+            self.function_def._experimental_group_size is not None and self.function_def._experimental_group_size > 1
+        )
+
         while self._fetching_inputs:
             await self._input_slots.acquire()
 
@@ -658,6 +663,10 @@ class _ContainerIOManager:
 
                     # We only support max_inputs = 1 at the moment
                     if final_input_received or self.function_def.max_inputs == 1:
+                        return
+
+                    # Clustered functions only support max_inputs = 1 at the moment.
+                    if is_clustered:
                         return
             finally:
                 if not yielded:
