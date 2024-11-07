@@ -13,7 +13,6 @@ from synchronicity.async_wrap import asynccontextmanager
 import modal_proto.api_pb2
 from modal_proto import api_pb2
 
-from ._output import get_app_logs_loop, step_completed, step_progress
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._traceback import traceback_contains_remote_call
@@ -309,14 +308,20 @@ async def _run_app(
         logs_loop: Optional[asyncio.Task] = None
 
         if output_mgr := _get_output_manager():
-            with output_mgr.make_live(step_progress("Initializing...")):
+            # Defer import so this module is rich-safe
+            # TODO(michael): The get_app_logs_loop function is itself rich-safe aside from accepting an OutputManager
+            # as an argument, so with some refactoring we could avoid the need for this deferred import.
+            from modal._output import get_app_logs_loop
+
+            with output_mgr.make_live(output_mgr.step_progress("Initializing...")):
                 initialized_msg = (
                     f"Initialized. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
                 )
-                output_mgr.print(step_completed(initialized_msg))
+                output_mgr.print(output_mgr.step_completed(initialized_msg))
                 output_mgr.update_app_page_url(running_app.app_page_url or "ERROR:NO_APP_PAGE")
 
             # Start logs loop
+
             logs_loop = tc.create_task(
                 get_app_logs_loop(client, output_mgr, app_id=running_app.app_id, app_logs_url=running_app.app_logs_url)
             )
@@ -356,7 +361,7 @@ async def _run_app(
             # this happens only if sigint comes in during the yield block above
             if detach:
                 if output_mgr := _get_output_manager():
-                    output_mgr.print(step_completed("Shutting down Modal client."))
+                    output_mgr.print(output_mgr.step_completed("Shutting down Modal client."))
                     output_mgr.print(
                         "The detached app keeps running. You can track its progress at: "
                         f"[magenta]{running_app.app_page_url}[/magenta]"
@@ -379,7 +384,7 @@ async def _run_app(
 
                 if output_mgr:
                     output_mgr.print(
-                        step_completed(
+                        output_mgr.step_completed(
                             "App aborted. "
                             f"[grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
                         )
@@ -401,7 +406,7 @@ async def _run_app(
 
     if output_mgr := _get_output_manager():
         output_mgr.print(
-            step_completed(
+            output_mgr.step_completed(
                 f"App completed. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
             )
         )
@@ -534,7 +539,7 @@ async def _deploy_app(
 
     if output_mgr := _get_output_manager():
         t = time.time() - t0
-        output_mgr.print(step_completed(f"App deployed in {t:.3f}s! 🎉"))
+        output_mgr.print(output_mgr.step_completed(f"App deployed in {t:.3f}s! 🎉"))
         output_mgr.print(f"\nView Deployment: [magenta]{app_url}[/magenta]")
     return DeployResult(
         app_id=running_app.app_id,

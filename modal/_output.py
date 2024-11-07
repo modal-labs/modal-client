@@ -61,19 +61,6 @@ class FunctionQueuingColumn(ProgressColumn):
         return Text(str(delta), style="progress.elapsed")
 
 
-def step_progress(text: str = "") -> Spinner:
-    """Returns the element to be rendered when a step is in progress."""
-    return Spinner(default_spinner, text, style="blue")
-
-
-def step_completed(message: str) -> RenderableType:
-    return f"[green]✓[/green] {message}"
-
-
-def substep_completed(message: str) -> RenderableType:
-    return f"🔨 {message}"
-
-
 def download_progress_bar() -> Progress:
     """
     Returns a progress bar suitable for showing file download progress.
@@ -164,7 +151,7 @@ class OutputManager:
         self._function_queueing_progress = None
         self._snapshot_progress = None
         self._line_buffers = {}
-        self._status_spinner = step_progress(status_spinner_text)
+        self._status_spinner = OutputManager.step_progress(status_spinner_text)
         self._app_page_url = None
         self._show_image_logs = False
         self._status_spinner_live = None
@@ -189,6 +176,19 @@ class OutputManager:
             yield
         finally:
             cls._instance = None
+
+    @staticmethod
+    def step_progress(text: str = "") -> Spinner:
+        """Returns the element to be rendered when a step is in progress."""
+        return Spinner(default_spinner, text, style="blue")
+
+    @staticmethod
+    def step_completed(message: str) -> RenderableType:
+        return f"[green]✓[/green] {message}"
+
+    @staticmethod
+    def substep_completed(message: str) -> RenderableType:
+        return f"🔨 {message}"
 
     def print(self, renderable) -> None:
         self._console.print(renderable)
@@ -387,7 +387,7 @@ class ProgressHandler:
         else:
             raise NotImplementedError(f"Progress handler of type: `{type}` not yet implemented")
 
-        self._spinner = step_progress(title)
+        self._spinner = OutputManager.step_progress(title)
 
         self._overall_progress = Progress(
             TextColumn(f"[bold white]{title}", justify="right"),
