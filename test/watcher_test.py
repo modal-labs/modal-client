@@ -9,7 +9,7 @@ from watchfiles import Change
 import modal
 from modal import method
 from modal._watcher import _watch_args_from_mounts
-from modal.exception import InvalidError
+from modal.exception import ExecutionError
 from modal.mount import _get_client_mount, _Mount
 
 
@@ -38,9 +38,14 @@ def dummy():
 
 
 def test_watch_mounts_requires_running_app():
+    # Arguably a bit strange to test this, as the exception should never
+    # happen unless there is a bug in the client, since _get_watch_mounts
+    # is not a public function, and should only ever be called from "safe"
+    # contexts...
+
     # requires running app to make sure the mounts have been loaded
     app = modal.App()
-    with pytest.raises(InvalidError):
+    with pytest.raises(ExecutionError):
         # _get_watch_mounts needs to be called on a hydrated app
         app._get_watch_mounts()
 
