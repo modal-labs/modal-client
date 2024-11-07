@@ -17,9 +17,9 @@ def convert_fn_config_to_resources_config(
     gpu_config = parse_gpu_config(gpu)
     if cpu and isinstance(cpu, tuple):
         if not cpu[0]:
-            raise InvalidError("CPU request in tuple must not be None")
+            raise InvalidError("CPU request must be a positive number")
         elif not cpu[1]:
-            raise InvalidError("CPU limit in tuple must not be None")
+            raise InvalidError("CPU limit must be a positive number")
         milli_cpu = int(1000 * cpu[0])
         milli_cpu_max = int(1000 * cpu[1])
         if milli_cpu_max < milli_cpu:
