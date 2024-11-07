@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2024
 import os
 import socket
+from dataclasses import dataclass
 
 from modal._utils.async_utils import synchronize_api
 from modal._utils.grpc_utils import retry_transient_errors
@@ -8,7 +9,25 @@ from modal.client import _Client
 from modal_proto import api_pb2
 
 
+@dataclass
+class ClusterInfo:
+    rank: int
+    world_size: int
+    container_ips: list[str]
+
+
+cluster_info: ClusterInfo | None = None
+
+
+def get_cluster_info() -> ClusterInfo:
+    if cluster_info is None:
+        raise Exception("Cluster info not initialized; please ensure that the function is a clustered function")
+    return cluster_info
+
+
 async def _initialize_clustered_function(client: _Client, task_id: str):
+    global cluster_info
+
     def get_i6pn():
         """Returns the ipv6 address assigned to this container."""
         return socket.getaddrinfo("i6pn.modal.local", None, socket.AF_INET6)[0][4][0]
@@ -39,6 +58,12 @@ async def _initialize_clustered_function(client: _Client, task_id: str):
     print(
         f"Cluster initialized with ID {cluster_id}, rank {cluster_rank}, size {cluster_size}, "
         f"and IPs {container_ips}"
+    )
+
+    cluster_info = ClusterInfo(
+        rank=cluster_rank,
+        world_size=cluster_size,
+        container_ips=container_ips,
     )
 
 
