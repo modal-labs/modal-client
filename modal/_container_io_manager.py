@@ -854,18 +854,12 @@ class _ContainerIOManager:
                 for _ in io_context.input_ids
             ]
 
-            if self._is_clustered and get_cluster_info().rank > 0:
-                # Only rank 0 should report input results, so instead report
-                # this error as a task failure.
-                req = api_pb2.TaskResultRequest(result=results[0])
-                await retry_transient_errors(self._client.stub.TaskResult, req)
-            else:
-                await self._push_outputs(
-                    io_context=io_context,
-                    started_at=started_at,
-                    data_format=api_pb2.DATA_FORMAT_PICKLE,
-                    results=results,
-                )
+            await self._push_outputs(
+                io_context=io_context,
+                started_at=started_at,
+                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                results=results,
+            )
 
             await self.exit_context(started_at, io_context.input_ids)
 
