@@ -61,19 +61,6 @@ class FunctionQueuingColumn(ProgressColumn):
         return Text(str(delta), style="progress.elapsed")
 
 
-def step_progress(text: str = "") -> Spinner:
-    """Returns the element to be rendered when a step is in progress."""
-    return Spinner(default_spinner, text, style="blue")
-
-
-def step_completed(message: str) -> RenderableType:
-    return f"[green]✓[/green] {message}"
-
-
-def substep_completed(message: str) -> RenderableType:
-    return f"🔨 {message}"
-
-
 def download_progress_bar() -> Progress:
     """
     Returns a progress bar suitable for showing file download progress.
@@ -164,7 +151,7 @@ class OutputManager:
         self._function_queueing_progress = None
         self._snapshot_progress = None
         self._line_buffers = {}
-        self._status_spinner = step_progress(status_spinner_text)
+        self._status_spinner = OutputManager.step_progress(status_spinner_text)
         self._app_page_url = None
         self._show_image_logs = False
         self._status_spinner_live = None
@@ -189,6 +176,19 @@ class OutputManager:
             yield
         finally:
             cls._instance = None
+
+    @staticmethod
+    def step_progress(text: str = "") -> Spinner:
+        """Returns the element to be rendered when a step is in progress."""
+        return Spinner(default_spinner, text, style="blue")
+
+    @staticmethod
+    def step_completed(message: str) -> RenderableType:
+        return f"[green]✓[/green] {message}"
+
+    @staticmethod
+    def substep_completed(message: str) -> RenderableType:
+        return f"🔨 {message}"
 
     def print(self, renderable) -> None:
         self._console.print(renderable)
@@ -387,7 +387,7 @@ class ProgressHandler:
         else:
             raise NotImplementedError(f"Progress handler of type: `{type}` not yet implemented")
 
-        self._spinner = step_progress(title)
+        self._spinner = OutputManager.step_progress(title)
 
         self._overall_progress = Progress(
             TextColumn(f"[bold white]{title}", justify="right"),
@@ -648,52 +648,3 @@ async def get_app_logs_loop(
     await stop_pty_shell()
 
     logger.debug("Logging exited gracefully")
-
-
-class FunctionCreationStatus:
-    tag: str
-    response: Optional[api_pb2.FunctionCreateResponse] = None
-
-    def __init__(self, resolver, tag):
-        self.resolver = resolver
-        self.tag = tag
-
-    def __enter__(self):
-        self.status_row = self.resolver.add_status_row()
-        self.status_row.message(f"Creating function {self.tag}...")
-        return self
-
-    def set_response(self, resp: api_pb2.FunctionCreateResponse):
-        self.response = resp
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if exc_type:
-            raise exc_val
-
-        if not self.response:
-            self.status_row.finish(f"Unknown error when creating function {self.tag}")
-
-        elif self.response.function.web_url:
-            url_info = self.response.function.web_url_info
-            # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
-            if url_info.truncated:
-                suffix = " [grey70](label truncated)[/grey70]"
-            elif url_info.label_stolen:
-                suffix = " [grey70](label stolen)[/grey70]"
-            else:
-                suffix = ""
-            # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
-            web_url = self.response.handle_metadata.web_url
-            self.status_row.finish(
-                f"Created web function {self.tag} => [magenta underline]{web_url}[/magenta underline]{suffix}"
-            )
-
-            # Print custom domain in terminal
-            for custom_domain in self.response.function.custom_domain_info:
-                custom_domain_status_row = self.resolver.add_status_row()
-                custom_domain_status_row.finish(
-                    f"Custom domain for {self.tag} => [magenta underline]"
-                    f"{custom_domain.url}[/magenta underline]{suffix}"
-                )
-        else:
-            self.status_row.finish(f"Created function {self.tag}.")
