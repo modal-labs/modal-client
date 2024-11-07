@@ -32,9 +32,9 @@ class StatusRow:
             self._spinner.update(text=message)
 
     def finish(self, message):
-        from ._output import OutputManager
-
         if self._step_node is not None:
+            from ._output import OutputManager
+
             self._spinner.update(text=message)
             self._step_node.label = OutputManager.substep_completed(message)
 
