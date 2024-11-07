@@ -1624,8 +1624,6 @@ message GenericResult {  // Used for both tasks and function outputs
     // Used when the user's function fails to initialize (ex. S3 mount failed due to invalid credentials).
     // Terminates the function and all remaining inputs.
     GENERIC_STATUS_INIT_FAILURE = 5;
-    // Used when an input must be retried due to preemption, network loss, or container crash
-    GENERIC_STATUS_SYSTEM_EVENT = 6;
   }
 
   GenericStatus status = 1; // Status of the task or function output.
