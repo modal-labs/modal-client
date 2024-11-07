@@ -1994,6 +1994,7 @@ message Resources {
   GPUConfig gpu_config = 4;
   uint32 memory_mb_max = 5; // MiB
   uint32 ephemeral_disk_mb = 6;  // MiB
+  uint32 milli_cpu_max = 7; // milli CPU cores
 }
 
 message RuntimeInputMessage {
