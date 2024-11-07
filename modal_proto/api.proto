@@ -2018,10 +2018,8 @@ message RuntimeOutputBatch {
 message RuntimeOutputMessage {
   // only stdout / stderr is used
   FileDescriptor file_descriptor = 1;
-  oneof message_oneof {
-    string message = 2;
-    bytes message_bytes = 3;
-  }
+  string message = 2;
+  bytes message_bytes = 3;
 }
 
 message S3Mount {
