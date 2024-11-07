@@ -51,6 +51,7 @@ async def _container_process_logs_iterator(
         for item in batch.items:
             yield item.message
 
+
 class _StreamReader:
     """Provides an interface to buffer and fetch logs from a stream (`stdout` or `stderr`).
 
