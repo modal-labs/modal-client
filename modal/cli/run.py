@@ -14,6 +14,7 @@ from typing import Any, Callable, Dict, Optional, get_type_hints
 import click
 import typer
 from rich.console import Console
+from rich.panel import Panel
 from typing_extensions import TypedDict
 
 from .. import Cls
@@ -294,6 +295,11 @@ def deploy(
 
     with enable_output():
         res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
+        if res.warnings:
+            console = Console()
+            for warning in res.warnings:
+                panel = Panel(warning, title="Warning", title_align="left", border_style="yellow")
+                console.print(panel, highlight=False)
 
     if stream_logs:
         stream_app_logs(app_id=res.app_id, app_logs_url=res.app_logs_url)
