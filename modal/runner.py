@@ -5,7 +5,7 @@ import os
 import time
 import typing
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Dict, List, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Dict, List, Optional, Tuple, TypeVar
 
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
@@ -174,7 +174,7 @@ async def _publish_app(
     indexed_objects: Dict[str, _Object],
     name: str = "",  # Only relevant for deployments
     tag: str = "",  # Only relevant for deployments
-) -> str:
+) -> Tuple[str, List[str]]:
     """Wrapper for AppPublish RPC."""
 
     # Could simplify this function some changing the internal representation to use
@@ -204,7 +204,7 @@ async def _publish_app(
             raise InvalidError(exc.message)
         raise
 
-    return response.url
+    return response.url, response.warnings
 
 
 async def _disconnect(
@@ -449,6 +449,7 @@ class DeployResult:
     app_id: str
     app_page_url: str
     app_logs_url: str
+    warnings: List[str]
 
 
 async def _deploy_app(
@@ -529,7 +530,7 @@ async def _deploy_app(
                 environment_name=environment_name,
             )
 
-            app_url = await _publish_app(
+            app_url, warnings = await _publish_app(
                 client, running_app, api_pb2.APP_STATE_DEPLOYED, app._indexed_objects, name, tag
             )
         except Exception as e:
@@ -545,6 +546,7 @@ async def _deploy_app(
         app_id=running_app.app_id,
         app_page_url=running_app.app_page_url,
         app_logs_url=running_app.app_logs_url,  # type: ignore
+        warnings=warnings,
     )
 
 
