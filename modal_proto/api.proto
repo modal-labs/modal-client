@@ -151,6 +151,12 @@ enum GPUType {
   GPU_TYPE_L40S = 11;
 }
 
+enum InstrumentationType {
+  INSTRUMENTATION_TYPE_UNSPECIFIED = 0;
+  INSTRUMENTATION_TYPE_METRICS = 1;
+  INSTRUMENTATION_TYPE_TRACE = 2;
+}
+
 enum ObjectCreationType {
   OBJECT_CREATION_TYPE_UNSPECIFIED = 0;  // just lookup
   OBJECT_CREATION_TYPE_CREATE_IF_MISSING = 1;
@@ -235,6 +241,13 @@ enum TaskState {
   TASK_STATE_PREEMPTIBLE = 9;
   TASK_STATE_PREEMPTED = 10;
   TASK_STATE_LOADING_CHECKPOINT_IMAGE = 11;
+}
+
+// Encoding type used for user telemetry data.
+enum TelemetryEncodingType {
+  TELEMETRY_ENCODING_TYPE_UNSPECIFIED = 0;
+  TELEMETRY_ENCODING_TYPE_PROTOBUF = 1;
+  TELEMETRY_ENCODING_TYPE_JSON = 2;
 }
 
 enum VolumeFsVersion {
@@ -410,6 +423,7 @@ message AppPublishRequest {
 
 message AppPublishResponse {
   string url = 1;
+  repeated string warnings = 2;
 }
 
 message AppRollbackRequest {
@@ -1558,6 +1572,12 @@ message FunctionPutOutputsRequest {
   double requested_at = 5; // Used for waypoints.
 }
 
+message FunctionPutUserTelemetryRequest {
+  bytes data = 1;
+  TelemetryEncodingType encoding_type = 2;
+  InstrumentationType instrumentation_type = 3;
+}
+
 message FunctionRetryPolicy {
   float backoff_coefficient = 1;
   uint32 initial_delay_ms = 2;
@@ -2660,6 +2680,7 @@ service ModalClient {
   rpc FunctionPrecreate(FunctionPrecreateRequest) returns (FunctionPrecreateResponse);
   rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
   rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
+  rpc FunctionPutUserTelemetry(FunctionPutUserTelemetryRequest) returns (google.protobuf.Empty);
   rpc FunctionStartPtyShell(google.protobuf.Empty) returns (google.protobuf.Empty);
   rpc FunctionUpdateSchedulingParams(FunctionUpdateSchedulingParamsRequest) returns (FunctionUpdateSchedulingParamsResponse);
 

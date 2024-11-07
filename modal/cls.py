@@ -383,7 +383,7 @@ class _Cls(_Object, type_prefix="cs"):
     def from_name(
         cls: Type["_Cls"],
         app_name: str,
-        tag: Optional[str] = None,
+        tag: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         workspace: Optional[str] = None,
@@ -498,7 +498,7 @@ class _Cls(_Object, type_prefix="cs"):
     @staticmethod
     async def lookup(
         app_name: str,
-        tag: Optional[str] = None,
+        tag: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
