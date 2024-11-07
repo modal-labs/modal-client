@@ -624,6 +624,23 @@ def tmp_path_with_content(tmp_path):
     return tmp_path
 
 
+def test_image_add_local_file(servicer, client, tmp_path_with_content):
+    app = App()
+
+    img = (
+        Image.from_registry("unknown_image")
+        .add_local_file(tmp_path_with_content / "data.txt", "/some/place/nice.txt")  # absolute
+        .add_local_file(tmp_path_with_content / "data.txt", "output.txt")  # relative target
+        .add_local_file(tmp_path_with_content / "data.txt")  # default target
+    )
+    app.function(image=img)(dummy)
+
+    with app.run(client=client):
+        assert len(img._mount_layers) == 3
+        abs_path, rel_path, default_path = img._mount_layers
+        # the mounts all need to have absolute paths to be *mountable* as mount layers
+
+
 def test_image_copy_local_dir(builder_version, servicer, client, tmp_path_with_content):
     app = App()
     app.image = Image.debian_slim().copy_local_dir(tmp_path_with_content, remote_path="/dummy")

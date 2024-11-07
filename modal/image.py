@@ -606,6 +606,13 @@ class _Image(_Object, type_prefix="im"):
             context_mount=mount,
         )
 
+    def add_local_file(
+        self, local_path: Union[str, Path], remote_path: Union[str, PurePosixPath] = "./", *, copy=False
+    ):
+        # TODO: handle relative remote_path respecting workdirs!
+        mount = _Mount.from_local_file(local_path, remote_path)
+        return self._add_mount_layer_or_copy(mount, copy=copy)
+
     def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
         """Copy a file into the image as a part of building it.
 
@@ -1634,7 +1641,7 @@ class _Image(_Object, type_prefix="im"):
             dockerfile_function=build_dockerfile,
         )
 
-    def workdir(self, path: str) -> "_Image":
+    def workdir(self, path: Union[str, PurePosixPath]) -> "_Image":
         """Set the working directory for subsequent image build steps and function execution.
 
         **Example**
