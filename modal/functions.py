@@ -521,6 +521,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         ephemeral_disk: Optional[int] = None,
         _experimental_buffer_containers: Optional[int] = None,
         _experimental_proxy_ip: Optional[str] = None,
+        _experimental_custom_scaling_factor: Optional[float] = None,
     ) -> None:
         """mdmd:hidden"""
         tag = info.get_tag()
@@ -629,6 +630,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 f"Function `{info.function_name}` has `{concurrency_limit=}`, "
                 f"strictly less than its `{keep_warm=}` parameter."
             )
+
+        if _experimental_custom_scaling_factor is not None and (
+            _experimental_custom_scaling_factor < 0 or _experimental_custom_scaling_factor > 1
+        ):
+            raise InvalidError("`_experimental_custom_scaling_factor` must be between 0.0 and 1.0 inclusive.")
 
         if not cloud and not is_builder_function:
             cloud = config.get("default_cloud")
@@ -840,6 +846,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     _experimental_concurrent_cancellations=True,
                     _experimental_buffer_containers=_experimental_buffer_containers or 0,
                     _experimental_proxy_ip=_experimental_proxy_ip,
+                    _experimental_custom_scaling=_experimental_custom_scaling_factor is not None,
                 )
 
                 if isinstance(gpu, list):
@@ -1056,7 +1063,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     def from_name(
         cls: Type["_Function"],
         app_name: str,
-        tag: Optional[str] = None,
+        tag: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
     ) -> "_Function":
@@ -1071,7 +1078,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             assert resolver.client and resolver.client.stub
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
-                object_tag=tag or "",
+                object_tag=tag,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver) or "",
             )
@@ -1091,7 +1098,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     @staticmethod
     async def lookup(
         app_name: str,
-        tag: Optional[str] = None,
+        tag: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,

@@ -665,6 +665,7 @@ class _App:
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_buffer_containers: Optional[int] = None,  # Number of additional, idle containers to keep around.
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
+        _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
     ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal [Function](/docs/reference/modal.Function) with this App."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -806,6 +807,7 @@ class _App:
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 i6pn_enabled=i6pn_enabled,
                 group_size=group_size,  # Experimental: Grouped functions
+                _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
             )
 
             self._add_function(function, webhook_config is not None)
@@ -864,6 +866,7 @@ class _App:
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_buffer_containers: Optional[int] = None,  # Number of additional, idle containers to keep around.
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
+        _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
     ) -> Callable[[CLS_T], CLS_T]:
         """
         Decorator to register a new Modal [Cls](/docs/reference/modal.Cls) with this App.
@@ -936,6 +939,7 @@ class _App:
                 scheduler_placement=scheduler_placement,
                 _experimental_buffer_containers=_experimental_buffer_containers,
                 _experimental_proxy_ip=_experimental_proxy_ip,
+                _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
             )
 
             self._add_function(cls_func, is_web_endpoint=False)
