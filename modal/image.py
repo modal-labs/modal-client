@@ -1086,10 +1086,12 @@ class _Image(_Object, type_prefix="im"):
                 "ENV TERMINFO_DIRS=/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo",
             ]
 
+        # Note: this change is because we install dependencies with uv in 2024.10+
+        requirements_prefix = "python -m " if builder_version < "2024.10" else ""
         modal_requirements_commands = [
             f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
             f"RUN python -m pip install --upgrade {_base_image_config('package_tools', builder_version)}",
-            f"RUN python -m {_get_modal_requirements_command(builder_version)}",
+            f"RUN {requirements_prefix}{_get_modal_requirements_command(builder_version)}",
         ]
         if builder_version > "2023.12":
             modal_requirements_commands.append(f"RUN rm {CONTAINER_REQUIREMENTS_PATH}")
