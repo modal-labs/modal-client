@@ -4,6 +4,7 @@ from typing import (
     Callable,
 )
 
+import modal._clustered_functions
 from modal.functions import _Function
 
 from ._container_io_manager import _ContainerIOManager
@@ -63,3 +64,7 @@ def clustered(size: int, broadcast: bool = True):
         )
 
     return wrapper
+
+
+def get_cluster_info() -> modal._clustered_functions.ClusterInfo:
+    return modal._clustered_functions.get_cluster_info()
