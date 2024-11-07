@@ -621,6 +621,8 @@ class _ContainerIOManager:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         iteration = 0
 
+        last_seen_input_id = None
+
         while self._fetching_inputs:
             await self._input_slots.acquire()
 
@@ -661,16 +663,42 @@ class _ContainerIOManager:
                             final_input_received = True
                             break
 
+                    if self._is_clustered and get_cluster_info().rank > 0:
+                        assert len(inputs) == 1
+                        if inputs[0][0] == last_seen_input_id:
+                            # If the input is the same as the last one we saw, don't yield it.
+
+                            # Since `FunctionGetInputs` is proxied through modal-worker,
+                            # and modal-worker expects one output per input, we have to
+                            # send a dummy result here.
+                            #
+                            # Note that the server drops outputs from ranks > 0.
+                            outputs = [
+                                api_pb2.FunctionPutOutputsItem(
+                                    input_id=inputs[0][0],
+                                    input_started_at=time.time(),
+                                    output_created_at=time.time(),
+                                    result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
+                                    data_format=api_pb2.DATA_FORMAT_PICKLE,
+                                )
+                            ]
+                            await retry_transient_errors(
+                                self._client.stub.FunctionPutOutputs,
+                                api_pb2.FunctionPutOutputsRequest(outputs=outputs),
+                                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                                max_retries=None,
+                            )
+
+                            await asyncio.sleep(0.5)
+                            continue
+                        last_seen_input_id = inputs[0][0]
+
                     # If yielded, allow input slots to be released via exit_context
                     yield inputs
                     yielded = True
 
                     # We only support max_inputs = 1 at the moment
                     if final_input_received or self.function_def.max_inputs == 1:
-                        return
-
-                    # Clustered functions only support max_inputs = 1 at the moment.
-                    if self._is_clustered:
                         return
             finally:
                 if not yielded:
@@ -711,10 +739,6 @@ class _ContainerIOManager:
         data_format: "modal_proto.api_pb2.DataFormat.ValueType",
         results: List[api_pb2.GenericResult],
     ) -> None:
-        if self._is_clustered and get_cluster_info().rank > 0:
-            # Only rank 0 should send outputs.
-            return
-
         output_created_at = time.time()
         outputs = [
             api_pb2.FunctionPutOutputsItem(
