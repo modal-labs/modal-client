@@ -47,6 +47,7 @@ from ._utils.async_utils import (
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
+    FunctionCreationStatus,
     FunctionInfo,
     _create_input,
     _process_result,
@@ -524,6 +525,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         ephemeral_disk: Optional[int] = None,
         _experimental_buffer_containers: Optional[int] = None,
         _experimental_proxy_ip: Optional[str] = None,
+        _experimental_custom_scaling_factor: Optional[float] = None,
     ) -> None:
         """mdmd:hidden"""
         # Needed to avoid circular imports
@@ -635,6 +637,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 f"Function `{info.function_name}` has `{concurrency_limit=}`, "
                 f"strictly less than its `{keep_warm=}` parameter."
             )
+
+        if _experimental_custom_scaling_factor is not None and (
+            _experimental_custom_scaling_factor < 0 or _experimental_custom_scaling_factor > 1
+        ):
+            raise InvalidError("`_experimental_custom_scaling_factor` must be between 0.0 and 1.0 inclusive.")
 
         if not cloud and not is_builder_function:
             cloud = config.get("default_cloud")
@@ -751,8 +758,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 )
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
-            from ._output import FunctionCreationStatus  # Deferred import to avoid Rich dependency in container
-
             assert resolver.client and resolver.client.stub
             with FunctionCreationStatus(resolver, tag) as function_creation_status:
                 timeout_secs = timeout
@@ -865,6 +870,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     _experimental_concurrent_cancellations=True,
                     _experimental_buffer_containers=_experimental_buffer_containers or 0,
                     _experimental_proxy_ip=_experimental_proxy_ip,
+                    _experimental_custom_scaling=_experimental_custom_scaling_factor is not None,
                 )
 
                 if isinstance(gpu, list):
