@@ -1857,9 +1857,8 @@ message Proxy {
   repeated ProxyIp proxy_ips = 4;
 }
 message ProxyCreateRequest {
-  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
-  string environment_name = 3;
+  string name = 1 [ (modal.options.audit_target_attr) = true ];
+  string environment_name = 2;
 }
 
 message ProxyCreateResponse {
