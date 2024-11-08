@@ -131,6 +131,7 @@ enum FunctionCallInvocationType {
   FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY = 1;
   FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY = 2;
   FUNCTION_CALL_INVOCATION_TYPE_ASYNC = 3;
+  FUNCTION_CALL_INVOCATION_TYPE_SYNC = 4;
 }
 
 enum FunctionCallType {
@@ -1507,6 +1508,8 @@ message FunctionMapRequest {
 message FunctionMapResponse {
   string function_call_id = 1;
   repeated FunctionPutInputsResponseItem pipelined_inputs = 2;
+  FunctionRetryPolicy retry_policy = 3;
+  string function_call_jwt = 4;
 }
 
 message FunctionOptions {
@@ -1559,6 +1562,7 @@ message FunctionPutInputsResponse {
 message FunctionPutInputsResponseItem {
   int32 idx = 1;
   string input_id = 2;
+  string input_jwt = 3;
 }
 
 message FunctionPutOutputsItem {
@@ -1578,6 +1582,21 @@ message FunctionPutUserTelemetryRequest {
   bytes data = 1;
   TelemetryEncodingType encoding_type = 2;
   InstrumentationType instrumentation_type = 3;
+}
+
+message FunctionRetryInputsItem {
+  string input_jwt = 1;
+  FunctionInput input = 2;
+}
+
+message FunctionRetryInputsRequest {
+  string function_call_jwt = 1;
+  repeated FunctionRetryInputsItem inputs = 2;
+}
+
+message FunctionRetryInputsResponse {
+  // TODO(ryan): Eventually this will return entry ids, which client
+  // will send back to server to check for lost inputs.
 }
 
 message FunctionRetryPolicy {
@@ -2685,6 +2704,7 @@ service ModalClient {
   rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
   rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
   rpc FunctionPutUserTelemetry(FunctionPutUserTelemetryRequest) returns (google.protobuf.Empty);
+  rpc FunctionRetryInputs(FunctionRetryInputsRequest) returns (FunctionRetryInputsResponse);
   rpc FunctionStartPtyShell(google.protobuf.Empty) returns (google.protobuf.Empty);
   rpc FunctionUpdateSchedulingParams(FunctionUpdateSchedulingParamsRequest) returns (FunctionUpdateSchedulingParamsResponse);
 
