@@ -17,13 +17,12 @@ class _Proxy(_Object, type_prefix="pr"):
 
     @staticmethod
     def from_name(
-        label: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        name: str,
         environment_name: Optional[str] = None,
     ) -> "_Proxy":
         async def _load(self: _Proxy, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.ProxyGetRequest(
-                name=label,
+                name=name,
                 environment_name=_get_environment_name(environment_name, resolver),
             )
             response: api_pb2.ProxyGetResponse = await resolver.client.stub.ProxyGet(req)
