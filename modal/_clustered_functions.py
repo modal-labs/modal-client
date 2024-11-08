@@ -11,6 +11,7 @@ from modal_proto import api_pb2
 
 @dataclass
 class ClusterInfo:
+    id: str
     rank: int
     world_size: int
     container_ips: list[str]
@@ -42,7 +43,6 @@ async def _initialize_clustered_function(client: _Client, task_id: str):
     # See MOD-4067.
     os.environ["NCCL_HOSTID"] = f"{hostname}{container_ip}"
 
-    print(f"Initializing clustered function with task ID {task_id} and IP {container_ip}")
     resp: api_pb2.ClusterHelloResponse = await retry_transient_errors(
         client.stub.ClusterHello,
         api_pb2.ClusterHelloRequest(
@@ -50,20 +50,12 @@ async def _initialize_clustered_function(client: _Client, task_id: str):
             container_ip=container_ip,
         ),
     )
-    container_ips = resp.container_ips
-    cluster_id = resp.cluster_id
-    cluster_rank = resp.cluster_rank
-    cluster_size = resp.cluster_size
-
-    print(
-        f"Cluster initialized with ID {cluster_id}, rank {cluster_rank}, size {cluster_size}, "
-        f"and IPs {container_ips}"
-    )
 
     cluster_info = ClusterInfo(
-        rank=cluster_rank,
-        world_size=cluster_size,
-        container_ips=container_ips,
+        id=resp.cluster_id,
+        rank=resp.cluster_rank,
+        world_size=resp.cluster_size,
+        container_ips=resp.container_ips,
     )
 
 
