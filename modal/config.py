@@ -221,6 +221,7 @@ _SETTINGS = {
     "image_builder_version": _Setting(),
     "strict_parameters": _Setting(False, transform=_to_boolean),  # For internal/experimental use
     "snapshot_debug": _Setting(False, transform=_to_boolean),
+    "client_retries": _Setting(False, transform=_to_boolean),  # For internal testing.
 }
 
 

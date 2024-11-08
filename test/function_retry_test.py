@@ -51,25 +51,28 @@ def setup_app_and_function(servicer):
     return app, f
 
 
-def test_all_retries_fail_raises_error(client, setup_app_and_function):
+def test_all_retries_fail_raises_error(client, setup_app_and_function, monkeypatch):
+    monkeypatch.setenv("MODAL_CLIENT_RETRIES", "true")
     app, f = setup_app_and_function
     with app.run(client=client):
         with pytest.raises(FunctionCallCountException) as exc_info:
-            f._experimental_remote(5)
+            f.remote(5)
         assert exc_info.value.function_call_count == 4
 
 
-def test_failures_followed_by_success(client, setup_app_and_function):
+def test_failures_followed_by_success(client, setup_app_and_function, monkeypatch):
+    monkeypatch.setenv("MODAL_CLIENT_RETRIES", "true")
     app, f = setup_app_and_function
     with app.run(client=client):
-        function_call_count = f._experimental_remote(3)
+        function_call_count = f.remote(3)
         assert function_call_count == 3
 
 
-def test_no_retries_when_first_call_succeeds(client, setup_app_and_function):
+def test_no_retries_when_first_call_succeeds(client, setup_app_and_function, monkeypatch):
+    monkeypatch.setenv("MODAL_CLIENT_RETRIES", "true")
     app, f = setup_app_and_function
     with app.run(client=client):
-        function_call_count = f._experimental_remote(1)
+        function_call_count = f.remote(1)
         assert function_call_count == 1
 
 

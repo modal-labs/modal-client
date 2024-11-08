@@ -1396,12 +1396,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             async for item in stream:
                 yield item
 
-    async def _call_function(
-        self,
-        args,
-        kwargs,
-        function_call_invocation_type,
-    ) -> ReturnType:
+    async def _call_function(self, args, kwargs) -> ReturnType:
+        if config.get("client_retries"):
+            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
+        else:
+            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY
         invocation = await _Invocation.create(
             self,
             args,
@@ -1445,26 +1444,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     @synchronizer.no_io_translation
     @live_method
-    async def _experimental_remote(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
-        """
-        [Experimental] Calls the function remotely, executing it with the given arguments and returning the
-        execution's result. Retries are handled by the client.
-        """
-        # TODO: Generics/TypeVars
-        self._check_no_web_url("remote")
-        if self._is_generator:
-            raise InvalidError(
-                "A generator function cannot be called with `.remote(...)`. Use `.remote_gen(...)` instead."
-            )
-
-        return await self._call_function(
-            args,
-            kwargs,
-            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
-        )
-
-    @synchronizer.no_io_translation
-    @live_method
     async def remote(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
         """
         Calls the function remotely, executing it with the given arguments and returning the execution's result.
@@ -1476,9 +1455,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 "A generator function cannot be called with `.remote(...)`. Use `.remote_gen(...)` instead."
             )
 
-        return await self._call_function(
-            args, kwargs, function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY
-        )
+        return await self._call_function(args, kwargs)
 
     @synchronizer.no_io_translation
     @live_method_gen
