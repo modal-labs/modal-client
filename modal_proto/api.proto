@@ -1856,6 +1856,15 @@ message Proxy {
   string proxy_id = 5;
   repeated ProxyIp proxy_ips = 4;
 }
+message ProxyCreateRequest {
+  string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
+  DeploymentNamespace namespace = 2;
+  string environment_name = 3;
+}
+
+message ProxyCreateResponse {
+  Proxy proxy = 1;
+}
 
 message ProxyDeleteRequest {
   string proxy_id = 1 [ (modal.options.audit_target_attr) = true ];
@@ -2717,6 +2726,7 @@ service ModalClient {
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
 
   // Proxies
+  rpc ProxyCreate(ProxyCreateRequest) returns (ProxyCreateRequest);
   rpc ProxyDelete(ProxyDeleteRequest) returns (google.protobuf.Empty);
   rpc ProxyGet(ProxyGetRequest) returns (ProxyGetResponse);
   rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);
