@@ -628,7 +628,10 @@ class _App:
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        # Specify, in fractional CPU cores, how many CPU cores to request.
+        # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
+        # CPU throttling will prevent a container from exceeding its specified limit.
+        cpu: Optional[Union[float, Tuple[float, float]]] = None,
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: Optional[Union[int, Tuple[int, int]]] = None,
@@ -838,7 +841,10 @@ class _App:
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        # Specify, in fractional CPU cores, how many CPU cores to request.
+        # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
+        # CPU throttling will prevent a container from exceeding its specified limit.
+        cpu: Optional[Union[float, Tuple[float, float]]] = None,
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: Optional[Union[int, Tuple[int, int]]] = None,
@@ -961,7 +967,10 @@ class _App:
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the sandbox on.
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        # Specify, in fractional CPU cores, how many CPU cores to request.
+        # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
+        # CPU throttling will prevent a container from exceeding its specified limit.
+        cpu: Optional[Union[float, Tuple[float, float]]] = None,
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: Optional[Union[int, Tuple[int, int]]] = None,
