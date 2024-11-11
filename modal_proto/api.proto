@@ -131,6 +131,7 @@ enum FunctionCallInvocationType {
   FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY = 1;
   FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY = 2;
   FUNCTION_CALL_INVOCATION_TYPE_ASYNC = 3;
+  FUNCTION_CALL_INVOCATION_TYPE_SYNC = 4;
 }
 
 enum FunctionCallType {
@@ -740,6 +741,8 @@ message ContainerExecGetOutputRequest {
   float timeout = 2;
   uint64 last_batch_index = 3;
   FileDescriptor file_descriptor = 4;
+  // Old clients (up to 0.65.39) expect string output. Newer clients stream raw bytes
+  bool get_raw_bytes = 5;
 }
 
 message ContainerExecPutInputRequest {
@@ -1505,6 +1508,8 @@ message FunctionMapRequest {
 message FunctionMapResponse {
   string function_call_id = 1;
   repeated FunctionPutInputsResponseItem pipelined_inputs = 2;
+  FunctionRetryPolicy retry_policy = 3;
+  string function_call_jwt = 4;
 }
 
 message FunctionOptions {
@@ -1557,6 +1562,7 @@ message FunctionPutInputsResponse {
 message FunctionPutInputsResponseItem {
   int32 idx = 1;
   string input_id = 2;
+  string input_jwt = 3;
 }
 
 message FunctionPutOutputsItem {
@@ -1576,6 +1582,21 @@ message FunctionPutUserTelemetryRequest {
   bytes data = 1;
   TelemetryEncodingType encoding_type = 2;
   InstrumentationType instrumentation_type = 3;
+}
+
+message FunctionRetryInputsItem {
+  string input_jwt = 1;
+  FunctionInput input = 2;
+}
+
+message FunctionRetryInputsRequest {
+  string function_call_jwt = 1;
+  repeated FunctionRetryInputsItem inputs = 2;
+}
+
+message FunctionRetryInputsResponse {
+  // TODO(ryan): Eventually this will return entry ids, which client
+  // will send back to server to check for lost inputs.
 }
 
 message FunctionRetryPolicy {
@@ -1836,6 +1857,15 @@ message Proxy {
   repeated ProxyIp proxy_ips = 4;
 }
 
+message ProxyCreateRequest {
+  string name = 1 [ (modal.options.audit_target_attr) = true ];
+  string environment_name = 2;
+}
+
+message ProxyCreateResponse {
+  Proxy proxy = 1;
+}
+
 message ProxyDeleteRequest {
   string proxy_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
@@ -1994,6 +2024,7 @@ message Resources {
   GPUConfig gpu_config = 4;
   uint32 memory_mb_max = 5; // MiB
   uint32 ephemeral_disk_mb = 6;  // MiB
+  uint32 milli_cpu_max = 7; // milli CPU cores
 }
 
 message RuntimeInputMessage {
@@ -2017,6 +2048,7 @@ message RuntimeOutputMessage {
   // only stdout / stderr is used
   FileDescriptor file_descriptor = 1;
   string message = 2;
+  bytes message_bytes = 3;
 }
 
 message S3Mount {
@@ -2681,6 +2713,7 @@ service ModalClient {
   rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
   rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
   rpc FunctionPutUserTelemetry(FunctionPutUserTelemetryRequest) returns (google.protobuf.Empty);
+  rpc FunctionRetryInputs(FunctionRetryInputsRequest) returns (FunctionRetryInputsResponse);
   rpc FunctionStartPtyShell(google.protobuf.Empty) returns (google.protobuf.Empty);
   rpc FunctionUpdateSchedulingParams(FunctionUpdateSchedulingParamsRequest) returns (FunctionUpdateSchedulingParamsResponse);
 
@@ -2693,6 +2726,7 @@ service ModalClient {
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
 
   // Proxies
+  rpc ProxyCreate(ProxyCreateRequest) returns (ProxyCreateResponse);
   rpc ProxyDelete(ProxyDeleteRequest) returns (google.protobuf.Empty);
   rpc ProxyGet(ProxyGetRequest) returns (ProxyGetResponse);
   rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);

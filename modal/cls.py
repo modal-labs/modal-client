@@ -438,7 +438,7 @@ class _Cls(_Object, type_prefix="cs"):
 
     def with_options(
         self: "_Cls",
-        cpu: Optional[float] = None,
+        cpu: Optional[Union[float, Tuple[float, float]]] = None,
         memory: Optional[Union[int, Tuple[int, int]]] = None,
         gpu: GPU_T = None,
         secrets: Collection[_Secret] = (),

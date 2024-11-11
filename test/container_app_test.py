@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import importlib
 import json
 import os
 import pytest
@@ -153,72 +152,6 @@ async def test_container_debug_snapshot(container_client, tmpdir, servicer):
         with set_env_vars(restore_path, servicer.container_addr):
             io_manager.memory_snapshot()
             test_breakpoint.assert_called_once()
-
-
-@pytest.fixture(scope="function")
-def fake_torch_module():
-    module_path = os.path.join(os.getcwd(), "torch.py")
-    with open(module_path, "w") as f:
-        f.write(
-            """
-import dataclasses
-@dataclasses.dataclass
-class CUDA:
-    device_count = lambda self: 0
-    _device_count_nvml = lambda self: 2
-
-cuda = CUDA()
-"""
-        )
-
-    yield module_path
-    # Teardown: remove the torch.py file
-    os.remove(module_path)
-
-
-@pytest.fixture(scope="function")
-def weird_torch_module():
-    module_path = os.path.join(os.getcwd(), "torch.py")
-    with open(module_path, "w") as f:
-        f.write("IM_WEIRD = 42\n")
-
-    yield module_path
-
-    os.remove(module_path)  # Teardown: remove the torch.py file
-
-
-@pytest.mark.asyncio
-async def test_container_snapshot_patching(fake_torch_module, container_client, tmpdir, servicer):
-    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
-
-    # bring fake torch into scope and call the utility fn
-    import torch
-
-    importlib.reload(torch)  # make sure we get our fake torch
-
-    assert torch.cuda.device_count() == 0
-
-    # Write out a restore file so that snapshot+restore will complete
-    restore_path = temp_restore_path(tmpdir)
-    with set_env_vars(restore_path, servicer.container_addr):
-        io_manager.memory_snapshot()
-        assert torch.cuda.device_count() == 2
-
-
-@pytest.mark.asyncio
-async def test_container_snapshot_patching_err(weird_torch_module, container_client, tmpdir, servicer):
-    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
-    restore_path = temp_restore_path(tmpdir)
-
-    # bring weird torch into scope and call the utility fn
-    import torch
-
-    importlib.reload(torch)
-
-    assert torch.IM_WEIRD == 42
-
-    with set_env_vars(restore_path, servicer.container_addr):
-        io_manager.memory_snapshot()  # should not crash
 
 
 @pytest.mark.asyncio

@@ -47,6 +47,7 @@ from ._utils.async_utils import (
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
+    FunctionCreationStatus,
     FunctionInfo,
     _create_input,
     _process_result,
@@ -355,8 +356,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
         async def _load(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
-            from ._output import FunctionCreationStatus  # Deferred import to avoid Rich dependency in container
-
             function_definition = api_pb2.Function(
                 function_name=full_name,
                 webhook_config=partial_function.webhook_config,
@@ -731,8 +730,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
-            from ._output import FunctionCreationStatus  # Deferred import to avoid Rich dependency in container
-
             assert resolver.client and resolver.client.stub
             with FunctionCreationStatus(resolver, tag) as function_creation_status:
                 if is_generator:

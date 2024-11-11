@@ -212,9 +212,39 @@ def test_function_memory_limit(client):
         g.remote(0)
 
 
-def test_function_cpu_request(client):
+def test_function_cpu_request(client, servicer):
     app = App()
-    app.function(cpu=2.0)(dummy)
+    f = app.function(cpu=2.0)(dummy)
+
+    with app.run(client=client):
+        f.remote()
+        assert servicer.app_functions["fu-1"].resources.milli_cpu == 2000
+        assert servicer.app_functions["fu-1"].resources.milli_cpu_max == 0
+    assert f.spec.cpu == 2.0
+
+    app = App()
+    g = app.function(cpu=7)(dummy)
+
+    with app.run(client=client):
+        g.remote()
+        assert servicer.app_functions["fu-2"].resources.milli_cpu == 7000
+        assert servicer.app_functions["fu-2"].resources.milli_cpu_max == 0
+    assert g.spec.cpu == 7
+
+
+def test_function_cpu_limit(client, servicer):
+    app = App()
+    f = app.function(cpu=(1, 3))(dummy)
+    assert f.spec.cpu == (1, 3)
+
+    with app.run(client=client):
+        f.remote()
+        assert servicer.app_functions["fu-1"].resources.milli_cpu == 1000
+        assert servicer.app_functions["fu-1"].resources.milli_cpu_max == 3000
+
+    g = app.function(cpu=(1, 0.5))(custom_function)
+    with pytest.raises(InvalidError), app.run(client=client):
+        g.remote(0)
 
 
 def test_function_disk_request(client):
