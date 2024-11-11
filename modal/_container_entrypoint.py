@@ -89,7 +89,9 @@ def construct_webhook_callable(
 
     elif webhook_config.type == api_pb2.WEBHOOK_TYPE_WEB_SERVER:
         # Function spawns an HTTP web server listening at a port.
-        user_defined_callable()
+
+        server_thread = threading.Thread(target=user_defined_callable, name="web_server", daemon=True)
+        server_thread.start()
 
         # We intentionally try to connect to the external interface instead of the loopback
         # interface here so users are forced to expose the server. This allows us to potentially
