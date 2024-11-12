@@ -57,7 +57,7 @@ def logs(container_id: str = typer.Argument(help="Container ID")):
 async def exec(
     container_id: str = typer.Argument(help="Container ID"),
     command: List[str] = typer.Argument(help="A command to run inside the container."),
-    pty: bool = typer.Option(is_flag=True, default=True, help="Run the command using a PTY."),
+    pty: bool = typer.Option(default=True, help="Run the command using a PTY."),
 ):
     """Execute a command in a container."""
 

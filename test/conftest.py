@@ -1196,6 +1196,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.recv_message()
         await stream.send_message(api_pb2.ProxyGetOrCreateResponse(proxy_id="pr-123"))
 
+    async def ProxyGet(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.ProxyGetResponse(proxy=api_pb2.Proxy(proxy_id="pr-123")))
+
     ### Queue
 
     async def QueueClear(self, stream):
