@@ -38,19 +38,18 @@ def set_local_input_concurrency(concurrency: int):
 
 
 def clustered(size: int, broadcast: bool = True):
-    """Run the function on a cluster of colocated and networked containers.
+    """Provision clusters of colocated and networked containers for the Function.
 
     Parameters:
     size: int
         Number of containers spun up to handle each input.
     broadcast: bool = True
-        If True, inputs will be sent synchronously to each container. Otherwise,
+        If True, inputs will be sent simultaneously to each container. Otherwise,
         inputs will be sent only to the rank-0 container, which is responsible for
-        delegating to the workers. Containers with input broadcasting enabled
-        will shut down after processing a single input.
+        delegating to the workers.
     """
 
-    assert broadcast, "broadcast=False is not yet implemented"
+    assert broadcast, "broadcast=False has not been implemented yet!"
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if isinstance(raw_f, _Function):

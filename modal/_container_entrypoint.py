@@ -2,8 +2,6 @@
 # ruff: noqa: E402
 import os
 
-from modal._clustered_functions import initialize_clustered_function
-
 telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
 if telemetry_socket:
     from ._telemetry import instrument_imports
@@ -37,6 +35,7 @@ from ._asgi import (
     webhook_asgi_app,
     wsgi_app_wrapper,
 )
+from ._clustered_functions import initialize_clustered_function
 from ._container_io_manager import ContainerIOManager, FinalizedFunction, IOContext, UserException, _ContainerIOManager
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, deserialize_proto_params

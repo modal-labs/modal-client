@@ -39,6 +39,7 @@ def test_experimental_cluster(servicer, client):
         assert fn3.i6pn_enabled is True
 
 
-def test_spawn_experimental_cluster(client, servicer, monkeypatch):
+def test_run_experimental_cluster(client, servicer, monkeypatch):
     with app.run(client=client):
+        # The servicer returns the sum of the squares of all arguments
         assert f1.remote(2, 4) == 2**2 + 4**2
