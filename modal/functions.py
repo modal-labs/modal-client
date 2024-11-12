@@ -304,7 +304,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     # TODO: more type annotations
     _info: Optional[FunctionInfo]
-    _all_mounts: Collection[_Mount]
+    _used_local_mounts: typing.FrozenSet[_Mount]  # set at load time, only by loader
     _app: Optional["modal.app._App"] = None
     _obj: Optional["modal.cls._Obj"] = None  # only set for InstanceServiceFunctions and bound instance methods
     _web_url: Optional[str]
@@ -415,7 +415,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fun._use_method_name = method_name
         fun._app = class_service_function._app
         fun._is_generator = partial_function.is_generator
-        fun._all_mounts = class_service_function._all_mounts
         fun._spec = class_service_function._spec
         fun._is_method = True
         return fun
@@ -480,7 +479,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fun._is_method = True
         fun._parent = instance_service_function._parent
         fun._app = class_bound_method._app
-        fun._all_mounts = class_bound_method._all_mounts  # TODO: only used for mount-watching/modal serve
         fun._spec = class_bound_method._spec
         return fun
 
@@ -920,7 +918,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         raise InvalidError(f"Function {info.function_name} is too large to deploy.")
                     raise
                 function_creation_status.set_response(response)
-
+            local_mounts = set(m for m in all_mounts if m.is_local())  # needed for modal.serve file watching
+            local_mounts |= image._used_local_mounts
+            obj._used_local_mounts = frozenset(local_mounts)
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Function({tag})"
@@ -929,7 +929,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._raw_f = info.raw_f
         obj._info = info
         obj._tag = tag
-        obj._all_mounts = all_mounts  # needed for modal.serve file watching
         obj._app = app  # needed for CLI right now
         obj._obj = None
         obj._is_generator = is_generator
@@ -1162,8 +1161,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._web_url = None
         self._function_name = None
         self._info = None
-        self._all_mounts = []  # used for file watching
         self._use_function_id = ""
+        self._used_local_mounts = frozenset()
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
