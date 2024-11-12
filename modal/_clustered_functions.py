@@ -11,7 +11,6 @@ from modal_proto import api_pb2
 
 @dataclass
 class ClusterInfo:
-    id: str
     rank: int
     world_size: int
     container_ips: list[str]
@@ -52,7 +51,6 @@ async def _initialize_clustered_function(client: _Client, task_id: str):
     )
 
     cluster_info = ClusterInfo(
-        id=resp.cluster_id,
         rank=resp.cluster_rank,
         world_size=resp.cluster_size,
         container_ips=resp.container_ips,
