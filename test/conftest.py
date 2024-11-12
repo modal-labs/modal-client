@@ -1984,3 +1984,9 @@ def no_rich(monkeypatch):
 
     monkeypatch.setattr(builtins, "__import__", import_fail_for_rich)
     yield
+
+
+@pytest.fixture
+def disable_auto_mount(monkeypatch):
+    monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
+    yield

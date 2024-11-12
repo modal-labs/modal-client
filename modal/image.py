@@ -274,9 +274,11 @@ class _Image(_Object, type_prefix="im"):
 
     force_build: bool
     inside_exceptions: List[Exception]
+    _used_local_mounts: typing.FrozenSet[_Mount]  # used for mounts watching
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
+        self._used_local_mounts = frozenset()
 
     def _hydrate_metadata(self, message: Optional[Message]):
         env_image_id = config.get("image_id")
@@ -469,6 +471,12 @@ class _Image(_Object, type_prefix="im"):
                 raise RemoteError("Unknown status %s!" % result.status)
 
             self._hydrate(image_id, resolver.client, None)
+            local_mounts = set()
+            for base in base_images.values():
+                local_mounts |= base._used_local_mounts
+            if context_mount and context_mount.is_local():
+                local_mounts.add(context_mount)
+            self._used_local_mounts = frozenset(local_mounts)
 
         rep = "Image()"
         obj = _Image._from_loader(_load, rep, deps=_deps)

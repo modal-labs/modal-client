@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.65.49 (2024-11-12)
+
+* Fixes issue in `modal serve` where files used in `Image.copy_*` commands were not watched for changes
+
+
+
 ### 0.65.42 (2024-11-07)
 
 `Sandbox.exec` can now accept `timeout`, `workdir`, and `secrets`. See the `Sandbox.create` function for context on how to use these arguments.
