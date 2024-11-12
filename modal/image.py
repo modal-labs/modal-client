@@ -12,7 +12,6 @@ from inspect import isfunction
 from pathlib import Path, PurePosixPath
 from typing import (
     Any,
-    AsyncGenerator,
     Callable,
     Dict,
     List,
@@ -26,7 +25,6 @@ from typing import (
     get_args,
 )
 
-from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal_proto import api_pb2
@@ -44,7 +42,7 @@ from .exception import InvalidError, NotFoundError, RemoteError, VersionError, d
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
-from .object import _Object, live_method_gen
+from .object import _Object
 from .output import _get_output_manager
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
@@ -274,15 +272,17 @@ class _Image(_Object, type_prefix="im"):
 
     force_build: bool
     inside_exceptions: List[Exception]
+    _metadata: Optional[api_pb2.ImageMetadata] = None  # set on hydration, private for now
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
 
-    def _hydrate_metadata(self, message: Optional[Message]):
-        env_image_id = config.get("image_id")
+    def _hydrate_metadata(self, message: Optional[api_pb2.ImageMetadata]):
+        env_image_id = config.get("image_id")  # set as an env var in containers
         if env_image_id == self.object_id:
             for exc in self.inside_exceptions:
                 raise exc
+        self._metadata = message
 
     @staticmethod
     def _from_args(
@@ -421,17 +421,19 @@ class _Image(_Object, type_prefix="im"):
 
             logger.debug("Waiting for image %s" % image_id)
             last_entry_id: Optional[str] = None
-            result: Optional[api_pb2.GenericResult] = None
+            result_response: Optional[api_pb2.ImageJoinStreamingResponse] = None
 
             async def join():
-                nonlocal last_entry_id, result
+                nonlocal last_entry_id, result_response
 
                 request = api_pb2.ImageJoinStreamingRequest(image_id=image_id, timeout=55, last_entry_id=last_entry_id)
+
                 async for response in resolver.client.stub.ImageJoinStreaming.unary_stream(request):
                     if response.entry_id:
                         last_entry_id = response.entry_id
                     if response.result.status:
-                        result = response.result
+                        result_response = response
+                        # can't return yet, since there may still be logs streaming back in subsequent responses
                     for task_log in response.task_logs:
                         if task_log.task_progress.pos or task_log.task_progress.len:
                             assert task_log.task_progress.progress_type == api_pb2.IMAGE_SNAPSHOT_UPLOAD
@@ -445,7 +447,7 @@ class _Image(_Object, type_prefix="im"):
 
             # Handle up to n exceptions while fetching logs
             retry_count = 0
-            while result is None:
+            while result_response is None:
                 try:
                     await join()
                 except (StreamTerminatedError, GRPCError) as exc:
@@ -455,6 +457,7 @@ class _Image(_Object, type_prefix="im"):
                     if retry_count >= 3:
                         raise exc
 
+            result = result_response.result
             if result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
                 raise RemoteError(f"Image build for {image_id} failed with the exception:\n{result.exception}")
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
@@ -468,7 +471,7 @@ class _Image(_Object, type_prefix="im"):
             else:
                 raise RemoteError("Unknown status %s!" % result.status)
 
-            self._hydrate(image_id, resolver.client, None)
+            self._hydrate(image_id, resolver.client, result_response.metadata)
 
         rep = "Image()"
         obj = _Image._from_loader(_load, rep, deps=_deps)
@@ -1570,26 +1573,6 @@ class _Image(_Object, type_prefix="im"):
                 raise
             if not isinstance(exc, ImportError):
                 warnings.warn(f"Warning: caught a non-ImportError exception in an `imports()` block: {repr(exc)}")
-
-    @live_method_gen
-    async def _logs(self) -> AsyncGenerator[str, None]:
-        """Streams logs from an image, or returns logs from an already completed image.
-
-        This method is considered private since its interface may change - use it at your own risk!
-        """
-        last_entry_id: Optional[str] = None
-
-        request = api_pb2.ImageJoinStreamingRequest(
-            image_id=self._object_id, timeout=55, last_entry_id=last_entry_id, include_logs_for_finished=True
-        )
-        async for response in self._client.stub.ImageJoinStreaming.unary_stream(request):
-            if response.result.status:
-                return
-            if response.entry_id:
-                last_entry_id = response.entry_id
-            for task_log in response.task_logs:
-                if task_log.data:
-                    yield task_log.data
 
 
 Image = synchronize_api(_Image)
