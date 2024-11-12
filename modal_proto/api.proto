@@ -1706,6 +1706,21 @@ message ImageGetOrCreateResponse {
   string image_id = 1;
 }
 
+message PythonPackageVersions {
+  // wrapper around map to get presence for the field
+  map<string, string> packages = 1;
+}
+
+message ImageMetadata {
+  // The output of `python -VV. None if missing (not recently built, or failed collection)
+  optional string python_version_info = 1;
+  // Installed python packages, as listed by by `pip list`.
+  // package name -> version. Not present if missing
+  PythonPackageVersions python_packages = 2;
+  // The work directory of the image, defaulting to "/". None if missing
+  optional string workdir = 3;
+}
+
 message ImageJoinStreamingRequest {
   string image_id = 1;
   float timeout = 2;
@@ -1718,8 +1733,8 @@ message ImageJoinStreamingResponse {
   repeated TaskLogs task_logs = 2;
   string entry_id = 3;
   bool eof = 4;
+  ImageMetadata metadata = 5;  // set on success
 }
-
 
 message ImageRegistryConfig {
   RegistryAuthType registry_auth_type = 1;
