@@ -52,7 +52,7 @@ async def _initialize_clustered_function(client: _Client, task_id: str):
 
     cluster_info = ClusterInfo(
         rank=resp.cluster_rank,
-        world_size=resp.cluster_size,
+        world_size=len(resp.container_ips),
         container_ips=resp.container_ips,
     )
 
