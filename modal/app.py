@@ -126,6 +126,38 @@ class _FunctionDecoratorType:
         ...
 
 
+_app_attr_error = """\
+App assignments of the form `app.x` or `app["x"]` are deprecated!
+
+The only use cases for these assignments is in conjunction with `.new()`, which is now
+in itself deprecated. If you are constructing objects with `.from_name(...)`, there is no
+need to assign those objects to the app. Example:
+
+```python
+d = modal.Dict.from_name("my-dict", create_if_missing=True)
+
+@app.function()
+def f(x, y):
+    d[x] = y  # Refer to d in global scope
+```
+"""
+
+_enable_output_warning = """\
+Note that output will soon not be be printed with `app.run`.
+
+If you want to print output, use `modal.enable_output()`:
+
+```python
+with modal.enable_output():
+    with app.run():
+        ...
+```
+
+If you don't want output, and you want to to suppress this warning,
+use `app.run(..., show_progress=False)`.
+"""
+
+
 class _App:
     """A Modal app (prior to April 2024 a "stub") is a group of functions and classes
     deployed together.
@@ -308,24 +340,10 @@ class _App:
         self._indexed_objects[tag] = obj
 
     def __getitem__(self, tag: str):
-        """App assignments of the form `app.x` or `app["x"]` are deprecated!
-
-        The only use cases for these assignments is in conjunction with `.new()`, which is now
-        in itself deprecated. If you are constructing objects with `.from_name(...)`, there is no
-        need to assign those objects to the app. Example:
-
-        ```python
-        d = modal.Dict.from_name("my-dict", create_if_missing=True)
-
-        @app.function()
-        def f(x, y):
-            d[x] = y  # Refer to d in global scope
-        ```
-        """
-        deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
+        deprecation_error((2024, 3, 25), _app_attr_error)
 
     def __setitem__(self, tag: str, obj: _Object):
-        deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
+        deprecation_error((2024, 3, 25), _app_attr_error)
 
     def __getattr__(self, tag: str):
         # TODO(erikbern): remove this method later
@@ -336,7 +354,7 @@ class _App:
         if tag not in self._indexed_objects:
             # Primarily to make hasattr work
             raise AttributeError(f"App has no member {tag}")
-        deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
+        deprecation_error((2024, 3, 25), _app_attr_error)
 
     def __setattr__(self, tag: str, obj: _Object):
         # TODO(erikbern): remove this method later
@@ -347,7 +365,7 @@ class _App:
         elif tag == "image":
             self._image = obj
         else:
-            deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
+            deprecation_error((2024, 3, 25), _app_attr_error)
 
     @property
     def image(self) -> _Image:
@@ -420,25 +438,9 @@ class _App:
         python app_module.py
         ```
 
-
         Note that this method used to return a separate "App" object. This is
         no longer useful since you can use the app itself for access to all
         objects. For backwards compatibility reasons, it returns the same app.
-        """
-
-        enable_output_warning = """
-        Note that output will soon not be be printed with `app.run`.
-
-        If you want to print output, use `modal.enable_output()`:
-
-        ```python
-        with modal.enable_output():
-            with app.run():
-                ...
-        ```
-
-        If you don't want output, and you want to to suppress this warning,
-        use `app.run(..., show_progress=False)`.
         """
         from .runner import _run_app  # Defer import of runner.py, which imports a lot from Rich
 
@@ -449,11 +451,11 @@ class _App:
         if "MODAL_DISABLE_APP_RUN_OUTPUT_WARNING" not in os.environ:
             if show_progress is None:
                 if _get_output_manager() is None:
-                    deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
+                    deprecation_warning((2024, 7, 18), _enable_output_warning)
                     auto_enable_output = True
             elif show_progress is True:
                 if _get_output_manager() is None:
-                    deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
+                    deprecation_warning((2024, 7, 18), _enable_output_warning)
                     auto_enable_output = True
                 else:
                     deprecation_warning((2024, 7, 18), "`show_progress=True` is deprecated and no longer needed.")
@@ -990,7 +992,7 @@ class _App:
 
         See https://modal.com/docs/guide/sandbox for more info on working with sandboxes.
         """
-        deprecation_warning((2024, 7, 5), _App.spawn_sandbox.__doc__ or "")
+        deprecation_warning((2024, 7, 5), _App.spawn_sandbox.__doc__)
         if not self._running_app:
             raise InvalidError("`app.spawn_sandbox` requires a running app.")
 
