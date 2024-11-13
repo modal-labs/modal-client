@@ -150,15 +150,15 @@ class _Queue(_Object, type_prefix="qu"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Queue":
-        """Create a reference to a persisted Queue
+        """Reference a named Queue, creating if necessary.
 
-        **Examples**
+        In contrast to `modal.Queue.lookup`, this is a lazy method
+        the defers hydrating the local object with metadata from
+        Modal servers until the first time it is actually used.
 
         ```python
-        from modal import Queue
-
-        queue = Queue.from_name("my-queue", create_if_missing=True)
-        queue.put(123)
+        q = modal.Queue.from_name("my-queue", create_if_missing=True)
+        q.put(123)
         ```
         """
         check_object_name(label, "Queue")
