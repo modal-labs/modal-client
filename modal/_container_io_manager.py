@@ -137,7 +137,6 @@ class IOContext:
             return
 
         if self._cancel_callback:
-            logger.warning(f"Received a cancellation signal while processing input {self.input_ids}")
             self._cancel_issued = True
             self._cancel_callback()
         else:
@@ -780,6 +779,7 @@ class _ContainerIOManager:
             raise
         except (InputCancellation, asyncio.CancelledError):
             # Create terminated outputs for these inputs to signal that the cancellations have been completed.
+            logger.warning(f"Received a cancellation signal while processing input {io_context.input_ids}")
             results = [
                 api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
                 for _ in io_context.input_ids
@@ -790,8 +790,7 @@ class _ContainerIOManager:
                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                 results=results,
             )
-            self.exit_context(started_at, io_context.input_ids)
-            logger.warning(f"Successfully canceled input {io_context.input_ids}")
+            await self.exit_context(started_at, io_context.input_ids)
             return
         except BaseException as exc:
             if isinstance(exc, ImportError):
@@ -837,9 +836,9 @@ class _ContainerIOManager:
                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                 results=results,
             )
-            self.exit_context(started_at, io_context.input_ids)
+            await self.exit_context(started_at, io_context.input_ids)
 
-    def exit_context(self, started_at, input_ids: List[str]):
+    async def exit_context(self, started_at, input_ids: List[str]):
         self.total_user_time += time.time() - started_at
         self.calls_completed += 1
 
@@ -873,7 +872,7 @@ class _ContainerIOManager:
             data_format=data_format,
             results=results,
         )
-        self.exit_context(started_at, io_context.input_ids)
+        await self.exit_context(started_at, io_context.input_ids)
 
     async def memory_restore(self) -> None:
         # Busy-wait for restore. `/__modal/restore-state.json` is created
