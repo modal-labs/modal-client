@@ -1938,11 +1938,6 @@ message ProxyListResponse {
   repeated Proxy proxies = 1;
 }
 
-message PythonPackageVersions {
-  // wrapper around map to get presence for the field
-  map<string, string> packages = 1;
-}
-
 message QueueClearRequest {
   string queue_id = 1;
   bytes partition_key = 2;
