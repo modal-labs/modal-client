@@ -763,7 +763,7 @@ def test_hydration_metadata(servicer, client):
     app.function()(dummy)
     dummy_metadata = api_pb2.ImageMetadata(
         workdir="/proj",
-        python_packages=api_pb2.PythonPackageVersions(python_packages={"fastapi": "0.100.0"}),
+        python_packages={"fastapi": "0.100.0"},
         python_version_info="Python 3.11.8 (main, Feb 25 2024, 03:55:37) [Clang 17.0.6 ]",
     )
     with servicer.intercept() as ctx:
@@ -776,7 +776,7 @@ def test_hydration_metadata(servicer, client):
         )
 
         with app.run(client=client):
-            # TODO: change this test to use public interface for workdir etc. when/if we introduce one
+            # TODO: change this test to use public property workdir when/if we introduce one
             _image = synchronizer._translate_in(img)
             assert _image._metadata == dummy_metadata
 
