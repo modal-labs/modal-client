@@ -2385,6 +2385,18 @@ message SystemErrorMessage {
   string error_message = 2;
 }
 
+message TaskClusterHelloRequest {
+  string task_id = 1;
+  string container_ip = 2;
+}
+
+message TaskClusterHelloResponse {
+  string cluster_id = 1;
+  uint32 cluster_rank = 2;
+  // All IP addresses in cluster, ordered by cluster rank
+  repeated string container_ips = 3;
+}
+
 message TaskCurrentInputsResponse {
   repeated string input_ids = 1;
 }
@@ -2795,6 +2807,7 @@ service ModalClient {
   rpc SharedVolumeRemoveFile(SharedVolumeRemoveFileRequest) returns (google.protobuf.Empty);
 
   // Tasks
+  rpc TaskClusterHello(TaskClusterHelloRequest) returns (TaskClusterHelloResponse);
   rpc TaskCurrentInputs(google.protobuf.Empty) returns (TaskCurrentInputsResponse);
   rpc TaskList(TaskListRequest) returns (TaskListResponse);
   rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);

@@ -12,7 +12,6 @@ from inspect import isfunction
 from pathlib import Path, PurePosixPath
 from typing import (
     Any,
-    AsyncGenerator,
     Callable,
     Dict,
     List,
@@ -264,19 +263,20 @@ class DockerfileSpec:
     context_files: Dict[str, str]
 
 
-async def _image_await_build_result(image_id: str, client: _Client):
+async def _image_await_build_result(image_id: str, client: _Client) -> api_pb2.ImageJoinStreamingResponse:
     last_entry_id: str = ""
-    result: Optional[api_pb2.GenericResult] = None
+    result_response: Optional[api_pb2.ImageJoinStreamingResponse] = None
 
     async def join():
-        nonlocal last_entry_id, result
+        nonlocal last_entry_id, result_response
 
         request = api_pb2.ImageJoinStreamingRequest(image_id=image_id, timeout=55, last_entry_id=last_entry_id)
         async for response in client.stub.ImageJoinStreaming.unary_stream(request):
             if response.entry_id:
                 last_entry_id = response.entry_id
             if response.result.status:
-                result = response.result
+                result_response = response
+                # can't return yet, since there may still be logs streaming back in subsequent responses
             for task_log in response.task_logs:
                 if task_log.task_progress.pos or task_log.task_progress.len:
                     assert task_log.task_progress.progress_type == api_pb2.IMAGE_SNAPSHOT_UPLOAD
@@ -290,7 +290,7 @@ async def _image_await_build_result(image_id: str, client: _Client):
 
     # Handle up to n exceptions while fetching logs
     retry_count = 0
-    while result is None:
+    while result_response is None:
         try:
             await join()
         except (StreamTerminatedError, GRPCError) as exc:
@@ -299,7 +299,7 @@ async def _image_await_build_result(image_id: str, client: _Client):
             retry_count += 1
             if retry_count >= 3:
                 raise exc
-    return result
+    return result_response
 
 
 class _Image(_Object, type_prefix="im"):
@@ -311,15 +311,24 @@ class _Image(_Object, type_prefix="im"):
 
     force_build: bool
     inside_exceptions: List[Exception]
+    _used_local_mounts: typing.FrozenSet[_Mount]  # used for mounts watching
+    _metadata: Optional[api_pb2.ImageMetadata] = None  # set on hydration, private for now
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
+        self._used_local_mounts = frozenset()
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
-        env_image_id = config.get("image_id")
+        env_image_id = config.get("image_id")  # set as an env var in containers
         if env_image_id == self.object_id:
             for exc in self.inside_exceptions:
+                # This raises exceptions from `with image.imports()` blocks
+                # if the hydrated image is the one used by the container
                 raise exc
+
+        if metadata:
+            assert isinstance(metadata, api_pb2.ImageMetadata)
+            self._metadata = metadata
 
     @staticmethod
     def _from_args(
@@ -455,13 +464,20 @@ class _Image(_Object, type_prefix="im"):
             )
             resp = await retry_transient_errors(resolver.client.stub.ImageGetOrCreate, req)
             image_id = resp.image_id
+            result: api_pb2.GenericResult
+            metadata: Optional[api_pb2.ImageMetadata] = None
 
             if resp.result.status:
                 # image already built
                 result = resp.result
+                if resp.HasField("metadata"):
+                    metadata = resp.metadata
             else:
                 logger.debug("Waiting for image %s" % image_id)
-                result = await _image_await_build_result(image_id, resolver.client)
+                resp = await _image_await_build_result(image_id, resolver.client)
+                result = resp.result
+                if resp.HasField("metadata"):
+                    metadata = resp.metadata
 
             if result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
                 raise RemoteError(f"Image build for {image_id} failed with the exception:\n{result.exception}")
@@ -476,7 +492,13 @@ class _Image(_Object, type_prefix="im"):
             else:
                 raise RemoteError("Unknown status %s!" % result.status)
 
-            self._hydrate(image_id, resolver.client, None)
+            self._hydrate(image_id, resolver.client, metadata)
+            local_mounts = set()
+            for base in base_images.values():
+                local_mounts |= base._used_local_mounts
+            if context_mount and context_mount.is_local():
+                local_mounts.add(context_mount)
+            self._used_local_mounts = frozenset(local_mounts)
 
         rep = "Image()"
         obj = _Image._from_loader(_load, rep, deps=_deps)
@@ -1580,7 +1602,7 @@ class _Image(_Object, type_prefix="im"):
                 warnings.warn(f"Warning: caught a non-ImportError exception in an `imports()` block: {repr(exc)}")
 
     @live_method_gen
-    async def _logs(self) -> AsyncGenerator[str, None]:
+    async def _logs(self) -> typing.AsyncGenerator[str, None]:
         """Streams logs from an image, or returns logs from an already completed image.
 
         This method is considered private since its interface may change - use it at your own risk!
