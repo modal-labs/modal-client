@@ -434,12 +434,13 @@ class _Sandbox(_Object, type_prefix="sb"):
         if workdir is not None and not workdir.startswith("/"):
             raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
 
-        if client is None:
-            client = await _Client.from_env()
+        if secrets:
+            if client is None:
+                client = await _Client.from_env()
 
-        # Force secret resolution so we can pass the secret IDs to the backend.
-        for secret in secrets:
-            await secret.resolve(client=client)
+            # Force secret resolution so we can pass the secret IDs to the backend.
+            for secret in secrets:
+                await secret.resolve(client=client)
 
         task_id = await self._get_task_id()
         resp = await self._client.stub.ContainerExec(
