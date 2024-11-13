@@ -288,12 +288,14 @@ class _App:
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_App":
-        """Look up an app with a given name. When `create_if_missing` is true,
-        the app will be created if it doesn't exist.
+        """Look up an App with a given name, creating a new App if necessary.
+
+        Note that Apps created through this method will be in a deployed state
+        but will not have any Functions or Classes assocaited with them. This
+        is mainly useful for creating an App to associate with a Sandbox:
 
         ```python
         app = modal.App.lookup("my-app", create_if_missing=True)
-
         modal.Sandbox.create("echo", "hi", app=app)
         ```
         """

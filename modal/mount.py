@@ -586,6 +586,8 @@ class _Mount(_Object, type_prefix="mo"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
     ) -> "_Mount":
+        """mdmd:hidden"""
+
         async def _load(provider: _Mount, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.MountGetOrCreateRequest(
                 deployment_name=label,
@@ -605,6 +607,7 @@ class _Mount(_Object, type_prefix="mo"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> "_Mount":
+        """mdmd:hidden"""
         obj = _Mount.from_name(label, namespace=namespace, environment_name=environment_name)
         if client is None:
             client = await _Client.from_env()

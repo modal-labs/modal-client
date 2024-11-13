@@ -189,11 +189,12 @@ class _Queue(_Object, type_prefix="qu"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Queue":
-        """Lookup a queue with a given name and tag.
+        """Lookup a named Queue.
+
+        In contrast to `modal.Queue.from_name`, this is an eager method
+        that will hydrate the local object with metadata from Modal servers.
 
         ```python
-        from modal import Queue
-
         q = modal.Queue.lookup("my-queue")
         q.put(123)
         ```
