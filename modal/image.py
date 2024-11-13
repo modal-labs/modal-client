@@ -274,9 +274,11 @@ class _Image(_Object, type_prefix="im"):
 
     force_build: bool
     inside_exceptions: List[Exception]
+    _used_local_mounts: typing.FrozenSet[_Mount]  # used for mounts watching
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
+        self._used_local_mounts = frozenset()
 
     def _hydrate_metadata(self, message: Optional[Message]):
         env_image_id = config.get("image_id")
@@ -469,6 +471,12 @@ class _Image(_Object, type_prefix="im"):
                 raise RemoteError("Unknown status %s!" % result.status)
 
             self._hydrate(image_id, resolver.client, None)
+            local_mounts = set()
+            for base in base_images.values():
+                local_mounts |= base._used_local_mounts
+            if context_mount and context_mount.is_local():
+                local_mounts.add(context_mount)
+            self._used_local_mounts = frozenset(local_mounts)
 
         rep = "Image()"
         obj = _Image._from_loader(_load, rep, deps=_deps)
@@ -476,7 +484,7 @@ class _Image(_Object, type_prefix="im"):
         return obj
 
     def extend(self, **kwargs) -> "_Image":
-        """Deprecated! This is a low-level method not intended to be part of the public API."""
+        """mdmd:hidden"""
         deprecation_error(
             (2024, 3, 7),
             "`Image.extend` is deprecated; please use a higher-level method, such as `Image.dockerfile_commands`.",
@@ -973,8 +981,12 @@ class _Image(_Object, type_prefix="im"):
 
     @staticmethod
     def conda(python_version: Optional[str] = None, force_build: bool = False):
-        """DEPRECATED: Removed in favor of the faster and more reliable `Image.micromamba` constructor."""
-        deprecation_error((2024, 5, 2), _Image.conda.__doc__ or "")
+        """mdmd:hidden"""
+        message = (
+            "`Image.conda` is deprecated."
+            " Please use the faster and more reliable `Image.micromamba` constructor instead."
+        )
+        deprecation_error((2024, 5, 2), message)
 
     def conda_install(
         self,
@@ -984,8 +996,12 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ):
-        """DEPRECATED: Removed in favor of the faster and more reliable `Image.micromamba_install` method."""
-        deprecation_error((2024, 5, 2), _Image.conda_install.__doc__ or "")
+        """mdmd:hidden"""
+        message = (
+            "`Image.conda_install` is deprecated."
+            " Please use the faster and more reliable `Image.micromamba_install` instead."
+        )
+        deprecation_error((2024, 5, 2), message)
 
     def conda_update_from_environment(
         self,
@@ -995,8 +1011,12 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ):
-        """DEPRECATED: Removed in favor of the `Image.micromamba_install` method (using the `spec_file` parameter)."""
-        deprecation_error((2024, 5, 2), _Image.conda_update_from_environment.__doc__ or "")
+        """mdmd:hidden"""
+        message = (
+            "Image.conda_update_from_environment` is deprecated."
+            " Please use the `Image.micromamba_install` method (with the `spec_file` parameter) instead."
+        )
+        deprecation_error((2024, 5, 2), message)
 
     @staticmethod
     def micromamba(

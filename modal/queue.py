@@ -88,11 +88,12 @@ class _Queue(_Object, type_prefix="qu"):
 
     @staticmethod
     def new():
-        """`Queue.new` is deprecated.
-
-        Please use `Queue.from_name` (for persisted) or `Queue.ephemeral` (for ephemeral) queues.
-        """
-        deprecation_error((2024, 3, 19), Queue.new.__doc__)
+        """mdmd:hidden"""
+        message = (
+            "`Queue.new` is deprecated."
+            " Please use `Queue.from_name` (for persisted) or `Queue.ephemeral` (for ephemeral) queues instead."
+        )
+        deprecation_error((2024, 3, 19), message)
 
     def __init__(self):
         """mdmd:hidden"""
@@ -176,8 +177,9 @@ class _Queue(_Object, type_prefix="qu"):
 
     @staticmethod
     def persisted(label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None):
-        """Deprecated! Use `Queue.from_name(name, create_if_missing=True)`."""
-        deprecation_error((2024, 3, 1), _Queue.persisted.__doc__)
+        """mdmd:hidden"""
+        message = "`Queue.persisted` is deprecated. Please use `Queue.from_name(name, create_if_missing=True)` instead."
+        deprecation_error((2024, 3, 1), message)
 
     @staticmethod
     async def lookup(
