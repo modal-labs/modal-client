@@ -435,7 +435,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         # Force secret resolution so we can pass the secret IDs to the backend.
         for secret in secrets:
-            await secret.resolve()
+            await secret.resolve(client=self._client)
 
         task_id = await self._get_task_id()
         resp = await self._client.stub.ContainerExec(
