@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false # run all variants across python versions/os to completion
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         os: ["ubuntu-20.04"]
         proto-version: ["latest"]
         include:
@@ -38,7 +38,7 @@ jobs:
             python-version: "3.10"
             proto-version: "latest"
           - os: "ubuntu-20.04"
-            python-version: "3.8"
+            python-version: "3.9"
             proto-version: "3.19"
 
     runs-on: ${{ matrix.os }}
@@ -78,7 +78,7 @@ jobs:
     strategy:
       matrix:
         image-builder-version: ["2024.04", "2024.10"]
-        python-version: ["3.8", "3.13"]
+        python-version: ["3.9", "3.13"]
     steps:
       - uses: actions/checkout@v3
 
