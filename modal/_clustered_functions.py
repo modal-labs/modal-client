@@ -22,7 +22,10 @@ cluster_info: Optional[ClusterInfo] = None
 
 def get_cluster_info() -> ClusterInfo:
     if cluster_info is None:
-        raise InvalidError("Cluster info not initialized; please ensure that the function is a clustered function")
+        raise InvalidError(
+            "Cluster info not initialized. Please ensure that you are "
+            "calling get_cluster_info() from a clustered function."
+        )
     return cluster_info
 
 
