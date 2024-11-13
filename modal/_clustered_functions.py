@@ -7,13 +7,13 @@ from typing import List, Optional
 from modal._utils.async_utils import synchronize_api
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.client import _Client
+from modal.exception import InvalidError
 from modal_proto import api_pb2
 
 
 @dataclass
 class ClusterInfo:
     rank: int
-    world_size: int
     container_ips: List[str]
 
 
@@ -22,11 +22,11 @@ cluster_info: Optional[ClusterInfo] = None
 
 def get_cluster_info() -> ClusterInfo:
     if cluster_info is None:
-        raise Exception("Cluster info not initialized; please ensure that the function is a clustered function")
+        raise InvalidError("Cluster info not initialized; please ensure that the function is a clustered function")
     return cluster_info
 
 
-async def _initialize_clustered_function(client: _Client, task_id: str):
+async def _initialize_clustered_function(client: _Client, task_id: str, world_size: int):
     global cluster_info
 
     def get_i6pn():
@@ -43,19 +43,23 @@ async def _initialize_clustered_function(client: _Client, task_id: str):
     # See MOD-4067.
     os.environ["NCCL_HOSTID"] = f"{hostname}{container_ip}"
 
-    resp: api_pb2.TaskClusterHelloResponse = await retry_transient_errors(
-        client.stub.TaskClusterHello,
-        api_pb2.TaskClusterHelloRequest(
-            task_id=task_id,
-            container_ip=container_ip,
-        ),
-    )
-
-    cluster_info = ClusterInfo(
-        rank=resp.cluster_rank,
-        world_size=len(resp.container_ips),
-        container_ips=resp.container_ips,
-    )
+    if world_size > 1:
+        resp: api_pb2.TaskClusterHelloResponse = await retry_transient_errors(
+            client.stub.TaskClusterHello,
+            api_pb2.TaskClusterHelloRequest(
+                task_id=task_id,
+                container_ip=container_ip,
+            ),
+        )
+        cluster_info = ClusterInfo(
+            rank=resp.cluster_rank,
+            container_ips=resp.container_ips,
+        )
+    else:
+        cluster_info = ClusterInfo(
+            rank=0,
+            container_ips=[container_ip],
+        )
 
 
 initialize_clustered_function = synchronize_api(_initialize_clustered_function)
