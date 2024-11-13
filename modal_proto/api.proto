@@ -1703,7 +1703,12 @@ message ImageGetOrCreateRequest {
 }
 
 message ImageGetOrCreateResponse {
+  // image_id is set regardless if the image is built (use ImageJoinStreaming to wait for build)
   string image_id = 1;
+  // result of build - only set if the image has finished building (regardless if success or not)
+  GenericResult result = 2;
+  // image metadata - only set if the image has built successfully
+  ImageMetadata metadata = 3;
 }
 
 message ImageJoinStreamingRequest {
