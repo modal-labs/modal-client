@@ -138,11 +138,7 @@ class IOContext:
 
         if self._cancel_callback:
             self._cancel_issued = True
-
-            # Unregister the callback just to be extra safe.
-            cb = self._cancel_callback
-            self._cancel_callback = None
-            cb()
+            self._cancel_callback()
         else:
             # TODO (elias): This should not normally happen but there is a small chance of a race
             #  between creating a new task for an input and attaching the cancellation callback
