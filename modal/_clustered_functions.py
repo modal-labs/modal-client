@@ -2,7 +2,7 @@
 import os
 import socket
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 from modal._utils.async_utils import synchronize_api
 from modal._utils.grpc_utils import retry_transient_errors
@@ -17,7 +17,7 @@ class ClusterInfo:
     container_ips: List[str]
 
 
-cluster_info: ClusterInfo | None = None
+cluster_info: Optional[ClusterInfo] = None
 
 
 def get_cluster_info() -> ClusterInfo:
