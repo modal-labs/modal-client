@@ -142,11 +142,12 @@ class _Volume(_Object, type_prefix="vo"):
 
     @staticmethod
     def new():
-        """`Volume.new` is deprecated.
-
-        Please use `Volume.from_name` (for persisted) or `Volume.ephemeral` (for ephemeral) volumes.
-        """
-        deprecation_error((2024, 3, 20), Volume.new.__doc__)  # type: ignore
+        """mdmd:hidden"""
+        message = (
+            "`Volume.new` is deprecated."
+            " Please use `Volume.from_name` (for persisted) or `Volume.ephemeral` (for ephemeral) volumes instead."
+        )
+        deprecation_error((2024, 3, 20), message)
 
     @staticmethod
     def from_name(
@@ -228,8 +229,11 @@ class _Volume(_Object, type_prefix="vo"):
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
     ):
-        """Deprecated! Use `Volume.from_name(name, create_if_missing=True)`."""
-        deprecation_error((2024, 3, 1), _Volume.persisted.__doc__)
+        """mdmd:hidden"""
+        message = (
+            "`Volume.persisted` is deprecated. Please use `Volume.from_name(name, create_if_missing=True)` instead."
+        )
+        deprecation_error((2024, 3, 1), message)
 
     @staticmethod
     async def lookup(

@@ -1703,7 +1703,12 @@ message ImageGetOrCreateRequest {
 }
 
 message ImageGetOrCreateResponse {
+  // image_id is set regardless if the image is built (use ImageJoinStreaming to wait for build)
   string image_id = 1;
+  // result of build - only set if the image has finished building (regardless if success or not)
+  GenericResult result = 2;
+  // image metadata - only set if the image has built successfully
+  ImageMetadata metadata = 3;
 }
 
 message ImageJoinStreamingRequest {
@@ -1718,6 +1723,18 @@ message ImageJoinStreamingResponse {
   repeated TaskLogs task_logs = 2;
   string entry_id = 3;
   bool eof = 4;
+  ImageMetadata metadata = 5;  // set on success
+}
+
+
+message ImageMetadata {
+  // The output of `python -VV. Not set if missing
+  optional string python_version_info = 1;
+  // Installed python packages, as listed by by `pip list`.
+  // package name -> version. Empty if missing
+  map<string, string> python_packages = 2;
+  // The work directory of the image, defaulting to "/". Not set if missing
+  optional string workdir = 3;
 }
 
 
@@ -2368,6 +2385,18 @@ message SystemErrorMessage {
   string error_message = 2;
 }
 
+message TaskClusterHelloRequest {
+  string task_id = 1;
+  string container_ip = 2;
+}
+
+message TaskClusterHelloResponse {
+  string cluster_id = 1;
+  uint32 cluster_rank = 2;
+  // All IP addresses in cluster, ordered by cluster rank
+  repeated string container_ips = 3;
+}
+
 message TaskCurrentInputsResponse {
   repeated string input_ids = 1;
 }
@@ -2778,6 +2807,7 @@ service ModalClient {
   rpc SharedVolumeRemoveFile(SharedVolumeRemoveFileRequest) returns (google.protobuf.Empty);
 
   // Tasks
+  rpc TaskClusterHello(TaskClusterHelloRequest) returns (TaskClusterHelloResponse);
   rpc TaskCurrentInputs(google.protobuf.Empty) returns (TaskCurrentInputsResponse);
   rpc TaskList(TaskListRequest) returns (TaskListResponse);
   rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);
