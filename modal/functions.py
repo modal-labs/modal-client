@@ -417,7 +417,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fun._app = class_service_function._app
         fun._is_generator = partial_function.is_generator
         fun._cluster_size = partial_function.cluster_size
-        fun._all_mounts = class_service_function._all_mounts
         fun._spec = class_service_function._spec
         fun._is_method = True
         return fun
