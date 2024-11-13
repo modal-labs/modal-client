@@ -58,11 +58,12 @@ class _Dict(_Object, type_prefix="di"):
 
     @staticmethod
     def new(data: Optional[dict] = None):
-        """`Dict.new` is deprecated.
-
-        Please use `Dict.from_name` (for persisted) or `Dict.ephemeral` (for ephemeral) dicts.
-        """
-        deprecation_error((2024, 3, 19), Dict.new.__doc__)
+        """mdmd:hidden"""
+        message = (
+            "`Dict.new` is deprecated."
+            " Please use `Dict.from_name` (for persisted) or `Dict.ephemeral` (for ephemeral) dicts instead."
+        )
+        deprecation_error((2024, 3, 19), message)
 
     def __init__(self, data={}):
         """mdmd:hidden"""
@@ -144,8 +145,9 @@ class _Dict(_Object, type_prefix="di"):
 
     @staticmethod
     def persisted(label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None):
-        """Deprecated! Use `Dict.from_name(name, create_if_missing=True)`."""
-        deprecation_error((2024, 3, 1), _Dict.persisted.__doc__)
+        """mdmd:hidden"""
+        message = "`Dict.persisted` is deprecated. Please use `Dict.from_name(name, create_if_missing=True)` instead."
+        deprecation_error((2024, 3, 1), message)
 
     @staticmethod
     async def lookup(
