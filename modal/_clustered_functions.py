@@ -42,9 +42,9 @@ async def _initialize_clustered_function(client: _Client, task_id: str):
     # See MOD-4067.
     os.environ["NCCL_HOSTID"] = f"{hostname}{container_ip}"
 
-    resp: api_pb2.ClusterHelloResponse = await retry_transient_errors(
-        client.stub.ClusterHello,
-        api_pb2.ClusterHelloRequest(
+    resp: api_pb2.TaskClusterHelloResponse = await retry_transient_errors(
+        client.stub.TaskClusterHello,
+        api_pb2.TaskClusterHelloRequest(
             task_id=task_id,
             container_ip=container_ip,
         ),
