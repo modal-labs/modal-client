@@ -719,18 +719,6 @@ message CloudBucketMount {
   optional string key_prefix = 8;
 }
 
-message ClusterHelloRequest {
-  string task_id = 1;
-  string container_ip = 2;
-}
-
-message ClusterHelloResponse {
-  string cluster_id = 1;
-  uint32 cluster_size = 2;
-  uint32 cluster_rank = 3;
-  repeated string container_ips = 4;
-}
-
 message ContainerArguments {  // This is used to pass data from the worker to the container
   string task_id = 1;
   string function_id = 2;
@@ -2679,9 +2667,6 @@ service ModalClient {
 
   // Clients
   rpc ClientHello(google.protobuf.Empty) returns (ClientHelloResponse);
-
-  // Clusters
-  rpc ClusterHello(ClusterHelloRequest) returns (ClusterHelloResponse);
 
   // Container
   rpc ContainerCheckpoint(ContainerCheckpointRequest) returns (google.protobuf.Empty);
