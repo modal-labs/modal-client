@@ -35,7 +35,7 @@ from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, parameter
 from .config import logger
-from .exception import InvalidError, deprecation_error, deprecation_warning
+from .exception import ExecutionError, InvalidError, deprecation_error, deprecation_warning
 from .functions import Function, _Function
 from .gpu import GPU_T
 from .image import _Image
