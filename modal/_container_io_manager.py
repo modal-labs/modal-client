@@ -81,6 +81,7 @@ class IOContext:
     function_call_ids: List[str]
     finalized_function: FinalizedFunction
 
+    _cancel_issued: bool = False
     _cancel_callback: Optional[Callable[[], None]] = None
 
     def __init__(
@@ -131,7 +132,14 @@ class IOContext:
         self._cancel_callback = cb
 
     def cancel(self):
+        # Ensure we only issue the cancellation once.
+        if self._cancel_issued:
+            return
+
         if self._cancel_callback:
+            self._cancel_issued = True
+
+            # Unregister the callback just to be extra safe.
             cb = self._cancel_callback
             self._cancel_callback = None
             cb()
@@ -391,10 +399,7 @@ class _ContainerIOManager:
                 if self._max_concurrency > 1:
                     for input_id in input_ids_to_cancel:
                         if input_id in self.current_inputs:
-                            # Avoid issuing cancellation signals for the same inputs repeatedly.
-                            io_context = self.current_inputs[input_id]
-                            if io_context._cancel_callback:
-                                io_context.cancel()
+                            self.current_inputs[input_id].cancel()
 
                 elif self.current_input_id and self.current_input_id in input_ids_to_cancel:
                     # This goes to a registered signal handler for sync Modal functions, or to the
