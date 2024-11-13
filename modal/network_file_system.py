@@ -90,12 +90,13 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
 
     @staticmethod
     def new(cloud: Optional[str] = None):
-        """`NetworkFileSystem.new` is deprecated.
-
-        Please use `NetworkFileSystem.from_name` (for persisted) or `NetworkFileSystem.ephemeral`
-        (for ephemeral) network filesystems.
-        """
-        deprecation_error((2024, 3, 20), NetworkFileSystem.new.__doc__)
+        """mdmd:hidden"""
+        message = (
+            "`NetworkFileSystem.new` is deprecated."
+            " Please use `NetworkFileSystem.from_name` (for persisted)"
+            " or `NetworkFileSystem.ephemeral` (for ephemeral) network filesystems instead."
+        )
+        deprecation_error((2024, 3, 20), message)
 
     @staticmethod
     def from_name(
@@ -175,8 +176,12 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
     ):
-        """Deprecated! Use `NetworkFileSystem.from_name(name, create_if_missing=True)`."""
-        deprecation_error((2024, 3, 1), _NetworkFileSystem.persisted.__doc__)
+        """mdmd:hidden"""
+        message = (
+            "`NetworkFileSystem.persisted` is deprecated."
+            " Please use `NetworkFileSystem.from_name(name, create_if_missing=True)` instead."
+        )
+        deprecation_error((2024, 3, 1), message)
 
     def persist(
         self,
@@ -185,9 +190,12 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
     ):
-        """`NetworkFileSystem().persist("my-volume")` is deprecated.
-        Use `NetworkFileSystem.from_name("my-volume", create_if_missing=True)` instead."""
-        deprecation_error((2024, 2, 29), _NetworkFileSystem.persist.__doc__)
+        """mdmd:hidden"""
+        message = (
+            "`NetworkFileSystem().persist('my-volume')` is deprecated."
+            " Please use `NetworkFileSystem.from_name('my-volume', create_if_missing=True)` instead."
+        )
+        deprecation_error((2024, 2, 29), message)
 
     @staticmethod
     async def lookup(
