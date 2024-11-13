@@ -791,7 +791,7 @@ class _ContainerIOManager:
                 results=results,
             )
             self.exit_context(started_at, io_context.input_ids)
-            logger.warning(f"Successfully cancelled input {io_context.input_ids}")
+            logger.warning(f"Successfully canceled input {io_context.input_ids}")
             return
         except BaseException as exc:
             if isinstance(exc, ImportError):
