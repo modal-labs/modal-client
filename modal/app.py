@@ -35,7 +35,7 @@ from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, parameter
 from .config import logger
-from .exception import InvalidError, deprecation_error, deprecation_warning
+from .exception import ExecutionError, InvalidError, deprecation_error, deprecation_warning
 from .experimental import _GroupedFunction
 from .functions import Function, _Function
 from .gpu import GPU_T
@@ -165,7 +165,7 @@ class _App:
     _name: Optional[str]
     _description: Optional[str]
     _indexed_objects: Dict[str, _Object]
-    _function_mounts: Dict[str, _Mount]
+
     _image: Optional[_Image]
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
@@ -478,11 +478,14 @@ class _App:
             return _default_image
 
     def _get_watch_mounts(self):
+        if not self._running_app:
+            raise ExecutionError("`_get_watch_mounts` requires a running app.")
+
         all_mounts = [
             *self._mounts,
         ]
         for function in self.registered_functions.values():
-            all_mounts.extend(function._all_mounts)
+            all_mounts.extend(function._used_local_mounts)
 
         return [m for m in all_mounts if m.is_local()]
 
