@@ -291,7 +291,7 @@ class _App:
         """Look up an App with a given name, creating a new App if necessary.
 
         Note that Apps created through this method will be in a deployed state
-        but will not have any Functions or Classes assocaited with them. This
+        but will not have any Functions or Classes associated with them. This
         is mainly useful for creating an App to associate with a Sandbox:
 
         ```python
