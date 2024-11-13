@@ -1718,6 +1718,18 @@ message ImageJoinStreamingResponse {
   repeated TaskLogs task_logs = 2;
   string entry_id = 3;
   bool eof = 4;
+  ImageMetadata metadata = 5;  // set on success
+}
+
+
+message ImageMetadata {
+  // The output of `python -VV. Not set if missing
+  optional string python_version_info = 1;
+  // Installed python packages, as listed by by `pip list`.
+  // package name -> version. Empty if missing
+  map<string, string> python_packages = 2;
+  // The work directory of the image, defaulting to "/". Not set if missing
+  optional string workdir = 3;
 }
 
 
