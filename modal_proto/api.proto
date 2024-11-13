@@ -1723,12 +1723,12 @@ message ImageJoinStreamingResponse {
 
 
 message ImageMetadata {
-  // The output of `python -VV. None if missing (not recently built, or failed collection)
+  // The output of `python -VV. Not set if missing
   optional string python_version_info = 1;
   // Installed python packages, as listed by by `pip list`.
-  // package name -> version. Not present if missing
-  PythonPackageVersions python_packages = 2;
-  // The work directory of the image, defaulting to "/". None if missing
+  // package name -> version. Empty if missing
+  map<string, string> python_packages = 2;
+  // The work directory of the image, defaulting to "/". Not set if missing
   optional string workdir = 3;
 }
 
