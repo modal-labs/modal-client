@@ -2063,7 +2063,7 @@ def supports_on_path(supports_dir, monkeypatch):
 
 def encode_input_jwt(idx: int, input_id: str, function_call_id: str) -> str:
     """
-    Dummmy version of function defined in server.
+    Creates fake input jwt token.
     """
     assert str(idx) and input_id and function_call_id
     return f"{idx}:{input_id}:{function_call_id}"
@@ -2071,8 +2071,7 @@ def encode_input_jwt(idx: int, input_id: str, function_call_id: str) -> str:
 
 def decode_input_jwt(input_jwt: str) -> Tuple[int, str, str]:
     """
-    Dummmy version of function defined in server.
-    Returns idx, input_id.
+    Decodes fake input jwt. Returns idx, input_id.
     """
     parts = input_jwt.split(":")
     assert len(parts) == 3
@@ -2081,7 +2080,7 @@ def decode_input_jwt(input_jwt: str) -> Tuple[int, str, str]:
 
 def encode_function_call_jwt(function_id: str, function_call_id: str) -> str:
     """
-    Dummmy version of function defined in server.
+    Creates fake function call jwt.
     """
     assert function_id and function_call_id
     return f"{function_id}:{function_call_id}"
@@ -2089,8 +2088,7 @@ def encode_function_call_jwt(function_id: str, function_call_id: str) -> str:
 
 def decode_function_call_jwt(function_call_jwt: str) -> Tuple[str, str]:
     """
-    Dummmy version of function defined in server.
-    Returns function_id, function_call_id.
+    Decodes fake function call jwt. Returns function_id, function_call_id.
     """
     parts = function_call_jwt.split(":")
     assert len(parts) == 2
