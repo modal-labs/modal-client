@@ -1705,7 +1705,7 @@ def test_cancellation_aborts_current_input_on_match(
         api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=cancelled_input_ids))
     )
     stdout, stderr = container_process.communicate()
-    assert stderr.decode().count("Received a cancellation signal") == live_cancellations
+    assert stderr.decode().count("Successfully canceled input") == live_cancellations
     assert "Traceback" not in stderr.decode()
     assert container_process.returncode == 0  # wait for container to exit
     duration = time.monotonic() - t0  # time from heartbeat to container exit
@@ -1798,9 +1798,7 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer):
     )
     # container should exit immediately, stopping execution of both inputs
     exit_code = container_process.wait(5)
-    items = _flatten_outputs(servicer.container_outputs)
-    assert len(items) == 1  # should not fail the outputs, as they would have been cancelled in backend already
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
+    assert not servicer.container_outputs  # No terminated outputs as task should be killed by server anyway.
 
     container_stderr = container_process.stderr.read().decode("utf8")
     assert "Traceback" not in container_stderr
@@ -1995,7 +1993,15 @@ def test_sigint_termination_input(servicer, method):
 
     stdout, stderr = container_process.communicate(timeout=5)
     stop_duration = time.monotonic() - signal_time
-    assert len(servicer.container_outputs) == 0
+
+    if method == "delay":
+        assert len(servicer.container_outputs) == 0
+    else:
+        # We end up returning a terminated output for async task cancels, which is ignored by the worker anyway.
+        items = _flatten_outputs(servicer.container_outputs)
+        assert len(items) == 1
+        assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
+
     assert (
         container_process.returncode == 0
     )  # container should catch and indicate successful termination by exiting cleanly when possible

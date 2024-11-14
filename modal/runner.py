@@ -615,8 +615,9 @@ def _run_stub(*args: Any, **kwargs: Any):
 
 
 def _deploy_stub(*args: Any, **kwargs: Any):
-    """`deploy_stub` has been renamed to `deploy_app` and is deprecated. Please update your code."""
-    deprecation_error((2024, 5, 1), str(_deploy_stub.__doc__))
+    """mdmd:hidden"""
+    message = "`deploy_stub` has been renamed to `deploy_app`. Please update your code."
+    deprecation_error((2024, 5, 1), message)
 
 
 run_app = synchronize_api(_run_app)
