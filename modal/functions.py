@@ -339,12 +339,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     ):
         """mdmd:hidden
 
-        Creates a function placeholder function that binds a specific method name to
-        this function for use when invoking the function.
-
-        Should only be used on "class service functions". For "instance service functions",
-        we don't create an actual backend function, and instead do client-side "fake-hydration"
-        only, see _bind_instance_method.
+        Creates a _Function that is bound to a specific class method name. This _Function is not uniquely tied
+        to any backend function -- its object_id is the function ID of the class service function.
 
         """
         class_service_function = self
