@@ -10,33 +10,40 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.65.55 (2024-11-13)
+
+- Escalates stuck input cancellations to container death. This prevents unresponsive user code from holding up resources.
+- Input timeouts no longer kill the entire container. Instead, they just cancel the timed-out input, leaving the container and other concurrent inputs running.
+
+
+
 ### 0.65.49 (2024-11-12)
 
-* Fixes issue in `modal serve` where files used in `Image.copy_*` commands were not watched for changes
+* Fixed issue in `modal serve` where files used in `Image.copy_*` commands were not watched for changes
 
 
 
 ### 0.65.42 (2024-11-07)
 
-`Sandbox.exec` can now accept `timeout`, `workdir`, and `secrets`. See the `Sandbox.create` function for context on how to use these arguments.
+- `Sandbox.exec` can now accept `timeout`, `workdir`, and `secrets`. See the `Sandbox.create` function for context on how to use these arguments.
 
 
 
 ### 0.65.33 (2024-11-06)
 
-Remove `interactive` parameter from `function` and `cls` decorators. `interactive` has been deprecated since May 2024. Instead of specifying Modal Functions as interactive, use `modal run --interactive`.
+- Removed the `interactive` parameter from `function` and `cls` decorators. This parameter has been deprecated since May 2024. Instead of specifying Modal Functions as interactive, use `modal run --interactive` to activate interactive mode.
 
 
 
 ### 0.65.30 (2024-11-05)
 
-* The `checkpointing_enabled`, deprecated in March 2024, is now removed.
+* The `checkpointing_enabled` option, deprecated in March 2024, has now been removed.
 
 
 
 ### 0.65.9 (2024-10-31)
 
-Output from `Sandbox.exec` can now be directed to `/dev/null`, `stdout`, or stored for consumption. This behavior can be controlled via the new `StreamType` arguments.
+- Output from `Sandbox.exec` can now be directed to `/dev/null`, `stdout`, or stored for consumption. This behavior can be controlled via the new `StreamType` arguments.
 
 
 
@@ -48,17 +55,20 @@ Output from `Sandbox.exec` can now be directed to `/dev/null`, `stdout`, or stor
 
 ### 0.65.2 (2024-10-30)
 
-* Fix issue where `modal run` wouldn't exit for 10s if there was a failure during app creation
+* Fixed an issue where `modal run` would pause for 10s before exiting if there was a failure during app creation.
 
+
+## 0.64
 
 
 ### 0.64.227 (2024-10-25)
 
-- The `modal container list` CLI command now only shows containers for the active profile's environment if there is one, otherwise it uses the default environment. You can pass `--env` to list containers in other environments.
+- The `modal container list` CLI command now shows the containers within a specific environment: the active profile's environment if there is one, otherwise the workspace's default environment. You can pass `--env` to list containers in other environments.
+
 
 ### 0.64.223 (2024-10-24)
 
-* Fix for `modal serve` not showing progress when reloading apps on file changes since v0.63.79
+* Fixed `modal serve` not showing progress when reloading apps on file changes since v0.63.79.
 
 
 
@@ -70,7 +80,7 @@ Output from `Sandbox.exec` can now be directed to `/dev/null`, `stdout`, or stor
 
 ### 0.64.198 (2024-10-18)
 
-Fixes a bug where `Queue.put` and `Queue.put_many` would throw `queue.Full` even if `timeout=None`.
+- Fixed a bug where `Queue.put` and `Queue.put_many` would throw `queue.Full` even if `timeout=None`.
 
 
 
@@ -88,25 +98,25 @@ Fixes a bug where `Queue.put` and `Queue.put_many` would throw `queue.Full` even
 
 ### 0.64.187 (2024-10-16)
 
-When writing to a `StreamWriter` that has already had EOF written, a ValueError is now raised instead of an `EOFError`.
+- When writing to a `StreamWriter` that has already had EOF written, a `ValueError` is now raised instead of an `EOFError`.
 
 
 
 ### 0.64.185 (2024-10-15)
 
-Memory snapshotting can now be used with parameterized functions.
+- Memory snapshotting can now be used with parameterized functions.
 
 
 
 ### 0.64.184 (2024-10-15)
 
-StreamWriters now accept strings as input.
+- StreamWriters now accept strings as input.
 
 
 
 ### 0.64.182 (2024-10-15)
 
-- Fixed a bug where app rollbacks would not restart a schedule that had been removed in an intervening deployment.
+- Fixed a bug where App rollbacks would not restart a schedule that had been removed in an intervening deployment.
 
 
 
@@ -130,7 +140,7 @@ StreamWriters now accept strings as input.
 
 ### 0.64.153 (2024-09-30)
 
-- **Breaking Change:** `Sandbox.tunnels()` now returns a `Dict` rather than a `List`. This dict is keyed by the container's port, and it returns a `Tunnel` object just like `modal.forward` does.
+- **Breaking Change:** `Sandbox.tunnels()` now returns a `Dict` rather than a `List`. This dict is keyed by the container's port, and it returns a `Tunnel` object, just like `modal.forward` does.
 
 
 
@@ -148,7 +158,7 @@ StreamWriters now accept strings as input.
 
 ### 0.64.123 (2024-09-18)
 
-Sandboxes can now be created without an entrypoint command. If they are created like this, they will stay alive up until their set timeout. This is useful if you want to keep a long-lived sandbox and execute code in it later.
+- Sandboxes can now be created without an entrypoint command. If they are created like this, they will stay alive up until their set timeout. This is useful if you want to keep a long-lived sandbox and execute code in it later.
 
 
 
@@ -168,38 +178,38 @@ Introduce an experimental API to allow users to set the input concurrency for a 
 
 - Creating sandboxes without an associated `App` is deprecated. If you are spawning a `Sandbox` outside a Modal container, you can lookup an `App` by name to attach to the `Sandbox`:
 
-```python
-app = modal.App.lookup('my-app', create_if_missing=True)
-modal.Sandbox.create('echo', 'hi', app=app)
-```
+  ```python
+  app = modal.App.lookup('my-app', create_if_missing=True)
+  modal.Sandbox.create('echo', 'hi', app=app)
+  ```
 
 
 
 ### 0.64.109 (2024-09-13)
 
-App handles can now be looked up by name with `modal.App.lookup(name)`. This can be useful for associating sandboxes with apps:
+- App handles can now be looked up by name with `modal.App.lookup(name)`. This can be useful for associating Sandboxes with Apps:
 
-```python
-app = modal.App.lookup("my-app", create_if_missing=True)
-modal.Sandbox.create("echo", "hi", app=app)
-```
+  ```python
+  app = modal.App.lookup("my-app", create_if_missing=True)
+  modal.Sandbox.create("echo", "hi", app=app)
+  ```
 
 
 
 ### 0.64.100 (2024-09-11)
 
-* Default timeout for `modal.Image.run_function` is now 1 hour. Previously it was 24 hours.
+* The default timeout for `modal.Image.run_function` has been lowered to 1 hour. Previously it was 24 hours.
 
 
 
 ### 0.64.99 (2024-09-11)
 
-* Fixes an issue that could cause containers using `enable_memory_snapshot=True` on Python 3.9 and below to shut down prematurely
+* Fixes an issue that could cause containers using `enable_memory_snapshot=True` on Python 3.9 and below to shut down prematurely.
 
 
 ### 0.64.97 (2024-09-11)
 
-* Adds support for [ASGI lifespan protocol](https://asgi.readthedocs.io/en/latest/specs/lifespan.html): 
+* Added support for [ASGI lifespan protocol](https://asgi.readthedocs.io/en/latest/specs/lifespan.html): 
 
     ```python
     @app.function()
@@ -223,15 +233,17 @@ modal.Sandbox.create("echo", "hi", app=app)
 
     which enables support for `gradio>=v4` amongst other libraries using lifespans
 
+
 ### 0.64.87 (2024-09-05)
 
-Sandboxes now support port tunneling. Ports can be exposed via the `open_ports` argument, and a list of active tunnels can be retrieved via the `.tunnels()` method.
+- Sandboxes now support port tunneling. Ports can be exposed via the `open_ports` argument, and a list of active tunnels can be retrieved via the `.tunnels()` method.
 
 
 
 ### 0.64.67 (2024-08-30)
 
-- Fix a regression in `modal launch` behavior not showing progress output when starting the container.
+- Fixed a regression in `modal launch` to resume displaying output when starting the container.
+
 
 
 ### 0.64.48 (2024-08-21)
