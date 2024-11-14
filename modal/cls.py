@@ -406,7 +406,11 @@ class _Cls(_Object, type_prefix="cs"):
         environment_name: Optional[str] = None,
         workspace: Optional[str] = None,
     ) -> "_Cls":
-        """Retrieve a class with a given name and tag.
+        """Reference a Cls from a deployed App by its name.
+
+        In contrast to `modal.Cls.lookup`, this is a lazy method
+        that defers hydrating the local object with metadata from
+        Modal servers until the first time it is actually used.
 
         ```python
         Class = modal.Cls.from_name("other-app", "Class")
@@ -476,7 +480,6 @@ class _Cls(_Object, type_prefix="cs"):
         **Usage:**
 
         ```python notest
-        import modal
         Model = modal.Cls.lookup("my_app", "Model")
         ModelUsingGPU = Model.with_options(gpu="A100")
         ModelUsingGPU().generate.remote(42)  # will run with an A100 GPU
@@ -523,10 +526,14 @@ class _Cls(_Object, type_prefix="cs"):
         environment_name: Optional[str] = None,
         workspace: Optional[str] = None,
     ) -> "_Cls":
-        """Lookup a class with a given name and tag.
+        """Lookup a Cls from a deployed App by its name.
+
+        In contrast to `modal.Cls.from_name`, this is an eager method
+        that will hydrate the local object with metadata from Modal servers.
 
         ```python
         Class = modal.Cls.lookup("other-app", "Class")
+        obj = Class()
         ```
         """
         obj = _Cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name, workspace=workspace)

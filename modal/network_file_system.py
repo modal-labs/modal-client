@@ -105,14 +105,16 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_NetworkFileSystem":
-        """Create a reference to a persisted network filesystem, optionally creating it lazily.
+        """Reference a NetworkFileSystem by its name, creating if necessary.
 
-        **Examples**
+        In contrast to `modal.NetworkFileSystem.lookup`, this is a lazy method
+        that defers hydrating the local object with metadata from Modal servers
+        until the first time it is actually used.
 
         ```python notest
-        volume = NetworkFileSystem.from_name("my-volume", create_if_missing=True)
+        nfs = NetworkFileSystem.from_name("my-nfs", create_if_missing=True)
 
-        @app.function(network_file_systems={"/vol": volume})
+        @app.function(network_file_systems={"/data": nfs})
         def f():
             pass
         ```
@@ -205,11 +207,14 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_NetworkFileSystem":
-        """Lookup a network file system with a given name
+        """Lookup a named NetworkFileSystem.
+
+        In contrast to `modal.NetworkFileSystem.from_name`, this is an eager method
+        that will hydrate the local object with metadata from Modal servers.
 
         ```python
-        n = modal.NetworkFileSystem.lookup("my-nfs")
-        print(n.listdir("/"))
+        nfs = modal.NetworkFileSystem.lookup("my-nfs")
+        print(nfs.listdir("/"))
         ```
         """
         obj = _NetworkFileSystem.from_name(
