@@ -606,11 +606,56 @@ class _Image(_Object, type_prefix="im"):
             context_mount=mount,
         )
 
-    def add_local_file(
-        self, local_path: Union[str, Path], remote_path: Union[str, PurePosixPath] = "./", *, copy=False
-    ):
-        # TODO: handle relative remote_path respecting workdirs!
+    def attach_local_file(self, local_path: Union[str, Path], remote_path: str, *, copy: bool = False) -> "_Image":
+        """Attach a local file to the image
+
+        By default, the file is attached as a lightweight mount on top of any
+        container that runs the returned Image. This makes this operation quick
+        and will not invalidate + rebuild the image when contents of the mount
+        change.
+
+        In order to run use the file in *subsequent* build steps, you explicitly
+        need to set `copy=True` on this function to instead copy the data into
+        the image itself.
+
+        In copy=True mode, this command works similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
+        works in a `Dockerfile`.
+        """
+        if not os.path.isabs(remote_path):
+            # TODO(elias): implement relative to absolute resolution using image workdir metadata
+            #  + make default remote_path="./"
+            raise InvalidError("image.attach_local_file() currently only supports absolute remote_path values")
+
         mount = _Mount.from_local_file(local_path, remote_path)
+        return self._add_mount_layer_or_copy(mount, copy=copy)
+
+    def attach_local_dir(
+        self, local_path: Union[str, Path], remote_path: Union[str, Path], *, copy: bool = False
+    ) -> "_Image":
+        """Attach a local dir to the image
+
+        By default, the dir is attached as a lightweight mount on top of any
+        container that runs the returned Image. This makes this operation quick
+        and will not invalidate + rebuild the image when contents of the mount
+        change.
+
+        In order to run use the dir in *subsequent* build steps, you explicitly
+        need to set `copy=True` on this function to instead copy the data into
+        the image itself.
+
+        In copy=True mode, this command works similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
+        works in a `Dockerfile`.
+        """
+        # TODO(elias): distinguish adding *into* remote_path and *as* remote_path, similar
+        #  to shell `cp -r source dest` vs `cp -r source/ dest`
+        #  NOTE: docker COPY always copies the *contents* of the source directory, and you have
+        #  to specify the destination dir name explicitly
+        remote_path = PurePosixPath(remote_path)
+        if not remote_path.is_absolute():
+            # TODO(elias): implement relative to absolute resolution using image workdir metadata
+            #  + make default remote_path="./"
+            raise InvalidError("image.attach_local_dir() currently only supports absolute remote_path values")
+        mount = _Mount.from_local_dir(local_path, remote_path=remote_path)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
@@ -619,6 +664,7 @@ class _Image(_Object, type_prefix="im"):
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
         """
+        # TODO(elias): add pending deprecation - use attach
         basename = str(Path(local_path).name)
         mount = _Mount.from_local_file(local_path, remote_path=f"/{basename}")
 
