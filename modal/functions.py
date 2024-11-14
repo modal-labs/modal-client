@@ -739,7 +739,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             if method_definitions:
                 for method_name, method_definition in method_definitions.items():
                     req.method_definitions[method_name].CopyFrom(method_definition)
-            else:
+            elif req.webhook_config:
                 req.webhook_config.CopyFrom(webhook_config)
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
