@@ -118,7 +118,7 @@ class _Invocation:
         function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
     ) -> "_Invocation":
         assert client.stub
-        function_id = function._invocation_function_id()
+        function_id = function.object_id
         item = await _create_input(args, kwargs, client, method_name=function._use_method_name)
 
         request = api_pb2.FunctionMapRequest(
@@ -897,7 +897,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         obj._raw_f = info.raw_f
         obj._info = info
-        obj._function_name = info.function_name
         obj._tag = tag
         obj._app = app  # needed for CLI right now
         obj._obj = None
@@ -1184,24 +1183,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
         self._is_method = metadata.is_method
-        # self._use_function_id = metadata.use_function_id
         self._use_method_name = metadata.use_method_name
         self._class_parameter_info = metadata.class_parameter_info
         self._definition_id = metadata.definition_id
-        # for method_name, method_handle_metadata in metadata.method_handle_metadata.items():
-        #     method_function = self._method_functions[method_name]
-        #     method_function._is_generator = (
-        #         method_handle_metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
-        #     )
-        #     method_function._web_url = method_handle_metadata.web_url
-        #     method_function._function_name = method_handle_metadata.function_name
-        #     method_function._is_method = method_handle_metadata.is_method
-        #     method_function._use_method_name = method_handle_metadata.use_method_name
-        #     method_function._definition_id = method_handle_metadata.definition_id
-
-    def _invocation_function_id(self) -> str:
-        # return self._use_function_id or self.object_id
-        return self.object_id
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
