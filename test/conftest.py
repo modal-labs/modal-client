@@ -40,7 +40,6 @@ from modal._utils.async_utils import asyncify, synchronize_api
 from modal._utils.grpc_testing import patch_mock_servicer
 from modal._utils.grpc_utils import find_free_port
 from modal._utils.http_utils import run_temporary_http_server
-from modal._utils.jwt_utils import decode_function_call_jwt, decode_input_jwt, encode_input_jwt
 from modal._vendor import cloudpickle
 from modal.app import _App
 from modal.client import Client
@@ -1018,7 +1017,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.function_id_for_function_call[function_call_id] = request.function_id
         fn_definition = self.app_functions.get(request.function_id)
         retry_policy = fn_definition.retry_policy if fn_definition else None
-        function_call_jwt = f"{request.function_id}:{function_call_id}"
+        function_call_jwt = encode_function_call_jwt(request.function_id, function_call_id)
         await stream.send_message(
             api_pb2.FunctionMapResponse(
                 function_call_id=function_call_id, retry_policy=retry_policy, function_call_jwt=function_call_jwt
@@ -1035,7 +1034,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             else:
                 args, kwargs = modal._serialization.deserialize(self.blobs[item.input.args_blob_id], None)
             self.n_inputs += 1
-            idx, input_id = decode_input_jwt(item.input_jwt)
+            idx, input_id, function_call_id = decode_input_jwt(item.input_jwt)
             function_call_inputs.append(((idx, input_id), (args, kwargs)))
         await stream.send_message(api_pb2.FunctionRetryInputsResponse())
 
@@ -1053,7 +1052,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.n_inputs += 1
             response_items.append(
                 api_pb2.FunctionPutInputsResponseItem(
-                    input_id=input_id, idx=item.idx, input_jwt=encode_input_jwt(item.idx, input_id)
+                    input_id=input_id,
+                    idx=item.idx,
+                    input_jwt=encode_input_jwt(item.idx, input_id, request.function_call_id),
                 )
             )
             function_call_inputs.append(((item.idx, input_id), (args, kwargs)))
@@ -2058,3 +2059,39 @@ def disable_auto_mount(monkeypatch):
 @pytest.fixture()
 def supports_on_path(supports_dir, monkeypatch):
     monkeypatch.syspath_prepend(str(supports_dir))
+
+
+def encode_input_jwt(idx: int, input_id: str, function_call_id: str) -> str:
+    """
+    Dummmy version of function defined in server.
+    """
+    assert str(idx) and input_id and function_call_id
+    return f"{idx}:{input_id}:{function_call_id}"
+
+
+def decode_input_jwt(input_jwt: str) -> Tuple[int, str, str]:
+    """
+    Dummmy version of function defined in server.
+    Returns idx, input_id.
+    """
+    parts = input_jwt.split(":")
+    assert len(parts) == 3
+    return int(parts[0]), parts[1], parts[2]
+
+
+def encode_function_call_jwt(function_id: str, function_call_id: str) -> str:
+    """
+    Dummmy version of function defined in server.
+    """
+    assert function_id and function_call_id
+    return f"{function_id}:{function_call_id}"
+
+
+def decode_function_call_jwt(function_call_jwt: str) -> Tuple[str, str]:
+    """
+    Dummmy version of function defined in server.
+    Returns function_id, function_call_id.
+    """
+    parts = function_call_jwt.split(":")
+    assert len(parts) == 2
+    return parts[0], parts[1]
