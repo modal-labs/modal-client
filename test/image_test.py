@@ -12,6 +12,7 @@ from unittest import mock
 
 from modal import App, Image, Mount, Secret, build, environments, gpu, method
 from modal._serialization import serialize
+from modal._utils.async_utils import synchronizer
 from modal.client import Client
 from modal.exception import DeprecationError, InvalidError, VersionError
 from modal.image import (
@@ -754,6 +755,30 @@ def test_workdir(builder_version, servicer, client):
         layers = get_image_layers(app.image.object_id, servicer)
 
         assert any("WORKDIR /foo/bar" in cmd for cmd in layers[0].dockerfile_commands)
+
+
+def test_hydration_metadata(servicer, client):
+    img = Image.debian_slim()
+    app = App(image=img)
+    app.function()(dummy)
+    dummy_metadata = api_pb2.ImageMetadata(
+        workdir="/proj",
+        python_packages={"fastapi": "0.100.0"},
+        python_version_info="Python 3.11.8 (main, Feb 25 2024, 03:55:37) [Clang 17.0.6 ]",
+    )
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "ImageJoinStreaming",
+            api_pb2.ImageJoinStreamingResponse(
+                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
+                metadata=dummy_metadata,
+            ),
+        )
+
+        with app.run(client=client):
+            # TODO: change this test to use public property workdir when/if we introduce one
+            _image = synchronizer._translate_in(img)
+            assert _image._metadata == dummy_metadata
 
 
 cls_app = App()
