@@ -722,11 +722,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
         method_definitions: Optional[Dict[str, api_pb2.MethodDefinition]] = None
+        partial_functions: Dict[str, "modal.partial_function._PartialFunction"] = {}
         if info.user_cls:
             method_definitions = {}
-            partial_functions: Dict[
-                str, "modal.partial_function._PartialFunction"
-            ] = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.FUNCTION)
+            partial_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.FUNCTION)
             for method_name, partial_function in partial_functions.items():
                 function_type = get_function_type(partial_function.is_generator)
                 function_name = f"{info.user_cls.__name__}.{method_name}"
