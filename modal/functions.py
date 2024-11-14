@@ -365,46 +365,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fun._is_method = True
         return fun
 
-    def _bind_method_old(
-        self,
-        user_cls,
-        method_name: str,
-        partial_function: "modal.partial_function._PartialFunction",
-    ):
-        """mdmd:hidden
-
-        Creates a function placeholder function that binds a specific method name to
-        this function for use when invoking the function.
-
-        Should only be used on "class service functions". For "instance service functions",
-        we don't create an actual backend function, and instead do client-side "fake-hydration"
-        only, see _bind_instance_method.
-
-        """
-        class_service_function = self
-        assert class_service_function._info  # has to be a local function to be able to "bind" it
-        assert not class_service_function._is_method  # should not be used on an already bound method placeholder
-        assert not class_service_function._obj  # should only be used on base function / class service function
-        full_name = f"{user_cls.__name__}.{method_name}"
-
-        async def _load(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
-            pass
-
-        rep = f"Method({full_name})"
-        fun = _Function._from_loader(_load, rep)
-        fun._tag = full_name
-        fun._raw_f = partial_function.raw_f
-        fun._info = FunctionInfo(
-            partial_function.raw_f, user_cls=user_cls, serialized=class_service_function.info.is_serialized()
-        )  # needed for .local()
-        fun._use_method_name = method_name
-        fun._app = class_service_function._app
-        fun._is_generator = partial_function.is_generator
-        fun._cluster_size = partial_function.cluster_size
-        fun._spec = class_service_function._spec
-        fun._is_method = True
-        return fun
-
     def _bind_instance_method(self, class_bound_method: "_Function"):
         """mdmd:hidden
 
