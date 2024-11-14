@@ -10,6 +10,13 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.65.55 (2024-11-13)
+
+- Escalates stuck input cancellations to container death. This prevents unresponsive user code from holding up resources.
+- Input timeouts no longer kill the entire container. Instead, they just cancel the timed-out input, leaving the container and other concurrent inputs running.
+
+
+
 ### 0.65.49 (2024-11-12)
 
 * Fixed issue in `modal serve` where files used in `Image.copy_*` commands were not watched for changes
