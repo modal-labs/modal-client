@@ -115,15 +115,15 @@ class _Dict(_Object, type_prefix="di"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Dict":
-        """Create a reference to a persisted Dict
+        """Reference a named Dict, creating if necessary.
 
-        **Examples**
+        In contrast to `modal.Dict.lookup`, this is a lazy method
+        that defers hydrating the local object with metadata from
+        Modal servers until the first time it is actually used.
 
         ```python
-        from modal import Dict
-
-        dict = Dict.from_name("my-dict", create_if_missing=True)
-        dict[123] = 456
+        d = modal.Dict.from_name("my-dict", create_if_missing=True)
+        d[123] = 456
         ```
         """
         check_object_name(label, "Dict")
@@ -158,12 +158,13 @@ class _Dict(_Object, type_prefix="di"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Dict":
-        """Lookup a dict with a given name and tag.
+        """Lookup a named Dict.
+
+        In contrast to `modal.Dict.from_name`, this is an eager method
+        that will hydrate the local object with metadata from Modal servers.
 
         ```python
-        from modal import Dict
-
-        d = Dict.lookup("my-dict")
+        d = modal.Dict.lookup("my-dict")
         d["xyz"] = 123
         ```
         """

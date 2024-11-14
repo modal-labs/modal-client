@@ -20,6 +20,13 @@ class _Proxy(_Object, type_prefix="pr"):
         name: str,
         environment_name: Optional[str] = None,
     ) -> "_Proxy":
+        """Reference a Proxy by its name.
+
+        In contrast to most other Modal objects, new Proxy objects must be
+        provisioned via the Dashboard and cannot be created on the fly from code.
+
+        """
+
         async def _load(self: _Proxy, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.ProxyGetRequest(
                 name=name,
