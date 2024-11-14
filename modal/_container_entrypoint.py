@@ -815,10 +815,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 obj._hydrate(object_id, _client, metadata)
 
         # Initialize clustered functions.
-        if function_def._experimental_group_size > 1:
+        if function_def._experimental_group_size > 0:
             initialize_clustered_function(
                 client,
                 container_args.task_id,
+                function_def._experimental_group_size,
             )
 
         # Identify all "enter" methods that need to run before we snapshot.
