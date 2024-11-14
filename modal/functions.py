@@ -732,6 +732,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 )
                 method_definitions[method_name] = method_definition
 
+        function_type = get_function_type(is_generator)
+
         def _deps(only_explicit_mounts=False) -> List[_Object]:
             deps: List[_Object] = list(secrets)
             if only_explicit_mounts:
@@ -761,7 +763,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
-            function_type = get_function_type(is_generator)
 
             assert resolver.app_id
             req = api_pb2.FunctionPrecreateRequest(
@@ -781,8 +782,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
             with FunctionCreationStatus(resolver, tag) as function_creation_status:
-                function_type = get_function_type(is_generator)
-
                 timeout_secs = timeout
 
                 if app and app.is_interactive and not is_builder_function:
@@ -1252,11 +1251,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         assert self._function_name, f"Function name must be set before metadata can be retrieved for {self}"
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
-            function_type=(
-                api_pb2.Function.FUNCTION_TYPE_GENERATOR
-                if self._is_generator
-                else api_pb2.Function.FUNCTION_TYPE_FUNCTION
-            ),
+            function_type=get_function_type(self._is_generator),
             web_url=self._web_url or "",
             use_method_name=self._use_method_name,
             use_function_id=self._use_function_id,
