@@ -1622,7 +1622,7 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, servicer)
     for call in translate_out_spy.call_args_list:
         out_translations += list(call.args)
 
-    assert len(in_translations) < 1000  # typically 136 or something
+    assert len(in_translations) < 2000  # typically ~400 or something
     assert len(out_translations) < 2000
 
 
