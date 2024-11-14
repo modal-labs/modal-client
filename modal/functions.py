@@ -523,6 +523,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         _experimental_custom_scaling_factor: Optional[float] = None,
     ) -> None:
         """mdmd:hidden"""
+        # Needed to avoid circular imports
+        from .partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
+
         tag = info.get_tag()
 
         if info.raw_f:
@@ -591,9 +594,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         )
 
         if info.user_cls and not is_auto_snapshot:
-            # Needed to avoid circular imports
-            from .partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
-
             build_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.BUILD).items()
             for k, pf in build_functions:
                 build_function = pf.raw_f
@@ -682,6 +682,22 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if image is not None and not isinstance(image, _Image):
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
+        method_definitions: Optional[Dict[str, api_pb2.MethodDefinition]] = None
+        if info.user_cls:
+            method_definitions = {}
+            partial_functions: Dict[
+                str, "modal.partial_function._PartialFunction"
+            ] = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.FUNCTION)
+            for method_name, partial_function in partial_functions.items():
+                function_type = get_function_type(partial_function.is_generator)
+                function_name = f"{info.user_cls.__name__}.{method_name}"
+                method_definition = api_pb2.MethodDefinition(
+                    webhook_config=partial_function.webhook_config,
+                    function_type=function_type,
+                    function_name=function_name,
+                )
+                method_definitions[method_name] = method_definition
+
         def _deps(only_explicit_mounts=False) -> List[_Object]:
             deps: List[_Object] = list(secrets)
             if only_explicit_mounts:
@@ -718,9 +734,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 app_id=resolver.app_id,
                 function_name=info.function_name,
                 function_type=function_type,
-                webhook_config=webhook_config,
                 existing_function_id=existing_object_id or "",
             )
+            if method_definitions:
+                for method_name, method_definition in method_definitions.items():
+                    req.method_definitions[method_name].CopyFrom(method_definition)
+            else:
+                req.webhook_config.CopyFrom(webhook_config)
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
