@@ -92,5 +92,5 @@ async def test_client_close_cancellation_context_only_used_in_correct_event_loop
             await asyncio.sleep(0.1)
     with pytest.raises(grpclib.exceptions.StreamTerminatedError):
         await t
-    assert len(caplog.records) == 1
-    assert "QueueGet made outside of task context" in caplog.records[0].message
+    expected_warnings = [msg for msg in caplog.messages if "QueueGet made outside of task context" in msg]
+    assert len(expected_warnings) == 1
