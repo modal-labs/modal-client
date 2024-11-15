@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
-from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Literal, Optional, Sequence, Tuple, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -404,7 +404,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
         text: bool = True,  # Encode output as text
-        by_line: bool = False,  # Line-buffered output
+        # Set bufsize=1 for line-buffered output and -1 for default streamed output.
+        # The default differs from subprocess.Popen for backwards compatibility.
+        bufsize: Literal[-1, 1] = 1,
         _pty_info: Optional[api_pb2.PTYInfo] = None,  # Internal option to set terminal size and metadata
     ):
         """Execute a command in the Sandbox and return
@@ -433,6 +435,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 runtime_debug=config.get("function_runtime_debug"),
             )
         )
+        by_line = bufsize == 1
         return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr, text=text, by_line=by_line)
 
     @property

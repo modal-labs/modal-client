@@ -16,8 +16,6 @@ from .stream_type import StreamType
 if TYPE_CHECKING:
     pass
 
-T = TypeVar("T", str, bytes)
-
 
 async def _sandbox_logs_iterator(
     sandbox_id: str, file_descriptor: api_pb2.FileDescriptor.ValueType, last_entry_id: Optional[str], client: _Client
@@ -52,6 +50,9 @@ async def _container_process_logs_iterator(
             yield item.message_bytes
 
 
+T = TypeVar("T", str, bytes)
+
+
 class _StreamReader(Generic[T]):
     """Provides an interface to buffer and fetch logs from a stream (`stdout` or `stderr`).
 
@@ -81,7 +82,7 @@ class _StreamReader(Generic[T]):
         client: _Client,
         stream_type: StreamType = StreamType.PIPE,
         text: bool = True,
-        bufsize: Literal[-1, 1] = -1,  # -1 auto, 1 line-buffered
+        by_line: bool = False,
     ) -> None:
         """mdmd:hidden"""
         self._file_descriptor = file_descriptor
@@ -93,7 +94,7 @@ class _StreamReader(Generic[T]):
         self._string_line_buffer: str = ""
         self._bytes_line_buffer: bytes = b""
         self._text = text
-        self._bufsize = bufsize
+        self._by_line = by_line
         # Whether the reader received an EOF. Once EOF is True, it returns
         # an empty string for any subsequent reads (including async for)
         self.eof = False
@@ -134,22 +135,14 @@ class _StreamReader(Generic[T]):
         ```
 
         """
-        if self._text:
-            data: str = ""
-        else:
-            data: bytes = b""  # type: ignore[no-redef]
+        data = ""
 
         async for message in self._get_logs_by_line():
             if message is None:
                 break
-            if isinstance(data, str):
-                assert isinstance(message, str)
-                data += message
-            else:
-                assert isinstance(message, bytes)
-                data += message
+            data += message
 
-        return data  # type: ignore[return-value]
+        return data
 
     async def _consume_container_process_stream(self):
         """
@@ -287,7 +280,7 @@ class _StreamReader(Generic[T]):
     def __aiter__(self):
         """mdmd:hidden"""
         if not self._stream:
-            if self._bufsize == 1:
+            if self._by_line:
                 self._stream = self._get_logs_by_line()
             else:
                 self._stream = self._get_logs()
