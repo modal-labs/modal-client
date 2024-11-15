@@ -76,7 +76,7 @@ class _ContainerProcess:
         return self._stdin
 
     @property
-    def returncode(self) -> _StreamWriter:
+    def returncode(self) -> int:
         if self._returncode is None:
             raise InvalidError(
                 "You must call wait() before accessing the returncode. "
