@@ -5,7 +5,7 @@ import typing
 import modal
 from modal.client import Client
 from modal.exception import AuthError
-from modal.runner import run_app
+from modal.runner import deploy_app, run_app
 from modal_proto import api_pb2
 
 T = typing.TypeVar("T")
@@ -83,3 +83,9 @@ def test_run_app_custom_env_with_refs(servicer, client, monkeypatch):
 
     secret_get_or_create_2 = ctx.pop_request("SecretGetOrCreate")
     assert secret_get_or_create_2.environment_name == "third"
+
+
+def test_deploy_without_rich(servicer, client, no_rich):
+    app = modal.App("dummy-app")
+    app.function()(dummy)
+    deploy_app(app, client=client)

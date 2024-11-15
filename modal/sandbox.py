@@ -93,6 +93,9 @@ class _Sandbox(_Object, type_prefix="sb"):
                 "Specify a single GPU configuration, e.g. gpu='a10g'"
             )
 
+        if workdir is not None and not workdir.startswith("/"):
+            raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
+
         # Validate volumes
         validated_volumes = validate_volumes(volumes)
         cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
@@ -403,11 +406,15 @@ class _Sandbox(_Object, type_prefix="sb"):
         pty_info: Optional[api_pb2.PTYInfo] = None,  # Deprecated: internal use only
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
+        timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
+        secrets: Sequence[_Secret] = (),
         # Encode output as text.
         text: bool = True,
         # Control line-buffering output. The default differs from subprocess.Popen for backwards compatibility.
         bufsize: Literal[-1, 1] = 1,
-        _pty_info: Optional[api_pb2.PTYInfo] = None,  # Internal option to set terminal size and metadata
+        # Internal option to set terminal size and metadata
+        _pty_info: Optional[api_pb2.PTYInfo] = None,
     ):
         """Execute a command in the Sandbox and return
         a [`ContainerProcess`](/docs/reference/modal.ContainerProcess#modalcontainer_process) handle.
@@ -426,6 +433,13 @@ class _Sandbox(_Object, type_prefix="sb"):
         ```
         """
 
+        if workdir is not None and not workdir.startswith("/"):
+            raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
+
+        # Force secret resolution so we can pass the secret IDs to the backend.
+        for secret in secrets:
+            await secret.resolve(client=self._client)
+
         task_id = await self._get_task_id()
         resp = await self._client.stub.ContainerExec(
             api_pb2.ContainerExecRequest(
@@ -433,6 +447,9 @@ class _Sandbox(_Object, type_prefix="sb"):
                 command=cmds,
                 pty_info=_pty_info or pty_info,
                 runtime_debug=config.get("function_runtime_debug"),
+                timeout_secs=timeout or 0,
+                workdir=workdir,
+                secret_ids=[secret.object_id for secret in secrets],
             )
         )
         by_line = bufsize == 1

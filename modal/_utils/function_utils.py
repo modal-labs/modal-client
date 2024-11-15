@@ -93,6 +93,10 @@ def is_async(function):
         raise RuntimeError(f"Function {function} is a strange type {type(function)}")
 
 
+def get_function_type(is_generator: Optional[bool]) -> "api_pb2.Function.FunctionType.ValueType":
+    return api_pb2.Function.FUNCTION_TYPE_GENERATOR if is_generator else api_pb2.Function.FUNCTION_TYPE_FUNCTION
+
+
 class FunctionInfo:
     """Class that helps us extract a bunch of information about a function."""
 
@@ -513,3 +517,54 @@ async def _create_input(
             ),
             idx=idx,
         )
+
+
+class FunctionCreationStatus:
+    # TODO(michael) this really belongs with other output-related code
+    # but moving it here so we can use it when loading a function with output disabled
+    tag: str
+    response: Optional[api_pb2.FunctionCreateResponse] = None
+
+    def __init__(self, resolver, tag):
+        self.resolver = resolver
+        self.tag = tag
+
+    def __enter__(self):
+        self.status_row = self.resolver.add_status_row()
+        self.status_row.message(f"Creating function {self.tag}...")
+        return self
+
+    def set_response(self, resp: api_pb2.FunctionCreateResponse):
+        self.response = resp
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            raise exc_val
+
+        if not self.response:
+            self.status_row.finish(f"Unknown error when creating function {self.tag}")
+
+        elif self.response.function.web_url:
+            url_info = self.response.function.web_url_info
+            # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
+            if url_info.truncated:
+                suffix = " [grey70](label truncated)[/grey70]"
+            elif url_info.label_stolen:
+                suffix = " [grey70](label stolen)[/grey70]"
+            else:
+                suffix = ""
+            # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
+            web_url = self.response.handle_metadata.web_url
+            self.status_row.finish(
+                f"Created web function {self.tag} => [magenta underline]{web_url}[/magenta underline]{suffix}"
+            )
+
+            # Print custom domain in terminal
+            for custom_domain in self.response.function.custom_domain_info:
+                custom_domain_status_row = self.resolver.add_status_row()
+                custom_domain_status_row.finish(
+                    f"Custom domain for {self.tag} => [magenta underline]"
+                    f"{custom_domain.url}[/magenta underline]{suffix}"
+                )
+        else:
+            self.status_row.finish(f"Created function {self.tag}.")

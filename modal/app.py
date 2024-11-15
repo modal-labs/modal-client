@@ -35,8 +35,7 @@ from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, parameter
 from .config import logger
-from .exception import InvalidError, deprecation_error, deprecation_warning
-from .experimental import _GroupedFunction
+from .exception import ExecutionError, InvalidError, deprecation_error, deprecation_warning
 from .functions import Function, _Function
 from .gpu import GPU_T
 from .image import _Image
@@ -126,6 +125,38 @@ class _FunctionDecoratorType:
         ...
 
 
+_app_attr_error = """\
+App assignments of the form `app.x` or `app["x"]` are deprecated!
+
+The only use cases for these assignments is in conjunction with `.new()`, which is now
+in itself deprecated. If you are constructing objects with `.from_name(...)`, there is no
+need to assign those objects to the app. Example:
+
+```python
+d = modal.Dict.from_name("my-dict", create_if_missing=True)
+
+@app.function()
+def f(x, y):
+    d[x] = y  # Refer to d in global scope
+```
+"""
+
+_enable_output_warning = """\
+Note that output will soon not be be printed with `app.run`.
+
+If you want to print output, use `modal.enable_output()`:
+
+```python
+with modal.enable_output():
+    with app.run():
+        ...
+```
+
+If you don't want output, and you want to to suppress this warning,
+use `app.run(..., show_progress=False)`.
+"""
+
+
 class _App:
     """A Modal app (prior to April 2024 a "stub") is a group of functions and classes
     deployed together.
@@ -165,7 +196,7 @@ class _App:
     _name: Optional[str]
     _description: Optional[str]
     _indexed_objects: Dict[str, _Object]
-    _function_mounts: Dict[str, _Mount]
+
     _image: Optional[_Image]
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
@@ -256,12 +287,14 @@ class _App:
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_App":
-        """Look up an app with a given name. When `create_if_missing` is true,
-        the app will be created if it doesn't exist.
+        """Look up an App with a given name, creating a new App if necessary.
+
+        Note that Apps created through this method will be in a deployed state,
+        but they will not have any associated Functions or Classes. This method
+        is mainly useful for creating an App to associate with a Sandbox:
 
         ```python
         app = modal.App.lookup("my-app", create_if_missing=True)
-
         modal.Sandbox.create("echo", "hi", app=app)
         ```
         """
@@ -308,24 +341,10 @@ class _App:
         self._indexed_objects[tag] = obj
 
     def __getitem__(self, tag: str):
-        """App assignments of the form `app.x` or `app["x"]` are deprecated!
-
-        The only use cases for these assignments is in conjunction with `.new()`, which is now
-        in itself deprecated. If you are constructing objects with `.from_name(...)`, there is no
-        need to assign those objects to the app. Example:
-
-        ```python
-        d = modal.Dict.from_name("my-dict", create_if_missing=True)
-
-        @app.function()
-        def f(x, y):
-            d[x] = y  # Refer to d in global scope
-        ```
-        """
-        deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
+        deprecation_error((2024, 3, 25), _app_attr_error)
 
     def __setitem__(self, tag: str, obj: _Object):
-        deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
+        deprecation_error((2024, 3, 25), _app_attr_error)
 
     def __getattr__(self, tag: str):
         # TODO(erikbern): remove this method later
@@ -336,7 +355,7 @@ class _App:
         if tag not in self._indexed_objects:
             # Primarily to make hasattr work
             raise AttributeError(f"App has no member {tag}")
-        deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
+        deprecation_error((2024, 3, 25), _app_attr_error)
 
     def __setattr__(self, tag: str, obj: _Object):
         # TODO(erikbern): remove this method later
@@ -347,7 +366,7 @@ class _App:
         elif tag == "image":
             self._image = obj
         else:
-            deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
+            deprecation_error((2024, 3, 25), _app_attr_error)
 
     @property
     def image(self) -> _Image:
@@ -420,25 +439,9 @@ class _App:
         python app_module.py
         ```
 
-
         Note that this method used to return a separate "App" object. This is
         no longer useful since you can use the app itself for access to all
         objects. For backwards compatibility reasons, it returns the same app.
-        """
-
-        enable_output_warning = """
-        Note that output will soon not be be printed with `app.run`.
-
-        If you want to print output, use `modal.enable_output()`:
-
-        ```python
-        with modal.enable_output():
-            with app.run():
-                ...
-        ```
-
-        If you don't want output, and you want to to suppress this warning,
-        use `app.run(..., show_progress=False)`.
         """
         from .runner import _run_app  # Defer import of runner.py, which imports a lot from Rich
 
@@ -449,11 +452,11 @@ class _App:
         if "MODAL_DISABLE_APP_RUN_OUTPUT_WARNING" not in os.environ:
             if show_progress is None:
                 if _get_output_manager() is None:
-                    deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
+                    deprecation_warning((2024, 7, 18), _enable_output_warning)
                     auto_enable_output = True
             elif show_progress is True:
                 if _get_output_manager() is None:
-                    deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
+                    deprecation_warning((2024, 7, 18), _enable_output_warning)
                     auto_enable_output = True
                 else:
                     deprecation_warning((2024, 7, 18), "`show_progress=True` is deprecated and no longer needed.")
@@ -478,11 +481,14 @@ class _App:
             return _default_image
 
     def _get_watch_mounts(self):
+        if not self._running_app:
+            raise ExecutionError("`_get_watch_mounts` requires a running app.")
+
         all_mounts = [
             *self._mounts,
         ]
         for function in self.registered_functions.values():
-            all_mounts.extend(function._all_mounts)
+            all_mounts.extend(function._used_local_mounts)
 
         return [m for m in all_mounts if m.is_local()]
 
@@ -628,7 +634,10 @@ class _App:
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        # Specify, in fractional CPU cores, how many CPU cores to request.
+        # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
+        # CPU throttling will prevent a container from exceeding its specified limit.
+        cpu: Optional[Union[float, Tuple[float, float]]] = None,
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: Optional[Union[int, Tuple[int, int]]] = None,
@@ -706,8 +715,8 @@ class _App:
                         "        ...\n"
                         "```\n"
                     )
-                i6pn_enabled = i6pn or (f.flags & _PartialFunctionFlags.GROUPED)
-                group_size = f.group_size  # Experimental: Grouped functions
+                i6pn_enabled = i6pn or (f.flags & _PartialFunctionFlags.CLUSTERED)
+                cluster_size = f.cluster_size  # Experimental: Clustered functions
 
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
@@ -752,7 +761,7 @@ class _App:
                 batch_wait_ms = None
                 raw_f = f
 
-                group_size = None  # Experimental: Grouped functions
+                cluster_size = None  # Experimental: Clustered functions
                 i6pn_enabled = i6pn
 
             if info.function_name.endswith(".app"):
@@ -803,17 +812,10 @@ class _App:
                 _experimental_buffer_containers=_experimental_buffer_containers,
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 i6pn_enabled=i6pn_enabled,
-                group_size=group_size,  # Experimental: Grouped functions
-                _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
+                cluster_size=cluster_size,  # Experimental: Clustered functions
             )
 
             self._add_function(function, webhook_config is not None)
-
-            # Experimental: Grouped functions
-            if group_size is not None:
-                if group_size <= 0:
-                    raise InvalidError("Group size must be positive")
-                function = _GroupedFunction(function, group_size)
 
             return function
 
@@ -838,7 +840,10 @@ class _App:
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        # Specify, in fractional CPU cores, how many CPU cores to request.
+        # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
+        # CPU throttling will prevent a container from exceeding its specified limit.
+        cpu: Optional[Union[float, Tuple[float, float]]] = None,
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: Optional[Union[int, Tuple[int, int]]] = None,
@@ -961,7 +966,10 @@ class _App:
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the sandbox on.
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        # Specify, in fractional CPU cores, how many CPU cores to request.
+        # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
+        # CPU throttling will prevent a container from exceeding its specified limit.
+        cpu: Optional[Union[float, Tuple[float, float]]] = None,
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: Optional[Union[int, Tuple[int, int]]] = None,
@@ -978,7 +986,7 @@ class _App:
 
         See https://modal.com/docs/guide/sandbox for more info on working with sandboxes.
         """
-        deprecation_warning((2024, 7, 5), _App.spawn_sandbox.__doc__ or "")
+        deprecation_warning((2024, 7, 5), _App.spawn_sandbox.__doc__)
         if not self._running_app:
             raise InvalidError("`app.spawn_sandbox` requires a running app.")
 

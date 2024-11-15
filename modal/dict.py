@@ -58,11 +58,12 @@ class _Dict(_Object, type_prefix="di"):
 
     @staticmethod
     def new(data: Optional[dict] = None):
-        """`Dict.new` is deprecated.
-
-        Please use `Dict.from_name` (for persisted) or `Dict.ephemeral` (for ephemeral) dicts.
-        """
-        deprecation_error((2024, 3, 19), Dict.new.__doc__)
+        """mdmd:hidden"""
+        message = (
+            "`Dict.new` is deprecated."
+            " Please use `Dict.from_name` (for persisted) or `Dict.ephemeral` (for ephemeral) dicts instead."
+        )
+        deprecation_error((2024, 3, 19), message)
 
     def __init__(self, data={}):
         """mdmd:hidden"""
@@ -114,15 +115,15 @@ class _Dict(_Object, type_prefix="di"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Dict":
-        """Create a reference to a persisted Dict
+        """Reference a named Dict, creating if necessary.
 
-        **Examples**
+        In contrast to `modal.Dict.lookup`, this is a lazy method
+        that defers hydrating the local object with metadata from
+        Modal servers until the first time it is actually used.
 
         ```python
-        from modal import Dict
-
-        dict = Dict.from_name("my-dict", create_if_missing=True)
-        dict[123] = 456
+        d = modal.Dict.from_name("my-dict", create_if_missing=True)
+        d[123] = 456
         ```
         """
         check_object_name(label, "Dict")
@@ -144,8 +145,9 @@ class _Dict(_Object, type_prefix="di"):
 
     @staticmethod
     def persisted(label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None):
-        """Deprecated! Use `Dict.from_name(name, create_if_missing=True)`."""
-        deprecation_error((2024, 3, 1), _Dict.persisted.__doc__)
+        """mdmd:hidden"""
+        message = "`Dict.persisted` is deprecated. Please use `Dict.from_name(name, create_if_missing=True)` instead."
+        deprecation_error((2024, 3, 1), message)
 
     @staticmethod
     async def lookup(
@@ -156,12 +158,13 @@ class _Dict(_Object, type_prefix="di"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Dict":
-        """Lookup a dict with a given name and tag.
+        """Lookup a named Dict.
+
+        In contrast to `modal.Dict.from_name`, this is an eager method
+        that will hydrate the local object with metadata from Modal servers.
 
         ```python
-        from modal import Dict
-
-        d = Dict.lookup("my-dict")
+        d = modal.Dict.lookup("my-dict")
         d["xyz"] = 123
         ```
         """

@@ -75,7 +75,7 @@ class _Secret(_Object, type_prefix="st"):
             self._hydrate(resp.secret_id, resolver.client, None)
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
-        return _Secret._from_loader(_load, rep)
+        return _Secret._from_loader(_load, rep, hydrate_lazily=True)
 
     @staticmethod
     def from_local_environ(
@@ -89,7 +89,7 @@ class _Secret(_Object, type_prefix="st"):
             except KeyError as exc:
                 missing_key = exc.args[0]
                 raise InvalidError(
-                    f"Could not find local environment variable '{missing_key}' for Secret.from_local_env_vars"
+                    f"Could not find local environment variable '{missing_key}' for Secret.from_local_environ"
                 )
 
         return _Secret.from_dict({})
@@ -158,7 +158,7 @@ class _Secret(_Object, type_prefix="st"):
 
             self._hydrate(resp.secret_id, resolver.client, None)
 
-        return _Secret._from_loader(_load, "Secret.from_dotenv()")
+        return _Secret._from_loader(_load, "Secret.from_dotenv()", hydrate_lazily=True)
 
     @staticmethod
     def from_name(
@@ -169,7 +169,11 @@ class _Secret(_Object, type_prefix="st"):
             str
         ] = [],  # Optionally, a list of required environment variables (will be asserted server-side)
     ) -> "_Secret":
-        """Create a reference to a persisted Secret
+        """Reference a Secret by its name.
+
+        In contrast to most other Modal objects, named Secrets must be provisioned
+        from the Dashboard. See other methods for alternate ways of creating a new
+        Secret from code.
 
         ```python
         secret = modal.Secret.from_name("my-secret")
@@ -196,7 +200,7 @@ class _Secret(_Object, type_prefix="st"):
                     raise
             self._hydrate(response.secret_id, resolver.client, None)
 
-        return _Secret._from_loader(_load, "Secret()")
+        return _Secret._from_loader(_load, "Secret()", hydrate_lazily=True)
 
     @staticmethod
     async def lookup(
@@ -206,13 +210,7 @@ class _Secret(_Object, type_prefix="st"):
         environment_name: Optional[str] = None,
         required_keys: List[str] = [],
     ) -> "_Secret":
-        """Lookup a secret with a given name
-
-        ```python
-        s = modal.Secret.lookup("my-secret")
-        print(s.object_id)
-        ```
-        """
+        """mdmd:hidden"""
         obj = _Secret.from_name(
             label, namespace=namespace, environment_name=environment_name, required_keys=required_keys
         )

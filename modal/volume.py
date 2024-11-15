@@ -142,11 +142,12 @@ class _Volume(_Object, type_prefix="vo"):
 
     @staticmethod
     def new():
-        """`Volume.new` is deprecated.
-
-        Please use `Volume.from_name` (for persisted) or `Volume.ephemeral` (for ephemeral) volumes.
-        """
-        deprecation_error((2024, 3, 20), Volume.new.__doc__)  # type: ignore
+        """mdmd:hidden"""
+        message = (
+            "`Volume.new` is deprecated."
+            " Please use `Volume.from_name` (for persisted) or `Volume.ephemeral` (for ephemeral) volumes instead."
+        )
+        deprecation_error((2024, 3, 20), message)
 
     @staticmethod
     def from_name(
@@ -156,19 +157,19 @@ class _Volume(_Object, type_prefix="vo"):
         create_if_missing: bool = False,
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> "_Volume":
-        """Create a reference to a persisted volume. Optionally create it lazily.
+        """Reference a Volume by name, creating if necessary.
 
-        **Example Usage**
+        In contrast to `modal.Volume.lookup`, this is a lazy method
+        that defers hydrating the local object with metadata from
+        Modal servers until the first time is is actually used.
 
         ```python
-        import modal
-
-        volume = modal.Volume.from_name("my-volume", create_if_missing=True)
+        vol = modal.Volume.from_name("my-volume", create_if_missing=True)
 
         app = modal.App()
 
         # Volume refers to the same object, even across instances of `app`.
-        @app.function(volumes={"/vol": volume})
+        @app.function(volumes={"/data": vol})
         def f():
             pass
         ```
@@ -228,8 +229,11 @@ class _Volume(_Object, type_prefix="vo"):
         environment_name: Optional[str] = None,
         cloud: Optional[str] = None,
     ):
-        """Deprecated! Use `Volume.from_name(name, create_if_missing=True)`."""
-        deprecation_error((2024, 3, 1), _Volume.persisted.__doc__)
+        """mdmd:hidden"""
+        message = (
+            "`Volume.persisted` is deprecated. Please use `Volume.from_name(name, create_if_missing=True)` instead."
+        )
+        deprecation_error((2024, 3, 1), message)
 
     @staticmethod
     async def lookup(
@@ -240,11 +244,14 @@ class _Volume(_Object, type_prefix="vo"):
         create_if_missing: bool = False,
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> "_Volume":
-        """Lookup a volume with a given name
+        """Lookup a named Volume.
+
+        In contrast to `modal.Volume.from_name`, this is an eager method
+        that will hydrate the local object with metadata from Modal servers.
 
         ```python
-        n = modal.Volume.lookup("my-volume")
-        print(n.listdir("/"))
+        vol = modal.Volume.lookup("my-volume")
+        print(vol.listdir("/"))
         ```
         """
         obj = _Volume.from_name(

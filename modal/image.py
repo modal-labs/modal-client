@@ -12,7 +12,6 @@ from inspect import isfunction
 from pathlib import Path, PurePosixPath
 from typing import (
     Any,
-    AsyncGenerator,
     Callable,
     Dict,
     List,
@@ -62,9 +61,9 @@ ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10"]
 # Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
 # Consider consolidating these multiple sources of truth?
 SUPPORTED_PYTHON_SERIES: Dict[ImageBuilderVersion, List[str]] = {
-    "2024.10": ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"],
-    "2024.04": ["3.8", "3.9", "3.10", "3.11", "3.12"],
-    "2023.12": ["3.8", "3.9", "3.10", "3.11", "3.12"],
+    "2024.10": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "2024.04": ["3.9", "3.10", "3.11", "3.12"],
+    "2023.12": ["3.9", "3.10", "3.11", "3.12"],
 }
 
 LOCAL_REQUIREMENTS_DIR = Path(__file__).parent / "requirements"
@@ -274,15 +273,24 @@ class _Image(_Object, type_prefix="im"):
 
     force_build: bool
     inside_exceptions: List[Exception]
+    _used_local_mounts: typing.FrozenSet[_Mount]  # used for mounts watching
+    _metadata: Optional[api_pb2.ImageMetadata] = None  # set on hydration, private for now
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
+        self._used_local_mounts = frozenset()
 
     def _hydrate_metadata(self, message: Optional[Message]):
-        env_image_id = config.get("image_id")
+        env_image_id = config.get("image_id")  # set as an env var in containers
         if env_image_id == self.object_id:
             for exc in self.inside_exceptions:
+                # This raises exceptions from `with image.imports()` blocks
+                # if the hydrated image is the one used by the container
                 raise exc
+
+        if message:
+            assert isinstance(message, api_pb2.ImageMetadata)
+            self._metadata = message
 
     @staticmethod
     def _from_args(
@@ -421,17 +429,19 @@ class _Image(_Object, type_prefix="im"):
 
             logger.debug("Waiting for image %s" % image_id)
             last_entry_id: Optional[str] = None
-            result: Optional[api_pb2.GenericResult] = None
+            result_response: Optional[api_pb2.ImageJoinStreamingResponse] = None
 
             async def join():
-                nonlocal last_entry_id, result
+                nonlocal last_entry_id, result_response
 
                 request = api_pb2.ImageJoinStreamingRequest(image_id=image_id, timeout=55, last_entry_id=last_entry_id)
+
                 async for response in resolver.client.stub.ImageJoinStreaming.unary_stream(request):
                     if response.entry_id:
                         last_entry_id = response.entry_id
                     if response.result.status:
-                        result = response.result
+                        result_response = response
+                        # can't return yet, since there may still be logs streaming back in subsequent responses
                     for task_log in response.task_logs:
                         if task_log.task_progress.pos or task_log.task_progress.len:
                             assert task_log.task_progress.progress_type == api_pb2.IMAGE_SNAPSHOT_UPLOAD
@@ -445,7 +455,7 @@ class _Image(_Object, type_prefix="im"):
 
             # Handle up to n exceptions while fetching logs
             retry_count = 0
-            while result is None:
+            while result_response is None:
                 try:
                     await join()
                 except (StreamTerminatedError, GRPCError) as exc:
@@ -455,6 +465,7 @@ class _Image(_Object, type_prefix="im"):
                     if retry_count >= 3:
                         raise exc
 
+            result = result_response.result
             if result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
                 raise RemoteError(f"Image build for {image_id} failed with the exception:\n{result.exception}")
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
@@ -468,7 +479,13 @@ class _Image(_Object, type_prefix="im"):
             else:
                 raise RemoteError("Unknown status %s!" % result.status)
 
-            self._hydrate(image_id, resolver.client, None)
+            self._hydrate(image_id, resolver.client, result_response.metadata)
+            local_mounts = set()
+            for base in base_images.values():
+                local_mounts |= base._used_local_mounts
+            if context_mount and context_mount.is_local():
+                local_mounts.add(context_mount)
+            self._used_local_mounts = frozenset(local_mounts)
 
         rep = "Image()"
         obj = _Image._from_loader(_load, rep, deps=_deps)
@@ -476,7 +493,7 @@ class _Image(_Object, type_prefix="im"):
         return obj
 
     def extend(self, **kwargs) -> "_Image":
-        """Deprecated! This is a low-level method not intended to be part of the public API."""
+        """mdmd:hidden"""
         deprecation_error(
             (2024, 3, 7),
             "`Image.extend` is deprecated; please use a higher-level method, such as `Image.dockerfile_commands`.",
@@ -973,8 +990,12 @@ class _Image(_Object, type_prefix="im"):
 
     @staticmethod
     def conda(python_version: Optional[str] = None, force_build: bool = False):
-        """DEPRECATED: Removed in favor of the faster and more reliable `Image.micromamba` constructor."""
-        deprecation_error((2024, 5, 2), _Image.conda.__doc__ or "")
+        """mdmd:hidden"""
+        message = (
+            "`Image.conda` is deprecated."
+            " Please use the faster and more reliable `Image.micromamba` constructor instead."
+        )
+        deprecation_error((2024, 5, 2), message)
 
     def conda_install(
         self,
@@ -984,8 +1005,12 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ):
-        """DEPRECATED: Removed in favor of the faster and more reliable `Image.micromamba_install` method."""
-        deprecation_error((2024, 5, 2), _Image.conda_install.__doc__ or "")
+        """mdmd:hidden"""
+        message = (
+            "`Image.conda_install` is deprecated."
+            " Please use the faster and more reliable `Image.micromamba_install` instead."
+        )
+        deprecation_error((2024, 5, 2), message)
 
     def conda_update_from_environment(
         self,
@@ -995,8 +1020,12 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ):
-        """DEPRECATED: Removed in favor of the `Image.micromamba_install` method (using the `spec_file` parameter)."""
-        deprecation_error((2024, 5, 2), _Image.conda_update_from_environment.__doc__ or "")
+        """mdmd:hidden"""
+        message = (
+            "Image.conda_update_from_environment` is deprecated."
+            " Please use the `Image.micromamba_install` method (with the `spec_file` parameter) instead."
+        )
+        deprecation_error((2024, 5, 2), message)
 
     @staticmethod
     def micromamba(
@@ -1086,10 +1115,12 @@ class _Image(_Object, type_prefix="im"):
                 "ENV TERMINFO_DIRS=/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo",
             ]
 
+        # Note: this change is because we install dependencies with uv in 2024.10+
+        requirements_prefix = "python -m " if builder_version < "2024.10" else ""
         modal_requirements_commands = [
             f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
             f"RUN python -m pip install --upgrade {_base_image_config('package_tools', builder_version)}",
-            f"RUN python -m {_get_modal_requirements_command(builder_version)}",
+            f"RUN {requirements_prefix}{_get_modal_requirements_command(builder_version)}",
         ]
         if builder_version > "2023.12":
             modal_requirements_commands.append(f"RUN rm {CONTAINER_REQUIREMENTS_PATH}")
@@ -1116,9 +1147,8 @@ class _Image(_Object, type_prefix="im"):
         The image must be built for the `linux/amd64` platform.
 
         If your image does not come with Python installed, you can use the `add_python` parameter
-        to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
-        `3.10`, `3.11`, and `3.12`. Otherwise, the image is expected to have Python>3.8 available
-        on PATH as `python`, along with `pip`.
+        to specify a version of Python to add to the image. Otherwise, the image is expected to
+        have Python on PATH as `python`, along with `pip`.
 
         You may also use `setup_dockerfile_commands` to run Dockerfile commands before the
         remaining commands run. This might be useful if you want a custom Python installation or to
@@ -1268,8 +1298,7 @@ class _Image(_Object, type_prefix="im"):
         """Build a Modal image from a local Dockerfile.
 
         If your Dockerfile does not have Python installed, you can use the `add_python` parameter
-        to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
-        `3.10`, `3.11`, and `3.12`.
+        to specify a version of Python to add to the image.
 
         **Example**
 
@@ -1570,7 +1599,7 @@ class _Image(_Object, type_prefix="im"):
                 warnings.warn(f"Warning: caught a non-ImportError exception in an `imports()` block: {repr(exc)}")
 
     @live_method_gen
-    async def _logs(self) -> AsyncGenerator[str, None]:
+    async def _logs(self) -> typing.AsyncGenerator[str, None]:
         """Streams logs from an image, or returns logs from an already completed image.
 
         This method is considered private since its interface may change - use it at your own risk!

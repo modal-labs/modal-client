@@ -131,6 +131,7 @@ enum FunctionCallInvocationType {
   FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY = 1;
   FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY = 2;
   FUNCTION_CALL_INVOCATION_TYPE_ASYNC = 3;
+  FUNCTION_CALL_INVOCATION_TYPE_SYNC = 4;
 }
 
 enum FunctionCallType {
@@ -740,6 +741,8 @@ message ContainerExecGetOutputRequest {
   float timeout = 2;
   uint64 last_batch_index = 3;
   FileDescriptor file_descriptor = 4;
+  // Old clients (up to 0.65.39) expect string output. Newer clients stream raw bytes
+  bool get_raw_bytes = 5;
 }
 
 message ContainerExecPutInputRequest {
@@ -1325,6 +1328,11 @@ message FunctionData {
   uint32 warm_pool_size = 4;
   uint32 concurrency_limit = 5;
   uint32 task_idle_timeout_secs = 6;
+  // When the function is a "grouped" one, this records the # of tasks we want
+  // to schedule in tandem.
+  uint32 _experimental_group_size = 19;
+  uint32 _experimental_buffer_containers = 22;
+  bool _experimental_custom_scaling = 23;
   string worker_id = 7; // for internal debugging use only
 
   uint32 timeout_secs = 8;
@@ -1333,6 +1341,12 @@ message FunctionData {
   WebUrlInfo web_url_info = 10;
   WebhookConfig webhook_config = 11;
   repeated CustomDomainInfo custom_domain_info = 12;
+  // _experimental_proxy_ip -> ProxyInfo
+  // TODO: deprecate.
+  optional string _experimental_proxy_ip = 24;
+  // Mapping of method names to method definitions, only non-empty for class service functions
+  map<string, MethodDefinition> method_definitions = 25;
+  bool method_definitions_set = 26;
 
   bool is_class = 13;  // if "Function" is actually a class grouping multiple methods - applies across all underlying tasks
   ClassParameterInfo class_parameter_info = 14;
@@ -1347,13 +1361,13 @@ message FunctionData {
   }
   repeated RankedFunction ranked_functions = 18;
 
-  // When the function is a "grouped" one, this records the # of tasks we want
-  // to schedule in tandem.
-  uint32 _experimental_group_size = 19;
-
   Schedule schedule = 20;
 
   reserved 21;
+
+  bool untrusted = 27; // If set, the function will be run in an untrusted environment.
+  bool snapshot_debug = 28; // For internal debugging use only.
+  bool runtime_perf_record = 29; // For internal debugging use only.
 }
 
 message FunctionExtended {
@@ -1399,6 +1413,7 @@ message FunctionGetInputsItem {
   bool kill_switch = 3;
   reserved 4; // previously used
   string function_call_id = 5;
+  FunctionCallInvocationType function_call_invocation_type = 6;
 }
 
 message FunctionGetInputsRequest {
@@ -1505,6 +1520,8 @@ message FunctionMapRequest {
 message FunctionMapResponse {
   string function_call_id = 1;
   repeated FunctionPutInputsResponseItem pipelined_inputs = 2;
+  FunctionRetryPolicy retry_policy = 3;
+  string function_call_jwt = 4;
 }
 
 message FunctionOptions {
@@ -1557,6 +1574,7 @@ message FunctionPutInputsResponse {
 message FunctionPutInputsResponseItem {
   int32 idx = 1;
   string input_id = 2;
+  string input_jwt = 3;
 }
 
 message FunctionPutOutputsItem {
@@ -1576,6 +1594,21 @@ message FunctionPutUserTelemetryRequest {
   bytes data = 1;
   TelemetryEncodingType encoding_type = 2;
   InstrumentationType instrumentation_type = 3;
+}
+
+message FunctionRetryInputsItem {
+  string input_jwt = 1;
+  FunctionInput input = 2;
+}
+
+message FunctionRetryInputsRequest {
+  string function_call_jwt = 1;
+  repeated FunctionRetryInputsItem inputs = 2;
+}
+
+message FunctionRetryInputsResponse {
+  // TODO(ryan): Eventually this will return entry ids, which client
+  // will send back to server to check for lost inputs.
 }
 
 message FunctionRetryPolicy {
@@ -1682,7 +1715,12 @@ message ImageGetOrCreateRequest {
 }
 
 message ImageGetOrCreateResponse {
+  // image_id is set regardless if the image is built (use ImageJoinStreaming to wait for build)
   string image_id = 1;
+  // result of build - only set if the image has finished building (regardless if success or not)
+  GenericResult result = 2;
+  // image metadata - only set if the image has built successfully
+  ImageMetadata metadata = 3;
 }
 
 message ImageJoinStreamingRequest {
@@ -1697,6 +1735,18 @@ message ImageJoinStreamingResponse {
   repeated TaskLogs task_logs = 2;
   string entry_id = 3;
   bool eof = 4;
+  ImageMetadata metadata = 5;  // set on success
+}
+
+
+message ImageMetadata {
+  // The output of `python -VV. Not set if missing
+  optional string python_version_info = 1;
+  // Installed python packages, as listed by by `pip list`.
+  // package name -> version. Empty if missing
+  map<string, string> python_packages = 2;
+  // The work directory of the image, defaulting to "/". Not set if missing
+  optional string workdir = 3;
 }
 
 
@@ -1836,6 +1886,15 @@ message Proxy {
   repeated ProxyIp proxy_ips = 4;
 }
 
+message ProxyCreateRequest {
+  string name = 1 [ (modal.options.audit_target_attr) = true ];
+  string environment_name = 2;
+}
+
+message ProxyCreateResponse {
+  Proxy proxy = 1;
+}
+
 message ProxyDeleteRequest {
   string proxy_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
@@ -1873,23 +1932,6 @@ message ProxyIp {
   ProxyIpStatus status = 2;
   double created_at = 3;
   string environment_name = 4;
-}
-
-message ProxyIpDeleteRequest {
-  string proxy_ip = 1;
-}
-
-message ProxyIpGetOrCreateRequest {
-  optional string proxy_ip = 1;
-}
-
-message ProxyIpGetOrCreateResponse {
-  string proxy_ip = 1;
-  ProxyIpStatus status = 2;
-}
-
-message ProxyIpListResponse {
-  repeated ProxyIp proxy_ips = 1;
 }
 
 message ProxyListResponse {
@@ -1994,6 +2036,7 @@ message Resources {
   GPUConfig gpu_config = 4;
   uint32 memory_mb_max = 5; // MiB
   uint32 ephemeral_disk_mb = 6;  // MiB
+  uint32 milli_cpu_max = 7; // milli CPU cores
 }
 
 message RuntimeInputMessage {
@@ -2017,6 +2060,7 @@ message RuntimeOutputMessage {
   // only stdout / stderr is used
   FileDescriptor file_descriptor = 1;
   string message = 2;
+  bytes message_bytes = 3;
 }
 
 message S3Mount {
@@ -2334,6 +2378,18 @@ message SharedVolumeRemoveFileRequest {
 message SystemErrorMessage {
   SystemErrorCode error_code = 1;
   string error_message = 2;
+}
+
+message TaskClusterHelloRequest {
+  string task_id = 1;
+  string container_ip = 2;
+}
+
+message TaskClusterHelloResponse {
+  string cluster_id = 1;
+  uint32 cluster_rank = 2;
+  // All IP addresses in cluster, ordered by cluster rank
+  repeated string container_ips = 3;
 }
 
 message TaskCurrentInputsResponse {
@@ -2681,6 +2737,7 @@ service ModalClient {
   rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
   rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
   rpc FunctionPutUserTelemetry(FunctionPutUserTelemetryRequest) returns (google.protobuf.Empty);
+  rpc FunctionRetryInputs(FunctionRetryInputsRequest) returns (FunctionRetryInputsResponse);
   rpc FunctionStartPtyShell(google.protobuf.Empty) returns (google.protobuf.Empty);
   rpc FunctionUpdateSchedulingParams(FunctionUpdateSchedulingParamsRequest) returns (FunctionUpdateSchedulingParamsResponse);
 
@@ -2693,16 +2750,10 @@ service ModalClient {
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
 
   // Proxies
+  rpc ProxyCreate(ProxyCreateRequest) returns (ProxyCreateResponse);
   rpc ProxyDelete(ProxyDeleteRequest) returns (google.protobuf.Empty);
   rpc ProxyGet(ProxyGetRequest) returns (ProxyGetResponse);
   rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);
-
-  // Proxy IPs
-  // TODO: remove all methods when migration from ProxyIp -> Proxy is complete.
-  rpc ProxyIpDelete(ProxyIpDeleteRequest) returns (google.protobuf.Empty);
-  rpc ProxyIpGetOrCreate(ProxyIpGetOrCreateRequest) returns (ProxyIpGetOrCreateResponse);
-  rpc ProxyIpList(google.protobuf.Empty) returns (ProxyIpListResponse);
-
   rpc ProxyList(google.protobuf.Empty) returns (ProxyListResponse);
 
   // Queues
@@ -2744,6 +2795,7 @@ service ModalClient {
   rpc SharedVolumeRemoveFile(SharedVolumeRemoveFileRequest) returns (google.protobuf.Empty);
 
   // Tasks
+  rpc TaskClusterHello(TaskClusterHelloRequest) returns (TaskClusterHelloResponse);
   rpc TaskCurrentInputs(google.protobuf.Empty) returns (TaskCurrentInputsResponse);
   rpc TaskList(TaskListRequest) returns (TaskListResponse);
   rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);

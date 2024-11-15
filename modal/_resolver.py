@@ -22,9 +22,9 @@ class StatusRow:
         self._spinner = None
         self._step_node = None
         if progress is not None:
-            from ._output import step_progress
+            from ._output import OutputManager
 
-            self._spinner = step_progress()
+            self._spinner = OutputManager.step_progress()
             self._step_node = progress.add(self._spinner)
 
     def message(self, message):
@@ -32,11 +32,11 @@ class StatusRow:
             self._spinner.update(text=message)
 
     def finish(self, message):
-        from ._output import substep_completed
-
         if self._step_node is not None:
+            from ._output import OutputManager
+
             self._spinner.update(text=message)
-            self._step_node.label = substep_completed(message)
+            self._step_node.label = OutputManager.substep_completed(message)
 
 
 class Resolver:
@@ -59,9 +59,9 @@ class Resolver:
             # doing a try/catch everywhere we want to use it.
             from rich.tree import Tree
 
-            from ._output import step_progress
+            from ._output import OutputManager
 
-            tree = Tree(step_progress("Creating objects..."), guide_style="gray50")
+            tree = Tree(OutputManager.step_progress("Creating objects..."), guide_style="gray50")
         except ImportError:
             tree = None
 
@@ -166,11 +166,9 @@ class Resolver:
         from .output import _get_output_manager
 
         if self._tree and (output_mgr := _get_output_manager()):
-            from ._output import step_completed
-
             with output_mgr.make_live(self._tree):
                 yield
-            self._tree.label = step_completed("Created objects.")
+            self._tree.label = output_mgr.step_completed("Created objects.")
             output_mgr.print(self._tree)
         else:
             yield

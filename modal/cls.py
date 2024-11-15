@@ -326,7 +326,7 @@ class _Cls(_Object, type_prefix="cs"):
         )
 
         for method_name, partial_function in partial_functions.items():
-            method_function = class_service_function._bind_method(user_cls, method_name, partial_function)
+            method_function = class_service_function._bind_method_old(user_cls, method_name, partial_function)
             app._add_function(method_function, is_web_endpoint=partial_function.webhook_config is not None)
             partial_function.wrapped = True
             functions[method_name] = method_function
@@ -388,7 +388,11 @@ class _Cls(_Object, type_prefix="cs"):
         environment_name: Optional[str] = None,
         workspace: Optional[str] = None,
     ) -> "_Cls":
-        """Retrieve a class with a given name and tag.
+        """Reference a Cls from a deployed App by its name.
+
+        In contrast to `modal.Cls.lookup`, this is a lazy method
+        that defers hydrating the local object with metadata from
+        Modal servers until the first time it is actually used.
 
         ```python
         Class = modal.Cls.from_name("other-app", "Class")
@@ -438,7 +442,7 @@ class _Cls(_Object, type_prefix="cs"):
 
     def with_options(
         self: "_Cls",
-        cpu: Optional[float] = None,
+        cpu: Optional[Union[float, Tuple[float, float]]] = None,
         memory: Optional[Union[int, Tuple[int, int]]] = None,
         gpu: GPU_T = None,
         secrets: Collection[_Secret] = (),
@@ -457,7 +461,6 @@ class _Cls(_Object, type_prefix="cs"):
         **Usage:**
 
         ```python notest
-        import modal
         Model = modal.Cls.lookup("my_app", "Model")
         ModelUsingGPU = Model.with_options(gpu="A100")
         ModelUsingGPU().generate.remote(42)  # will run with an A100 GPU
@@ -504,10 +507,14 @@ class _Cls(_Object, type_prefix="cs"):
         environment_name: Optional[str] = None,
         workspace: Optional[str] = None,
     ) -> "_Cls":
-        """Lookup a class with a given name and tag.
+        """Lookup a Cls from a deployed App by its name.
+
+        In contrast to `modal.Cls.from_name`, this is an eager method
+        that will hydrate the local object with metadata from Modal servers.
 
         ```python
         Class = modal.Cls.lookup("other-app", "Class")
+        obj = Class()
         ```
         """
         obj = _Cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name, workspace=workspace)

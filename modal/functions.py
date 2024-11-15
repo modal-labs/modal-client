@@ -47,10 +47,12 @@ from ._utils.async_utils import (
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
+    FunctionCreationStatus,
     FunctionInfo,
     _create_input,
     _process_result,
     _stream_function_call_data,
+    get_function_type,
     is_async,
 )
 from ._utils.grpc_utils import retry_transient_errors
@@ -303,7 +305,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     # TODO: more type annotations
     _info: Optional[FunctionInfo]
-    _all_mounts: Collection[_Mount]
+    _used_local_mounts: typing.FrozenSet[_Mount]  # set at load time, only by loader
     _app: Optional["modal.app._App"] = None
     _obj: Optional["modal.cls._Obj"] = None  # only set for InstanceServiceFunctions and bound instance methods
     _web_url: Optional[str]
@@ -315,6 +317,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _build_args: dict
     _can_use_base_function: bool = False  # whether we need to call FunctionBindParams
     _is_generator: Optional[bool] = None
+    _cluster_size: Optional[int] = None
 
     # when this is the method of a class/object function, invocation of this function
     # should be using another function id and supply the method name in the FunctionInput:
@@ -326,8 +329,43 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _parent: Optional["_Function"] = None
 
     _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
+    _method_functions: Optional[Dict[str, "_Function"]] = None  # Placeholder _Functions for each method
 
     def _bind_method(
+        self,
+        user_cls,
+        method_name: str,
+        partial_function: "modal.partial_function._PartialFunction",
+    ):
+        """mdmd:hidden
+
+        Creates a _Function that is bound to a specific class method name. This _Function is not uniquely tied
+        to any backend function -- its object_id is the function ID of the class service function.
+
+        """
+        class_service_function = self
+        assert class_service_function._info  # has to be a local function to be able to "bind" it
+        assert not class_service_function._is_method  # should not be used on an already bound method placeholder
+        assert not class_service_function._obj  # should only be used on base function / class service function
+        full_name = f"{user_cls.__name__}.{method_name}"
+
+        rep = f"Method({full_name})"
+        fun = _Object.__new__(_Function)
+        fun._init(rep)
+        fun._tag = full_name
+        fun._raw_f = partial_function.raw_f
+        fun._info = FunctionInfo(
+            partial_function.raw_f, user_cls=user_cls, serialized=class_service_function.info.is_serialized()
+        )  # needed for .local()
+        fun._use_method_name = method_name
+        fun._app = class_service_function._app
+        fun._is_generator = partial_function.is_generator
+        fun._cluster_size = partial_function.cluster_size
+        fun._spec = class_service_function._spec
+        fun._is_method = True
+        return fun
+
+    def _bind_method_old(
         self,
         user_cls,
         method_name: str,
@@ -348,15 +386,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         assert not class_service_function._is_method  # should not be used on an already bound method placeholder
         assert not class_service_function._obj  # should only be used on base function / class service function
         full_name = f"{user_cls.__name__}.{method_name}"
-
-        if partial_function.is_generator:
-            function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
-        else:
-            function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
+        function_type = get_function_type(partial_function.is_generator)
 
         async def _load(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
-            from ._output import FunctionCreationStatus  # Deferred import to avoid Rich dependency in container
-
             function_definition = api_pb2.Function(
                 function_name=full_name,
                 webhook_config=partial_function.webhook_config,
@@ -416,7 +448,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fun._use_method_name = method_name
         fun._app = class_service_function._app
         fun._is_generator = partial_function.is_generator
-        fun._all_mounts = class_service_function._all_mounts
+        fun._cluster_size = partial_function.cluster_size
         fun._spec = class_service_function._spec
         fun._is_method = True
         return fun
@@ -446,6 +478,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             )  # TODO: this shouldn't be set when actual parameters are used
             method_placeholder_fun._function_name = full_function_name
             method_placeholder_fun._is_generator = class_bound_method._is_generator
+            method_placeholder_fun._cluster_size = class_bound_method._cluster_size
             method_placeholder_fun._use_method_name = method_name
             method_placeholder_fun._use_function_id = instance_service_function.object_id
             method_placeholder_fun._is_method = True
@@ -481,9 +514,28 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fun._is_method = True
         fun._parent = instance_service_function._parent
         fun._app = class_bound_method._app
-        fun._all_mounts = class_bound_method._all_mounts  # TODO: only used for mount-watching/modal serve
         fun._spec = class_bound_method._spec
         return fun
+
+    def _hydrate_function_and_method_functions(
+        self, function_id: str, client: _Client, handle_metadata: api_pb2.FunctionHandleMetadata
+    ):
+        self._hydrate(function_id, client, handle_metadata)
+        if self._method_functions:
+            # We're here when the function is loaded locally (e.g. _Function.from_args) and we're dealing with a
+            # class service function so the _method_functions mapping is populated with (un-hydrated) _Function objects
+            for method_name, method_handle_metadata in handle_metadata.method_handle_metadata.items():
+                if method_name in self._method_functions:
+                    method_function = self._method_functions[method_name]
+                    method_function._hydrate(function_id, client, method_handle_metadata)
+        elif len(handle_metadata.method_handle_metadata):
+            # We're here when the function is loaded remotely (e.g. _Function.from_name) and we've determined based
+            # on the existence of method_handle_metadata that this is a class service function
+            self._method_functions = {}
+            for method_name, method_handle_metadata in handle_metadata.method_handle_metadata.items():
+                self._method_functions[method_name] = _Function._new_hydrated(
+                    function_id, client, method_handle_metadata
+                )
 
     @staticmethod
     def from_args(
@@ -518,7 +570,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         enable_memory_snapshot: bool = False,
         block_network: bool = False,
         i6pn_enabled: bool = False,
-        group_size: Optional[int] = None,  # Experimental: Grouped functions
+        cluster_size: Optional[int] = None,  # Experimental: Clustered functions
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
         _experimental_buffer_containers: Optional[int] = None,
@@ -526,6 +578,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         _experimental_custom_scaling_factor: Optional[float] = None,
     ) -> None:
         """mdmd:hidden"""
+        # Needed to avoid circular imports
+        from .partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
+
         tag = info.get_tag()
 
         if info.raw_f:
@@ -594,9 +649,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         )
 
         if info.user_cls and not is_auto_snapshot:
-            # Needed to avoid circular imports
-            from .partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
-
             build_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.BUILD).items()
             for k, pf in build_functions:
                 build_function = pf.raw_f
@@ -685,6 +737,23 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if image is not None and not isinstance(image, _Image):
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
+        method_definitions: Optional[Dict[str, api_pb2.MethodDefinition]] = None
+        partial_functions: Dict[str, "modal.partial_function._PartialFunction"] = {}
+        if info.user_cls:
+            method_definitions = {}
+            partial_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.FUNCTION)
+            for method_name, partial_function in partial_functions.items():
+                function_type = get_function_type(partial_function.is_generator)
+                function_name = f"{info.user_cls.__name__}.{method_name}"
+                method_definition = api_pb2.MethodDefinition(
+                    webhook_config=partial_function.webhook_config,
+                    function_type=function_type,
+                    function_name=function_name,
+                )
+                method_definitions[method_name] = method_definition
+
+        function_type = get_function_type(is_generator)
+
         def _deps(only_explicit_mounts=False) -> List[_Object]:
             deps: List[_Object] = list(secrets)
             if only_explicit_mounts:
@@ -714,32 +783,25 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
-            if is_generator:
-                function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
-            else:
-                function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
             assert resolver.app_id
             req = api_pb2.FunctionPrecreateRequest(
                 app_id=resolver.app_id,
                 function_name=info.function_name,
                 function_type=function_type,
-                webhook_config=webhook_config,
                 existing_function_id=existing_object_id or "",
             )
+            if method_definitions:
+                for method_name, method_definition in method_definitions.items():
+                    req.method_definitions[method_name].CopyFrom(method_definition)
+            elif webhook_config:
+                req.webhook_config.CopyFrom(webhook_config)
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
-            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            self._hydrate_function_and_method_functions(response.function_id, resolver.client, response.handle_metadata)
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
-            from ._output import FunctionCreationStatus  # Deferred import to avoid Rich dependency in container
-
             assert resolver.client and resolver.client.stub
             with FunctionCreationStatus(resolver, tag) as function_creation_status:
-                if is_generator:
-                    function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
-                else:
-                    function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
-
                 timeout_secs = timeout
 
                 if app and app.is_interactive and not is_builder_function:
@@ -844,7 +906,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     i6pn_enabled=i6pn_enabled,
                     schedule=schedule.proto_message if schedule is not None else None,
                     snapshot_debug=config.get("snapshot_debug"),
-                    _experimental_group_size=group_size or 0,  # Experimental: Grouped functions
+                    _experimental_group_size=cluster_size or 0,  # Experimental: Clustered functions
                     _experimental_concurrent_cancellations=True,
                     _experimental_buffer_containers=_experimental_buffer_containers or 0,
                     _experimental_proxy_ip=_experimental_proxy_ip,
@@ -872,6 +934,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         use_function_id=function_definition.use_function_id,
                         use_method_name=function_definition.use_method_name,
                         _experimental_group_size=function_definition._experimental_group_size,
+                        _experimental_buffer_containers=function_definition._experimental_buffer_containers,
+                        _experimental_custom_scaling=function_definition._experimental_custom_scaling,
+                        _experimental_proxy_ip=function_definition._experimental_proxy_ip,
+                        snapshot_debug=function_definition.snapshot_debug,
+                        runtime_perf_record=function_definition.runtime_perf_record,
                     )
 
                     ranked_functions = []
@@ -923,8 +990,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         raise InvalidError(f"Function {info.function_name} is too large to deploy.")
                     raise
                 function_creation_status.set_response(response)
-
-            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            local_mounts = set(m for m in all_mounts if m.is_local())  # needed for modal.serve file watching
+            local_mounts |= image._used_local_mounts
+            obj._used_local_mounts = frozenset(local_mounts)
+            self._hydrate_function_and_method_functions(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
@@ -932,12 +1001,18 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._raw_f = info.raw_f
         obj._info = info
         obj._tag = tag
-        obj._all_mounts = all_mounts  # needed for modal.serve file watching
         obj._app = app  # needed for CLI right now
         obj._obj = None
         obj._is_generator = is_generator
+        obj._cluster_size = cluster_size
         obj._is_method = False
         obj._spec = function_spec  # needed for modal shell
+
+        if info.user_cls:
+            obj._method_functions = {}
+            for method_name, partial_function in partial_functions.items():
+                method_function = obj._bind_method(info.user_cls, method_name, partial_function)
+                obj._method_functions[method_name] = method_function
 
         # Used to check whether we should rebuild a modal.Image which uses `run_function`.
         gpus: List[GPU_T] = gpu if isinstance(gpu, list) else [gpu]
@@ -1068,10 +1143,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
     ) -> "_Function":
-        """Retrieve a function with a given name and tag.
+        """Reference a Function from a deployed App by its name.
+
+        In contast to `modal.Function.lookup`, this is a lazy method
+        that defers hydrating the local object with metadata from
+        Modal servers until the first time it is actually used.
 
         ```python
-        other_function = modal.Function.from_name("other-app", "function")
+        f = modal.Function.from_name("other-app", "function")
         ```
         """
 
@@ -1091,7 +1170,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 else:
                     raise
 
-            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            self._hydrate_function_and_method_functions(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Ref({app_name})"
         return cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
@@ -1104,10 +1183,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> "_Function":
-        """Lookup a function with a given name and tag.
+        """Lookup a Function from a deployed App by its name.
+
+        In contrast to `modal.Function.from_name`, this is an eager method
+        that will hydrate the local object with metadata from Modal servers.
 
         ```python
-        other_function = modal.Function.lookup("other-app", "function")
+        f = modal.Function.lookup("other-app", "function")
         ```
         """
         obj = _Function.from_name(app_name, tag, namespace=namespace, environment_name=environment_name)
@@ -1162,11 +1244,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # Overridden concrete implementation of base class method
         self._progress = None
         self._is_generator = None
+        self._cluster_size = None
         self._web_url = None
         self._function_name = None
         self._info = None
-        self._all_mounts = []  # used for file watching
         self._use_function_id = ""
+        self._used_local_mounts = frozenset()
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
@@ -1188,17 +1271,27 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         assert self._function_name, f"Function name must be set before metadata can be retrieved for {self}"
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
-            function_type=(
-                api_pb2.Function.FUNCTION_TYPE_GENERATOR
-                if self._is_generator
-                else api_pb2.Function.FUNCTION_TYPE_FUNCTION
-            ),
+            function_type=get_function_type(self._is_generator),
             web_url=self._web_url or "",
             use_method_name=self._use_method_name,
             use_function_id=self._use_function_id,
             is_method=self._is_method,
             class_parameter_info=self._class_parameter_info,
             definition_id=self._definition_id,
+            method_handle_metadata={
+                method_name: api_pb2.FunctionHandleMetadata(
+                    function_name=method_function._function_name,
+                    function_type=get_function_type(method_function._is_generator),
+                    web_url=method_function._web_url or "",
+                    is_method=method_function._is_method,
+                    definition_id=method_function._definition_id,
+                    use_method_name=method_function._use_method_name,
+                )
+                for method_name, method_function in self._method_functions.items()
+                if method_function._function_name
+            }
+            if self._method_functions
+            else None,
         )
 
     def _check_no_web_url(self, fn_name: str):
@@ -1224,6 +1317,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         """mdmd:hidden"""
         assert self._is_generator is not None
         return self._is_generator
+
+    @property
+    def cluster_size(self) -> int:
+        """mdmd:hidden"""
+        return self._cluster_size or 1
 
     @live_method_gen
     async def _map(
