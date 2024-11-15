@@ -90,8 +90,7 @@ class _Obj:
     def __init__(
         self,
         user_cls: type,
-        class_service_function: Optional[_Function],  # only None for <v0.63 classes
-        # classbound_methods: Dict[str, _Function],
+        class_service_function: Optional[_Function],  # only hydrated for <v0.63 classes
         from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
         args,
@@ -237,7 +236,6 @@ class _Cls(_Object, type_prefix="cs"):
     _class_service_function: Optional[
         _Function
     ]  # The _Function serving *all* methods of the class, used for version >=v0.63
-    # _method_functions: Dict[str, _Function]  # Placeholder _Functions for each method
     _options: Optional[api_pb2.FunctionOptions]
     _callables: Dict[str, Callable[..., Any]]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
@@ -246,7 +244,6 @@ class _Cls(_Object, type_prefix="cs"):
     def _initialize_from_empty(self):
         self._user_cls = None
         self._class_service_function = None
-        # self._method_functions = {}
         self._options = None
         self._callables = {}
         self._from_other_workspace = None
@@ -254,7 +251,6 @@ class _Cls(_Object, type_prefix="cs"):
     def _initialize_from_other(self, other: "_Cls"):
         self._user_cls = other._user_cls
         self._class_service_function = other._class_service_function
-        # self._method_functions = other._method_functions
         self._options = other._options
         self._callables = other._callables
         self._from_other_workspace = other._from_other_workspace
@@ -296,12 +292,6 @@ class _Cls(_Object, type_prefix="cs"):
 
     def _get_metadata(self) -> api_pb2.ClassHandleMetadata:
         class_handle_metadata = api_pb2.ClassHandleMetadata()
-        # for f_name, f in self._method_functions.items():
-        #     class_handle_metadata.methods.append(
-        #         api_pb2.ClassMethod(
-        #             function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata()
-        #         )
-        #     )
         return class_handle_metadata
 
     @staticmethod
@@ -335,16 +325,12 @@ class _Cls(_Object, type_prefix="cs"):
         # validate signature
         _Cls.validate_construction_mechanism(user_cls)
 
-        # functions: Dict[str, _Function] = {}
         partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
             user_cls, _PartialFunctionFlags.FUNCTION
         )
 
         for partial_function in partial_functions.values():
-            # method_function = class_service_function._bind_method_old(user_cls, method_name, partial_function)
-            # app._add_function(method_function, is_web_endpoint=partial_function.webhook_config is not None)
             partial_function.wrapped = True
-            # functions[method_name] = method_function
 
         # Disable the warning that these are not wrapped
         for partial_function in _find_partial_methods_for_user_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():
@@ -356,30 +342,13 @@ class _Cls(_Object, type_prefix="cs"):
         }
 
         def _deps() -> List[_Function]:
-            # return [class_service_function] + list(functions.values())
             return [class_service_function]
 
         async def _load(self: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.ClassCreateRequest(
                 app_id=resolver.app_id, existing_class_id=existing_object_id, only_class_function=True
             )
-            # for f_name, f in self._method_functions.items():
-            #     req.methods.append(
-            #         api_pb2.ClassMethod(
-            #             function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata()
-            #         )
-            #     )
             resp = await resolver.client.stub.ClassCreate(req)
-            # Even though we already have the function_handle_metadata for this method locally,
-            # The RPC is going to replace it with function_handle_metadata derived from the server.
-            # We need to overwrite the definition_id sent back from the server here with the definition_id
-            # previously stored in function metadata, which may have been sent back from FunctionCreate.
-            # The problem is that this metadata propagates back and overwrites the metadata on the Function
-            # object itself. This is really messy. Maybe better to exclusively populate the method metadata
-            # from the function metadata we already have locally? Really a lot to clean up here...
-            # for method in resp.handle_metadata.methods:
-            #     f_metadata = self._method_functions[method.function_name]._get_metadata()
-            #     method.function_handle_metadata.definition_id = f_metadata.definition_id
             self._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"
@@ -387,7 +356,6 @@ class _Cls(_Object, type_prefix="cs"):
         cls._app = app
         cls._user_cls = user_cls
         cls._class_service_function = class_service_function
-        # cls._method_functions = functions
         cls._callables = callables
         cls._from_other_workspace = False
         return cls
@@ -548,7 +516,6 @@ class _Cls(_Object, type_prefix="cs"):
         return _Obj(
             self._user_cls,
             self._class_service_function,
-            # self._class_service_function._method_functions,
             self._from_other_workspace,
             self._options,
             args,
