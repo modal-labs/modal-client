@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import builtins
 import contextlib
 import dataclasses
 import datetime
@@ -19,6 +20,7 @@ import traceback
 import uuid
 from collections import defaultdict
 from pathlib import Path
+from types import ModuleType
 from typing import Any, Dict, Iterator, List, Optional, Tuple, get_args
 
 import aiohttp.web
@@ -1194,6 +1196,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.recv_message()
         await stream.send_message(api_pb2.ProxyGetOrCreateResponse(proxy_id="pr-123"))
 
+    async def ProxyGet(self, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.ProxyGetResponse(proxy=api_pb2.Proxy(proxy_id="pr-123")))
+
     ### Queue
 
     async def QueueClear(self, stream):
@@ -1964,6 +1970,20 @@ async def set_env_client(client):
         yield
     finally:
         Client.set_env_client(None)
+
+
+@pytest.fixture
+def no_rich(monkeypatch):
+    normal_import = __import__
+
+    def import_fail_for_rich(name: str, *args, **kwargs) -> ModuleType:
+        if name.startswith("rich"):
+            raise ModuleNotFoundError("No module named 'rich'")
+        else:
+            return normal_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", import_fail_for_rich)
+    yield
 
 
 @pytest.fixture

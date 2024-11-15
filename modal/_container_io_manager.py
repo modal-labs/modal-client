@@ -81,6 +81,7 @@ class IOContext:
     function_call_ids: List[str]
     finalized_function: FinalizedFunction
 
+    _cancel_issued: bool = False
     _cancel_callback: Optional[Callable[[], None]] = None
 
     def __init__(
@@ -131,10 +132,14 @@ class IOContext:
         self._cancel_callback = cb
 
     def cancel(self):
+        # Ensure we only issue the cancellation once.
+        if self._cancel_issued:
+            return
+
         if self._cancel_callback:
-            cb = self._cancel_callback
-            self._cancel_callback = None
-            cb()
+            logger.warning(f"Received a cancellation signal while processing input {self.input_ids}")
+            self._cancel_issued = True
+            self._cancel_callback()
         else:
             # TODO (elias): This should not normally happen but there is a small chance of a race
             #  between creating a new task for an input and attaching the cancellation callback
@@ -379,7 +384,7 @@ class _ContainerIOManager:
             while self._waiting_for_memory_snapshot:
                 await self.heartbeat_condition.wait()
 
-            request = api_pb2.ContainerHeartbeatRequest(canceled_inputs_return_outputs=True)
+            request = api_pb2.ContainerHeartbeatRequest(canceled_inputs_return_outputs_v2=True)
             response = await retry_transient_errors(
                 self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT
             )
@@ -389,12 +394,9 @@ class _ContainerIOManager:
             input_ids_to_cancel = response.cancel_input_event.input_ids
             if input_ids_to_cancel:
                 if self._max_concurrency > 1:
-                    current_input_ids_to_cancel = [
-                        input_id for input_id in input_ids_to_cancel if input_id in self.current_inputs
-                    ]
-                    await self._push_terminated_outputs(current_input_ids_to_cancel)
-                    for input_id in current_input_ids_to_cancel:
-                        self.current_inputs[input_id].cancel()
+                    for input_id in input_ids_to_cancel:
+                        if input_id in self.current_inputs:
+                            self.current_inputs[input_id].cancel()
 
                 elif self.current_input_id and self.current_input_id in input_ids_to_cancel:
                     # This goes to a registered signal handler for sync Modal functions, or to the
@@ -405,24 +407,9 @@ class _ContainerIOManager:
                     # SIGUSR1 signal should interrupt the main thread where user code is running,
                     # raising an InputCancellation() exception. On async functions, the signal should
                     # reach a handler in SignalHandlingEventLoop, which cancels the task.
-                    await self._push_terminated_outputs([self.current_input_id])
                     os.kill(os.getpid(), signal.SIGUSR1)
             return True
         return False
-
-    async def _push_terminated_outputs(self, input_ids: List[str]) -> None:
-        outputs = [
-            api_pb2.FunctionPutOutputsItem(
-                input_id=input_id,
-                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED),
-            )
-            for input_id in input_ids
-        ]
-        await retry_transient_errors(
-            self._client.stub.FunctionPutOutputs,
-            api_pb2.FunctionPutOutputsRequest(outputs=outputs),
-            max_retries=None,  # Retry indefinitely, trying every 1s.
-        )
 
     @asynccontextmanager
     async def heartbeats(self, wait_for_mem_snap: bool) -> AsyncGenerator[None, None]:
@@ -792,11 +779,19 @@ class _ContainerIOManager:
             #    for the yield. Typically on event loop shutdown
             raise
         except (InputCancellation, asyncio.CancelledError):
-            # just skip creating any output for this input and keep going with the next instead
-            # it should have been marked as cancelled already in the backend at this point so it
-            # won't be retried
-            logger.warning(f"Received a cancellation signal while processing input {io_context.input_ids}")
-            await self.exit_context(started_at, io_context.input_ids)
+            # Create terminated outputs for these inputs to signal that the cancellations have been completed.
+            results = [
+                api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
+                for _ in io_context.input_ids
+            ]
+            await self._push_outputs(
+                io_context=io_context,
+                started_at=started_at,
+                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                results=results,
+            )
+            self.exit_context(started_at, io_context.input_ids)
+            logger.warning(f"Successfully canceled input {io_context.input_ids}")
             return
         except BaseException as exc:
             if isinstance(exc, ImportError):
@@ -842,9 +837,9 @@ class _ContainerIOManager:
                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                 results=results,
             )
-            await self.exit_context(started_at, io_context.input_ids)
+            self.exit_context(started_at, io_context.input_ids)
 
-    async def exit_context(self, started_at, input_ids: List[str]):
+    def exit_context(self, started_at, input_ids: List[str]):
         self.total_user_time += time.time() - started_at
         self.calls_completed += 1
 
@@ -878,7 +873,7 @@ class _ContainerIOManager:
             data_format=data_format,
             results=results,
         )
-        await self.exit_context(started_at, io_context.input_ids)
+        self.exit_context(started_at, io_context.input_ids)
 
     async def memory_restore(self) -> None:
         # Busy-wait for restore. `/__modal/restore-state.json` is created
@@ -918,21 +913,6 @@ class _ContainerIOManager:
         self.current_input_id = None
         self.current_inputs = {}
         self.current_input_started_at = None
-
-        # Patch torch to ensure it doesn't return CUDA unavailibility due to
-        # cached queries that executed during snapshot process. ref: MOD-3257
-        #
-        # perf: scanning sys.modules keys before import to avoid slow PYTHONPATH scanning.
-        if "torch" in sys.modules:
-            try:
-                sys.modules["torch"].cuda.device_count = sys.modules["torch"].cuda._device_count_nvml
-            # Wide-open except to catch anything. We don't want to crash here.
-            except Exception as exc:
-                logger.warning(
-                    f"failed to patch 'torch.cuda.device_count' during snapshot restore: {exc}. "
-                    "CUDA device availability may be inaccurate."
-                )
-
         self._client = await _Client.from_env()
 
     async def memory_snapshot(self) -> None:

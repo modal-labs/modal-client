@@ -1106,20 +1106,20 @@ def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
     assert get_hash(img) == "385413df75dffe57f41d4c8eef45ce6cec6de54dda348f3b93c3b7d36fdf0973"
 
     img = Image.from_registry("ubuntu:22.04")
-    assert get_hash(img) == "40ff7675fd5ecca1d851887c6a3553008704f901748de1fb3c02035eb9c46f56"
+    assert get_hash(img) == "aa4b17f73658c5ae09ca8dfce9419cd50c6179ecf015208151cc2c7109ed8e40"
 
     img = Image.from_dockerfile(test_dir / "supports" / "test-dockerfile")
-    assert get_hash(img) == "acfe80cb17592600c62578e9e38fab25450f962104ee7fe4e128585ea6fbfe33"
+    assert get_hash(img) == "8997493d8ff7b8d25fc5c1943626d262afacc64f14ad91edbdc4536600528e3d"
 
     img = Image.micromamba()
     if sys.version_info[:2] == (3, 11):
-        assert get_hash(img) == "83fbb2ccdb1c55b6e390be4fcd0b846534424f178df0134a3b3ee999912f9a3e"
+        assert get_hash(img) == "4a0241417a2e67d995cce36c0ee4907ec249b008e05658eb98ce0a655e7e9861"
     elif sys.version_info[:2] == (3, 10):
         # Assert that we follow the local Python, which is a new behavior in 2024.04
-        assert get_hash(img) == "4461541c726a61ba05b74b282649de56c9e99eca44337c08bba202fe19a42383"
+        assert get_hash(img) == "e9d42609633d0e24822bcb77d0ca4de5fc706df1e38a8eebe1b322fb1964dafe"
 
     img = Image.micromamba(python_version="3.12")
-    assert get_hash(img) == "180fb16300d4a8bbb03bed534a297350e5e8147fb240f34e86164bb7d884481c"
+    assert get_hash(img) == "bcccccc3dda15c813f73be58514aaadfe270a0e9a0ecb1817dea630bdb31e357"
 
     base = Image.debian_slim(python_version="3.12")
 
