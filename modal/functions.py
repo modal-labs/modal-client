@@ -1198,7 +1198,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     use_method_name=method_function._use_method_name,
                 )
                 for method_name, method_function in self._method_functions.items()
-            },
+                if method_function._function_name
+            }
+            if self._method_functions
+            else None,
         )
 
     def _check_no_web_url(self, fn_name: str):
