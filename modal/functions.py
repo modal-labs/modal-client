@@ -329,8 +329,43 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _parent: Optional["_Function"] = None
 
     _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
+    _method_functions: Optional[Dict[str, "_Function"]] = None  # Placeholder _Functions for each method
 
     def _bind_method(
+        self,
+        user_cls,
+        method_name: str,
+        partial_function: "modal.partial_function._PartialFunction",
+    ):
+        """mdmd:hidden
+
+        Creates a _Function that is bound to a specific class method name. This _Function is not uniquely tied
+        to any backend function -- its object_id is the function ID of the class service function.
+
+        """
+        class_service_function = self
+        assert class_service_function._info  # has to be a local function to be able to "bind" it
+        assert not class_service_function._is_method  # should not be used on an already bound method placeholder
+        assert not class_service_function._obj  # should only be used on base function / class service function
+        full_name = f"{user_cls.__name__}.{method_name}"
+
+        rep = f"Method({full_name})"
+        fun = _Object.__new__(_Function)
+        fun._init(rep)
+        fun._tag = full_name
+        fun._raw_f = partial_function.raw_f
+        fun._info = FunctionInfo(
+            partial_function.raw_f, user_cls=user_cls, serialized=class_service_function.info.is_serialized()
+        )  # needed for .local()
+        fun._use_method_name = method_name
+        fun._app = class_service_function._app
+        fun._is_generator = partial_function.is_generator
+        fun._cluster_size = partial_function.cluster_size
+        fun._spec = class_service_function._spec
+        fun._is_method = True
+        return fun
+
+    def _bind_method_old(
         self,
         user_cls,
         method_name: str,
@@ -683,11 +718,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
         method_definitions: Optional[Dict[str, api_pb2.MethodDefinition]] = None
+        partial_functions: Dict[str, "modal.partial_function._PartialFunction"] = {}
         if info.user_cls:
             method_definitions = {}
-            partial_functions: Dict[
-                str, "modal.partial_function._PartialFunction"
-            ] = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.FUNCTION)
+            partial_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.FUNCTION)
             for method_name, partial_function in partial_functions.items():
                 function_type = get_function_type(partial_function.is_generator)
                 function_name = f"{info.user_cls.__name__}.{method_name}"
@@ -953,6 +987,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._cluster_size = cluster_size
         obj._is_method = False
         obj._spec = function_spec  # needed for modal shell
+
+        if info.user_cls:
+            obj._method_functions = {}
+            for method_name, partial_function in partial_functions.items():
+                method_function = obj._bind_method(info.user_cls, method_name, partial_function)
+                obj._method_functions[method_name] = method_function
 
         # Used to check whether we should rebuild a modal.Image which uses `run_function`.
         gpus: List[GPU_T] = gpu if isinstance(gpu, list) else [gpu]
