@@ -35,6 +35,7 @@ from ._asgi import (
     webhook_asgi_app,
     wsgi_app_wrapper,
 )
+from ._clustered_functions import initialize_clustered_function
 from ._container_io_manager import ContainerIOManager, FinalizedFunction, IOContext, UserException, _ContainerIOManager
 from ._proxy_tunnel import proxy_tunnel
 from ._serialization import deserialize, deserialize_proto_params
@@ -49,9 +50,8 @@ from .app import App, _App
 from .client import Client, _Client
 from .cls import Cls, Obj
 from .config import logger
-from .exception import ExecutionError, InputCancellation, InvalidError, deprecation_warning
+from .exception import ExecutionError, InputCancellation, InvalidError
 from .execution_context import _set_current_context_ids
-from .experimental import GroupedFunction
 from .functions import Function, _Function
 from .partial_function import (
     _find_callables_for_obj,
@@ -543,8 +543,6 @@ def import_single_function_service(
             # This is a function
             cls = None
             f = getattr(module, qual_name)
-            if isinstance(f, GroupedFunction):
-                f = f.get_underlying_function()
             if isinstance(f, Function):
                 function = synchronizer._translate_in(f)
                 user_defined_callable = function.get_raw_f()
@@ -816,6 +814,14 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 metadata: Message = container_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, _client, metadata)
 
+        # Initialize clustered functions.
+        if function_def._experimental_group_size > 0:
+            initialize_clustered_function(
+                client,
+                container_args.task_id,
+                function_def._experimental_group_size,
+            )
+
         # Identify all "enter" methods that need to run before we snapshot.
         if service.user_cls_instance is not None and not is_auto_snapshot:
             pre_snapshot_methods = _find_callables_for_obj(
@@ -898,14 +904,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
 if __name__ == "__main__":
     logger.debug("Container: starting")
-
-    # Check and warn on deprecated Python version
-    if sys.version_info[:2] == (3, 8):
-        msg = (
-            "You are using Python 3.8 in your remote environment. Modal will soon drop support for this version,"
-            " and you will be unable to use this Image. Please update your Image definition."
-        )
-        deprecation_warning((2024, 5, 2), msg, show_source=False, pending=True)
 
     container_args = api_pb2.ContainerArguments()
     container_args.ParseFromString(base64.b64decode(sys.argv[1]))

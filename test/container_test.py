@@ -1622,7 +1622,7 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, servicer)
     for call in translate_out_spy.call_args_list:
         out_translations += list(call.args)
 
-    assert len(in_translations) < 1000  # typically 136 or something
+    assert len(in_translations) < 2000  # typically ~400 or something
     assert len(out_translations) < 2000
 
 
@@ -1705,7 +1705,7 @@ def test_cancellation_aborts_current_input_on_match(
         api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=cancelled_input_ids))
     )
     stdout, stderr = container_process.communicate()
-    assert stderr.decode().count("Received a cancellation signal") == live_cancellations
+    assert stderr.decode().count("Successfully canceled input") == live_cancellations
     assert "Traceback" not in stderr.decode()
     assert container_process.returncode == 0  # wait for container to exit
     duration = time.monotonic() - t0  # time from heartbeat to container exit

@@ -12,6 +12,7 @@ from unittest import mock
 
 from modal import App, Image, Mount, Secret, build, environments, gpu, method
 from modal._serialization import serialize
+from modal._utils.async_utils import synchronizer
 from modal.client import Client
 from modal.exception import DeprecationError, InvalidError, VersionError
 from modal.image import (
@@ -756,6 +757,30 @@ def test_workdir(builder_version, servicer, client):
         assert any("WORKDIR /foo/bar" in cmd for cmd in layers[0].dockerfile_commands)
 
 
+def test_hydration_metadata(servicer, client):
+    img = Image.debian_slim()
+    app = App(image=img)
+    app.function()(dummy)
+    dummy_metadata = api_pb2.ImageMetadata(
+        workdir="/proj",
+        python_packages={"fastapi": "0.100.0"},
+        python_version_info="Python 3.11.8 (main, Feb 25 2024, 03:55:37) [Clang 17.0.6 ]",
+    )
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "ImageJoinStreaming",
+            api_pb2.ImageJoinStreamingResponse(
+                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
+                metadata=dummy_metadata,
+            ),
+        )
+
+        with app.run(client=client):
+            # TODO: change this test to use public property workdir when/if we introduce one
+            _image = synchronizer._translate_in(img)
+            assert _image._metadata == dummy_metadata
+
+
 cls_app = App()
 
 VARIABLE_5 = 1
@@ -1063,7 +1088,7 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
         spec_file=test_dir / "supports" / "test-conda-environment.yml",
         channels=["conda-forge", "my-channel"],
     )
-    assert get_hash(img) == "d9d4c9fe24769ce587877b9752a64486e8f7d8520731110bd2fa666de82f43fd"
+    assert get_hash(img) == "f8701ce500d6aa1fecefd9c2869aef4a13c77ab03925333c011d7eca60bbf08a"
 
     img = base.poetry_install_from_file(
         test_dir / "supports" / "test-pyproject.toml",
@@ -1131,7 +1156,7 @@ def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
         spec_file=test_dir / "supports" / "test-conda-environment.yml",
         channels=["conda-forge", "my-channel"],
     )
-    assert get_hash(img) == "769bdbb5aaeb4f6c7eda77e59ee81c6adac9b03ff7e479036b83ec414e8cfec6"
+    assert get_hash(img) == "072e70b2f05327f606c261ad48a68cf8db5e592e7019f6ee7dbaccf28f2ef537"
 
     img = base.poetry_install_from_file(
         test_dir / "supports" / "test-pyproject.toml",

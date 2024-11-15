@@ -137,6 +137,7 @@ class IOContext:
             return
 
         if self._cancel_callback:
+            logger.warning(f"Received a cancellation signal while processing input {self.input_ids}")
             self._cancel_issued = True
             self._cancel_callback()
         else:
@@ -406,6 +407,7 @@ class _ContainerIOManager:
                     # SIGUSR1 signal should interrupt the main thread where user code is running,
                     # raising an InputCancellation() exception. On async functions, the signal should
                     # reach a handler in SignalHandlingEventLoop, which cancels the task.
+                    logger.warning(f"Received a cancellation signal while processing input {self.current_input_id}")
                     os.kill(os.getpid(), signal.SIGUSR1)
             return True
         return False
@@ -779,7 +781,6 @@ class _ContainerIOManager:
             raise
         except (InputCancellation, asyncio.CancelledError):
             # Create terminated outputs for these inputs to signal that the cancellations have been completed.
-            logger.warning(f"Received a cancellation signal while processing input {io_context.input_ids}")
             results = [
                 api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
                 for _ in io_context.input_ids
@@ -790,7 +791,8 @@ class _ContainerIOManager:
                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                 results=results,
             )
-            await self.exit_context(started_at, io_context.input_ids)
+            self.exit_context(started_at, io_context.input_ids)
+            logger.warning(f"Successfully canceled input {io_context.input_ids}")
             return
         except BaseException as exc:
             if isinstance(exc, ImportError):
@@ -836,9 +838,9 @@ class _ContainerIOManager:
                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                 results=results,
             )
-            await self.exit_context(started_at, io_context.input_ids)
+            self.exit_context(started_at, io_context.input_ids)
 
-    async def exit_context(self, started_at, input_ids: List[str]):
+    def exit_context(self, started_at, input_ids: List[str]):
         self.total_user_time += time.time() - started_at
         self.calls_completed += 1
 
@@ -872,7 +874,7 @@ class _ContainerIOManager:
             data_format=data_format,
             results=results,
         )
-        await self.exit_context(started_at, io_context.input_ids)
+        self.exit_context(started_at, io_context.input_ids)
 
     async def memory_restore(self) -> None:
         # Busy-wait for restore. `/__modal/restore-state.json` is created
