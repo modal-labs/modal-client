@@ -317,7 +317,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _build_args: dict
     _can_use_base_function: bool = False  # whether we need to call FunctionBindParams
     _is_generator: Optional[bool] = None
-    _definition_id: str
     _cluster_size: Optional[int] = None
 
     # when this is the method of a class/object function, invocation of this function
@@ -1162,8 +1161,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._web_url = None
         self._function_name = None
         self._info = None
-        self._use_method_name = ""
-        self._definition_id = ""
         self._used_local_mounts = frozenset()
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
