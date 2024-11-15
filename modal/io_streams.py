@@ -298,11 +298,11 @@ class _StreamReader(Generic[T]):
         if value is None:
             raise StopAsyncIteration
 
-        # Sandbox logs are strings by default
+        # Sandbox logs are strings
         if isinstance(value, str):
             return value
 
-        # Container process logs are bytes by default
+        # Container process logs are bytes
         if self._text:
             return value.decode("utf-8")
         else:
