@@ -509,6 +509,10 @@ class _App:
         self._add_object(function.tag, function)
         if function._is_web_endpoint:
             self._web_endpoints.append(function.tag)
+        if function._method_functions:
+            for method_function in function._method_functions.values():
+                if method_function._is_web_endpoint:
+                    self._web_endpoints.append(method_function.tag)
 
     def _init_container(self, client: _Client, running_app: RunningApp):
         self._app_id = running_app.app_id
