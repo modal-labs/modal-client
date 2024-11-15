@@ -1413,6 +1413,7 @@ message FunctionGetInputsItem {
   bool kill_switch = 3;
   reserved 4; // previously used
   string function_call_id = 5;
+  FunctionCallInvocationType function_call_invocation_type = 6;
 }
 
 message FunctionGetInputsRequest {
