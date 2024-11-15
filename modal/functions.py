@@ -52,6 +52,7 @@ from ._utils.function_utils import (
     _create_input,
     _process_result,
     _stream_function_call_data,
+    get_function_type,
     is_async,
 )
 from ._utils.grpc_utils import retry_transient_errors
@@ -350,11 +351,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         assert not class_service_function._is_method  # should not be used on an already bound method placeholder
         assert not class_service_function._obj  # should only be used on base function / class service function
         full_name = f"{user_cls.__name__}.{method_name}"
-
-        if partial_function.is_generator:
-            function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
-        else:
-            function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
+        function_type = get_function_type(partial_function.is_generator)
 
         async def _load(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
             function_definition = api_pb2.Function(
@@ -687,6 +684,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if image is not None and not isinstance(image, _Image):
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
+        function_type = get_function_type(is_generator)
+
         def _deps(only_explicit_mounts=False) -> List[_Object]:
             deps: List[_Object] = list(secrets)
             if only_explicit_mounts:
@@ -716,10 +715,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         async def _preload(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
-            if is_generator:
-                function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
-            else:
-                function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
             assert resolver.app_id
             req = api_pb2.FunctionPrecreateRequest(
@@ -735,11 +730,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
             with FunctionCreationStatus(resolver, tag) as function_creation_status:
-                if is_generator:
-                    function_type = api_pb2.Function.FUNCTION_TYPE_GENERATOR
-                else:
-                    function_type = api_pb2.Function.FUNCTION_TYPE_FUNCTION
-
                 timeout_secs = timeout
 
                 if app and app.is_interactive and not is_builder_function:
@@ -872,6 +862,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         use_function_id=function_definition.use_function_id,
                         use_method_name=function_definition.use_method_name,
                         _experimental_group_size=function_definition._experimental_group_size,
+                        _experimental_buffer_containers=function_definition._experimental_buffer_containers,
+                        _experimental_custom_scaling=function_definition._experimental_custom_scaling,
+                        _experimental_proxy_ip=function_definition._experimental_proxy_ip,
+                        snapshot_debug=function_definition.snapshot_debug,
+                        runtime_perf_record=function_definition.runtime_perf_record,
                     )
 
                     ranked_functions = []
@@ -1070,10 +1065,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
     ) -> "_Function":
-        """Retrieve a function with a given name and tag.
+        """Reference a Function from a deployed App by its name.
+
+        In contast to `modal.Function.lookup`, this is a lazy method
+        that defers hydrating the local object with metadata from
+        Modal servers until the first time it is actually used.
 
         ```python
-        other_function = modal.Function.from_name("other-app", "function")
+        f = modal.Function.from_name("other-app", "function")
         ```
         """
 
@@ -1106,10 +1105,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> "_Function":
-        """Lookup a function with a given name and tag.
+        """Lookup a Function from a deployed App by its name.
+
+        In contrast to `modal.Function.from_name`, this is an eager method
+        that will hydrate the local object with metadata from Modal servers.
 
         ```python
-        other_function = modal.Function.lookup("other-app", "function")
+        f = modal.Function.lookup("other-app", "function")
         ```
         """
         obj = _Function.from_name(app_name, tag, namespace=namespace, environment_name=environment_name)
@@ -1191,11 +1193,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         assert self._function_name, f"Function name must be set before metadata can be retrieved for {self}"
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
-            function_type=(
-                api_pb2.Function.FUNCTION_TYPE_GENERATOR
-                if self._is_generator
-                else api_pb2.Function.FUNCTION_TYPE_FUNCTION
-            ),
+            function_type=get_function_type(self._is_generator),
             web_url=self._web_url or "",
             use_method_name=self._use_method_name,
             use_function_id=self._use_function_id,
