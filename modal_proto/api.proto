@@ -1922,23 +1922,6 @@ message ProxyIp {
   string environment_name = 4;
 }
 
-message ProxyIpDeleteRequest {
-  string proxy_ip = 1;
-}
-
-message ProxyIpGetOrCreateRequest {
-  optional string proxy_ip = 1;
-}
-
-message ProxyIpGetOrCreateResponse {
-  string proxy_ip = 1;
-  ProxyIpStatus status = 2;
-}
-
-message ProxyIpListResponse {
-  repeated ProxyIp proxy_ips = 1;
-}
-
 message ProxyListResponse {
   repeated Proxy proxies = 1;
 }
@@ -2759,13 +2742,6 @@ service ModalClient {
   rpc ProxyDelete(ProxyDeleteRequest) returns (google.protobuf.Empty);
   rpc ProxyGet(ProxyGetRequest) returns (ProxyGetResponse);
   rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);
-
-  // Proxy IPs
-  // TODO: remove all methods when migration from ProxyIp -> Proxy is complete.
-  rpc ProxyIpDelete(ProxyIpDeleteRequest) returns (google.protobuf.Empty);
-  rpc ProxyIpGetOrCreate(ProxyIpGetOrCreateRequest) returns (ProxyIpGetOrCreateResponse);
-  rpc ProxyIpList(google.protobuf.Empty) returns (ProxyIpListResponse);
-
   rpc ProxyList(google.protobuf.Empty) returns (ProxyListResponse);
 
   // Queues
