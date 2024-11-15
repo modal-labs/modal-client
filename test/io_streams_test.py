@@ -22,7 +22,7 @@ def test_stream_reader(servicer, client):
         ctx.set_responder("SandboxGetLogs", sandbox_get_logs)
 
         with enable_output():
-            stdout = StreamReader(
+            stdout: StreamReader[str] = StreamReader(
                 file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
                 object_id="sb-123",
                 object_type="sandbox",
@@ -54,7 +54,7 @@ def test_stream_reader_processed(servicer, client):
         ctx.set_responder("SandboxGetLogs", sandbox_get_logs)
 
         with enable_output():
-            stdout = StreamReader(
+            stdout: StreamReader[str] = StreamReader(
                 file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
                 object_id="sb-123",
                 object_type="sandbox",
@@ -88,7 +88,7 @@ def test_stream_reader_processed_multiple(servicer, client):
         ctx.set_responder("SandboxGetLogs", sandbox_get_logs)
 
         with enable_output():
-            stdout = StreamReader(
+            stdout: StreamReader[str] = StreamReader(
                 file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
                 object_id="sb-123",
                 object_type="sandbox",
@@ -134,7 +134,7 @@ def test_stream_reader_processed_partial_lines(servicer, client):
         ctx.set_responder("SandboxGetLogs", sandbox_get_logs)
 
         with enable_output():
-            stdout = StreamReader(
+            stdout: StreamReader[str] = StreamReader(
                 file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
                 object_id="sb-123",
                 object_type="sandbox",
@@ -168,7 +168,7 @@ def test_stream_reader_bytes_mode(servicer, client):
         ctx.set_responder("SandboxGetLogs", sandbox_get_logs)
 
         with enable_output():
-            stdout = StreamReader(
+            stdout: StreamReader[bytes] = StreamReader(
                 file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
                 object_id="sb-123",
                 object_type="sandbox",
