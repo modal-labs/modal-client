@@ -626,6 +626,9 @@ class _Image(_Object, type_prefix="im"):
             #  + make default remote_path="./"
             raise InvalidError("image.attach_local_file() currently only supports absolute remote_path values")
 
+        if remote_path.endswith("/"):
+            remote_path = remote_path + Path(local_path).name
+
         mount = _Mount.from_local_file(local_path, remote_path)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 

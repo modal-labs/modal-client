@@ -630,7 +630,7 @@ def tmp_path_with_content(tmp_path):
     [
         ("/place/nice.txt", "/place/nice.txt"),
         # Not supported yet, but soon:
-        # ("/place/", "/place/data.txt"),  # use original basename if destination has a trailing slash
+        ("/place/", "/place/data.txt"),  # use original basename if destination has a trailing slash
         # ("output.txt", "/proj/output.txt")  # workdir relative target
         # (None, "/proj/data.txt")  # default target - basename in current directory
     ],
