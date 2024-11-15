@@ -407,6 +407,7 @@ class _ContainerIOManager:
                     # SIGUSR1 signal should interrupt the main thread where user code is running,
                     # raising an InputCancellation() exception. On async functions, the signal should
                     # reach a handler in SignalHandlingEventLoop, which cancels the task.
+                    logger.warning(f"Received a cancellation signal while processing input {self.current_input_id}")
                     os.kill(os.getpid(), signal.SIGUSR1)
             return True
         return False
