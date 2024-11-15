@@ -429,6 +429,26 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fun._spec = class_bound_method._spec
         return fun
 
+    def _hydrate_function_and_method_functions(
+        self, function_id: str, client: _Client, handle_metadata: api_pb2.FunctionHandleMetadata
+    ):
+        self._hydrate(function_id, client, handle_metadata)
+        if self._method_functions:
+            # We're here when the function is loaded locally (e.g. _Function.from_args) and we're dealing with a
+            # class service function so the _method_functions mapping is populated with (un-hydrated) _Function objects
+            for method_name, method_handle_metadata in handle_metadata.method_handle_metadata.items():
+                if method_name in self._method_functions:
+                    method_function = self._method_functions[method_name]
+                    method_function._hydrate(function_id, client, method_handle_metadata)
+        elif len(handle_metadata.method_handle_metadata):
+            # We're here when the function is loaded remotely (e.g. _Function.from_name) and we've determined based
+            # on the existence of method_handle_metadata that this is a class service function
+            self._method_functions = {}
+            for method_name, method_handle_metadata in handle_metadata.method_handle_metadata.items():
+                self._method_functions[method_name] = _Function._new_hydrated(
+                    function_id, client, method_handle_metadata
+                )
+
     @staticmethod
     def from_args(
         info: FunctionInfo,
@@ -689,11 +709,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             elif webhook_config:
                 req.webhook_config.CopyFrom(webhook_config)
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
-            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
-            for method_name, method_function in self._method_functions.items():
-                method_function._hydrate(
-                    response.function_id, resolver.client, response.handle_metadata.method_handle_metadata[method_name]
-                )
+            self._hydrate_function_and_method_functions(response.function_id, resolver.client, response.handle_metadata)
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
@@ -832,6 +848,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         use_function_id=function_definition.use_function_id,
                         use_method_name=function_definition.use_method_name,
                         _experimental_group_size=function_definition._experimental_group_size,
+                        _experimental_buffer_containers=function_definition._experimental_buffer_containers,
+                        _experimental_custom_scaling=function_definition._experimental_custom_scaling,
+                        _experimental_proxy_ip=function_definition._experimental_proxy_ip,
+                        snapshot_debug=function_definition.snapshot_debug,
+                        runtime_perf_record=function_definition.runtime_perf_record,
                     )
 
                     ranked_functions = []
@@ -886,11 +907,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             local_mounts = set(m for m in all_mounts if m.is_local())  # needed for modal.serve file watching
             local_mounts |= image._used_local_mounts
             obj._used_local_mounts = frozenset(local_mounts)
-            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
-            for method_name, method_function in self._method_functions.items():
-                method_function._hydrate(
-                    response.function_id, resolver.client, response.handle_metadata.method_handle_metadata[method_name]
-                )
+            self._hydrate_function_and_method_functions(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
@@ -1067,32 +1084,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 else:
                     raise
 
-            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
-            for method_name, method_handle_metadata in response.handle_metadata.method_handle_metadata.items():
-                # Construct the method function
-                async def _load(
-                    method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]
-                ):
-                    pass
-
-                class_name = tag[:-2]  # remove the .* suffix from the class service function tag to get the class name
-                full_name = f"{class_name}.{method_name}"
-                rep = f"Method({full_name})"
-                method_function = _Function._from_loader(_load, rep)
-                method_function._tag = full_name
-                # fun._raw_f = partial_function.raw_f
-                # fun._info = FunctionInfo(
-                #     partial_function.raw_f, user_cls=user_cls, serialized=class_service_function.info.is_serialized()
-                # )  # needed for .local()
-                method_function._use_method_name = method_name
-                method_function._app = self._app
-                # fun._is_generator = partial_function.is_generator
-                method_function._all_mounts = self._all_mounts
-                method_function._spec = self._spec
-                method_function._is_method = True
-                method_function._definition_id = self._definition_id
-                method_function._hydrate(response.function_id, resolver.client, method_handle_metadata)
-                self._method_functions[method_name] = method_function
+            self._hydrate_function_and_method_functions(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Ref({tag})"
         return cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
@@ -1170,9 +1162,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._web_url = None
         self._function_name = None
         self._info = None
-        # self._use_function_id = ""
         self._use_method_name = ""
-        self._method_functions = {}
         self._definition_id = ""
         self._used_local_mounts = frozenset()
 
@@ -1196,7 +1186,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             function_type=get_function_type(self._is_generator),
             web_url=self._web_url or "",
             use_method_name=self._use_method_name,
-            # use_function_id=self._use_function_id,
             is_method=self._is_method,
             class_parameter_info=self._class_parameter_info,
             definition_id=self._definition_id,
