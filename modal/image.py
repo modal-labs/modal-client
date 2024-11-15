@@ -328,10 +328,11 @@ class _Image(_Object, type_prefix="im"):
             raise InvalidError(
                 textwrap.dedent(
                     """
-            An image tried to run a build step after using `image.add_*` to include local files.
+            An image tried to run a build step after using `image.attach_local_*` to include local files.
 
-            Run `image.add_*` commands last in your image build to avoid rebuilding images with every local filechange.
-            Modal will then mount these files as a thin layer when starting your container, saving build time.
+            Run `image.attach_local_*` commands last in your image build to avoid rebuilding images with every local
+            filechange. Modal will then mount these files as a thin layer when starting your container, saving build
+            time.
 
             If you need these files earlier in the build, set `copy=True` to copy the files directly into the image,
             though this will increase build time.
