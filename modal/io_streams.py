@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
-from typing import TYPE_CHECKING, AsyncGenerator, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, AsyncGenerator, Generic, List, Literal, Optional, Tuple, TypeVar, Union
 
 from grpclib import Status
 from grpclib.exceptions import GRPCError, StreamTerminatedError
@@ -16,9 +16,11 @@ from .stream_type import StreamType
 if TYPE_CHECKING:
     pass
 
+T = TypeVar("T", str, bytes)
+
 
 async def _sandbox_logs_iterator(
-    sandbox_id: str, file_descriptor: int, last_entry_id: Optional[str], client: _Client
+    sandbox_id: str, file_descriptor: api_pb2.FileDescriptor.ValueType, last_entry_id: Optional[str], client: _Client
 ) -> AsyncGenerator[Tuple[Optional[str], str], None]:
     req = api_pb2.SandboxGetLogsRequest(
         sandbox_id=sandbox_id,
@@ -37,22 +39,20 @@ async def _sandbox_logs_iterator(
 
 
 async def _container_process_logs_iterator(
-    process_id: str, file_descriptor: int, client: _Client
-) -> AsyncGenerator[Optional[str], None]:
+    process_id: str, file_descriptor: api_pb2.FileDescriptor.ValueType, client: _Client
+) -> AsyncGenerator[Optional[bytes], None]:
     req = api_pb2.ContainerExecGetOutputRequest(
-        exec_id=process_id,
-        timeout=55,
-        file_descriptor=file_descriptor,
+        exec_id=process_id, timeout=55, file_descriptor=file_descriptor, get_raw_bytes=True
     )
     async for batch in client.stub.ContainerExecGetOutput.unary_stream(req):
         if batch.HasField("exit_code"):
             yield None
             break
         for item in batch.items:
-            yield item.message
+            yield item.message_bytes
 
 
-class _StreamReader:
+class _StreamReader(Generic[T]):
     """Provides an interface to buffer and fetch logs from a stream (`stdout` or `stderr`).
 
     As an asynchronous iterable, the object supports the async for statement.
@@ -75,25 +75,25 @@ class _StreamReader:
 
     def __init__(
         self,
-        file_descriptor: int,
+        file_descriptor: api_pb2.FileDescriptor.ValueType,
         object_id: str,
         object_type: Literal["sandbox", "container_process"],
         client: _Client,
         stream_type: StreamType = StreamType.PIPE,
         text: bool = True,
-        by_line: bool = False,
+        bufsize: Literal[-1, 1] = -1,  # -1 auto, 1 line-buffered
     ) -> None:
         """mdmd:hidden"""
-
         self._file_descriptor = file_descriptor
         self._object_type = object_type
         self._object_id = object_id
         self._client = client
         self._stream = None
-        self._last_entry_id = None
-        self._line_buffer = ""
+        self._last_entry_id: Optional[str] = None
+        self._string_line_buffer: str = ""
+        self._bytes_line_buffer: bytes = b""
         self._text = text
-        self._by_line = by_line
+        self._bufsize = bufsize
         # Whether the reader received an EOF. Once EOF is True, it returns
         # an empty string for any subsequent reads (including async for)
         self.eof = False
@@ -111,14 +111,14 @@ class _StreamReader:
             # Container process streams need to be consumed as they are produced,
             # otherwise the process will block. Use a buffer to store the stream
             # until the client consumes it.
-            self._container_process_buffer = []
+            self._container_process_buffer: List[Optional[bytes]] = []
             self._consume_container_process_task = asyncio.create_task(self._consume_container_process_stream())
 
     @property
     def file_descriptor(self):
         return self._file_descriptor
 
-    async def read(self) -> Union[str, bytes]:
+    async def read(self) -> T:
         """Fetch and return contents of the entire stream. If EOF was received,
         return an empty string.
 
@@ -134,17 +134,22 @@ class _StreamReader:
         ```
 
         """
-        data = ""
-        # TODO: maybe combine this with get_app_logs_loop
+        if self._text:
+            data: str = ""
+        else:
+            data: bytes = b""  # type: ignore[no-redef]
+
         async for message in self._get_logs_by_line():
             if message is None:
                 break
-            data += message
+            if isinstance(data, str):
+                assert isinstance(message, str)
+                data += message
+            else:
+                assert isinstance(message, bytes)
+                data += message
 
-        if self._text:
-            return data
-        else:
-            return bytes(data, "utf-8")
+        return data  # type: ignore[return-value]
 
     async def _consume_container_process_stream(self):
         """
@@ -182,7 +187,7 @@ class _StreamReader:
                         break
                 raise exc
 
-    async def _stream_container_process(self) -> AsyncGenerator[Tuple[Optional[str], str], None]:
+    async def _stream_container_process(self) -> AsyncGenerator[Tuple[Optional[bytes], str], None]:
         """mdmd:hidden
         Streams the container process buffer to the reader.
         """
@@ -203,7 +208,7 @@ class _StreamReader:
 
             entry_id += 1
 
-    async def _get_logs(self) -> AsyncGenerator[Optional[str], None]:
+    async def _get_logs(self) -> AsyncGenerator[Optional[Union[bytes, str]], None]:
         """mdmd:hidden
         Streams sandbox or process logs from the server to the reader.
 
@@ -225,7 +230,7 @@ class _StreamReader:
         while not completed:
             try:
                 if self._object_type == "sandbox":
-                    iterator = _sandbox_logs_iterator(
+                    iterator: AsyncGenerator[Tuple[Optional[Union[bytes, str]], str], None] = _sandbox_logs_iterator(
                         self._object_id, self._file_descriptor, self._last_entry_id, self._client
                     )
                 else:
@@ -249,26 +254,40 @@ class _StreamReader:
                         continue
                 raise
 
-    async def _get_logs_by_line(self) -> AsyncGenerator[Optional[str], None]:
+    async def _get_logs_by_line(self) -> AsyncGenerator[Optional[Union[bytes, str]], None]:
         """mdmd:hidden
         Processes logs from the server and yields complete lines only.
         """
         async for message in self._get_logs():
             if message is None:
-                if self._line_buffer:
-                    yield self._line_buffer
-                    self._line_buffer = ""
-                yield None
+                if self._object_type == "sandbox":
+                    if self._string_line_buffer:
+                        yield self._string_line_buffer
+                        self._string_line_buffer = ""
+                    yield None
+                else:
+                    if self._bytes_line_buffer:
+                        yield self._bytes_line_buffer
+                        self._bytes_line_buffer = b""
+                    yield None
             else:
-                self._line_buffer += message
-                while "\n" in self._line_buffer:
-                    line, self._line_buffer = self._line_buffer.split("\n", 1)
-                    yield line + "\n"
+                if self._object_type == "sandbox":
+                    assert isinstance(message, str)
+                    self._string_line_buffer += message
+                    while "\n" in self._string_line_buffer:
+                        line, self._string_line_buffer = self._string_line_buffer.split("\n", 1)
+                        yield line + "\n"
+                else:
+                    assert isinstance(message, bytes)
+                    self._bytes_line_buffer += message
+                    while b"\n" in self._bytes_line_buffer:
+                        line, self._bytes_line_buffer = self._bytes_line_buffer.split(b"\n", 1)
+                        yield line + b"\n"
 
     def __aiter__(self):
         """mdmd:hidden"""
         if not self._stream:
-            if self._by_line:
+            if self._bufsize == 1:
                 self._stream = self._get_logs_by_line()
             else:
                 self._stream = self._get_logs()
@@ -276,16 +295,22 @@ class _StreamReader:
 
     async def __anext__(self):
         """mdmd:hidden"""
+        assert self._stream is not None
         value = await self._stream.__anext__()
 
         # The stream yields None if it receives an EOF batch.
         if value is None:
             raise StopAsyncIteration
 
-        if self._text:
+        # Sandbox logs are strings by default
+        if isinstance(value, str):
             return value
+
+        # Container process logs are bytes by default
+        if self._text:
+            return value.decode("utf-8")
         else:
-            return bytes(value, "utf-8")
+            return value
 
 
 MAX_BUFFER_SIZE = 2 * 1024 * 1024
