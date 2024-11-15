@@ -340,7 +340,7 @@ class _Image(_Object, type_prefix="im"):
 
             my_image = (
                 Image.debian_slim()
-                .add_local_python_packages("mypak", copy=True)
+                .attach_local_python_packages("mypak", copy=True)
                 .run_commands("python -m mypak")  # this now works!
             )
             """
@@ -614,16 +614,19 @@ class _Image(_Object, type_prefix="im"):
             context_mount=mount,
         )
 
-    def add_local_python_packages(self, *packages: Union[str, Path], copy: bool = False) -> "_Image":
-        """Adds local Python packages to the image
+    def attach_local_python_packages(self, *packages: Union[str, Path], copy: bool = False) -> "_Image":
+        """Attaches local Python packages to the container running the image
 
         Packages are added to the /root directory which is on the PYTHONPATH of any
         executed Modal functions.
 
-        Set copy=True to force the package to be added as an image layer rather than
-        mounted as a light-weight mount (the default). This can be slower since it
-        requires a rebuild of the image whenever the required package files change
-        , but it allows you to run additional build steps after this operation.
+        By default (copy=False) the packages are layered on top of the image when
+        the container starts up and not built as an image layer.
+
+        Set copy=True to force the packages to be added as an image layer instead.
+        This can be slower since it requires a rebuild of the image whenever the
+        required package files change, but it allows you to run additional build
+        steps after this operation.
         """
         mount = _Mount.from_local_python_packages(*packages)
         return self._add_mount_layer_or_copy(mount, copy=copy)
