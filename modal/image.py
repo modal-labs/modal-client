@@ -61,9 +61,9 @@ ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10"]
 # Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
 # Consider consolidating these multiple sources of truth?
 SUPPORTED_PYTHON_SERIES: Dict[ImageBuilderVersion, List[str]] = {
-    "2024.10": ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"],
-    "2024.04": ["3.8", "3.9", "3.10", "3.11", "3.12"],
-    "2023.12": ["3.8", "3.9", "3.10", "3.11", "3.12"],
+    "2024.10": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "2024.04": ["3.9", "3.10", "3.11", "3.12"],
+    "2023.12": ["3.9", "3.10", "3.11", "3.12"],
 }
 
 LOCAL_REQUIREMENTS_DIR = Path(__file__).parent / "requirements"
@@ -1147,9 +1147,8 @@ class _Image(_Object, type_prefix="im"):
         The image must be built for the `linux/amd64` platform.
 
         If your image does not come with Python installed, you can use the `add_python` parameter
-        to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
-        `3.10`, `3.11`, and `3.12`. Otherwise, the image is expected to have Python>3.8 available
-        on PATH as `python`, along with `pip`.
+        to specify a version of Python to add to the image. Otherwise, the image is expected to
+        have Python on PATH as `python`, along with `pip`.
 
         You may also use `setup_dockerfile_commands` to run Dockerfile commands before the
         remaining commands run. This might be useful if you want a custom Python installation or to
@@ -1299,8 +1298,7 @@ class _Image(_Object, type_prefix="im"):
         """Build a Modal image from a local Dockerfile.
 
         If your Dockerfile does not have Python installed, you can use the `add_python` parameter
-        to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
-        `3.10`, `3.11`, and `3.12`.
+        to specify a version of Python to add to the image.
 
         **Example**
 
