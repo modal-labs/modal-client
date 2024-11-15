@@ -233,7 +233,7 @@ async def test_sandbox_async_for(app, servicer):
 
 
 @skip_non_linux
-def test_sandbox_stdout_bytes_mode(app, servicer):
+def test_sandbox_exec_stdout_bytes_mode(app, servicer):
     """Test that the stream reader works in bytes mode."""
 
     sb = Sandbox.create(app=app)

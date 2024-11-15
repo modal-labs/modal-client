@@ -37,7 +37,7 @@ class _ContainerProcess:
         self._text = text
         self._by_line = by_line
         T = str if text else bytes
-        self._stdout = _StreamReader[T](
+        self._stdout: _StreamReader[T] = _StreamReader(
             api_pb2.FILE_DESCRIPTOR_STDOUT,
             process_id,
             "container_process",
@@ -46,7 +46,7 @@ class _ContainerProcess:
             text=text,
             by_line=by_line,
         )
-        self._stderr = _StreamReader[T](
+        self._stderr: _StreamReader[T] = _StreamReader(
             api_pb2.FILE_DESCRIPTOR_STDERR,
             process_id,
             "container_process",

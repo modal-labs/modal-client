@@ -403,7 +403,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         pty_info: Optional[api_pb2.PTYInfo] = None,  # Deprecated: internal use only
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
-        text: bool = True,  # Encode output as text
+        # Encode output as text.
+        text: bool = True,
         # Set bufsize=1 for line-buffered output and -1 for default streamed output.
         # The default differs from subprocess.Popen for backwards compatibility.
         bufsize: Literal[-1, 1] = 1,

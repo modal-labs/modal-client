@@ -135,7 +135,10 @@ class _StreamReader(Generic[T]):
         ```
 
         """
-        data = ""
+        if self._text:
+            data = ""
+        else:
+            data = b""
 
         async for message in self._get_logs_by_line():
             if message is None:
@@ -223,7 +226,7 @@ class _StreamReader(Generic[T]):
         while not completed:
             try:
                 if self._object_type == "sandbox":
-                    iterator: AsyncGenerator[Tuple[Optional[Union[bytes, str]], str], None] = _sandbox_logs_iterator(
+                    iterator: AsyncGenerator[Tuple[Optional[Union[T, str]], str], None] = _sandbox_logs_iterator(
                         self._object_id, self._file_descriptor, self._last_entry_id, self._client
                     )
                 else:

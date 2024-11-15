@@ -723,7 +723,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 api_pb2.RuntimeOutputBatch(
                     items=[
                         api_pb2.RuntimeOutputMessage(
-                            message=message.decode("utf-8"), file_descriptor=request.file_descriptor
+                            message=message.decode("utf-8"),
+                            file_descriptor=request.file_descriptor,
+                            message_bytes=message,
                         )
                     ]
                 )
