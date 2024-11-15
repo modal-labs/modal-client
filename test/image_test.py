@@ -1226,15 +1226,15 @@ def hydrate_image(img, client):
         pass
 
 
-def test_add_local_lazy_vs_not(client, servicer, set_env_client, supports_on_path):
+def test_attach_local_lazy_vs_copy(client, servicer, set_env_client, supports_on_path):
     deb = Image.debian_slim()
-    image_with_mount = deb.add_local_python_packages("pkg_a")
+    image_with_mount = deb.attach_local_python_packages("pkg_a")
 
     hydrate_image(image_with_mount, client)
     assert image_with_mount.object_id == deb.object_id
     assert len(image_with_mount._mount_layers) == 1
 
-    image_additional_mount = image_with_mount.add_local_python_packages("pkg_b")
+    image_additional_mount = image_with_mount.attach_local_python_packages("pkg_b")
     hydrate_image(image_additional_mount, client)
     assert len(image_additional_mount._mount_layers) == 2  # another mount added to lazy layer
     assert len(image_with_mount._mount_layers) == 1  # original image should not be affected
@@ -1245,12 +1245,12 @@ def test_add_local_lazy_vs_not(client, servicer, set_env_client, supports_on_pat
         # error about using non-copy add commands before other build steps
         hydrate_image(image_non_mount, client)
 
-    image_with_copy = deb.add_local_python_packages("pkg_a", copy=True)
+    image_with_copy = deb.attach_local_python_packages("pkg_a", copy=True)
     hydrate_image(image_with_copy, client)
     assert len(image_with_copy._mount_layers) == 0
 
     # do the same exact image using copy=True
-    image_with_copy_and_commands = deb.add_local_python_packages("pkg_a", copy=True).run_commands("echo 'hello'")
+    image_with_copy_and_commands = deb.attach_local_python_packages("pkg_a", copy=True).run_commands("echo 'hello'")
     hydrate_image(image_with_copy_and_commands, client)
     assert len(image_with_copy_and_commands._mount_layers) == 0
 
@@ -1266,9 +1266,9 @@ def test_add_local_lazy_vs_not(client, servicer, set_env_client, supports_on_pat
     assert all(fn.startswith("/root/pkg_a/") for fn in copied_files)
 
 
-def test_add_local_mount_are_attached_to_functions(servicer, client, supports_on_path):
+def test_attach_locals_are_attached_to_functions(servicer, client, supports_on_path):
     deb_slim = Image.debian_slim()
-    img = deb_slim.add_local_python_packages("pkg_a")
+    img = deb_slim.attach_local_python_packages("pkg_a")
     app = App("my-app")
     control_fun: modal.Function = app.function(serialized=True, image=deb_slim, name="control")(
         dummy
@@ -1283,9 +1283,9 @@ def test_add_local_mount_are_attached_to_functions(servicer, client, supports_on
     assert added_mounts == {img._mount_layers[0].object_id}
 
 
-def test_add_local_mount_are_attached_to_classes(servicer, client, supports_on_path, set_env_client):
+def test_attach_locals_are_attached_to_classes(servicer, client, supports_on_path, set_env_client):
     deb_slim = Image.debian_slim()
-    img = deb_slim.add_local_python_packages("pkg_a")
+    img = deb_slim.attach_local_python_packages("pkg_a")
     app = App("my-app")
     control_fun: modal.Function = app.function(serialized=True, image=deb_slim, name="control")(
         dummy
@@ -1314,9 +1314,9 @@ def test_add_local_mount_are_attached_to_classes(servicer, client, supports_on_p
 
 
 @skip_windows("servicer sandbox implementation not working on windows")
-def test_add_local_mount_are_attached_to_sandboxes(servicer, client, supports_on_path):
+def test_attach_locals_are_attached_to_sandboxes(servicer, client, supports_on_path):
     deb_slim = Image.debian_slim()
-    img = deb_slim.add_local_python_packages("pkg_a")
+    img = deb_slim.attach_local_python_packages("pkg_a")
     app = App("my-app")
     with app.run(client=client):
         modal.Sandbox.create(image=img, app=app, client=client)
@@ -1333,9 +1333,9 @@ def empty_fun():
     pass
 
 
-def test_add_local_mount_build_function(servicer, client, supports_on_path):
+def test_attach_locals_build_function(servicer, client, supports_on_path):
     deb_slim = Image.debian_slim()
-    img = deb_slim.add_local_python_packages("pkg_a")
+    img = deb_slim.attach_local_python_packages("pkg_a")
     img_with_build_function = img.run_function(empty_fun)
     with pytest.raises(InvalidError):
         # build functions could still potentially rewrite mount contents,
@@ -1343,7 +1343,7 @@ def test_add_local_mount_build_function(servicer, client, supports_on_path):
         # TODO(elias): what if someone wants do use an equivalent of `run_function(..., mounts=[...]) ?
         hydrate_image(img_with_build_function, client)
 
-    img_with_copy = deb_slim.add_local_python_packages("pkg_a", copy=True)
+    img_with_copy = deb_slim.attach_local_python_packages("pkg_a", copy=True)
     hydrate_image(img_with_copy, client)  # this is fine
 
 
