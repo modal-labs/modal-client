@@ -510,7 +510,7 @@ class XYZ:
 def test_method_args(servicer, client):
     with app_method_args.run(client=client):
         funcs = servicer.app_functions.values()
-        assert {f.function_name for f in funcs} == {"XYZ.*", "XYZ.foo", "XYZ.bar"}
+        assert {f.function_name for f in funcs} == {"XYZ.*"}
         warm_pools = {f.function_name: f.warm_pool_size for f in funcs}
         assert warm_pools["XYZ.*"] == 5
         del warm_pools["XYZ.*"]
