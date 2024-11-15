@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.66.0 (2024-11-15)
+
+- Modal no longer supports Python 3.8, which has reached its [official EoL](https://devguide.python.org/versions/).
+
+
+
 ### 0.65.55 (2024-11-13)
 
 - Escalates stuck input cancellations to container death. This prevents unresponsive user code from holding up resources.
