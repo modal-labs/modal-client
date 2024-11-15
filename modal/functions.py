@@ -1278,6 +1278,20 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             is_method=self._is_method,
             class_parameter_info=self._class_parameter_info,
             definition_id=self._definition_id,
+            method_handle_metadata={
+                method_name: api_pb2.FunctionHandleMetadata(
+                    function_name=method_function._function_name,
+                    function_type=get_function_type(method_function._is_generator),
+                    web_url=method_function._web_url or "",
+                    is_method=method_function._is_method,
+                    definition_id=method_function._definition_id,
+                    use_method_name=method_function._use_method_name,
+                )
+                for method_name, method_function in self._method_functions.items()
+                if method_function._function_name
+            }
+            if self._method_functions
+            else None,
         )
 
     def _check_no_web_url(self, fn_name: str):
