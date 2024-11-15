@@ -121,7 +121,7 @@ jobs:
 
   publish-base-images:
     name: |
-      Publish base images for ${{ matrix.image-name }} ${{ matrix.image-builder-version }} on ${{ matrix.python-version }}
+      Publish base images for ${{ matrix.image-name }} ${{ matrix.image-builder-version }}
     if: github.ref == 'refs/heads/main'
     needs: [client-test]
     runs-on: ubuntu-20.04
@@ -140,7 +140,7 @@ jobs:
 
       - uses: ./.github/actions/setup-cached-python
         with:
-          version: ${{ matrix.python-version }}
+          version: "3.11"
 
       - name: Build protobuf
         run: inv protoc
