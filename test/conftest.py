@@ -901,6 +901,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.precreated_functions.add(function_id)
 
         web_url = "http://xyz.internal" if req.HasField("webhook_config") and req.webhook_config.type else None
+
+        # This loop is for class service functions, where req.method_definitions will be non-empty
+        method_handle_metadata: dict[str, api_pb2.FunctionHandleMetadata] = {}
+        for method_name, method_definition in req.method_definitions.items():
+            method_web_url = f"https://{method_name}.internal"
+            method_handle_metadata[method_name] = api_pb2.FunctionHandleMetadata(
+                function_name=method_definition.function_name,
+                function_type=method_definition.function_type,
+                web_url=method_web_url,
+            )
         await stream.send_message(
             api_pb2.FunctionPrecreateResponse(
                 function_id=function_id,
@@ -910,6 +920,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     web_url=web_url,
                     use_function_id=req.use_function_id or function_id,
                     use_method_name=req.use_method_name,
+                    method_handle_metadata=method_handle_metadata,
                 ),
             )
         )
