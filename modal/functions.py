@@ -1180,7 +1180,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
         assert self._function_name, f"Function name must be set before metadata can be retrieved for {self}"
-
         return api_pb2.FunctionHandleMetadata(
             function_name=self._function_name,
             function_type=get_function_type(self._is_generator),
@@ -1195,7 +1194,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     function_type=get_function_type(method_function._is_generator),
                     web_url=method_function._web_url or "",
                     is_method=method_function._is_method,
-                    # definition_id=method_function._definition_id,
+                    definition_id=method_function._definition_id,
                     use_method_name=method_function._use_method_name,
                 )
                 for method_name, method_function in self._method_functions.items()
