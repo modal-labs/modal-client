@@ -638,10 +638,15 @@ def tmp_path_with_content(tmp_path):
 def test_image_attach_local_file(servicer, client, tmp_path_with_content, copy, remote_path, expected_dest):
     app = App()
 
+    if remote_path is None:
+        remote_path_kwargs = {}
+    else:
+        remote_path_kwargs = {"remote_path": remote_path}
+
     img = (
         Image.from_registry("unknown_image")
         .workdir("/proj")
-        .attach_local_file(tmp_path_with_content / "data.txt", remote_path, copy=copy)
+        .attach_local_file(tmp_path_with_content / "data.txt", **remote_path_kwargs, copy=copy)
     )
     app.function(image=img)(dummy)
 
@@ -663,8 +668,9 @@ def test_image_attach_local_file(servicer, client, tmp_path_with_content, copy, 
 @pytest.mark.parametrize(
     ["remote_path", "expected_dest"],
     [
-        ("/place", "/place/sub"),  # similar to docker copy - not like shell cp which would copy the source dir itself
-        ("/place/", "/place/sub"),  # trailing slash on source makes no difference
+        ("/place/", "/place/sub"),  # copy full dir
+        ("/place", "/place/sub"),  # removing trailing slash on source makes no difference, unlike shell cp
+        # TODO: add support for relative paths:
         # Not supported yet, but soon:
         # ("place", "/proj/place/sub")  # workdir relative target
         # (None, "/proj/sub")  # default target - copy into current directory
@@ -673,10 +679,15 @@ def test_image_attach_local_file(servicer, client, tmp_path_with_content, copy, 
 def test_image_attach_local_dir(servicer, client, tmp_path_with_content, copy, remote_path, expected_dest):
     app = App()
 
+    if remote_path is None:
+        remote_path_kwargs = {}
+    else:
+        remote_path_kwargs = {"remote_path": remote_path}
+
     img = (
         Image.from_registry("unknown_image")
         .workdir("/proj")
-        .attach_local_dir(tmp_path_with_content / "data", remote_path, copy=copy)
+        .attach_local_dir(tmp_path_with_content / "data", **remote_path_kwargs, copy=copy)
     )
     app.function(image=img)(dummy)
 

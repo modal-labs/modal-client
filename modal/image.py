@@ -624,6 +624,8 @@ class _Image(_Object, type_prefix="im"):
         if not os.path.isabs(remote_path):
             # TODO(elias): implement relative to absolute resolution using image workdir metadata
             #  + make default remote_path="./"
+            #  This requires deferring the Mount creation until after "self" (the base image) has been resolved
+            #  so we know the workdir of the operation.
             raise InvalidError("image.attach_local_file() currently only supports absolute remote_path values")
 
         if remote_path.endswith("/"):
