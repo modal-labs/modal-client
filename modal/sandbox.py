@@ -405,8 +405,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         stderr: StreamType = StreamType.PIPE,
         # Encode output as text.
         text: bool = True,
-        # Set bufsize=1 for line-buffered output and -1 for default streamed output.
-        # The default differs from subprocess.Popen for backwards compatibility.
+        # Control line-buffering output. The default differs from subprocess.Popen for backwards compatibility.
         bufsize: Literal[-1, 1] = 1,
         _pty_info: Optional[api_pb2.PTYInfo] = None,  # Internal option to set terminal size and metadata
     ):
