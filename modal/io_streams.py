@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 async def _sandbox_logs_iterator(
-    sandbox_id: str, file_descriptor: api_pb2.FileDescriptor.ValueType, last_entry_id: Optional[str], client: _Client
+    sandbox_id: str, file_descriptor: int, last_entry_id: Optional[str], client: _Client
 ) -> AsyncGenerator[Tuple[Optional[str], str], None]:
     req = api_pb2.SandboxGetLogsRequest(
         sandbox_id=sandbox_id,
@@ -37,7 +37,7 @@ async def _sandbox_logs_iterator(
 
 
 async def _container_process_logs_iterator(
-    process_id: str, file_descriptor: api_pb2.FileDescriptor.ValueType, client: _Client
+    process_id: str, file_descriptor: int, client: _Client
 ) -> AsyncGenerator[Optional[bytes], None]:
     req = api_pb2.ContainerExecGetOutputRequest(
         exec_id=process_id, timeout=55, file_descriptor=file_descriptor, get_raw_bytes=True
@@ -76,7 +76,7 @@ class _StreamReader(Generic[T]):
 
     def __init__(
         self,
-        file_descriptor: api_pb2.FileDescriptor.ValueType,
+        file_descriptor: int,
         object_id: str,
         object_type: Literal["sandbox", "container_process"],
         client: _Client,
