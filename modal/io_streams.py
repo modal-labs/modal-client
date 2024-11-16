@@ -93,8 +93,14 @@ class _StreamReader(Generic[T]):
         self._last_entry_id: Optional[str] = None
         self._string_line_buffer: str = ""
         self._bytes_line_buffer: bytes = b""
+
+        # Sandbox logs are streamed to the client as strings, so StreamReaders reading
+        # them must have text mode enabled.
+        if object_type == "sandbox" and not text:
+            raise ValueError("Sandbox streams must have text mode enabled.")
         self._text = text
         self._by_line = by_line
+
         # Whether the reader received an EOF. Once EOF is True, it returns
         # an empty string for any subsequent reads (including async for)
         self.eof = False
@@ -135,16 +141,30 @@ class _StreamReader(Generic[T]):
         ```
 
         """
-        if self._text:
-            data = ""
+        if self._object_type == "sandbox":
+            return await self._read_sandbox()
         else:
-            data = b""
+            return await self._read_container_process()
 
-        async for message in self._get_logs_by_line():
+    async def _read_sandbox(self) -> str:
+        assert self._object_type == "sandbox"
+        data = ""
+        async for message in self._get_logs():
             if message is None:
                 break
             data += message
+        return data
 
+    async def _read_container_process(self) -> T:
+        assert self._object_type == "container_process"
+        data = "" if self._text else b""
+        async for message in self._get_logs():
+            if message is None:
+                break
+            if self._text:
+                data += message.decode("utf-8")
+            else:
+                data += message
         return data
 
     async def _consume_container_process_stream(self):
