@@ -411,8 +411,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         secrets: Sequence[_Secret] = (),
         # Encode output as text.
         text: bool = True,
-        # Control line-buffering output. The default differs from subprocess.Popen for backwards compatibility.
-        bufsize: Literal[-1, 1] = 1,
+        # Control line-buffered output.
+        bufsize: Literal[-1, 1] = -1,
         # Internal option to set terminal size and metadata
         _pty_info: Optional[api_pb2.PTYInfo] = None,
     ):
