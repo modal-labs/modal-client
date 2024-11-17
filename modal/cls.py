@@ -102,7 +102,7 @@ class _Obj:
             check_valid_cls_constructor_arg(key, kwarg)
 
         self._method_functions = {}
-        if class_service_function._is_hydrated:
+        if not getattr(class_service_function, "_fake", None):
             # >= v0.63 classes
             # first create the singular object function used by all methods on this parameterization
             self._instance_service_function = class_service_function._bind_parameters(
@@ -285,6 +285,7 @@ class _Cls(_Object, type_prefix="cs"):
 
             rep = "Function(class_function)"
             self._class_service_function = _Function._from_loader(_load, rep)
+            self._class_service_function._fake = True
             for method in metadata.methods:
                 self._class_service_function._method_functions[method.function_name] = _Function._new_hydrated(
                     method.function_id, self._client, method.function_handle_metadata
