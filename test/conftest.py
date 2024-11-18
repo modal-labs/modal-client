@@ -943,14 +943,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if len(request.function_data.ranked_functions) > 0:
             function_data = api_pb2.FunctionData()
             function_data.CopyFrom(request.function_data)
-            if function_data.webhook_config.type:
-                function_data.web_url = "http://xyz.internal"
         else:
             assert request.function
             function = api_pb2.Function()
             function.CopyFrom(request.function)
-            if function.webhook_config.type:
-                function.web_url = "http://xyz.internal"
 
         assert (function is None) != (function_data is None)
         function_defn = function or function_data
