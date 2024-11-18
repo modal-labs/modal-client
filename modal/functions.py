@@ -329,6 +329,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _parent: Optional["_Function"] = None
 
     _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
+    _method_handle_metadata: Optional[Dict[str, "api_pb2.FunctionHandleMetadata"]] = None
     _method_functions: Optional[Dict[str, "_Function"]] = None  # Placeholder _Functions for each method
 
     def _bind_method(
@@ -1261,6 +1262,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._use_function_id = metadata.use_function_id
         self._use_method_name = metadata.use_method_name
         self._class_parameter_info = metadata.class_parameter_info
+        self._method_handle_metadata = dict(metadata.method_handle_metadata)
         self._definition_id = metadata.definition_id
 
     def _invocation_function_id(self) -> str:
@@ -1278,20 +1280,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             is_method=self._is_method,
             class_parameter_info=self._class_parameter_info,
             definition_id=self._definition_id,
-            method_handle_metadata={
-                method_name: api_pb2.FunctionHandleMetadata(
-                    function_name=method_function._function_name,
-                    function_type=get_function_type(method_function._is_generator),
-                    web_url=method_function._web_url or "",
-                    is_method=method_function._is_method,
-                    definition_id=method_function._definition_id,
-                    use_method_name=method_function._use_method_name,
-                )
-                for method_name, method_function in self._method_functions.items()
-                if method_function._function_name
-            }
-            if self._method_functions
-            else None,
+            method_handle_metadata=self._method_handle_metadata,
         )
 
     def _check_no_web_url(self, fn_name: str):
