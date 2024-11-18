@@ -317,9 +317,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _build_args: dict
     _can_use_base_function: bool = False  # whether we need to call FunctionBindParams
     _is_generator: Optional[bool] = None
-    _is_web_endpoint: Optional[
-        bool
-    ] = None  # used to determine whether an un-hydrated function is a web endpoint, since web_url won't be populated
     _cluster_size: Optional[int] = None
 
     # when this is the method of a class/object function, invocation of this function
