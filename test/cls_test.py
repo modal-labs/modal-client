@@ -58,14 +58,11 @@ def test_run_class(client, servicer):
 
     objects = servicer.app_objects[app_id]
     assert len(objects) == 2  # the class + the class service function
-    assert objects["Foo.bar"] == method_id
     assert objects["Foo"] == class_id
     class_function_id = objects["Foo.*"]
     assert class_function_id.startswith("fu-")
-    assert class_function_id != method_id
+    assert class_function_id == method_id
 
-    assert servicer.app_functions[method_id].use_function_id == class_function_id
-    assert servicer.app_functions[method_id].use_method_name == "bar"
     assert servicer.app_functions[class_function_id].is_class
 
 
@@ -86,11 +83,7 @@ def test_call_class_sync(client, servicer):
     (class_create,) = ctx.get_requests("ClassCreate")
     function_creates = {fc.function.function_name: fc for fc in function_creates_requests}
     assert function_creates.keys() == {"Foo.*"}
-    foobar_def = function_creates["Foo.bar"].function
     service_function_id = servicer.app_objects["ap-1"]["Foo.*"]
-    assert foobar_def.is_method
-    assert foobar_def.use_method_name == "bar"
-    assert foobar_def.use_function_id == service_function_id
     (function_map_request,) = ctx.get_requests("FunctionMap")
     assert function_map_request.function_id == service_function_id
 
