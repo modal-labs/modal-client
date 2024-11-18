@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
-from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Literal, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Literal, Optional, Sequence, Tuple, Union, overload
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -399,6 +399,38 @@ class _Sandbox(_Object, type_prefix="sb"):
             if not self._task_id:
                 await asyncio.sleep(0.5)
         return self._task_id
+
+    @overload
+    async def exec(
+        self,
+        *cmds: str,
+        pty_info: Optional[api_pb2.PTYInfo] = None,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
+        secrets: Sequence[_Secret] = (),
+        text: Literal[True],
+        bufsize: Literal[-1, 1] = -1,
+        _pty_info: Optional[api_pb2.PTYInfo] = None,
+    ) -> _ContainerProcess[str]:
+        ...
+
+    @overload
+    async def exec(
+        self,
+        *cmds: str,
+        pty_info: Optional[api_pb2.PTYInfo] = None,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
+        secrets: Sequence[_Secret] = (),
+        text: Literal[False],
+        bufsize: Literal[-1, 1] = -1,
+        _pty_info: Optional[api_pb2.PTYInfo] = None,
+    ) -> _ContainerProcess[bytes]:
+        ...
 
     async def exec(
         self,
