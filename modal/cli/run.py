@@ -136,7 +136,10 @@ def _get_clean_app_description(func_ref: str) -> str:
 
 
 def _get_click_command_for_function(app: App, function_tag):
-    function = app.indexed_objects[function_tag]
+    function = app.indexed_objects.get(function_tag, None)
+    if not function:
+        class_name, method_name = function_tag.rsplit(".", 1)
+        function = app.indexed_objects.get(f"{class_name}.*")
     assert isinstance(function, Function)
     function = typing.cast(Function, function)
     if function.is_generator:
@@ -149,7 +152,7 @@ def _get_click_command_for_function(app: App, function_tag):
         class_name, method_name = function_tag.rsplit(".", 1)
         cls = typing.cast(Cls, app.indexed_objects[class_name])
         cls_signature = _get_signature(function.info.user_cls)
-        fun_signature = _get_signature(function.info.raw_f, is_method=True)
+        fun_signature = _get_signature(getattr(cls, method_name).info.raw_f, is_method=True)
         signature = dict(**cls_signature, **fun_signature)  # Pool all arguments
         # TODO(erikbern): assert there's no overlap?
     else:

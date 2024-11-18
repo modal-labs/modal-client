@@ -971,6 +971,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     use_function_id=function_defn.use_function_id or function_id,
                     use_method_name=function_defn.use_method_name,
                     definition_id=f"de-{self.n_functions}",
+                    method_handle_metadata={
+                        method_name: api_pb2.FunctionHandleMetadata(
+                            function_name=method_definition.function_name,
+                            function_type=method_definition.function_type,
+                            web_url=method_definition.web_url,
+                            is_method=True,
+                            use_method_name=method_name,
+                        )
+                        for method_name, method_definition in function_defn.method_definitions.items()
+                    },
                 ),
             )
         )
