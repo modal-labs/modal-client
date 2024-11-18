@@ -341,26 +341,24 @@ class MockClientServicer(api_grpc.ModalClientBase):
             is_method=definition.is_method,
             use_method_name=definition.use_method_name,
             use_function_id=definition.use_function_id,
-        )
-
-    def get_class_metadata(self, object_id: str) -> api_pb2.ClassHandleMetadata:
-        class_handle_metadata = api_pb2.ClassHandleMetadata()
-        for f_name, f_id in self.classes[object_id].items():
-            function_handle_metadata = self.get_function_metadata(f_id)
-            class_handle_metadata.methods.append(
-                api_pb2.ClassMethod(
-                    function_name=f_name, function_id=f_id, function_handle_metadata=function_handle_metadata
+            method_handle_metadata={
+                method_name: api_pb2.FunctionHandleMetadata(
+                    function_name=method_definition.function_name,
+                    function_type=method_definition.function_type,
+                    web_url=method_definition.web_url,
+                    is_method=True,
+                    use_method_name=method_name,
                 )
-            )
-
-        return class_handle_metadata
+                for method_name, method_definition in definition.method_definitions.items()
+            },
+        )
 
     def get_object_metadata(self, object_id) -> api_pb2.Object:
         if object_id.startswith("fu-"):
             res = api_pb2.Object(function_handle_metadata=self.get_function_metadata(object_id))
 
         elif object_id.startswith("cs-"):
-            res = api_pb2.Object(class_handle_metadata=self.get_class_metadata(object_id))
+            res = api_pb2.Object(class_handle_metadata=api_pb2.ClassHandleMetadata())
 
         elif object_id.startswith("mo-"):
             mount_handle_metadata = api_pb2.MountHandleMetadata(content_checksum_sha256_hex="abc123")
@@ -639,7 +637,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         class_id = "cs-" + str(len(self.classes))
         self.classes[class_id] = methods
         await stream.send_message(
-            api_pb2.ClassCreateResponse(class_id=class_id, handle_metadata=self.get_class_metadata(class_id))
+            api_pb2.ClassCreateResponse(class_id=class_id, handle_metadata=api_pb2.ClassHandleMetadata())
         )
 
     async def ClassGet(self, stream):
@@ -650,7 +648,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if object_id is None:
             raise GRPCError(Status.NOT_FOUND, f"can't find object {request.object_tag}")
         await stream.send_message(
-            api_pb2.ClassGetResponse(class_id=object_id, handle_metadata=self.get_class_metadata(object_id))
+            api_pb2.ClassGetResponse(class_id=object_id, handle_metadata=api_pb2.ClassHandleMetadata())
         )
 
     ### Client
