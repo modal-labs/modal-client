@@ -137,7 +137,7 @@ def _get_clean_app_description(func_ref: str) -> str:
 
 def _get_click_command_for_function(app: App, function_tag):
     function = app.indexed_objects.get(function_tag, None)
-    if not function or function.info.user_cls is not None:
+    if not function or (isinstance(function, Function) and function.info.user_cls is not None):
         # This is either a function_tag for a class method function (e.g MyClass.foo) or a function tag for a
         # class service function (MyClass.*)
         class_name, method_name = function_tag.rsplit(".", 1)
