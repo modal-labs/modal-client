@@ -905,7 +905,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # This loop is for class service functions, where req.method_definitions will be non-empty
         method_handle_metadata: dict[str, api_pb2.FunctionHandleMetadata] = {}
         for method_name, method_definition in req.method_definitions.items():
-            method_web_url = f"https://{method_name}.internal"
+            method_web_url = (
+                f"http://{method_name}.internal"
+                if method_definition.HasField("webhook_config") and method_definition.webhook_config.type
+                else None
+            )
             method_handle_metadata[method_name] = api_pb2.FunctionHandleMetadata(
                 function_name=method_definition.function_name,
                 function_type=method_definition.function_type,
