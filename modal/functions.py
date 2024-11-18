@@ -363,7 +363,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fun._use_method_name = method_name
         fun._app = class_service_function._app
         fun._is_generator = partial_function.is_generator
-        fun._is_web_endpoint = partial_function.webhook_config is not None
         fun._cluster_size = partial_function.cluster_size
         fun._spec = class_service_function._spec
         fun._is_method = True
@@ -394,7 +393,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             )  # TODO: this shouldn't be set when actual parameters are used
             method_placeholder_fun._function_name = full_function_name
             method_placeholder_fun._is_generator = class_bound_method._is_generator
-            method_placeholder_fun._is_web_endpoint = class_bound_method._is_web_endpoint
             method_placeholder_fun._cluster_size = class_bound_method._cluster_size
             method_placeholder_fun._use_method_name = method_name
             method_placeholder_fun._use_function_id = instance_service_function.object_id
@@ -433,23 +431,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fun._app = class_bound_method._app
         fun._spec = class_bound_method._spec
         return fun
-
-    def _hydrate(self, object_id: str, client: _Client, metadata: Optional[Message]):
-        assert isinstance(metadata, api_pb2.FunctionHandleMetadata)
-        super()._hydrate(object_id, client, metadata)
-        if self._method_functions:
-            # We're here when the function is loaded locally (e.g. _Function.from_args) and we're dealing with a
-            # class service function so the _method_functions mapping is populated with (un-hydrated) _Function objects
-            for method_name, method_handle_metadata in metadata.method_handle_metadata.items():
-                if method_name in self._method_functions:
-                    method_function = self._method_functions[method_name]
-                    super(_Function, method_function)._hydrate(object_id, client, method_handle_metadata)
-        elif len(metadata.method_handle_metadata):
-            # We're here when the function is loaded remotely (e.g. _Function.from_name) and we've determined based
-            # on the existence of method_handle_metadata that this is a class service function
-            self._method_functions = {}
-            for method_name, method_handle_metadata in metadata.method_handle_metadata.items():
-                self._method_functions[method_name] = _Function._new_hydrated(object_id, client, method_handle_metadata)
 
     @staticmethod
     def from_args(
@@ -920,7 +901,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._app = app  # needed for CLI right now
         obj._obj = None
         obj._is_generator = is_generator
-        obj._is_web_endpoint = bool(webhook_config)
         obj._cluster_size = cluster_size
         obj._is_method = False
         obj._spec = function_spec  # needed for modal shell
@@ -1171,7 +1151,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # Overridden concrete implementation of base class method
         assert metadata and isinstance(metadata, api_pb2.FunctionHandleMetadata)
         self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
-        self._is_web_endpoint = bool(metadata.web_url)
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
         self._is_method = metadata.is_method
