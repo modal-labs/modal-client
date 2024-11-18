@@ -433,7 +433,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fun._spec = class_bound_method._spec
         return fun
 
-    def _hydrate(self, function_id: str, client: _Client, handle_metadata: api_pb2.FunctionHandleMetadata):
+    def _hydrate(self, function_id: str, client: _Client, handle_metadata: Optional[Message]):
+        assert isinstance(handle_metadata, api_pb2.FunctionHandleMetadata)
         super()._hydrate(function_id, client, handle_metadata)
         if self._method_functions:
             # We're here when the function is loaded locally (e.g. _Function.from_args) and we're dealing with a
