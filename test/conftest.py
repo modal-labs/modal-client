@@ -904,7 +904,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         method_handle_metadata: dict[str, api_pb2.FunctionHandleMetadata] = {}
         for method_name, method_definition in req.method_definitions.items():
             method_web_url = (
-                f"https://{method_name}.internal"
+                f"http://{method_name}.internal"
                 if method_definition.HasField("webhook_config") and method_definition.webhook_config.type
                 else None
             )
@@ -955,6 +955,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         assert (function is None) != (function_data is None)
         function_defn = function or function_data
         assert function_defn
+        if function_defn.webhook_config.type:
+            function_defn.web_url = "http://xyz.internal"
+        for method_name, method_definition in function_defn.method_definitions.items():
+            if method_definition.webhook_config.type:
+                method_definition.web_url = f"http://{method_name}.internal"
         self.app_functions[function_id] = function_defn
 
         if function_defn.schedule:
