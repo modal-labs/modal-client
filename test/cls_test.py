@@ -619,8 +619,8 @@ class WebCls:
 def test_web_cls(client):
     with web_app_app.run(client=client):
         c = WebCls()
-        assert c.endpoint.web_url == "https://endpoint.internal"
-        assert c.asgi.web_url == "https://asgi.internal"
+        assert c.endpoint.web_url == "http://endpoint.internal"
+        assert c.asgi.web_url == "http://asgi.internal"
 
 
 handler_app = App("handler-app")
