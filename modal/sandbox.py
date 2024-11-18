@@ -280,10 +280,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         return obj
 
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
-        self._stdout: _StreamReader[str] = StreamReader(
+        self._stdout: _StreamReader[str] = StreamReader[str](
             api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, "sandbox", self._client, by_line=True
         )
-        self._stderr: _StreamReader[str] = StreamReader(
+        self._stderr: _StreamReader[str] = StreamReader[str](
             api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, "sandbox", self._client, by_line=True
         )
         self._stdin = StreamWriter(self.object_id, "sandbox", self._client)
@@ -489,7 +489,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr, text=text, by_line=by_line)
 
     @property
-    def stdout(self) -> _StreamReader:
+    def stdout(self) -> _StreamReader[str]:
         """
         [`StreamReader`](/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
         the sandbox's stdout stream.
@@ -498,7 +498,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         return self._stdout
 
     @property
-    def stderr(self) -> _StreamReader:
+    def stderr(self) -> _StreamReader[str]:
         """[`StreamReader`](/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
         the sandbox's stderr stream.
         """

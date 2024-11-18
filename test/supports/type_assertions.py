@@ -69,3 +69,14 @@ async def async_block() -> None:
     assert_type(should_also_be_str, str)
     should_be_int = await instance.bar.local("bar")
     assert_type(should_be_int, int)
+
+
+# check sandboxes
+sandbox = modal.Sandbox.create("dummy")
+assert_type(sandbox.stdout.read(), str)
+
+cmd = sandbox.exec("other")
+assert_type(cmd.stdout.read(), str)
+
+cmd2 = sandbox.exec("other_bin", text=False)
+assert_type(cmd2.stdout.read(), bytes)
