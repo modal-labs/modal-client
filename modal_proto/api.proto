@@ -305,17 +305,6 @@ message AppDeployResponse {
   string url = 1;
 }
 
-message AppDeploySingleObjectRequest {
-  string name = 1;
-  DeploymentNamespace namespace = 2;
-  string environment_name = 3;
-  string object_id = 4;
-}
-
-message AppDeploySingleObjectResponse {
-  string app_id = 1;
-}
-
 message AppDeploymentHistory {
   string app_id = 1;
   uint32 version = 2;
@@ -612,6 +601,7 @@ message CheckpointInfo {
   string checkpoint_id = 3;
   string runtime_fingerprint = 4;
   int64 size = 5;
+  bool checksum_is_file_index = 6;
 }
 
 message ClassCreateRequest {
@@ -2655,7 +2645,6 @@ service ModalClient {
   rpc AppClientDisconnect(AppClientDisconnectRequest) returns (google.protobuf.Empty);
   rpc AppCreate(AppCreateRequest) returns (AppCreateResponse);
   rpc AppDeploy(AppDeployRequest) returns (AppDeployResponse);
-  rpc AppDeploySingleObject(AppDeploySingleObjectRequest) returns (AppDeploySingleObjectResponse);
   rpc AppDeploymentHistory(AppDeploymentHistoryRequest) returns (AppDeploymentHistoryResponse);
   rpc AppGetByDeploymentName(AppGetByDeploymentNameRequest) returns (AppGetByDeploymentNameResponse);
   rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
