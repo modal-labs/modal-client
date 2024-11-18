@@ -410,7 +410,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         timeout: Optional[int] = None,
         workdir: Optional[str] = None,
         secrets: Sequence[_Secret] = (),
-        text: Literal[True],
+        text: Literal[True] = True,
         bufsize: Literal[-1, 1] = -1,
         _pty_info: Optional[api_pb2.PTYInfo] = None,
     ) -> _ContainerProcess[str]:
@@ -426,7 +426,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         timeout: Optional[int] = None,
         workdir: Optional[str] = None,
         secrets: Sequence[_Secret] = (),
-        text: Literal[False],
+        text: Literal[False] = False,
         bufsize: Literal[-1, 1] = -1,
         _pty_info: Optional[api_pb2.PTYInfo] = None,
     ) -> _ContainerProcess[bytes]:
