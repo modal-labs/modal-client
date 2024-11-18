@@ -265,33 +265,35 @@ class _Cls(_Object, type_prefix="cs"):
 
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
-        if self._class_service_function and self._class_service_function._method_handle_metadata:
+        if self._class_service_function and len(self._class_service_function._method_handle_metadata):
             # The class only has a class service service function and no method placeholders.
-            for method_metadata in self._class_service_function._method_handle_metadata.values():
-                if method_metadata.function_name in self._method_functions:
-                    # This happens when the class is loaded locally
-                    # since each function will already be a loaded dependency _Function
-                    self._method_functions[method_metadata.function_name]._hydrate(
-                        self._class_service_function.object_id, self._client, method_metadata
+            if self._method_functions:
+                # We're here when the Cls is loaded locally (e.g. _Cls.from_local) so the _method_functions mapping is
+                # populated with (un-hydrated) _Function objects
+                for (
+                    method_name,
+                    method_handle_metadata,
+                ) in self._class_service_function._method_handle_metadata.values():
+                    self._method_functions[method_name]._hydrate(
+                        self._class_service_function.object_id, self._client, method_handle_metadata
                     )
-                else:
-                    self._method_functions[method_metadata.function_name] = _Function._new_hydrated(
-                        self._class_service_function.object_id, self._client, method_metadata
+            else:
+                # We're here when the function is loaded remotely (e.g. _Cls.from_name)
+                self._method_functions = {}
+                for (
+                    method_name,
+                    method_handle_metadata,
+                ) in self._class_service_function._method_handle_metadata.values():
+                    self._method_functions[method_name] = _Function._new_hydrated(
+                        self._class_service_function.object_id, self._client, method_handle_metadata
                     )
         else:
             # Either a class with class service function and method placeholders or pre 0.63 class that does not have a
             # class service function and only method functions
             for method in metadata.methods:
-                if method.function_name in self._method_functions:
-                    # This happens when the class is loaded locally
-                    # since each function will already be a loaded dependency _Function
-                    self._method_functions[method.function_name]._hydrate(
-                        method.function_id, self._client, method.function_handle_metadata
-                    )
-                else:
-                    self._method_functions[method.function_name] = _Function._new_hydrated(
-                        method.function_id, self._client, method.function_handle_metadata
-                    )
+                self._method_functions[method.function_name] = _Function._new_hydrated(
+                    method.function_id, self._client, method.function_handle_metadata
+                )
 
     def _get_metadata(self) -> api_pb2.ClassHandleMetadata:
         class_handle_metadata = api_pb2.ClassHandleMetadata()

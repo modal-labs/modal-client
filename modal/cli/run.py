@@ -147,9 +147,7 @@ def _get_click_command_for_function(app: App, function_tag):
 
     signature: Dict[str, ParameterMetadata]
     cls: Optional[Cls] = None
-    method_name: Optional[str] = None
     if function.info.user_cls is not None:
-        class_name, method_name = function_tag.rsplit(".", 1)
         cls = typing.cast(Cls, app.indexed_objects[class_name])
         cls_signature = _get_signature(function.info.user_cls)
         fun_signature = _get_signature(getattr(cls, method_name).info.raw_f, is_method=True)
