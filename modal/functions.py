@@ -1148,7 +1148,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._class_parameter_info = metadata.class_parameter_info
         self._method_handle_metadata = dict(metadata.method_handle_metadata)
         self._definition_id = metadata.definition_id
-        self._method_handle_metadata = dict(metadata.method_handle_metadata)
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
