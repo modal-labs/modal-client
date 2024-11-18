@@ -69,3 +69,8 @@ async def async_block() -> None:
     assert_type(should_also_be_str, str)
     should_be_int = await instance.bar.local("bar")
     assert_type(should_be_int, int)
+
+
+sb_app = modal.App.lookup("sandbox", create_if_missing=True)
+sb = modal.Sandbox(app=sb_app)
+cp = sb.exec(bufsize=-1)

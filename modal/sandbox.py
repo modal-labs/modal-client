@@ -412,6 +412,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         # Encode output as text.
         text: bool = True,
         # Control line-buffered output.
+        # -1 means unbuffered, 1 means line-buffered (only available if `text=True`).
         bufsize: Literal[-1, 1] = -1,
         # Internal option to set terminal size and metadata
         _pty_info: Optional[api_pb2.PTYInfo] = None,

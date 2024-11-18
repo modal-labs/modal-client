@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 async def _sandbox_logs_iterator(
     sandbox_id: str, file_descriptor: int, last_entry_id: Optional[str], client: _Client
-) -> AsyncGenerator[Tuple[Optional[str], str], None]:
+) -> AsyncGenerator[Tuple[Optional[bytes], str], None]:
     req = api_pb2.SandboxGetLogsRequest(
         sandbox_id=sandbox_id,
         file_descriptor=file_descriptor,
@@ -30,7 +30,7 @@ async def _sandbox_logs_iterator(
         last_entry_id = log_batch.entry_id
 
         for message in log_batch.items:
-            yield (message.data, last_entry_id)
+            yield (message.data.encode("utf-8"), last_entry_id)
         if log_batch.eof:
             yield (None, last_entry_id)
             break
@@ -91,13 +91,17 @@ class _StreamReader(Generic[T]):
         self._client = client
         self._stream = None
         self._last_entry_id: Optional[str] = None
-        self._string_line_buffer: str = ""
-        self._bytes_line_buffer: bytes = b""
+        self._line_buffer = ""
 
         # Sandbox logs are streamed to the client as strings, so StreamReaders reading
         # them must have text mode enabled.
         if object_type == "sandbox" and not text:
             raise ValueError("Sandbox streams must have text mode enabled.")
+
+        # line-buffering is only supported when text=True
+        if by_line and not text:
+            raise ValueError("line-buffering is only supported when text=True")
+
         self._text = text
         self._by_line = by_line
 
@@ -141,22 +145,6 @@ class _StreamReader(Generic[T]):
         ```
 
         """
-        if self._object_type == "sandbox":
-            return await self._read_sandbox()
-        else:
-            return await self._read_container_process()
-
-    async def _read_sandbox(self) -> str:
-        assert self._object_type == "sandbox"
-        data = ""
-        async for message in self._get_logs():
-            if message is None:
-                break
-            data += message
-        return data
-
-    async def _read_container_process(self) -> T:
-        assert self._object_type == "container_process"
         data = "" if self._text else b""
         async for message in self._get_logs():
             if message is None:
@@ -246,7 +234,7 @@ class _StreamReader(Generic[T]):
         while not completed:
             try:
                 if self._object_type == "sandbox":
-                    iterator: AsyncGenerator[Tuple[Optional[Union[T, str]], str], None] = _sandbox_logs_iterator(
+                    iterator = _sandbox_logs_iterator(
                         self._object_id, self._file_descriptor, self._last_entry_id, self._client
                     )
                 else:
@@ -270,35 +258,22 @@ class _StreamReader(Generic[T]):
                         continue
                 raise
 
-    async def _get_logs_by_line(self) -> AsyncGenerator[Optional[Union[bytes, str]], None]:
+    async def _get_logs_by_line(self) -> AsyncGenerator[Optional[str], None]:
         """mdmd:hidden
         Processes logs from the server and yields complete lines only.
         """
         async for message in self._get_logs():
             if message is None:
-                if self._object_type == "sandbox":
-                    if self._string_line_buffer:
-                        yield self._string_line_buffer
-                        self._string_line_buffer = ""
-                    yield None
-                else:
-                    if self._bytes_line_buffer:
-                        yield self._bytes_line_buffer
-                        self._bytes_line_buffer = b""
-                    yield None
+                if self._line_buffer:
+                    yield self._line_buffer
+                    self._line_buffer = ""
+                yield None
             else:
-                if self._object_type == "sandbox":
-                    assert isinstance(message, str)
-                    self._string_line_buffer += message
-                    while "\n" in self._string_line_buffer:
-                        line, self._string_line_buffer = self._string_line_buffer.split("\n", 1)
-                        yield line + "\n"
-                else:
-                    assert isinstance(message, bytes)
-                    self._bytes_line_buffer += message
-                    while b"\n" in self._bytes_line_buffer:
-                        line, self._bytes_line_buffer = self._bytes_line_buffer.split(b"\n", 1)
-                        yield line + b"\n"
+                assert isinstance(message, bytes)
+                self._line_buffer += message.decode("utf-8")
+                while "\n" in self._line_buffer:
+                    line, self._line_buffer = self._line_buffer.split("\n", 1)
+                    yield line + "\n"
 
     def __aiter__(self):
         """mdmd:hidden"""
@@ -309,7 +284,7 @@ class _StreamReader(Generic[T]):
                 self._stream = self._get_logs()
         return self
 
-    async def __anext__(self):
+    async def __anext__(self) -> T:
         """mdmd:hidden"""
         assert self._stream is not None
         value = await self._stream.__anext__()
@@ -318,11 +293,6 @@ class _StreamReader(Generic[T]):
         if value is None:
             raise StopAsyncIteration
 
-        # Sandbox logs are strings
-        if isinstance(value, str):
-            return value
-
-        # Container process logs are bytes
         if self._text:
             return value.decode("utf-8")
         else:

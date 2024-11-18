@@ -177,3 +177,17 @@ async def test_stream_reader_bytes_mode(servicer, client):
             )
 
             assert await stdout.read.aio() == b"foo\n"
+
+
+def test_stream_reader_line_buffered_bytes(servicer, client):
+    """Test that using line-buffering with bytes mode fails."""
+
+    with pytest.raises(ValueError):
+        StreamReader(
+            file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+            object_id="tp-123",
+            object_type="container_process",
+            client=client,
+            by_line=True,
+            text=False,
+        )
