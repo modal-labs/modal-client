@@ -445,10 +445,7 @@ def shell(
             return
 
         function = import_function(
-            container_or_function,
-            accept_local_entrypoint=False,
-            accept_webhook=True,
-            base_cmd="modal shell",
+            container_or_function, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell"
         )
         assert isinstance(function, Function)
         function_spec: _FunctionSpec = function.spec
