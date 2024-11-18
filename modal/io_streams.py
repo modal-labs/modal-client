@@ -91,7 +91,7 @@ class _StreamReader(Generic[T]):
         self._client = client
         self._stream = None
         self._last_entry_id: Optional[str] = None
-        self._line_buffer = ""
+        self._line_buffer = b""
 
         # Sandbox logs are streamed to the client as strings, so StreamReaders reading
         # them must have text mode enabled.
@@ -258,7 +258,7 @@ class _StreamReader(Generic[T]):
                         continue
                 raise
 
-    async def _get_logs_by_line(self) -> AsyncGenerator[Optional[str], None]:
+    async def _get_logs_by_line(self) -> AsyncGenerator[Optional[bytes], None]:
         """mdmd:hidden
         Processes logs from the server and yields complete lines only.
         """
@@ -266,14 +266,14 @@ class _StreamReader(Generic[T]):
             if message is None:
                 if self._line_buffer:
                     yield self._line_buffer
-                    self._line_buffer = ""
+                    self._line_buffer = b""
                 yield None
             else:
                 assert isinstance(message, bytes)
-                self._line_buffer += message.decode("utf-8")
-                while "\n" in self._line_buffer:
-                    line, self._line_buffer = self._line_buffer.split("\n", 1)
-                    yield line + "\n"
+                self._line_buffer += message
+                while b"\n" in self._line_buffer:
+                    line, self._line_buffer = self._line_buffer.split(b"\n", 1)
+                    yield line + b"\n"
 
     def __aiter__(self):
         """mdmd:hidden"""
