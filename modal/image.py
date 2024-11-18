@@ -1222,7 +1222,10 @@ class _Image(_Object, type_prefix="im"):
         ```python
         modal.Image.from_gcp_artifact_registry(
             "us-east1-docker.pkg.dev/my-project-1234/my-repo/my-image:my-version",
-            secret=modal.Secret.from_name("my-gcp-secret"),
+            secret=modal.Secret.from_name(
+                "my-gcp-secret",
+                required_keys=["SERVICE_ACCOUNT_JSON"],
+            ),
             add_python="3.11",
         )
         ```
@@ -1251,8 +1254,8 @@ class _Image(_Object, type_prefix="im"):
     ) -> "_Image":
         """Build a Modal image from a private image in AWS Elastic Container Registry (ECR).
 
-        You will need to pass a `modal.Secret` containing an AWS key (`AWS_ACCESS_KEY_ID`) and
-        secret (`AWS_SECRET_ACCESS_KEY`) with permissions to access the target ECR registry.
+        You will need to pass a `modal.Secret` containing `AWS_ACCESS_KEY_ID`,
+        `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION` to access the target ECR registry.
 
         IAM configuration details can be found in the AWS documentation for
         ["Private repository policies"](https://docs.aws.amazon.com/AmazonECR/latest/userguide/repository-policies.html).
@@ -1264,7 +1267,10 @@ class _Image(_Object, type_prefix="im"):
         ```python
         modal.Image.from_aws_ecr(
             "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry:my-version",
-            secret=modal.Secret.from_name("aws"),
+            secret=modal.Secret.from_name(
+                "aws",
+                required_keys=["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"],
+            ),
             add_python="3.11",
         )
         ```
