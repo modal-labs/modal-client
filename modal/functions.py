@@ -433,24 +433,22 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fun._spec = class_bound_method._spec
         return fun
 
-    def _hydrate(self, function_id: str, client: _Client, handle_metadata: Optional[Message]):
+    def _hydrate(self, object_id: str, client: _Client, handle_metadata: Optional[Message]):
         assert isinstance(handle_metadata, api_pb2.FunctionHandleMetadata)
-        super()._hydrate(function_id, client, handle_metadata)
+        super()._hydrate(object_id, client, handle_metadata)
         if self._method_functions:
             # We're here when the function is loaded locally (e.g. _Function.from_args) and we're dealing with a
             # class service function so the _method_functions mapping is populated with (un-hydrated) _Function objects
             for method_name, method_handle_metadata in handle_metadata.method_handle_metadata.items():
                 if method_name in self._method_functions:
                     method_function = self._method_functions[method_name]
-                    super(_Function, method_function)._hydrate(function_id, client, method_handle_metadata)
+                    super(_Function, method_function)._hydrate(object_id, client, method_handle_metadata)
         elif len(handle_metadata.method_handle_metadata):
             # We're here when the function is loaded remotely (e.g. _Function.from_name) and we've determined based
             # on the existence of method_handle_metadata that this is a class service function
             self._method_functions = {}
             for method_name, method_handle_metadata in handle_metadata.method_handle_metadata.items():
-                self._method_functions[method_name] = _Function._new_hydrated(
-                    function_id, client, method_handle_metadata
-                )
+                self._method_functions[method_name] = _Function._new_hydrated(object_id, client, method_handle_metadata)
 
     @staticmethod
     def from_args(
