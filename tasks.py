@@ -322,7 +322,7 @@ def type_stubs(ctx):
 def update_changelog(ctx, sha: str = ""):
     # Parse a commit message for a GitHub PR number, defaulting to most recent commit
     res = ctx.run(f"git log --pretty=format:%s -n 1 {sha}", hide="stdout", warn=True)
-    if not res.exited:
+    if res.exited:
         print("Failed to extract changelog update!")
         print("Last 5 commits:")
         res = ctx.run(f"git log --pretty=oneline -n 5 {sha}")
