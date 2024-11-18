@@ -137,10 +137,7 @@ def get_by_object_path_try_possible_app_names(obj: Any, obj_path: Optional[str])
 
 
 def _infer_function_or_help(
-    app: App,
-    module,
-    accept_local_entrypoint: bool,
-    accept_webhook: bool,
+    app: App, module, accept_local_entrypoint: bool, accept_webhook: bool
 ) -> Union[Function, LocalEntrypoint]:
     function_choices = set(tag for tag in app.registered_functions.keys())
     if not accept_webhook:
@@ -256,10 +253,7 @@ You would run foo as [bold green]{base_cmd} app.py::foo[/bold green]"""
 
 
 def import_function(
-    func_ref: str,
-    base_cmd: str,
-    accept_local_entrypoint=True,
-    accept_webhook=False,
+    func_ref: str, base_cmd: str, accept_local_entrypoint=True, accept_webhook=False
 ) -> Union[Function, LocalEntrypoint]:
     import_ref = parse_import_ref(func_ref)
 
