@@ -936,10 +936,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             self.n_functions += 1
             function_id = f"fu-{self.n_functions}"
-
         function: Optional[api_pb2.Function] = None
         function_data: Optional[api_pb2.FunctionData] = None
-
         if len(request.function_data.ranked_functions) > 0:
             function_data = api_pb2.FunctionData()
             function_data.CopyFrom(request.function_data)
@@ -960,7 +958,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         if function_defn.schedule:
             self.function2schedule[function_id] = function_defn.schedule
-
         await stream.send_message(
             api_pb2.FunctionCreateResponse(
                 function_id=function_id,
