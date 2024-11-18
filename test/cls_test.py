@@ -57,7 +57,7 @@ def test_run_class(client, servicer):
         app_id = app.app_id
 
     objects = servicer.app_objects[app_id]
-    assert len(objects) == 3  # the class + two functions (one method-bound and one for the class)
+    assert len(objects) == 2  # the class + the class service function
     assert objects["Foo.bar"] == method_id
     assert objects["Foo"] == class_id
     class_function_id = objects["Foo.*"]
@@ -72,9 +72,9 @@ def test_run_class(client, servicer):
 def test_call_class_sync(client, servicer):
     with servicer.intercept() as ctx:
         with app.run(client=client):
-            assert len(ctx.get_requests("FunctionCreate")) == 2  # one for base function, one for the method
+            assert len(ctx.get_requests("FunctionCreate")) == 1  # one for the class service function
             foo: Foo = Foo()
-            assert len(ctx.get_requests("FunctionCreate")) == 2  # no additional creates for an instance
+            assert len(ctx.get_requests("FunctionCreate")) == 1  # no additional creates for an instance
             ret: float = foo.bar.remote(42)
             assert ret == 1764
 
@@ -82,10 +82,10 @@ def test_call_class_sync(client, servicer):
         len(ctx.get_requests("FunctionBindParams")) == 0
     )  # shouldn't need to bind in case there are no instance args etc.
     function_creates_requests: typing.List[api_pb2.FunctionCreateRequest] = ctx.get_requests("FunctionCreate")
-    assert len(function_creates_requests) == 2
+    assert len(function_creates_requests) == 1
     (class_create,) = ctx.get_requests("ClassCreate")
     function_creates = {fc.function.function_name: fc for fc in function_creates_requests}
-    assert function_creates.keys() == {"Foo.*", "Foo.bar"}
+    assert function_creates.keys() == {"Foo.*"}
     foobar_def = function_creates["Foo.bar"].function
     service_function_id = servicer.app_objects["ap-1"]["Foo.*"]
     assert foobar_def.is_method
@@ -184,7 +184,7 @@ def test_run_class_serialized(client, servicer):
     with app_ser.run(client=client):
         pass
 
-    assert servicer.n_functions == 2
+    assert servicer.n_functions == 1
     class_function = servicer.function_by_name("FooSer.*")
     assert class_function.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED
     user_cls = deserialize(class_function.class_serialized, client)
@@ -512,9 +512,7 @@ def test_method_args(servicer, client):
         funcs = servicer.app_functions.values()
         assert {f.function_name for f in funcs} == {"XYZ.*"}
         warm_pools = {f.function_name: f.warm_pool_size for f in funcs}
-        assert warm_pools["XYZ.*"] == 5
-        del warm_pools["XYZ.*"]
-        assert set(warm_pools.values()) == {0}  # methods don't have warm pools themselves
+        assert warm_pools == {"XYZ.*": 5}
 
 
 def test_keep_warm_depr(client, set_env_client):
@@ -550,25 +548,18 @@ def test_cls_keep_warm(client, servicer):
             ...
 
     with app.run(client=client):
-        assert len(servicer.app_functions) == 2  # class service function + method placeholder
+        assert len(servicer.app_functions) == 1  # only class service function
         cls_fun = servicer.function_by_name("ClsWithMethod.*")
-        method_placeholder_fun = servicer.function_by_name(
-            "ClsWithMethod.bar"
-        )  # there should be no containers at all for methods
         assert cls_fun.is_class
-        assert method_placeholder_fun.is_method
         assert cls_fun.warm_pool_size == 0
-        assert method_placeholder_fun.warm_pool_size == 0
 
         ClsWithMethod().keep_warm(2)  # type: ignore  # Python can't do type intersection
         assert cls_fun.warm_pool_size == 2
-        assert method_placeholder_fun.warm_pool_size == 0
 
         ClsWithMethod("other-instance").keep_warm(5)  # type: ignore  # Python can't do type intersection
         instance_service_function = servicer.function_by_name("ClsWithMethod.*", params=((("other-instance",), {})))
-        assert len(servicer.app_functions) == 3  # + instance service function
+        assert len(servicer.app_functions) == 2  # + instance service function
         assert cls_fun.warm_pool_size == 2
-        assert method_placeholder_fun.warm_pool_size == 0
         assert instance_service_function.warm_pool_size == 5
 
 
@@ -628,8 +619,8 @@ class WebCls:
 def test_web_cls(client):
     with web_app_app.run(client=client):
         c = WebCls()
-        assert c.endpoint.web_url == "http://xyz.internal"
-        assert c.asgi.web_url == "http://xyz.internal"
+        assert c.endpoint.web_url == "https://endpoint.internal"
+        assert c.asgi.web_url == "https://asgi.internal"
 
 
 handler_app = App("handler-app")
