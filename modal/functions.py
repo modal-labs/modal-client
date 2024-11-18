@@ -329,7 +329,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
     _method_handle_metadata: Optional[Dict[str, "api_pb2.FunctionHandleMetadata"]] = None
-    _method_functions: Optional[Dict[str, "_Function"]] = None  # Placeholder _Functions for each method
 
     def _bind_method(
         self,
@@ -901,12 +900,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._cluster_size = cluster_size
         obj._is_method = False
         obj._spec = function_spec  # needed for modal shell
-
-        if info.user_cls:
-            obj._method_functions = {}
-            for method_name, partial_function in partial_functions.items():
-                method_function = obj._bind_method(info.user_cls, method_name, partial_function)
-                obj._method_functions[method_name] = method_function
 
         # Used to check whether we should rebuild a modal.Image which uses `run_function`.
         gpus: List[GPU_T] = gpu if isinstance(gpu, list) else [gpu]
