@@ -273,7 +273,7 @@ class _Cls(_Object, type_prefix="cs"):
                 for (
                     method_name,
                     method_handle_metadata,
-                ) in self._class_service_function._method_handle_metadata.values():
+                ) in self._class_service_function._method_handle_metadata.items():
                     self._method_functions[method_name]._hydrate(
                         self._class_service_function.object_id, self._client, method_handle_metadata
                     )
@@ -283,7 +283,7 @@ class _Cls(_Object, type_prefix="cs"):
                 for (
                     method_name,
                     method_handle_metadata,
-                ) in self._class_service_function._method_handle_metadata.values():
+                ) in self._class_service_function._method_handle_metadata.items():
                     self._method_functions[method_name] = _Function._new_hydrated(
                         self._class_service_function.object_id, self._client, method_handle_metadata
                     )
