@@ -101,6 +101,7 @@ class _ContainerProcess(Generic[T]):
 
     async def wait(self) -> int:
         """Wait for the container process to finish running. Returns the exit code."""
+
         if self._returncode is not None:
             return self._returncode
 
@@ -150,9 +151,9 @@ class _ContainerProcess(Generic[T]):
                     await stdout_task
                     await stderr_task
 
-                # TODO: this doesn't work right now
+                # TODO: this doesn't work right now.
                 # if exit_status != 0:
-                #     raise Exception(f"Process exited with status {exit_status}")
+                #     raise ExecutionError(f"Process exited with status code {exit_status}")
 
             except (asyncio.TimeoutError, TimeoutError):
                 connecting_status.stop()
