@@ -1153,6 +1153,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._is_method = metadata.is_method
         self._use_method_name = metadata.use_method_name
         self._class_parameter_info = metadata.class_parameter_info
+        self._method_handle_metadata = dict(metadata.method_handle_metadata)
         self._definition_id = metadata.definition_id
         self._method_handle_metadata = dict(metadata.method_handle_metadata)
 
