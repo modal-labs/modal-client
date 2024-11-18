@@ -157,4 +157,4 @@ class _ContainerProcess(Generic[T]):
                 raise InteractiveTimeoutError("Failed to establish connection to container. Please try again.")
 
 
-ContainerProcess = synchronize_api(_ContainerProcess[T])
+ContainerProcess = synchronize_api(_ContainerProcess)
