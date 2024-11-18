@@ -150,6 +150,10 @@ class _ContainerProcess(Generic[T]):
                     await stdout_task
                     await stderr_task
 
+                # TODO: this doesn't work right now
+                # if exit_status != 0:
+                #     raise Exception(f"Process exited with status {exit_status}")
+
             except (asyncio.TimeoutError, TimeoutError):
                 connecting_status.stop()
                 stdout_task.cancel()

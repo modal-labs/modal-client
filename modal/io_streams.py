@@ -212,7 +212,7 @@ class _StreamReader(Generic[T]):
 
             entry_id += 1
 
-    async def _get_logs(self) -> AsyncGenerator[Optional[Union[bytes, str]], None]:
+    async def _get_logs(self) -> AsyncGenerator[Optional[bytes], None]:
         """mdmd:hidden
         Streams sandbox or process logs from the server to the reader.
 
