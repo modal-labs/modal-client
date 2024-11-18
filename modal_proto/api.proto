@@ -601,6 +601,7 @@ message CheckpointInfo {
   string checkpoint_id = 3;
   string runtime_fingerprint = 4;
   int64 size = 5;
+  bool checksum_is_file_index = 6;
 }
 
 message ClassCreateRequest {
