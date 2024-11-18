@@ -275,7 +275,7 @@ class _StreamReader(Generic[T]):
                     line, self._line_buffer = self._line_buffer.split(b"\n", 1)
                     yield line + b"\n"
 
-    def __aiter__(self):
+    def __aiter__(self) -> AsyncGenerator[T, None]:
         """mdmd:hidden"""
         if not self._stream:
             if self._by_line:
