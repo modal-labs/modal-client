@@ -137,9 +137,14 @@ def get_by_object_path_try_possible_app_names(obj: Any, obj_path: Optional[str])
 
 
 def _infer_function_or_help(
-    app: App, module, accept_local_entrypoint: bool, accept_webhook: bool
+    app: App, module, accept_local_entrypoint: bool, accept_webhook: bool, accept_class_function: bool
 ) -> Union[Function, LocalEntrypoint]:
-    function_choices = set(tag for tag, func in app.registered_functions.items() if not func.info.is_service_class())
+    function_choices = set(
+        tag
+        for tag, func in app.registered_functions.items()
+        if accept_class_function or not func.info.is_service_class()
+    )
+
     if not accept_webhook:
         function_choices -= set(app.registered_web_endpoints)
     if accept_local_entrypoint:
@@ -253,7 +258,7 @@ You would run foo as [bold green]{base_cmd} app.py::foo[/bold green]"""
 
 
 def import_function(
-    func_ref: str, base_cmd: str, accept_local_entrypoint=True, accept_webhook=False
+    func_ref: str, base_cmd: str, accept_local_entrypoint=True, accept_webhook=False, accept_class_function=False
 ) -> Union[Function, LocalEntrypoint]:
     import_ref = parse_import_ref(func_ref)
 
@@ -267,7 +272,9 @@ def import_function(
     if isinstance(app_or_function, App):
         # infer function or display help for how to select one
         app = app_or_function
-        function_handle = _infer_function_or_help(app, module, accept_local_entrypoint, accept_webhook)
+        function_handle = _infer_function_or_help(
+            app, module, accept_local_entrypoint, accept_webhook, accept_class_function
+        )
         return function_handle
     elif isinstance(app_or_function, Function):
         return app_or_function
