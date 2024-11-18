@@ -492,7 +492,7 @@ class _App:
 
         return [m for m in all_mounts if m.is_local()]
 
-    def _add_function(self, function: _Function):
+    def _add_function(self, function: _Function, is_web_endpoint: bool):
         if function.tag in self._indexed_objects:
             old_function = self._indexed_objects[function.tag]
             if isinstance(old_function, _Function):
@@ -507,12 +507,8 @@ class _App:
                 logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
 
         self._add_object(function.tag, function)
-        if function._is_web_endpoint:
+        if is_web_endpoint:
             self._web_endpoints.append(function.tag)
-        if function._method_functions:
-            for method_function in function._method_functions.values():
-                if method_function._is_web_endpoint:
-                    self._web_endpoints.append(method_function.tag)
 
     def _init_container(self, client: _Client, running_app: RunningApp):
         self._app_id = running_app.app_id
@@ -819,7 +815,7 @@ class _App:
                 cluster_size=cluster_size,  # Experimental: Clustered functions
             )
 
-            self._add_function(function)
+            self._add_function(function, webhook_config is not None)
 
             return function
 
@@ -948,7 +944,7 @@ class _App:
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
             )
 
-            self._add_function(cls_func)
+            self._add_function(cls_func, is_web_endpoint=False)
 
             cls: _Cls = _Cls.from_local(user_cls, self, cls_func)
 
