@@ -90,7 +90,8 @@ class _Obj:
     def __init__(
         self,
         user_cls: type,
-        class_service_function: Optional[_Function],  # only hydrated for <v0.63 classes
+        class_service_function: Optional[_Function],  # only None for <v0.63 classes
+        classbound_methods: Dict[str, _Function],
         from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
         args,
@@ -102,19 +103,19 @@ class _Obj:
             check_valid_cls_constructor_arg(key, kwarg)
 
         self._method_functions = {}
-        if not getattr(class_service_function, "_fake", None):
+        if class_service_function:
             # >= v0.63 classes
             # first create the singular object function used by all methods on this parameterization
             self._instance_service_function = class_service_function._bind_parameters(
                 self, from_other_workspace, options, args, kwargs
             )
-            for method_name, class_bound_method in class_service_function._method_functions.items():
+            for method_name, class_bound_method in classbound_methods.items():
                 method = self._instance_service_function._bind_instance_method(class_bound_method)
                 self._method_functions[method_name] = method
         else:
             # <v0.63 classes - bind each individual method to the new parameters
             self._instance_service_function = None
-            for method_name, class_bound_method in class_service_function._method_functions.items():
+            for method_name, class_bound_method in classbound_methods.items():
                 method = class_bound_method._bind_parameters(self, from_other_workspace, options, args, kwargs)
                 self._method_functions[method_name] = method
 
@@ -236,6 +237,7 @@ class _Cls(_Object, type_prefix="cs"):
     _class_service_function: Optional[
         _Function
     ]  # The _Function serving *all* methods of the class, used for version >=v0.63
+    _method_functions: Dict[str, _Function] = None  # Placeholder _Functions for each method
     _options: Optional[api_pb2.FunctionOptions]
     _callables: Dict[str, Callable[..., Any]]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
@@ -251,6 +253,7 @@ class _Cls(_Object, type_prefix="cs"):
     def _initialize_from_other(self, other: "_Cls"):
         self._user_cls = other._user_cls
         self._class_service_function = other._class_service_function
+        self._method_functions = other._method_functions
         self._options = other._options
         self._callables = other._callables
         self._from_other_workspace = other._from_other_workspace
@@ -262,34 +265,33 @@ class _Cls(_Object, type_prefix="cs"):
 
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
-        if self._class_service_function:
-            if self._class_service_function._method_functions:
-                # The class only has a class service service function and no method placeholders.
-                return
-            else:
-                for method in metadata.methods:
-                    if method.function_name in self._class_service_function._method_functions:
-                        # This happens when the class is loaded locally
-                        # since each function will already be a loaded dependency _Function
-                        self._class_service_function._method_functions[method.function_name]._hydrate(
-                            method.function_id, self._client, method.function_handle_metadata
-                        )
-                    else:
-                        self._class_service_function._method_functions[method.function_name] = _Function._new_hydrated(
-                            method.function_id, self._client, method.function_handle_metadata
-                        )
+        if self._class_service_function and self._class_service_function._method_handle_metadata:
+            # The class only has a class service service function and no method placeholders.
+            for method_metadata in self._class_service_function._method_handle_metadata.values():
+                if method_metadata.function_name in self._method_functions:
+                    # This happens when the class is loaded locally
+                    # since each function will already be a loaded dependency _Function
+                    self._method_functions[method_metadata.function_name]._hydrate(
+                        self._class_service_function.object_id, self._client, method_metadata
+                    )
+                else:
+                    self._method_functions[method_metadata.function_name] = _Function._new_hydrated(
+                        self._class_service_function.object_id, self._client, method_metadata
+                    )
         else:
-            # We are dealing with a pre 0.63 class that does not have a class service function and only method functions
-            async def _load():
-                pass
-
-            rep = "Function(class_function)"
-            self._class_service_function = _Function._from_loader(_load, rep)
-            self._class_service_function._fake = True
+            # Either a class with class service function and method placeholders or pre 0.63 class that does not have a
+            # class service function and only method functions
             for method in metadata.methods:
-                self._class_service_function._method_functions[method.function_name] = _Function._new_hydrated(
-                    method.function_id, self._client, method.function_handle_metadata
-                )
+                if method.function_name in self._method_functions:
+                    # This happens when the class is loaded locally
+                    # since each function will already be a loaded dependency _Function
+                    self._method_functions[method.function_name]._hydrate(
+                        method.function_id, self._client, method.function_handle_metadata
+                    )
+                else:
+                    self._method_functions[method.function_name] = _Function._new_hydrated(
+                        method.function_id, self._client, method.function_handle_metadata
+                    )
 
     def _get_metadata(self) -> api_pb2.ClassHandleMetadata:
         class_handle_metadata = api_pb2.ClassHandleMetadata()
@@ -326,12 +328,17 @@ class _Cls(_Object, type_prefix="cs"):
         # validate signature
         _Cls.validate_construction_mechanism(user_cls)
 
+        method_functions: Dict[str, _Function] = {}
         partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
             user_cls, _PartialFunctionFlags.FUNCTION
         )
 
-        for partial_function in partial_functions.values():
+        for method_name, partial_function in partial_functions.items():
+            method_function = class_service_function._bind_method(user_cls, method_name, partial_function)
+            if partial_function.webhook_config is not None:
+                app._web_endpoints.append(method_function.tag)
             partial_function.wrapped = True
+            method_functions[method_name] = method_function
 
         # Disable the warning that these are not wrapped
         for partial_function in _find_partial_methods_for_user_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():
@@ -357,6 +364,7 @@ class _Cls(_Object, type_prefix="cs"):
         cls._app = app
         cls._user_cls = user_cls
         cls._class_service_function = class_service_function
+        cls._method_functions = method_functions
         cls._callables = callables
         cls._from_other_workspace = False
         return cls
@@ -517,6 +525,7 @@ class _Cls(_Object, type_prefix="cs"):
         return _Obj(
             self._user_cls,
             self._class_service_function,
+            self._method_functions,
             self._from_other_workspace,
             self._options,
             args,
@@ -525,8 +534,8 @@ class _Cls(_Object, type_prefix="cs"):
 
     def __getattr__(self, k):
         # Used by CLI and container entrypoint
-        if k in self._class_service_function._method_functions:
-            return self._class_service_function._method_functions[k]
+        if k in self._method_functions:
+            return self._method_functions[k]
         return getattr(self._user_cls, k)
 
 
