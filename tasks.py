@@ -325,7 +325,7 @@ def update_changelog(ctx, sha: str = ""):
     if res.exited:
         print("Failed to extract changelog update!")
         print("Last 5 commits:")
-        res = ctx.run(f"git log --pretty=oneline -n 5 {sha}")
+        res = ctx.run("git log --pretty=oneline -n 5")
         return
     m = re.search(r"\(#(\d+)\)$", res.stdout)
     if m:
