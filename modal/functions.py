@@ -330,7 +330,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
     _method_handle_metadata: Optional[Dict[str, "api_pb2.FunctionHandleMetadata"]] = None
-    _method_functions: Optional[Dict[str, "_Function"]] = None  # Placeholder _Functions for each method
 
     def _bind_method(
         self,
@@ -517,26 +516,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fun._app = class_bound_method._app
         fun._spec = class_bound_method._spec
         return fun
-
-    def _hydrate_function_and_method_functions(
-        self, function_id: str, client: _Client, handle_metadata: api_pb2.FunctionHandleMetadata
-    ):
-        self._hydrate(function_id, client, handle_metadata)
-        if self._method_functions:
-            # We're here when the function is loaded locally (e.g. _Function.from_args) and we're dealing with a
-            # class service function so the _method_functions mapping is populated with (un-hydrated) _Function objects
-            for method_name, method_handle_metadata in handle_metadata.method_handle_metadata.items():
-                if method_name in self._method_functions:
-                    method_function = self._method_functions[method_name]
-                    method_function._hydrate(function_id, client, method_handle_metadata)
-        elif len(handle_metadata.method_handle_metadata):
-            # We're here when the function is loaded remotely (e.g. _Function.from_name) and we've determined based
-            # on the existence of method_handle_metadata that this is a class service function
-            self._method_functions = {}
-            for method_name, method_handle_metadata in handle_metadata.method_handle_metadata.items():
-                self._method_functions[method_name] = _Function._new_hydrated(
-                    function_id, client, method_handle_metadata
-                )
 
     @staticmethod
     def from_args(
@@ -798,7 +777,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             elif webhook_config:
                 req.webhook_config.CopyFrom(webhook_config)
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
-            self._hydrate_function_and_method_functions(response.function_id, resolver.client, response.handle_metadata)
+            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
@@ -994,7 +973,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             local_mounts = set(m for m in all_mounts if m.is_local())  # needed for modal.serve file watching
             local_mounts |= image._used_local_mounts
             obj._used_local_mounts = frozenset(local_mounts)
-            self._hydrate_function_and_method_functions(response.function_id, resolver.client, response.handle_metadata)
+            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
@@ -1008,12 +987,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._cluster_size = cluster_size
         obj._is_method = False
         obj._spec = function_spec  # needed for modal shell
-
-        if info.user_cls:
-            obj._method_functions = {}
-            for method_name, partial_function in partial_functions.items():
-                method_function = obj._bind_method(info.user_cls, method_name, partial_function)
-                obj._method_functions[method_name] = method_function
 
         # Used to check whether we should rebuild a modal.Image which uses `run_function`.
         gpus: List[GPU_T] = gpu if isinstance(gpu, list) else [gpu]
@@ -1171,7 +1144,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 else:
                     raise
 
-            self._hydrate_function_and_method_functions(response.function_id, resolver.client, response.handle_metadata)
+            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Ref({app_name})"
         return cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
