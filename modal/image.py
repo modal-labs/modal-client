@@ -347,7 +347,7 @@ class _Image(_Object, type_prefix="im"):
 
             my_image = (
                 Image.debian_slim()
-                .attach_local_python_packages("mypak", copy=True)
+                .add_local_python_packages("mypak", copy=True)
                 .run_commands("python -m mypak")  # this now works!
             )
             """
@@ -624,7 +624,7 @@ class _Image(_Object, type_prefix="im"):
             context_mount=mount,
         )
 
-    def attach_local_python_packages(self, *packages: Union[str, Path], copy: bool = False) -> "_Image":
+    def add_local_python_packages(self, *packages: Union[str, Path], copy: bool = False) -> "_Image":
         """Attaches local Python packages to the container running the image
 
         Packages are added to the /root directory which is on the PYTHONPATH of any
