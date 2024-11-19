@@ -305,17 +305,6 @@ message AppDeployResponse {
   string url = 1;
 }
 
-message AppDeploySingleObjectRequest {
-  string name = 1;
-  DeploymentNamespace namespace = 2;
-  string environment_name = 3;
-  string object_id = 4;
-}
-
-message AppDeploySingleObjectResponse {
-  string app_id = 1;
-}
-
 message AppDeploymentHistory {
   string app_id = 1;
   uint32 version = 2;
@@ -612,6 +601,7 @@ message CheckpointInfo {
   string checkpoint_id = 3;
   string runtime_fingerprint = 4;
   int64 size = 5;
+  bool checksum_is_file_index = 6;
 }
 
 message ClassCreateRequest {
@@ -1413,6 +1403,7 @@ message FunctionGetInputsItem {
   bool kill_switch = 3;
   reserved 4; // previously used
   string function_call_id = 5;
+  FunctionCallInvocationType function_call_invocation_type = 6;
 }
 
 message FunctionGetInputsRequest {
@@ -1931,23 +1922,6 @@ message ProxyIp {
   ProxyIpStatus status = 2;
   double created_at = 3;
   string environment_name = 4;
-}
-
-message ProxyIpDeleteRequest {
-  string proxy_ip = 1;
-}
-
-message ProxyIpGetOrCreateRequest {
-  optional string proxy_ip = 1;
-}
-
-message ProxyIpGetOrCreateResponse {
-  string proxy_ip = 1;
-  ProxyIpStatus status = 2;
-}
-
-message ProxyIpListResponse {
-  repeated ProxyIp proxy_ips = 1;
 }
 
 message ProxyListResponse {
@@ -2671,7 +2645,6 @@ service ModalClient {
   rpc AppClientDisconnect(AppClientDisconnectRequest) returns (google.protobuf.Empty);
   rpc AppCreate(AppCreateRequest) returns (AppCreateResponse);
   rpc AppDeploy(AppDeployRequest) returns (AppDeployResponse);
-  rpc AppDeploySingleObject(AppDeploySingleObjectRequest) returns (AppDeploySingleObjectResponse);
   rpc AppDeploymentHistory(AppDeploymentHistoryRequest) returns (AppDeploymentHistoryResponse);
   rpc AppGetByDeploymentName(AppGetByDeploymentNameRequest) returns (AppGetByDeploymentNameResponse);
   rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
@@ -2770,13 +2743,6 @@ service ModalClient {
   rpc ProxyDelete(ProxyDeleteRequest) returns (google.protobuf.Empty);
   rpc ProxyGet(ProxyGetRequest) returns (ProxyGetResponse);
   rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);
-
-  // Proxy IPs
-  // TODO: remove all methods when migration from ProxyIp -> Proxy is complete.
-  rpc ProxyIpDelete(ProxyIpDeleteRequest) returns (google.protobuf.Empty);
-  rpc ProxyIpGetOrCreate(ProxyIpGetOrCreateRequest) returns (ProxyIpGetOrCreateResponse);
-  rpc ProxyIpList(google.protobuf.Empty) returns (ProxyIpListResponse);
-
   rpc ProxyList(google.protobuf.Empty) returns (ProxyListResponse);
 
   // Queues

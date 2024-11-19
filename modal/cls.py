@@ -326,7 +326,7 @@ class _Cls(_Object, type_prefix="cs"):
         )
 
         for method_name, partial_function in partial_functions.items():
-            method_function = class_service_function._bind_method(user_cls, method_name, partial_function)
+            method_function = class_service_function._bind_method_old(user_cls, method_name, partial_function)
             app._add_function(method_function, is_web_endpoint=partial_function.webhook_config is not None)
             partial_function.wrapped = True
             functions[method_name] = method_function
@@ -524,6 +524,7 @@ class _Cls(_Object, type_prefix="cs"):
         await resolver.load(obj)
         return obj
 
+    @synchronizer.no_input_translation
     def __call__(self, *args, **kwargs) -> _Obj:
         """This acts as the class constructor."""
         return _Obj(

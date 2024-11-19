@@ -46,6 +46,18 @@ async def _initialize_clustered_function(client: _Client, task_id: str, world_si
     # See MOD-4067.
     os.environ["NCCL_HOSTID"] = f"{hostname}{container_ip}"
 
+    # We found these settings to work well in most cases. You may be able to achieve
+    # better performance by tuning these settings.
+    if os.environ["MODAL_CLOUD_PROVIDER"] in ("CLOUD_PROVIDER_GCP", "CLOUD_PROVIDER_OCI"):
+        os.environ["NCCL_SOCKET_NTHREADS"] = "4"
+        os.environ["NCCL_NSOCKS_PERTHREAD"] = "1"
+    elif os.environ["MODAL_CLOUD_PROVIDER"] == "CLOUD_PROVIDER_AWS":
+        os.environ["NCCL_SOCKET_NTHREADS"] = "2"
+        os.environ["NCCL_NSOCKS_PERTHREAD"] = "8"
+    else:
+        os.environ["NCCL_SOCKET_NTHREADS"] = "1"
+        os.environ["NCCL_NSOCKS_PERTHREAD"] = "1"
+
     if world_size > 1:
         resp: api_pb2.TaskClusterHelloResponse = await retry_transient_errors(
             client.stub.TaskClusterHello,
