@@ -50,7 +50,7 @@ from .app import App, _App
 from .client import Client, _Client
 from .cls import Cls, Obj
 from .config import logger
-from .exception import ExecutionError, InputCancellation, InvalidError, deprecation_warning
+from .exception import ExecutionError, InputCancellation, InvalidError
 from .execution_context import _set_current_context_ids
 from .functions import Function, _Function
 from .partial_function import (
@@ -904,14 +904,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
 if __name__ == "__main__":
     logger.debug("Container: starting")
-
-    # Check and warn on deprecated Python version
-    if sys.version_info[:2] == (3, 8):
-        msg = (
-            "You are using Python 3.8 in your remote environment. Modal will soon drop support for this version,"
-            " and you will be unable to use this Image. Please update your Image definition."
-        )
-        deprecation_warning((2024, 5, 2), msg, show_source=False, pending=True)
 
     container_args = api_pb2.ContainerArguments()
     container_args.ParseFromString(base64.b64decode(sys.argv[1]))

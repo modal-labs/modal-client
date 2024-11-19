@@ -13,13 +13,6 @@ def main():
     setup_rich_traceback()
     highlight_modal_deprecation_warnings()
 
-    if sys.version_info[:2] == (3, 8):
-        from .exception import deprecation_warning
-
-        deprecation_warning(
-            (2024, 5, 2), "Modal will soon drop support for Python 3.8.", show_source=False, pending=True
-        )
-
     try:
         entrypoint_cli()
 

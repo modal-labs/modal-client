@@ -329,8 +329,44 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _parent: Optional["_Function"] = None
 
     _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
+    _method_handle_metadata: Optional[Dict[str, "api_pb2.FunctionHandleMetadata"]] = None
+    _method_functions: Optional[Dict[str, "_Function"]] = None  # Placeholder _Functions for each method
 
     def _bind_method(
+        self,
+        user_cls,
+        method_name: str,
+        partial_function: "modal.partial_function._PartialFunction",
+    ):
+        """mdmd:hidden
+
+        Creates a _Function that is bound to a specific class method name. This _Function is not uniquely tied
+        to any backend function -- its object_id is the function ID of the class service function.
+
+        """
+        class_service_function = self
+        assert class_service_function._info  # has to be a local function to be able to "bind" it
+        assert not class_service_function._is_method  # should not be used on an already bound method placeholder
+        assert not class_service_function._obj  # should only be used on base function / class service function
+        full_name = f"{user_cls.__name__}.{method_name}"
+
+        rep = f"Method({full_name})"
+        fun = _Object.__new__(_Function)
+        fun._init(rep)
+        fun._tag = full_name
+        fun._raw_f = partial_function.raw_f
+        fun._info = FunctionInfo(
+            partial_function.raw_f, user_cls=user_cls, serialized=class_service_function.info.is_serialized()
+        )  # needed for .local()
+        fun._use_method_name = method_name
+        fun._app = class_service_function._app
+        fun._is_generator = partial_function.is_generator
+        fun._cluster_size = partial_function.cluster_size
+        fun._spec = class_service_function._spec
+        fun._is_method = True
+        return fun
+
+    def _bind_method_old(
         self,
         user_cls,
         method_name: str,
@@ -482,6 +518,26 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fun._spec = class_bound_method._spec
         return fun
 
+    def _hydrate_function_and_method_functions(
+        self, function_id: str, client: _Client, handle_metadata: api_pb2.FunctionHandleMetadata
+    ):
+        self._hydrate(function_id, client, handle_metadata)
+        if self._method_functions:
+            # We're here when the function is loaded locally (e.g. _Function.from_args) and we're dealing with a
+            # class service function so the _method_functions mapping is populated with (un-hydrated) _Function objects
+            for method_name, method_handle_metadata in handle_metadata.method_handle_metadata.items():
+                if method_name in self._method_functions:
+                    method_function = self._method_functions[method_name]
+                    method_function._hydrate(function_id, client, method_handle_metadata)
+        elif len(handle_metadata.method_handle_metadata):
+            # We're here when the function is loaded remotely (e.g. _Function.from_name) and we've determined based
+            # on the existence of method_handle_metadata that this is a class service function
+            self._method_functions = {}
+            for method_name, method_handle_metadata in handle_metadata.method_handle_metadata.items():
+                self._method_functions[method_name] = _Function._new_hydrated(
+                    function_id, client, method_handle_metadata
+                )
+
     @staticmethod
     def from_args(
         info: FunctionInfo,
@@ -523,6 +579,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         _experimental_custom_scaling_factor: Optional[float] = None,
     ) -> None:
         """mdmd:hidden"""
+        # Needed to avoid circular imports
+        from .partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
+
         tag = info.get_tag()
 
         if info.raw_f:
@@ -593,9 +652,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         )
 
         if info.user_cls and not is_auto_snapshot:
-            # Needed to avoid circular imports
-            from .partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
-
             build_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.BUILD).items()
             for k, pf in build_functions:
                 build_function = pf.raw_f
@@ -684,6 +740,21 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if image is not None and not isinstance(image, _Image):
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
+        method_definitions: Optional[Dict[str, api_pb2.MethodDefinition]] = None
+        partial_functions: Dict[str, "modal.partial_function._PartialFunction"] = {}
+        if info.user_cls:
+            method_definitions = {}
+            partial_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.FUNCTION)
+            for method_name, partial_function in partial_functions.items():
+                function_type = get_function_type(partial_function.is_generator)
+                function_name = f"{info.user_cls.__name__}.{method_name}"
+                method_definition = api_pb2.MethodDefinition(
+                    webhook_config=partial_function.webhook_config,
+                    function_type=function_type,
+                    function_name=function_name,
+                )
+                method_definitions[method_name] = method_definition
+
         function_type = get_function_type(is_generator)
 
         def _deps(only_explicit_mounts=False) -> List[_Object]:
@@ -721,11 +792,15 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 app_id=resolver.app_id,
                 function_name=info.function_name,
                 function_type=function_type,
-                webhook_config=webhook_config,
                 existing_function_id=existing_object_id or "",
             )
+            if method_definitions:
+                for method_name, method_definition in method_definitions.items():
+                    req.method_definitions[method_name].CopyFrom(method_definition)
+            elif webhook_config:
+                req.webhook_config.CopyFrom(webhook_config)
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
-            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            self._hydrate_function_and_method_functions(response.function_id, resolver.client, response.handle_metadata)
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
@@ -921,7 +996,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             local_mounts = set(m for m in all_mounts if m.is_local())  # needed for modal.serve file watching
             local_mounts |= image._used_local_mounts
             obj._used_local_mounts = frozenset(local_mounts)
-            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            self._hydrate_function_and_method_functions(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Function({tag})"
         obj = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
@@ -935,6 +1010,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._cluster_size = cluster_size
         obj._is_method = False
         obj._spec = function_spec  # needed for modal shell
+
+        if info.user_cls:
+            obj._method_functions = {}
+            for method_name, partial_function in partial_functions.items():
+                method_function = obj._bind_method(info.user_cls, method_name, partial_function)
+                obj._method_functions[method_name] = method_function
 
         # Used to check whether we should rebuild a modal.Image which uses `run_function`.
         gpus: List[GPU_T] = gpu if isinstance(gpu, list) else [gpu]
@@ -1092,7 +1173,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 else:
                     raise
 
-            self._hydrate(response.function_id, resolver.client, response.handle_metadata)
+            self._hydrate_function_and_method_functions(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Ref({app_name})"
         return cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
@@ -1183,6 +1264,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._use_function_id = metadata.use_function_id
         self._use_method_name = metadata.use_method_name
         self._class_parameter_info = metadata.class_parameter_info
+        self._method_handle_metadata = dict(metadata.method_handle_metadata)
         self._definition_id = metadata.definition_id
 
     def _invocation_function_id(self) -> str:
@@ -1200,6 +1282,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             is_method=self._is_method,
             class_parameter_info=self._class_parameter_info,
             definition_id=self._definition_id,
+            method_handle_metadata=self._method_handle_metadata,
         )
 
     def _check_no_web_url(self, fn_name: str):
