@@ -1020,7 +1020,7 @@ def test_modal_object_param_uses_wrapped_type(servicer, set_env_client, client):
     function_def: api_pb2.Function = servicer.app_functions[req.function_id]
     from modal._container_entrypoint import deserialize_params
 
-    _client = synchronizer._translate_in(client)  # ugly
+    _client = typing.cast(modal.client._Client, synchronizer._translate_in(client))
     container_params = deserialize_params(req.serialized_params, function_def, _client)
     args, kwargs = container_params
     assert type(kwargs["x"]) == type(dct)
