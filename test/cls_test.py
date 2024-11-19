@@ -1014,7 +1014,7 @@ def test_modal_object_param_uses_wrapped_type(servicer, set_env_client, client):
         with modal.Dict.ephemeral() as dct:
             with baz_app.run():
                 # create bound instance:
-                Baz(x=dct).keep_warm(1)  # type:ignore[attribute]
+                typing.cast(modal.Cls, Baz(x=dct)).keep_warm(1)
 
     req: api_pb2.FunctionBindParamsRequest = ctx.pop_request("FunctionBindParams")
     function_def: api_pb2.Function = servicer.app_functions[req.function_id]
