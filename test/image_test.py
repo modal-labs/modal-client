@@ -635,7 +635,7 @@ def tmp_path_with_content(tmp_path):
         # (None, "/proj/data.txt")  # default target - basename in current directory
     ],
 )
-def test_image_attach_local_file(servicer, client, tmp_path_with_content, copy, remote_path, expected_dest):
+def test_image_add_local_file(servicer, client, tmp_path_with_content, copy, remote_path, expected_dest):
     app = App()
 
     if remote_path is None:
@@ -646,7 +646,7 @@ def test_image_attach_local_file(servicer, client, tmp_path_with_content, copy, 
     img = (
         Image.from_registry("unknown_image")
         .workdir("/proj")
-        .attach_local_file(tmp_path_with_content / "data.txt", **remote_path_kwargs, copy=copy)
+        .add_local_file(tmp_path_with_content / "data.txt", **remote_path_kwargs, copy=copy)
     )
     app.function(image=img)(dummy)
 
@@ -676,7 +676,7 @@ def test_image_attach_local_file(servicer, client, tmp_path_with_content, copy, 
         # (None, "/proj/sub")  # default target - copy into current directory
     ],
 )
-def test_image_attach_local_dir(servicer, client, tmp_path_with_content, copy, remote_path, expected_dest):
+def test_image_add_local_dir(servicer, client, tmp_path_with_content, copy, remote_path, expected_dest):
     app = App()
 
     if remote_path is None:
@@ -687,7 +687,7 @@ def test_image_attach_local_dir(servicer, client, tmp_path_with_content, copy, r
     img = (
         Image.from_registry("unknown_image")
         .workdir("/proj")
-        .attach_local_dir(tmp_path_with_content / "data", **remote_path_kwargs, copy=copy)
+        .add_local_dir(tmp_path_with_content / "data", **remote_path_kwargs, copy=copy)
     )
     app.function(image=img)(dummy)
 
@@ -1307,7 +1307,7 @@ def hydrate_image(img, client):
         pass
 
 
-def test_attach_local_lazy_vs_copy(client, servicer, set_env_client, supports_on_path):
+def test_add_local_lazy_vs_copy(client, servicer, set_env_client, supports_on_path):
     deb = Image.debian_slim()
     image_with_mount = deb.add_local_python_packages("pkg_a")
 
@@ -1347,7 +1347,7 @@ def test_attach_local_lazy_vs_copy(client, servicer, set_env_client, supports_on
     assert all(fn.startswith("/root/pkg_a/") for fn in copied_files)
 
 
-def test_attach_locals_are_attached_to_functions(servicer, client, supports_on_path):
+def test_add_locals_are_attached_to_functions(servicer, client, supports_on_path):
     deb_slim = Image.debian_slim()
     img = deb_slim.add_local_python_packages("pkg_a")
     app = App("my-app")
@@ -1364,7 +1364,7 @@ def test_attach_locals_are_attached_to_functions(servicer, client, supports_on_p
     assert added_mounts == {img._mount_layers[0].object_id}
 
 
-def test_attach_locals_are_attached_to_classes(servicer, client, supports_on_path, set_env_client):
+def test_add_locals_are_attached_to_classes(servicer, client, supports_on_path, set_env_client):
     deb_slim = Image.debian_slim()
     img = deb_slim.add_local_python_packages("pkg_a")
     app = App("my-app")
@@ -1395,7 +1395,7 @@ def test_attach_locals_are_attached_to_classes(servicer, client, supports_on_pat
 
 
 @skip_windows("servicer sandbox implementation not working on windows")
-def test_attach_locals_are_attached_to_sandboxes(servicer, client, supports_on_path):
+def test_add_locals_are_attached_to_sandboxes(servicer, client, supports_on_path):
     deb_slim = Image.debian_slim()
     img = deb_slim.add_local_python_packages("pkg_a")
     app = App("my-app")
@@ -1414,7 +1414,7 @@ def empty_fun():
     pass
 
 
-def test_attach_locals_build_function(servicer, client, supports_on_path):
+def test_add_locals_build_function(servicer, client, supports_on_path):
     deb_slim = Image.debian_slim()
     img = deb_slim.add_local_python_packages("pkg_a")
     img_with_build_function = img.run_function(empty_fun)

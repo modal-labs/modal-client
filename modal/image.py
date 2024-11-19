@@ -334,9 +334,9 @@ class _Image(_Object, type_prefix="im"):
             raise InvalidError(
                 textwrap.dedent(
                     """
-            An image tried to run a build step after using `image.attach_local_*` to include local files.
+            An image tried to run a build step after using `image.add_local_*` to include local files.
 
-            Run `image.attach_local_*` commands last in your image build to avoid rebuilding images with every local
+            Run `image.add_local_*` commands last in your image build to avoid rebuilding images with every local
             filechange. Modal will then mount these files as a thin layer when starting your container, saving build
             time.
 
@@ -606,7 +606,7 @@ class _Image(_Object, type_prefix="im"):
             context_mount=mount,
         )
 
-    def attach_local_file(self, local_path: Union[str, Path], remote_path: str, *, copy: bool = False) -> "_Image":
+    def add_local_file(self, local_path: Union[str, Path], remote_path: str, *, copy: bool = False) -> "_Image":
         """Attach a local file to the image
 
         By default, the file is attached as a lightweight mount on top of any
@@ -626,7 +626,7 @@ class _Image(_Object, type_prefix="im"):
             #  + make default remote_path="./"
             #  This requires deferring the Mount creation until after "self" (the base image) has been resolved
             #  so we know the workdir of the operation.
-            raise InvalidError("image.attach_local_file() currently only supports absolute remote_path values")
+            raise InvalidError("image.add_local_file() currently only supports absolute remote_path values")
 
         if remote_path.endswith("/"):
             remote_path = remote_path + Path(local_path).name
@@ -634,7 +634,7 @@ class _Image(_Object, type_prefix="im"):
         mount = _Mount.from_local_file(local_path, remote_path)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
-    def attach_local_dir(
+    def add_local_dir(
         self, local_path: Union[str, Path], remote_path: Union[str, Path], *, copy: bool = False
     ) -> "_Image":
         """Attach a local dir to the image
@@ -659,7 +659,7 @@ class _Image(_Object, type_prefix="im"):
         if not remote_path.is_absolute():
             # TODO(elias): implement relative to absolute resolution using image workdir metadata
             #  + make default remote_path="./"
-            raise InvalidError("image.attach_local_dir() currently only supports absolute remote_path values")
+            raise InvalidError("image.add_local_dir() currently only supports absolute remote_path values")
         mount = _Mount.from_local_dir(local_path, remote_path=remote_path)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
