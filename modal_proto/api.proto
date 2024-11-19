@@ -427,7 +427,7 @@ message AppSetObjectsRequest {
   string client_id = 3;
   repeated string unindexed_object_ids = 4;
   AppState new_app_state = 5; // promotes an app from initializing to this new state
-  string single_object_id = 6;
+  reserved 6;
 }
 
 message AppStopRequest {
