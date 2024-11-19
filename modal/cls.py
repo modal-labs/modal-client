@@ -265,7 +265,11 @@ class _Cls(_Object, type_prefix="cs"):
 
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
-        if self._class_service_function and len(self._class_service_function._method_handle_metadata):
+        if (
+            self._class_service_function
+            and self._class_service_function._method_handle_metadata
+            and len(self._class_service_function._method_handle_metadata)
+        ):
             # The class only has a class service service function and no method placeholders.
             if self._method_functions:
                 # We're here when the Cls is loaded locally (e.g. _Cls.from_local) so the _method_functions mapping is
