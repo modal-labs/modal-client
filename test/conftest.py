@@ -341,6 +341,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
             is_method=definition.is_method,
             use_method_name=definition.use_method_name,
             use_function_id=definition.use_function_id,
+            method_handle_metadata={
+                method_name: api_pb2.FunctionHandleMetadata(
+                    function_name=method_definition.function_name,
+                    function_type=method_definition.function_type,
+                    web_url=method_definition.web_url,
+                    is_method=True,
+                    use_method_name=method_name,
+                )
+                for method_name, method_definition in definition.method_definitions.items()
+            },
         )
 
     def get_class_metadata(self, object_id: str) -> api_pb2.ClassHandleMetadata:
@@ -908,7 +918,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # This loop is for class service functions, where req.method_definitions will be non-empty
         method_handle_metadata: dict[str, api_pb2.FunctionHandleMetadata] = {}
         for method_name, method_definition in req.method_definitions.items():
-            method_web_url = f"https://{method_name}.internal"
+            method_web_url = (
+                f"http://{method_name}.internal"
+                if method_definition.HasField("webhook_config") and method_definition.webhook_config.type
+                else None
+            )
             method_handle_metadata[method_name] = api_pb2.FunctionHandleMetadata(
                 function_name=method_definition.function_name,
                 function_type=method_definition.function_type,
@@ -937,30 +951,28 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             self.n_functions += 1
             function_id = f"fu-{self.n_functions}"
-
         function: Optional[api_pb2.Function] = None
         function_data: Optional[api_pb2.FunctionData] = None
-
         if len(request.function_data.ranked_functions) > 0:
             function_data = api_pb2.FunctionData()
             function_data.CopyFrom(request.function_data)
-            if function_data.webhook_config.type:
-                function_data.web_url = "http://xyz.internal"
         else:
             assert request.function
             function = api_pb2.Function()
             function.CopyFrom(request.function)
-            if function.webhook_config.type:
-                function.web_url = "http://xyz.internal"
 
         assert (function is None) != (function_data is None)
         function_defn = function or function_data
         assert function_defn
+        if function_defn.webhook_config.type:
+            function_defn.web_url = "http://xyz.internal"
+        for method_name, method_definition in function_defn.method_definitions.items():
+            if method_definition.webhook_config.type:
+                method_definition.web_url = f"http://{method_name}.internal"
         self.app_functions[function_id] = function_defn
 
         if function_defn.schedule:
             self.function2schedule[function_id] = function_defn.schedule
-
         await stream.send_message(
             api_pb2.FunctionCreateResponse(
                 function_id=function_id,
@@ -972,6 +984,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     use_function_id=function_defn.use_function_id or function_id,
                     use_method_name=function_defn.use_method_name,
                     definition_id=f"de-{self.n_functions}",
+                    method_handle_metadata={
+                        method_name: api_pb2.FunctionHandleMetadata(
+                            function_name=method_definition.function_name,
+                            function_type=method_definition.function_type,
+                            web_url=method_definition.web_url,
+                            is_method=True,
+                            use_method_name=method_name,
+                        )
+                        for method_name, method_definition in function_defn.method_definitions.items()
+                    },
                 ),
             )
         )
