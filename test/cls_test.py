@@ -991,3 +991,20 @@ def test_unsupported_function_decorators_on_methods():
             @app.function(serialized=True)
             def f(self):
                 pass
+
+
+def test_modal_object_param_uses_wrapped_type(servicer, set_env_client, client):
+    with servicer.intercept() as ctx:
+        with modal.Dict.ephemeral() as dct:
+            with baz_app.run():
+                # create bound instance:
+                typing.cast(modal.Cls, Baz(x=dct)).keep_warm(1)
+
+    req: api_pb2.FunctionBindParamsRequest = ctx.pop_request("FunctionBindParams")
+    function_def: api_pb2.Function = servicer.app_functions[req.function_id]
+    from modal._container_entrypoint import deserialize_params
+
+    _client = typing.cast(modal.client._Client, synchronizer._translate_in(client))
+    container_params = deserialize_params(req.serialized_params, function_def, _client)
+    args, kwargs = container_params
+    assert type(kwargs["x"]) == type(dct)

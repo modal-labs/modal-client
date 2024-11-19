@@ -527,6 +527,7 @@ class _Cls(_Object, type_prefix="cs"):
         await resolver.load(obj)
         return obj
 
+    @synchronizer.no_input_translation
     def __call__(self, *args, **kwargs) -> _Obj:
         """This acts as the class constructor."""
         return _Obj(
