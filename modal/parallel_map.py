@@ -28,7 +28,7 @@ from modal._utils.function_utils import (
 )
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.config import logger
-from modal.execution_context import current_input_id
+from modal.runtime.execution_context import current_input_id
 from modal_proto import api_pb2
 
 if typing.TYPE_CHECKING:

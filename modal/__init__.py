@@ -16,7 +16,6 @@ try:
     from .cls import Cls, parameter
     from .dict import Dict
     from .exception import Error
-    from .execution_context import current_function_call_id, current_input_id, interact, is_local
     from .functions import Function
     from .image import Image
     from .mount import Mount
@@ -26,6 +25,7 @@ try:
     from .proxy import Proxy
     from .queue import Queue
     from .retries import Retries
+    from .runtime.execution_context import current_function_call_id, current_input_id, interact, is_local
     from .sandbox import Sandbox
     from .schedule import Cron, Period
     from .scheduler_placement import SchedulerPlacement

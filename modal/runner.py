@@ -30,11 +30,11 @@ from .exception import (
     _CliUserExecutionError,
     deprecation_error,
 )
-from .execution_context import is_local
 from .functions import _Function
 from .object import _get_environment_name, _Object
 from .output import _get_output_manager, enable_output
 from .running_app import RunningApp
+from .runtime.execution_context import is_local
 from .sandbox import _Sandbox
 from .secret import _Secret
 

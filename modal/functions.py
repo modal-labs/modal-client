@@ -68,7 +68,6 @@ from .exception import (
     OutputExpiredError,
     deprecation_warning,
 )
-from .execution_context import current_input_id, is_local
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount, get_auto_mounts
@@ -87,6 +86,7 @@ from .parallel_map import (
 )
 from .proxy import _Proxy
 from .retries import Retries
+from .runtime.execution_context import current_input_id, is_local
 from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret

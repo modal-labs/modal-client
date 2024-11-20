@@ -7,11 +7,11 @@ from typing import (
 import modal._clustered_functions
 from modal.functions import _Function
 
-from ._container_io_manager import _ContainerIOManager
 from .exception import (
     InvalidError,
 )
 from .partial_function import _PartialFunction, _PartialFunctionFlags
+from .runtime._container_io_manager import _ContainerIOManager
 
 
 def stop_fetching_inputs():

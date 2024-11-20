@@ -24,12 +24,6 @@ from grpclib.exceptions import GRPCError
 import modal
 from modal import Client, Queue, Volume, is_local
 from modal._container_entrypoint import UserException, main
-from modal._container_io_manager import (
-    ContainerIOManager,
-    FinalizedFunction,
-    InputSlots,
-    IOContext,
-)
 from modal._serialization import (
     deserialize,
     deserialize_data_format,
@@ -46,6 +40,12 @@ from modal._utils.blob_utils import (
 from modal.app import _App
 from modal.exception import InvalidError
 from modal.partial_function import enter, method
+from modal.runtime._container_io_manager import (
+    ContainerIOManager,
+    FinalizedFunction,
+    InputSlots,
+    IOContext,
+)
 from modal_proto import api_pb2
 
 from .helpers import deploy_app_externally
@@ -1596,7 +1596,7 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, servicer)
     monkeypatch.setattr(synchronizer, "_translate_scalar_out", translate_out_spy)
 
     # don't do blobbing for this test
-    monkeypatch.setattr("modal._container_io_manager.MAX_OBJECT_SIZE_BYTES", 1e100)
+    monkeypatch.setattr("modal.runtime._container_io_manager.MAX_OBJECT_SIZE_BYTES", 1e100)
 
     large_data_list = list(range(int(1e6)))  # large data set
 
@@ -1807,7 +1807,7 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer):
 
 @skip_github_non_linux
 def test_inputs_outputs_with_blob_id(servicer, client, monkeypatch):
-    monkeypatch.setattr("modal._container_io_manager.MAX_OBJECT_SIZE_BYTES", 0)
+    monkeypatch.setattr("modal.runtime._container_io_manager.MAX_OBJECT_SIZE_BYTES", 0)
     ret = _run_container(
         servicer,
         "test.supports.functions",
@@ -1866,7 +1866,7 @@ def test_stop_fetching_inputs(servicer):
 
 @skip_github_non_linux
 def test_container_heartbeat_survives_grpc_deadlines(servicer, caplog, monkeypatch):
-    monkeypatch.setattr("modal._container_io_manager.HEARTBEAT_INTERVAL", 0.01)
+    monkeypatch.setattr("modal.runtime._container_io_manager.HEARTBEAT_INTERVAL", 0.01)
     num_heartbeats = 0
 
     async def heartbeat_responder(servicer, stream):
@@ -1902,9 +1902,9 @@ def test_container_heartbeat_survives_local_exceptions(servicer, caplog, monkeyp
         numcalls += 1
         raise Exception("oops")
 
-    monkeypatch.setattr("modal._container_io_manager.HEARTBEAT_INTERVAL", 0.01)
+    monkeypatch.setattr("modal.runtime._container_io_manager.HEARTBEAT_INTERVAL", 0.01)
     monkeypatch.setattr(
-        "modal._container_io_manager._ContainerIOManager._heartbeat_handle_cancellations", custom_heartbeater
+        "modal.runtime._container_io_manager._ContainerIOManager._heartbeat_handle_cancellations", custom_heartbeater
     )
 
     ret = _run_container(
