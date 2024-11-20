@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2024
 from modal.image import _Image
 from modal.runtime import user_code_imports
 from modal_proto import api_pb2
