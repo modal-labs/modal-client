@@ -34,7 +34,7 @@ from grpclib.events import RecvRequest, listen
 
 import modal._serialization
 from modal import __version__, config
-from modal._container_io_manager import _ContainerIOManager
+from modal._runtime.container_io_manager import _ContainerIOManager
 from modal._serialization import serialize_data_format
 from modal._utils.async_utils import asyncify, synchronize_api
 from modal._utils.grpc_testing import patch_mock_servicer
@@ -152,7 +152,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
             }
         ]
         self.app_objects = {}
-        self.app_single_objects = {}
         self.app_unindexed_objects = {
             "ap-1": ["im-1", "vo-1"],
         }
@@ -473,8 +472,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.AppSetObjectsRequest = await stream.recv_message()
         self.app_objects[request.app_id] = dict(request.indexed_object_ids)
         self.app_unindexed_objects[request.app_id] = list(request.unindexed_object_ids)
-        if request.single_object_id:
-            self.app_single_objects[request.app_id] = request.single_object_id
         self.app_set_objects_count += 1
         if request.new_app_state:
             self.app_state_history[request.app_id].append(request.new_app_state)

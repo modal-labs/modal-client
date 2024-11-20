@@ -9,6 +9,7 @@ if sys.version_info[:2] >= (3, 14):
 from modal_version import __version__
 
 try:
+    from ._runtime.execution_context import current_function_call_id, current_input_id, interact, is_local
     from ._tunnel import Tunnel, forward
     from .app import App, Stub
     from .client import Client
@@ -16,7 +17,6 @@ try:
     from .cls import Cls, parameter
     from .dict import Dict
     from .exception import Error
-    from .execution_context import current_function_call_id, current_input_id, interact, is_local
     from .functions import Function
     from .image import Image
     from .mount import Mount
