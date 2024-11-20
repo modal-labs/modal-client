@@ -1083,7 +1083,7 @@ App = synchronize_api(_App)
 
 class _Stub(_App):
     """mdmd:hidden
-    This enables using an "Stub" class instead of "App".
+    This enables using a "Stub" class instead of "App".
 
     For most of Modal's history, the app class was called "Stub", so this exists for
     backwards compatibility, in order to facilitate moving from "Stub" to "App".
