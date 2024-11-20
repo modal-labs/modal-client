@@ -9,6 +9,7 @@ if sys.version_info[:2] >= (3, 14):
 from modal_version import __version__
 
 try:
+    from ._runtime.execution_context import current_function_call_id, current_input_id, interact, is_local
     from ._tunnel import Tunnel, forward
     from .app import App, Stub
     from .client import Client
@@ -25,7 +26,6 @@ try:
     from .proxy import Proxy
     from .queue import Queue
     from .retries import Retries
-    from .runtime.execution_context import current_function_call_id, current_input_id, interact, is_local
     from .sandbox import Sandbox
     from .schedule import Cron, Period
     from .scheduler_placement import SchedulerPlacement
