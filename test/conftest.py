@@ -34,7 +34,7 @@ from grpclib.events import RecvRequest, listen
 
 import modal._serialization
 from modal import __version__, config
-from modal._container_io_manager import _ContainerIOManager
+from modal._runtime.container_io_manager import _ContainerIOManager
 from modal._serialization import serialize_data_format
 from modal._utils.async_utils import asyncify, synchronize_api
 from modal._utils.grpc_testing import patch_mock_servicer

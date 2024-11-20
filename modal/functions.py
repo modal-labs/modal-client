@@ -35,6 +35,7 @@ from ._location import parse_cloud_provider
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
+from ._runtime.execution_context import current_input_id, is_local
 from ._serialization import serialize, serialize_proto_params
 from ._utils.async_utils import (
     TaskContext,
@@ -68,7 +69,6 @@ from .exception import (
     OutputExpiredError,
     deprecation_warning,
 )
-from .execution_context import current_input_id, is_local
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount, get_auto_mounts

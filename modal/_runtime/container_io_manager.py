@@ -31,22 +31,21 @@ from grpclib import Status
 from synchronicity.async_wrap import asynccontextmanager
 
 import modal_proto.api_pb2
+from modal._serialization import deserialize, serialize, serialize_data_format
+from modal._traceback import extract_traceback, print_exception
+from modal._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
+from modal._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
+from modal._utils.function_utils import _stream_function_call_data
+from modal._utils.grpc_utils import get_proto_oneof, retry_transient_errors
+from modal._utils.package_utils import parse_major_minor_version
+from modal.client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
+from modal.config import config, logger
+from modal.exception import ClientClosed, InputCancellation, InvalidError, SerializationError
+from modal.running_app import RunningApp
 from modal_proto import api_pb2
 
-from ._serialization import deserialize, serialize, serialize_data_format
-from ._traceback import extract_traceback, print_exception
-from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
-from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
-from ._utils.function_utils import _stream_function_call_data
-from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
-from ._utils.package_utils import parse_major_minor_version
-from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
-from .config import config, logger
-from .exception import ClientClosed, InputCancellation, InvalidError, SerializationError
-from .running_app import RunningApp
-
 if TYPE_CHECKING:
-    import modal._asgi
+    import modal._runtime.asgi
 
 DYNAMIC_CONCURRENCY_INTERVAL_SECS = 3
 DYNAMIC_CONCURRENCY_TIMEOUT_SECS = 10
@@ -69,7 +68,7 @@ class FinalizedFunction:
     is_async: bool
     is_generator: bool
     data_format: int  # api_pb2.DataFormat
-    lifespan_manager: Optional["modal._asgi.LifespanManager"] = None
+    lifespan_manager: Optional["modal._runtime.asgi.LifespanManager"] = None
 
 
 class IOContext:
