@@ -4,13 +4,14 @@ from typing import Any, AsyncGenerator, Callable, Dict, NoReturn, Optional, Tupl
 
 import aiohttp
 
-from ._utils.async_utils import TaskContext
-from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
-from ._utils.package_utils import parse_major_minor_version
-from .config import logger
-from .exception import ExecutionError, InvalidError
+from modal._utils.async_utils import TaskContext
+from modal._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
+from modal._utils.package_utils import parse_major_minor_version
+from modal.config import logger
+from modal.exception import ExecutionError, InvalidError
+from modal.experimental import stop_fetching_inputs
+
 from .execution_context import current_function_call_id
-from .experimental import stop_fetching_inputs
 
 FIRST_MESSAGE_TIMEOUT_SECONDS = 5.0
 
@@ -213,7 +214,7 @@ def asgi_app_wrapper(asgi_app, container_io_manager) -> Tuple[Callable[..., Asyn
 
 
 def wsgi_app_wrapper(wsgi_app, container_io_manager):
-    from ._vendor.a2wsgi_wsgi import WSGIMiddleware
+    from modal._vendor.a2wsgi_wsgi import WSGIMiddleware
 
     asgi_app = WSGIMiddleware(wsgi_app, workers=10000, send_queue_size=1)  # unlimited workers
     return asgi_app_wrapper(asgi_app, container_io_manager)

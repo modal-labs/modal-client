@@ -135,7 +135,7 @@ def type_check(ctx):
     # use pyright for checking implementation of those files
     pyright_allowlist = [
         "modal/functions.py",
-        "modal/_asgi.py",
+        "modal/_runtime/asgi.py",
         "modal/_utils/__init__.py",
         "modal/_utils/async_utils.py",
         "modal/_utils/grpc_testing.py",
@@ -148,7 +148,7 @@ def type_check(ctx):
         "modal/_utils/rand_pb_testing.py",
         "modal/_utils/shell_utils.py",
         "test/cls_test.py",  # see mypy bug above - but this works with pyright, so we run that instead
-        "modal/_container_io_manager.py",
+        "modal/_runtime/container_io_manager.py",
         "modal/io_streams.py",
     ]
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)

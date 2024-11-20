@@ -4,7 +4,7 @@ import os
 
 telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
 if telemetry_socket:
-    from ._telemetry import instrument_imports
+    from runtime._telemetry import instrument_imports
 
     instrument_imports(telemetry_socket)
 
@@ -25,9 +25,32 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence,
 
 from google.protobuf.message import Message
 
+from modal._clustered_functions import initialize_clustered_function
+from modal._proxy_tunnel import proxy_tunnel
+from modal._serialization import deserialize, deserialize_proto_params
+from modal._utils.async_utils import TaskContext, synchronizer
+from modal._utils.function_utils import (
+    LocalFunctionError,
+    callable_has_non_self_params,
+    is_async as get_is_async,
+    is_global_object,
+)
+from modal.app import App, _App
+from modal.client import Client, _Client
+from modal.cls import Cls, Obj
+from modal.config import logger
+from modal.exception import ExecutionError, InputCancellation, InvalidError
+from modal.functions import Function, _Function
+from modal.partial_function import (
+    _find_callables_for_obj,
+    _find_partial_methods_for_user_cls,
+    _PartialFunction,
+    _PartialFunctionFlags,
+)
+from modal.running_app import RunningApp
 from modal_proto import api_pb2
 
-from ._asgi import (
+from ._runtime.asgi import (
     asgi_app_wrapper,
     get_ip_address,
     wait_for_web_server,
@@ -35,41 +58,24 @@ from ._asgi import (
     webhook_asgi_app,
     wsgi_app_wrapper,
 )
-from ._clustered_functions import initialize_clustered_function
-from ._container_io_manager import ContainerIOManager, FinalizedFunction, IOContext, UserException, _ContainerIOManager
-from ._proxy_tunnel import proxy_tunnel
-from ._serialization import deserialize, deserialize_proto_params
-from ._utils.async_utils import TaskContext, synchronizer
-from ._utils.function_utils import (
-    LocalFunctionError,
-    callable_has_non_self_params,
-    is_async as get_is_async,
-    is_global_object,
+from ._runtime.container_io_manager import (
+    ContainerIOManager,
+    FinalizedFunction,
+    IOContext,
+    UserException,
+    _ContainerIOManager,
 )
-from .app import App, _App
-from .client import Client, _Client
-from .cls import Cls, Obj
-from .config import logger
-from .exception import ExecutionError, InputCancellation, InvalidError
-from .execution_context import _set_current_context_ids
-from .functions import Function, _Function
-from .partial_function import (
-    _find_callables_for_obj,
-    _find_partial_methods_for_user_cls,
-    _PartialFunction,
-    _PartialFunctionFlags,
-)
-from .running_app import RunningApp
+from ._runtime.execution_context import _set_current_context_ids
 
 if TYPE_CHECKING:
-    import modal._container_io_manager
+    import modal._runtime.container_io_manager
     import modal.object
 
 
 def construct_webhook_callable(
     user_defined_callable: Callable,
     webhook_config: api_pb2.WebhookConfig,
-    container_io_manager: "modal._container_io_manager.ContainerIOManager",
+    container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
 ):
     # For webhooks, the user function is used to construct an asgi app:
     if webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
@@ -117,7 +123,7 @@ class Service(metaclass=ABCMeta):
 
     @abstractmethod
     def get_finalized_functions(
-        self, fun_def: api_pb2.Function, container_io_manager: "modal._container_io_manager.ContainerIOManager"
+        self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
     ) -> Dict[str, "FinalizedFunction"]:
         ...
 
@@ -131,7 +137,7 @@ class ImportedFunction(Service):
     _user_defined_callable: Callable[..., Any]
 
     def get_finalized_functions(
-        self, fun_def: api_pb2.Function, container_io_manager: "modal._container_io_manager.ContainerIOManager"
+        self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
     ) -> Dict[str, "FinalizedFunction"]:
         # Check this property before we turn it into a method (overriden by webhooks)
         is_async = get_is_async(self._user_defined_callable)
@@ -174,7 +180,7 @@ class ImportedClass(Service):
     _partial_functions: Dict[str, _PartialFunction]
 
     def get_finalized_functions(
-        self, fun_def: api_pb2.Function, container_io_manager: "modal._container_io_manager.ContainerIOManager"
+        self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
     ) -> Dict[str, "FinalizedFunction"]:
         finalized_functions = {}
         for method_name, partial in self._partial_functions.items():
@@ -331,7 +337,7 @@ class UserCodeEventLoop:
 
 def call_function(
     user_code_event_loop: UserCodeEventLoop,
-    container_io_manager: "modal._container_io_manager.ContainerIOManager",
+    container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
     finalized_functions: Dict[str, FinalizedFunction],
     batch_max_size: int,
     batch_wait_ms: int,

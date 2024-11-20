@@ -12,7 +12,7 @@ import uuid
 from importlib.util import find_spec, module_from_spec
 from struct import pack
 
-from .config import logger
+from modal.config import logger
 
 MODULE_LOAD_START = "module_load_start"
 MODULE_LOAD_END = "module_load_end"
