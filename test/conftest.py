@@ -62,11 +62,6 @@ def set_env(monkeypatch):
 
 
 @pytest.fixture(scope="function", autouse=True)
-def disable_app_run_warning(monkeypatch):
-    monkeypatch.setenv("MODAL_DISABLE_APP_RUN_OUTPUT_WARNING", "1")
-
-
-@pytest.fixture(scope="function", autouse=True)
 def ignore_local_config():
     # When running tests locally, we don't want to pick up the local .modal.toml file
     config._user_config = {}
