@@ -118,7 +118,7 @@ class Service(metaclass=ABCMeta):
     """
 
     user_cls_instance: Any
-    app: Optional[_App]  # this is only unset for
+    app: Optional[_App]
     code_deps: Optional[List["modal.object._Object"]]
 
     @abstractmethod
