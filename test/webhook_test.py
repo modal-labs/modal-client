@@ -7,7 +7,7 @@ import sys
 from fastapi.testclient import TestClient
 
 from modal import App, asgi_app, web_endpoint, wsgi_app
-from modal._runtime._asgi import webhook_asgi_app
+from modal._runtime.asgi import webhook_asgi_app
 from modal.exception import DeprecationError, InvalidError
 from modal.functions import Function
 from modal.running_app import RunningApp

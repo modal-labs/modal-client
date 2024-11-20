@@ -45,7 +45,7 @@ from modal.running_app import RunningApp
 from modal_proto import api_pb2
 
 if TYPE_CHECKING:
-    import modal._runtime._asgi
+    import modal._runtime.asgi
 
 DYNAMIC_CONCURRENCY_INTERVAL_SECS = 3
 DYNAMIC_CONCURRENCY_TIMEOUT_SECS = 10
@@ -68,7 +68,7 @@ class FinalizedFunction:
     is_async: bool
     is_generator: bool
     data_format: int  # api_pb2.DataFormat
-    lifespan_manager: Optional["modal._runtime._asgi.LifespanManager"] = None
+    lifespan_manager: Optional["modal._runtime.asgi.LifespanManager"] = None
 
 
 class IOContext:

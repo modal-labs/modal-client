@@ -7,7 +7,7 @@ from typing import (
 import modal._clustered_functions
 from modal.functions import _Function
 
-from ._runtime._container_io_manager import _ContainerIOManager
+from ._runtime.container_io_manager import _ContainerIOManager
 from .exception import (
     InvalidError,
 )

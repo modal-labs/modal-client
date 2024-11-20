@@ -5,7 +5,7 @@ import pytest
 import fastapi
 from starlette.requests import ClientDisconnect
 
-from modal._runtime._asgi import asgi_app_wrapper
+from modal._runtime.asgi import asgi_app_wrapper
 from modal._runtime.execution_context import _set_current_context_ids
 
 
@@ -163,7 +163,7 @@ class SlowIOManager:
 @pytest.mark.asyncio
 @pytest.mark.timeout(2)
 async def test_first_message_timeout(monkeypatch):
-    monkeypatch.setattr("modal._runtime._asgi.FIRST_MESSAGE_TIMEOUT_SECONDS", 0.1)  # simulate timeout
+    monkeypatch.setattr("modal._runtime.asgi.FIRST_MESSAGE_TIMEOUT_SECONDS", 0.1)  # simulate timeout
     _set_current_context_ids(["in-123"], ["fc-123"])
     wrapped_app, lifespan_manager = asgi_app_wrapper(app, SlowIOManager())
     asgi_scope = _asgi_get_scope("/async_reading_body", "POST")

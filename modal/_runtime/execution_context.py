@@ -5,7 +5,7 @@ from typing import Callable, List, Optional
 from modal._utils.async_utils import synchronize_api
 from modal.exception import InvalidError
 
-from ._container_io_manager import _ContainerIOManager
+from .container_io_manager import _ContainerIOManager
 
 
 def is_local() -> bool:
