@@ -151,6 +151,7 @@ STRING_TO_GPU_CONFIG = {
     "t4": T4,
     "l4": L4,
     "a100": A100,
+    "a100-80gb": lambda: A100(size="80GB"),
     "h100": H100,
     "a10g": A10G,
     "any": Any,
@@ -165,6 +166,9 @@ The following are the valid `str` values for the `gpu` parameter of
 [`@app.function`](/docs/reference/modal.Stub#function).
 
 {display_string_to_config}
+
+The shortcodes also support specifying count by suffixing `:N` to acquire `N` GPUs.
+For example, `a10g:4` will provision 4 A10G GPUs.
 
 Other configurations can be created using the constructors documented below.
 """
