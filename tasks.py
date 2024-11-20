@@ -135,7 +135,7 @@ def type_check(ctx):
     # use pyright for checking implementation of those files
     pyright_allowlist = [
         "modal/functions.py",
-        "modal/_asgi.py",
+        "modal/runtime/_asgi.py",
         "modal/_utils/__init__.py",
         "modal/_utils/async_utils.py",
         "modal/_utils/grpc_testing.py",
