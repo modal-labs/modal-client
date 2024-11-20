@@ -97,8 +97,8 @@ def render(
                         wrapper_cls = "modal.client.UnaryUnaryWrapper"
                     elif cardinality is const.Cardinality.UNARY_STREAM:
                         wrapper_cls = "modal.client.UnaryStreamWrapper"
-                    # elif cardinality is const.Cardinality.STREAM_UNARY:
-                    #     wrapper_cls = StreamUnaryWrapper
+                    elif cardinality is const.Cardinality.STREAM_UNARY:
+                        wrapper_cls = "modal.client.StreamUnaryWrapper"
                     # elif cardinality is const.Cardinality.STREAM_STREAM:
                     #     wrapper_cls = StreamStreamWrapper
                     else:

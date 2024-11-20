@@ -343,7 +343,7 @@ class _Client:
         return await self._call_safely(coro, grpclib_method.name)
 
     @synchronizer.nowrap
-    async def _call_stream(
+    async def _call_unary_stream(
         self,
         method_name: str,
         request: Any,
@@ -366,6 +366,31 @@ class _Client:
                 raise
         else:
             await stream_context.__aexit__(None, None, None)
+
+    @synchronizer.nowrap
+    async def _call_stream_unary(
+        self, method_name: str, request_stream: AsyncIterator[Any], *, metadata: Optional[_MetadataLike]
+    ):
+        grpclib_method = await self._get_grpclib_method(method_name)
+        stream_context = grpclib_method.open(metadata=metadata)
+        stream = await self._call_safely(stream_context.__aenter__(), f"{grpclib_method.name}.open")
+        try:
+            while True:
+                try:
+                    request = await self._call_safely(request_stream.__anext__(), f"{grpclib_method.name}.request_iter")
+                    await self._call_safely(stream.send_message(request), f"{grpclib_method.name}.send_message")
+                except StopAsyncIteration:
+                    break
+
+            await self._call_safely(stream.end(), f"{grpclib_method.name}.end")
+            # TODO(gongy): what if the stream never comes back with anything?
+            resp = await self._call_safely(stream.__anext__(), f"{grpclib_method.name}.recv")
+            await stream_context.__aexit__(None, None, None)
+            return resp
+        except BaseException as exc:
+            did_handle_exception = await stream_context.__aexit__(type(exc), exc, exc.__traceback__)
+            if not did_handle_exception:
+                raise
 
 
 Client = synchronize_api(_Client)
@@ -421,5 +446,21 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
         if self.client._snapshotted:
             logger.debug(f"refreshing client after snapshot for {self._wrapped_method_name}")
             self.client = await _Client.from_env()
-        async for response in self.client._call_stream(self._wrapped_method_name, request, metadata=metadata):
+        async for response in self.client._call_unary_stream(self._wrapped_method_name, request, metadata=metadata):
             yield response
+
+
+class StreamUnaryWrapper(Generic[RequestType, ResponseType]):
+    wrapped_method: grpclib.client.StreamUnaryMethod[RequestType, ResponseType]
+
+    def __init__(self, wrapped_method: grpclib.client.StreamUnaryMethod[RequestType, ResponseType], client: _Client):
+        self._wrapped_full_name = wrapped_method.name
+        self._wrapped_method_name = wrapped_method.name.rsplit("/", 1)[1]
+        self.client = client
+
+    @property
+    def name(self) -> str:
+        return self._wrapped_full_name
+
+    async def __call__(self, request_stream: AsyncIterator[RequestType], metadata: Optional[Any] = None):
+        return await self.client._call_stream_unary(self._wrapped_method_name, request_stream, metadata=metadata)

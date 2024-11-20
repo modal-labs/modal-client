@@ -193,7 +193,7 @@ def call_function(
                 # Send up to this many outputs at a time.
                 generator_queue: asyncio.Queue[Any] = await container_io_manager._queue_create.aio(1024)
                 generator_output_task = asyncio.create_task(
-                    container_io_manager.generator_output_task.aio(
+                    container_io_manager.generator_output_task_new.aio(
                         function_call_ids[0],
                         io_context.finalized_function.data_format,
                         generator_queue,

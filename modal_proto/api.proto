@@ -2695,6 +2695,7 @@ service ModalClient {
   rpc FunctionCallGetDataOut(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallList(FunctionCallListRequest) returns (FunctionCallListResponse);
   rpc FunctionCallPutDataOut(FunctionCallPutDataRequest) returns (google.protobuf.Empty);
+  rpc FunctionCallPutDataOutStreaming(stream FunctionCallPutDataRequest) returns (google.protobuf.Empty);
   rpc FunctionCreate(FunctionCreateRequest) returns (FunctionCreateResponse);
   rpc FunctionGet(FunctionGetRequest) returns (FunctionGetResponse);
   rpc FunctionGetCallGraph(FunctionGetCallGraphRequest) returns (FunctionGetCallGraphResponse);

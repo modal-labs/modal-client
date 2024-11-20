@@ -374,20 +374,45 @@ async def _stream_function_call_data(
     else:
         raise ValueError(f"Invalid variant {variant}")
 
+    import time
+
+    twait = 0.0
+    print(f"waiting {twait}s for data channel to be saturated")
+    await asyncio.sleep(twait)
+
     while True:
         req = api_pb2.FunctionCallGetDataRequest(function_call_id=function_call_id, last_index=last_index)
+        print("make req for data")
         try:
-            async for chunk in stub_fn.unary_stream(req):
-                if chunk.index <= last_index:
-                    continue
-                if chunk.data_blob_id:
-                    message_bytes = await blob_download(chunk.data_blob_id, client.stub)
-                else:
-                    message_bytes = chunk.data
-                message = deserialize_data_format(message_bytes, chunk.data_format, client)
+            grpclib_method = await client._get_grpclib_method(stub_fn._wrapped_method_name)
+            async with grpclib_method.open() as stream:
+                # async for chunk in stub_fn.unary_stream(req):
+                await stream.send_message(req, end=True)
+                begin = time.time()
+                t0 = time.time()
+                intervals = []
+                async for chunk in stream:
+                    if chunk.index <= last_index:
+                        continue
+                    if chunk.data_blob_id:
+                        assert False
+                        message_bytes = await blob_download(chunk.data_blob_id, client.stub)
+                    else:
+                        message_bytes = chunk.data
 
-                last_index = chunk.index
-                yield message
+                    message = deserialize_data_format(message_bytes, chunk.data_format, client)
+                    last_index = chunk.index
+                    intervals.append(time.time() - t0)
+                    print(
+                        f"got chunk index {last_index} of size {len(message_bytes) / 1024 / 1024} MiB, "
+                        f"took {(time.time() - t0) * 1000:.2f}ms, "
+                        f"cumulative {time.time() - begin:.2f}s, "
+                        f"cumulative average {(time.time() - begin) / last_index * 1000:.2f}ms/chunk, "
+                        f"individual average {sum(intervals) / len(intervals) * 1000:.2f}ms/chunk, "
+                        # f"time since server timestamp {(time.time() - chunk.timestamp)n /  * 1000:.2f}ms"
+                    )
+                    yield message
+                    t0 = time.time()
         except (GRPCError, StreamTerminatedError) as exc:
             if retries_remaining > 0:
                 retries_remaining -= 1

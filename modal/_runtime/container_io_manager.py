@@ -510,6 +510,74 @@ class _ContainerIOManager:
         async for data in _stream_function_call_data(self._client, function_call_id, "data_in"):
             yield data
 
+    async def put_data_out_request(
+        self,
+        function_call_id: str,
+        start_index: int,
+        data_format: int,
+        messages_bytes: List[Any],
+    ) -> None:
+        """Put data onto the `data_out` stream of a function call.
+
+        This is used for generator outputs, which includes web endpoint responses. Note that this
+        was introduced as a performance optimization in client version 0.57, so older clients will
+        still use the previous Postgres-backed system based on `FunctionPutOutputs()`.
+        """
+        data_chunks: List[api_pb2.DataChunk] = []
+        for i, message_bytes in enumerate(messages_bytes):
+            chunk = api_pb2.DataChunk(data_format=data_format, index=start_index + i)  # type: ignore
+            if len(message_bytes) > MAX_OBJECT_SIZE_BYTES:
+                chunk.data_blob_id = await blob_upload(message_bytes, self._client.stub)
+            else:
+                chunk.data = message_bytes
+            data_chunks.append(chunk)
+
+        req = api_pb2.FunctionCallPutDataRequest(function_call_id=function_call_id, data_chunks=data_chunks)
+        return req
+
+    async def generator_output_task_new(
+        self, function_call_id: str, data_format: int, message_rx: asyncio.Queue
+    ) -> None:
+        """Task that feeds generator outputs into a function call's `data_out` stream."""
+
+        async def request_stream():
+            index = 1
+            received_sentinel = False
+
+            t_start_push = 0
+            while not received_sentinel:
+                message = await message_rx.get()
+                if message is self._GENERATOR_STOP_SENTINEL:
+                    break
+                # ASGI 'http.response.start' and 'http.response.body' msgs are observed to be separated by 1ms.
+                # If we don't sleep here for 1ms we end up with an extra call to .put_data_out().
+                if index == 1:
+                    await asyncio.sleep(0.001)
+                messages_bytes = [serialize_data_format(message, data_format)]
+                total_size = len(messages_bytes[0]) + 512
+
+                if t_start_push == 0 and total_size > 1024:
+                    t_start_push = time.time()
+
+                while total_size < 16 * 1024 * 1024:  # 16 MiB, maximum size in a single message
+                    try:
+                        message = message_rx.get_nowait()
+                    except asyncio.QueueEmpty:
+                        break
+                    if message is self._GENERATOR_STOP_SENTINEL:
+                        received_sentinel = True
+                        break
+                    else:
+                        messages_bytes.append(serialize_data_format(message, data_format))
+                        total_size += len(messages_bytes[-1]) + 512  # 512 bytes for estimated framing overhead
+
+                req = await self.put_data_out_request(function_call_id, index, data_format, messages_bytes)
+                yield req
+                index += len(messages_bytes)
+                print(f"pushed {index} chunks after {(time.time() - t_start_push) * 1000:.0f} ms")
+
+        await self._client.stub.FunctionCallPutDataOutStreaming(request_stream())
+
     async def put_data_out(
         self,
         function_call_id: str,
@@ -539,6 +607,7 @@ class _ContainerIOManager:
         """Task that feeds generator outputs into a function call's `data_out` stream."""
         index = 1
         received_sentinel = False
+        t_start_push = 0
         while not received_sentinel:
             message = await message_rx.get()
             if message is self._GENERATOR_STOP_SENTINEL:
@@ -549,6 +618,10 @@ class _ContainerIOManager:
                 await asyncio.sleep(0.001)
             messages_bytes = [serialize_data_format(message, data_format)]
             total_size = len(messages_bytes[0]) + 512
+
+            if t_start_push == 0 and total_size > 1024:
+                t_start_push = time.time()
+
             while total_size < 16 * 1024 * 1024:  # 16 MiB, maximum size in a single message
                 try:
                     message = message_rx.get_nowait()
@@ -560,8 +633,11 @@ class _ContainerIOManager:
                 else:
                     messages_bytes.append(serialize_data_format(message, data_format))
                     total_size += len(messages_bytes[-1]) + 512  # 512 bytes for estimated framing overhead
+
             await self.put_data_out(function_call_id, index, data_format, messages_bytes)
             index += len(messages_bytes)
+
+        print(f"pushed {index} chunks after {(time.time() - t_start_push) * 1000:.0f} ms")
 
     async def _queue_create(self, size: int) -> asyncio.Queue:
         """Create a queue, on the synchronicity event loop (needed on Python 3.8 and 3.9)."""
