@@ -79,15 +79,6 @@ class FileEntry:
             size=proto.size,
         )
 
-    def __getattr__(self, name: str):
-        deprecation_error(
-            (2024, 4, 15),
-            (
-                f"The FileEntry dataclass was introduced to replace a private Protobuf message. "
-                f"This dataclass does not have the {name} attribute."
-            ),
-        )
-
 
 class _Volume(_Object, type_prefix="vo"):
     """A writeable volume that can be used to share files between one or more Modal functions.
