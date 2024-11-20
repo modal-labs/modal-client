@@ -461,7 +461,7 @@ def _wsgi_app(
 
         if inspect.iscoroutinefunction(raw_f):
             raise InvalidError(
-                f"ASGI app function {raw_f.__name__} is an async function. Only sync Python functions are supported."
+                f"WSGI app function {raw_f.__name__} is an async function. Only sync Python functions are supported."
             )
 
         if not wait_for_response:
