@@ -134,40 +134,54 @@ async def test_asgi_wsgi(servicer, client):
 
     @app.function(serialized=True)
     @asgi_app()
-    async def my_asgi():
+    def my_asgi():
         pass
 
     @app.function(serialized=True)
     @wsgi_app()
-    async def my_wsgi():
+    def my_wsgi():
         pass
 
     with pytest.raises(InvalidError, match="can't have parameters"):
 
         @app.function(serialized=True)
         @asgi_app()
-        async def my_invalid_asgi(x):
+        def my_invalid_asgi(x):
             pass
 
     with pytest.raises(InvalidError, match="can't have parameters"):
 
         @app.function(serialized=True)
         @wsgi_app()
-        async def my_invalid_wsgi(x):
+        def my_invalid_wsgi(x):
             pass
 
     with pytest.warns(DeprecationError, match="default parameters"):
 
         @app.function(serialized=True)
         @asgi_app()
-        async def my_deprecated_default_params_asgi(x=1):
+        def my_deprecated_default_params_asgi(x=1):
             pass
 
     with pytest.warns(DeprecationError, match="default parameters"):
 
         @app.function(serialized=True)
         @wsgi_app()
-        async def my_deprecated_default_params_wsgi(x=1):
+        def my_deprecated_default_params_wsgi(x=1):
+            pass
+
+    with pytest.raises(InvalidError, match="async function"):
+
+        @app.function(serialized=True)
+        @asgi_app()
+        async def my_async_asgi_function():
+            pass
+
+    with pytest.raises(InvalidError, match="async function"):
+
+        @app.function(serialized=True)
+        @wsgi_app()
+        async def my_async_wsgi_function():
             pass
 
     async with app.run(client=client):
