@@ -5,9 +5,9 @@ app = App()
 
 
 @app.function()
-def f():
-    pass
+def f(arg):
+    return f"hello {arg}"
 
 
-def undecorated_f():
-    pass
+def undecorated_f(arg):
+    return f"hello {arg}"
