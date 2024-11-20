@@ -161,7 +161,7 @@ __doc__ = f"""
 **GPU configuration shortcodes**
 
 The following are the valid `str` values for the `gpu` parameter of
-[`@app.function`](/docs/reference/modal.Stub#function).
+[`@app.function`](/docs/reference/modal.App#function).
 
 {display_string_to_config}
 

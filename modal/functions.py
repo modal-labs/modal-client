@@ -299,8 +299,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
-    `@app.function()` decorator on the `App` object (formerly called "Stub")
-    for your application.
+    `App.function()` decorator to register your Python functions with your App.
     """
 
     # TODO: more type annotations
