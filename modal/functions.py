@@ -391,7 +391,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             method_placeholder_fun._is_generator = class_bound_method._is_generator
             method_placeholder_fun._cluster_size = class_bound_method._cluster_size
             method_placeholder_fun._use_method_name = method_name
-            method_placeholder_fun._use_function_id = instance_service_function.object_id
             method_placeholder_fun._is_method = True
 
         async def _load(fun: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
@@ -932,6 +931,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         """
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            print("_load for param function")
             if self._parent is None:
                 raise ExecutionError("Can't find the parent class' service function")
             try:
