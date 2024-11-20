@@ -18,7 +18,7 @@ import click
 from rich.console import Console
 from rich.markdown import Markdown
 
-from modal.app import App, LocalEntrypoint
+from modal.app import App, LocalEntrypoint, Stub
 from modal.exception import InvalidError, _CliUserExecutionError
 from modal.functions import Function
 
@@ -89,7 +89,7 @@ def get_by_object_path(obj: Any, obj_path: str) -> Optional[Any]:
     for segment in obj_path.split("."):
         attr = prefix + segment
         try:
-            if isinstance(obj, App):
+            if isinstance(obj, (App, Stub)):
                 if attr in obj.registered_entrypoints:
                     # local entrypoints are not on stub blueprint
                     obj = obj.registered_entrypoints[attr]
