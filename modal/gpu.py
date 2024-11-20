@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 from modal_proto import api_pb2
 
@@ -147,7 +147,7 @@ class Any(_GPUConfig):
         return f"GPU(Any, count={self.count})"
 
 
-STRING_TO_GPU_CONFIG = {
+STRING_TO_GPU_CONFIG: dict[str, Callable] = {
     "t4": T4,
     "l4": L4,
     "a100": A100,
@@ -156,9 +156,7 @@ STRING_TO_GPU_CONFIG = {
     "a10g": A10G,
     "any": Any,
 }
-display_string_to_config = "\n".join(
-    f'- "{key}" → `{cls()}`' for key, cls in STRING_TO_GPU_CONFIG.items() if key != "inf2"
-)
+display_string_to_config = "\n".join(f'- "{key}" → `{c()}`' for key, c in STRING_TO_GPU_CONFIG.items() if key != "inf2")
 __doc__ = f"""
 **GPU configuration shortcodes**
 
