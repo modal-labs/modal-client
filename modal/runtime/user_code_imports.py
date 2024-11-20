@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2024
 import importlib
 import typing
 from abc import ABCMeta, abstractmethod
