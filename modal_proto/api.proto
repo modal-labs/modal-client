@@ -1648,12 +1648,18 @@ message Image {
   repeated ImageContextFile context_files = 7;
   string version = 11;
   repeated string secret_ids = 12;
-  reserved 13;  // gpu
+  // Part of Image definition, because presence of GPU drivers
+  // affects the image that's built.
+  // Note: field 13 is getting replaced field 16. The client now sends both fields,
+  // but the server still only reads field 13.
+  bool gpu = 13;
   string context_mount_id = 15;
   GPUConfig gpu_config = 16;
   ImageRegistryConfig image_registry_config = 17;
-  reserved 14;  // build_function_def
-  reserved 18;  // build_function_globals
+
+  string build_function_def = 14; // deprecated after 0.58.96
+  bytes build_function_globals = 18; // deprecated after 0.58.96
+
   // If set, overrides the runtime used by the function. Specify either "runc" or "gvisor".
   string runtime = 19;
   // Not included in image definition checksum as debug features do not affect built image.
