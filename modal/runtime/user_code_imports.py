@@ -38,6 +38,25 @@ class FinalizedFunction:
     lifespan_manager: Optional[LifespanManager] = None
 
 
+class Service(metaclass=ABCMeta):
+    """Common interface for singular functions and class-based "services"
+
+    There are differences in the importing/finalization logic, and this
+    "protocol"/abc basically defines a common interface for the two types
+    of "Services" after the point of import.
+    """
+
+    user_cls_instance: Any
+    app: Optional["modal.app._App"]
+    code_deps: Optional[List["modal.object._Object"]]
+
+    @abstractmethod
+    def get_finalized_functions(
+        self, fun_def: api_pb2.Function, container_io_manager: "modal.runtime._container_io_manager.ContainerIOManager"
+    ) -> Dict[str, "FinalizedFunction"]:
+        ...
+
+
 def construct_webhook_callable(
     user_defined_callable: Callable,
     webhook_config: api_pb2.WebhookConfig,
@@ -73,25 +92,6 @@ def construct_webhook_callable(
         return asgi_app_wrapper(web_server_proxy(host, port), container_io_manager)
     else:
         raise InvalidError(f"Unrecognized web endpoint type {webhook_config.type}")
-
-
-class Service(metaclass=ABCMeta):
-    """Common interface for singular functions and class-based "services"
-
-    There are differences in the importing/finalization logic, and this
-    "protocol"/abc basically defines a common interface for the two types
-    of "Services" after the point of import.
-    """
-
-    user_cls_instance: Any
-    app: Optional["modal.app._App"]
-    code_deps: Optional[List["modal.object._Object"]]
-
-    @abstractmethod
-    def get_finalized_functions(
-        self, fun_def: api_pb2.Function, container_io_manager: "modal.runtime._container_io_manager.ContainerIOManager"
-    ) -> Dict[str, "FinalizedFunction"]:
-        ...
 
 
 @dataclass
@@ -181,6 +181,27 @@ class ImportedClass(Service):
                 )
             finalized_functions[method_name] = finalized_function
         return finalized_functions
+
+
+def get_user_class_instance(
+    cls: typing.Union[type, modal.cls.Cls], args: typing.Tuple, kwargs: Dict[str, Any]
+) -> typing.Any:
+    """Returns instance of the underlying class to be used as the `self`
+
+    The input `cls` can either be the raw Python class the user has declared ("user class"),
+    or an @app.cls-decorated version of it which is a modal.Cls-instance wrapping the user class.
+    """
+    if isinstance(cls, modal.cls.Cls):
+        # globally @app.cls-decorated class
+        modal_obj: modal.cls.Obj = cls(*args, **kwargs)
+        modal_obj.entered = True  # ugly but prevents .local() from triggering additional enter-logic
+        # TODO: unify lifecycle logic between .local() and container_entrypoint
+        user_cls_instance = modal_obj._get_user_cls_instance()
+    else:
+        # undecorated class (non-global decoration or serialized)
+        user_cls_instance = cls(*args, **kwargs)
+
+    return user_cls_instance
 
 
 def import_single_function_service(
@@ -336,24 +357,3 @@ def import_class_service(
         code_deps,
         method_partials,
     )
-
-
-def get_user_class_instance(
-    cls: typing.Union[type, modal.cls.Cls], args: typing.Tuple, kwargs: Dict[str, Any]
-) -> typing.Any:
-    """Returns instance of the underlying class to be used as the `self`
-
-    The input `cls` can either be the raw Python class the user has declared ("user class"),
-    or an @app.cls-decorated version of it which is a modal.Cls-instance wrapping the user class.
-    """
-    if isinstance(cls, modal.cls.Cls):
-        # globally @app.cls-decorated class
-        modal_obj: modal.cls.Obj = cls(*args, **kwargs)
-        modal_obj.entered = True  # ugly but prevents .local() from triggering additional enter-logic
-        # TODO: unify lifecycle logic between .local() and container_entrypoint
-        user_cls_instance = modal_obj._get_user_cls_instance()
-    else:
-        # undecorated class (non-global decoration or serialized)
-        user_cls_instance = cls(*args, **kwargs)
-
-    return user_cls_instance
