@@ -176,12 +176,6 @@ class _Queue(_Object, type_prefix="qu"):
         return _Queue._from_loader(_load, "Queue()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
-    def persisted(label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None):
-        """mdmd:hidden"""
-        message = "`Queue.persisted` is deprecated. Please use `Queue.from_name(name, create_if_missing=True)` instead."
-        deprecation_error((2024, 3, 1), message)
-
-    @staticmethod
     async def lookup(
         label: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
