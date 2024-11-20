@@ -931,7 +931,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         """
 
         async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
-            print("_load for param function")
             if self._parent is None:
                 raise ExecutionError("Can't find the parent class' service function")
             try:
