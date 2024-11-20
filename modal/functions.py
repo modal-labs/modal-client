@@ -1028,7 +1028,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 identity = "class service function for a parameterized class"
             if not self._parent.is_hydrated:
                 if self._parent.app._running_app is None:
-                    reason = ", because the App it is defined on is not running."
+                    reason = ", because the App it is defined on is not running"
                 else:
                     reason = ""
                 raise ExecutionError(
