@@ -172,34 +172,6 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             yield cls._new_hydrated(response.shared_volume_id, client, None, is_another_app=True)
 
     @staticmethod
-    def persisted(
-        label: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        environment_name: Optional[str] = None,
-        cloud: Optional[str] = None,
-    ):
-        """mdmd:hidden"""
-        message = (
-            "`NetworkFileSystem.persisted` is deprecated."
-            " Please use `NetworkFileSystem.from_name(name, create_if_missing=True)` instead."
-        )
-        deprecation_error((2024, 3, 1), message)
-
-    def persist(
-        self,
-        label: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        environment_name: Optional[str] = None,
-        cloud: Optional[str] = None,
-    ):
-        """mdmd:hidden"""
-        message = (
-            "`NetworkFileSystem().persist('my-volume')` is deprecated."
-            " Please use `NetworkFileSystem.from_name('my-volume', create_if_missing=True)` instead."
-        )
-        deprecation_error((2024, 2, 29), message)
-
-    @staticmethod
     async def lookup(
         label: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
