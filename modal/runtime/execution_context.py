@@ -5,8 +5,6 @@ from typing import Callable, List, Optional
 from modal._utils.async_utils import synchronize_api
 from modal.exception import InvalidError
 
-from ._container_io_manager import _ContainerIOManager
-
 
 def is_local() -> bool:
     """Returns if we are currently on the machine launching/deploying a Modal app
@@ -14,6 +12,8 @@ def is_local() -> bool:
     Returns `True` when executed locally on the user's machine.
     Returns `False` when executed from a Modal container in the cloud.
     """
+    from ._container_io_manager import _ContainerIOManager
+
     return not _ContainerIOManager._singleton
 
 
@@ -23,6 +23,8 @@ async def _interact() -> None:
     See the [interactivity guide](https://modal.com/docs/guide/developing-debugging#interactivity)
     for more information on how to use this function.
     """
+    from ._container_io_manager import _ContainerIOManager
+
     container_io_manager = _ContainerIOManager._singleton
     if not container_io_manager:
         raise InvalidError("Interactivity only works inside a Modal container.")

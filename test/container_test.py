@@ -42,10 +42,10 @@ from modal.exception import InvalidError
 from modal.partial_function import enter, method
 from modal.runtime._container_io_manager import (
     ContainerIOManager,
-    FinalizedFunction,
     InputSlots,
     IOContext,
 )
+from modal.runtime.user_code_imports import FinalizedFunction
 from modal_proto import api_pb2
 
 from .helpers import deploy_app_externally
@@ -1851,6 +1851,7 @@ def test_lifecycle_full(servicer):
 
 
 @skip_github_non_linux
+@pytest.mark.timeout(10)
 def test_stop_fetching_inputs(servicer):
     ret = _run_container(
         servicer,
