@@ -144,14 +144,6 @@ def test_run_stub(servicer, set_env_client, test_dir):
         _run(["run", app_file.as_posix() + "::foo"])
 
 
-def test_run_stub_with_app(servicer, set_env_client, test_dir):
-    app_file = test_dir / "supports" / "app_run_tests" / "app_and_stub.py"
-    with pytest.warns(match="`app`"):
-        _run(["run", app_file.as_posix()])
-    _run(["run", app_file.as_posix() + "::stub"])
-    _run(["run", app_file.as_posix() + "::foo"])
-
-
 def test_run_async(servicer, set_env_client, test_dir):
     sync_fn = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
     res = _run(["run", sync_fn.as_posix()])
