@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.66.30 (2024-11-21)
+
+- Removed the `aiostream` package from the modal client library dependencies.
+
+
+
 ### 0.66.29 (2024-11-21)
 
 * Adds `Image.add_local_python_packages` which works similarly to `Mount.from_local_python_packages` but for images.
