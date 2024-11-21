@@ -299,8 +299,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
-    `@app.function()` decorator on the `App` object (formerly called "Stub")
-    for your application.
+    `App.function()` decorator to register your Python functions with your App.
     """
 
     # TODO: more type annotations
@@ -1028,7 +1027,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 identity = "class service function for a parameterized class"
             if not self._parent.is_hydrated:
                 if self._parent.app._running_app is None:
-                    reason = ", because the App it is defined on is not running."
+                    reason = ", because the App it is defined on is not running"
                 else:
                     reason = ""
                 raise ExecutionError(

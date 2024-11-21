@@ -179,6 +179,7 @@ jobs:
         with:
           token: ${{ steps.generate_token.outputs.token }}
           ref: main
+          fetch-depth: 10  # Fetch multiple commits to find the right changelog entry with concurrent deployments
 
       - uses: ./.github/actions/setup-cached-python
         with:
