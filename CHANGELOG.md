@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.66.29 (2024-11-21)
+
+* Adds `Image.add_local_python_packages` which works similarly to `Mount.from_local_python_packages` but for images.
+
+
+
 ### 0.66.12 (2024-11-19)
 
 `Sandbox.exec` now accepts arguments `text` and `bufsize` for streaming output, which controls text output and line buffering.
