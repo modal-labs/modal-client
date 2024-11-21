@@ -313,7 +313,7 @@ class _Image(_Object, type_prefix="im"):
             self2._mounts = tuple(base_image._mounts) + (mount,)
             self2._used_local_mounts = base_image._used_local_mounts | ({mount} if mount.is_local() else set())
 
-        return _Image._from_loader(_load, "ImageWithMounts()", deps=lambda: [base_image, mount])
+        return _Image._from_loader(_load, "Image(local files)", deps=lambda: [base_image, mount])
 
     @property
     def _mount_layers(self) -> typing.Tuple[_Mount]:
