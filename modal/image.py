@@ -602,19 +602,17 @@ class _Image(_Object, type_prefix="im"):
         )
 
     def add_local_file(self, local_path: Union[str, Path], remote_path: str, *, copy: bool = False) -> "_Image":
-        """Attach a local file to the image
+        """Adds a local file to the image at `remote_path` within the container
 
-        By default, the file is attached as a lightweight mount on top of any
-        container that runs the returned Image. This makes this operation quick
-        and will not invalidate + rebuild the image when contents of the mount
-        change.
+        By default (`copy=False`), the files are added to containers on startup and are not built into the actual Image,
+        which speeds up deployment.
 
-        In order to run use the file in *subsequent* build steps, you explicitly
-        need to set `copy=True` on this function to instead copy the data into
-        the image itself.
+        Set `copy=True` to copy the files into an Image layer at build time instead, similar to how
+        [`COPY`](https://docs.docker.com/engine/reference/builder/#copy) works in a `Dockerfile`.
 
-        In copy=True mode, this command works similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
-        works in a `Dockerfile`.
+        copy=True can slow down iteration since it requires a rebuild of the Image and any subsequent
+        build steps whenever the included files change, but it is required if you want to run additional
+        build steps after this one.
         """
         if not PurePosixPath(remote_path).is_absolute():
             # TODO(elias): implement relative to absolute resolution using image workdir metadata
@@ -630,24 +628,18 @@ class _Image(_Object, type_prefix="im"):
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def add_local_dir(self, local_path: Union[str, Path], remote_path: str, *, copy: bool = False) -> "_Image":
-        """Attach a local dir to the image
+        """Adds a local directory's content to the image at `remote_path` within the container
 
-        By default, the dir is attached as a lightweight mount on top of any
-        container that runs the returned Image. This makes this operation quick
-        and will not invalidate + rebuild the image when contents of the mount
-        change.
+        By default (`copy=False`), the files are added to containers on startup and are not built into the actual Image,
+        which speeds up deployment.
 
-        In order to run use the dir in *subsequent* build steps, you explicitly
-        need to set `copy=True` on this function to instead copy the data into
-        the image itself.
+        Set `copy=True` to copy the files into an Image layer at build time instead, similar to how
+        [`COPY`](https://docs.docker.com/engine/reference/builder/#copy) works in a `Dockerfile`.
 
-        In copy=True mode, this command works similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
-        works in a `Dockerfile`.
+        copy=True can slow down iteration since it requires a rebuild of the Image and any subsequent
+        build steps whenever the included files change, but it is required if you want to run additional
+        build steps after this one.
         """
-        # TODO(elias): distinguish adding *into* remote_path and *as* remote_path, similar
-        #  to shell `cp -r source dest` vs `cp -r source/ dest`
-        #  NOTE: docker COPY always copies the *contents* of the source directory, and you have
-        #  to specify the destination dir name explicitly
         if not PurePosixPath(remote_path).is_absolute():
             # TODO(elias): implement relative to absolute resolution using image workdir metadata
             #  + make default remote_path="./"
