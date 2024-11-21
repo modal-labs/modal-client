@@ -616,7 +616,7 @@ class _Image(_Object, type_prefix="im"):
         In copy=True mode, this command works similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
         """
-        if not os.path.isabs(remote_path):
+        if not PurePosixPath(remote_path).is_absolute():
             # TODO(elias): implement relative to absolute resolution using image workdir metadata
             #  + make default remote_path="./"
             #  This requires deferring the Mount creation until after "self" (the base image) has been resolved
@@ -629,9 +629,7 @@ class _Image(_Object, type_prefix="im"):
         mount = _Mount.from_local_file(local_path, remote_path)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
-    def add_local_dir(
-        self, local_path: Union[str, Path], remote_path: Union[str, Path], *, copy: bool = False
-    ) -> "_Image":
+    def add_local_dir(self, local_path: Union[str, Path], remote_path: str, *, copy: bool = False) -> "_Image":
         """Attach a local dir to the image
 
         By default, the dir is attached as a lightweight mount on top of any
@@ -650,8 +648,7 @@ class _Image(_Object, type_prefix="im"):
         #  to shell `cp -r source dest` vs `cp -r source/ dest`
         #  NOTE: docker COPY always copies the *contents* of the source directory, and you have
         #  to specify the destination dir name explicitly
-        remote_path = PurePosixPath(remote_path)
-        if not remote_path.is_absolute():
+        if not PurePosixPath(remote_path).is_absolute():
             # TODO(elias): implement relative to absolute resolution using image workdir metadata
             #  + make default remote_path="./"
             raise InvalidError("image.add_local_dir() currently only supports absolute remote_path values")
@@ -664,7 +661,7 @@ class _Image(_Object, type_prefix="im"):
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
         """
-        # TODO(elias): add pending deprecation - use attach
+        # TODO(elias): add pending deprecation with suggestion to use add_* instead
         basename = str(Path(local_path).name)
         mount = _Mount.from_local_file(local_path, remote_path=f"/{basename}")
 
