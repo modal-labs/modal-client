@@ -2023,3 +2023,8 @@ def no_rich(monkeypatch):
 def disable_auto_mount(monkeypatch):
     monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
     yield
+
+
+@pytest.fixture()
+def supports_on_path(supports_dir, monkeypatch):
+    monkeypatch.syspath_prepend(str(supports_dir))
