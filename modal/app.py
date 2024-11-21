@@ -488,7 +488,7 @@ class _App:
             *self._mounts,
         ]
         for function in self.registered_functions.values():
-            all_mounts.extend(function._used_local_mounts)
+            all_mounts.extend(function._serve_mounts)
 
         return [m for m in all_mounts if m.is_local()]
 

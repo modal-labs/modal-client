@@ -273,22 +273,24 @@ class _Image(_Object, type_prefix="im"):
 
     force_build: bool
     inside_exceptions: List[Exception]
-    _used_local_mounts: typing.FrozenSet[_Mount]  # used for mounts watching
-    _mounts: Sequence[_Mount]  # added as mounts on any container referencing the Image, see `def _mount_layers`
+    _serve_mounts: typing.FrozenSet[_Mount]  # used for mounts watching in `modal serve`
+    _deferred_mounts: Sequence[
+        _Mount
+    ]  # added as mounts on any container referencing the Image, see `def _mount_layers`
     _metadata: Optional[api_pb2.ImageMetadata] = None  # set on hydration, private for now
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
-        self._used_local_mounts = frozenset()
-        self._mounts = ()
+        self._serve_mounts = frozenset()
+        self._deferred_mounts = ()
         self.force_build = False
 
     def _initialize_from_other(self, other: "_Image"):
         # used by .clone()
         self.inside_exceptions = other.inside_exceptions
         self.force_build = other.force_build
-        self._used_local_mounts = other._used_local_mounts
-        self._mounts = other._mounts
+        self._serve_mounts = other._serve_mounts
+        self._deferred_mounts = other._deferred_mounts
 
     def _hydrate_metadata(self, message: Optional[Message]):
         env_image_id = config.get("image_id")  # set as an env var in containers
@@ -310,8 +312,8 @@ class _Image(_Object, type_prefix="im"):
 
         async def _load(self2: "_Image", resolver: Resolver, existing_object_id: Optional[str]):
             self2._hydrate_from_other(base_image)  # same image id as base image as long as it's lazy
-            self2._mounts = tuple(base_image._mounts) + (mount,)
-            self2._used_local_mounts = base_image._used_local_mounts | ({mount} if mount.is_local() else set())
+            self2._deferred_mounts = tuple(base_image._deferred_mounts) + (mount,)
+            self2._serve_mounts = base_image._serve_mounts | ({mount} if mount.is_local() else set())
 
         return _Image._from_loader(_load, "Image(local files)", deps=lambda: [base_image, mount])
 
@@ -326,7 +328,7 @@ class _Image(_Object, type_prefix="im"):
         When the image is used as a base image for a new layer (that is not itself a mount layer)
         these mounts need to first be inserted as a copy operation (.copy_mount) into the image.
         """
-        return self._mounts
+        return self._deferred_mounts
 
     def _assert_no_mount_layers(self):
         if self._mount_layers:
@@ -547,10 +549,10 @@ class _Image(_Object, type_prefix="im"):
             self._hydrate(image_id, resolver.client, result_response.metadata)
             local_mounts = set()
             for base in base_images.values():
-                local_mounts |= base._used_local_mounts
+                local_mounts |= base._serve_mounts
             if context_mount and context_mount.is_local():
                 local_mounts.add(context_mount)
-            self._used_local_mounts = frozenset(local_mounts)
+            self._serve_mounts = frozenset(local_mounts)
 
         rep = f"Image({dockerfile_function})"
         obj = _Image._from_loader(_load, rep, deps=_deps)
@@ -623,7 +625,8 @@ class _Image(_Object, type_prefix="im"):
 
         Adds all files from the specified Python packages to containers running the image.
 
-        Packages are added to the `/root` directory, which is on the `PYTHONPATH` of any executed Modal functions.
+        Packages are added to the `/root` directory of containers, which is on the `PYTHONPATH`
+        of any executed Modal functions.
 
         By default (`copy=False`), the files are added to containers on startup and are not built into the actual image,
         which speeds up deployment.
