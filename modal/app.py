@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import inspect
-import os
 import typing
 import warnings
 from pathlib import PurePosixPath
@@ -436,9 +435,7 @@ class _App:
                 "`show_progress=True` is no longer supported. Use `with modal.enable_output():` instead.",
             )
         elif show_progress is False:
-            # TODO(erikbern): remove this env check very shortly
-            if "MODAL_DISABLE_APP_RUN_OUTPUT_WARNING" not in os.environ:
-                deprecation_warning((2024, 11, 20), "`show_progress=False` is deprecated (and has no effect)")
+            deprecation_warning((2024, 11, 20), "`show_progress=False` is deprecated (and has no effect)")
 
         async with _run_app(self, client=client, detach=detach, interactive=interactive):
             yield self
