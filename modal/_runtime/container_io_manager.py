@@ -44,8 +44,8 @@ from modal.running_app import RunningApp
 from modal_proto import api_pb2
 
 if TYPE_CHECKING:
-    import modal.runtime._asgi
-    import modal.runtime.user_code_imports
+    import modal._runtime._asgi
+    import modal._runtime.user_code_imports
 
 
 DYNAMIC_CONCURRENCY_INTERVAL_SECS = 3

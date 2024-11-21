@@ -41,17 +41,17 @@ from modal.partial_function import (
 from modal.running_app import RunningApp
 from modal_proto import api_pb2
 
-from .runtime._container_io_manager import (
+from ._runtime.container_io_manager import (
     ContainerIOManager,
     IOContext,
     UserException,
     _ContainerIOManager,
 )
-from .runtime.execution_context import _set_current_context_ids
+from ._runtime.execution_context import _set_current_context_ids
 
 if TYPE_CHECKING:
+    import modal._runtime.container_io_manager
     import modal.object
-    import modal.runtime._container_io_manager
 
 
 class DaemonizedThreadPool:
@@ -174,8 +174,8 @@ class UserCodeEventLoop:
 
 def call_function(
     user_code_event_loop: UserCodeEventLoop,
-    container_io_manager: "modal.runtime._container_io_manager.ContainerIOManager",
-    finalized_functions: Dict[str, "modal.runtime.user_code_imports.FinalizedFunction"],
+    container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
+    finalized_functions: Dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
     batch_max_size: int,
     batch_wait_ms: int,
 ):

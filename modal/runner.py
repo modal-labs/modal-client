@@ -15,6 +15,7 @@ from modal_proto import api_pb2
 
 from ._pty import get_pty_info
 from ._resolver import Resolver
+from ._runtime.execution_context import is_local
 from ._traceback import traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, gather_cancel_on_exc, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
@@ -34,7 +35,6 @@ from .functions import _Function
 from .object import _get_environment_name, _Object
 from .output import _get_output_manager, enable_output
 from .running_app import RunningApp
-from .runtime.execution_context import is_local
 from .sandbox import _Sandbox
 from .secret import _Secret
 

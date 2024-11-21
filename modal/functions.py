@@ -35,6 +35,7 @@ from ._location import parse_cloud_provider
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
+from ._runtime.execution_context import current_input_id, is_local
 from ._serialization import serialize, serialize_proto_params
 from ._utils.async_utils import (
     TaskContext,
@@ -86,7 +87,6 @@ from .parallel_map import (
 )
 from .proxy import _Proxy
 from .retries import Retries
-from .runtime.execution_context import current_input_id, is_local
 from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret

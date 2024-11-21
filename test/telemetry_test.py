@@ -15,7 +15,7 @@ import uuid
 from pathlib import Path
 from struct import unpack
 
-from modal.runtime._telemetry import (
+from modal._runtime.telemetry import (
     MESSAGE_HEADER_FORMAT,
     MESSAGE_HEADER_LEN,
     ImportInterceptor,
