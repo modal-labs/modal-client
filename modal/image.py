@@ -273,12 +273,24 @@ class _Image(_Object, type_prefix="im"):
 
     force_build: bool
     inside_exceptions: List[Exception]
-    _used_local_mounts: typing.FrozenSet[_Mount]  # used for mounts watching
+    _serve_mounts: typing.FrozenSet[_Mount]  # used for mounts watching in `modal serve`
+    _deferred_mounts: Sequence[
+        _Mount
+    ]  # added as mounts on any container referencing the Image, see `def _mount_layers`
     _metadata: Optional[api_pb2.ImageMetadata] = None  # set on hydration, private for now
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
-        self._used_local_mounts = frozenset()
+        self._serve_mounts = frozenset()
+        self._deferred_mounts = ()
+        self.force_build = False
+
+    def _initialize_from_other(self, other: "_Image"):
+        # used by .clone()
+        self.inside_exceptions = other.inside_exceptions
+        self.force_build = other.force_build
+        self._serve_mounts = other._serve_mounts
+        self._deferred_mounts = other._deferred_mounts
 
     def _hydrate_metadata(self, message: Optional[Message]):
         env_image_id = config.get("image_id")  # set as an env var in containers
@@ -291,6 +303,51 @@ class _Image(_Object, type_prefix="im"):
         if message:
             assert isinstance(message, api_pb2.ImageMetadata)
             self._metadata = message
+
+    def _add_mount_layer_or_copy(self, mount: _Mount, copy: bool = False):
+        if copy:
+            return self.copy_mount(mount, remote_path="/")
+
+        base_image = self
+
+        async def _load(self2: "_Image", resolver: Resolver, existing_object_id: Optional[str]):
+            self2._hydrate_from_other(base_image)  # same image id as base image as long as it's lazy
+            self2._deferred_mounts = tuple(base_image._deferred_mounts) + (mount,)
+            self2._serve_mounts = base_image._serve_mounts | ({mount} if mount.is_local() else set())
+
+        return _Image._from_loader(_load, "Image(local files)", deps=lambda: [base_image, mount])
+
+    @property
+    def _mount_layers(self) -> typing.Tuple[_Mount]:
+        """Non-evaluated mount layers on the image
+
+        When the image is used by a Modal container, these mounts need to be attached as well to
+        represent the full image content, as they haven't yet been represented as a layer in the
+        image.
+
+        When the image is used as a base image for a new layer (that is not itself a mount layer)
+        these mounts need to first be inserted as a copy operation (.copy_mount) into the image.
+        """
+        return self._deferred_mounts
+
+    def _assert_no_mount_layers(self):
+        if self._mount_layers:
+            raise InvalidError(
+                "An image tried to run a build step after using `image.add_local_*` to include local files.\n"
+                "\n"
+                "Run `image.add_local_*` commands last in your image build to avoid rebuilding images with every local "
+                "file change. Modal will then add these files to containers on startup instead, saving build time.\n"
+                "If you need to run other build steps after adding local files, set `copy=True` to copy the files"
+                "directly into the image, at the expense of some added build time.\n"
+                "\n"
+                "Example:\n"
+                "\n"
+                "my_image = (\n"
+                "    Image.debian_slim()\n"
+                '   .add_local_python_packages("mypak", copy=True)\n'
+                '    .run_commands("python -m mypak")  # this now works!\n'
+                ")\n"
+            )
 
     @staticmethod
     def _from_args(
@@ -306,9 +363,11 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,
         # For internal use only.
         _namespace: int = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        _do_assert_no_mount_layers: bool = True,
     ):
         if base_images is None:
             base_images = {}
+
         if secrets is None:
             secrets = []
         if gpu_config is None:
@@ -334,6 +393,11 @@ class _Image(_Object, type_prefix="im"):
             return deps
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+            if _do_assert_no_mount_layers:
+                for image in base_images.values():
+                    # base images can't have
+                    image._assert_no_mount_layers()
+
             environment = await _get_environment_cached(resolver.environment_name or "", resolver.client)
             # A bit hacky,but assume that the environment provides a valid builder version
             image_builder_version = cast(ImageBuilderVersion, environment._settings.image_builder_version)
@@ -349,7 +413,9 @@ class _Image(_Object, type_prefix="im"):
                     "No commands were provided for the image — have you tried using modal.Image.debian_slim()?"
                 )
             if dockerfile.commands and build_function:
-                raise InvalidError("Cannot provide both a build function and Dockerfile commands!")
+                raise InvalidError(
+                    "Cannot provide both build function and Dockerfile commands in the same image layer!"
+                )
 
             base_images_pb2s = [
                 api_pb2.BaseImage(
@@ -403,8 +469,9 @@ class _Image(_Object, type_prefix="im"):
                 dockerfile_commands=dockerfile.commands,
                 context_files=context_file_pb2s,
                 secret_ids=[secret.object_id for secret in secrets],
+                gpu=bool(gpu_config.type),  # Note: as of 2023-01-27, server still uses this
                 context_mount_id=(context_mount.object_id if context_mount else None),
-                gpu_config=gpu_config,
+                gpu_config=gpu_config,  # Note: as of 2023-01-27, server ignores this
                 image_registry_config=image_registry_config.get_proto(),
                 runtime=config.get("function_runtime"),
                 runtime_debug=config.get("function_runtime_debug"),
@@ -481,12 +548,12 @@ class _Image(_Object, type_prefix="im"):
             self._hydrate(image_id, resolver.client, result_response.metadata)
             local_mounts = set()
             for base in base_images.values():
-                local_mounts |= base._used_local_mounts
+                local_mounts |= base._serve_mounts
             if context_mount and context_mount.is_local():
                 local_mounts.add(context_mount)
-            self._used_local_mounts = frozenset(local_mounts)
+            self._serve_mounts = frozenset(local_mounts)
 
-        rep = "Image()"
+        rep = f"Image({dockerfile_function})"
         obj = _Image._from_loader(_load, rep, deps=_deps)
         obj.force_build = force_build
         return obj
@@ -551,6 +618,27 @@ class _Image(_Object, type_prefix="im"):
             dockerfile_function=build_dockerfile,
             context_mount=mount,
         )
+
+    def _add_local_python_packages(self, *packages: Union[str, Path], copy: bool = False) -> "_Image":
+        """Adds Python package files to containers
+
+        Adds all files from the specified Python packages to containers running the Image.
+
+        Packages are added to the `/root` directory of containers, which is on the `PYTHONPATH`
+        of any executed Modal Functions.
+
+        By default (`copy=False`), the files are added to containers on startup and are not built into the actual Image,
+        which speeds up deployment.
+
+        Set `copy=True` to copy the files into an Image layer at build time instead. This can slow down iteration since
+        it requires a rebuild of the Image and any subsequent build steps whenever the included files change, but it is
+        required if you want to run additional build steps after this one.
+
+        **Note:** This excludes all dot-prefixed subdirectories or files and all `.pyc`/`__pycache__` files.
+        To add full directories with finer control, use `.add_local_dir()` instead.
+        """
+        mount = _Mount.from_local_python_packages(*packages)
+        return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy a directory into the image as a part of building the image.

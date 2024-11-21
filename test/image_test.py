@@ -10,6 +10,7 @@ from tempfile import NamedTemporaryFile
 from typing import List, Literal, get_args
 from unittest import mock
 
+import modal
 from modal import App, Image, Mount, Secret, build, environments, gpu, method
 from modal._serialization import serialize
 from modal._utils.async_utils import synchronizer
@@ -24,6 +25,7 @@ from modal.image import (
     _validate_python_version,
 )
 from modal.mount import PYTHON_STANDALONE_VERSIONS
+from modal.runner import deploy_app
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows
@@ -35,8 +37,16 @@ SUPPORTED_IMAGE_BUILDER_VERSIONS = [
 ]
 
 
-def dummy():
-    ...
+@pytest.fixture(autouse=True)
+def no_automount(monkeypatch):
+    # no tests in here use automounting, but a lot of them implicitly create
+    # functions w/ lots of modules is sys.modules which will automount
+    # which takes a lot of time, so we disable it
+    monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
+
+
+def dummy() -> None:
+    return None
 
 
 def test_supported_python_series():
@@ -284,8 +294,6 @@ def test_image_pip_install_pyproject(builder_version, servicer, client):
     app.function(image=image)(dummy)
     with app.run(client=client):
         layers = get_image_layers(image.object_id, servicer)
-
-        print(layers[0].dockerfile_commands)
         assert any("pip install 'banana >=1.2.0' 'potato >=0.1.0'" in cmd for cmd in layers[0].dockerfile_commands)
 
 
@@ -298,7 +306,6 @@ def test_image_pip_install_pyproject_with_optionals(builder_version, servicer, c
     with app.run(client=client):
         layers = get_image_layers(image.object_id, servicer)
 
-        print(layers[0].dockerfile_commands)
         assert any(
             "pip install 'banana >=1.2.0' 'linting-tool >=0.0.0' 'potato >=0.1.0' 'pytest >=1.2.0'" in cmd
             for cmd in layers[0].dockerfile_commands
@@ -1209,3 +1216,137 @@ async def test_logs(servicer, client):
 
     logs = [data async for data in image._logs.aio()]
     assert logs == ["build starting\n", "build finished\n"]
+
+
+def hydrate_image(img, client):
+    # there should be a more straight forward way to do this?
+    app = App()
+    app.function(serialized=True, image=img)(lambda: None)
+    with app.run(client=client):
+        pass
+
+
+def test_add_local_lazy_vs_copy(client, servicer, set_env_client, supports_on_path):
+    deb = Image.debian_slim()
+    image_with_mount = deb._add_local_python_packages("pkg_a")
+
+    hydrate_image(image_with_mount, client)
+    assert image_with_mount.object_id == deb.object_id
+    assert len(image_with_mount._mount_layers) == 1
+
+    image_additional_mount = image_with_mount._add_local_python_packages("pkg_b")
+    hydrate_image(image_additional_mount, client)
+    assert len(image_additional_mount._mount_layers) == 2  # another mount added to lazy layer
+    assert len(image_with_mount._mount_layers) == 1  # original image should not be affected
+
+    # running commands
+    image_non_mount = image_with_mount.run_commands("echo 'hello'")
+    with pytest.raises(InvalidError, match="copy=True"):
+        # error about using non-copy add commands before other build steps
+        hydrate_image(image_non_mount, client)
+
+    image_with_copy = deb._add_local_python_packages("pkg_a", copy=True)
+    hydrate_image(image_with_copy, client)
+    assert len(image_with_copy._mount_layers) == 0
+
+    # do the same exact image using copy=True
+    image_with_copy_and_commands = deb._add_local_python_packages("pkg_a", copy=True).run_commands("echo 'hello'")
+    hydrate_image(image_with_copy_and_commands, client)
+    assert len(image_with_copy_and_commands._mount_layers) == 0
+
+    layers = get_image_layers(image_with_copy_and_commands.object_id, servicer)
+
+    echo_layer = layers[0]
+    assert echo_layer.dockerfile_commands == ["FROM base", "RUN echo 'hello'"]
+
+    copy_layer = layers[1]
+    assert copy_layer.dockerfile_commands == ["FROM base", "COPY . /"]
+    copied_files = servicer.mount_contents[copy_layer.context_mount_id].keys()
+    assert len(copied_files) == 8
+    assert all(fn.startswith("/root/pkg_a/") for fn in copied_files)
+
+
+def test_add_locals_are_attached_to_functions(servicer, client, supports_on_path):
+    deb_slim = Image.debian_slim()
+    img = deb_slim._add_local_python_packages("pkg_a")
+    app = App("my-app")
+    control_fun: modal.Function = app.function(serialized=True, image=deb_slim, name="control")(
+        dummy
+    )  # no mounts on image
+    fun: modal.Function = app.function(serialized=True, image=img, name="fun")(dummy)  # mounts on image
+    deploy_app(app, client=client)
+
+    control_func_mounts = set(servicer.app_functions[control_fun.object_id].mount_ids)
+    fun_def = servicer.app_functions[fun.object_id]
+    added_mounts = set(fun_def.mount_ids) - control_func_mounts
+    assert len(added_mounts) == 1
+    assert added_mounts == {img._mount_layers[0].object_id}
+
+
+def test_add_locals_are_attached_to_classes(servicer, client, supports_on_path, set_env_client):
+    deb_slim = Image.debian_slim()
+    img = deb_slim._add_local_python_packages("pkg_a")
+    app = App("my-app")
+    control_fun: modal.Function = app.function(serialized=True, image=deb_slim, name="control")(
+        dummy
+    )  # no mounts on image
+
+    class A:
+        some_arg: str = modal.parameter()
+
+    ACls = app.cls(serialized=True, image=img)(A)  # mounts on image
+    deploy_app(app, client=client)
+
+    control_func_mounts = set(servicer.app_functions[control_fun.object_id].mount_ids)
+    fun_def = servicer.function_by_name("A.*")  # class service function
+    added_mounts = set(fun_def.mount_ids) - control_func_mounts
+    assert len(added_mounts) == 1
+    assert added_mounts == {img._mount_layers[0].object_id}
+
+    obj = ACls(some_arg="foo")  # type: ignore
+    # hacky way to force hydration of the *parameter bound* function (instance service function):
+    obj.keep_warm(0)  #  type: ignore
+
+    obj_fun_def = servicer.function_by_name("A.*", ((), {"some_arg": "foo"}))  # instance service function
+    added_mounts = set(obj_fun_def.mount_ids) - control_func_mounts
+    assert len(added_mounts) == 1
+    assert added_mounts == {img._mount_layers[0].object_id}
+
+
+@skip_windows("servicer sandbox implementation not working on windows")
+def test_add_locals_are_attached_to_sandboxes(servicer, client, supports_on_path):
+    deb_slim = Image.debian_slim()
+    img = deb_slim._add_local_python_packages("pkg_a")
+    app = App("my-app")
+    with app.run(client=client):
+        modal.Sandbox.create(image=img, app=app, client=client)
+        sandbox_def = servicer.sandbox_defs[0]
+
+    assert sandbox_def.image_id == deb_slim.object_id
+    assert sandbox_def.mount_ids == [img._mount_layers[0].object_id]
+    copied_files = servicer.mount_contents[sandbox_def.mount_ids[0]]
+    assert len(copied_files) == 8
+    assert all(fn.startswith("/root/pkg_a/") for fn in copied_files)
+
+
+def empty_fun():
+    pass
+
+
+def test_add_locals_build_function(servicer, client, supports_on_path):
+    deb_slim = Image.debian_slim()
+    img = deb_slim._add_local_python_packages("pkg_a")
+    img_with_build_function = img.run_function(empty_fun)
+    with pytest.raises(InvalidError):
+        # build functions could still potentially rewrite mount contents,
+        # so we still require them to use copy=True
+        # TODO(elias): what if someone wants do use an equivalent of `run_function(..., mounts=[...]) ?
+        hydrate_image(img_with_build_function, client)
+
+    img_with_copy = deb_slim._add_local_python_packages("pkg_a", copy=True)
+    hydrate_image(img_with_copy, client)  # this is fine
+
+
+# TODO: test modal shell w/ lazy mounts
+# this works since the image is passed on as is to a sandbox which will load it and
+# transfer any virtual mount layers from the image as mounts to the sandbox

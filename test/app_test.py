@@ -10,7 +10,6 @@ from grpclib import GRPCError, Status
 from modal import App, Dict, Image, Mount, Secret, Stub, Volume, enable_output, web_endpoint
 from modal._utils.async_utils import synchronizer
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
-from modal.output import _get_output_manager
 from modal.partial_function import _parse_custom_domains
 from modal.runner import deploy_app, deploy_stub, run_app
 from modal_proto import api_pb2
@@ -405,42 +404,17 @@ def test_app_interactive(servicer, client, capsys):
 
 
 def test_show_progress_deprecations(client, monkeypatch):
-    # Unset env used to disable warning
-    monkeypatch.delenv("MODAL_DISABLE_APP_RUN_OUTPUT_WARNING")
-
     app = App()
 
-    # If show_progress is not provided, and output is not enabled, warn
-    with pytest.warns(DeprecationError, match="enable_output"):
-        with app.run(client=client):
-            assert _get_output_manager() is not None  # Should be auto-enabled
-
-    # If show_progress is not provided, and output is enabled, no warning
-    with enable_output():
-        with app.run(client=client):
+    # If show_progress is set to True, raise that this is deprecated
+    with pytest.raises(DeprecationError, match="enable_output"):
+        with app.run(client=client, show_progress=True):
             pass
 
-    # If show_progress is set to True, and output is not enabled, warn
-    with pytest.warns(DeprecationError, match="enable_output"):
-        with app.run(client=client, show_progress=True):
-            assert _get_output_manager() is not None  # Should be auto-enabled
-
-    # If show_progress is set to True, and output is enabled, warn the flag is superfluous
-    with pytest.warns(DeprecationError, match="`show_progress=True` is deprecated"):
-        with enable_output():
-            with app.run(client=client, show_progress=True):
-                pass
-
-    # If show_progress is set to False, and output is not enabled, no warning
-    # This mode is currently used to suppress deprecation warnings, but will in itself be deprecated later.
-    with app.run(client=client, show_progress=False):
-        assert _get_output_manager() is None
-
-    # If show_progress is set to False, and output is enabled, warn that it has no effect
+    # If show_progress is set to False, warn that this has no effect
     with pytest.warns(DeprecationError, match="no effect"):
-        with enable_output():
-            with app.run(client=client, show_progress=False):
-                pass
+        with app.run(client=client, show_progress=False):
+            pass
 
 
 @pytest.mark.asyncio

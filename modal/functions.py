@@ -299,13 +299,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     """Functions are the basic units of serverless execution on Modal.
 
     Generally, you will not construct a `Function` directly. Instead, use the
-    `@app.function()` decorator on the `App` object (formerly called "Stub")
-    for your application.
+    `App.function()` decorator to register your Python functions with your App.
     """
 
     # TODO: more type annotations
     _info: Optional[FunctionInfo]
-    _used_local_mounts: typing.FrozenSet[_Mount]  # set at load time, only by loader
+    _serve_mounts: typing.FrozenSet[_Mount]  # set at load time, only by loader
     _app: Optional["modal.app._App"] = None
     _obj: Optional["modal.cls._Obj"] = None  # only set for InstanceServiceFunctions and bound instance methods
     _web_url: Optional[str]
@@ -490,6 +489,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         if is_local():
             entrypoint_mounts = info.get_entrypoint_mount()
+
             all_mounts = [
                 _get_client_mount(),
                 *explicit_mounts,
@@ -522,6 +522,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if proxy:
             # HACK: remove this once we stop using ssh tunnels for this.
             if image:
+                # TODO(elias): this will cause an error if users use prior `.add_local_*` commands without copy=True
                 image = image.apt_install("autossh")
 
         function_spec = _FunctionSpec(
@@ -738,7 +739,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     )
                     for path, volume in validated_volumes
                 ]
-                loaded_mount_ids = {m.object_id for m in all_mounts}
+                loaded_mount_ids = {m.object_id for m in all_mounts} | {m.object_id for m in image._mount_layers}
 
                 # Get object dependencies
                 object_dependencies = []
@@ -882,9 +883,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         raise InvalidError(f"Function {info.function_name} is too large to deploy.")
                     raise
                 function_creation_status.set_response(response)
-            local_mounts = set(m for m in all_mounts if m.is_local())  # needed for modal.serve file watching
-            local_mounts |= image._used_local_mounts
-            obj._used_local_mounts = frozenset(local_mounts)
+            serve_mounts = set(m for m in all_mounts if m.is_local())  # needed for modal.serve file watching
+            serve_mounts |= image._serve_mounts
+            obj._serve_mounts = frozenset(serve_mounts)
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Function({tag})"
@@ -1135,6 +1136,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._function_name = None
         self._info = None
         self._used_local_mounts = frozenset()
+        self._serve_mounts = frozenset()
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method

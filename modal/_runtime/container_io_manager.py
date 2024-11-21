@@ -10,7 +10,6 @@ import sys
 import time
 import traceback
 from contextlib import AsyncExitStack
-from dataclasses import dataclass
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -46,6 +45,8 @@ from modal_proto import api_pb2
 
 if TYPE_CHECKING:
     import modal._runtime.asgi
+    import modal._runtime.user_code_imports
+
 
 DYNAMIC_CONCURRENCY_INTERVAL_SECS = 3
 DYNAMIC_CONCURRENCY_TIMEOUT_SECS = 10
@@ -62,15 +63,6 @@ class Sentinel:
     """Used to get type-stubs to work with this object."""
 
 
-@dataclass
-class FinalizedFunction:
-    callable: Callable[..., Any]
-    is_async: bool
-    is_generator: bool
-    data_format: int  # api_pb2.DataFormat
-    lifespan_manager: Optional["modal._runtime.asgi.LifespanManager"] = None
-
-
 class IOContext:
     """Context object for managing input, function calls, and function executions
     in a batched or single input context.
@@ -78,7 +70,7 @@ class IOContext:
 
     input_ids: List[str]
     function_call_ids: List[str]
-    finalized_function: FinalizedFunction
+    finalized_function: "modal._runtime.user_code_imports.FinalizedFunction"
 
     _cancel_issued: bool = False
     _cancel_callback: Optional[Callable[[], None]] = None
@@ -87,7 +79,7 @@ class IOContext:
         self,
         input_ids: List[str],
         function_call_ids: List[str],
-        finalized_function: FinalizedFunction,
+        finalized_function: "modal._runtime.user_code_imports.FinalizedFunction",
         function_inputs: List[api_pb2.FunctionInput],
         is_batched: bool,
         client: _Client,
@@ -103,7 +95,7 @@ class IOContext:
     async def create(
         cls,
         client: _Client,
-        finalized_functions: Dict[str, FinalizedFunction],
+        finalized_functions: Dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
         inputs: List[Tuple[str, str, api_pb2.FunctionInput]],
         is_batched: bool,
     ) -> "IOContext":
@@ -653,7 +645,7 @@ class _ContainerIOManager:
     @synchronizer.no_io_translation
     async def run_inputs_outputs(
         self,
-        finalized_functions: Dict[str, FinalizedFunction],
+        finalized_functions: Dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
         batch_max_size: int = 0,
         batch_wait_ms: int = 0,
     ) -> AsyncIterator[IOContext]:
