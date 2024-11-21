@@ -235,57 +235,6 @@ build_number = {new_build_number}  # git: {git_sha}
 
 
 @task
-def create_alias_package(ctx):
-    os.makedirs("alias-package/modal", exist_ok=True)
-    with open("alias-package/setup.py", "w") as f:
-        f.write(
-            f"""\
-{copyright_header_full}
-from setuptools import setup
-setup(version="1.0.0")
-"""
-        )
-    with open("alias-package/setup.cfg", "w") as f:
-        f.write(
-            """\
-[metadata]
-name = modal-client
-author = Modal Labs
-author_email = support@modal.com
-description = Legacy name for the Modal client
-long_description = This is a legacy compatibility package for the `modal` client library.
-            This package is no longer functional. Please install the `modal` package instead.
-long_description_content_type = text/markdown
-project_urls =
-    Homepage = https://modal.com
-
-[options]
-packages = find:
-"""
-        )
-    with open("alias-package/pyproject.toml", "w") as f:
-        f.write(
-            """\
-[build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
-"""
-        )
-    with open("alias-package/modal/__init__.py", "w") as f:
-        f.write(
-            """\
-error = '''
-######################################################################
-# The legacy `modal-client` PyPI package is no longer being updated. #
-# Please install the `modal` package instead (`pip install modal`).  #
-######################################################################
-'''
-raise Exception(error)
-"""
-        )
-
-
-@task
 def type_stubs(ctx):
     # We only generate type stubs for modules that contain synchronicity wrapped types
     from synchronicity.synchronizer import SYNCHRONIZER_ATTR

@@ -215,13 +215,6 @@ jobs:
       - name: Build wheel
         run: python setup.py bdist_wheel
 
-      - name: Create alias package
-        run: inv create-alias-package
-
-      - name: Build alias package
-        working-directory: alias-package
-        run: python setup.py bdist_wheel
-
       - name: Set the Modal environment
         run: modal config set-environment main
 
@@ -236,11 +229,4 @@ jobs:
         env:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: twine upload dist/* --non-interactive
-
-      - name: Upload alias package to PyPI
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        working-directory: alias-package
         run: twine upload dist/* --non-interactive
