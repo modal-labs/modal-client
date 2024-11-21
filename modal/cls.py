@@ -442,7 +442,7 @@ class _Cls(_Object, type_prefix="cs"):
 
             obj._hydrate(response.class_id, resolver.client, response.handle_metadata)
 
-        rep = f"Ref({tag})"
+        rep = f"Ref({app_name})"
         cls = cls._from_loader(_load_remote, rep, is_another_app=True)
         cls._from_other_workspace = bool(workspace is not None)
         return cls

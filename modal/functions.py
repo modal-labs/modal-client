@@ -1059,7 +1059,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
-        rep = f"Ref({tag})"
+        rep = f"Ref({app_name})"
         return cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
@@ -1135,7 +1135,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._web_url = None
         self._function_name = None
         self._info = None
-        self._used_local_mounts = frozenset()
         self._serve_mounts = frozenset()
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
