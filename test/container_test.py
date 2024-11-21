@@ -26,10 +26,10 @@ from modal import Client, Queue, Volume, is_local
 from modal._container_entrypoint import UserException, main
 from modal._runtime.container_io_manager import (
     ContainerIOManager,
-    FinalizedFunction,
     InputSlots,
     IOContext,
 )
+from modal._runtime.user_code_imports import FinalizedFunction
 from modal._serialization import (
     deserialize,
     deserialize_data_format,
@@ -1851,6 +1851,7 @@ def test_lifecycle_full(servicer):
 
 
 @skip_github_non_linux
+@pytest.mark.timeout(10)
 def test_stop_fetching_inputs(servicer):
     ret = _run_container(
         servicer,
