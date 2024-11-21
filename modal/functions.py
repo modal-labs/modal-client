@@ -152,6 +152,7 @@ class _Invocation:
         function_call_id = response.function_call_id
 
         if response.pipelined_inputs:
+            assert len(response.pipelined_inputs) == 1
             input = response.pipelined_inputs[0]
             retry_context = _RetryContext(
                 function_call_invocation_type=function_call_invocation_type,
