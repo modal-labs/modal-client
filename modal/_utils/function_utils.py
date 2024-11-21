@@ -519,6 +519,16 @@ async def _create_input(
         )
 
 
+def _get_suffix_from_web_url_info(url_info: api_pb2.WebUrlInfo) -> str:
+    if url_info.truncated:
+        suffix = " [grey70](label truncated)[/grey70]"
+    elif url_info.label_stolen:
+        suffix = " [grey70](label stolen)[/grey70]"
+    else:
+        suffix = ""
+    return suffix
+
+
 class FunctionCreationStatus:
     # TODO(michael) this really belongs with other output-related code
     # but moving it here so we can use it when loading a function with output disabled
@@ -547,12 +557,7 @@ class FunctionCreationStatus:
         elif self.response.function.web_url:
             url_info = self.response.function.web_url_info
             # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
-            if url_info.truncated:
-                suffix = " [grey70](label truncated)[/grey70]"
-            elif url_info.label_stolen:
-                suffix = " [grey70](label stolen)[/grey70]"
-            else:
-                suffix = ""
+            suffix = _get_suffix_from_web_url_info(url_info)
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
             web_url = self.response.handle_metadata.web_url
             self.status_row.finish(
@@ -563,8 +568,23 @@ class FunctionCreationStatus:
             for custom_domain in self.response.function.custom_domain_info:
                 custom_domain_status_row = self.resolver.add_status_row()
                 custom_domain_status_row.finish(
-                    f"Custom domain for {self.tag} => [magenta underline]"
-                    f"{custom_domain.url}[/magenta underline]{suffix}"
+                    f"Custom domain for {self.tag} => [magenta underline]" f"{custom_domain.url}[/magenta underline]"
                 )
         else:
             self.status_row.finish(f"Created function {self.tag}.")
+            if self.response.function.method_definitions_set:
+                for method_definition in self.response.function.method_definitions.values():
+                    if method_definition.web_url:
+                        url_info = method_definition.web_url_info
+                        suffix = _get_suffix_from_web_url_info(url_info)
+                        class_web_endpoint_method_status_row = self.resolver.add_status_row()
+                        class_web_endpoint_method_status_row.finish(
+                            f"Created web endpoint for {method_definition.function_name} => [magenta underline]"
+                            f"{method_definition.web_url}[/magenta underline]{suffix}"
+                        )
+                        for custom_domain in method_definition.custom_domain_info:
+                            custom_domain_status_row = self.resolver.add_status_row()
+                            custom_domain_status_row.finish(
+                                f"Custom domain for {method_definition.function_name} => [magenta underline]"
+                                f"{custom_domain.url}[/magenta underline]"
+                            )
