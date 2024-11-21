@@ -2,7 +2,7 @@
 # ruff: noqa: E402
 import os
 
-from modal.runtime.user_code_imports import Service, import_class_service, import_single_function_service
+from modal._runtime.user_code_imports import Service, import_class_service, import_single_function_service
 
 telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
 if telemetry_socket:

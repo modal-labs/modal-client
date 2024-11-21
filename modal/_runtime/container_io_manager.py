@@ -44,7 +44,7 @@ from modal.running_app import RunningApp
 from modal_proto import api_pb2
 
 if TYPE_CHECKING:
-    import modal._runtime._asgi
+    import modal._runtime.asgi
     import modal._runtime.user_code_imports
 
 
@@ -70,7 +70,7 @@ class IOContext:
 
     input_ids: List[str]
     function_call_ids: List[str]
-    finalized_function: "modal.runtime.user_code_imports.FinalizedFunction"
+    finalized_function: "modal._runtime.user_code_imports.FinalizedFunction"
 
     _cancel_issued: bool = False
     _cancel_callback: Optional[Callable[[], None]] = None
@@ -79,7 +79,7 @@ class IOContext:
         self,
         input_ids: List[str],
         function_call_ids: List[str],
-        finalized_function: "modal.runtime.user_code_imports.FinalizedFunction",
+        finalized_function: "modal._runtime.user_code_imports.FinalizedFunction",
         function_inputs: List[api_pb2.FunctionInput],
         is_batched: bool,
         client: _Client,
@@ -95,7 +95,7 @@ class IOContext:
     async def create(
         cls,
         client: _Client,
-        finalized_functions: Dict[str, "modal.runtime.user_code_imports.FinalizedFunction"],
+        finalized_functions: Dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
         inputs: List[Tuple[str, str, api_pb2.FunctionInput]],
         is_batched: bool,
     ) -> "IOContext":
@@ -645,7 +645,7 @@ class _ContainerIOManager:
     @synchronizer.no_io_translation
     async def run_inputs_outputs(
         self,
-        finalized_functions: Dict[str, "modal.runtime.user_code_imports.FinalizedFunction"],
+        finalized_functions: Dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
         batch_max_size: int = 0,
         batch_wait_ms: int = 0,
     ) -> AsyncIterator[IOContext]:
