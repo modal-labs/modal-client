@@ -416,11 +416,6 @@ def test_show_progress_deprecations(client, monkeypatch):
         with app.run(client=client, show_progress=False):
             pass
 
-    # This is used by integration tests for a short period
-    monkeypatch.setenv("MODAL_DISABLE_APP_RUN_OUTPUT_WARNING", "1")
-    with app.run(client=client, show_progress=False):
-        pass
-
 
 @pytest.mark.asyncio
 async def test_deploy_from_container(servicer, container_client):
