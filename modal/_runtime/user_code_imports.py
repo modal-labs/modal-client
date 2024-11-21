@@ -310,8 +310,8 @@ def import_class_service(
 
     See import_function.
     """
-    active_app: Optional["modal.app._App"] = None
-    code_deps: Optional[List["modal.object._Object"]] = None
+    active_app: Optional["modal.app._App"]
+    code_deps: Optional[List["modal.object._Object"]]
     cls: typing.Union[type, modal.cls.Cls]
 
     if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
@@ -341,14 +341,14 @@ def import_class_service(
         # The cls decorator is in global scope
         _cls = synchronizer._translate_in(cls)
         method_partials = _cls._get_partial_functions()
-        function = _cls._class_service_function
+        service_function: _Function = _cls._class_service_function
+        code_deps = service_function.deps(only_explicit_mounts=True)
+        active_app = service_function.app
     else:
         # Undecorated user class - find all methods
         method_partials = _find_partial_methods_for_user_cls(cls, _PartialFunctionFlags.all())
-        function = None
-
-    if function:
-        code_deps = function.deps(only_explicit_mounts=True)
+        code_deps = None
+        active_app = None
 
     user_cls_instance = get_user_class_instance(cls, cls_args, cls_kwargs)
 
@@ -356,5 +356,6 @@ def import_class_service(
         user_cls_instance,
         active_app,
         code_deps,
+        # TODO (elias/deven): instead of using method_partials here we should use a set of api_pb2.MethodDefinition
         method_partials,
     )

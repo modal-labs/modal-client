@@ -64,8 +64,8 @@ def test_import_class(monkeypatch, supports_dir):
     )
     assert len(service.code_deps) == 1
     assert type(service.code_deps[0]) is _Image
-    # TODO (elias): Fix app not being set
-    # assert service.app
+
+    assert service.app
 
     from user_code_import_samples.cls import UndecoratedC  # type: ignore
 
