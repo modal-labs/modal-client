@@ -293,12 +293,14 @@ class _Cls(_Object, type_prefix="cs"):
                     )
         elif self._class_service_function:
             # A class with a class service function and method placeholder functions
+            self._method_functions = {}
             for method in metadata.methods:
                 self._method_functions[method.function_name] = _Function._new_hydrated(
                     self._class_service_function.object_id, self._client, method.function_handle_metadata
                 )
         else:
             # pre 0.63 class that does not have a class service function and only method functions
+            self._method_functions = {}
             for method in metadata.methods:
                 self._method_functions[method.function_name] = _Function._new_hydrated(
                     method.function_id, self._client, method.function_handle_metadata
