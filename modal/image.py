@@ -619,18 +619,22 @@ class _Image(_Object, type_prefix="im"):
         )
 
     def _add_local_python_packages(self, *packages: Union[str, Path], copy: bool = False) -> "_Image":
-        """Attaches local Python packages to the container running the image
+        """Adds all files from the specified Python packages to containers running the image
 
         Packages are added to the /root directory which is on the PYTHONPATH of any
         executed Modal functions.
 
-        By default (copy=False) the packages are layered on top of the image when
-        the container starts up and not built as an image layer.
+        By default (copy=False) the files are added to your containers when they
+        start up and not built into the actual image, which speeds up deployment.
 
-        Set copy=True to force the packages to be added as an image layer instead.
-        This can be slower since it requires a rebuild of the image whenever the
-        required package files change, but it allows you to run additional build
-        steps after this operation.
+        Set copy=True to force the files to be added as an image layer instead.
+        This can slow down deployment since it requires a rebuild of the image
+        and any subsequent build steps whenever the included files change, but
+        it allows you to run additional build steps after this one.
+
+        Note that this excludes all .-prefixed sub-directories or files and all
+        .pyc/__pycache__ files. To add full directories with finer control use
+        `.add_local_dir()` instead.
         """
         mount = _Mount.from_local_python_packages(*packages)
         return self._add_mount_layer_or_copy(mount, copy=copy)
