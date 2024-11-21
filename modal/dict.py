@@ -144,12 +144,6 @@ class _Dict(_Object, type_prefix="di"):
         return _Dict._from_loader(_load, "Dict()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
-    def persisted(label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None):
-        """mdmd:hidden"""
-        message = "`Dict.persisted` is deprecated. Please use `Dict.from_name(name, create_if_missing=True)` instead."
-        deprecation_error((2024, 3, 1), message)
-
-    @staticmethod
     async def lookup(
         label: str,
         data: Optional[dict] = None,

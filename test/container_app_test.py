@@ -11,7 +11,7 @@ from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 
 from modal import App, interact
-from modal._container_io_manager import ContainerIOManager
+from modal._runtime.container_io_manager import ContainerIOManager
 from modal._utils.async_utils import synchronize_api
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.exception import InvalidError

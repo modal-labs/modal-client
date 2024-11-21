@@ -158,8 +158,7 @@ use `app.run(..., show_progress=False)`.
 
 
 class _App:
-    """A Modal app (prior to April 2024 a "stub") is a group of functions and classes
-    deployed together.
+    """A Modal App is a group of functions and classes that are deployed together.
 
     The app serves at least three purposes:
 
@@ -488,7 +487,7 @@ class _App:
             *self._mounts,
         ]
         for function in self.registered_functions.values():
-            all_mounts.extend(function._used_local_mounts)
+            all_mounts.extend(function._serve_mounts)
 
         return [m for m in all_mounts if m.is_local()]
 
@@ -1083,7 +1082,8 @@ App = synchronize_api(_App)
 
 
 class _Stub(_App):
-    """This enables using an "Stub" class instead of "App".
+    """mdmd:hidden
+    This enables using a "Stub" class instead of "App".
 
     For most of Modal's history, the app class was called "Stub", so this exists for
     backwards compatibility, in order to facilitate moving from "Stub" to "App".

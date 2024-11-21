@@ -79,15 +79,6 @@ class FileEntry:
             size=proto.size,
         )
 
-    def __getattr__(self, name: str):
-        deprecation_error(
-            (2024, 4, 15),
-            (
-                f"The FileEntry dataclass was introduced to replace a private Protobuf message. "
-                f"This dataclass does not have the {name} attribute."
-            ),
-        )
-
 
 class _Volume(_Object, type_prefix="vo"):
     """A writeable volume that can be used to share files between one or more Modal functions.
@@ -221,19 +212,6 @@ class _Volume(_Object, type_prefix="vo"):
             request = api_pb2.VolumeHeartbeatRequest(volume_id=response.volume_id)
             tc.infinite_loop(lambda: client.stub.VolumeHeartbeat(request), sleep=_heartbeat_sleep)
             yield cls._new_hydrated(response.volume_id, client, None, is_another_app=True)
-
-    @staticmethod
-    def persisted(
-        label: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        environment_name: Optional[str] = None,
-        cloud: Optional[str] = None,
-    ):
-        """mdmd:hidden"""
-        message = (
-            "`Volume.persisted` is deprecated. Please use `Volume.from_name(name, create_if_missing=True)` instead."
-        )
-        deprecation_error((2024, 3, 1), message)
 
     @staticmethod
     async def lookup(
