@@ -580,7 +580,7 @@ class FunctionCreationStatus:
                         suffix = _get_suffix_from_web_url_info(url_info)
                         class_web_endpoint_method_status_row = self.resolver.add_status_row()
                         class_web_endpoint_method_status_row.finish(
-                            f"Created web endpoint for {method_definition.function_name}: [magenta underline]"
+                            f"Created web endpoint for {method_definition.function_name} => [magenta underline]"
                             f"{method_definition.web_url}[/magenta underline]{suffix}"
                         )
                 self.status_row.finish(f"Created function {self.tag}.")
