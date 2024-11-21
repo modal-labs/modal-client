@@ -5,7 +5,6 @@ import os
 import re
 import shlex
 import sys
-import textwrap
 import typing
 import warnings
 from dataclasses import dataclass
@@ -332,26 +331,21 @@ class _Image(_Object, type_prefix="im"):
     def _assert_no_mount_layers(self):
         if self._mount_layers:
             raise InvalidError(
-                textwrap.dedent(
-                    """
-            An image tried to run a build step after using `image.add_local_*` to include local files.
-
-            Run `image.add_local_*` commands last in your image build to avoid rebuilding images with every local
-            filechange. Modal will then mount these files as a thin layer when starting your container, saving build
-            time.
-
-            If you need these files earlier in the build, set `copy=True` to copy the files directly into the image,
-            though this will increase build time.
-
-            Example:
-
-            my_image = (
-                Image.debian_slim()
-                .add_local_python_packages("mypak", copy=True)
-                .run_commands("python -m mypak")  # this now works!
-            )
-            """
-                )
+                "An image tried to run a build step after using `image.add_local_*` to include local files.\n"
+                "\n"
+                "Run `image.add_local_*` commands last in your image build to avoid rebuilding images with every local "
+                "file change. Modal will then mount these files as a thin layer when starting your container, "
+                "saving build time.\n"
+                "If you need these files earlier in the build, set `copy=True` to copy the files directly into the "
+                "image, though this will increase build time.\n"
+                "\n"
+                "Example:\n"
+                "\n"
+                "my_image = (\n"
+                "    Image.debian_slim()\n"
+                '   .add_local_python_packages("mypak", copy=True)\n'
+                '    .run_commands("python -m mypak")  # this now works!\n'
+                ")\n"
             )
 
     @staticmethod
@@ -624,7 +618,7 @@ class _Image(_Object, type_prefix="im"):
             context_mount=mount,
         )
 
-    def add_local_python_packages(self, *packages: Union[str, Path], copy: bool = False) -> "_Image":
+    def _add_local_python_packages(self, *packages: Union[str, Path], copy: bool = False) -> "_Image":
         """Attaches local Python packages to the container running the image
 
         Packages are added to the /root directory which is on the PYTHONPATH of any
