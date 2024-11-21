@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2024
 from unittest.mock import MagicMock
 
+from modal._runtime import user_code_imports
 from modal.image import _Image
-from modal.runtime import user_code_imports
 from modal_proto import api_pb2
 
 
@@ -45,7 +45,7 @@ def test_import_function_undecorated(supports_dir, monkeypatch):
         None,
         None,
     )
-    assert len(service.code_deps) == 0  # undecorated - can't get code deps
+    assert service.code_deps is None  # undecorated - can't get code deps
     # can't reliably get app - this is deferred to a name based lookup later in the container entrypoint
     assert service.app is None
 
