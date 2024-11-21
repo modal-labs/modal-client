@@ -622,12 +622,13 @@ class _Mount(_Object, type_prefix="mo"):
         client: Optional[_Client] = None,
     ) -> None:
         check_object_name(deployment_name, "Mount")
+        environment_name = _get_environment_name(environment_name, resolver=None)
         self._deployment_name = deployment_name
         self._namespace = namespace
         self._environment_name = environment_name
         if client is None:
             client = await _Client.from_env()
-        resolver = Resolver(client=client)
+        resolver = Resolver(client=client, environment_name=environment_name)
         await resolver.load(self)
 
     def _get_metadata(self) -> api_pb2.MountHandleMetadata:
