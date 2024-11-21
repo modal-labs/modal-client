@@ -7,7 +7,7 @@ from typing import (
 import modal._clustered_functions
 from modal.functions import _Function
 
-from ._container_io_manager import _ContainerIOManager
+from ._runtime.container_io_manager import _ContainerIOManager
 from .exception import (
     InvalidError,
 )
@@ -17,7 +17,6 @@ from .partial_function import _PartialFunction, _PartialFunctionFlags
 def stop_fetching_inputs():
     """Don't fetch any more inputs from the server, after the current one.
     The container will exit gracefully after the current input is processed."""
-
     _ContainerIOManager.stop_fetching_inputs()
 
 
@@ -25,7 +24,6 @@ def get_local_input_concurrency():
     """Get the container's local input concurrency.
     If recently reduced to particular value, it can return a larger number than
     set due to in-progress inputs."""
-
     return _ContainerIOManager.get_input_concurrency()
 
 
@@ -33,7 +31,6 @@ def set_local_input_concurrency(concurrency: int):
     """Set the container's local input concurrency. Dynamic concurrency will be disabled.
     When setting to a smaller value, this method will not interrupt in-progress inputs.
     """
-
     _ContainerIOManager.set_input_concurrency(concurrency)
 
 

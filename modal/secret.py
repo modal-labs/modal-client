@@ -7,12 +7,12 @@ from grpclib import GRPCError, Status
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
+from ._runtime.execution_context import is_local
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .exception import InvalidError, NotFoundError
-from .execution_context import is_local
 from .object import _get_environment_name, _Object
 
 ENV_DICT_WRONG_TYPE_ERR = "the env_dict argument to Secret has to be a dict[str, Union[str, None]]"
