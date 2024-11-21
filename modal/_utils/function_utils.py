@@ -568,8 +568,7 @@ class FunctionCreationStatus:
             for custom_domain in self.response.function.custom_domain_info:
                 custom_domain_status_row = self.resolver.add_status_row()
                 custom_domain_status_row.finish(
-                    f"Custom domain for {self.tag} => [magenta underline]"
-                    f"{custom_domain.url}[/magenta underline]{suffix}"
+                    f"Custom domain for {self.tag} => [magenta underline]" f"{custom_domain.url}[/magenta underline]"
                 )
         else:
             self.status_row.finish(f"Created function {self.tag}.")
@@ -583,4 +582,9 @@ class FunctionCreationStatus:
                             f"Created web endpoint for {method_definition.function_name} => [magenta underline]"
                             f"{method_definition.web_url}[/magenta underline]{suffix}"
                         )
-                self.status_row.finish(f"Created function {self.tag}.")
+                        for custom_domain in method_definition.custom_domain_info:
+                            custom_domain_status_row = self.resolver.add_status_row()
+                            custom_domain_status_row.finish(
+                                f"Custom domain for {method_definition.function_name} => [magenta underline]"
+                                f"{custom_domain.url}[/magenta underline]"
+                            )
