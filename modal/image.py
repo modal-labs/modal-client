@@ -619,22 +619,21 @@ class _Image(_Object, type_prefix="im"):
         )
 
     def _add_local_python_packages(self, *packages: Union[str, Path], copy: bool = False) -> "_Image":
-        """Adds all files from the specified Python packages to containers running the image
+        """Adds Python Package Files to Containers
 
-        Packages are added to the /root directory which is on the PYTHONPATH of any
-        executed Modal functions.
+        Adds all files from the specified Python packages to containers running the image.
 
-        By default (copy=False) the files are added to your containers when they
-        start up and not built into the actual image, which speeds up deployment.
+        Packages are added to the `/root` directory, which is on the `PYTHONPATH` of any executed Modal functions.
 
-        Set copy=True to force the files to be added as an image layer instead.
-        This can slow down deployment since it requires a rebuild of the image
-        and any subsequent build steps whenever the included files change, but
-        it allows you to run additional build steps after this one.
+        By default (`copy=False`), the files are added to containers on startup and are not built into the actual image,
+        which speeds up deployment.
 
-        Note that this excludes all .-prefixed sub-directories or files and all
-        .pyc/__pycache__ files. To add full directories with finer control use
-        `.add_local_dir()` instead.
+        Set `copy=True` to copy the files into an image layer at build time instead. This can slow down iteration since
+        it requires a rebuild of the image and any subsequent build steps whenever the included files change, but it is
+        required if you want to run additional build steps after this one.
+
+        **Note:** This excludes all dot-prefixed subdirectories or files and all `.pyc`/`__pycache__` files.
+        To add full directories with finer control, use `.add_local_dir()` instead.
         """
         mount = _Mount.from_local_python_packages(*packages)
         return self._add_mount_layer_or_copy(mount, copy=copy)
