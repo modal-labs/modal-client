@@ -37,6 +37,8 @@ jobs:
           private_key: ${{ secrets.GH_PRBOT_APP_PRIVATE_KEY }}
 
       - uses: actions/checkout@v3
+        with:
+          token: ${{ steps.generate_token.outputs.token }}
 
       - uses: ./.github/actions/setup-cached-python
         with:
