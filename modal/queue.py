@@ -88,11 +88,12 @@ class _Queue(_Object, type_prefix="qu"):
 
     @staticmethod
     def new():
-        """`Queue.new` is deprecated.
-
-        Please use `Queue.from_name` (for persisted) or `Queue.ephemeral` (for ephemeral) queues.
-        """
-        deprecation_error((2024, 3, 19), Queue.new.__doc__)
+        """mdmd:hidden"""
+        message = (
+            "`Queue.new` is deprecated."
+            " Please use `Queue.from_name` (for persisted) or `Queue.ephemeral` (for ephemeral) queues instead."
+        )
+        deprecation_error((2024, 3, 19), message)
 
     def __init__(self):
         """mdmd:hidden"""
@@ -149,15 +150,15 @@ class _Queue(_Object, type_prefix="qu"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Queue":
-        """Create a reference to a persisted Queue
+        """Reference a named Queue, creating if necessary.
 
-        **Examples**
+        In contrast to `modal.Queue.lookup`, this is a lazy method
+        the defers hydrating the local object with metadata from
+        Modal servers until the first time it is actually used.
 
         ```python
-        from modal import Queue
-
-        queue = Queue.from_name("my-queue", create_if_missing=True)
-        queue.put(123)
+        q = modal.Queue.from_name("my-queue", create_if_missing=True)
+        q.put(123)
         ```
         """
         check_object_name(label, "Queue")
@@ -175,11 +176,6 @@ class _Queue(_Object, type_prefix="qu"):
         return _Queue._from_loader(_load, "Queue()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
-    def persisted(label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None):
-        """Deprecated! Use `Queue.from_name(name, create_if_missing=True)`."""
-        deprecation_error((2024, 3, 1), _Queue.persisted.__doc__)
-
-    @staticmethod
     async def lookup(
         label: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -187,11 +183,12 @@ class _Queue(_Object, type_prefix="qu"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Queue":
-        """Lookup a queue with a given name and tag.
+        """Lookup a named Queue.
+
+        In contrast to `modal.Queue.from_name`, this is an eager method
+        that will hydrate the local object with metadata from Modal servers.
 
         ```python
-        from modal import Queue
-
         q = modal.Queue.lookup("my-queue")
         q.put(123)
         ```

@@ -90,12 +90,13 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
 
     @staticmethod
     def new(cloud: Optional[str] = None):
-        """`NetworkFileSystem.new` is deprecated.
-
-        Please use `NetworkFileSystem.from_name` (for persisted) or `NetworkFileSystem.ephemeral`
-        (for ephemeral) network filesystems.
-        """
-        deprecation_error((2024, 3, 20), NetworkFileSystem.new.__doc__)
+        """mdmd:hidden"""
+        message = (
+            "`NetworkFileSystem.new` is deprecated."
+            " Please use `NetworkFileSystem.from_name` (for persisted)"
+            " or `NetworkFileSystem.ephemeral` (for ephemeral) network filesystems instead."
+        )
+        deprecation_error((2024, 3, 20), message)
 
     @staticmethod
     def from_name(
@@ -104,14 +105,16 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_NetworkFileSystem":
-        """Create a reference to a persisted network filesystem, optionally creating it lazily.
+        """Reference a NetworkFileSystem by its name, creating if necessary.
 
-        **Examples**
+        In contrast to `modal.NetworkFileSystem.lookup`, this is a lazy method
+        that defers hydrating the local object with metadata from Modal servers
+        until the first time it is actually used.
 
         ```python notest
-        volume = NetworkFileSystem.from_name("my-volume", create_if_missing=True)
+        nfs = NetworkFileSystem.from_name("my-nfs", create_if_missing=True)
 
-        @app.function(network_file_systems={"/vol": volume})
+        @app.function(network_file_systems={"/data": nfs})
         def f():
             pass
         ```
@@ -169,27 +172,6 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             yield cls._new_hydrated(response.shared_volume_id, client, None, is_another_app=True)
 
     @staticmethod
-    def persisted(
-        label: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        environment_name: Optional[str] = None,
-        cloud: Optional[str] = None,
-    ):
-        """Deprecated! Use `NetworkFileSystem.from_name(name, create_if_missing=True)`."""
-        deprecation_error((2024, 3, 1), _NetworkFileSystem.persisted.__doc__)
-
-    def persist(
-        self,
-        label: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        environment_name: Optional[str] = None,
-        cloud: Optional[str] = None,
-    ):
-        """`NetworkFileSystem().persist("my-volume")` is deprecated.
-        Use `NetworkFileSystem.from_name("my-volume", create_if_missing=True)` instead."""
-        deprecation_error((2024, 2, 29), _NetworkFileSystem.persist.__doc__)
-
-    @staticmethod
     async def lookup(
         label: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -197,11 +179,14 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_NetworkFileSystem":
-        """Lookup a network file system with a given name
+        """Lookup a named NetworkFileSystem.
+
+        In contrast to `modal.NetworkFileSystem.from_name`, this is an eager method
+        that will hydrate the local object with metadata from Modal servers.
 
         ```python
-        n = modal.NetworkFileSystem.lookup("my-nfs")
-        print(n.listdir("/"))
+        nfs = modal.NetworkFileSystem.lookup("my-nfs")
+        print(nfs.listdir("/"))
         ```
         """
         obj = _NetworkFileSystem.from_name(

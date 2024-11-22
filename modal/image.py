@@ -60,9 +60,9 @@ ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10"]
 # Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
 # Consider consolidating these multiple sources of truth?
 SUPPORTED_PYTHON_SERIES: Dict[ImageBuilderVersion, List[str]] = {
-    "2024.10": ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"],
-    "2024.04": ["3.8", "3.9", "3.10", "3.11", "3.12"],
-    "2023.12": ["3.8", "3.9", "3.10", "3.11", "3.12"],
+    "2024.10": ["3.9", "3.10", "3.11", "3.12", "3.13"],
+    "2024.04": ["3.9", "3.10", "3.11", "3.12"],
+    "2023.12": ["3.9", "3.10", "3.11", "3.12"],
 }
 
 LOCAL_REQUIREMENTS_DIR = Path(__file__).parent / "requirements"
@@ -311,12 +311,24 @@ class _Image(_Object, type_prefix="im"):
 
     force_build: bool
     inside_exceptions: List[Exception]
-    _used_local_mounts: typing.FrozenSet[_Mount]  # used for mounts watching
+    _serve_mounts: typing.FrozenSet[_Mount]  # used for mounts watching in `modal serve`
+    _deferred_mounts: Sequence[
+        _Mount
+    ]  # added as mounts on any container referencing the Image, see `def _mount_layers`
     _metadata: Optional[api_pb2.ImageMetadata] = None  # set on hydration, private for now
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
-        self._used_local_mounts = frozenset()
+        self._serve_mounts = frozenset()
+        self._deferred_mounts = ()
+        self.force_build = False
+
+    def _initialize_from_other(self, other: "_Image"):
+        # used by .clone()
+        self.inside_exceptions = other.inside_exceptions
+        self.force_build = other.force_build
+        self._serve_mounts = other._serve_mounts
+        self._deferred_mounts = other._deferred_mounts
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         env_image_id = config.get("image_id")  # set as an env var in containers
@@ -329,6 +341,51 @@ class _Image(_Object, type_prefix="im"):
         if metadata:
             assert isinstance(metadata, api_pb2.ImageMetadata)
             self._metadata = metadata
+
+    def _add_mount_layer_or_copy(self, mount: _Mount, copy: bool = False):
+        if copy:
+            return self.copy_mount(mount, remote_path="/")
+
+        base_image = self
+
+        async def _load(self2: "_Image", resolver: Resolver, existing_object_id: Optional[str]):
+            self2._hydrate_from_other(base_image)  # same image id as base image as long as it's lazy
+            self2._deferred_mounts = tuple(base_image._deferred_mounts) + (mount,)
+            self2._serve_mounts = base_image._serve_mounts | ({mount} if mount.is_local() else set())
+
+        return _Image._from_loader(_load, "Image(local files)", deps=lambda: [base_image, mount])
+
+    @property
+    def _mount_layers(self) -> typing.Tuple[_Mount]:
+        """Non-evaluated mount layers on the image
+
+        When the image is used by a Modal container, these mounts need to be attached as well to
+        represent the full image content, as they haven't yet been represented as a layer in the
+        image.
+
+        When the image is used as a base image for a new layer (that is not itself a mount layer)
+        these mounts need to first be inserted as a copy operation (.copy_mount) into the image.
+        """
+        return self._deferred_mounts
+
+    def _assert_no_mount_layers(self):
+        if self._mount_layers:
+            raise InvalidError(
+                "An image tried to run a build step after using `image.add_local_*` to include local files.\n"
+                "\n"
+                "Run `image.add_local_*` commands last in your image build to avoid rebuilding images with every local "
+                "file change. Modal will then add these files to containers on startup instead, saving build time.\n"
+                "If you need to run other build steps after adding local files, set `copy=True` to copy the files"
+                "directly into the image, at the expense of some added build time.\n"
+                "\n"
+                "Example:\n"
+                "\n"
+                "my_image = (\n"
+                "    Image.debian_slim()\n"
+                '   .add_local_python_packages("mypak", copy=True)\n'
+                '    .run_commands("python -m mypak")  # this now works!\n'
+                ")\n"
+            )
 
     @staticmethod
     def _from_args(
@@ -344,9 +401,11 @@ class _Image(_Object, type_prefix="im"):
         force_build: bool = False,
         # For internal use only.
         _namespace: "api_pb2.DeploymentNamespace.ValueType" = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        _do_assert_no_mount_layers: bool = True,
     ):
         if base_images is None:
             base_images = {}
+
         if secrets is None:
             secrets = []
         if gpu_config is None:
@@ -372,7 +431,12 @@ class _Image(_Object, type_prefix="im"):
             return deps
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
-            assert resolver.app_id
+            if _do_assert_no_mount_layers:
+                for image in base_images.values():
+                    # base images can't have
+                    image._assert_no_mount_layers()
+
+            assert resolver.app_id  # type narrowing
             environment = await _get_environment_cached(resolver.environment_name or "", resolver.client)
             # A bit hacky,but assume that the environment provides a valid builder version
             image_builder_version = cast(ImageBuilderVersion, environment._settings.image_builder_version)
@@ -388,7 +452,9 @@ class _Image(_Object, type_prefix="im"):
                     "No commands were provided for the image — have you tried using modal.Image.debian_slim()?"
                 )
             if dockerfile.commands and build_function:
-                raise InvalidError("Cannot provide both a build function and Dockerfile commands!")
+                raise InvalidError(
+                    "Cannot provide both build function and Dockerfile commands in the same image layer!"
+                )
 
             base_images_pb2s = [
                 api_pb2.BaseImage(
@@ -473,6 +539,7 @@ class _Image(_Object, type_prefix="im"):
                 if resp.HasField("metadata"):
                     metadata = resp.metadata
             else:
+                # not built or in the process of building - wait for build
                 logger.debug("Waiting for image %s" % image_id)
                 resp = await _image_await_build_result(image_id, resolver.client)
                 result = resp.result
@@ -495,18 +562,18 @@ class _Image(_Object, type_prefix="im"):
             self._hydrate(image_id, resolver.client, metadata)
             local_mounts = set()
             for base in base_images.values():
-                local_mounts |= base._used_local_mounts
+                local_mounts |= base._serve_mounts
             if context_mount and context_mount.is_local():
                 local_mounts.add(context_mount)
-            self._used_local_mounts = frozenset(local_mounts)
+            self._serve_mounts = frozenset(local_mounts)
 
-        rep = "Image()"
+        rep = f"Image({dockerfile_function})"
         obj = _Image._from_loader(_load, rep, deps=_deps)
         obj.force_build = force_build
         return obj
 
     def extend(self, **kwargs) -> "_Image":
-        """Deprecated! This is a low-level method not intended to be part of the public API."""
+        """mdmd:hidden"""
         deprecation_error(
             (2024, 3, 7),
             "`Image.extend` is deprecated; please use a higher-level method, such as `Image.dockerfile_commands`.",
@@ -565,6 +632,27 @@ class _Image(_Object, type_prefix="im"):
             dockerfile_function=build_dockerfile,
             context_mount=mount,
         )
+
+    def _add_local_python_packages(self, *packages: Union[str, Path], copy: bool = False) -> "_Image":
+        """Adds Python package files to containers
+
+        Adds all files from the specified Python packages to containers running the Image.
+
+        Packages are added to the `/root` directory of containers, which is on the `PYTHONPATH`
+        of any executed Modal Functions.
+
+        By default (`copy=False`), the files are added to containers on startup and are not built into the actual Image,
+        which speeds up deployment.
+
+        Set `copy=True` to copy the files into an Image layer at build time instead. This can slow down iteration since
+        it requires a rebuild of the Image and any subsequent build steps whenever the included files change, but it is
+        required if you want to run additional build steps after this one.
+
+        **Note:** This excludes all dot-prefixed subdirectories or files and all `.pyc`/`__pycache__` files.
+        To add full directories with finer control, use `.add_local_dir()` instead.
+        """
+        mount = _Mount.from_local_python_packages(*packages)
+        return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy a directory into the image as a part of building the image.
@@ -1003,8 +1091,12 @@ class _Image(_Object, type_prefix="im"):
 
     @staticmethod
     def conda(python_version: Optional[str] = None, force_build: bool = False):
-        """DEPRECATED: Removed in favor of the faster and more reliable `Image.micromamba` constructor."""
-        deprecation_error((2024, 5, 2), _Image.conda.__doc__ or "")
+        """mdmd:hidden"""
+        message = (
+            "`Image.conda` is deprecated."
+            " Please use the faster and more reliable `Image.micromamba` constructor instead."
+        )
+        deprecation_error((2024, 5, 2), message)
 
     def conda_install(
         self,
@@ -1014,8 +1106,12 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ):
-        """DEPRECATED: Removed in favor of the faster and more reliable `Image.micromamba_install` method."""
-        deprecation_error((2024, 5, 2), _Image.conda_install.__doc__ or "")
+        """mdmd:hidden"""
+        message = (
+            "`Image.conda_install` is deprecated."
+            " Please use the faster and more reliable `Image.micromamba_install` instead."
+        )
+        deprecation_error((2024, 5, 2), message)
 
     def conda_update_from_environment(
         self,
@@ -1025,8 +1121,12 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ):
-        """DEPRECATED: Removed in favor of the `Image.micromamba_install` method (using the `spec_file` parameter)."""
-        deprecation_error((2024, 5, 2), _Image.conda_update_from_environment.__doc__ or "")
+        """mdmd:hidden"""
+        message = (
+            "Image.conda_update_from_environment` is deprecated."
+            " Please use the `Image.micromamba_install` method (with the `spec_file` parameter) instead."
+        )
+        deprecation_error((2024, 5, 2), message)
 
     @staticmethod
     def micromamba(
@@ -1148,9 +1248,8 @@ class _Image(_Object, type_prefix="im"):
         The image must be built for the `linux/amd64` platform.
 
         If your image does not come with Python installed, you can use the `add_python` parameter
-        to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
-        `3.10`, `3.11`, and `3.12`. Otherwise, the image is expected to have Python>3.8 available
-        on PATH as `python`, along with `pip`.
+        to specify a version of Python to add to the image. Otherwise, the image is expected to
+        have Python on PATH as `python`, along with `pip`.
 
         You may also use `setup_dockerfile_commands` to run Dockerfile commands before the
         remaining commands run. This might be useful if you want a custom Python installation or to
@@ -1224,7 +1323,10 @@ class _Image(_Object, type_prefix="im"):
         ```python
         modal.Image.from_gcp_artifact_registry(
             "us-east1-docker.pkg.dev/my-project-1234/my-repo/my-image:my-version",
-            secret=modal.Secret.from_name("my-gcp-secret"),
+            secret=modal.Secret.from_name(
+                "my-gcp-secret",
+                required_keys=["SERVICE_ACCOUNT_JSON"],
+            ),
             add_python="3.11",
         )
         ```
@@ -1253,8 +1355,8 @@ class _Image(_Object, type_prefix="im"):
     ) -> "_Image":
         """Build a Modal image from a private image in AWS Elastic Container Registry (ECR).
 
-        You will need to pass a `modal.Secret` containing an AWS key (`AWS_ACCESS_KEY_ID`) and
-        secret (`AWS_SECRET_ACCESS_KEY`) with permissions to access the target ECR registry.
+        You will need to pass a `modal.Secret` containing `AWS_ACCESS_KEY_ID`,
+        `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION` to access the target ECR registry.
 
         IAM configuration details can be found in the AWS documentation for
         ["Private repository policies"](https://docs.aws.amazon.com/AmazonECR/latest/userguide/repository-policies.html).
@@ -1266,7 +1368,10 @@ class _Image(_Object, type_prefix="im"):
         ```python
         modal.Image.from_aws_ecr(
             "000000000000.dkr.ecr.us-east-1.amazonaws.com/my-private-registry:my-version",
-            secret=modal.Secret.from_name("aws"),
+            secret=modal.Secret.from_name(
+                "aws",
+                required_keys=["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_REGION"],
+            ),
             add_python="3.11",
         )
         ```
@@ -1300,8 +1405,7 @@ class _Image(_Object, type_prefix="im"):
         """Build a Modal image from a local Dockerfile.
 
         If your Dockerfile does not have Python installed, you can use the `add_python` parameter
-        to specify a version of Python to add to the image. Supported versions are `3.8`, `3.9`,
-        `3.10`, `3.11`, and `3.12`.
+        to specify a version of Python to add to the image.
 
         **Example**
 

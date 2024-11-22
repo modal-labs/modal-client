@@ -90,7 +90,7 @@ def serialize(obj: Any) -> bytes:
 
 def deserialize(s: bytes, client) -> Any:
     """Deserializes object and replaces all client placeholders by self."""
-    from .execution_context import is_local  # Avoid circular import
+    from ._runtime.execution_context import is_local  # Avoid circular import
 
     env = "local" if is_local() else "remote"
     try:

@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
-from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Optional, Sequence, Tuple, Union
+from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Literal, Optional, Sequence, Tuple, Union, overload
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -46,8 +46,8 @@ class _Sandbox(_Object, type_prefix="sb"):
     """
 
     _result: Optional[api_pb2.GenericResult]
-    _stdout: _StreamReader
-    _stderr: _StreamReader
+    _stdout: _StreamReader[str]
+    _stderr: _StreamReader[str]
     _stdin: _StreamWriter
     _task_id: Optional[str] = None
     _tunnels: Optional[Dict[int, Tunnel]] = None
@@ -148,7 +148,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             definition = api_pb2.Sandbox(
                 entrypoint_args=entrypoint_args,
                 image_id=image.object_id,
-                mount_ids=[mount.object_id for mount in mounts],
+                mount_ids=[mount.object_id for mount in mounts] + [mount.object_id for mount in image._mount_layers],
                 secret_ids=[secret.object_id for secret in secrets],
                 timeout_secs=timeout,
                 workdir=workdir,
@@ -280,10 +280,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         return obj
 
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
-        self._stdout = StreamReader(
+        self._stdout: _StreamReader[str] = StreamReader[str](
             api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, "sandbox", self._client, by_line=True
         )
-        self._stderr = StreamReader(
+        self._stderr: _StreamReader[str] = StreamReader[str](
             api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, "sandbox", self._client, by_line=True
         )
         self._stdin = StreamWriter(self.object_id, "sandbox", self._client)
@@ -400,16 +400,52 @@ class _Sandbox(_Object, type_prefix="sb"):
                 await asyncio.sleep(0.5)
         return self._task_id
 
+    @overload
     async def exec(
         self,
         *cmds: str,
-        # Deprecated: internal use only
         pty_info: Optional[api_pb2.PTYInfo] = None,
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
         timeout: Optional[int] = None,
         workdir: Optional[str] = None,
         secrets: Sequence[_Secret] = (),
+        text: Literal[True] = True,
+        bufsize: Literal[-1, 1] = -1,
+        _pty_info: Optional[api_pb2.PTYInfo] = None,
+    ) -> _ContainerProcess[str]:
+        ...
+
+    @overload
+    async def exec(
+        self,
+        *cmds: str,
+        pty_info: Optional[api_pb2.PTYInfo] = None,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
+        secrets: Sequence[_Secret] = (),
+        text: Literal[False] = False,
+        bufsize: Literal[-1, 1] = -1,
+        _pty_info: Optional[api_pb2.PTYInfo] = None,
+    ) -> _ContainerProcess[bytes]:
+        ...
+
+    async def exec(
+        self,
+        *cmds: str,
+        pty_info: Optional[api_pb2.PTYInfo] = None,  # Deprecated: internal use only
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
+        secrets: Sequence[_Secret] = (),
+        # Encode output as text.
+        text: bool = True,
+        # Control line-buffered output.
+        # -1 means unbuffered, 1 means line-buffered (only available if `text=True`).
+        bufsize: Literal[-1, 1] = -1,
         # Internal option to set terminal size and metadata
         _pty_info: Optional[api_pb2.PTYInfo] = None,
     ):
@@ -435,7 +471,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         # Force secret resolution so we can pass the secret IDs to the backend.
         for secret in secrets:
-            await secret.resolve()
+            await secret.resolve(client=self._client)
 
         task_id = await self._get_task_id()
         resp = await self._client.stub.ContainerExec(
@@ -449,10 +485,11 @@ class _Sandbox(_Object, type_prefix="sb"):
                 secret_ids=[secret.object_id for secret in secrets],
             )
         )
-        return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr)
+        by_line = bufsize == 1
+        return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr, text=text, by_line=by_line)
 
     @property
-    def stdout(self) -> _StreamReader:
+    def stdout(self) -> _StreamReader[str]:
         """
         [`StreamReader`](/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
         the sandbox's stdout stream.
@@ -461,7 +498,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         return self._stdout
 
     @property
-    def stderr(self) -> _StreamReader:
+    def stderr(self) -> _StreamReader[str]:
         """[`StreamReader`](/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
         the sandbox's stderr stream.
         """

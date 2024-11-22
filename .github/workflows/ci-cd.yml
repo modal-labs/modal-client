@@ -24,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false # run all variants across python versions/os to completion
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         os: ["ubuntu-20.04"]
         proto-version: ["latest"]
         include:
@@ -38,7 +38,7 @@ jobs:
             python-version: "3.10"
             proto-version: "latest"
           - os: "ubuntu-20.04"
-            python-version: "3.8"
+            python-version: "3.9"
             proto-version: "3.19"
 
     runs-on: ${{ matrix.os }}
@@ -77,10 +77,22 @@ jobs:
     timeout-minutes: 4
     strategy:
       matrix:
-        image-builder-version: ["2024.04", "2024.10"]
-        python-version: ["3.8", "3.13"]
+        include:
+          - image-builder-version: "2024.04"
+            python-version: "3.9"
+          - image-builder-version: "2024.04"
+            python-version: "3.12"
+          - image-builder-version: "2024.10"
+            python-version: "3.9"
+          - image-builder-version: "2024.10"
+            python-version: "3.13"
+
     steps:
       - uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
         run: |
@@ -91,7 +103,13 @@ jobs:
         run: |
           python -m venv venv
           source venv/bin/activate
-          pip install grpcio-tools==1.59.2 grpclib==0.4.7
+          if [ "${{ matrix.python-version }}" == "3.9" ]; then
+            pip install grpcio-tools==1.48.2 grpclib==0.4.7;
+          elif [ "${{ matrix.python-version }}" == "3.12" ]; then
+            pip install grpcio-tools==1.59.2 grpclib==0.4.7;
+          elif [ "${{ matrix.python-version }}" == "3.13" ]; then
+            pip install grpcio-tools==1.66.2 grpclib==0.4.7;
+          fi
           python -m grpc_tools.protoc --python_out=. --grpclib_python_out=. --grpc_python_out=. -I . modal_proto/api.proto modal_proto/options.proto
           python -m grpc_tools.protoc --plugin=protoc-gen-modal-grpclib-python=protoc_plugin/plugin.py --modal-grpclib-python_out=. -I . modal_proto/api.proto modal_proto/options.proto
           deactivate
@@ -103,7 +121,7 @@ jobs:
 
   publish-base-images:
     name: |
-      Publish base images for ${{ matrix.image-name }} ${{ matrix.image-builder-version }} on ${{ matrix.python-version }}
+      Publish base images for ${{ matrix.image-name }} ${{ matrix.image-builder-version }}
     if: github.ref == 'refs/heads/main'
     needs: [client-test]
     runs-on: ubuntu-20.04
@@ -122,7 +140,7 @@ jobs:
 
       - uses: ./.github/actions/setup-cached-python
         with:
-          version: ${{ matrix.python-version }}
+          version: "3.11"
 
       - name: Build protobuf
         run: inv protoc
@@ -161,6 +179,7 @@ jobs:
         with:
           token: ${{ steps.generate_token.outputs.token }}
           ref: main
+          fetch-depth: 10  # Fetch multiple commits to find the right changelog entry with concurrent deployments
 
       - uses: ./.github/actions/setup-cached-python
         with:

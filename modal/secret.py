@@ -7,12 +7,12 @@ from grpclib import GRPCError, Status
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
+from ._runtime.execution_context import is_local
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .exception import InvalidError, NotFoundError
-from .execution_context import is_local
 from .object import _get_environment_name, _Object
 
 ENV_DICT_WRONG_TYPE_ERR = "the env_dict argument to Secret has to be a dict[str, Union[str, None]]"
@@ -169,7 +169,11 @@ class _Secret(_Object, type_prefix="st"):
             str
         ] = [],  # Optionally, a list of required environment variables (will be asserted server-side)
     ) -> "_Secret":
-        """Create a reference to a persisted Secret
+        """Reference a Secret by its name.
+
+        In contrast to most other Modal objects, named Secrets must be provisioned
+        from the Dashboard. See other methods for alternate ways of creating a new
+        Secret from code.
 
         ```python
         secret = modal.Secret.from_name("my-secret")
@@ -206,13 +210,7 @@ class _Secret(_Object, type_prefix="st"):
         environment_name: Optional[str] = None,
         required_keys: List[str] = [],
     ) -> "_Secret":
-        """Lookup a secret with a given name
-
-        ```python
-        s = modal.Secret.lookup("my-secret")
-        print(s.object_id)
-        ```
-        """
+        """mdmd:hidden"""
         obj = _Secret.from_name(
             label, namespace=namespace, environment_name=environment_name, required_keys=required_keys
         )

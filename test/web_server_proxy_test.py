@@ -10,7 +10,7 @@ import pytest_asyncio
 from aiohttp.web import Application
 from aiohttp.web_runner import AppRunner, SockSite
 
-import modal._asgi
+import modal._runtime.asgi
 
 # TODO: add more tests
 
@@ -72,7 +72,7 @@ async def http_dummy_server():
 async def lifespan_ctx_manager(asgi_app):
     state: Dict[str, Any] = {}
 
-    lm = modal._asgi.LifespanManager(asgi_app, state)
+    lm = modal._runtime.asgi.LifespanManager(asgi_app, state)
     t = asyncio.create_task(lm.background_task())
     await lm.lifespan_startup()
     yield state
@@ -83,7 +83,7 @@ async def lifespan_ctx_manager(asgi_app):
 
 @pytest.mark.asyncio
 async def test_web_server_wrapper_immediate_disconnect(http_dummy_server: DummyHttpServer):
-    proxy_asgi_app = modal._asgi.web_server_proxy(http_dummy_server.host, http_dummy_server.port)
+    proxy_asgi_app = modal._runtime.asgi.web_server_proxy(http_dummy_server.host, http_dummy_server.port)
 
     async def recv():
         return {"type": "http.disconnect"}

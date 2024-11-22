@@ -219,7 +219,7 @@ class _Object:
         """mdmd:hidden"""
         return self._deps if self._deps is not None else lambda: []
 
-    async def resolve(self):
+    async def resolve(self, client: Optional[_Client] = None):
         """mdmd:hidden"""
         if self._is_hydrated:
             # memory snapshots capture references which must be rehydrated
@@ -227,7 +227,7 @@ class _Object:
             if self._client._snapshotted and not self._is_rehydrated:
                 logger.debug(f"rehydrating {self} after snapshot")
                 self._is_hydrated = False  # un-hydrate and re-resolve
-                c = await _Client.from_env()
+                c = client if client is not None else await _Client.from_env()
                 resolver = Resolver(c)
                 await resolver.load(self)
                 self._is_rehydrated = True
@@ -237,7 +237,8 @@ class _Object:
             self._validate_is_hydrated()
         else:
             # TODO: this client and/or resolver can't be changed by a caller to X.from_name()
-            resolver = Resolver(await _Client.from_env())
+            c = client if client is not None else await _Client.from_env()
+            resolver = Resolver(c)
             await resolver.load(self)
 
 

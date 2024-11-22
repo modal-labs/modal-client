@@ -37,7 +37,6 @@ MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
 # These can be updated safely, but changes will trigger a rebuild for all images
 # that rely on `add_python()` in their constructor.
 PYTHON_STANDALONE_VERSIONS: typing.Dict[str, typing.Tuple[str, str]] = {
-    "3.8": ("20230826", "3.8.17"),
     "3.9": ("20230826", "3.9.18"),
     "3.10": ("20230826", "3.10.13"),
     "3.11": ("20230826", "3.11.5"),
@@ -572,7 +571,7 @@ class _Mount(_Object, type_prefix="mo"):
         # Don't re-run inside container.
 
         mount = _Mount._new()
-        from .execution_context import is_local
+        from ._runtime.execution_context import is_local
 
         if not is_local():
             return mount  # empty/non-mountable mount in case it's used from within a container
@@ -586,6 +585,8 @@ class _Mount(_Object, type_prefix="mo"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
     ) -> "_Mount":
+        """mdmd:hidden"""
+
         async def _load(provider: _Mount, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.MountGetOrCreateRequest(
                 deployment_name=label,
@@ -605,6 +606,7 @@ class _Mount(_Object, type_prefix="mo"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> "_Mount":
+        """mdmd:hidden"""
         obj = _Mount.from_name(label, namespace=namespace, environment_name=environment_name)
         if client is None:
             client = await _Client.from_env()

@@ -15,6 +15,7 @@ from modal_proto import api_pb2
 
 from ._pty import get_pty_info
 from ._resolver import Resolver
+from ._runtime.execution_context import is_local
 from ._traceback import traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, gather_cancel_on_exc, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
@@ -30,7 +31,6 @@ from .exception import (
     _CliUserExecutionError,
     deprecation_error,
 )
-from .execution_context import is_local
 from .functions import _Function
 from .object import _get_environment_name, _Object
 from .output import _get_output_manager, enable_output
@@ -615,8 +615,9 @@ def _run_stub(*args: Any, **kwargs: Any):
 
 
 def _deploy_stub(*args: Any, **kwargs: Any):
-    """`deploy_stub` has been renamed to `deploy_app` and is deprecated. Please update your code."""
-    deprecation_error((2024, 5, 1), str(_deploy_stub.__doc__))
+    """mdmd:hidden"""
+    message = "`deploy_stub` has been renamed to `deploy_app`. Please update your code."
+    deprecation_error((2024, 5, 1), message)
 
 
 run_app = synchronize_api(_run_app)

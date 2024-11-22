@@ -24,12 +24,12 @@ from grpclib.exceptions import GRPCError
 import modal
 from modal import Client, Queue, Volume, is_local
 from modal._container_entrypoint import UserException, main
-from modal._container_io_manager import (
+from modal._runtime.container_io_manager import (
     ContainerIOManager,
-    FinalizedFunction,
     InputSlots,
     IOContext,
 )
+from modal._runtime.user_code_imports import FinalizedFunction
 from modal._serialization import (
     deserialize,
     deserialize_data_format,
@@ -1596,7 +1596,7 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, servicer)
     monkeypatch.setattr(synchronizer, "_translate_scalar_out", translate_out_spy)
 
     # don't do blobbing for this test
-    monkeypatch.setattr("modal._container_io_manager.MAX_OBJECT_SIZE_BYTES", 1e100)
+    monkeypatch.setattr("modal._runtime.container_io_manager.MAX_OBJECT_SIZE_BYTES", 1e100)
 
     large_data_list = list(range(int(1e6)))  # large data set
 
@@ -1622,7 +1622,7 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, servicer)
     for call in translate_out_spy.call_args_list:
         out_translations += list(call.args)
 
-    assert len(in_translations) < 1000  # typically 136 or something
+    assert len(in_translations) < 2000  # typically ~400 or something
     assert len(out_translations) < 2000
 
 
@@ -1705,7 +1705,7 @@ def test_cancellation_aborts_current_input_on_match(
         api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=cancelled_input_ids))
     )
     stdout, stderr = container_process.communicate()
-    assert stderr.decode().count("Received a cancellation signal") == live_cancellations
+    assert stderr.decode().count("Successfully canceled input") == live_cancellations
     assert "Traceback" not in stderr.decode()
     assert container_process.returncode == 0  # wait for container to exit
     duration = time.monotonic() - t0  # time from heartbeat to container exit
@@ -1798,9 +1798,7 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer):
     )
     # container should exit immediately, stopping execution of both inputs
     exit_code = container_process.wait(5)
-    items = _flatten_outputs(servicer.container_outputs)
-    assert len(items) == 1  # should not fail the outputs, as they would have been cancelled in backend already
-    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
+    assert not servicer.container_outputs  # No terminated outputs as task should be killed by server anyway.
 
     container_stderr = container_process.stderr.read().decode("utf8")
     assert "Traceback" not in container_stderr
@@ -1809,7 +1807,7 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer):
 
 @skip_github_non_linux
 def test_inputs_outputs_with_blob_id(servicer, client, monkeypatch):
-    monkeypatch.setattr("modal._container_io_manager.MAX_OBJECT_SIZE_BYTES", 0)
+    monkeypatch.setattr("modal._runtime.container_io_manager.MAX_OBJECT_SIZE_BYTES", 0)
     ret = _run_container(
         servicer,
         "test.supports.functions",
@@ -1853,6 +1851,7 @@ def test_lifecycle_full(servicer):
 
 
 @skip_github_non_linux
+@pytest.mark.timeout(10)
 def test_stop_fetching_inputs(servicer):
     ret = _run_container(
         servicer,
@@ -1868,7 +1867,7 @@ def test_stop_fetching_inputs(servicer):
 
 @skip_github_non_linux
 def test_container_heartbeat_survives_grpc_deadlines(servicer, caplog, monkeypatch):
-    monkeypatch.setattr("modal._container_io_manager.HEARTBEAT_INTERVAL", 0.01)
+    monkeypatch.setattr("modal._runtime.container_io_manager.HEARTBEAT_INTERVAL", 0.01)
     num_heartbeats = 0
 
     async def heartbeat_responder(servicer, stream):
@@ -1904,9 +1903,9 @@ def test_container_heartbeat_survives_local_exceptions(servicer, caplog, monkeyp
         numcalls += 1
         raise Exception("oops")
 
-    monkeypatch.setattr("modal._container_io_manager.HEARTBEAT_INTERVAL", 0.01)
+    monkeypatch.setattr("modal._runtime.container_io_manager.HEARTBEAT_INTERVAL", 0.01)
     monkeypatch.setattr(
-        "modal._container_io_manager._ContainerIOManager._heartbeat_handle_cancellations", custom_heartbeater
+        "modal._runtime.container_io_manager._ContainerIOManager._heartbeat_handle_cancellations", custom_heartbeater
     )
 
     ret = _run_container(
@@ -1995,7 +1994,15 @@ def test_sigint_termination_input(servicer, method):
 
     stdout, stderr = container_process.communicate(timeout=5)
     stop_duration = time.monotonic() - signal_time
-    assert len(servicer.container_outputs) == 0
+
+    if method == "delay":
+        assert len(servicer.container_outputs) == 0
+    else:
+        # We end up returning a terminated output for async task cancels, which is ignored by the worker anyway.
+        items = _flatten_outputs(servicer.container_outputs)
+        assert len(items) == 1
+        assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
+
     assert (
         container_process.returncode == 0
     )  # container should catch and indicate successful termination by exiting cleanly when possible

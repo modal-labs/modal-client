@@ -141,25 +141,7 @@ def test_run(servicer, set_env_client, test_dir):
 def test_run_stub(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "app_was_once_stub.py"
     with pytest.warns(match="App"):
-        _run(["run", app_file.as_posix()])
-    with pytest.warns(match="App"):
         _run(["run", app_file.as_posix() + "::foo"])
-
-
-def test_run_stub_2(servicer, set_env_client, test_dir):
-    app_file = test_dir / "supports" / "app_run_tests" / "app_was_once_stub_2.py"
-    with pytest.warns(match="`app`"):
-        _run(["run", app_file.as_posix()])
-    _run(["run", app_file.as_posix() + "::stub"])
-    _run(["run", app_file.as_posix() + "::foo"])
-
-
-def test_run_stub_with_app(servicer, set_env_client, test_dir):
-    app_file = test_dir / "supports" / "app_run_tests" / "app_and_stub.py"
-    with pytest.warns(match="`app`"):
-        _run(["run", app_file.as_posix()])
-    _run(["run", app_file.as_posix() + "::stub"])
-    _run(["run", app_file.as_posix() + "::foo"])
 
 
 def test_run_async(servicer, set_env_client, test_dir):
@@ -361,7 +343,7 @@ def test_serve(servicer, set_env_client, server_url_env, test_dir):
 
 @pytest.fixture
 def mock_shell_pty(servicer):
-    servicer.shell_prompt = "TEST_PROMPT# "
+    servicer.shell_prompt = b"TEST_PROMPT# "
 
     def mock_get_pty_info(shell: bool) -> api_pb2.PTYInfo:
         rows, cols = (64, 128)
@@ -417,7 +399,7 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
     fake_stdin.clear()
     fake_stdin.extend([b'echo "Hello World"\n', b"exit\n"])
 
-    shell_prompt = servicer.shell_prompt.encode("utf-8")
+    shell_prompt = servicer.shell_prompt
 
     # Function is explicitly specified
     _run(["shell", app_file.as_posix() + "::foo"])
@@ -445,7 +427,7 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
 def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
     app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
     _, captured_out = mock_shell_pty
-    shell_prompt = servicer.shell_prompt.encode("utf-8")
+    shell_prompt = servicer.shell_prompt
     _run(["shell", "--cmd", "pwd", app_file.as_posix() + "::foo"])
     expected_output = subprocess.run(["pwd"], capture_output=True, check=True).stdout
     assert captured_out == [(1, shell_prompt), (1, expected_output)]
@@ -456,7 +438,7 @@ def test_shell_preserve_token(servicer, set_env_client, mock_shell_pty, monkeypa
     monkeypatch.setenv("MODAL_TOKEN_ID", "my-token-id")
 
     fake_stdin, captured_out = mock_shell_pty
-    shell_prompt = servicer.shell_prompt.encode("utf-8")
+    shell_prompt = servicer.shell_prompt
 
     fake_stdin.clear()
     fake_stdin.extend([b'echo "$MODAL_TOKEN_ID"\n', b"exit\n"])

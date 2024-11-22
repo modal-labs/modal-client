@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import inspect
-import os
 import typing
 import warnings
 from pathlib import PurePosixPath
@@ -36,14 +35,12 @@ from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, parameter
 from .config import logger
 from .exception import ExecutionError, InvalidError, deprecation_error, deprecation_warning
-from .experimental import _GroupedFunction
 from .functions import Function, _Function
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .object import _get_environment_name, _Object
-from .output import _get_output_manager, enable_output
 from .partial_function import (
     PartialFunction,
     _find_partial_methods_for_user_cls,
@@ -126,9 +123,25 @@ class _FunctionDecoratorType:
         ...
 
 
+_app_attr_error = """\
+App assignments of the form `app.x` or `app["x"]` are deprecated!
+
+The only use cases for these assignments is in conjunction with `.new()`, which is now
+in itself deprecated. If you are constructing objects with `.from_name(...)`, there is no
+need to assign those objects to the app. Example:
+
+```python
+d = modal.Dict.from_name("my-dict", create_if_missing=True)
+
+@app.function()
+def f(x, y):
+    d[x] = y  # Refer to d in global scope
+```
+"""
+
+
 class _App:
-    """A Modal app (prior to April 2024 a "stub") is a group of functions and classes
-    deployed together.
+    """A Modal App is a group of functions and classes that are deployed together.
 
     The app serves at least three purposes:
 
@@ -256,12 +269,14 @@ class _App:
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_App":
-        """Look up an app with a given name. When `create_if_missing` is true,
-        the app will be created if it doesn't exist.
+        """Look up an App with a given name, creating a new App if necessary.
+
+        Note that Apps created through this method will be in a deployed state,
+        but they will not have any associated Functions or Classes. This method
+        is mainly useful for creating an App to associate with a Sandbox:
 
         ```python
         app = modal.App.lookup("my-app", create_if_missing=True)
-
         modal.Sandbox.create("echo", "hi", app=app)
         ```
         """
@@ -308,24 +323,10 @@ class _App:
         self._indexed_objects[tag] = obj
 
     def __getitem__(self, tag: str):
-        """App assignments of the form `app.x` or `app["x"]` are deprecated!
-
-        The only use cases for these assignments is in conjunction with `.new()`, which is now
-        in itself deprecated. If you are constructing objects with `.from_name(...)`, there is no
-        need to assign those objects to the app. Example:
-
-        ```python
-        d = modal.Dict.from_name("my-dict", create_if_missing=True)
-
-        @app.function()
-        def f(x, y):
-            d[x] = y  # Refer to d in global scope
-        ```
-        """
-        deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
+        deprecation_error((2024, 3, 25), _app_attr_error)
 
     def __setitem__(self, tag: str, obj: _Object):
-        deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
+        deprecation_error((2024, 3, 25), _app_attr_error)
 
     def __getattr__(self, tag: str):
         # TODO(erikbern): remove this method later
@@ -336,7 +337,7 @@ class _App:
         if tag not in self._indexed_objects:
             # Primarily to make hasattr work
             raise AttributeError(f"App has no member {tag}")
-        deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
+        deprecation_error((2024, 3, 25), _app_attr_error)
 
     def __setattr__(self, tag: str, obj: _Object):
         # TODO(erikbern): remove this method later
@@ -347,7 +348,7 @@ class _App:
         elif tag == "image":
             self._image = obj
         else:
-            deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
+            deprecation_error((2024, 3, 25), _app_attr_error)
 
     @property
     def image(self) -> _Image:
@@ -420,56 +421,24 @@ class _App:
         python app_module.py
         ```
 
-
         Note that this method used to return a separate "App" object. This is
         no longer useful since you can use the app itself for access to all
         objects. For backwards compatibility reasons, it returns the same app.
-        """
-
-        enable_output_warning = """
-        Note that output will soon not be be printed with `app.run`.
-
-        If you want to print output, use `modal.enable_output()`:
-
-        ```python
-        with modal.enable_output():
-            with app.run():
-                ...
-        ```
-
-        If you don't want output, and you want to to suppress this warning,
-        use `app.run(..., show_progress=False)`.
         """
         from .runner import _run_app  # Defer import of runner.py, which imports a lot from Rich
 
         # See Github discussion here: https://github.com/modal-labs/modal-client/pull/2030#issuecomment-2237266186
 
-        auto_enable_output = False
+        if show_progress is True:
+            deprecation_error(
+                (2024, 11, 20),
+                "`show_progress=True` is no longer supported. Use `with modal.enable_output():` instead.",
+            )
+        elif show_progress is False:
+            deprecation_warning((2024, 11, 20), "`show_progress=False` is deprecated (and has no effect)")
 
-        if "MODAL_DISABLE_APP_RUN_OUTPUT_WARNING" not in os.environ:
-            if show_progress is None:
-                if _get_output_manager() is None:
-                    deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
-                    auto_enable_output = True
-            elif show_progress is True:
-                if _get_output_manager() is None:
-                    deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
-                    auto_enable_output = True
-                else:
-                    deprecation_warning((2024, 7, 18), "`show_progress=True` is deprecated and no longer needed.")
-            elif show_progress is False:
-                if _get_output_manager() is not None:
-                    deprecation_warning(
-                        (2024, 7, 18), "`show_progress=False` will have no effect since output is enabled."
-                    )
-
-        if auto_enable_output:
-            with enable_output():
-                async with _run_app(self, client=client, detach=detach, interactive=interactive):
-                    yield self
-        else:
-            async with _run_app(self, client=client, detach=detach, interactive=interactive):
-                yield self
+        async with _run_app(self, client=client, detach=detach, interactive=interactive):
+            yield self
 
     def _get_default_image(self):
         if self._image:
@@ -485,7 +454,7 @@ class _App:
             *self._mounts,
         ]
         for function in self.registered_functions.values():
-            all_mounts.extend(function._used_local_mounts)
+            all_mounts.extend(function._serve_mounts)
 
         return [m for m in all_mounts if m.is_local()]
 
@@ -712,8 +681,8 @@ class _App:
                         "        ...\n"
                         "```\n"
                     )
-                i6pn_enabled = i6pn or (f.flags & _PartialFunctionFlags.GROUPED)
-                group_size = f.group_size  # Experimental: Grouped functions
+                i6pn_enabled = i6pn or (f.flags & _PartialFunctionFlags.CLUSTERED)
+                cluster_size = f.cluster_size  # Experimental: Clustered functions
 
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
@@ -758,7 +727,7 @@ class _App:
                 batch_wait_ms = None
                 raw_f = f
 
-                group_size = None  # Experimental: Grouped functions
+                cluster_size = None  # Experimental: Clustered functions
                 i6pn_enabled = i6pn
 
             if info.function_name.endswith(".app"):
@@ -809,17 +778,10 @@ class _App:
                 _experimental_buffer_containers=_experimental_buffer_containers,
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 i6pn_enabled=i6pn_enabled,
-                group_size=group_size,  # Experimental: Grouped functions
-                _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
+                cluster_size=cluster_size,  # Experimental: Clustered functions
             )
 
             self._add_function(function, webhook_config is not None)
-
-            # Experimental: Grouped functions
-            if group_size is not None:
-                if group_size <= 0:
-                    raise InvalidError("Group size must be positive")
-                function = _GroupedFunction(function, group_size)
 
             return function
 
@@ -990,7 +952,7 @@ class _App:
 
         See https://modal.com/docs/guide/sandbox for more info on working with sandboxes.
         """
-        deprecation_warning((2024, 7, 5), _App.spawn_sandbox.__doc__ or "")
+        deprecation_warning((2024, 7, 5), _App.spawn_sandbox.__doc__)
         if not self._running_app:
             raise InvalidError("`app.spawn_sandbox` requires a running app.")
 
@@ -1087,7 +1049,8 @@ App = synchronize_api(_App)
 
 
 class _Stub(_App):
-    """This enables using an "Stub" class instead of "App".
+    """mdmd:hidden
+    This enables using a "Stub" class instead of "App".
 
     For most of Modal's history, the app class was called "Stub", so this exists for
     backwards compatibility, in order to facilitate moving from "Stub" to "App".

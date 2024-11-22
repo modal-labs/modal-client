@@ -135,7 +135,7 @@ def type_check(ctx):
     # use pyright for checking implementation of those files
     pyright_allowlist = [
         "modal/functions.py",
-        "modal/_asgi.py",
+        "modal/_runtime/asgi.py",
         "modal/_utils/__init__.py",
         "modal/_utils/async_utils.py",
         "modal/_utils/grpc_testing.py",
@@ -148,7 +148,8 @@ def type_check(ctx):
         "modal/_utils/rand_pb_testing.py",
         "modal/_utils/shell_utils.py",
         "test/cls_test.py",  # see mypy bug above - but this works with pyright, so we run that instead
-        "modal/_container_io_manager.py",
+        "modal/_runtime/container_io_manager.py",
+        "modal/io_streams.py",
         "modal/image.py",
     ]
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
@@ -322,7 +323,12 @@ def type_stubs(ctx):
 @task
 def update_changelog(ctx, sha: str = ""):
     # Parse a commit message for a GitHub PR number, defaulting to most recent commit
-    res = ctx.run(f"git log --pretty=format:%s -n 1 {sha}", hide="stdout")
+    res = ctx.run(f"git log --pretty=format:%s -n 1 {sha}", hide="stdout", warn=True)
+    if res.exited:
+        print("Failed to extract changelog update!")
+        print("Last 5 commits:")
+        res = ctx.run("git log --pretty=oneline -n 5")
+        return
     m = re.search(r"\(#(\d+)\)$", res.stdout)
     if m:
         pull_number = m.group(1)
