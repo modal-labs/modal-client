@@ -2083,6 +2083,10 @@ message Sandbox {
 
   // Network access configuration beyond simple allow/block.
   NetworkAccess network_access = 22;
+
+  // Note: This enables gVisor's "-host-uds=all" flag which may have stability issues
+  // pending resolution of https://github.com/google/gvisor/issues/11202
+  bool _experimental_fs_api = 23;
 }
 
 message SandboxCreateRequest {
