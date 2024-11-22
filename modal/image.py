@@ -356,7 +356,7 @@ class _Image(_Object, type_prefix="im"):
         return _Image._from_loader(_load, "Image(local files)", deps=lambda: [base_image, mount])
 
     @property
-    def _mount_layers(self) -> typing.Tuple[_Mount]:
+    def _mount_layers(self) -> typing.Sequence[_Mount]:
         """Non-evaluated mount layers on the image
 
         When the image is used by a Modal container, these mounts need to be attached as well to
@@ -633,7 +633,7 @@ class _Image(_Object, type_prefix="im"):
             context_mount=mount,
         )
 
-    def _add_local_python_packages(self, *packages: Union[str, Path], copy: bool = False) -> "_Image":
+    def _add_local_python_packages(self, *packages: str, copy: bool = False) -> "_Image":
         """Adds Python package files to containers
 
         Adds all files from the specified Python packages to containers running the Image.
