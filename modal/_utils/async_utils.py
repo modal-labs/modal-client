@@ -760,3 +760,72 @@ async def async_chain(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T,
                 logger.exception(f"Error closing async generator: {e}")
         if first_exception is not None:
             raise first_exception
+
+
+class TimedPriorityQueue(asyncio.PriorityQueue[tuple[float, Union[T, None]]]):
+    """
+    A priority queue that schedules items to be processed at specific timestamps.
+    """
+
+    def __init__(self, maxsize: int = 0):
+        super().__init__(maxsize=maxsize)
+        self.condition = asyncio.Condition()
+
+    async def put_with_timestamp(self, timestamp: float, item: Union[T, None]):
+        """
+        Add an item to the queue to be processed at a specific timestamp.
+        """
+        async with self.condition:
+            await super().put((timestamp, item))
+            self.condition.notify_all()  # notify any waiting coroutines
+
+    async def get_next(self) -> Union[T, None]:
+        """
+        Get the next item from the queue that is ready to be processed.
+        """
+        while True:
+            async with self.condition:
+                while self.empty():
+                    await self.condition.wait()
+
+                # peek at the next item
+                timestamp, item = await super().get()
+                now = time.time()
+
+                if timestamp > now:
+                    # not ready yet, calculate sleep time
+                    sleep_time = timestamp - now
+                    self.put_nowait((timestamp, item))  # put it back
+
+                    # wait until either the timeout or a new item is added
+                    try:
+                        await asyncio.wait_for(self.condition.wait(), timeout=sleep_time)
+                    except asyncio.TimeoutError:
+                        continue
+                else:
+                    return item
+
+    async def batch(self, max_batch_size=100, debounce_time=0.015) -> AsyncGenerator[list[T], None]:
+        """
+        Read from the queue but return lists of items when queue is large.
+
+        Treats a None value as the end of queue items.
+        """
+        batch: list[T] = []
+        while True:
+            try:
+                item: Union[T, None] = await asyncio.wait_for(self.get_next(), timeout=debounce_time)
+
+                if item is None:
+                    if batch:
+                        yield batch
+                    return
+                batch.append(item)
+
+                if len(batch) >= max_batch_size:
+                    yield batch
+                    batch = []
+            except asyncio.TimeoutError:
+                if batch:
+                    yield batch
+                    batch = []
