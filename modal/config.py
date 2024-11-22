@@ -208,7 +208,6 @@ _SETTINGS = {
     "logs_timeout": _Setting(10, float),
     "image_id": _Setting(),
     "automount": _Setting(True, transform=_to_boolean),
-    "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),
     "function_runtime_debug": _Setting(False, transform=_to_boolean),  # For internal debugging use.
     "runtime_perf_record": _Setting(False, transform=_to_boolean),  # For internal debugging use.

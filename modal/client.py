@@ -34,8 +34,6 @@ from ._utils.grpc_utils import connect_channel, create_channel, retry_transient_
 from .config import _check_config, _is_remote, config, logger
 from .exception import AuthError, ClientClosed, ConnectionError, DeprecationError, VersionError
 
-HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
-HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
 CLIENT_CREATE_ATTEMPT_TIMEOUT: float = 4.0
 CLIENT_CREATE_TOTAL_TIMEOUT: float = 15.0
 
