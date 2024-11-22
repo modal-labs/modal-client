@@ -1,14 +1,15 @@
 # Copyright Modal Labs 2022
 import sys
 
-if sys.version_info[:2] < (3, 8):
-    raise RuntimeError("This version of Modal requires at least Python 3.8")
+if sys.version_info[:2] < (3, 9):
+    raise RuntimeError("This version of Modal requires at least Python 3.9")
 if sys.version_info[:2] >= (3, 14):
     raise RuntimeError("This version of Modal does not support Python 3.14+")
 
 from modal_version import __version__
 
 try:
+    from ._runtime.execution_context import current_function_call_id, current_input_id, interact, is_local
     from ._tunnel import Tunnel, forward
     from .app import App, Stub
     from .client import Client
@@ -16,7 +17,6 @@ try:
     from .cls import Cls, parameter
     from .dict import Dict
     from .exception import Error
-    from .execution_context import current_function_call_id, current_input_id, interact, is_local
     from .functions import Function
     from .image import Image
     from .mount import Mount
