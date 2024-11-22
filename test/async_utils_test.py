@@ -8,6 +8,7 @@ import pytest
 import subprocess
 import sys
 import textwrap
+import time
 from test import helpers
 
 import pytest_asyncio
@@ -1306,3 +1307,25 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     assert p.wait() == 0
     assert p.stdout.read() == ""
     assert p.stderr.read() == ""
+
+
+@pytest.mark.asyncio
+async def test_timed_priority_queue():
+    queue: async_utils.TimedPriorityQueue[str] = async_utils.TimedPriorityQueue()
+
+    async def producer():
+        await queue.put_with_timestamp(time.time() + 0.2, "item2")
+        await queue.put_with_timestamp(time.time() + 0.1, "item1")
+        await queue.put_with_timestamp(time.time() + 0.3, "item3")
+
+    async def consumer():
+        items = []
+        for _ in range(3):
+            item = await queue.get_next()
+            items.append(item)
+        return items
+
+    await producer()
+    items = await consumer()
+
+    assert items == ["item1", "item2", "item3"]
