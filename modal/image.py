@@ -344,7 +344,7 @@ class _Image(_Object, type_prefix="im"):
                 "\n"
                 "my_image = (\n"
                 "    Image.debian_slim()\n"
-                '   .add_local_python_packages("mypak", copy=True)\n'
+                '    .add_local_file("data.json", copy=True)\n'
                 '    .run_commands("python -m mypak")  # this now works!\n'
                 ")\n"
             )
@@ -601,12 +601,59 @@ class _Image(_Object, type_prefix="im"):
             context_mount=mount,
         )
 
+    def add_local_file(self, local_path: Union[str, Path], remote_path: str, *, copy: bool = False) -> "_Image":
+        """Adds a local file to the image at `remote_path` within the container
+
+        By default (`copy=False`), the files are added to containers on startup and are not built into the actual Image,
+        which speeds up deployment.
+
+        Set `copy=True` to copy the files into an Image layer at build time instead, similar to how
+        [`COPY`](https://docs.docker.com/engine/reference/builder/#copy) works in a `Dockerfile`.
+
+        copy=True can slow down iteration since it requires a rebuild of the Image and any subsequent
+        build steps whenever the included files change, but it is required if you want to run additional
+        build steps after this one.
+        """
+        if not PurePosixPath(remote_path).is_absolute():
+            # TODO(elias): implement relative to absolute resolution using image workdir metadata
+            #  + make default remote_path="./"
+            #  This requires deferring the Mount creation until after "self" (the base image) has been resolved
+            #  so we know the workdir of the operation.
+            raise InvalidError("image.add_local_file() currently only supports absolute remote_path values")
+
+        if remote_path.endswith("/"):
+            remote_path = remote_path + Path(local_path).name
+
+        mount = _Mount.from_local_file(local_path, remote_path)
+        return self._add_mount_layer_or_copy(mount, copy=copy)
+
+    def add_local_dir(self, local_path: Union[str, Path], remote_path: str, *, copy: bool = False) -> "_Image":
+        """Adds a local directory's content to the image at `remote_path` within the container
+
+        By default (`copy=False`), the files are added to containers on startup and are not built into the actual Image,
+        which speeds up deployment.
+
+        Set `copy=True` to copy the files into an Image layer at build time instead, similar to how
+        [`COPY`](https://docs.docker.com/engine/reference/builder/#copy) works in a `Dockerfile`.
+
+        copy=True can slow down iteration since it requires a rebuild of the Image and any subsequent
+        build steps whenever the included files change, but it is required if you want to run additional
+        build steps after this one.
+        """
+        if not PurePosixPath(remote_path).is_absolute():
+            # TODO(elias): implement relative to absolute resolution using image workdir metadata
+            #  + make default remote_path="./"
+            raise InvalidError("image.add_local_dir() currently only supports absolute remote_path values")
+        mount = _Mount.from_local_dir(local_path, remote_path=remote_path)
+        return self._add_mount_layer_or_copy(mount, copy=copy)
+
     def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
         """Copy a file into the image as a part of building it.
 
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
         """
+        # TODO(elias): add pending deprecation with suggestion to use add_* instead
         basename = str(Path(local_path).name)
         mount = _Mount.from_local_file(local_path, remote_path=f"/{basename}")
 
@@ -1637,7 +1684,7 @@ class _Image(_Object, type_prefix="im"):
             dockerfile_function=build_dockerfile,
         )
 
-    def workdir(self, path: str) -> "_Image":
+    def workdir(self, path: Union[str, PurePosixPath]) -> "_Image":
         """Set the working directory for subsequent image build steps and function execution.
 
         **Example**
