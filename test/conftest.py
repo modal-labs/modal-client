@@ -170,7 +170,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.function_create_error: Optional[BaseException] = None
         self.heartbeat_status_code = None
         self.n_apps = 0
-        self.classes = {}
+        self.classes = []
         self.environments = {"main": "en-1"}
 
         self.task_result = None
@@ -625,12 +625,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def ClassCreate(self, stream):
         request: api_pb2.ClassCreateRequest = await stream.recv_message()
         assert request.app_id
-        methods: dict[str, str] = {method.function_name: method.function_id for method in request.methods}
         class_id = "cs-" + str(len(self.classes))
-        self.classes[class_id] = methods
-        await stream.send_message(
-            api_pb2.ClassCreateResponse(class_id=class_id, handle_metadata=api_pb2.ClassHandleMetadata())
-        )
+        self.classes.append(class_id)
+        await stream.send_message(api_pb2.ClassCreateResponse(class_id=class_id))
 
     async def ClassGet(self, stream):
         request: api_pb2.ClassGetRequest = await stream.recv_message()
@@ -639,9 +636,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         object_id = app_objects.get(request.object_tag)
         if object_id is None:
             raise GRPCError(Status.NOT_FOUND, f"can't find object {request.object_tag}")
-        await stream.send_message(
-            api_pb2.ClassGetResponse(class_id=object_id, handle_metadata=api_pb2.ClassHandleMetadata())
-        )
+        await stream.send_message(api_pb2.ClassGetResponse(class_id=object_id))
 
     ### Client
 

@@ -49,21 +49,30 @@ class Foo:
 
 
 def test_run_class(client, servicer):
+    assert len(servicer.precreated_functions) == 0
     assert servicer.n_functions == 0
     with app.run(client=client):
-        method_id = Foo.bar.object_id
+        method_handle_object_id = Foo.bar.object_id
         assert isinstance(Foo, Cls)
         class_id = Foo.object_id
         app_id = app.app_id
 
+    assert len(servicer.classes) == 1 and servicer.classes[0] == class_id
+    assert servicer.n_functions == 1
     objects = servicer.app_objects[app_id]
+    class_function_id = objects["Foo.*"]
+    assert servicer.precreated_functions == {class_function_id}
+    assert method_handle_object_id == class_function_id
     assert len(objects) == 2  # the class + the class service function
     assert objects["Foo"] == class_id
-    class_function_id = objects["Foo.*"]
     assert class_function_id.startswith("fu-")
-    assert class_function_id == method_id
-
     assert servicer.app_functions[class_function_id].is_class
+    assert servicer.app_functions[class_function_id].method_definitions == {
+        "bar": api_pb2.MethodDefinition(
+            function_name="Foo.bar",
+            function_type=api_pb2.Function.FunctionType.FUNCTION_TYPE_FUNCTION,
+        )
+    }
 
 
 def test_call_class_sync(client, servicer):
