@@ -186,6 +186,7 @@ def _container_args(
     class_parameter_info=api_pb2.ClassParameterInfo(
         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
     ),
+    app_id: str = "ap-1",
 ):
     if webhook_type:
         webhook_config = api_pb2.WebhookConfig(
@@ -219,7 +220,7 @@ def _container_args(
     return api_pb2.ContainerArguments(
         task_id="ta-123",
         function_id="fu-123",
-        app_id="ap-1",
+        app_id=app_id,
         function_def=function_def,
         serialized_params=serialized_params,
         checkpoint_id=f"ch-{uuid.uuid4()}",
