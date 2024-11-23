@@ -624,6 +624,87 @@ def tmp_path_with_content(tmp_path):
     return tmp_path
 
 
+@pytest.mark.parametrize(["copy"], [(True,), (False,)])
+@pytest.mark.parametrize(
+    ["remote_path", "expected_dest"],
+    [
+        ("/place/nice.txt", "/place/nice.txt"),
+        # Not supported yet, but soon:
+        ("/place/", "/place/data.txt"),  # use original basename if destination has a trailing slash
+        # ("output.txt", "/proj/output.txt")  # workdir relative target
+        # (None, "/proj/data.txt")  # default target - basename in current directory
+    ],
+)
+def test_image_add_local_file(servicer, client, tmp_path_with_content, copy, remote_path, expected_dest):
+    app = App()
+
+    if remote_path is None:
+        remote_path_kwargs = {}
+    else:
+        remote_path_kwargs = {"remote_path": remote_path}
+
+    img = (
+        Image.from_registry("unknown_image")
+        .workdir("/proj")
+        .add_local_file(tmp_path_with_content / "data.txt", **remote_path_kwargs, copy=copy)
+    )
+    app.function(image=img)(dummy)
+
+    with app.run(client=client):
+        if copy:
+            # check that dockerfile commands include COPY . .
+            layers = get_image_layers(img.object_id, servicer)
+            assert layers[0].dockerfile_commands == ["FROM base", "COPY . /"]
+            mount_id = layers[0].context_mount_id
+            # and then get the relevant context mount to check
+        if not copy:
+            assert len(img._mount_layers) == 1
+            mount_id = img._mount_layers[0].object_id
+
+        assert set(servicer.mount_contents[mount_id].keys()) == {expected_dest}
+
+
+@pytest.mark.parametrize(["copy"], [(True,), (False,)])
+@pytest.mark.parametrize(
+    ["remote_path", "expected_dest"],
+    [
+        ("/place/", "/place/sub"),  # copy full dir
+        ("/place", "/place/sub"),  # removing trailing slash on source makes no difference, unlike shell cp
+        # TODO: add support for relative paths:
+        # Not supported yet, but soon:
+        # ("place", "/proj/place/sub")  # workdir relative target
+        # (None, "/proj/sub")  # default target - copy into current directory
+    ],
+)
+def test_image_add_local_dir(servicer, client, tmp_path_with_content, copy, remote_path, expected_dest):
+    app = App()
+
+    if remote_path is None:
+        remote_path_kwargs = {}
+    else:
+        remote_path_kwargs = {"remote_path": remote_path}
+
+    img = (
+        Image.from_registry("unknown_image")
+        .workdir("/proj")
+        .add_local_dir(tmp_path_with_content / "data", **remote_path_kwargs, copy=copy)
+    )
+    app.function(image=img)(dummy)
+
+    with app.run(client=client):
+        if copy:
+            # check that dockerfile commands include COPY . .
+            layers = get_image_layers(img.object_id, servicer)
+            assert layers[0].dockerfile_commands == ["FROM base", "COPY . /"]
+            mount_id = layers[0].context_mount_id
+            # and then get the relevant context mount to check
+        if not copy:
+            assert len(img._mount_layers) == 1
+            mount_id = img._mount_layers[0].object_id
+
+        assert set(servicer.mount_contents[mount_id].keys()) == {expected_dest}
+
+
 def test_image_copy_local_dir(builder_version, servicer, client, tmp_path_with_content):
     app = App()
     app.image = Image.debian_slim().copy_local_dir(tmp_path_with_content, remote_path="/dummy")

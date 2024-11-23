@@ -377,7 +377,9 @@ class _Mount(_Object, type_prefix="mo"):
         )
 
     def add_local_file(
-        self, local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None
+        self,
+        local_path: Union[str, Path],
+        remote_path: Union[str, PurePosixPath, None] = None,
     ) -> "_Mount":
         """
         Add a local file to the `Mount` object.
