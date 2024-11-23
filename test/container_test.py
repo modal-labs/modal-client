@@ -2322,3 +2322,20 @@ def test_deserialization_error_returns_exception(servicer, client):
 
     assert ret.items[1].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert int(deserialize(ret.items[1].result.data, ret.client)) == 4
+
+
+@skip_github_non_linux
+def test_cls_self_doesnt_call_bind(servicer, credentials, set_env_client):
+    # first populate app objects, so they can be fetched by AppGetObjects
+    deploy_app_externally(servicer, credentials, "test.supports.user_code_import_samples.cls")
+
+    with servicer.intercept() as ctx:
+        ret = _run_container(
+            servicer,
+            "test.supports.user_code_import_samples.cls",
+            "C.*",
+            is_class=True,
+            inputs=_get_inputs(args=((3,), {}), method_name="calls_f_remote"),
+        )
+        assert _unwrap_scalar(ret) == 9  # implies successful container run (.remote will use dummy servicer function)
+        assert not ctx.get_requests("FunctionBindParams")
