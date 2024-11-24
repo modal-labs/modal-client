@@ -113,7 +113,7 @@ class _Obj:
                 method = self._instance_service_function._bind_instance_method(class_bound_method)
                 self._method_functions[method_name] = method
         else:
-            # <v0.63 classes - bind each individual method to the new parameters
+            # looked up <v0.63 classes - bind each individual method to the new parameters
             self._instance_service_function = None
             for method_name, class_bound_method in classbound_methods.items():
                 method = class_bound_method._bind_parameters(self, from_other_workspace, options, args, kwargs)
