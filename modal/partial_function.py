@@ -91,7 +91,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         if obj:  # accessing the method on an instance of a class, e.g. `MyClass().fun``
             if hasattr(obj, "_modal_functions"):
                 # This happens inside "local" user methods when they refer to other methods,
-                # e.g. Foo().parent_method() doing self.local.other_method()
+                # e.g. Foo().parent_method.remote() calling self.other_method.remote()
                 return getattr(obj, "_modal_functions")[k]
             else:
                 # special edge case: referencing a method of an instance of an
@@ -99,6 +99,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
                 # not sure what would be useful here, but let's return a bound version of the underlying function,
                 # since the class is just a vanilla class at this point
                 # This wouldn't let the user access `.remote()` and `.local()` etc. on the function
+                # TODO: check if we can fix this using
                 return self.raw_f.__get__(obj, objtype)
 
         else:  # accessing a method directly on the class, e.g. `MyClass.fun`

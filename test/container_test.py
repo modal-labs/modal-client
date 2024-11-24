@@ -2338,4 +2338,10 @@ def test_cls_self_doesnt_call_bind(servicer, credentials, set_env_client):
             inputs=_get_inputs(args=((3,), {}), method_name="calls_f_remote"),
         )
         assert _unwrap_scalar(ret) == 9  # implies successful container run (.remote will use dummy servicer function)
+
+        # Using self should never have to call function bind params, since the object
+        # is already specified and the instance servicer function should already be
+        # hydrated:
         assert not ctx.get_requests("FunctionBindParams")
+
+        # TODO: add test for using self.keep_warm()

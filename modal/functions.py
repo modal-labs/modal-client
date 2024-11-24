@@ -314,7 +314,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _tag: str
     _raw_f: Callable[..., Any]
     _build_args: dict
-    _can_use_base_function: bool = False  # whether we need to call FunctionBindParams
+
     _is_generator: Optional[bool] = None
     _cluster_size: Optional[int] = None
 
@@ -322,10 +322,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     # should be using another function id and supply the method name in the FunctionInput:
     _use_function_id: str  # The function to invoke
     _use_method_name: str = ""
-
-    # TODO (elias): remove _parent. In case of instance functions, and methods bound on those,
-    #  this references the parent class-function and is used to infer the client for lazy-loaded methods
-    _parent: Optional["_Function"] = None
 
     _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
     _method_handle_metadata: Optional[Dict[str, "api_pb2.FunctionHandleMetadata"]] = None
@@ -511,7 +507,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fun._info = class_bound_method._info
         fun._obj = instance_service_function._obj
         fun._is_method = True
-        fun._parent = instance_service_function._parent
         fun._app = class_bound_method._app
         fun._spec = class_bound_method._spec
         return fun
@@ -1019,27 +1014,31 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         Binds a class-function to a specific instance of (init params, options) or a new workspace
         """
 
-        async def _load(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
-            if self._parent is None:
+        # In some cases, reuse the base function, i.e. not create new clones of each method or the "service function"
+        can_use_parent = len(args) + len(kwargs) == 0 and not from_other_workspace and options is None
+        parent = self
+
+        async def _load(param_bound_func: _Function, resolver: Resolver, existing_object_id: Optional[str]):
+            if parent is None:
                 raise ExecutionError("Can't find the parent class' service function")
             try:
-                identity = f"{self._parent.info.function_name} class service function"
+                identity = f"{parent.info.function_name} class service function"
             except Exception:
                 # Can't always look up the function name that way, so fall back to generic message
                 identity = "class service function for a parameterized class"
-            if not self._parent.is_hydrated:
-                if self._parent.app._running_app is None:
+            if not parent.is_hydrated:
+                if parent.app._running_app is None:
                     reason = ", because the App it is defined on is not running"
                 else:
                     reason = ""
                 raise ExecutionError(
                     f"The {identity} has not been hydrated with the metadata it needs to run on Modal{reason}."
                 )
-            assert self._parent._client.stub
+
+            assert parent._client.stub
             if (
-                self._parent._class_parameter_info
-                and self._parent._class_parameter_info.format
-                == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO
+                parent._class_parameter_info
+                and parent._class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO
             ):
                 if args:
                     # TODO(elias) - We could potentially support positional args as well, if we want to?
@@ -1047,34 +1046,31 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         "Can't use positional arguments with modal.parameter-based synthetic constructors.\n"
                         "Use (<parameter_name>=value) keyword arguments when constructing classes instead."
                     )
-                serialized_params = serialize_proto_params(kwargs, self._parent._class_parameter_info.schema)
+                serialized_params = serialize_proto_params(kwargs, parent._class_parameter_info.schema)
             else:
                 serialized_params = serialize((args, kwargs))
             environment_name = _get_environment_name(None, resolver)
-            assert self._parent is not None
+            assert parent is not None
             req = api_pb2.FunctionBindParamsRequest(
-                function_id=self._parent._object_id,
+                function_id=parent._object_id,
                 serialized_params=serialized_params,
                 function_options=options,
                 environment_name=environment_name
                 or "",  # TODO: investigate shouldn't environment name always be specified here?
             )
 
-            response = await retry_transient_errors(self._parent._client.stub.FunctionBindParams, req)
-            self._hydrate(response.bound_function_id, self._parent._client, response.handle_metadata)
+            response = await retry_transient_errors(parent._client.stub.FunctionBindParams, req)
+            param_bound_func._hydrate(response.bound_function_id, parent._client, response.handle_metadata)
 
         fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
 
-        # In some cases, reuse the base function, i.e. not create new clones of each method or the "service function"
-        fun._can_use_base_function = len(args) + len(kwargs) == 0 and not from_other_workspace and options is None
-        if fun._can_use_base_function and self.is_hydrated:
+        if can_use_parent and self.is_hydrated:
             # Edge case that lets us hydrate all objects right away
             # if the instance didn't use explicit constructor arguments
             fun._hydrate_from_other(self)
 
         fun._info = self._info
         fun._obj = obj
-        fun._parent = self
         return fun
 
     @live_method
@@ -1439,7 +1435,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             return fun(*args, **kwargs)
         else:
             # This is a method on a class, so bind the self to the function
-            user_cls_instance = obj._get_user_cls_instance()
+            user_cls_instance = obj._cached_user_cls_instance()
 
             fun = info.raw_f.__get__(user_cls_instance)
 
