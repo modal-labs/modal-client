@@ -23,6 +23,7 @@ jobs:
   autoapproval:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TITLE: ${{ toJSON(github.event.pull_request.title) }}
     runs-on: ubuntu-latest
     name: Pull Request Auto-approval
     steps:
@@ -30,4 +31,4 @@ jobs:
       - run: python -m pip install --upgrade pip && pip install httpx
       # prettier-ignore
       - run:
-          python3 .github/workflows/pr_autoapprove.py ${{ toJSON(github.event.pull_request.title) }} "${{ github.event.pull_request.number }}"
+          python3 .github/workflows/pr_autoapprove.py "$TITLE" "${{ github.event.pull_request.number }}"
