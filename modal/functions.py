@@ -1069,6 +1069,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             param_bound_func._hydrate(response.bound_function_id, parent._client, response.handle_metadata)
 
         fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
+
+        if can_use_parent:
+            # skip the resolver altogether:
+            fun._hydrate_from_other(parent)
+
         fun._info = self._info
         fun._obj = obj
         return fun
