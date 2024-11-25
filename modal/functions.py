@@ -1262,7 +1262,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             )
 
     @property
-    def web_url(self) -> str:
+    @live_method  # in case of from_name methods or
+    async def web_url(self) -> str:
         """URL of a Function running as a web endpoint."""
         if not self._web_url:
             raise ValueError(

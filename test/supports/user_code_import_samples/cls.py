@@ -21,4 +21,4 @@ class C:
 
 UndecoratedC = C  # keep a reference to original class before overwriting
 
-C = app.cls()(C)  # "decorator" of C
+C = app.cls()(C)  # type: ignore[misc]   # "decorator" of C
