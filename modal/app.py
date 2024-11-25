@@ -517,7 +517,10 @@ class _App:
 
     @property
     def indexed_objects(self) -> Dict[str, _Object]:
-        # TODO(erikbern): deprecate
+        deprecation_warning(
+            (2024, 11, 25),
+            "`app.indexed_objects` is deprecated! Use `app.registered_functions` or `app.registered_classes` instead.",
+        )
         return dict(**self._functions, **self._classes)
 
     @property

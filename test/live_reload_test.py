@@ -47,8 +47,7 @@ def test_file_changes_trigger_reloads(app_ref, server_url_env, token_env, servic
 
     with serve_app(app, app_ref, _watcher=fake_watch()):
         watcher_done.wait()  # wait until watcher loop is done
-        foo = app.indexed_objects["foo"]
-        assert isinstance(foo, Function)
+        foo: Function = app.registered_functions["foo"]
         assert foo.web_url.startswith("http://")
 
     # TODO ideally we would assert the specific expected number here, but this test
