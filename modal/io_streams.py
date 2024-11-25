@@ -146,9 +146,7 @@ class _StreamReader(Generic[T]):
         return self._file_descriptor
 
     async def read(self) -> T:
-        """Fetch and return contents of the entire stream.
-
-        If EOF was received, return an empty string.
+        """Fetch the entire contents of the stream until EOF.
 
         **Usage**
 
