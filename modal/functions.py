@@ -1070,7 +1070,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
 
-        if can_use_parent:
+        if can_use_parent and parent.is_hydrated:
             # skip the resolver altogether:
             fun._hydrate_from_other(parent)
 
