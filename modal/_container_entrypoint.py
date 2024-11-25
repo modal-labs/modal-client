@@ -499,7 +499,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             call_lifecycle_functions(event_loop, container_io_manager, list(pre_snapshot_methods.values()))
 
         # If this container is being used to create a checkpoint, checkpoint the container after
-        # global imports and innitialization. Checkpointed containers run from this point onwards.
+        # global imports and initialization. Checkpointed containers run from this point onwards.
         if is_snapshotting_function:
             container_io_manager.memory_snapshot()
 
