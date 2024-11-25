@@ -2083,6 +2083,8 @@ message Sandbox {
 
   // Network access configuration beyond simple allow/block.
   NetworkAccess network_access = 22;
+
+  optional string proxy_id = 23;
 }
 
 message SandboxCreateRequest {

@@ -1035,12 +1035,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     f"The {identity} has not been hydrated with the metadata it needs to run on Modal{reason}."
                 )
 
+            assert parent._client.stub
+
             if can_use_parent:
                 # We can end up here if parent wasn't hydrated when class was instantiated, but has been since.
                 param_bound_func._hydrate_from_other(parent)
                 return
 
-            assert parent._client.stub
             if (
                 parent._class_parameter_info
                 and parent._class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO
