@@ -1261,8 +1261,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 + f"or call it locally: {self._function_name}.local()"
             )
 
+    # TODO (live_method on properties is not great, since it could be blocking the event loop from async contexts)
     @property
-    @live_method  # in case of from_name methods or
+    @live_method
     async def web_url(self) -> str:
         """URL of a Function running as a web endpoint."""
         if not self._web_url:
