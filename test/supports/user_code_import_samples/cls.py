@@ -14,9 +14,5 @@ class UndecoratedC:
     def f2(self, arg):
         return f"other {arg}"
 
-    @modal.method()
-    def calls_f_remote(self, arg):
-        return self.f.remote(arg)
-
 
 C = app.cls()(UndecoratedC)

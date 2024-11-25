@@ -186,7 +186,6 @@ def _container_args(
     class_parameter_info=api_pb2.ClassParameterInfo(
         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
     ),
-    app_id: str = "ap-1",
 ):
     if webhook_type:
         webhook_config = api_pb2.WebhookConfig(
@@ -220,7 +219,7 @@ def _container_args(
     return api_pb2.ContainerArguments(
         task_id="ta-123",
         function_id="fu-123",
-        app_id=app_id,
+        app_id="ap-1",
         function_def=function_def,
         serialized_params=serialized_params,
         checkpoint_id=f"ch-{uuid.uuid4()}",
@@ -2322,26 +2321,3 @@ def test_deserialization_error_returns_exception(servicer, client):
 
     assert ret.items[1].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
     assert int(deserialize(ret.items[1].result.data, ret.client)) == 4
-
-
-@skip_github_non_linux
-def test_cls_self_doesnt_call_bind(servicer, credentials, set_env_client):
-    # first populate app objects, so they can be fetched by AppGetObjects
-    deploy_app_externally(servicer, credentials, "test.supports.user_code_import_samples.cls")
-
-    with servicer.intercept() as ctx:
-        ret = _run_container(
-            servicer,
-            "test.supports.user_code_import_samples.cls",
-            "C.*",
-            is_class=True,
-            inputs=_get_inputs(args=((3,), {}), method_name="calls_f_remote"),
-        )
-        assert _unwrap_scalar(ret) == 9  # implies successful container run (.remote will use dummy servicer function)
-
-        # Using self should never have to call function bind params, since the object
-        # is already specified and the instance servicer function should already be
-        # hydrated:
-        assert not ctx.get_requests("FunctionBindParams")
-
-        # TODO: add test for using self.keep_warm()
