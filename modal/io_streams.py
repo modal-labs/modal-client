@@ -370,7 +370,7 @@ class _StreamWriter:
         else:
             raise TypeError(f"data argument must be a bytes-like object, not {type(data).__name__}")
 
-    def write_eof(self):
+    def write_eof(self) -> None:
         """Close the write end of the stream after the buffered data is drained.
 
         If the process was blocked on input, it will become unblocked after
