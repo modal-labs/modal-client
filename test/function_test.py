@@ -1015,3 +1015,16 @@ def test_experimental_spawn(client, servicer):
     # Verify the correct invocation type is set
     function_map = ctx.pop_request("FunctionMap")
     assert function_map.function_call_invocation_type == api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
+
+
+def test_from_name_web_url(servicer, set_env_client):
+    f = Function.from_name("dummy-app", "func")
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-1", handle_metadata=api_pb2.FunctionHandleMetadata(web_url="test.internal")
+            ),
+        )
+        assert f.web_url == "test.internal"

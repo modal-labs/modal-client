@@ -74,7 +74,8 @@ def test_import_class(monkeypatch, supports_dir):
     # TODO (elias): shouldn't have to pass the function definition again!
     io_manager = MagicMock()  # shouldn't actually be used except by web endpoints - indicates some need for refactoring
     finalized_funcs = service.get_finalized_functions(fun, container_io_manager=io_manager)
-    assert len(finalized_funcs) == 2
+    io_manager.assert_not_called()
+    assert len(finalized_funcs) == 3
 
     for finalized in finalized_funcs.values():
         assert finalized.is_async is False
