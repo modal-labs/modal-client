@@ -47,6 +47,9 @@ def test_file_changes_trigger_reloads(app_ref, server_url_env, token_env, servic
 
     with serve_app(app, app_ref, _watcher=fake_watch()):
         watcher_done.wait()  # wait until watcher loop is done
+        foo = app.indexed_objects["foo"]
+        assert isinstance(foo, Function)
+        assert foo.web_url.startswith("http://")
 
     # TODO ideally we would assert the specific expected number here, but this test
     # is consistently flaking in CI and I cannot reproduce locally to debug.
@@ -54,9 +57,6 @@ def test_file_changes_trigger_reloads(app_ref, server_url_env, token_env, servic
     # assert servicer.app_publish_count == 4  # 1 + number of file changes
     assert servicer.app_publish_count > 1
     assert servicer.app_client_disconnect_count == 1
-    foo = app.indexed_objects["foo"]
-    assert isinstance(foo, Function)
-    assert foo.web_url.startswith("http://")
 
 
 @pytest.mark.asyncio

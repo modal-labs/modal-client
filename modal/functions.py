@@ -1036,6 +1036,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 )
 
             assert parent._client.stub
+
+            if can_use_parent:
+                # We can end up here if parent wasn't hydrated when class was instantiated, but has been since.
+                param_bound_func._hydrate_from_other(parent)
+                return
+
             if (
                 parent._class_parameter_info
                 and parent._class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO
@@ -1064,10 +1070,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
 
-        if can_use_parent and self.is_hydrated:
-            # Edge case that lets us hydrate all objects right away
-            # if the instance didn't use explicit constructor arguments
-            fun._hydrate_from_other(self)
+        if can_use_parent and parent.is_hydrated:
+            # skip the resolver altogether:
+            fun._hydrate_from_other(parent)
 
         fun._info = self._info
         fun._obj = obj
@@ -1261,8 +1266,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 + f"or call it locally: {self._function_name}.local()"
             )
 
+    # TODO (live_method on properties is not great, since it could be blocking the event loop from async contexts)
     @property
-    def web_url(self) -> str:
+    @live_method
+    async def web_url(self) -> str:
         """URL of a Function running as a web endpoint."""
         if not self._web_url:
             raise ValueError(
