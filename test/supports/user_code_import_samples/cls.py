@@ -5,7 +5,7 @@ from modal import App
 app = App()
 
 
-class UndecoratedC:
+class C:
     @modal.method()
     def f(self, arg):
         return f"hello {arg}"
@@ -19,4 +19,6 @@ class UndecoratedC:
         return self.f.remote(arg)
 
 
-C = app.cls()(UndecoratedC)
+UndecoratedC = C  # keep a reference to original class before overwriting
+
+C = app.cls()(C)  # "decorator" of C
