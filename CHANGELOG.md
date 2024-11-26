@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.66.49 (2024-11-26)
+
+- `modal config set-environment` will now raise if the requested environment does not exist.
+
+
+
 ### 0.66.45 (2024-11-26)
 
 - The `modal launch` CLI now accepts a `--detach` flag to run the App in detached mode, such that it will persist after the local client disconnects.
