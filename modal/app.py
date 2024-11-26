@@ -177,7 +177,8 @@ class _App:
 
     _name: Optional[str]
     _description: Optional[str]
-    _indexed_objects: Dict[str, _Object]
+    _functions: Dict[str, _Function]
+    _classes: Dict[str, _Cls]
 
     _image: Optional[_Image]
     _mounts: Sequence[_Mount]
@@ -223,7 +224,8 @@ class _App:
         if image is not None and not isinstance(image, _Image):
             raise InvalidError("image has to be a modal Image or AioImage object")
 
-        self._indexed_objects = {}
+        self._functions = {}
+        self._classes = {}
         self._image = image
         self._mounts = mounts
         self._secrets = secrets
@@ -312,6 +314,7 @@ class _App:
             raise InvalidError(f"App attribute `{key}` with value {value!r} is not a valid Modal object")
 
     def _add_object(self, tag, obj):
+        # TODO(erikbern): replace this with _add_function and _add_class
         if self._running_app:
             # If this is inside a container, then objects can be defined after app initialization.
             # So we may have to initialize objects once they get bound to the app.
@@ -320,7 +323,12 @@ class _App:
                 metadata: Message = self._running_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, self._client, metadata)
 
-        self._indexed_objects[tag] = obj
+        if isinstance(obj, _Function):
+            self._functions[tag] = obj
+        elif isinstance(obj, _Cls):
+            self._classes[tag] = obj
+        else:
+            raise RuntimeError(f"Expected `obj` to be a _Function or _Cls (got {type(obj)}")
 
     def __getitem__(self, tag: str):
         deprecation_error((2024, 3, 25), _app_attr_error)
@@ -334,7 +342,7 @@ class _App:
         if tag.startswith("__"):
             # Hacky way to avoid certain issues, e.g. pickle will try to look this up
             raise AttributeError(f"App has no member {tag}")
-        if tag not in self._indexed_objects:
+        if tag not in self._functions or tag not in self._classes:
             # Primarily to make hasattr work
             raise AttributeError(f"App has no member {tag}")
         deprecation_error((2024, 3, 25), _app_attr_error)
@@ -360,7 +368,9 @@ class _App:
 
     def _uncreate_all_objects(self):
         # TODO(erikbern): this doesn't unhydrate objects that aren't tagged
-        for obj in self._indexed_objects.values():
+        for obj in self._functions.values():
+            obj._unhydrate()
+        for obj in self._classes.values():
             obj._unhydrate()
 
     @asynccontextmanager
@@ -459,18 +469,17 @@ class _App:
         return [m for m in all_mounts if m.is_local()]
 
     def _add_function(self, function: _Function, is_web_endpoint: bool):
-        if function.tag in self._indexed_objects:
-            old_function = self._indexed_objects[function.tag]
-            if isinstance(old_function, _Function):
-                if not is_notebook():
-                    logger.warning(
-                        f"Warning: Tag '{function.tag}' collision!"
-                        " Overriding existing function "
-                        f"[{old_function._info.module_name}].{old_function._info.function_name}"
-                        f" with new function [{function._info.module_name}].{function._info.function_name}"
-                    )
-            else:
-                logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
+        if function.tag in self._functions:
+            if not is_notebook():
+                old_function: _Function = self._functions[function.tag]
+                logger.warning(
+                    f"Warning: Tag '{function.tag}' collision!"
+                    " Overriding existing function "
+                    f"[{old_function._info.module_name}].{old_function._info.function_name}"
+                    f" with new function [{function._info.module_name}].{function._info.function_name}"
+                )
+        if function.tag in self._classes:
+            logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
 
         self._add_object(function.tag, function)
         if is_web_endpoint:
@@ -484,21 +493,22 @@ class _App:
         _App._container_app = running_app
 
         # Hydrate objects on app
+        indexed_objects = dict(**self._functions, **self._classes)
         for tag, object_id in running_app.tag_to_object_id.items():
-            if tag in self._indexed_objects:
-                obj = self._indexed_objects[tag]
+            if tag in indexed_objects:
+                obj = indexed_objects[tag]
                 handle_metadata = running_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, client, handle_metadata)
 
     @property
     def registered_functions(self) -> Dict[str, _Function]:
         """All modal.Function objects registered on the app."""
-        return {tag: obj for tag, obj in self._indexed_objects.items() if isinstance(obj, _Function)}
+        return self._functions
 
     @property
     def registered_classes(self) -> Dict[str, _Function]:
         """All modal.Cls objects registered on the app."""
-        return {tag: obj for tag, obj in self._indexed_objects.items() if isinstance(obj, _Cls)}
+        return self._classes
 
     @property
     def registered_entrypoints(self) -> Dict[str, _LocalEntrypoint]:
@@ -507,7 +517,11 @@ class _App:
 
     @property
     def indexed_objects(self) -> Dict[str, _Object]:
-        return self._indexed_objects
+        deprecation_warning(
+            (2024, 11, 25),
+            "`app.indexed_objects` is deprecated! Use `app.registered_functions` or `app.registered_classes` instead.",
+        )
+        return dict(**self._functions, **self._classes)
 
     @property
     def registered_web_endpoints(self) -> List[str]:
@@ -1002,8 +1016,9 @@ class _App:
             bar.remote()
         ```
         """
-        for tag, object in other_app._indexed_objects.items():
-            existing_object = self._indexed_objects.get(tag)
+        indexed_objects = dict(**other_app._functions, **other_app._classes)
+        for tag, object in indexed_objects.items():
+            existing_object = indexed_objects.get(tag)
             if existing_object and existing_object != object:
                 logger.warning(
                     f"Named app object {tag} with existing value {existing_object} is being "

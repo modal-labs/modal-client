@@ -136,13 +136,13 @@ def _get_clean_app_description(func_ref: str) -> str:
 
 
 def _get_click_command_for_function(app: App, function_tag):
-    function = app.indexed_objects.get(function_tag, None)
+    function = app.registered_functions.get(function_tag, None)
     if not function or (isinstance(function, Function) and function.info.user_cls is not None):
         # This is either a function_tag for a class method function (e.g MyClass.foo) or a function tag for a
         # class service function (MyClass.*)
         class_name, method_name = function_tag.rsplit(".", 1)
         if not function:
-            function = app.indexed_objects.get(f"{class_name}.*")
+            function = app.registered_functions.get(f"{class_name}.*")
     assert isinstance(function, Function)
     function = typing.cast(Function, function)
     if function.is_generator:
@@ -151,7 +151,7 @@ def _get_click_command_for_function(app: App, function_tag):
     signature: Dict[str, ParameterMetadata]
     cls: Optional[Cls] = None
     if function.info.user_cls is not None:
-        cls = typing.cast(Cls, app.indexed_objects[class_name])
+        cls = typing.cast(Cls, app.registered_classes[class_name])
         cls_signature = _get_signature(function.info.user_cls)
         if method_name == "*":
             method_names = list(cls._get_partial_functions().keys())

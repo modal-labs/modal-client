@@ -327,11 +327,13 @@ async def _run_app(
             )
 
         try:
+            indexed_objects = dict(**app._functions, **app._classes)  # TODO(erikbern): remove
+
             # Create all members
-            await _create_all_objects(client, running_app, app._indexed_objects, environment_name)
+            await _create_all_objects(client, running_app, indexed_objects, environment_name)
 
             # Publish the app
-            await _publish_app(client, running_app, app_state, app._indexed_objects)
+            await _publish_app(client, running_app, app_state, indexed_objects)
         except asyncio.CancelledError as e:
             # this typically happens on sigint/ctrl-C during setup (the KeyboardInterrupt happens in the main thread)
             if output_mgr := _get_output_manager():
@@ -424,16 +426,18 @@ async def _serve_update(
     try:
         running_app: RunningApp = await _init_local_app_existing(client, existing_app_id, environment_name)
 
+        indexed_objects = dict(**app._functions, **app._classes)  # TODO(erikbern): remove
+
         # Create objects
         await _create_all_objects(
             client,
             running_app,
-            app._indexed_objects,
+            indexed_objects,
             environment_name,
         )
 
         # Publish the updated app
-        await _publish_app(client, running_app, api_pb2.APP_STATE_UNSPECIFIED, app._indexed_objects)
+        await _publish_app(client, running_app, api_pb2.APP_STATE_UNSPECIFIED, indexed_objects)
 
         # Communicate to the parent process
         is_ready.set()
@@ -521,17 +525,19 @@ async def _deploy_app(
 
         tc.infinite_loop(heartbeat, sleep=HEARTBEAT_INTERVAL)
 
+        indexed_objects = dict(**app._functions, **app._classes)  # TODO(erikbern): remove
+
         try:
             # Create all members
             await _create_all_objects(
                 client,
                 running_app,
-                app._indexed_objects,
+                indexed_objects,
                 environment_name=environment_name,
             )
 
             app_url, warnings = await _publish_app(
-                client, running_app, api_pb2.APP_STATE_DEPLOYED, app._indexed_objects, name, tag
+                client, running_app, api_pb2.APP_STATE_DEPLOYED, indexed_objects, name, tag
             )
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
