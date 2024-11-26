@@ -136,7 +136,7 @@ def _get_clean_app_description(func_ref: str) -> str:
 
 
 def _get_click_command_for_function(app: App, function_tag):
-    function = app.indexed_objects[function_tag]
+    function = app.registered_functions[function_tag]
     assert isinstance(function, Function)
     function = typing.cast(Function, function)
     if function.is_generator:
@@ -147,7 +147,7 @@ def _get_click_command_for_function(app: App, function_tag):
     method_name: Optional[str] = None
     if function.info.user_cls is not None:
         class_name, method_name = function_tag.rsplit(".", 1)
-        cls = typing.cast(Cls, app.indexed_objects[class_name])
+        cls = typing.cast(Cls, app.registered_classes[class_name])
         cls_signature = _get_signature(function.info.user_cls)
         fun_signature = _get_signature(function.info.raw_f, is_method=True)
         signature = dict(**cls_signature, **fun_signature)  # Pool all arguments
