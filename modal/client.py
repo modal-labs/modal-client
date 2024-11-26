@@ -21,11 +21,12 @@ from typing import (
 import grpclib.client
 from google.protobuf import empty_pb2
 from google.protobuf.message import Message
+from grpc.aio import insecure_channel
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal._utils.async_utils import synchronizer
-from modal_proto import api_grpc, api_pb2, modal_api_grpc
+from modal_proto import api_grpc, api_pb2, api_pb2_grpc, modal_api_grpc
 from modal_version import __version__
 
 from ._utils import async_utils
@@ -100,6 +101,7 @@ class _Client:
         self._stub: Optional[modal_api_grpc.ModalClientModal] = None
         self._snapshotted = False
         self._owner_pid = None
+        self._container_stub: Optional[api_pb2_grpc.ModalClientStub] = None
 
     def is_closed(self) -> bool:
         return self._closed
@@ -110,11 +112,24 @@ class _Client:
         assert self._stub
         return self._stub
 
+    @property
+    def container_stub(self) -> api_pb2_grpc.ModalClientStub:
+        """mdmd:hidden"""
+        assert self._container_stub
+        return self._container_stub
+
     async def _open(self):
         self._closed = False
         assert self._stub is None
         metadata = _get_metadata(self.client_type, self._credentials, self.version)
         self._channel = create_channel(self.server_url, metadata=metadata)
+        self._container_channel = insecure_channel(
+            self.server_url,
+            options=[
+                ("grpc.max_receive_message_length", 64 * 1024 * 1024),  # 64MB
+                ("grpc.max_send_message_length", 64 * 1024 * 1024),  # 64MB
+            ],
+        )
         try:
             await connect_channel(self._channel)
         except OSError as exc:
@@ -124,6 +139,7 @@ class _Client:
         await self._cancellation_context.__aenter__()
         self._grpclib_stub = api_grpc.ModalClientStub(self._channel)
         self._stub = modal_api_grpc.ModalClientModal(self._grpclib_stub, client=self)
+        self._container_stub = api_pb2_grpc.ModalClientStub(self._container_channel)
         self._owner_pid = os.getpid()
 
     async def _close(self, prep_for_restore: bool = False):

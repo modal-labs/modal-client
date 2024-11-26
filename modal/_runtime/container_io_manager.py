@@ -540,26 +540,20 @@ class _ContainerIOManager:
     ) -> None:
         """Task that feeds generator outputs into a function call's `data_out` stream."""
 
-        async def request_stream():
-            index = 1
-            received_sentinel = False
+        q = asyncio.Queue(maxsize=1024)
 
-            t_start_push = 0
+        async def fill_queue():
+            received_sentinel = False
+            index = 1
+
             while not received_sentinel:
                 message = await message_rx.get()
                 if message is self._GENERATOR_STOP_SENTINEL:
                     break
-                # ASGI 'http.response.start' and 'http.response.body' msgs are observed to be separated by 1ms.
-                # If we don't sleep here for 1ms we end up with an extra call to .put_data_out().
-                if index == 1:
-                    await asyncio.sleep(0.001)
+
                 messages_bytes = [serialize_data_format(message, data_format)]
                 total_size = len(messages_bytes[0]) + 512
-
-                if t_start_push == 0 and total_size > 1024:
-                    t_start_push = time.time()
-
-                while total_size < 16 * 1024 * 1024:  # 16 MiB, maximum size in a single message
+                while total_size < 1 * 1024 * 1024:  # 16 MiB, maximum size in a single message
                     try:
                         message = message_rx.get_nowait()
                     except asyncio.QueueEmpty:
@@ -571,12 +565,28 @@ class _ContainerIOManager:
                         messages_bytes.append(serialize_data_format(message, data_format))
                         total_size += len(messages_bytes[-1]) + 512  # 512 bytes for estimated framing overhead
 
-                req = await self.put_data_out_request(function_call_id, index, data_format, messages_bytes)
-                yield req
+                await q.put(await self.put_data_out_request(function_call_id, index, data_format, messages_bytes))
                 index += len(messages_bytes)
-                print(f"pushed {index} chunks after {(time.time() - t_start_push) * 1000:.0f} ms")
+            await q.put(self._GENERATOR_STOP_SENTINEL)
 
-        await self._client.stub.FunctionCallPutDataOutStreaming(request_stream())
+        async def request_stream():
+            index = 1
+            t_start_push = 0
+
+            while (req := await q.get()) != self._GENERATOR_STOP_SENTINEL:
+                # ASGI 'http.response.start' and 'http.response.body' msgs are observed to be separated by 1ms.
+                # If we don't sleep here for 1ms we end up with an extra call to .put_data_out().
+                if t_start_push == 0:
+                    t_start_push = time.time()
+
+                yield req
+                print(f"pushed {index} chunks with new method after {(time.time() - t_start_push) * 1000:.0f} ms")
+
+        t = asyncio.create_task(fill_queue())
+        try:
+            await self._client.container_stub.FunctionCallPutDataOutStreaming(request_stream())
+        finally:
+            t.cancel()
 
     async def put_data_out(
         self,

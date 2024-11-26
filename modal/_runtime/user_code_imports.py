@@ -104,7 +104,10 @@ class ImportedFunction(Service):
     _user_defined_callable: Callable[..., Any]
 
     def get_finalized_functions(
-        self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
+        self,
+        fun_def: api_pb2.Function,
+        container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
+        client,
     ) -> Dict[str, "FinalizedFunction"]:
         # Check this property before we turn it into a method (overriden by webhooks)
         is_async = get_is_async(self._user_defined_callable)
@@ -124,7 +127,9 @@ class ImportedFunction(Service):
             }
 
         web_callable, lifespan_manager = construct_webhook_callable(
-            self._user_defined_callable, fun_def.webhook_config, container_io_manager
+            self._user_defined_callable,
+            fun_def.webhook_config,
+            container_io_manager,
         )
 
         return {

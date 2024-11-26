@@ -361,6 +361,8 @@ async def _stream_function_call_data(
     client, function_call_id: str, variant: Literal["data_in", "data_out"]
 ) -> AsyncGenerator[Any, None]:
     """Read from the `data_in` or `data_out` stream of a function call."""
+    import time
+
     last_index = 0
 
     # TODO(gongy): generalize this logic as util for unary streams
@@ -368,13 +370,9 @@ async def _stream_function_call_data(
     delay_ms = 1
 
     if variant == "data_in":
-        stub_fn = client.stub.FunctionCallGetDataIn
+        stub_fn = client.container_stub.FunctionCallGetDataIn
     elif variant == "data_out":
-        stub_fn = client.stub.FunctionCallGetDataOut
-    else:
-        raise ValueError(f"Invalid variant {variant}")
-
-    import time
+        stub_fn = client.container_stub.FunctionCallGetDataOut
 
     twait = 0.0
     print(f"waiting {twait}s for data channel to be saturated")
@@ -384,14 +382,31 @@ async def _stream_function_call_data(
         req = api_pb2.FunctionCallGetDataRequest(function_call_id=function_call_id, last_index=last_index)
         print("make req for data")
         try:
-            grpclib_method = await client._get_grpclib_method(stub_fn._wrapped_method_name)
-            async with grpclib_method.open() as stream:
-                # async for chunk in stub_fn.unary_stream(req):
-                await stream.send_message(req, end=True)
-                begin = time.time()
+            # grpclib_method = await client._get_grpclib_method(stub_fn._wrapped_method_name)
+            stream = stub_fn(req)
+            # async with grpcio_method.open() as stream:
+            # async for chunk in stub_fn.unary_stream(req):
+            # await stream.send_message(req, end=True)
+            begin = time.time()
+            intervals = []
+            yield_intervals = []
+            deserialize_intervals = []
+            last_index = 0
+
+            q = asyncio.Queue(64)
+
+            async def fill_queue():
+                print(f"fill queue is beginnging after {(time.time() - begin) * 1000:.2f}ms")
+                async for item in stream:
+                    # throughput 4ms/chunk
+                    await q.put(item)
+                    print(f"queue at size {q.qsize()} after {(time.time() - begin) * 1000:.2f}ms")
+
+            t = asyncio.create_task(fill_queue())
+            try:
+                # await asyncio.sleep(0.05)
                 t0 = time.time()
-                intervals = []
-                async for chunk in stream:
+                while chunk := await q.get():
                     if chunk.index <= last_index:
                         continue
                     if chunk.data_blob_id:
@@ -400,25 +415,36 @@ async def _stream_function_call_data(
                     else:
                         message_bytes = chunk.data
 
+                    dtime = time.time()
                     message = deserialize_data_format(message_bytes, chunk.data_format, client)
-                    last_index = chunk.index
+                    deserialize_intervals.append(time.time() - dtime)
+
+                    last_index += 1
                     intervals.append(time.time() - t0)
+                    tyield = time.time()
+                    yield message
+                    yield_intervals.append(time.time() - tyield)
+                    t0 = time.time()
+
                     print(
-                        f"got chunk index {last_index} of size {len(message_bytes) / 1024 / 1024} MiB, "
+                        # f"got chunk index {last_index} of size {len(message_bytes) / 1024 / 1024} MiB, "
                         f"took {(time.time() - t0) * 1000:.2f}ms, "
                         f"cumulative {time.time() - begin:.2f}s, "
                         f"cumulative average {(time.time() - begin) / last_index * 1000:.2f}ms/chunk, "
                         f"individual average {sum(intervals) / len(intervals) * 1000:.2f}ms/chunk, "
+                        f"yield average {sum(yield_intervals) / len(yield_intervals) * 1000:.2f}ms/chunk, "
+                        f"deserialize average "
+                        f"{sum(deserialize_intervals) / len(deserialize_intervals) * 1000:.2f}ms/chunk, "
                         # f"time since server timestamp {(time.time() - chunk.timestamp)n /  * 1000:.2f}ms"
                     )
-                    yield message
-                    t0 = time.time()
+            finally:
+                t.cancel()
         except (GRPCError, StreamTerminatedError) as exc:
             if retries_remaining > 0:
                 retries_remaining -= 1
                 if isinstance(exc, GRPCError):
                     if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                        logger.debug(f"{variant} stream retrying with delay {delay_ms}ms due to {exc}")
+                        logger.info(f"{variant} stream retrying with delay {delay_ms}ms due to {exc}")
                         await asyncio.sleep(delay_ms / 1000)
                         delay_ms = min(1000, delay_ms * 10)
                         continue
