@@ -588,18 +588,30 @@ async def async_merge(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T,
     Raises:
         Exception: If any of the input generators raises an exception, it is propagated.
 
-    Example:
-        async def gen1():
-            yield 1
-            yield 2
+    Usage:
+    ```python
+    import asyncio
+    from modal._utils.async_utils import async_merge
 
-        async def gen2():
-            yield 'a'
-            yield 'b'
+    async def gen1():
+        yield 1
+        yield 2
 
+    async def gen2():
+        yield 3
+        yield 4
+
+    async def example():
+        values = set()
         async for value in async_merge(gen1(), gen2()):
-            print(value)
-        # Output could be: 1, 'a', 2, 'b' (order may vary)
+            values.add(value)
+
+        return values
+
+    # Output could be: {1, 'a', 2, 'b'} (order may vary)
+    values = asyncio.run(example())
+    assert sorted(values) == [1, 2, 3, 4]
+    ```
     """
     queue: asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper]] = asyncio.Queue(maxsize=len(generators) * 10)
 
