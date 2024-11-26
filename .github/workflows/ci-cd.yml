@@ -108,7 +108,7 @@ jobs:
         run: pytest -v
 
       - name: Run docstring tests
-        if: github.event.pull_request.head.repo.fork == 'false'
+        if: github.event.pull_request.head.repo.fork == false
         env:
           MODAL_ENVIRONMENT: client-doc-tests
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
