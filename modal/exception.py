@@ -108,6 +108,14 @@ class ServerWarning(UserWarning):
     """Warning originating from the Modal server and re-issued in client code."""
 
 
+class InternalFailure(Error):
+    """
+    Raised when the server returns GENERIC_STATUS_INTERNAL_FAILURE. This is a retiable error which can be
+    caused by events like 1) redis crashing and the server losing track of inputs, or 2) a worker being
+    preempted, which terminates the input.
+    """
+
+
 class _CliUserExecutionError(Exception):
     """mdmd:hidden
     Private wrapper for exceptions during when importing or running stubs from the CLI.
