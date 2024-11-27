@@ -205,7 +205,7 @@ class _Object:
         return self._local_uuid
 
     @property
-    def object_id(self):
+    def object_id(self) -> str:
         """mdmd:hidden"""
         return self._object_id
 

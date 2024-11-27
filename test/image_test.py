@@ -1431,3 +1431,48 @@ def test_add_locals_build_function(servicer, client, supports_on_path):
 # TODO: test modal shell w/ lazy mounts
 # this works since the image is passed on as is to a sandbox which will load it and
 # transfer any virtual mount layers from the image as mounts to the sandbox
+
+
+def test_image_only_joins_unfinished_steps(servicer, client):
+    app = App()
+    deb_slim = Image.debian_slim()
+    image = deb_slim.pip_install("foobarbaz")
+    app.function(image=image)(dummy)
+    with servicer.intercept() as ctx:
+        # default - image not built, should stream
+        with app.run(client=client):
+            pass
+        image_gets = ctx.get_requests("ImageGetOrCreate")
+        assert len(image_gets) == 2
+        image_joins = ctx.get_requests("ImageJoinStreaming")
+        assert len(image_joins) == 2
+
+    with servicer.intercept() as ctx:
+        # lets mock that deb_slim has been built already
+
+        async def custom_responder(servicer, stream):
+            image_get_or_create_request = await stream.recv_message()
+            is_base_image = any("FROM python:" in cmd for cmd in image_get_or_create_request.image.dockerfile_commands)
+            if is_base_image:
+                # base image done
+                await stream.send_message(
+                    api_pb2.ImageGetOrCreateResponse(
+                        image_id="im-123",
+                        result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
+                    )
+                )
+            else:
+                await stream.send_message(
+                    api_pb2.ImageGetOrCreateResponse(
+                        image_id="im-124",
+                    )
+                )
+
+        ctx.set_responder("ImageGetOrCreate", custom_responder)
+        with app.run(client=client):
+            pass
+        image_gets = ctx.get_requests("ImageGetOrCreate")
+        assert len(image_gets) == 2
+        image_joins = ctx.get_requests("ImageJoinStreaming")
+        assert len(image_joins) == 1  # should now skip building of second build step
+        assert image_joins[0].image_id == "im-124"
