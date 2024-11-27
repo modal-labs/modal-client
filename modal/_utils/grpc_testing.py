@@ -52,7 +52,7 @@ def patch_mock_servicer(cls):
         ctx = InterceptionContext()
         servicer.interception_context = ctx
         yield ctx
-        ctx.assert_responses_consumed()
+        ctx._assert_responses_consumed()
         servicer.interception_context = None
 
     cls.intercept = intercept
@@ -64,7 +64,7 @@ def patch_mock_servicer(cls):
                 ctx = servicer_self.interception_context
                 if ctx:
                     intercepted_stream = await InterceptedStream(ctx, method_name, stream).initialize()
-                    custom_responder = ctx.next_custom_responder(method_name, intercepted_stream.request_message)
+                    custom_responder = ctx._next_custom_responder(method_name, intercepted_stream.request_message)
                     if custom_responder:
                         return await custom_responder(servicer_self, intercepted_stream)
                     else:
@@ -105,19 +105,23 @@ class InterceptionContext:
         self.custom_responses: Dict[str, List[Tuple[Callable[[Any], bool], List[Any]]]] = defaultdict(list)
         self.custom_defaults: Dict[str, Callable[["MockClientServicer", grpclib.server.Stream], Awaitable[None]]] = {}
 
-    def add_recv(self, method_name: str, msg):
-        self.calls.append((method_name, msg))
-
     def add_response(
         self, method_name: str, first_payload, *, request_filter: Callable[[Any], bool] = lambda req: True
     ):
-        # adds one response to a queue of responses for requests of the specified type
+        """Adds one response payload to an expected queue of responses for a method.
+
+        These responses will be used once each instead of calling the MockServicer's
+        implementation of the method.
+
+        The interception context will throw an exception on exit if not all of the added
+        responses have been consumed.
+        """
         self.custom_responses[method_name].append((request_filter, [first_payload]))
 
     def set_responder(
         self, method_name: str, responder: Callable[["MockClientServicer", grpclib.server.Stream], Awaitable[None]]
     ):
-        """Replace the default responder method. E.g.
+        """Replace the default responder from the MockClientServicer with a custom implementation
 
         ```python notest
         def custom_responder(servicer, stream):
@@ -128,11 +132,28 @@ class InterceptionContext:
             ctx.set_responder("SomeMethod", custom_responder)
         ```
 
-        Responses added via `.add_response()` take precedence.
+        Responses added via `.add_response()` take precedence over the use of this replacement
         """
         self.custom_defaults[method_name] = responder
 
-    def next_custom_responder(self, method_name, request):
+    def pop_request(self, method_name):
+        # fast forward to the next request of type method_name
+        # dropping any preceding requests if there is a match
+        # returns the payload of the request
+        for i, (_method_name, msg) in enumerate(self.calls):
+            if _method_name == method_name:
+                self.calls = self.calls[i + 1 :]
+                return msg
+
+        raise KeyError(f"No message of that type in call list: {self.calls}")
+
+    def get_requests(self, method_name: str) -> List[Any]:
+        return [msg for _method_name, msg in self.calls if _method_name == method_name]
+
+    def _add_recv(self, method_name: str, msg):
+        self.calls.append((method_name, msg))
+
+    def _next_custom_responder(self, method_name, request):
         method_responses = self.custom_responses[method_name]
         for i, (request_filter, response_messages) in enumerate(method_responses):
             try:
@@ -159,7 +180,7 @@ class InterceptionContext:
 
         return responder
 
-    def assert_responses_consumed(self):
+    def _assert_responses_consumed(self):
         unconsumed = []
         for method_name, queued_responses in self.custom_responses.items():
             unconsumed += [method_name] * len(queued_responses)
@@ -167,23 +188,9 @@ class InterceptionContext:
         if unconsumed:
             raise ResponseNotConsumed(unconsumed)
 
-    def pop_request(self, method_name):
-        # fast forward to the next request of type method_name
-        # dropping any preceding requests if there is a match
-        # returns the payload of the request
-        for i, (_method_name, msg) in enumerate(self.calls):
-            if _method_name == method_name:
-                self.calls = self.calls[i + 1 :]
-                return msg
-
-        raise KeyError(f"No message of that type in call list: {self.calls}")
-
-    def get_requests(self, method_name: str) -> List[Any]:
-        return [msg for _method_name, msg in self.calls if _method_name == method_name]
-
 
 class InterceptedStream:
-    def __init__(self, interception_context, method_name, stream):
+    def __init__(self, interception_context: InterceptionContext, method_name: str, stream):
         self.interception_context = interception_context
         self.method_name = method_name
         self.stream = stream
@@ -200,7 +207,7 @@ class InterceptedStream:
             return ret
 
         msg = await self.stream.recv_message()
-        self.interception_context.add_recv(self.method_name, msg)
+        self.interception_context._add_recv(self.method_name, msg)
         return msg
 
     async def send_message(self, msg):

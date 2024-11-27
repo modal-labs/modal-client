@@ -113,7 +113,7 @@ class _Obj:
                 method = self._instance_service_function._bind_instance_method(class_bound_method)
                 self._method_functions[method_name] = method
         else:
-            # <v0.63 classes - bind each individual method to the new parameters
+            # looked up <v0.63 classes - bind each individual method to the new parameters
             self._instance_service_function = None
             for method_name, class_bound_method in classbound_methods.items():
                 method = class_bound_method._bind_parameters(self, from_other_workspace, options, args, kwargs)
@@ -125,12 +125,14 @@ class _Obj:
         self._user_cls = user_cls
         self._construction_args = (args, kwargs)  # used for lazy construction in case of explicit constructors
 
-    def _user_cls_instance_constr(self):
+    def _new_user_cls_instance(self):
         args, kwargs = self._construction_args
         if not _use_annotation_parameters(self._user_cls):
             # TODO(elias): deprecate this code path eventually
             user_cls_instance = self._user_cls(*args, **kwargs)
         else:
+            # ignore constructor (assumes there is no custom constructor,
+            # which is guaranteed by _use_annotation_parameters)
             # set the attributes on the class corresponding to annotations
             # with = parameter() specifications
             sig = _get_class_constructor_signature(self._user_cls)
@@ -139,6 +141,7 @@ class _Obj:
             user_cls_instance = self._user_cls.__new__(self._user_cls)  # new instance without running __init__
             user_cls_instance.__dict__.update(bound_vars.arguments)
 
+        # TODO: always use Obj instances instead of making modifications to user cls
         user_cls_instance._modal_functions = self._method_functions  # Needed for PartialFunction.__get__
         return user_cls_instance
 
@@ -163,10 +166,12 @@ class _Obj:
             )
         await self._instance_service_function.keep_warm(warm_pool_size)
 
-    def _get_user_cls_instance(self):
-        """Construct local object lazily. Used for .local() calls."""
+    def _cached_user_cls_instance(self):
+        """Get or construct the local object
+
+        Used for .local() calls and getting attributes of classes"""
         if not self._user_cls_instance:
-            self._user_cls_instance = self._user_cls_instance_constr()  # Instantiate object
+            self._user_cls_instance = self._new_user_cls_instance()  # Instantiate object
 
         return self._user_cls_instance
 
@@ -196,7 +201,7 @@ class _Obj:
     @synchronizer.nowrap
     async def aenter(self):
         if not self.entered:
-            user_cls_instance = self._get_user_cls_instance()
+            user_cls_instance = self._cached_user_cls_instance()
             if hasattr(user_cls_instance, "__aenter__"):
                 await user_cls_instance.__aenter__()
             elif hasattr(user_cls_instance, "__enter__"):
@@ -205,20 +210,22 @@ class _Obj:
 
     def __getattr__(self, k):
         if k in self._method_functions:
-            # if we know the user is accessing a method, we don't have to create an instance
-            # yet, since the user might just call `.remote()` on it which doesn't require
-            # a local instance (in case __init__ does stuff that can't locally)
+            # If we know the user is accessing a *method* and not another attribute,
+            # we don't have to create an instance of the user class yet.
+            # This is because it might just be a call to `.remote()` on it which
+            # doesn't require a local instance.
+            # As long as we have the service function or params, we can do remote calls
+            # without calling the constructor of the class in the calling context.
             return self._method_functions[k]
-        elif self._user_cls_instance_constr:
-            # if it's *not* a method
-            # TODO: To get lazy loading (from_name) of classes to work, we need to avoid
-            #  this path, otherwise local initialization will happen regardless if user
-            #  only runs .remote(), since we don't know methods for the class until we
-            #  load it
-            user_cls_instance = self._get_user_cls_instance()
-            return getattr(user_cls_instance, k)
-        else:
-            raise AttributeError(k)
+
+        # if it's *not* a method, it *might* be an attribute of the class,
+        # so we construct it and proxy the attribute
+        # TODO: To get lazy loading (from_name) of classes to work, we need to avoid
+        #  this path, otherwise local initialization will happen regardless if user
+        #  only runs .remote(), since we don't know methods for the class until we
+        #  load it
+        user_cls_instance = self._cached_user_cls_instance()
+        return getattr(user_cls_instance, k)
 
 
 Obj = synchronize_api(_Obj)

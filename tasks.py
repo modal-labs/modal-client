@@ -150,6 +150,7 @@ def type_check(ctx):
         "test/cls_test.py",  # see mypy bug above - but this works with pyright, so we run that instead
         "modal/_runtime/container_io_manager.py",
         "modal/io_streams.py",
+        "modal/image.py",
     ]
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
 
@@ -230,49 +231,6 @@ def update_build_number(ctx, new_build_number: Optional[int] = None):
 
 # Note: Reset this value to -1 whenever you make a minor `0.X` release of the client.
 build_number = {new_build_number}  # git: {git_sha}
-"""
-        )
-
-
-@task
-def create_alias_package(ctx):
-    from modal_version import __version__
-
-    os.makedirs("alias-package", exist_ok=True)
-    with open("alias-package/setup.py", "w") as f:
-        f.write(
-            f"""\
-{copyright_header_full}
-from setuptools import setup
-setup(version="{__version__}")
-"""
-        )
-    with open("alias-package/setup.cfg", "w") as f:
-        f.write(
-            f"""\
-[metadata]
-name = modal-client
-author = Modal Labs
-author_email = support@modal.com
-description = Legacy name for the Modal client
-long_description = This is a legacy compatibility package that just requires the `modal` client library.
-            In versions before 0.51, the official name of the client library was called `modal-client`.
-            We have renamed it to `modal`, but this library is kept updated for compatibility.
-long_description_content_type = text/markdown
-project_urls =
-    Homepage = https://modal.com
-
-[options]
-install_requires =
-    modal=={__version__}
-"""
-        )
-    with open("alias-package/pyproject.toml", "w") as f:
-        f.write(
-            """\
-[build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
 """
         )
 

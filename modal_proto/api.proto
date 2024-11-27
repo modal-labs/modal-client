@@ -1754,6 +1754,7 @@ message MethodDefinition {
   WebhookConfig webhook_config = 3;
   string web_url = 4;
   WebUrlInfo web_url_info = 5;
+  repeated CustomDomainInfo custom_domain_info = 6;
 }
 
 message MountFile {

@@ -91,7 +91,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         if obj:  # accessing the method on an instance of a class, e.g. `MyClass().fun``
             if hasattr(obj, "_modal_functions"):
                 # This happens inside "local" user methods when they refer to other methods,
-                # e.g. Foo().parent_method() doing self.local.other_method()
+                # e.g. Foo().parent_method.remote() calling self.other_method.remote()
                 return getattr(obj, "_modal_functions")[k]
             else:
                 # special edge case: referencing a method of an instance of an
@@ -199,6 +199,7 @@ class _MethodDecoratorType:
         ...
 
 
+# TODO(elias): fix support for coroutine type unwrapping for methods (static typing)
 def _method(
     _warn_parentheses_missing=None,
     *,
@@ -207,7 +208,6 @@ def _method(
     is_generator: Optional[bool] = None,
     keep_warm: Optional[int] = None,  # Deprecated: Use keep_warm on @app.cls() instead
 ) -> _MethodDecoratorType:
-    # TODO(elias): fix support for coroutine type unwrapping for methods (static typing)
     """Decorator for methods that should be transformed into a Modal Function registered against this class's App.
 
     **Usage:**

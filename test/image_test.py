@@ -624,6 +624,87 @@ def tmp_path_with_content(tmp_path):
     return tmp_path
 
 
+@pytest.mark.parametrize(["copy"], [(True,), (False,)])
+@pytest.mark.parametrize(
+    ["remote_path", "expected_dest"],
+    [
+        ("/place/nice.txt", "/place/nice.txt"),
+        # Not supported yet, but soon:
+        ("/place/", "/place/data.txt"),  # use original basename if destination has a trailing slash
+        # ("output.txt", "/proj/output.txt")  # workdir relative target
+        # (None, "/proj/data.txt")  # default target - basename in current directory
+    ],
+)
+def test_image_add_local_file(servicer, client, tmp_path_with_content, copy, remote_path, expected_dest):
+    app = App()
+
+    if remote_path is None:
+        remote_path_kwargs = {}
+    else:
+        remote_path_kwargs = {"remote_path": remote_path}
+
+    img = (
+        Image.from_registry("unknown_image")
+        .workdir("/proj")
+        .add_local_file(tmp_path_with_content / "data.txt", **remote_path_kwargs, copy=copy)
+    )
+    app.function(image=img)(dummy)
+
+    with app.run(client=client):
+        if copy:
+            # check that dockerfile commands include COPY . .
+            layers = get_image_layers(img.object_id, servicer)
+            assert layers[0].dockerfile_commands == ["FROM base", "COPY . /"]
+            mount_id = layers[0].context_mount_id
+            # and then get the relevant context mount to check
+        if not copy:
+            assert len(img._mount_layers) == 1
+            mount_id = img._mount_layers[0].object_id
+
+        assert set(servicer.mount_contents[mount_id].keys()) == {expected_dest}
+
+
+@pytest.mark.parametrize(["copy"], [(True,), (False,)])
+@pytest.mark.parametrize(
+    ["remote_path", "expected_dest"],
+    [
+        ("/place/", "/place/sub"),  # copy full dir
+        ("/place", "/place/sub"),  # removing trailing slash on source makes no difference, unlike shell cp
+        # TODO: add support for relative paths:
+        # Not supported yet, but soon:
+        # ("place", "/proj/place/sub")  # workdir relative target
+        # (None, "/proj/sub")  # default target - copy into current directory
+    ],
+)
+def test_image_add_local_dir(servicer, client, tmp_path_with_content, copy, remote_path, expected_dest):
+    app = App()
+
+    if remote_path is None:
+        remote_path_kwargs = {}
+    else:
+        remote_path_kwargs = {"remote_path": remote_path}
+
+    img = (
+        Image.from_registry("unknown_image")
+        .workdir("/proj")
+        .add_local_dir(tmp_path_with_content / "data", **remote_path_kwargs, copy=copy)
+    )
+    app.function(image=img)(dummy)
+
+    with app.run(client=client):
+        if copy:
+            # check that dockerfile commands include COPY . .
+            layers = get_image_layers(img.object_id, servicer)
+            assert layers[0].dockerfile_commands == ["FROM base", "COPY . /"]
+            mount_id = layers[0].context_mount_id
+            # and then get the relevant context mount to check
+        if not copy:
+            assert len(img._mount_layers) == 1
+            mount_id = img._mount_layers[0].object_id
+
+        assert set(servicer.mount_contents[mount_id].keys()) == {expected_dest}
+
+
 def test_image_copy_local_dir(builder_version, servicer, client, tmp_path_with_content):
     app = App()
     app.image = Image.debian_slim().copy_local_dir(tmp_path_with_content, remote_path="/dummy")
@@ -1350,3 +1431,48 @@ def test_add_locals_build_function(servicer, client, supports_on_path):
 # TODO: test modal shell w/ lazy mounts
 # this works since the image is passed on as is to a sandbox which will load it and
 # transfer any virtual mount layers from the image as mounts to the sandbox
+
+
+def test_image_only_joins_unfinished_steps(servicer, client):
+    app = App()
+    deb_slim = Image.debian_slim()
+    image = deb_slim.pip_install("foobarbaz")
+    app.function(image=image)(dummy)
+    with servicer.intercept() as ctx:
+        # default - image not built, should stream
+        with app.run(client=client):
+            pass
+        image_gets = ctx.get_requests("ImageGetOrCreate")
+        assert len(image_gets) == 2
+        image_joins = ctx.get_requests("ImageJoinStreaming")
+        assert len(image_joins) == 2
+
+    with servicer.intercept() as ctx:
+        # lets mock that deb_slim has been built already
+
+        async def custom_responder(servicer, stream):
+            image_get_or_create_request = await stream.recv_message()
+            is_base_image = any("FROM python:" in cmd for cmd in image_get_or_create_request.image.dockerfile_commands)
+            if is_base_image:
+                # base image done
+                await stream.send_message(
+                    api_pb2.ImageGetOrCreateResponse(
+                        image_id="im-123",
+                        result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
+                    )
+                )
+            else:
+                await stream.send_message(
+                    api_pb2.ImageGetOrCreateResponse(
+                        image_id="im-124",
+                    )
+                )
+
+        ctx.set_responder("ImageGetOrCreate", custom_responder)
+        with app.run(client=client):
+            pass
+        image_gets = ctx.get_requests("ImageGetOrCreate")
+        assert len(image_gets) == 2
+        image_joins = ctx.get_requests("ImageJoinStreaming")
+        assert len(image_joins) == 1  # should now skip building of second build step
+        assert image_joins[0].image_id == "im-124"

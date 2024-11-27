@@ -10,6 +10,30 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.66.49 (2024-11-26)
+
+- `modal config set-environment` will now raise if the requested environment does not exist.
+
+
+
+### 0.66.45 (2024-11-26)
+
+- The `modal launch` CLI now accepts a `--detach` flag to run the App in detached mode, such that it will persist after the local client disconnects.
+
+
+
+### 0.66.40 (2024-11-23)
+
+* Adds `Image.add_local_file(..., copy=False)` and `Image.add_local_dir(..., copy=False)` as a unified replacement for the old `Image.copy_local_*()` and `Mount.add_local_*` methods.
+
+
+
+### 0.66.30 (2024-11-21)
+
+- Removed the `aiostream` package from the modal client library dependencies.
+
+
+
 ### 0.66.29 (2024-11-21)
 
 * Adds `Image.add_local_python_packages` which works similarly to `Mount.from_local_python_packages` but for images.

@@ -154,7 +154,7 @@ Registered functions and local entrypoints on the selected app are:
         # entrypoint is in entrypoint registry, for now
         return app.registered_entrypoints[function_name]
 
-    function = app.indexed_objects[function_name]  # functions are in blueprint
+    function = app.registered_functions[function_name]
     assert isinstance(function, Function)
     return function
 
