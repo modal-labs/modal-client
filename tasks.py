@@ -150,6 +150,7 @@ def type_check(ctx):
         "test/cls_test.py",  # see mypy bug above - but this works with pyright, so we run that instead
         "modal/_runtime/container_io_manager.py",
         "modal/io_streams.py",
+        "modal/image.py",
     ]
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
 
