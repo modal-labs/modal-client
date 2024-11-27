@@ -78,7 +78,7 @@ async def _map_invocation(
 ):
     assert client.stub
     request = api_pb2.FunctionMapRequest(
-        function_id=function._invocation_function_id(),
+        function_id=function.object_id,
         parent_input_id=current_input_id() or "",
         function_call_type=api_pb2.FUNCTION_CALL_TYPE_MAP,
         return_exceptions=return_exceptions,
@@ -131,7 +131,7 @@ async def _map_invocation(
         nonlocal have_all_inputs, num_inputs
         async for items in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
             request = api_pb2.FunctionPutInputsRequest(
-                function_id=function._invocation_function_id(), inputs=items, function_call_id=function_call_id
+                function_id=function.object_id, inputs=items, function_call_id=function_call_id
             )
             logger.debug(
                 f"Pushing {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}."

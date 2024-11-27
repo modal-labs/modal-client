@@ -118,7 +118,7 @@ class _Invocation:
         function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
     ) -> "_Invocation":
         assert client.stub
-        function_id = function._invocation_function_id()
+        function_id = function.object_id
         item = await _create_input(args, kwargs, client, method_name=function._use_method_name)
 
         request = api_pb2.FunctionMapRequest(
@@ -319,8 +319,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _cluster_size: Optional[int] = None
 
     # when this is the method of a class/object function, invocation of this function
-    # should be using another function id and supply the method name in the FunctionInput:
-    _use_function_id: str  # The function to invoke
+    # should supply the method name in the FunctionInput:
     _use_method_name: str = ""
 
     _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
@@ -347,94 +346,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         rep = f"Method({full_name})"
         fun = _Object.__new__(_Function)
         fun._init(rep)
-        fun._tag = full_name
-        fun._raw_f = partial_function.raw_f
-        fun._info = FunctionInfo(
-            partial_function.raw_f, user_cls=user_cls, serialized=class_service_function.info.is_serialized()
-        )  # needed for .local()
-        fun._use_method_name = method_name
-        fun._app = class_service_function._app
-        fun._is_generator = partial_function.is_generator
-        fun._cluster_size = partial_function.cluster_size
-        fun._spec = class_service_function._spec
-        fun._is_method = True
-        return fun
-
-    def _bind_method_old(
-        self,
-        user_cls,
-        method_name: str,
-        partial_function: "modal.partial_function._PartialFunction",
-    ):
-        """mdmd:hidden
-
-        Creates a function placeholder function that binds a specific method name to
-        this function for use when invoking the function.
-
-        Should only be used on "class service functions". For "instance service functions",
-        we don't create an actual backend function, and instead do client-side "fake-hydration"
-        only, see _bind_instance_method.
-
-        """
-        class_service_function = self
-        assert class_service_function._info  # has to be a local function to be able to "bind" it
-        assert not class_service_function._is_method  # should not be used on an already bound method placeholder
-        assert not class_service_function._obj  # should only be used on base function / class service function
-        full_name = f"{user_cls.__name__}.{method_name}"
-        function_type = get_function_type(partial_function.is_generator)
-
-        async def _load(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
-            function_definition = api_pb2.Function(
-                function_name=full_name,
-                webhook_config=partial_function.webhook_config,
-                function_type=function_type,
-                is_method=True,
-                use_function_id=class_service_function.object_id,
-                use_method_name=method_name,
-                batch_max_size=partial_function.batch_max_size or 0,
-                batch_linger_ms=partial_function.batch_wait_ms or 0,
-            )
-            assert resolver.app_id
-            request = api_pb2.FunctionCreateRequest(
-                app_id=resolver.app_id,
-                function=function_definition,
-                #  method_bound_function.object_id usually gets set by preload
-                existing_function_id=existing_object_id or method_bound_function.object_id or "",
-                defer_updates=True,
-            )
-            assert resolver.client.stub is not None  # client should be connected when load is called
-            with FunctionCreationStatus(resolver, full_name) as function_creation_status:
-                response = await resolver.client.stub.FunctionCreate(request)
-                method_bound_function._hydrate(
-                    response.function_id,
-                    resolver.client,
-                    response.handle_metadata,
-                )
-                function_creation_status.set_response(response)
-
-        async def _preload(method_bound_function: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
-            if class_service_function._use_method_name:
-                raise ExecutionError(f"Can't bind method to already bound {class_service_function}")
-            assert resolver.app_id
-            req = api_pb2.FunctionPrecreateRequest(
-                app_id=resolver.app_id,
-                function_name=full_name,
-                function_type=function_type,
-                webhook_config=partial_function.webhook_config,
-                use_function_id=class_service_function.object_id,
-                use_method_name=method_name,
-                existing_function_id=existing_object_id or "",
-            )
-            assert resolver.client.stub  # client should be connected at this point
-            response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
-            method_bound_function._hydrate(response.function_id, resolver.client, response.handle_metadata)
-
-        def _deps():
-            return [class_service_function]
-
-        rep = f"Method({full_name})"
-
-        fun = _Function._from_loader(_load, rep, preload=_preload, deps=_deps)
         fun._tag = full_name
         fun._raw_f = partial_function.raw_f
         fun._info = FunctionInfo(
@@ -475,7 +386,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             method_placeholder_fun._is_generator = class_bound_method._is_generator
             method_placeholder_fun._cluster_size = class_bound_method._cluster_size
             method_placeholder_fun._use_method_name = method_name
-            method_placeholder_fun._use_function_id = instance_service_function.object_id
             method_placeholder_fun._is_method = True
 
         async def _load(fun: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
@@ -848,6 +758,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     class_serialized=class_serialized or b"",
                     function_type=function_type,
                     webhook_config=webhook_config,
+                    method_definitions=method_definitions,
+                    method_definitions_set=True,
                     shared_volume_mounts=network_file_system_mount_protos(
                         validated_network_file_systems, allow_cross_region_volumes
                     ),
@@ -1224,7 +1136,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._web_url = None
         self._function_name = None
         self._info = None
-        self._use_function_id = ""
         self._serve_mounts = frozenset()
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
@@ -1234,14 +1145,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
         self._is_method = metadata.is_method
-        self._use_function_id = metadata.use_function_id
         self._use_method_name = metadata.use_method_name
         self._class_parameter_info = metadata.class_parameter_info
         self._method_handle_metadata = dict(metadata.method_handle_metadata)
         self._definition_id = metadata.definition_id
-
-    def _invocation_function_id(self) -> str:
-        return self._use_function_id or self.object_id
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
@@ -1251,7 +1158,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             function_type=get_function_type(self._is_generator),
             web_url=self._web_url or "",
             use_method_name=self._use_method_name,
-            use_function_id=self._use_function_id,
             is_method=self._is_method,
             class_parameter_info=self._class_parameter_info,
             definition_id=self._definition_id,
