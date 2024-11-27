@@ -381,3 +381,23 @@ async def test_open_files_error_annotation(tmp_path):
 def test_invalid_name(servicer, client, name):
     with pytest.raises(InvalidError, match="Invalid Volume name"):
         modal.Volume.lookup(name)
+
+
+@pytest.fixture()
+def unset_main_thread_event_loop():
+    try:
+        event_loop = asyncio.get_event_loop()
+    except RuntimeError:
+        event_loop = None
+
+    asyncio.set_event_loop(None)
+    try:
+        yield
+    finally:
+        asyncio.set_event_loop(event_loop)  # reset so we don't break other tests
+
+
+@pytest.mark.usefixtures("unset_main_thread_event_loop")
+def test_lock_is_py39_safe(set_env_client):
+    vol = modal.Volume.from_name("my_vol", create_if_missing=True)
+    vol.reload()

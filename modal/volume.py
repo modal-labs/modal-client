@@ -122,14 +122,21 @@ class _Volume(_Object, type_prefix="vo"):
     ```
     """
 
-    _lock: asyncio.Lock
+    _lock: Optional[asyncio.Lock] = None
 
-    def _initialize_from_empty(self):
+    async def _get_lock(self):
         # To (mostly*) prevent multiple concurrent operations on the same volume, which can cause problems under
         # some unlikely circumstances.
         # *: You can bypass this by creating multiple handles to the same volume, e.g. via lookup. But this
         # covers the typical case = good enough.
-        self._lock = asyncio.Lock()
+
+        # Note: this function runs no async code but is marked as async to ensure it's
+        # being run inside the synchronicity event loop and binds the lock to the
+        # correct event loop on Python 3.9 which eagerly assigns event loops on
+        # constructions of locks
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     @staticmethod
     def new():
@@ -188,7 +195,7 @@ class _Volume(_Object, type_prefix="vo"):
         environment_name: Optional[str] = None,
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
-    ) -> AsyncIterator["_Volume"]:
+    ) -> AsyncGenerator["_Volume", None]:
         """Creates a new ephemeral volume within a context manager:
 
         Usage:
@@ -269,7 +276,7 @@ class _Volume(_Object, type_prefix="vo"):
 
     @live_method
     async def _do_reload(self, lock=True):
-        async with self._lock if lock else asyncnullcontext():
+        async with (await self._get_lock()) if lock else asyncnullcontext():
             req = api_pb2.VolumeReloadRequest(volume_id=self.object_id)
             _ = await retry_transient_errors(self._client.stub.VolumeReload, req)
 
@@ -280,7 +287,7 @@ class _Volume(_Object, type_prefix="vo"):
         If successful, the changes made are now persisted in durable storage and available to other containers accessing
         the volume.
         """
-        async with self._lock:
+        async with await self._get_lock():
             req = api_pb2.VolumeCommitRequest(volume_id=self.object_id)
             try:
                 # TODO(gongy): only apply indefinite retries on 504 status.
