@@ -110,7 +110,7 @@ def get_by_object_path(obj: Any, obj_path: str) -> Optional[Any]:
 def _infer_function_or_help(
     app: App, module, accept_local_entrypoint: bool, accept_webhook: bool
 ) -> Union[Function, LocalEntrypoint]:
-    function_choices = set(tag for tag in app.registered_functions.keys())
+    function_choices = set(app.registered_functions)
     if not accept_webhook:
         function_choices -= set(app.registered_web_endpoints)
     if accept_local_entrypoint:

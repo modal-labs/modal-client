@@ -244,7 +244,7 @@ class _Cls(_Object, type_prefix="cs"):
     _class_service_function: Optional[
         _Function
     ]  # The _Function serving *all* methods of the class, used for version >=v0.63
-    _method_functions: Dict[str, _Function] = None  # Placeholder _Functions for each method
+    _method_functions: Optional[Dict[str, _Function]] = None  # Placeholder _Functions for each method
     _options: Optional[api_pb2.FunctionOptions]
     _callables: Dict[str, Callable[..., Any]]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
@@ -277,7 +277,7 @@ class _Cls(_Object, type_prefix="cs"):
             and self._class_service_function._method_handle_metadata
             and len(self._class_service_function._method_handle_metadata)
         ):
-            # The class only has a class service service function and no method placeholders.
+            # The class only has a class service service function and no method placeholders (v0.67+)
             if self._method_functions:
                 # We're here when the Cls is loaded locally (e.g. _Cls.from_local) so the _method_functions mapping is
                 # populated with (un-hydrated) _Function objects
@@ -312,10 +312,6 @@ class _Cls(_Object, type_prefix="cs"):
                 self._method_functions[method.function_name] = _Function._new_hydrated(
                     method.function_id, self._client, method.function_handle_metadata
                 )
-
-    def _get_metadata(self) -> api_pb2.ClassHandleMetadata:
-        class_handle_metadata = api_pb2.ClassHandleMetadata()
-        return class_handle_metadata
 
     @staticmethod
     def validate_construction_mechanism(user_cls):
