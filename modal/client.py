@@ -21,7 +21,6 @@ from typing import (
 import grpclib.client
 from google.protobuf import empty_pb2
 from google.protobuf.message import Message
-from grpc.aio import insecure_channel
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -31,7 +30,7 @@ from modal_version import __version__
 
 from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.grpc_utils import connect_channel, create_channel, retry_transient_errors
+from ._utils.grpc_utils import connect_channel, create_channel, create_grpcio_channel, retry_transient_errors
 from .config import _check_config, _is_remote, config, logger
 from .exception import AuthError, ClientClosed, ConnectionError, DeprecationError, VersionError
 
@@ -123,13 +122,7 @@ class _Client:
         assert self._stub is None
         metadata = _get_metadata(self.client_type, self._credentials, self.version)
         self._channel = create_channel(self.server_url, metadata=metadata)
-        self._container_channel = insecure_channel(
-            self.server_url,
-            options=[
-                ("grpc.max_receive_message_length", 64 * 1024 * 1024),  # 64MB
-                ("grpc.max_send_message_length", 64 * 1024 * 1024),  # 64MB
-            ],
-        )
+        self._container_channel = create_grpcio_channel(self.server_url, metadata=metadata)
         try:
             await connect_channel(self._channel)
         except OSError as exc:

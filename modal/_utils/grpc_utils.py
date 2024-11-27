@@ -15,6 +15,7 @@ from typing import (
     TypeVar,
 )
 
+import grpc.aio
 import grpclib.client
 import grpclib.config
 import grpclib.events
@@ -68,6 +69,14 @@ RETRYABLE_GRPC_STATUS_CODES = [
     Status.CANCELLED,
     Status.INTERNAL,
 ]
+
+
+def create_grpcio_channel(server_url: str, metadata: Dict[str, str] = {}) -> grpc.aio.Channel:
+    options = [
+        ("grpc.max_receive_message_length", 64 * 1024 * 1024),  # 64MB
+        ("grpc.max_send_message_length", 64 * 1024 * 1024),  # 64MB
+    ]
+    return grpc.aio.insecure_channel(server_url, options=options)
 
 
 def create_channel(

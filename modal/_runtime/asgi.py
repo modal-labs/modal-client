@@ -161,9 +161,11 @@ def asgi_app_wrapper(asgi_app, container_io_manager) -> Tuple[Callable[..., Asyn
                 await disconnect_app()
                 return
 
-            await messages_to_app.put(first_message)
+            for m in first_message:
+                await messages_to_app.put(m)
             async for message in message_gen:
-                await messages_to_app.put(message)
+                for m in message:
+                    await messages_to_app.put(m)
 
         async def send(msg):
             # Automatically split body chunks that are greater than the output size limit, to

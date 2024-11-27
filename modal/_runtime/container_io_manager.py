@@ -505,10 +505,31 @@ class _ContainerIOManager:
             else {"data": data}
         )
 
-    async def get_data_in(self, function_call_id: str) -> AsyncIterator[Any]:
+    @synchronizer.no_io_translation
+    async def get_data_in(self, function_call_id: str) -> AsyncIterator[List[Any]]:
         """Read from the `data_in` stream of a function call."""
-        async for data in _stream_function_call_data(self._client, function_call_id, "data_in"):
-            yield data
+
+        if True:
+            async for data in _stream_function_call_data(self._client, function_call_id, "data_in_asgi"):
+                yield [data]
+        else:
+            q = asyncio.Queue(1024)
+
+            async def fill_queue():
+                async for data in _stream_function_call_data(self._client, function_call_id, "data_in"):
+                    await q.put(data)
+                await q.put(None)
+
+            t = asyncio.create_task(fill_queue())
+            try:
+                while data := await q.get():
+                    data_array = [data]
+                    while q.qsize() > 0:
+                        data_array.append(q.get_nowait())
+                    print(f"yielding {len(data_array)} items")
+                    yield data_array
+            finally:
+                t.cancel()
 
     async def put_data_out_request(
         self,
@@ -580,7 +601,10 @@ class _ContainerIOManager:
                     t_start_push = time.time()
 
                 yield req
-                print(f"pushed {index} chunks with new method after {(time.time() - t_start_push) * 1000:.0f} ms")
+                print(
+                    f"qsize {q.qsize()}, "
+                    f"pushed {index} chunks with new method after {(time.time() - t_start_push) * 1000:.0f} ms"
+                )
 
         t = asyncio.create_task(fill_queue())
         try:

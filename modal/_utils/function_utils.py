@@ -13,7 +13,7 @@ from synchronicity.exceptions import UserCodeException
 import modal_proto
 from modal_proto import api_pb2
 
-from .._serialization import deserialize, deserialize_data_format, serialize
+from .._serialization import _deserialize_asgi, deserialize, deserialize_data_format, serialize
 from .._traceback import append_modal_tb
 from ..config import config, logger
 from ..exception import DeserializationError, ExecutionError, FunctionTimeoutError, InvalidError, RemoteError
@@ -358,7 +358,7 @@ def callable_has_non_self_non_default_params(f: Callable[..., Any]) -> bool:
 
 
 async def _stream_function_call_data(
-    client, function_call_id: str, variant: Literal["data_in", "data_out"]
+    client, function_call_id: str, variant: Literal["data_in", "data_out", "data_in_asgi"]
 ) -> AsyncGenerator[Any, None]:
     """Read from the `data_in` or `data_out` stream of a function call."""
     import time
@@ -371,6 +371,8 @@ async def _stream_function_call_data(
 
     if variant == "data_in":
         stub_fn = client.container_stub.FunctionCallGetDataIn
+    elif variant == "data_in_asgi":
+        stub_fn = client.container_stub.FunctionCallGetDataInAsgi
     elif variant == "data_out":
         stub_fn = client.container_stub.FunctionCallGetDataOut
 
@@ -404,9 +406,25 @@ async def _stream_function_call_data(
 
             t = asyncio.create_task(fill_queue())
             try:
-                # await asyncio.sleep(0.05)
                 t0 = time.time()
                 while chunk := await q.get():
+                    if variant == "data_in_asgi":
+                        dtime = time.time()
+                        a = _deserialize_asgi(chunk)
+                        deserialize_intervals.append(time.time() - dtime)
+
+                        tyield = time.time()
+                        yield a
+                        yield_intervals.append(time.time() - tyield)
+
+                        print(
+                            f"yield avg {sum(yield_intervals) / len(yield_intervals) * 1000:.2f}ms/chunk, "
+                            f"deserialize avg {sum(deserialize_intervals) / len(deserialize_intervals) * 1000:.2f}"
+                            "ms/chunk, "
+                        )
+
+                        continue
+
                     if chunk.index <= last_index:
                         continue
                     if chunk.data_blob_id:
