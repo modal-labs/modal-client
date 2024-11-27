@@ -17,7 +17,7 @@ O = TypeVar("O", bound="_Object")
 
 _BLOCKING_O = synchronize_api(O)
 
-EPHEMERAL_OBJECT_HEARTBEAT_SLEEP = 300
+EPHEMERAL_OBJECT_HEARTBEAT_SLEEP: int = 300
 
 
 def _get_environment_name(environment_name: Optional[str] = None, resolver: Optional[Resolver] = None) -> Optional[str]:
@@ -205,7 +205,7 @@ class _Object:
         return self._local_uuid
 
     @property
-    def object_id(self):
+    def object_id(self) -> str:
         """mdmd:hidden"""
         return self._object_id
 
