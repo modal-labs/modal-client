@@ -1714,7 +1714,7 @@ class _Image(_Object, type_prefix="im"):
         """
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            commands = ["FROM base", f"WORKDIR {shlex.quote(path)}"]
+            commands = ["FROM base", f"WORKDIR {shlex.quote(str(path))}"]
             return DockerfileSpec(commands=commands, context_files={})
 
         return _Image._from_args(
