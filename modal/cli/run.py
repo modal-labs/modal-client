@@ -136,7 +136,13 @@ def _get_clean_app_description(func_ref: str) -> str:
 
 
 def _get_click_command_for_function(app: App, function_tag):
-    function = app.registered_functions[function_tag]
+    function = app.registered_functions.get(function_tag)
+    if not function or (isinstance(function, Function) and function.info.user_cls is not None):
+        # This is either a function_tag for a class method function (e.g MyClass.foo) or a function tag for a
+        # class service function (MyClass.*)
+        class_name, method_name = function_tag.rsplit(".", 1)
+        if not function:
+            function = app.registered_functions.get(f"{class_name}.*")
     assert isinstance(function, Function)
     function = typing.cast(Function, function)
     if function.is_generator:
@@ -144,12 +150,19 @@ def _get_click_command_for_function(app: App, function_tag):
 
     signature: Dict[str, ParameterMetadata]
     cls: Optional[Cls] = None
-    method_name: Optional[str] = None
     if function.info.user_cls is not None:
-        class_name, method_name = function_tag.rsplit(".", 1)
         cls = typing.cast(Cls, app.registered_classes[class_name])
         cls_signature = _get_signature(function.info.user_cls)
-        fun_signature = _get_signature(function.info.raw_f, is_method=True)
+        if method_name == "*":
+            method_names = list(cls._get_partial_functions().keys())
+            if len(method_names) == 1:
+                method_name = method_names[0]
+            else:
+                class_name = function.info.user_cls.__name__
+                raise click.UsageError(
+                    f"Please specify a specific method of {class_name} to run, e.g. `modal run foo.py::MyClass.bar`"  # noqa: E501
+                )
+        fun_signature = _get_signature(getattr(cls, method_name).info.raw_f, is_method=True)
         signature = dict(**cls_signature, **fun_signature)  # Pool all arguments
         # TODO(erikbern): assert there's no overlap?
     else:
