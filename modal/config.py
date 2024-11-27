@@ -268,7 +268,7 @@ class Config:
         return repr(self.to_dict())
 
     def to_dict(self):
-        return {key: self.get(key) for key in _SETTINGS.keys()}
+        return {key: self.get(key) for key in sorted(_SETTINGS)}
 
 
 config = Config()
