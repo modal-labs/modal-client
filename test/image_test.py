@@ -6,7 +6,8 @@ import re
 import sys
 import threading
 from hashlib import sha256
-from tempfile import NamedTemporaryFile
+from pathlib import Path
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import List, Literal, get_args
 from unittest import mock
 
@@ -720,7 +721,7 @@ def test_image_copy_local_dir(builder_version, servicer, client, tmp_path_with_c
 def test_image_docker_command_copy(builder_version, servicer, client, tmp_path_with_content):
     app = App()
     data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/")
-    app.image = Image.debian_slim().dockerfile_commands(["COPY . /dummy"], context_mount=data_mount)
+    app.image = Image.debian_slim().dockerfile_commands(["COPY . /dummy"])
     app.function()(dummy)
 
     with app.run(client=client):
@@ -737,7 +738,7 @@ def test_image_dockerfile_copy(builder_version, servicer, client, tmp_path_with_
 
     app = App()
     data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/")
-    app.image = Image.debian_slim().from_dockerfile(dockerfile.name, context_mount=data_mount)
+    app.image = Image.debian_slim().from_dockerfile(dockerfile.name)
     app.function()(dummy)
 
     with app.run(client=client):
@@ -745,6 +746,80 @@ def test_image_dockerfile_copy(builder_version, servicer, client, tmp_path_with_
         assert "COPY . /dummy" in layers[1].dockerfile_commands
         files = {f.mount_filename: f.content for f in Mount._get_files(data_mount.entries)}
         assert files == {"/data.txt": b"hello", "/data/sub": b"world"}
+
+        copied_files = servicer.mount_contents[layers[1].context_mount_id].keys()
+        print()
+        print(copied_files)
+        print()
+
+        assert app.image == 123
+
+
+def test_image_dockerfile_copy2(builder_version, servicer, client):
+    with TemporaryDirectory(dir="./") as tmp_dir:
+        tmp_path = Path(tmp_dir)
+
+        (tmp_path / "smth").mkdir()
+        (tmp_path / "smth" / "one").mkdir()
+        (tmp_path / "smth" / "one" / "foo.py").write_text("foo")
+        (tmp_path / "smth" / "one" / "foo.csv").write_text("foo")
+        (tmp_path / "smth" / "two").mkdir()
+        (tmp_path / "smth" / "two" / "bar.py").write_text("bar")
+        (tmp_path / "smth" / "baz.py").write_text("baz")
+
+        (tmp_path / "abc.py").write_text("abc")
+        (tmp_path / "xyz.py").write_text("xyz")
+
+        dockerfile = NamedTemporaryFile("w", delete=False)
+        dockerfile.write(
+            f"""
+FROM python:3.12-slim
+
+WORKDIR /my-app
+
+RUN ls
+
+# COPY simple directory
+    CoPY {tmp_dir}/smth ./smth_copy
+
+RUN ls -la
+
+# COPY multiple sources
+        COPY {tmp_dir}/abc.py {tmp_dir}/xyz.py /
+
+RUN ls \\
+    -l
+
+# COPY multiple lines
+copy {tmp_dir}/smth \\
+    {tmp_dir}/abc.py \\
+# this is a comment
+    {tmp_dir}/xyz.py \\
+    /x
+
+        RUN ls
+        """
+        )
+        dockerfile.close()
+
+        app = App()
+        app.image = Image.debian_slim().from_dockerfile(dockerfile.name)
+        app.function()(dummy)
+
+        with app.run(client=client):
+            layers = get_image_layers(app.image.object_id, servicer)
+
+            copied_files = servicer.mount_contents[layers[1].context_mount_id].keys()
+            assert sorted(copied_files) == sorted(
+                [
+                    f"/{tmp_path}/abc.py",
+                    f"/{tmp_path}/smth/one/foo.py",
+                    f"/{tmp_path}/smth/one/foo.csv",
+                    f"/{tmp_path}/smth/two/bar.py",
+                    f"/{tmp_path}/smth/baz.py",
+                    f"/{tmp_path}/xyz.py",
+                ]
+            )
 
 
 def test_image_docker_command_entrypoint(builder_version, servicer, client, tmp_path_with_content):
