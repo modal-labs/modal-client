@@ -492,7 +492,8 @@ class _App:
 
         _App._container_app = running_app
 
-        # Hydrate objects on app
+        # Hydrate objects on app -- hydrating functions first so that when a class is being hydrated its
+        # corresponding class service function is already hydrated.
         def hydrate_objects(objects_dict):
             for tag, object_id in running_app.tag_to_object_id.items():
                 if tag in objects_dict:
