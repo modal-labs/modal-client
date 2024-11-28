@@ -493,12 +493,17 @@ class _App:
         _App._container_app = running_app
 
         # Hydrate objects on app
-        indexed_objects = dict(**self._functions, **self._classes)
-        for tag, object_id in running_app.tag_to_object_id.items():
-            if tag in indexed_objects:
-                obj = indexed_objects[tag]
-                handle_metadata = running_app.object_handle_metadata[object_id]
-                obj._hydrate(object_id, client, handle_metadata)
+        def hydrate_objects(objects_dict):
+            for tag, object_id in running_app.tag_to_object_id.items():
+                if tag in objects_dict:
+                    obj = objects_dict[tag]
+                    handle_metadata = running_app.object_handle_metadata[object_id]
+                    obj._hydrate(object_id, client, handle_metadata)
+
+        # Hydrate function objects
+        hydrate_objects(self._functions)
+        # Hydrate class objects
+        hydrate_objects(self._classes)
 
     @property
     def registered_functions(self) -> Dict[str, _Function]:
