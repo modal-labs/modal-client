@@ -283,6 +283,9 @@ def wait_for_web_server(host: str, port: int, *, timeout: float) -> None:
 async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, send) -> None:
     proxy_response: aiohttp.ClientResponse
 
+    if "client" in scope and "headers" in scope:
+        scope["headers"].append((b"X-Forwarded-For", scope["client"][0].encode()))
+
     async def request_generator() -> AsyncGenerator[bytes, None]:
         while True:
             message = await receive()
