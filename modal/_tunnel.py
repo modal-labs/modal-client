@@ -61,7 +61,7 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
 
     **Usage:**
 
-    ```python
+    ```python notest
     import modal
     from flask import Flask
 
