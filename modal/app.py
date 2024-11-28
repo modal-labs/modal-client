@@ -313,23 +313,6 @@ class _App:
         if not isinstance(value, _Object):
             raise InvalidError(f"App attribute `{key}` with value {value!r} is not a valid Modal object")
 
-    def _add_object(self, tag, obj):
-        # TODO(erikbern): replace this with _add_function and _add_class
-        if self._running_app:
-            # If this is inside a container, then objects can be defined after app initialization.
-            # So we may have to initialize objects once they get bound to the app.
-            if tag in self._running_app.tag_to_object_id:
-                object_id: str = self._running_app.tag_to_object_id[tag]
-                metadata: Message = self._running_app.object_handle_metadata[object_id]
-                obj._hydrate(object_id, self._client, metadata)
-
-        if isinstance(obj, _Function):
-            self._functions[tag] = obj
-        elif isinstance(obj, _Cls):
-            self._classes[tag] = obj
-        else:
-            raise RuntimeError(f"Expected `obj` to be a _Function or _Cls (got {type(obj)}")
-
     def __getitem__(self, tag: str):
         deprecation_error((2024, 3, 25), _app_attr_error)
 
@@ -481,9 +464,28 @@ class _App:
         if function.tag in self._classes:
             logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
 
-        self._add_object(function.tag, function)
+        if self._running_app:
+            # If this is inside a container, then objects can be defined after app initialization.
+            # So we may have to initialize objects once they get bound to the app.
+            if function.tag in self._running_app.tag_to_object_id:
+                object_id: str = self._running_app.tag_to_object_id[function.tag]
+                metadata: Message = self._running_app.object_handle_metadata[object_id]
+                function._hydrate(object_id, self._client, metadata)
+
+        self._functions[function.tag] = function
         if is_web_endpoint:
             self._web_endpoints.append(function.tag)
+
+    def _add_class(self, tag: str, cls: _Cls):
+        if self._running_app:
+            # If this is inside a container, then objects can be defined after app initialization.
+            # So we may have to initialize objects once they get bound to the app.
+            if tag in self._running_app.tag_to_object_id:
+                object_id: str = self._running_app.tag_to_object_id[tag]
+                metadata: Message = self._running_app.object_handle_metadata[object_id]
+                cls._hydrate(object_id, self._client, metadata)
+
+        self._classes[tag] = cls
 
     def _init_container(self, client: _Client, running_app: RunningApp):
         self._app_id = running_app.app_id
@@ -935,7 +937,7 @@ class _App:
             cls: _Cls = _Cls.from_local(user_cls, self, cls_func)
 
             tag: str = user_cls.__name__
-            self._add_object(tag, cls)
+            self._add_class(tag, cls)
             return cls  # type: ignore  # a _Cls instance "simulates" being the user provided class
 
         return wrapper
@@ -1022,16 +1024,25 @@ class _App:
             bar.remote()
         ```
         """
-        indexed_objects = dict(**other_app._functions, **other_app._classes)
-        for tag, object in indexed_objects.items():
-            existing_object = indexed_objects.get(tag)
-            if existing_object and existing_object != object:
+        for tag, function in other_app._functions.items():
+            existing_function = self._functions.get(tag)
+            if existing_function and existing_function != function:
                 logger.warning(
-                    f"Named app object {tag} with existing value {existing_object} is being "
-                    f"overwritten by a different object {object}"
+                    f"Named app function {tag} with existing value {existing_function} is being "
+                    f"overwritten by a different function {function}"
                 )
 
-            self._add_object(tag, object)
+            self._add_function(function, False)  # TODO(erikbern): webhook config?
+
+        for tag, cls in other_app._classes.items():
+            existing_cls = self._classes.get(tag)
+            if existing_cls and existing_cls != cls:
+                logger.warning(
+                    f"Named app class {tag} with existing value {existing_cls} is being "
+                    f"overwritten by a different class {cls}"
+                )
+
+            self._add_class(tag, cls)
 
     async def _logs(self, client: Optional[_Client] = None) -> AsyncGenerator[str, None]:
         """Stream logs from the app.
