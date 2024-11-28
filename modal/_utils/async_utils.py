@@ -598,8 +598,8 @@ async def async_merge(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T,
         yield 2
 
     async def gen2():
-        yield 3
-        yield 4
+        yield "a"
+        yield "b"
 
     async def example():
         values = set()
@@ -608,9 +608,9 @@ async def async_merge(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T,
 
         return values
 
-    # Output could be: {1, 'a', 2, 'b'} (order may vary)
+    # Output could be: {1, "a", 2, "b"} (order may vary)
     values = asyncio.run(example())
-    assert sorted(values) == [1, 2, 3, 4]
+    assert values == {1, "a", 2, "b"}
     ```
     """
     queue: asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper]] = asyncio.Queue(maxsize=len(generators) * 10)
