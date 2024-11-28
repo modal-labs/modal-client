@@ -573,6 +573,46 @@ STOP_SENTINEL = StopSentinelType()
 
 
 async def async_merge(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T, None]:
+    """
+    Asynchronously merges multiple async generators into a single async generator.
+
+    This function takes multiple async generators and yields their values in the order
+    they are produced. If any generator raises an exception, the exception is propagated.
+
+    Args:
+        *generators: One or more async generators to be merged.
+
+    Yields:
+        The values produced by the input async generators.
+
+    Raises:
+        Exception: If any of the input generators raises an exception, it is propagated.
+
+    Usage:
+    ```python
+    import asyncio
+    from modal._utils.async_utils import async_merge
+
+    async def gen1():
+        yield 1
+        yield 2
+
+    async def gen2():
+        yield "a"
+        yield "b"
+
+    async def example():
+        values = set()
+        async for value in async_merge(gen1(), gen2()):
+            values.add(value)
+
+        return values
+
+    # Output could be: {1, "a", 2, "b"} (order may vary)
+    values = asyncio.run(example())
+    assert values == {1, "a", 2, "b"}
+    ```
+    """
     queue: asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper]] = asyncio.Queue(maxsize=len(generators) * 10)
 
     async def producer(generator: AsyncGenerator[T, None]):
