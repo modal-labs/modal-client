@@ -375,7 +375,7 @@ class _Image(_Object, type_prefix="im"):
                 "\n"
                 "Run `image.add_local_*` commands last in your image build to avoid rebuilding images with every local "
                 "file change. Modal will then add these files to containers on startup instead, saving build time.\n"
-                "If you need to run other build steps after adding local files, set `copy=True` to copy the files"
+                "If you need to run other build steps after adding local files, set `copy=True` to copy the files "
                 "directly into the image, at the expense of some added build time.\n"
                 "\n"
                 "Example:\n"
