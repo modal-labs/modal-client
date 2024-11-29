@@ -200,11 +200,14 @@ class _Volume(_Object, type_prefix="vo"):
 
         Usage:
         ```python
-        with Volume.ephemeral() as vol:
-            assert vol.listdir() == []
+        import modal
+        with modal.Volume.ephemeral() as vol:
+            assert vol.listdir("/") == []
+        ```
 
-        async with Volume.ephemeral() as vol:
-            assert await vol.listdir() == []
+        ```python notest
+        async with modal.Volume.ephemeral() as vol:
+            assert await vol.listdir("/") == []
         ```
         """
         if client is None:
@@ -234,7 +237,7 @@ class _Volume(_Object, type_prefix="vo"):
         In contrast to `modal.Volume.from_name`, this is an eager method
         that will hydrate the local object with metadata from Modal servers.
 
-        ```python
+        ```python notest
         vol = modal.Volume.lookup("my-volume")
         print(vol.listdir("/"))
         ```

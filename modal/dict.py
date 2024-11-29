@@ -88,7 +88,9 @@ class _Dict(_Object, type_prefix="di"):
 
         with Dict.ephemeral() as d:
             d["foo"] = "bar"
+        ```
 
+        ```python notest
         async with Dict.ephemeral() as d:
             await d.put.aio("foo", "bar")
         ```
