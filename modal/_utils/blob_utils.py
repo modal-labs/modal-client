@@ -289,15 +289,16 @@ async def _blob_upload(
 
 
 async def blob_upload(payload: bytes, stub: ModalClientModal) -> str:
-    logger.debug(f"Uploading large blob of size {len(payload) / 1024 / 1024:.2f} MiB")
+    size_mib = len(payload) / 1024 / 1024
+    logger.debug(f"Uploading large blob of size {size_mib:.2f} MiB")
     t0 = time.time()
     if isinstance(payload, str):
         logger.warning("Blob uploading string, not bytes - auto-encoding as utf8")
         payload = payload.encode("utf8")
     upload_hashes = get_upload_hashes(payload)
     blob_id = await _blob_upload(upload_hashes, payload, stub)
-    size_mib = len(payload) / 1024 / 1024
-    throughput_mib_s = (len(payload) / 1024 / 1024) / (time.time() - t0)
+    dur_s = max(time.time() - t0, 0.001)  # avoid division by zero
+    throughput_mib_s = (size_mib) / dur_s
     logger.debug(f"Uploaded large blob of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s)." f" {blob_id}")
     return blob_id
 
@@ -324,14 +325,15 @@ async def _download_from_url(download_url: str) -> bytes:
 
 
 async def blob_download(blob_id: str, stub: ModalClientModal) -> bytes:
-    """Convenience function reading all of the downloaded file into memory."""
+    """Convenience function for reading all of the downloaded file into memory."""
     logger.debug(f"Downloading large blob {blob_id}")
     t0 = time.time()
     req = api_pb2.BlobGetRequest(blob_id=blob_id)
     resp = await retry_transient_errors(stub.BlobGet, req)
     data = await _download_from_url(resp.download_url)
     size_mib = len(data) / 1024 / 1024
-    throughput_mib_s = (len(data) / 1024 / 1024) / (time.time() - t0)
+    dur_s = max(time.time() - t0, 0.001)  # avoid division by zero
+    throughput_mib_s = size_mib / dur_s
     logger.debug(f"Downloaded large blob {blob_id} of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s)")
     return data
 
