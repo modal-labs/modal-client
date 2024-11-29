@@ -5,6 +5,7 @@ import hashlib
 import io
 import os
 import platform
+import time
 from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path, PurePosixPath
 from typing import Any, AsyncIterator, BinaryIO, Callable, List, Optional, Union
@@ -288,11 +289,17 @@ async def _blob_upload(
 
 
 async def blob_upload(payload: bytes, stub: ModalClientModal) -> str:
+    logger.debug(f"Uploading large blob of size {len(payload) / 1024 / 1024:.2f} MiB")
+    t0 = time.time()
     if isinstance(payload, str):
         logger.warning("Blob uploading string, not bytes - auto-encoding as utf8")
         payload = payload.encode("utf8")
     upload_hashes = get_upload_hashes(payload)
-    return await _blob_upload(upload_hashes, payload, stub)
+    blob_id = await _blob_upload(upload_hashes, payload, stub)
+    size_mib = len(payload) / 1024 / 1024
+    throughput_mib_s = (len(payload) / 1024 / 1024) / (time.time() - t0)
+    logger.debug(f"Uploaded large blob of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s)." f" {blob_id}")
+    return blob_id
 
 
 async def blob_upload_file(
@@ -317,11 +324,16 @@ async def _download_from_url(download_url: str) -> bytes:
 
 
 async def blob_download(blob_id: str, stub: ModalClientModal) -> bytes:
-    # convenience function reading all of the downloaded file into memory
+    """Convenience function reading all of the downloaded file into memory."""
+    logger.debug(f"Downloading large blob {blob_id}")
+    t0 = time.time()
     req = api_pb2.BlobGetRequest(blob_id=blob_id)
     resp = await retry_transient_errors(stub.BlobGet, req)
-
-    return await _download_from_url(resp.download_url)
+    data = await _download_from_url(resp.download_url)
+    size_mib = len(data) / 1024 / 1024
+    throughput_mib_s = (len(data) / 1024 / 1024) / (time.time() - t0)
+    logger.debug(f"Downloaded large blob {blob_id} of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s)")
+    return data
 
 
 async def blob_iter(blob_id: str, stub: ModalClientModal) -> AsyncIterator[bytes]:
