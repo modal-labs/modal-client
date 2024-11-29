@@ -133,6 +133,9 @@ class FunctionInfo:
         elif f is None and user_cls:
             # "service function" for running all methods of a class
             self.function_name = f"{user_cls.__name__}.*"
+        elif f and user_cls:
+            # Method may be defined on superclass of the wrapped class
+            self.function_name = f"{user_cls.__name__}.{f.__name__}"
         else:
             self.function_name = f.__qualname__
 
