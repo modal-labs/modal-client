@@ -155,7 +155,7 @@ def _find_partial_methods_for_user_cls(user_cls: type[Any], flags: int) -> dict[
             deprecation_error((2024, 2, 21), message)
 
     partial_functions: dict[str, PartialFunction] = {}
-    for parent_cls in user_cls.mro():
+    for parent_cls in reversed(user_cls.mro()):
         if parent_cls is not object:
             for k, v in parent_cls.__dict__.items():
                 if isinstance(v, PartialFunction):

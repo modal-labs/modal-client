@@ -201,6 +201,7 @@ def test_run_quiet(servicer, set_env_client, test_dir):
 def test_run_class_hierarchy(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "class_hierarchy.py"
     _run(["run", app_file.as_posix() + "::Wrapped.defined_on_base"])
+    _run(["run", app_file.as_posix() + "::Wrapped.overridden_on_wrapped"])
 
 
 def test_deploy(servicer, set_env_client, test_dir):
