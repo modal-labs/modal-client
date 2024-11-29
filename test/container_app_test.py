@@ -155,10 +155,12 @@ async def test_container_debug_snapshot(container_client, tmpdir, servicer):
 
 @pytest.mark.asyncio
 async def test_rpc_wrapping_restores(container_client, servicer, tmpdir):
+    import modal
+
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
     restore_path = temp_restore_path(tmpdir)
 
-    d = dict.lookup("my-amazing-dict", {"xyz": 123}, create_if_missing=True, client=container_client)
+    d = modal.Dict.lookup("my-amazing-dict", {"xyz": 123}, create_if_missing=True, client=container_client)
     d["abc"] = 42
 
     with set_env_vars(restore_path, servicer.container_addr):
