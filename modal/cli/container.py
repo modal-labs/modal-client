@@ -21,7 +21,7 @@ container_cli = typer.Typer(name="container", help="Manage and connect to runnin
 
 @container_cli.command("list")
 @synchronizer.create_blocking
-async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
+async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
     """List all containers that are currently running."""
     env = ensure_env(env)
     client = await _Client.from_env()

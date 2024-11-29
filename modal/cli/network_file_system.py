@@ -29,7 +29,7 @@ nfs_cli = Typer(name="nfs", help="Read and edit `modal.NetworkFileSystem` file s
 
 @nfs_cli.command(name="list", help="List the names of all network file systems.", rich_help_panel="Management")
 @synchronizer.create_blocking
-async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+async def list_(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
 
     client = await _Client.from_env()

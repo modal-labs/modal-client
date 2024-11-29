@@ -56,7 +56,7 @@ def warn_on_name_option(command: str, app_identifier: str, name: str) -> str:
 
 @app_cli.command("list")
 @synchronizer.create_blocking
-async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
+async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
     """List Modal apps that are currently deployed/running or recently stopped."""
     env = ensure_env(env)
     client = await _Client.from_env()

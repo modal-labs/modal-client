@@ -36,7 +36,7 @@ class RenderableBool(Text):
 
 
 @environment_cli.command(name="list", help="List all environments in the current workspace")
-def list(json: Optional[bool] = False):
+def list_(json: Optional[bool] = False):
     envs = environments.list_environments()
 
     # determine which environment is currently active, prioritizing the local default

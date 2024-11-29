@@ -58,7 +58,7 @@ async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_
 
 @queue_cli.command(name="list", rich_help_panel="Management")
 @synchronizer.create_blocking
-async def list(*, json: bool = False, env: Optional[str] = ENV_OPTION):
+async def list_(*, json: bool = False, env: Optional[str] = ENV_OPTION):
     """List all named Queues."""
     env = ensure_env(env)
 

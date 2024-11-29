@@ -108,7 +108,7 @@ async def get(
     rich_help_panel="Management",
 )
 @synchronizer.create_blocking
-async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+async def list_(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
     client = await _Client.from_env()
     response = await retry_transient_errors(client.stub.VolumeList, api_pb2.VolumeListRequest(environment_name=env))

@@ -23,7 +23,7 @@ secret_cli = typer.Typer(name="secret", help="Manage secrets.", no_args_is_help=
 
 @secret_cli.command("list", help="List your published secrets.")
 @synchronizer.create_blocking
-async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+async def list_(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
     client = await _Client.from_env()
     response = await retry_transient_errors(client.stub.SecretList, api_pb2.SecretListRequest(environment_name=env))
