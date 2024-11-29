@@ -997,7 +997,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         Please exercise care when using this advanced feature!
         Setting and forgetting a warm pool on functions can lead to increased costs.
 
-        ```python
+        ```python notest
         # Usage on a regular function.
         f = modal.Function.lookup("my-app", "function")
         f.keep_warm(2)
@@ -1076,7 +1076,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         In contrast to `modal.Function.from_name`, this is an eager method
         that will hydrate the local object with metadata from Modal servers.
 
-        ```python
+        ```python notest
         f = modal.Function.lookup("other-app", "function")
         ```
         """

@@ -385,13 +385,14 @@ class _StreamWriter:
 
         **Usage**
 
-        ```python
-        # Synchronous
+        ```python notest
         writer.write(data)
         writer.drain()
+        ```
 
-        # Async
-        writer.write(data)
+        Async usage:
+        ```python notest
+        writer.write(data)  # not a blocking operation
         await writer.drain.aio()
         ```
         """

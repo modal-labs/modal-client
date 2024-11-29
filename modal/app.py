@@ -401,14 +401,14 @@ class _App:
 
         **Example**
 
-        ```python
+        ```python notest
         with app.run():
             some_modal_function.remote()
         ```
 
         To enable output printing, use `modal.enable_output()`:
 
-        ```python
+        ```python notest
         with modal.enable_output():
             with app.run():
                 some_modal_function.remote()

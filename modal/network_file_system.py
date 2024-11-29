@@ -152,11 +152,13 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
 
         Usage:
         ```python
-        with NetworkFileSystem.ephemeral() as nfs:
-            assert nfs.listdir() == []
+        with modal.NetworkFileSystem.ephemeral() as nfs:
+            assert nfs.listdir("/") == []
+        ```
 
-        async with NetworkFileSystem.ephemeral() as nfs:
-            assert await nfs.listdir() == []
+        ```python notest
+        async with modal.NetworkFileSystem.ephemeral() as nfs:
+            assert await nfs.listdir("/") == []
         ```
         """
         if client is None:
@@ -184,7 +186,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         In contrast to `modal.NetworkFileSystem.from_name`, this is an eager method
         that will hydrate the local object with metadata from Modal servers.
 
-        ```python
+        ```python notest
         nfs = modal.NetworkFileSystem.lookup("my-nfs")
         print(nfs.listdir("/"))
         ```

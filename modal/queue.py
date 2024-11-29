@@ -126,7 +126,9 @@ class _Queue(_Object, type_prefix="qu"):
 
         with Queue.ephemeral() as q:
             q.put(123)
+        ```
 
+        ```python notest
         async with Queue.ephemeral() as q:
             await q.put.aio(123)
         ```

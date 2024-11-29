@@ -154,7 +154,7 @@ class _Obj:
         Note that all Modal methods and web endpoints of a class share the same set
         of containers and the warm_pool_size affects that common container pool.
 
-        ```python
+        ```python notest
         # Usage on a parametrized function.
         Model = modal.Cls.lookup("my-app", "Model")
         Model("fine-tuned-model").keep_warm(2)
@@ -524,7 +524,7 @@ class _Cls(_Object, type_prefix="cs"):
         In contrast to `modal.Cls.from_name`, this is an eager method
         that will hydrate the local object with metadata from Modal servers.
 
-        ```python
+        ```python notest
         Class = modal.Cls.lookup("other-app", "Class")
         obj = Class()
         ```
