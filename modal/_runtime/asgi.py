@@ -280,8 +280,47 @@ def wait_for_web_server(host: str, port: int, *, timeout: float) -> None:
                 ) from ex
 
 
+def _add_forwarded_for_header(scope):
+    # we strip X-Forwarded-For headers from the scope
+    # but we can add it back from the ASGI scope
+    # https://asgi.readthedocs.io/en/latest/specs/www.html#http-connection-scope
+
+    # X-Forwarded-For headers is a comma separated list of IP addresses
+    # there may be multiple X-Forwarded-For headers
+    # we want to prepend the client IP to the first one
+    # but only if it doesn't exist in one of the headers already
+
+    first_x_forwarded_for_idx = None
+    if "headers" in scope and "client" in scope:
+        client_host = scope["client"][0]
+
+        for idx, header in enumerate(scope["headers"]):
+            if header[0] == b"X-Forwarded-For":
+                if first_x_forwarded_for_idx is None:
+                    first_x_forwarded_for_idx = idx
+                values = header[1].decode().split(", ")
+
+                if client_host in values:
+                    # we already have the client IP in this header
+                    # return early
+                    return scope
+
+        if first_x_forwarded_for_idx is not None:
+            # we have X-Forwarded-For headers but they don't have the client IP
+            # we need to prepend the client IP to the first one
+            values = [client_host] + scope["headers"][first_x_forwarded_for_idx][1].decode().split(", ")
+            scope["headers"][first_x_forwarded_for_idx] = (b"X-Forwarded-For", ", ".join(values).encode())
+        else:
+            # we don't have X-Forwarded-For headers, we need to add one
+            scope["headers"].append((b"X-Forwarded-For", client_host.encode()))
+
+    return scope
+
+
 async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, send) -> None:
     proxy_response: aiohttp.ClientResponse
+
+    scope = _add_forwarded_for_header(scope)
 
     async def request_generator() -> AsyncGenerator[bytes, None]:
         while True:
