@@ -9,19 +9,15 @@ import signal
 import sys
 import time
 import traceback
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
-    AsyncGenerator,
-    AsyncIterator,
     Callable,
     ClassVar,
-    Dict,
-    List,
     Optional,
-    Tuple,
 )
 
 from google.protobuf.empty_pb2 import Empty
@@ -68,8 +64,8 @@ class IOContext:
     in a batched or single input context.
     """
 
-    input_ids: List[str]
-    function_call_ids: List[str]
+    input_ids: list[str]
+    function_call_ids: list[str]
     finalized_function: "modal._runtime.user_code_imports.FinalizedFunction"
 
     _cancel_issued: bool = False
@@ -77,10 +73,10 @@ class IOContext:
 
     def __init__(
         self,
-        input_ids: List[str],
-        function_call_ids: List[str],
+        input_ids: list[str],
+        function_call_ids: list[str],
         finalized_function: "modal._runtime.user_code_imports.FinalizedFunction",
-        function_inputs: List[api_pb2.FunctionInput],
+        function_inputs: list[api_pb2.FunctionInput],
         is_batched: bool,
         client: _Client,
     ):
@@ -95,8 +91,8 @@ class IOContext:
     async def create(
         cls,
         client: _Client,
-        finalized_functions: Dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
-        inputs: List[Tuple[str, str, api_pb2.FunctionInput]],
+        finalized_functions: dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
+        inputs: list[tuple[str, str, api_pb2.FunctionInput]],
         is_batched: bool,
     ) -> "IOContext":
         assert len(inputs) >= 1 if is_batched else len(inputs) == 1
@@ -136,7 +132,7 @@ class IOContext:
             #  between creating a new task for an input and attaching the cancellation callback
             logger.warning("Unexpected: Could not cancel input")
 
-    def _args_and_kwargs(self) -> Tuple[Tuple[Any, ...], Dict[str, List[Any]]]:
+    def _args_and_kwargs(self) -> tuple[tuple[Any, ...], dict[str, list[Any]]]:
         # deserializing here instead of the constructor
         # to make sure we handle user exceptions properly
         # and don't retry
@@ -153,7 +149,7 @@ class IOContext:
             param_names.append(param.name)
 
         # aggregate args and kwargs of all inputs into a kwarg dict
-        kwargs_by_inputs: List[Dict[str, Any]] = [{} for _ in range(len(self.input_ids))]
+        kwargs_by_inputs: list[dict[str, Any]] = [{} for _ in range(len(self.input_ids))]
 
         for i, (args, kwargs) in enumerate(deserialized_args):
             # check that all batched inputs should have the same number of args and kwargs
@@ -187,7 +183,7 @@ class IOContext:
         logger.debug(f"Finished input {self.input_ids}")
         return res
 
-    def validate_output_data(self, data: Any) -> List[Any]:
+    def validate_output_data(self, data: Any) -> list[Any]:
         if not self._is_batched:
             return [data]
 
@@ -263,7 +259,7 @@ class _ContainerIOManager:
     calls_completed: int
     total_user_time: float
     current_input_id: Optional[str]
-    current_inputs: Dict[str, IOContext]  # input_id -> IOContext
+    current_inputs: dict[str, IOContext]  # input_id -> IOContext
     current_input_started_at: Optional[float]
 
     _target_concurrency: int
@@ -472,7 +468,7 @@ class _ContainerIOManager:
             client=self._client,
         )
 
-    async def get_serialized_function(self) -> Tuple[Optional[Any], Optional[Callable[..., Any]]]:
+    async def get_serialized_function(self) -> tuple[Optional[Any], Optional[Callable[..., Any]]]:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self._client.stub.FunctionGetSerialized(request)
@@ -498,7 +494,7 @@ class _ContainerIOManager:
     def serialize_data_format(self, obj: Any, data_format: int) -> bytes:
         return serialize_data_format(obj, data_format)
 
-    async def format_blob_data(self, data: bytes) -> Dict[str, Any]:
+    async def format_blob_data(self, data: bytes) -> dict[str, Any]:
         return (
             {"data_blob_id": await blob_upload(data, self._client.stub)}
             if len(data) > MAX_OBJECT_SIZE_BYTES
@@ -515,7 +511,7 @@ class _ContainerIOManager:
         function_call_id: str,
         start_index: int,
         data_format: int,
-        messages_bytes: List[Any],
+        messages_bytes: list[Any],
     ) -> None:
         """Put data onto the `data_out` stream of a function call.
 
@@ -523,7 +519,7 @@ class _ContainerIOManager:
         was introduced as a performance optimization in client version 0.57, so older clients will
         still use the previous Postgres-backed system based on `FunctionPutOutputs()`.
         """
-        data_chunks: List[api_pb2.DataChunk] = []
+        data_chunks: list[api_pb2.DataChunk] = []
         for i, message_bytes in enumerate(messages_bytes):
             chunk = api_pb2.DataChunk(data_format=data_format, index=start_index + i)  # type: ignore
             if len(message_bytes) > MAX_OBJECT_SIZE_BYTES:
@@ -588,7 +584,7 @@ class _ContainerIOManager:
         self,
         batch_max_size: int,
         batch_wait_ms: int,
-    ) -> AsyncIterator[List[Tuple[str, str, api_pb2.FunctionInput]]]:
+    ) -> AsyncIterator[list[tuple[str, str, api_pb2.FunctionInput]]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         iteration = 0
         while self._fetching_inputs:
@@ -645,7 +641,7 @@ class _ContainerIOManager:
     @synchronizer.no_io_translation
     async def run_inputs_outputs(
         self,
-        finalized_functions: Dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
+        finalized_functions: dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
         batch_max_size: int = 0,
         batch_wait_ms: int = 0,
     ) -> AsyncIterator[IOContext]:
@@ -675,7 +671,7 @@ class _ContainerIOManager:
         io_context: IOContext,
         started_at: float,
         data_format: "modal_proto.api_pb2.DataFormat.ValueType",
-        results: List[api_pb2.GenericResult],
+        results: list[api_pb2.GenericResult],
     ) -> None:
         output_created_at = time.time()
         outputs = [
@@ -704,7 +700,7 @@ class _ContainerIOManager:
             logger.info(err)
             return self.serialize(SerializationError(err))
 
-    def serialize_traceback(self, exc: BaseException) -> Tuple[Optional[bytes], Optional[bytes]]:
+    def serialize_traceback(self, exc: BaseException) -> tuple[Optional[bytes], Optional[bytes]]:
         serialized_tb, tb_line_cache = None, None
 
         try:
@@ -831,7 +827,7 @@ class _ContainerIOManager:
             )
             self.exit_context(started_at, io_context.input_ids)
 
-    def exit_context(self, started_at, input_ids: List[str]):
+    def exit_context(self, started_at, input_ids: list[str]):
         self.total_user_time += time.time() - started_at
         self.calls_completed += 1
 
@@ -934,7 +930,7 @@ class _ContainerIOManager:
             self._waiting_for_memory_snapshot = False
             self.heartbeat_condition.notify_all()
 
-    async def volume_commit(self, volume_ids: List[str]) -> None:
+    async def volume_commit(self, volume_ids: list[str]) -> None:
         """
         Perform volume commit for given `volume_ids`.
         Only used on container exit to persist uncommitted changes on behalf of user.

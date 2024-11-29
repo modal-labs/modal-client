@@ -6,7 +6,8 @@ import errno
 import os
 import select
 import sys
-from typing import Callable, Coroutine, Optional
+from collections.abc import Coroutine
+from typing import Callable, Optional
 
 from modal._pty import raw_terminal, set_nonblocking
 

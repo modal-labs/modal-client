@@ -5,7 +5,7 @@ import subprocess
 import sys
 import threading
 import typing
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING
 
 from typing_extensions import assert_type
 
@@ -87,7 +87,7 @@ def test_call_class_sync(client, servicer):
     assert (
         len(ctx.get_requests("FunctionBindParams")) == 0
     )  # shouldn't need to bind in case there are no instance args etc.
-    function_creates_requests: typing.List[api_pb2.FunctionCreateRequest] = ctx.get_requests("FunctionCreate")
+    function_creates_requests: list[api_pb2.FunctionCreateRequest] = ctx.get_requests("FunctionCreate")
     assert len(function_creates_requests) == 1
     (class_create,) = ctx.get_requests("ClassCreate")
     function_creates = {fc.function.function_name: fc for fc in function_creates_requests}
@@ -589,7 +589,7 @@ class ClsWithHandlers:
 
 
 def test_handlers():
-    pfs: Dict[str, _PartialFunction]
+    pfs: dict[str, _PartialFunction]
 
     pfs = _find_partial_methods_for_user_cls(ClsWithHandlers, _PartialFunctionFlags.BUILD)
     assert list(pfs.keys()) == ["my_build", "my_build_and_enter"]

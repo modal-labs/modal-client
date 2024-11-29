@@ -4,7 +4,8 @@ import inspect
 import logging
 import typing
 from collections import Counter, defaultdict
-from typing import Any, Awaitable, Callable, Dict, List, Tuple
+from collections.abc import Awaitable
+from typing import Any, Callable
 
 import grpclib.server
 from grpclib import GRPCError, Status
@@ -93,7 +94,7 @@ def patch_mock_servicer(cls):
 
 
 class ResponseNotConsumed(Exception):
-    def __init__(self, unconsumed_requests: List[str]):
+    def __init__(self, unconsumed_requests: list[str]):
         self.unconsumed_requests = unconsumed_requests
         request_count = Counter(unconsumed_requests)
         super().__init__(f"Expected but did not receive the following requests: {request_count}")
@@ -101,9 +102,9 @@ class ResponseNotConsumed(Exception):
 
 class InterceptionContext:
     def __init__(self):
-        self.calls: List[Tuple[str, Any]] = []  # List[Tuple[method_name, message]]
-        self.custom_responses: Dict[str, List[Tuple[Callable[[Any], bool], List[Any]]]] = defaultdict(list)
-        self.custom_defaults: Dict[str, Callable[["MockClientServicer", grpclib.server.Stream], Awaitable[None]]] = {}
+        self.calls: list[tuple[str, Any]] = []  # List[Tuple[method_name, message]]
+        self.custom_responses: dict[str, list[tuple[Callable[[Any], bool], list[Any]]]] = defaultdict(list)
+        self.custom_defaults: dict[str, Callable[["MockClientServicer", grpclib.server.Stream], Awaitable[None]]] = {}
 
     def add_response(
         self, method_name: str, first_payload, *, request_filter: Callable[[Any], bool] = lambda req: True
@@ -147,7 +148,7 @@ class InterceptionContext:
 
         raise KeyError(f"No message of that type in call list: {self.calls}")
 
-    def get_requests(self, method_name: str) -> List[Any]:
+    def get_requests(self, method_name: str) -> list[Any]:
         return [msg for _method_name, msg in self.calls if _method_name == method_name]
 
     def _add_recv(self, method_name: str, msg):

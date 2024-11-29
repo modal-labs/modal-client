@@ -4,7 +4,6 @@ import importlib.util
 import typing
 from importlib.metadata import PackageNotFoundError, files
 from pathlib import Path
-from typing import Tuple
 
 from ..exception import ModuleNotMountable
 
@@ -24,7 +23,7 @@ def get_file_formats(module):
 BINARY_FORMATS = ["so", "S", "s", "asm"]  # TODO
 
 
-def get_module_mount_info(module_name: str) -> typing.Sequence[typing.Tuple[bool, Path]]:
+def get_module_mount_info(module_name: str) -> typing.Sequence[tuple[bool, Path]]:
     """Returns a list of tuples [(is_dir, path)] describing how to mount a given module."""
     file_formats = get_file_formats(module_name)
     if set(BINARY_FORMATS) & set(file_formats):
@@ -49,7 +48,7 @@ def get_module_mount_info(module_name: str) -> typing.Sequence[typing.Tuple[bool
     return entries
 
 
-def parse_major_minor_version(version_string: str) -> Tuple[int, int]:
+def parse_major_minor_version(version_string: str) -> tuple[int, int]:
     parts = version_string.split(".")
     if len(parts) < 2:
         raise ValueError("version_string must have at least an 'X.Y' format")

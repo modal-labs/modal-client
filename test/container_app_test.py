@@ -4,7 +4,6 @@ import os
 import pytest
 import time
 from contextlib import contextmanager
-from typing import Dict
 from unittest import mock
 
 from google.protobuf.empty_pb2 import Empty
@@ -41,11 +40,11 @@ def temp_restore_path(tmpdir):
 
 @pytest.mark.asyncio
 async def test_container_function_lazily_imported(container_client):
-    tag_to_object_id: Dict[str, str] = {
+    tag_to_object_id: dict[str, str] = {
         "my_f_1": "fu-123",
         "my_d": "di-123",
     }
-    object_handle_metadata: Dict[str, Message] = {
+    object_handle_metadata: dict[str, Message] = {
         "fu-123": api_pb2.FunctionHandleMetadata(),
     }
     container_app = RunningApp(
@@ -156,12 +155,10 @@ async def test_container_debug_snapshot(container_client, tmpdir, servicer):
 
 @pytest.mark.asyncio
 async def test_rpc_wrapping_restores(container_client, servicer, tmpdir):
-    from modal import Dict
-
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
     restore_path = temp_restore_path(tmpdir)
 
-    d = Dict.lookup("my-amazing-dict", {"xyz": 123}, create_if_missing=True, client=container_client)
+    d = dict.lookup("my-amazing-dict", {"xyz": 123}, create_if_missing=True, client=container_client)
     d["abc"] = 42
 
     with set_env_vars(restore_path, servicer.container_addr):

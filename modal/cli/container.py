@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import typer
 from rich.text import Text
@@ -31,7 +31,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
     )
 
     column_names = ["Container ID", "App ID", "App Name", "Start Time"]
-    rows: List[List[Union[Text, str]]] = []
+    rows: list[list[Union[Text, str]]] = []
     res.tasks.sort(key=lambda task: task.started_at, reverse=True)
     for task_stats in res.tasks:
         rows.append(
@@ -56,7 +56,7 @@ def logs(container_id: str = typer.Argument(help="Container ID")):
 @synchronizer.create_blocking
 async def exec(
     container_id: str = typer.Argument(help="Container ID"),
-    command: List[str] = typer.Argument(help="A command to run inside the container."),
+    command: list[str] = typer.Argument(help="A command to run inside the container."),
     pty: bool = typer.Option(default=True, help="Run the command using a PTY."),
 ):
     """Execute a command in a container."""

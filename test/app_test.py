@@ -232,7 +232,7 @@ def test_redeploy_delete_objects(servicer, client):
     res = deploy_app(app, "xyz", client=client)
 
     # Check objects
-    assert set(servicer.app_objects[res.app_id].keys()) == set(["d1", "d2"])
+    assert set(servicer.app_objects[res.app_id].keys()) == {"d1", "d2"}
 
     # Deploy an app with objects d2 and d3
     app = App()
@@ -241,7 +241,7 @@ def test_redeploy_delete_objects(servicer, client):
     res = deploy_app(app, "xyz", client=client)
 
     # Make sure d1 is deleted
-    assert set(servicer.app_objects[res.app_id].keys()) == set(["d2", "d3"])
+    assert set(servicer.app_objects[res.app_id].keys()) == {"d2", "d3"}
 
 
 @pytest.mark.asyncio

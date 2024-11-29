@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import re
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import rich
 import typer
@@ -65,7 +65,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
         api_pb2.AppListRequest(environment_name=_get_environment_name(env))
     )
 
-    columns: List[Union[Column, str]] = [
+    columns: list[Union[Column, str]] = [
         Column("App ID", min_width=25),  # Ensure that App ID is not truncated in slim terminals
         "Description",
         "State",
@@ -73,7 +73,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
         "Created at",
         "Stopped at",
     ]
-    rows: List[List[Union[Text, str]]] = []
+    rows: list[list[Union[Text, str]]] = []
     for app_stats in resp.apps:
         state = APP_STATE_TO_MESSAGE.get(app_stats.state, Text("unknown", style="gray"))
         rows.append(

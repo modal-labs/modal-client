@@ -2,7 +2,7 @@
 import os
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import typer
 from click import UsageError
@@ -257,7 +257,7 @@ async def rm(
 @synchronizer.create_blocking
 async def cp(
     volume_name: str,
-    paths: List[str],  # accepts multiple paths, last path is treated as destination path
+    paths: list[str],  # accepts multiple paths, last path is treated as destination path
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)

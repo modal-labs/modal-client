@@ -8,15 +8,15 @@ import re
 import sys
 import traceback
 from types import TracebackType
-from typing import Any, Dict, Optional, Tuple, Type
+from typing import Any, Optional
 
 from ._vendor.tblib import Traceback as TBLibTraceback
 
-TBDictType = Dict[str, Any]
-LineCacheType = Dict[Tuple[str, str], str]
+TBDictType = dict[str, Any]
+LineCacheType = dict[tuple[str, str], str]
 
 
-def extract_traceback(exc: BaseException, task_id: str) -> Tuple[TBDictType, LineCacheType]:
+def extract_traceback(exc: BaseException, task_id: str) -> tuple[TBDictType, LineCacheType]:
     """Given an exception, extract a serializable traceback (with task ID markers included),
     and a line cache that maps (filename, lineno) to line contents. The latter is used to show
     a helpful traceback to the user, even if they don't have packages installed locally that
@@ -103,7 +103,7 @@ def traceback_contains_remote_call(tb: Optional[TracebackType]) -> bool:
     return False
 
 
-def print_exception(exc: Optional[Type[BaseException]], value: Optional[BaseException], tb: Optional[TracebackType]):
+def print_exception(exc: Optional[type[BaseException]], value: Optional[BaseException], tb: Optional[TracebackType]):
     """Add backwards compatibility for printing exceptions with "notes" for Python<3.11."""
     traceback.print_exception(exc, value, tb)
     if sys.version_info < (3, 11) and value is not None:

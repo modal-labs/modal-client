@@ -2,7 +2,8 @@
 import inspect
 import os
 import typing
-from typing import Any, Callable, Collection, Dict, List, Optional, Tuple, Type, TypeVar, Union
+from collections.abc import Collection
+from typing import Any, Callable, Optional, TypeVar, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -76,10 +77,10 @@ class _Obj:
 
     All this class does is to return `Function` objects."""
 
-    _functions: Dict[str, _Function]
+    _functions: dict[str, _Function]
     _entered: bool
     _user_cls_instance: Optional[Any] = None
-    _construction_args: Tuple[tuple, Dict[str, Any]]
+    _construction_args: tuple[tuple, dict[str, Any]]
 
     _instance_service_function: Optional[_Function]
 
@@ -91,7 +92,7 @@ class _Obj:
         self,
         user_cls: type,
         class_service_function: Optional[_Function],  # only None for <v0.63 classes
-        classbound_methods: Dict[str, _Function],
+        classbound_methods: dict[str, _Function],
         from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
         args,
@@ -244,9 +245,9 @@ class _Cls(_Object, type_prefix="cs"):
     _class_service_function: Optional[
         _Function
     ]  # The _Function serving *all* methods of the class, used for version >=v0.63
-    _method_functions: Optional[Dict[str, _Function]] = None  # Placeholder _Functions for each method
+    _method_functions: Optional[dict[str, _Function]] = None  # Placeholder _Functions for each method
     _options: Optional[api_pb2.FunctionOptions]
-    _callables: Dict[str, Callable[..., Any]]
+    _callables: dict[str, Callable[..., Any]]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
     _app: Optional["modal.app._App"] = None  # not set for lookups
 
@@ -265,7 +266,7 @@ class _Cls(_Object, type_prefix="cs"):
         self._callables = other._callables
         self._from_other_workspace = other._from_other_workspace
 
-    def _get_partial_functions(self) -> Dict[str, _PartialFunction]:
+    def _get_partial_functions(self) -> dict[str, _PartialFunction]:
         if not self._user_cls:
             raise AttributeError("You can only get the partial functions of a local Cls instance")
         return _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.all())
@@ -344,8 +345,8 @@ class _Cls(_Object, type_prefix="cs"):
         # validate signature
         _Cls.validate_construction_mechanism(user_cls)
 
-        method_functions: Dict[str, _Function] = {}
-        partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
+        method_functions: dict[str, _Function] = {}
+        partial_functions: dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
             user_cls, _PartialFunctionFlags.FUNCTION
         )
 
@@ -361,11 +362,11 @@ class _Cls(_Object, type_prefix="cs"):
             partial_function.wrapped = True
 
         # Get all callables
-        callables: Dict[str, Callable] = {
+        callables: dict[str, Callable] = {
             k: pf.raw_f for k, pf in _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.all()).items()
         }
 
-        def _deps() -> List[_Function]:
+        def _deps() -> list[_Function]:
             return [class_service_function]
 
         async def _load(self: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
@@ -392,7 +393,7 @@ class _Cls(_Object, type_prefix="cs"):
 
     @classmethod
     def from_name(
-        cls: Type["_Cls"],
+        cls: type["_Cls"],
         app_name: str,
         tag: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -454,11 +455,11 @@ class _Cls(_Object, type_prefix="cs"):
 
     def with_options(
         self: "_Cls",
-        cpu: Optional[Union[float, Tuple[float, float]]] = None,
-        memory: Optional[Union[int, Tuple[int, int]]] = None,
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
+        memory: Optional[Union[int, tuple[int, int]]] = None,
         gpu: GPU_T = None,
         secrets: Collection[_Secret] = (),
-        volumes: Dict[Union[str, os.PathLike], _Volume] = {},
+        volumes: dict[Union[str, os.PathLike], _Volume] = {},
         retries: Optional[Union[int, Retries]] = None,
         timeout: Optional[int] = None,
         concurrency_limit: Optional[int] = None,

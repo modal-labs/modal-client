@@ -19,9 +19,10 @@ import threading
 import traceback
 import uuid
 from collections import defaultdict
+from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Dict, Iterator, List, Optional, Tuple, get_args
+from typing import Any, get_args
 
 import aiohttp.web
 import aiohttp.web_runner
@@ -70,8 +71,8 @@ def ignore_local_config():
 
 class FunctionsRegistry:
     def __init__(self):
-        self._functions: Dict[str, api_pb2.Function] = {}
-        self._functions_data: Dict[str, api_pb2.FunctionData] = {}
+        self._functions: dict[str, api_pb2.Function] = {}
+        self._functions_data: dict[str, api_pb2.FunctionData] = {}
 
     def __getitem__(self, key):
         if key in self._functions:
@@ -116,7 +117,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )  # set to non-1 to get lock-step of input releases within a test
 
         self.app_state_history = defaultdict(list)
-        self.app_heartbeats: Dict[str, int] = defaultdict(int)
+        self.app_heartbeats: dict[str, int] = defaultdict(int)
         self.container_snapshot_requests = 0
         self.n_blobs = 0
         self.blob_host = blob_host
@@ -131,11 +132,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.fail_get_data_out = []
         self.fc_data_in = defaultdict(lambda: asyncio.Queue())  # unbounded
         self.fc_data_out = defaultdict(lambda: asyncio.Queue())  # unbounded
-        self.queue: Dict[bytes, List[bytes]] = {b"": []}
+        self.queue: dict[bytes, list[bytes]] = {b"": []}
         self.deployed_apps = {
             client_mount_name(): "ap-x",
         }
-        self.app_deployment_history: defaultdict[str, List[Dict[str, Any]]] = defaultdict(list)
+        self.app_deployment_history: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
         self.app_deployment_history["ap-x"] = [
             {
                 "app_id": "ap-x",
@@ -167,7 +168,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_functions = 0
         self.n_schedules = 0
         self.function2schedule = {}
-        self.function_create_error: Optional[BaseException] = None
+        self.function_create_error: BaseException | None = None
         self.heartbeat_status_code = None
         self.n_apps = 0
         self.classes = []
@@ -175,8 +176,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.task_result = None
 
-        self.nfs_files: Dict[str, Dict[str, api_pb2.SharedVolumePutFileRequest]] = defaultdict(dict)
-        self.volume_files: Dict[str, Dict[str, VolumeFile]] = defaultdict(dict)
+        self.nfs_files: dict[str, dict[str, api_pb2.SharedVolumePutFileRequest]] = defaultdict(dict)
+        self.volume_files: dict[str, dict[str, VolumeFile]] = defaultdict(dict)
         self.images = {}
         self.image_build_function_ids = {}
         self.image_builder_versions = {}
@@ -188,9 +189,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.precreated_functions = set()
 
         self.app_functions: FunctionsRegistry = FunctionsRegistry()
-        self.bound_functions: Dict[Tuple[str, bytes], str] = {}
-        self.function_params: Dict[str, Tuple[Tuple, Dict[str, Any]]] = {}
-        self.function_options: Dict[str, api_pb2.FunctionOptions] = {}
+        self.bound_functions: dict[tuple[str, bytes], str] = {}
+        self.function_params: dict[str, tuple[tuple, dict[str, Any]]] = {}
+        self.function_options: dict[str, api_pb2.FunctionOptions] = {}
         self.fcidx = 0
 
         self.function_serialized = None
@@ -221,17 +222,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.volume_counter = 0
         # Volume-id -> commit/reload count
-        self.volume_commits: Dict[str, int] = defaultdict(lambda: 0)
-        self.volume_reloads: Dict[str, int] = defaultdict(lambda: 0)
+        self.volume_commits: dict[str, int] = defaultdict(int)
+        self.volume_reloads: dict[str, int] = defaultdict(int)
 
         self.sandbox_defs = []
         self.sandbox_app_id = None
         self.sandbox: asyncio.subprocess.Process = None
-        self.sandbox_result: Optional[api_pb2.GenericResult] = None
+        self.sandbox_result: api_pb2.GenericResult | None = None
 
         self.shell_prompt = None
         self.container_exec: asyncio.subprocess.Process = None
-        self.container_exec_result: Optional[api_pb2.GenericResult] = None
+        self.container_exec_result: api_pb2.GenericResult | None = None
 
         self.token_flow_localhost_port = None
         self.queue_max_len = 100
@@ -303,7 +304,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self._function_body = func
         return func
 
-    def function_by_name(self, name: str, params: Optional[Tuple[Tuple, Dict[str, Any]]] = None) -> api_pb2.Function:
+    def function_by_name(self, name: str, params: tuple[tuple, dict[str, Any]] | None = None) -> api_pb2.Function:
         matches = []
         all_names = []
         for function_id, fun in self.app_functions.items():
@@ -926,8 +927,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             self.n_functions += 1
             function_id = f"fu-{self.n_functions}"
-        function: Optional[api_pb2.Function] = None
-        function_data: Optional[api_pb2.FunctionData] = None
+        function: api_pb2.Function | None = None
+        function_data: api_pb2.FunctionData | None = None
         if len(request.function_data.ranked_functions) > 0:
             function_data = api_pb2.FunctionData()
             function_data.CopyFrom(request.function_data)
@@ -1504,9 +1505,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Task
 
-    async def TaskCurrentInputs(
-        self, stream: "grpclib.server.Stream[Empty, api_pb2.TaskCurrentInputsResponse]"
-    ) -> None:
+    async def TaskCurrentInputs(self, stream: grpclib.server.Stream[Empty, api_pb2.TaskCurrentInputsResponse]) -> None:
         await stream.send_message(api_pb2.TaskCurrentInputsResponse(input_ids=[]))  # dummy implementation
 
     async def TaskResult(self, stream):
@@ -1695,7 +1694,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 @pytest.fixture
 def blob_server():
     blobs = {}
-    blob_parts: Dict[str, Dict[int, bytes]] = defaultdict(dict)
+    blob_parts: dict[str, dict[int, bytes]] = defaultdict(dict)
 
     async def upload(request):
         blob_id = request.query["blob_id"]

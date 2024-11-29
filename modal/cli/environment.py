@@ -1,11 +1,10 @@
 # Copyright Modal Labs 2023
-from typing import Optional, Union
+from typing import Annotated, Optional, Union
 
 import typer
 from click import UsageError
 from grpclib import GRPCError, Status
 from rich.text import Text
-from typing_extensions import Annotated
 
 from modal import environments
 from modal._utils.name_utils import check_environment_name

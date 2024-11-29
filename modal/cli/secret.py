@@ -3,7 +3,7 @@ import os
 import platform
 import subprocess
 from tempfile import NamedTemporaryFile
-from typing import List, Optional
+from typing import Optional
 
 import click
 import typer
@@ -47,7 +47,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
 @synchronizer.create_blocking
 async def create(
     secret_name,
-    keyvalues: List[str] = typer.Argument(..., help="Space-separated KEY=VALUE items"),
+    keyvalues: list[str] = typer.Argument(..., help="Space-separated KEY=VALUE items"),
     env: Optional[str] = ENV_OPTION,
     force: bool = typer.Option(False, "--force", help="Overwrite the secret if it already exists."),
 ):

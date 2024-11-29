@@ -3,7 +3,7 @@ import importlib
 import typing
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Optional
 
 import modal._runtime.container_io_manager
 import modal.cls
@@ -49,12 +49,12 @@ class Service(metaclass=ABCMeta):
 
     user_cls_instance: Any
     app: Optional["modal.app._App"]
-    code_deps: Optional[List["modal.object._Object"]]
+    code_deps: Optional[list["modal.object._Object"]]
 
     @abstractmethod
     def get_finalized_functions(
         self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
-    ) -> Dict[str, "FinalizedFunction"]:
+    ) -> dict[str, "FinalizedFunction"]:
         ...
 
 
@@ -99,13 +99,13 @@ def construct_webhook_callable(
 class ImportedFunction(Service):
     user_cls_instance: Any
     app: Optional["modal.app._App"]
-    code_deps: Optional[List["modal.object._Object"]]
+    code_deps: Optional[list["modal.object._Object"]]
 
     _user_defined_callable: Callable[..., Any]
 
     def get_finalized_functions(
         self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
-    ) -> Dict[str, "FinalizedFunction"]:
+    ) -> dict[str, "FinalizedFunction"]:
         # Check this property before we turn it into a method (overriden by webhooks)
         is_async = get_is_async(self._user_defined_callable)
         # Use the function definition for whether this is a generator (overriden by webhooks)
@@ -142,13 +142,13 @@ class ImportedFunction(Service):
 class ImportedClass(Service):
     user_cls_instance: Any
     app: Optional["modal.app._App"]
-    code_deps: Optional[List["modal.object._Object"]]
+    code_deps: Optional[list["modal.object._Object"]]
 
-    _partial_functions: Dict[str, "modal.partial_function._PartialFunction"]
+    _partial_functions: dict[str, "modal.partial_function._PartialFunction"]
 
     def get_finalized_functions(
         self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
-    ) -> Dict[str, "FinalizedFunction"]:
+    ) -> dict[str, "FinalizedFunction"]:
         finalized_functions = {}
         for method_name, partial in self._partial_functions.items():
             partial = synchronizer._translate_in(partial)  # ugly
@@ -184,9 +184,7 @@ class ImportedClass(Service):
         return finalized_functions
 
 
-def get_user_class_instance(
-    cls: typing.Union[type, modal.cls.Cls], args: typing.Tuple, kwargs: Dict[str, Any]
-) -> typing.Any:
+def get_user_class_instance(cls: typing.Union[type, modal.cls.Cls], args: tuple, kwargs: dict[str, Any]) -> typing.Any:
     """Returns instance of the underlying class to be used as the `self`
 
     The input `cls` can either be the raw Python class the user has declared ("user class"),
@@ -236,7 +234,7 @@ def import_single_function_service(
     """
     user_defined_callable: Callable
     function: Optional[_Function] = None
-    code_deps: Optional[List["modal.object._Object"]] = None
+    code_deps: Optional[list["modal.object._Object"]] = None
     active_app: Optional[modal.app._App] = None
 
     if ser_fun is not None:
@@ -311,7 +309,7 @@ def import_class_service(
     See import_function.
     """
     active_app: Optional["modal.app._App"]
-    code_deps: Optional[List["modal.object._Object"]]
+    code_deps: Optional[list["modal.object._Object"]]
     cls: typing.Union[type, modal.cls.Cls]
 
     if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
