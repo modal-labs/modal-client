@@ -77,7 +77,7 @@ class _Obj:
     All this class does is to return `Function` objects."""
 
     _functions: Dict[str, _Function]
-    _entered: bool
+    _has_entered: bool
     _user_cls_instance: Optional[Any] = None
     _construction_args: Tuple[tuple, Dict[str, Any]]
 
@@ -121,7 +121,6 @@ class _Obj:
 
         # Used for construction local object lazily
         self._has_entered = False
-        self._local_user_cls_instance = None
         self._user_cls = user_cls
         self._construction_args = (args, kwargs)  # used for lazy construction in case of explicit constructors
 
@@ -176,7 +175,7 @@ class _Obj:
         return self._user_cls_instance
 
     def _enter(self):
-        if not self._entered:
+        if not self._has_entered:
             if hasattr(self._user_cls_instance, "__enter__"):
                 self._user_cls_instance.__enter__()
 
@@ -187,20 +186,20 @@ class _Obj:
                 for enter_method in _find_callables_for_obj(self._user_cls_instance, method_flag).values():
                     enter_method()
 
-        self._entered = True
+        self._has_entered = True
 
     @property
-    def _entered(self):
+    def _entered(self) -> bool:
         # needed because _aenter is nowrap
         return self._has_entered
 
     @_entered.setter
-    def _entered(self, val):
+    def _entered(self, val: bool):
         self._has_entered = val
 
     @synchronizer.nowrap
     async def _aenter(self):
-        if not self._has_entered:
+        if not self._entered:  # use the property to get at the impl class
             user_cls_instance = self._cached_user_cls_instance()
             if hasattr(user_cls_instance, "__aenter__"):
                 await user_cls_instance.__aenter__()

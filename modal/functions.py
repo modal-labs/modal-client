@@ -1360,7 +1360,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
                 return coro()  # type: ignore
             else:
-                obj.enter()
+                obj._enter()
                 return fun(*args, **kwargs)
 
     @synchronizer.no_input_translation
