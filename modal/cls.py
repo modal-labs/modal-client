@@ -120,7 +120,7 @@ class _Obj:
                 self._method_functions[method_name] = method
 
         # Used for construction local object lazily
-        self._entered = False
+        self._has_entered = False
         self._local_user_cls_instance = None
         self._user_cls = user_cls
         self._construction_args = (args, kwargs)  # used for lazy construction in case of explicit constructors
@@ -175,7 +175,7 @@ class _Obj:
 
         return self._user_cls_instance
 
-    def enter(self):
+    def _enter(self):
         if not self._entered:
             if hasattr(self._user_cls_instance, "__enter__"):
                 self._user_cls_instance.__enter__()
@@ -190,23 +190,23 @@ class _Obj:
         self._entered = True
 
     @property
-    def entered(self):
-        # needed because aenter is nowrap
-        return self._entered
+    def _entered(self):
+        # needed because _aenter is nowrap
+        return self._has_entered
 
-    @entered.setter
-    def entered(self, val):
-        self._entered = val
+    @_entered.setter
+    def _entered(self, val):
+        self._has_entered = val
 
     @synchronizer.nowrap
-    async def aenter(self):
-        if not self.entered:
+    async def _aenter(self):
+        if not self._has_entered:
             user_cls_instance = self._cached_user_cls_instance()
             if hasattr(user_cls_instance, "__aenter__"):
                 await user_cls_instance.__aenter__()
             elif hasattr(user_cls_instance, "__enter__"):
                 user_cls_instance.__enter__()
-        self.entered = True
+        self._has_entered = True
 
     def __getattr__(self, k):
         if k in self._method_functions:

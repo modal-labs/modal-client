@@ -195,7 +195,7 @@ def get_user_class_instance(
     if isinstance(cls, modal.cls.Cls):
         # globally @app.cls-decorated class
         modal_obj: modal.cls.Obj = cls(*args, **kwargs)
-        modal_obj.entered = True  # ugly but prevents .local() from triggering additional enter-logic
+        modal_obj._entered = True  # ugly but prevents .local() from triggering additional enter-logic
         # TODO: unify lifecycle logic between .local() and container_entrypoint
         user_cls_instance = modal_obj._cached_user_cls_instance()
     else:

@@ -1355,7 +1355,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             if is_async(info.raw_f):
                 # We want to run __aenter__ and fun in the same coroutine
                 async def coro():
-                    await obj.aenter()
+                    await obj._aenter()
                     return await fun(*args, **kwargs)
 
                 return coro()  # type: ignore
