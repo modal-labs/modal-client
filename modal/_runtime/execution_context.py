@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2024
 from contextvars import ContextVar
-from typing import Callable, List, Optional
+from typing import Callable, Optional
 
 from modal._utils.async_utils import synchronize_api
 from modal.exception import InvalidError
@@ -71,7 +71,7 @@ def current_function_call_id() -> Optional[str]:
         return None
 
 
-def _set_current_context_ids(input_ids: List[str], function_call_ids: List[str]) -> Callable[[], None]:
+def _set_current_context_ids(input_ids: list[str], function_call_ids: list[str]) -> Callable[[], None]:
     assert len(input_ids) == len(function_call_ids) and len(input_ids) > 0
     input_id = input_ids[0]
     function_call_id = function_call_ids[0]

@@ -19,7 +19,8 @@ import signal
 import sys
 import threading
 import time
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from google.protobuf.message import Message
 
@@ -175,7 +176,7 @@ class UserCodeEventLoop:
 def call_function(
     user_code_event_loop: UserCodeEventLoop,
     container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
-    finalized_functions: Dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
+    finalized_functions: dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
     batch_max_size: int,
     batch_wait_ms: int,
 ):
@@ -473,7 +474,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # 1. Enable lazy hydration for all objects
         # 2. Fully deprecate .new() objects
         if service.code_deps is not None:  # this is not set for serialized or non-global scope functions
-            dep_object_ids: List[str] = [dep.object_id for dep in function_def.object_dependencies]
+            dep_object_ids: list[str] = [dep.object_id for dep in function_def.object_dependencies]
             if len(service.code_deps) != len(dep_object_ids):
                 raise ExecutionError(
                     f"Function has {len(service.code_deps)} dependencies"
@@ -595,7 +596,7 @@ if __name__ == "__main__":
     # from shutting down. The sleep(0) here is needed for finished ThreadPoolExecutor resources to
     # shut down without triggering this warning (e.g., `@wsgi_app()`).
     time.sleep(0)
-    lingering_threads: List[threading.Thread] = []
+    lingering_threads: list[threading.Thread] = []
     for thread in threading.enumerate():
         current_thread = threading.get_ident()
         if thread.ident is not None and thread.ident != current_thread and not thread.daemon and thread.is_alive():

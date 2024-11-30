@@ -80,7 +80,7 @@ import os
 import typing
 import warnings
 from textwrap import dedent
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from google.protobuf.empty_pb2 import Empty
 
@@ -282,7 +282,7 @@ configure_logger(logger, config["loglevel"], config["log_format"])
 
 
 def _store_user_config(
-    new_settings: Dict[str, Any], profile: Optional[str] = None, active_profile: Optional[str] = None
+    new_settings: dict[str, Any], profile: Optional[str] = None, active_profile: Optional[str] = None
 ):
     """Internal method, used by the CLI to set tokens."""
     if profile is None:

@@ -2,7 +2,7 @@
 import os
 import socket
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Optional
 
 from modal._utils.async_utils import synchronize_api
 from modal._utils.grpc_utils import retry_transient_errors
@@ -14,7 +14,7 @@ from modal_proto import api_pb2
 @dataclass
 class ClusterInfo:
     rank: int
-    container_ips: List[str]
+    container_ips: list[str]
 
 
 cluster_info: Optional[ClusterInfo] = None

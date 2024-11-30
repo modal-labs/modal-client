@@ -4,8 +4,9 @@ import dataclasses
 import os
 import time
 import typing
+from collections.abc import AsyncGenerator
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Dict, List, Optional, Tuple, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar
 
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
@@ -123,7 +124,7 @@ async def _init_local_app_from_name(
 async def _create_all_objects(
     client: _Client,
     running_app: RunningApp,
-    indexed_objects: Dict[str, _Object],
+    indexed_objects: dict[str, _Object],
     environment_name: str,
 ) -> None:
     """Create objects that have been defined but not created on the server."""
@@ -171,15 +172,15 @@ async def _publish_app(
     client: _Client,
     running_app: RunningApp,
     app_state: int,  # api_pb2.AppState.value
-    indexed_objects: Dict[str, _Object],
+    indexed_objects: dict[str, _Object],
     name: str = "",  # Only relevant for deployments
     tag: str = "",  # Only relevant for deployments
-) -> Tuple[str, List[str]]:
+) -> tuple[str, list[str]]:
     """Wrapper for AppPublish RPC."""
 
     # Could simplify this function some changing the internal representation to use
     # function_ids / class_ids rather than the current tag_to_object_id (i.e. "indexed_objects")
-    def filter_values(full_dict: Dict[str, V], condition: Callable[[V], bool]) -> Dict[str, V]:
+    def filter_values(full_dict: dict[str, V], condition: Callable[[V], bool]) -> dict[str, V]:
         return {k: v for k, v in full_dict.items() if condition(v)}
 
     function_ids = filter_values(running_app.tag_to_object_id, _Function._is_id_type)
@@ -453,7 +454,7 @@ class DeployResult:
     app_id: str
     app_page_url: str
     app_logs_url: str
-    warnings: List[str]
+    warnings: list[str]
 
 
 async def _deploy_app(
@@ -556,7 +557,7 @@ async def _deploy_app(
     )
 
 
-async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str = "", **kwargs: Any) -> None:
+async def _interactive_shell(_app: _App, cmds: list[str], environment_name: str = "", **kwargs: Any) -> None:
     """Run an interactive shell (like `bash`) within the image for this app.
 
     This is useful for online debugging and interactive exploration of the

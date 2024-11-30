@@ -2,19 +2,14 @@
 import inspect
 import typing
 import warnings
+from collections.abc import AsyncGenerator, Coroutine, Sequence
 from pathlib import PurePosixPath
 from textwrap import dedent
 from typing import (
     Any,
-    AsyncGenerator,
     Callable,
     ClassVar,
-    Coroutine,
-    Dict,
-    List,
     Optional,
-    Sequence,
-    Tuple,
     Union,
     overload,
 )
@@ -87,14 +82,14 @@ class _LocalEntrypoint:
 LocalEntrypoint = synchronize_api(_LocalEntrypoint)
 
 
-def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type[typing.Any], error_msg: str) -> None:
+def check_sequence(items: typing.Sequence[typing.Any], item_type: type[typing.Any], error_msg: str) -> None:
     if not isinstance(items, (list, tuple)):
         raise InvalidError(error_msg)
     if not all(isinstance(v, item_type) for v in items):
         raise InvalidError(error_msg)
 
 
-CLS_T = typing.TypeVar("CLS_T", bound=typing.Type[Any])
+CLS_T = typing.TypeVar("CLS_T", bound=type[Any])
 
 
 P = typing_extensions.ParamSpec("P")
@@ -172,20 +167,20 @@ class _App:
     In this example, the secret and schedule are registered with the app.
     """
 
-    _all_apps: ClassVar[Dict[Optional[str], List["_App"]]] = {}
+    _all_apps: ClassVar[dict[Optional[str], list["_App"]]] = {}
     _container_app: ClassVar[Optional[RunningApp]] = None
 
     _name: Optional[str]
     _description: Optional[str]
-    _functions: Dict[str, _Function]
-    _classes: Dict[str, _Cls]
+    _functions: dict[str, _Function]
+    _classes: dict[str, _Cls]
 
     _image: Optional[_Image]
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
-    _volumes: Dict[Union[str, PurePosixPath], _Volume]
-    _web_endpoints: List[str]  # Used by the CLI
-    _local_entrypoints: Dict[str, _LocalEntrypoint]
+    _volumes: dict[Union[str, PurePosixPath], _Volume]
+    _web_endpoints: list[str]  # Used by the CLI
+    _local_entrypoints: dict[str, _LocalEntrypoint]
 
     # Running apps only (container apps or running local)
     _app_id: Optional[str]  # Kept after app finishes
@@ -199,7 +194,7 @@ class _App:
         image: Optional[_Image] = None,  # default image for all functions (default is `modal.Image.debian_slim()`)
         mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
-        volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # default volumes for all functions
+        volumes: dict[Union[str, PurePosixPath], _Volume] = {},  # default volumes for all functions
     ) -> None:
         """Construct a new app, optionally with default image, mounts, secrets, or volumes.
 
@@ -509,22 +504,22 @@ class _App:
         hydrate_objects(self._classes)
 
     @property
-    def registered_functions(self) -> Dict[str, _Function]:
+    def registered_functions(self) -> dict[str, _Function]:
         """All modal.Function objects registered on the app."""
         return self._functions
 
     @property
-    def registered_classes(self) -> Dict[str, _Function]:
+    def registered_classes(self) -> dict[str, _Function]:
         """All modal.Cls objects registered on the app."""
         return self._classes
 
     @property
-    def registered_entrypoints(self) -> Dict[str, _LocalEntrypoint]:
+    def registered_entrypoints(self) -> dict[str, _LocalEntrypoint]:
         """All local CLI entrypoints registered on the app."""
         return self._local_entrypoints
 
     @property
-    def indexed_objects(self) -> Dict[str, _Object]:
+    def indexed_objects(self) -> dict[str, _Object]:
         deprecation_warning(
             (2024, 11, 25),
             "`app.indexed_objects` is deprecated! Use `app.registered_functions` or `app.registered_classes` instead.",
@@ -532,7 +527,7 @@ class _App:
         return dict(**self._functions, **self._classes)
 
     @property
-    def registered_web_endpoints(self) -> List[str]:
+    def registered_web_endpoints(self) -> list[str]:
         """Names of web endpoint (ie. webhook) functions registered on the app."""
         return self._web_endpoints
 
@@ -611,24 +606,24 @@ class _App:
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: Union[
-            GPU_T, List[GPU_T]
+            GPU_T, list[GPU_T]
         ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),  # Modal Mounts added to the container
-        network_file_systems: Dict[
+        network_file_systems: dict[
             Union[str, PurePosixPath], _NetworkFileSystem
         ] = {},  # Mountpoints for Modal NetworkFileSystems
-        volumes: Dict[
+        volumes: dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         # Specify, in fractional CPU cores, how many CPU cores to request.
         # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
         # CPU throttling will prevent a container from exceeding its specified limit.
-        cpu: Optional[Union[float, Tuple[float, float]]] = None,
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
-        memory: Optional[Union[int, Tuple[int, int]]] = None,
+        memory: Optional[Union[int, tuple[int, int]]] = None,
         ephemeral_disk: Optional[int] = None,  # Specify, in MiB, the ephemeral disk size for the Function.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
@@ -817,24 +812,24 @@ class _App:
         image: Optional[_Image] = None,  # The image to run as the container for the function
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: Union[
-            GPU_T, List[GPU_T]
+            GPU_T, list[GPU_T]
         ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
-        network_file_systems: Dict[
+        network_file_systems: dict[
             Union[str, PurePosixPath], _NetworkFileSystem
         ] = {},  # Mountpoints for Modal NetworkFileSystems
-        volumes: Dict[
+        volumes: dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
         allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         # Specify, in fractional CPU cores, how many CPU cores to request.
         # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
         # CPU throttling will prevent a container from exceeding its specified limit.
-        cpu: Optional[Union[float, Tuple[float, float]]] = None,
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
-        memory: Optional[Union[int, Tuple[int, int]]] = None,
+        memory: Optional[Union[int, tuple[int, int]]] = None,
         ephemeral_disk: Optional[int] = None,  # Specify, in MiB, the ephemeral disk size for the Function.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
@@ -948,7 +943,7 @@ class _App:
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         mounts: Sequence[_Mount] = (),  # Mounts to attach to the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
-        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
+        network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,
@@ -957,12 +952,12 @@ class _App:
         # Specify, in fractional CPU cores, how many CPU cores to request.
         # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
         # CPU throttling will prevent a container from exceeding its specified limit.
-        cpu: Optional[Union[float, Tuple[float, float]]] = None,
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
-        memory: Optional[Union[int, Tuple[int, int]]] = None,
+        memory: Optional[Union[int, tuple[int, int]]] = None,
         block_network: bool = False,  # Whether to block network access
-        volumes: Dict[
+        volumes: dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
         pty_info: Optional[api_pb2.PTYInfo] = None,
