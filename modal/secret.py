@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import os
-from typing import Dict, List, Optional, Union
+from typing import Optional, Union
 
 from grpclib import GRPCError, Status
 
@@ -30,7 +30,7 @@ class _Secret(_Object, type_prefix="st"):
 
     @staticmethod
     def from_dict(
-        env_dict: Dict[
+        env_dict: dict[
             str, Union[str, None]
         ] = {},  # dict of entries to be inserted as environment variables in functions using the secret
     ):
@@ -46,7 +46,7 @@ class _Secret(_Object, type_prefix="st"):
         if not isinstance(env_dict, dict):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
-        env_dict_filtered: Dict[str, str] = {k: v for k, v in env_dict.items() if v is not None}
+        env_dict_filtered: dict[str, str] = {k: v for k, v in env_dict.items() if v is not None}
         if not all(isinstance(k, str) for k in env_dict_filtered.keys()):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
         if not all(isinstance(v, str) for v in env_dict_filtered.values()):
@@ -79,7 +79,7 @@ class _Secret(_Object, type_prefix="st"):
 
     @staticmethod
     def from_local_environ(
-        env_keys: List[str],  # list of local env vars to be included for remote execution
+        env_keys: list[str],  # list of local env vars to be included for remote execution
     ):
         """Create secrets from local environment variables automatically."""
 
@@ -165,7 +165,7 @@ class _Secret(_Object, type_prefix="st"):
         label: str,  # Some global identifier, such as "aws-secret"
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
-        required_keys: List[
+        required_keys: list[
             str
         ] = [],  # Optionally, a list of required environment variables (will be asserted server-side)
     ) -> "_Secret":
@@ -208,7 +208,7 @@ class _Secret(_Object, type_prefix="st"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-        required_keys: List[str] = [],
+        required_keys: list[str] = [],
     ) -> "_Secret":
         """mdmd:hidden"""
         obj = _Secret.from_name(
@@ -223,7 +223,7 @@ class _Secret(_Object, type_prefix="st"):
     @staticmethod
     async def create_deployed(
         deployment_name: str,
-        env_dict: Dict[str, str],
+        env_dict: dict[str, str],
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,

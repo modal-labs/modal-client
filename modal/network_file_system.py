@@ -2,8 +2,9 @@
 import functools
 import os
 import time
+from collections.abc import AsyncIterator
 from pathlib import Path, PurePosixPath
-from typing import Any, AsyncIterator, BinaryIO, Callable, List, Optional, Tuple, Type, Union
+from typing import Any, BinaryIO, Callable, Optional, Union
 
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
@@ -34,9 +35,9 @@ NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (
 
 
 def network_file_system_mount_protos(
-    validated_network_file_systems: List[Tuple[str, "_NetworkFileSystem"]],
+    validated_network_file_systems: list[tuple[str, "_NetworkFileSystem"]],
     allow_cross_region_volumes: bool,
-) -> List[api_pb2.SharedVolumeMount]:
+) -> list[api_pb2.SharedVolumeMount]:
     network_file_system_mounts = []
     # Relies on dicts being ordered (true as of Python 3.6).
     for path, volume in validated_network_file_systems:
@@ -143,7 +144,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     @classmethod
     @asynccontextmanager
     async def ephemeral(
-        cls: Type["_NetworkFileSystem"],
+        cls: type["_NetworkFileSystem"],
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
@@ -329,7 +330,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 relpath_str = subpath.relative_to(_local_path).as_posix()
                 yield subpath, PurePosixPath(remote_path, relpath_str)
 
-        async def _add_local_file(paths: Tuple[Path, PurePosixPath]) -> int:
+        async def _add_local_file(paths: tuple[Path, PurePosixPath]) -> int:
             return await self.add_local_file(paths[0], paths[1], progress_cb)
 
         async with aclosing(async_map(sync_or_async_iter(gen_transfers()), _add_local_file, concurrency=20)) as stream:
@@ -337,7 +338,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 pass
 
     @live_method
-    async def listdir(self, path: str) -> List[FileEntry]:
+    async def listdir(self, path: str) -> list[FileEntry]:
         """List all files in a directory in the network file system.
 
         * Passing a directory path lists all files in the directory (names are relative to the directory)

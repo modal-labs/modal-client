@@ -3,7 +3,8 @@ import asyncio
 import contextlib
 import typing
 from asyncio import Future
-from typing import TYPE_CHECKING, Dict, Hashable, List, Optional
+from collections.abc import Hashable
+from typing import TYPE_CHECKING, Optional
 
 from grpclib import GRPCError, Status
 
@@ -40,10 +41,10 @@ class StatusRow:
 
 
 class Resolver:
-    _local_uuid_to_future: Dict[str, Future]
+    _local_uuid_to_future: dict[str, Future]
     _environment_name: Optional[str]
     _app_id: Optional[str]
-    _deduplication_cache: Dict[Hashable, Future]
+    _deduplication_cache: dict[Hashable, Future]
     _client: _Client
 
     def __init__(
@@ -153,8 +154,8 @@ class Resolver:
         # TODO(elias): print original exception/trace rather than the Resolver-internal trace
         return await cached_future
 
-    def objects(self) -> List["_Object"]:
-        unique_objects: Dict[str, "_Object"] = {}
+    def objects(self) -> list["_Object"]:
+        unique_objects: dict[str, "_Object"] = {}
         for fut in self._local_uuid_to_future.values():
             if not fut.done():
                 # this will raise an exception if not all loads have been awaited, but that *should* never happen

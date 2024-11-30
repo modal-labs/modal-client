@@ -8,20 +8,15 @@ import platform
 import re
 import time
 import typing
+from collections.abc import AsyncGenerator, AsyncIterator, Generator, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import (
     IO,
     Any,
-    AsyncGenerator,
-    AsyncIterator,
     BinaryIO,
     Callable,
-    Generator,
-    List,
     Optional,
-    Sequence,
-    Type,
     Union,
 )
 
@@ -190,7 +185,7 @@ class _Volume(_Object, type_prefix="vo"):
     @classmethod
     @asynccontextmanager
     async def ephemeral(
-        cls: Type["_Volume"],
+        cls: type["_Volume"],
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
@@ -364,7 +359,7 @@ class _Volume(_Object, type_prefix="vo"):
                 yield FileEntry._from_proto(entry)
 
     @live_method
-    async def listdir(self, path: str, *, recursive: bool = False) -> List[FileEntry]:
+    async def listdir(self, path: str, *, recursive: bool = False) -> list[FileEntry]:
         """List all files under a path prefix in the modal.Volume.
 
         Passing a directory path lists all files in the directory. For a file path, return only that
@@ -421,7 +416,7 @@ class _Volume(_Object, type_prefix="vo"):
 
         n = fileobj.write(response.data)
         if n != len(response.data):
-            raise IOError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
+            raise OSError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
         elif n == response.size:
             return response.size
         elif n > response.size:
@@ -442,7 +437,7 @@ class _Volume(_Object, type_prefix="vo"):
 
             n = fileobj.write(response.data)
             if n != len(response.data):
-                raise IOError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
+                raise OSError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
             written += n
             if written == file_size:
                 break
@@ -524,7 +519,7 @@ class _VolumeUploadContextManager:
     _client: _Client
     _force: bool
     progress_cb: Callable[..., Any]
-    _upload_generators: List[Generator[Callable[[], FileUploadSpec], None, None]]
+    _upload_generators: list[Generator[Callable[[], FileUploadSpec], None, None]]
 
     def __init__(
         self, volume_id: str, client: _Client, progress_cb: Optional[Callable[..., Any]] = None, force: bool = False
@@ -556,7 +551,7 @@ class _VolumeUploadContextManager:
                         yield await fut
 
             # Compute checksums & Upload files
-            files: List[api_pb2.MountFile] = []
+            files: list[api_pb2.MountFile] = []
             async with aclosing(async_map(gen_file_upload_specs(), self._upload_file, concurrency=20)) as stream:
                 async for item in stream:
                     files.append(item)

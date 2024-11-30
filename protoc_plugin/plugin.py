@@ -5,9 +5,10 @@
 import os
 import sys
 from collections import deque
+from collections.abc import Collection, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Collection, Deque, Dict, Iterator, List, NamedTuple, Optional, Tuple
+from typing import Any, Deque, NamedTuple, Optional
 
 from google.protobuf.compiler.plugin_pb2 import CodeGeneratorRequest, CodeGeneratorResponse
 from google.protobuf.descriptor_pb2 import DescriptorProto, FileDescriptorProto
@@ -30,12 +31,12 @@ class Method(NamedTuple):
 
 class Service(NamedTuple):
     name: str
-    methods: List[Method]
+    methods: list[Method]
 
 
 class Buffer:
     def __init__(self) -> None:
-        self._lines: List[str] = []
+        self._lines: list[str] = []
         self._indent = 0
 
     def add(self, string: str, *args: Any, **kwargs: Any) -> None:
@@ -139,7 +140,7 @@ def _type_names(
     proto_file: FileDescriptorProto,
     message_type: DescriptorProto,
     parents: Optional[Deque[str]] = None,
-) -> Iterator[Tuple[str, str]]:
+) -> Iterator[tuple[str, str]]:
     if parents is None:
         parents = deque()
 
@@ -165,7 +166,7 @@ def main() -> None:
     with os.fdopen(sys.stdin.fileno(), "rb") as inp:
         request = CodeGeneratorRequest.FromString(inp.read())
 
-    types_map: Dict[str, str] = {}
+    types_map: dict[str, str] = {}
     for pf in request.proto_file:
         for mt in pf.message_type:
             types_map.update(_type_names(pf, mt))

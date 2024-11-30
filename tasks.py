@@ -9,11 +9,12 @@ import pkgutil
 import re
 import subprocess
 import sys
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Generator, List, Optional
+from typing import Optional
 
 import requests
 from invoke import task
@@ -260,7 +261,7 @@ def type_stubs(ctx):
                 modules.append(full_name)
         return modules
 
-    def get_wrapped_types(module_name: str) -> List[str]:
+    def get_wrapped_types(module_name: str) -> list[str]:
         module = importlib.import_module(module_name)
         return [
             name
@@ -318,7 +319,7 @@ def update_changelog(ctx, sha: str = ""):
         return
 
     # Read the existing changelog and split after the header so we can prepend new content
-    with open("CHANGELOG.md", "r") as fid:
+    with open("CHANGELOG.md") as fid:
         content = fid.read()
     token_pattern = "<!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->"
     m = re.search(token_pattern, content)

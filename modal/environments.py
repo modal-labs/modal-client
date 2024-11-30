@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2023
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Optional
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -98,7 +98,7 @@ Environment = synchronize_api(_Environment)
 
 
 # Needs to be after definition; synchronicity interferes with forward references?
-ENVIRONMENT_CACHE: Dict[str, _Environment] = {}
+ENVIRONMENT_CACHE: dict[str, _Environment] = {}
 
 
 async def _get_environment_cached(name: str, client: _Client) -> _Environment:
@@ -151,7 +151,7 @@ async def create_environment(name: str, client: Optional[_Client] = None):
 
 
 @synchronizer.create_blocking
-async def list_environments(client: Optional[_Client] = None) -> List[api_pb2.EnvironmentListItem]:
+async def list_environments(client: Optional[_Client] = None) -> list[api_pb2.EnvironmentListItem]:
     if client is None:
         client = await _Client.from_env()
     resp = await client.stub.EnvironmentList(Empty())

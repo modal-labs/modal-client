@@ -1,9 +1,10 @@
 # Copyright Modal Labs 2023
 import multiprocessing
 import platform
+from collections.abc import AsyncGenerator
 from multiprocessing.context import SpawnProcess
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, AsyncGenerator, Optional, Set, TypeVar
+from typing import TYPE_CHECKING, Optional, TypeVar
 
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -69,7 +70,7 @@ async def _terminate(proc: Optional[SpawnProcess], timeout: float = 5.0):
 async def _run_watch_loop(
     app_ref: str,
     app_id: str,
-    watcher: AsyncGenerator[Set[str], None],
+    watcher: AsyncGenerator[set[str], None],
     environment_name: str,
 ):
     unsupported_msg = None
@@ -96,7 +97,7 @@ async def _run_watch_loop(
 async def _serve_app(
     app: "_App",
     app_ref: str,
-    _watcher: Optional[AsyncGenerator[Set[str], None]] = None,  # for testing
+    _watcher: Optional[AsyncGenerator[set[str], None]] = None,  # for testing
     environment_name: Optional[str] = None,
 ) -> AsyncGenerator["_App", None]:
     if environment_name is None:

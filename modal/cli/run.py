@@ -9,7 +9,7 @@ import sys
 import time
 import typing
 from functools import partial
-from typing import Any, Callable, Dict, Optional, get_type_hints
+from typing import Any, Callable, Optional, get_type_hints
 
 import click
 import typer
@@ -60,7 +60,7 @@ class NoParserAvailable(InvalidError):
     pass
 
 
-def _get_signature(f: Callable[..., Any], is_method: bool = False) -> Dict[str, ParameterMetadata]:
+def _get_signature(f: Callable[..., Any], is_method: bool = False) -> dict[str, ParameterMetadata]:
     try:
         type_hints = get_type_hints(f)
     except Exception as exc:
@@ -71,7 +71,7 @@ def _get_signature(f: Callable[..., Any], is_method: bool = False) -> Dict[str, 
     if is_method:
         self = None  # Dummy, doesn't matter
         f = functools.partial(f, self)
-    signature: Dict[str, ParameterMetadata] = {}
+    signature: dict[str, ParameterMetadata] = {}
     for param in inspect.signature(f).parameters.values():
         signature[param.name] = {
             "name": param.name,
@@ -98,7 +98,7 @@ def _get_param_type_as_str(annot: Any) -> str:
     return annot_str
 
 
-def _add_click_options(func, signature: Dict[str, ParameterMetadata]):
+def _add_click_options(func, signature: dict[str, ParameterMetadata]):
     """Adds @click.option based on function signature
 
     Kind of like typer, but using options instead of positional arguments
@@ -148,7 +148,7 @@ def _get_click_command_for_function(app: App, function_tag):
     if function.is_generator:
         raise InvalidError("`modal run` is not supported for generator functions")
 
-    signature: Dict[str, ParameterMetadata]
+    signature: dict[str, ParameterMetadata]
     cls: Optional[Cls] = None
     if function.info.user_cls is not None:
         cls = typing.cast(Cls, app.registered_classes[class_name])
@@ -364,7 +364,7 @@ def shell(
         default=None, help="Container image tag for inside the shell (if not using REF)."
     ),
     add_python: Optional[str] = typer.Option(default=None, help="Add Python to the image (if not using REF)."),
-    volume: Optional[typing.List[str]] = typer.Option(
+    volume: Optional[list[str]] = typer.Option(
         default=None,
         help=(
             "Name of a `modal.Volume` to mount inside the shell at `/mnt/{name}` (if not using REF)."
