@@ -256,7 +256,7 @@ def _should_pickle_by_reference(obj, name=None):
             return False
         return obj.__name__ in sys.modules
     else:
-        raise TypeError("cannot check importability of {} instances".format(type(obj).__name__))
+        raise TypeError(f"cannot check importability of {type(obj).__name__} instances")
 
 
 def _lookup_module_and_qualname(obj, name=None):

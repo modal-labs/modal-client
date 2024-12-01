@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
-from typing import Any, AsyncIterator, Optional, Tuple, Type
+from collections.abc import AsyncIterator
+from typing import Any, Optional
 
 from grpclib import GRPCError
 from synchronicity.async_wrap import asynccontextmanager
@@ -74,7 +75,7 @@ class _Dict(_Object, type_prefix="di"):
     @classmethod
     @asynccontextmanager
     async def ephemeral(
-        cls: Type["_Dict"],
+        cls: type["_Dict"],
         data: Optional[dict] = None,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
@@ -316,7 +317,7 @@ class _Dict(_Object, type_prefix="di"):
             yield deserialize(resp.value, self._client)
 
     @live_method_gen
-    async def items(self) -> AsyncIterator[Tuple[Any, Any]]:
+    async def items(self) -> AsyncIterator[tuple[Any, Any]]:
         """Return an iterator over the (key, value) tuples in this dictionary.
 
         Note that (unlike with Python dicts) the return value is a simple iterator,

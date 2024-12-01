@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2024
-from typing import Optional, Tuple, Union
+from typing import Optional, Union
 
 from modal_proto import api_pb2
 
@@ -9,8 +9,8 @@ from .gpu import GPU_T, parse_gpu_config
 
 def convert_fn_config_to_resources_config(
     *,
-    cpu: Optional[Union[float, Tuple[float, float]]],
-    memory: Optional[Union[int, Tuple[int, int]]],
+    cpu: Optional[Union[float, tuple[float, float]]],
+    memory: Optional[Union[int, tuple[int, int]]],
     gpu: GPU_T,
     ephemeral_disk: Optional[int],
 ) -> api_pb2.Resources:

@@ -6,19 +6,13 @@ import inspect
 import itertools
 import time
 import typing
+from collections.abc import AsyncGenerator, Awaitable, Iterable, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import (
     Any,
-    AsyncGenerator,
-    Awaitable,
     Callable,
-    Iterable,
-    Iterator,
-    List,
     Optional,
-    Set,
-    Tuple,
     TypeVar,
     Union,
     cast,
@@ -118,7 +112,7 @@ class TaskContext:
     ```
     """
 
-    _loops: Set[asyncio.Task]
+    _loops: set[asyncio.Task]
 
     def __init__(self, grace: Optional[float] = None):
         self._grace = grace
@@ -272,7 +266,7 @@ async def queue_batch_iterator(q: asyncio.Queue, max_batch_size=100, debounce_ti
 
     Treats a None value as end of queue items
     """
-    item_list: List[Any] = []
+    item_list: list[Any] = []
 
     while True:
         if q.empty() and len(item_list) > 0:
@@ -387,8 +381,7 @@ class AsyncOrSyncIterable:
     def __iter__(self):
         try:
             with Runner() as runner:
-                for output in run_async_gen(runner, self._async_iterable):
-                    yield output  # type: ignore
+                yield from run_async_gen(runner, self._async_iterable)
         except NestedEventLoops:
             raise InvalidError(self.nested_async_message)
 
@@ -509,12 +502,12 @@ async def sync_or_async_iter(iter: Union[Iterable[T], AsyncGenerator[T, None]]) 
 
 
 @typing.overload
-def async_zip(g1: AsyncGenerator[T, None], g2: AsyncGenerator[V, None], /) -> AsyncGenerator[Tuple[T, V], None]:
+def async_zip(g1: AsyncGenerator[T, None], g2: AsyncGenerator[V, None], /) -> AsyncGenerator[tuple[T, V], None]:
     ...
 
 
 @typing.overload
-def async_zip(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[Tuple[T, ...], None]:
+def async_zip(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[tuple[T, ...], None]:
     ...
 
 
@@ -622,7 +615,7 @@ async def async_merge(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T,
         except Exception as e:
             await queue.put(ExceptionWrapper(e))
 
-    tasks = set([asyncio.create_task(producer(gen)) for gen in generators])
+    tasks = {asyncio.create_task(producer(gen)) for gen in generators}
     new_output_task = asyncio.create_task(queue.get())
 
     try:
@@ -729,7 +722,7 @@ async def async_map_ordered(
 ) -> AsyncGenerator[V, None]:
     semaphore = asyncio.Semaphore(buffer_size or concurrency)
 
-    async def mapper_func_wrapper(tup: Tuple[int, T]) -> Tuple[int, V]:
+    async def mapper_func_wrapper(tup: tuple[int, T]) -> tuple[int, V]:
         return (tup[0], await async_mapper_func(tup[1]))
 
     async def counter() -> AsyncGenerator[int, None]:

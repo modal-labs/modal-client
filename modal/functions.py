@@ -4,21 +4,14 @@ import textwrap
 import time
 import typing
 import warnings
+from collections.abc import AsyncGenerator, Collection, Sequence, Sized
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import (
     TYPE_CHECKING,
     Any,
-    AsyncGenerator,
     Callable,
-    Collection,
-    Dict,
-    List,
     Optional,
-    Sequence,
-    Sized,
-    Tuple,
-    Type,
     Union,
 )
 
@@ -278,12 +271,12 @@ class _FunctionSpec:
     image: Optional[_Image]
     mounts: Sequence[_Mount]
     secrets: Sequence[_Secret]
-    network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem]
-    volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]
-    gpus: Union[GPU_T, List[GPU_T]]  # TODO(irfansharif): Somehow assert that it's the first kind, in sandboxes
+    network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem]
+    volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]
+    gpus: Union[GPU_T, list[GPU_T]]  # TODO(irfansharif): Somehow assert that it's the first kind, in sandboxes
     cloud: Optional[str]
     cpu: Optional[float]
-    memory: Optional[Union[int, Tuple[int, int]]]
+    memory: Optional[Union[int, tuple[int, int]]]
     ephemeral_disk: Optional[int]
     scheduler_placement: Optional[SchedulerPlacement]
 
@@ -304,7 +297,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     # TODO: more type annotations
     _info: Optional[FunctionInfo]
-    _serve_mounts: typing.FrozenSet[_Mount]  # set at load time, only by loader
+    _serve_mounts: frozenset[_Mount]  # set at load time, only by loader
     _app: Optional["modal.app._App"] = None
     _obj: Optional["modal.cls._Obj"] = None  # only set for InstanceServiceFunctions and bound instance methods
     _web_url: Optional[str]
@@ -323,7 +316,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _use_method_name: str = ""
 
     _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
-    _method_handle_metadata: Optional[Dict[str, "api_pb2.FunctionHandleMetadata"]] = None
+    _method_handle_metadata: Optional[dict[str, "api_pb2.FunctionHandleMetadata"]] = None
 
     def _bind_method(
         self,
@@ -429,14 +422,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         secrets: Sequence[_Secret] = (),
         schedule: Optional[Schedule] = None,
         is_generator=False,
-        gpu: Union[GPU_T, List[GPU_T]] = None,
+        gpu: Union[GPU_T, list[GPU_T]] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         mounts: Collection[_Mount] = (),
-        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
+        network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,
-        volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
+        volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
-        memory: Optional[Union[int, Tuple[int, int]]] = None,
+        memory: Optional[Union[int, tuple[int, int]]] = None,
         proxy: Optional[_Proxy] = None,
         retries: Optional[Union[int, Retries]] = None,
         timeout: Optional[int] = None,
@@ -623,8 +616,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if image is not None and not isinstance(image, _Image):
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
-        method_definitions: Optional[Dict[str, api_pb2.MethodDefinition]] = None
-        partial_functions: Dict[str, "modal.partial_function._PartialFunction"] = {}
+        method_definitions: Optional[dict[str, api_pb2.MethodDefinition]] = None
+        partial_functions: dict[str, "modal.partial_function._PartialFunction"] = {}
         if info.user_cls:
             method_definitions = {}
             partial_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.FUNCTION)
@@ -640,8 +633,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         function_type = get_function_type(is_generator)
 
-        def _deps(only_explicit_mounts=False) -> List[_Object]:
-            deps: List[_Object] = list(secrets)
+        def _deps(only_explicit_mounts=False) -> list[_Object]:
+            deps: list[_Object] = list(secrets)
             if only_explicit_mounts:
                 # TODO: this is a bit hacky, but all_mounts may differ in the container vs locally
                 # We don't want the function dependencies to change, so we have this way to force it to
@@ -878,7 +871,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         raise InvalidError(f"Function {info.function_name} is too large to deploy.")
                     raise
                 function_creation_status.set_response(response)
-            serve_mounts = set(m for m in all_mounts if m.is_local())  # needed for modal.serve file watching
+            serve_mounts = {m for m in all_mounts if m.is_local()}  # needed for modal.serve file watching
             serve_mounts |= image._serve_mounts
             obj._serve_mounts = frozenset(serve_mounts)
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
@@ -897,7 +890,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._spec = function_spec  # needed for modal shell
 
         # Used to check whether we should rebuild a modal.Image which uses `run_function`.
-        gpus: List[GPU_T] = gpu if isinstance(gpu, list) else [gpu]
+        gpus: list[GPU_T] = gpu if isinstance(gpu, list) else [gpu]
         obj._build_args = dict(  # See get_build_def
             secrets=repr(secrets),
             gpu_config=repr([parse_gpu_config(_gpu) for _gpu in gpus]),
@@ -919,7 +912,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
         args: Sized,
-        kwargs: Dict[str, Any],
+        kwargs: dict[str, Any],
     ) -> "_Function":
         """mdmd:hidden
 
@@ -1025,7 +1018,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     @classmethod
     def from_name(
-        cls: Type["_Function"],
+        cls: type["_Function"],
         app_name: str,
         tag: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -1476,7 +1469,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         async for res in self._invocation().run_generator():
             yield res
 
-    async def get_call_graph(self) -> List[InputInfo]:
+    async def get_call_graph(self) -> list[InputInfo]:
         """Returns a structure representing the call graph from a given root
         call ID, along with the status of execution for each node.
 

@@ -4,12 +4,12 @@ import pathlib
 import signal
 import subprocess
 import sys
-from typing import Optional, Tuple
+from typing import Optional
 
 
 def deploy_app_externally(
     servicer,
-    credentials: Tuple[str, str],
+    credentials: tuple[str, str],
     file_or_module: str,
     app_variable: Optional[str] = None,
     deployment_name="Deployment",

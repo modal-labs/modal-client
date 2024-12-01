@@ -831,8 +831,8 @@ def test_deps_explicit(client, servicer):
         object_id: str = app.registered_functions["dummy"].object_id
         f = servicer.app_functions[object_id]
 
-    dep_object_ids = set(d.object_id for d in f.object_dependencies)
-    assert dep_object_ids == set([image.object_id, nfs_1.object_id, nfs_2.object_id])
+    dep_object_ids = {d.object_id for d in f.object_dependencies}
+    assert dep_object_ids == {image.object_id, nfs_1.object_id, nfs_2.object_id}
 
 
 def assert_is_wrapped_dict(some_arg):

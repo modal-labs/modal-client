@@ -4,7 +4,7 @@ import contextlib
 import pytest
 import socket
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any
 
 import pytest_asyncio
 from aiohttp.web import Application
@@ -20,7 +20,7 @@ class DummyHttpServer:
     host: str
     port: int
     event: asyncio.Event
-    assertion_log: List[str]
+    assertion_log: list[str]
 
 
 @contextlib.asynccontextmanager
@@ -63,14 +63,14 @@ async def http_dummy_server():
         return web.Response(text="Hello, world")
 
     app = web.Application()
-    app.add_routes(([web.post("/", hello)]))
+    app.add_routes([web.post("/", hello)])
     async with run_temporary_http_server(app) as (host, port):
         yield DummyHttpServer(host=host, port=port, event=event, assertion_log=assertion_log)
 
 
 @contextlib.asynccontextmanager
 async def lifespan_ctx_manager(asgi_app):
-    state: Dict[str, Any] = {}
+    state: dict[str, Any] = {}
 
     lm = modal._runtime.asgi.LifespanManager(asgi_app, state)
     t = asyncio.create_task(lm.background_task())

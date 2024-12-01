@@ -4,12 +4,11 @@ import inspect
 import re
 import textwrap
 import warnings
-from typing import Tuple
 
 from synchronicity.synchronizer import FunctionWithAio
 
 
-def _signature_from_ast(func) -> Tuple[str, str]:
+def _signature_from_ast(func) -> tuple[str, str]:
     """Get function signature, including decorators and comments, from source code
 
     Traverses functools.wraps-wrappings to get source of underlying function.

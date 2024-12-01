@@ -896,8 +896,7 @@ async def test_async_map_output_exception_async_func(in_order):
     def gen():
         states.append("enter")
         try:
-            for i in range(5):
-                yield i
+            yield from range(5)
         finally:
             states.append("exit")
 
