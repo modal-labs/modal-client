@@ -912,7 +912,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     function_data.ranked_functions.extend(ranked_functions)
                     function_definition = None  # function_definition is not used in this case
                 else:
-                    assert isinstance(gpu, GPU_T)  # includes the case where gpu==None case
+                    # TODO(irfansharif): Assert on this specific type once we get rid of python 3.9.
+                    # assert isinstance(gpu, GPU_T)  # includes the case where gpu==None case
                     function_definition.resources.CopyFrom(
                         convert_fn_config_to_resources_config(
                             cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
