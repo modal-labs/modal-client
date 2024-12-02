@@ -78,7 +78,7 @@ class _Obj:
     All this class does is to return `Function` objects."""
 
     _functions: dict[str, _Function]
-    _entered: bool
+    _has_entered: bool
     _user_cls_instance: Optional[Any] = None
     _construction_args: tuple[tuple, dict[str, Any]]
 
@@ -121,8 +121,7 @@ class _Obj:
                 self._method_functions[method_name] = method
 
         # Used for construction local object lazily
-        self._entered = False
-        self._local_user_cls_instance = None
+        self._has_entered = False
         self._user_cls = user_cls
         self._construction_args = (args, kwargs)  # used for lazy construction in case of explicit constructors
 
@@ -176,8 +175,8 @@ class _Obj:
 
         return self._user_cls_instance
 
-    def enter(self):
-        if not self._entered:
+    def _enter(self):
+        if not self._has_entered:
             if hasattr(self._user_cls_instance, "__enter__"):
                 self._user_cls_instance.__enter__()
 
@@ -188,26 +187,26 @@ class _Obj:
                 for enter_method in _find_callables_for_obj(self._user_cls_instance, method_flag).values():
                     enter_method()
 
-        self._entered = True
+        self._has_entered = True
 
     @property
-    def entered(self):
-        # needed because aenter is nowrap
-        return self._entered
+    def _entered(self) -> bool:
+        # needed because _aenter is nowrap
+        return self._has_entered
 
-    @entered.setter
-    def entered(self, val):
-        self._entered = val
+    @_entered.setter
+    def _entered(self, val: bool):
+        self._has_entered = val
 
     @synchronizer.nowrap
-    async def aenter(self):
-        if not self.entered:
+    async def _aenter(self):
+        if not self._entered:  # use the property to get at the impl class
             user_cls_instance = self._cached_user_cls_instance()
             if hasattr(user_cls_instance, "__aenter__"):
                 await user_cls_instance.__aenter__()
             elif hasattr(user_cls_instance, "__enter__"):
                 user_cls_instance.__enter__()
-        self.entered = True
+        self._has_entered = True
 
     def __getattr__(self, k):
         if k in self._method_functions:
