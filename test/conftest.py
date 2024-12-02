@@ -2051,7 +2051,7 @@ def encode_input_jwt(idx: int, input_id: str, function_call_id: str) -> str:
     return f"{idx}:{input_id}:{function_call_id}"
 
 
-def decode_input_jwt(input_jwt: str) -> Tuple[int, str, str]:
+def decode_input_jwt(input_jwt: str) -> tuple[int, str, str]:
     """
     Decodes fake input jwt. Returns idx, input_id.
     """
@@ -2068,7 +2068,7 @@ def encode_function_call_jwt(function_id: str, function_call_id: str) -> str:
     return f"{function_id}:{function_call_id}"
 
 
-def decode_function_call_jwt(function_call_jwt: str) -> Tuple[str, str]:
+def decode_function_call_jwt(function_call_jwt: str) -> tuple[str, str]:
     """
     Decodes fake function call jwt. Returns function_id, function_call_id.
     """
