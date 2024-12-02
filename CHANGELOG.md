@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.67.12 (2024-12-02)
+
+- Fixed a bug that executes the wrong method when a Modal Cls overrides a `@modal.method` inherited from a parent.
+
+
+
 ### 0.67.7 (2024-11-29)
 
 - Fixed a bug where pointing `modal run` at a method on a Modal Cls would fail if the method was inherited from a parent.
