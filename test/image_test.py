@@ -1031,32 +1031,34 @@ def test_image_builder_version(servicer, credentials, test_dir, modal_config):
         }
         return config[group]
 
-    # TODO use a single with statement and tuple of managers when we drop Py3.8
     test_requirements = str(test_dir / "supports" / "test-requirements.txt")
-    with mock.patch("modal.image._get_modal_requirements_path", lambda *_, **__: test_requirements):
-        with mock.patch("modal.image._dockerhub_python_version", lambda *_, **__: "3.11.0"):
-            with mock.patch("modal.image._base_image_config", mock_base_image_config):
-                with mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"]):
-                    with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
-                        with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
-                            with modal_config():
-                                with app.run(client=client):
-                                    assert servicer.image_builder_versions
-                                    for version in servicer.image_builder_versions.values():
-                                        assert version == "2000.01"
+    with (
+        mock.patch("modal.image._get_modal_requirements_path", lambda *_, **__: test_requirements),
+        mock.patch("modal.image._dockerhub_python_version", lambda *_, **__: "3.11.0"),
+        mock.patch("modal.image._base_image_config", mock_base_image_config),
+        mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"]),
+        mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]),
+        Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client,
+        modal_config(),
+        app.run(client=client),
+    ):
+        assert servicer.image_builder_versions
+        for version in servicer.image_builder_versions.values():
+            assert version == "2000.01"
 
 
 def test_image_builder_supported_versions(servicer, credentials):
     app = App(image=Image.debian_slim())
     app.function()(dummy)
 
-    # TODO use a single with statement and tuple of managers when we drop Py3.8
-    with pytest.raises(VersionError, match=r"This version of the modal client supports.+{'2000.01'}"):
-        with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
-            with mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.11"]):
-                with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
-                    with app.run(client=client):
-                        pass
+    with (
+        pytest.raises(VersionError, match=r"This version of the modal client supports.+{'2000.01'}"),
+        mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]),
+        mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.11"]),
+        Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client,
+        app.run(client=client),
+    ):
+        pass
 
 
 @pytest.fixture

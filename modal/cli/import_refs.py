@@ -54,7 +54,7 @@ def import_file_or_module(file_or_module: str):
         # when using a script path, that scripts directory should also be on the path as it is
         # with `python some/script.py`
         full_path = Path(file_or_module).resolve()
-        if "." in full_path.name[:-3]:  # use removesuffix once we drop 3.8 support
+        if "." in full_path.name.removesuffix(".py"):
             raise InvalidError(
                 f"Invalid Modal source filename: {full_path.name!r}."
                 "\n\nSource filename cannot contain additional period characters."
