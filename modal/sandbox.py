@@ -28,6 +28,7 @@ from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import _get_environment_name, _Object
+from .proxy import _Proxy
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 from .stream_type import StreamType
@@ -73,6 +74,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         pty_info: Optional[api_pb2.PTYInfo] = None,
         encrypted_ports: Sequence[int] = [],
         unencrypted_ports: Sequence[int] = [],
+        proxy: Optional[_Proxy] = None,
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
     ) -> "_Sandbox":
         """mdmd:hidden"""
@@ -166,6 +168,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 worker_id=config.get("worker_id"),
                 open_ports=api_pb2.PortSpecs(ports=open_ports),
                 network_access=network_access,
+                proxy_id=(proxy.object_id if proxy else None),
             )
 
             # Note - `resolver.app_id` will be `None` for app-less sandboxes
