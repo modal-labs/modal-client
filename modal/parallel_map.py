@@ -181,12 +181,14 @@ async def _map_invocation(
         count_update()
         for response_item in resp.inputs:
             original_item = items_by_idx[response_item.idx]
-            pending_outputs[response_item.idx] = _MapRetryContext(
-                input=original_item.input,
-                input_id=response_item.input_id,
-                input_jwt=response_item.input_jwt,
-                retry_manager=RetryManager(retry_policy),
-            )
+
+            if response_item.idx not in pending_outputs:
+                pending_outputs[response_item.idx] = _MapRetryContext(
+                    input=original_item.input,
+                    input_id=response_item.input_id,
+                    input_jwt=response_item.input_jwt,
+                    retry_manager=RetryManager(retry_policy),
+                )
         logger.debug(
             f"Successfully pushed {len(items)} inputs to server. "
             f"Num queued inputs awaiting push is {input_queue.qsize()}."
@@ -278,7 +280,7 @@ async def _map_invocation(
 
                 if item.result and item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
                     # clear the retry context to allow it to be garbage collected
-                    del pending_outputs[item.idx]
+                    pending_outputs[item.idx] = None
                 else:
                     # If the output is not successful, we need to retry it.
                     retry_context = pending_outputs[item.idx]
