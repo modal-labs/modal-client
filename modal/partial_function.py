@@ -2,15 +2,11 @@
 import enum
 import inspect
 import typing
+from collections.abc import Coroutine, Iterable
 from typing import (
     Any,
     Callable,
-    Coroutine,
-    Dict,
-    Iterable,
-    List,
     Optional,
-    Type,
     Union,
 )
 
@@ -132,11 +128,11 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
 PartialFunction = synchronize_api(_PartialFunction)
 
 
-def _find_partial_methods_for_user_cls(user_cls: Type[Any], flags: int) -> Dict[str, _PartialFunction]:
+def _find_partial_methods_for_user_cls(user_cls: type[Any], flags: int) -> dict[str, _PartialFunction]:
     """Grabs all method on a user class, and returns partials. Includes legacy methods."""
 
     # Build up a list of legacy attributes to check
-    check_attrs: List[str] = []
+    check_attrs: list[str] = []
     if flags & _PartialFunctionFlags.BUILD:
         check_attrs += ["__build__", "__abuild__"]
     if flags & _PartialFunctionFlags.ENTER_POST_SNAPSHOT:
@@ -158,8 +154,8 @@ def _find_partial_methods_for_user_cls(user_cls: Type[Any], flags: int) -> Dict[
             )
             deprecation_error((2024, 2, 21), message)
 
-    partial_functions: Dict[str, PartialFunction] = {}
-    for parent_cls in user_cls.mro():
+    partial_functions: dict[str, PartialFunction] = {}
+    for parent_cls in reversed(user_cls.mro()):
         if parent_cls is not object:
             for k, v in parent_cls.__dict__.items():
                 if isinstance(v, PartialFunction):
@@ -170,9 +166,9 @@ def _find_partial_methods_for_user_cls(user_cls: Type[Any], flags: int) -> Dict[
     return partial_functions
 
 
-def _find_callables_for_obj(user_obj: Any, flags: int) -> Dict[str, Callable[..., Any]]:
+def _find_callables_for_obj(user_obj: Any, flags: int) -> dict[str, Callable[..., Any]]:
     """Grabs all methods for an object, and binds them to the class"""
-    user_cls: Type = type(user_obj)
+    user_cls: type = type(user_obj)
     return {k: pf.raw_f.__get__(user_obj) for k, pf in _find_partial_methods_for_user_cls(user_cls, flags).items()}
 
 
@@ -256,9 +252,9 @@ def _method(
     return wrapper
 
 
-def _parse_custom_domains(custom_domains: Optional[Iterable[str]] = None) -> List[api_pb2.CustomDomainConfig]:
+def _parse_custom_domains(custom_domains: Optional[Iterable[str]] = None) -> list[api_pb2.CustomDomainConfig]:
     assert not isinstance(custom_domains, str), "custom_domains must be `Iterable[str]` but is `str` instead."
-    _custom_domains: List[api_pb2.CustomDomainConfig] = []
+    _custom_domains: list[api_pb2.CustomDomainConfig] = []
     if custom_domains is not None:
         for custom_domain in custom_domains:
             _custom_domains.append(api_pb2.CustomDomainConfig(name=custom_domain))
@@ -608,7 +604,7 @@ ExitHandlerType = Union[
     # NOTE: return types of these callables should be `Union[None, Awaitable[None]]` but
     #       synchronicity type stubs would strip Awaitable so we use Any for now
     # Original, __exit__ style method signature (now deprecated)
-    Callable[[Any, Optional[Type[BaseException]], Optional[BaseException], Any], Any],
+    Callable[[Any, Optional[type[BaseException]], Optional[BaseException], Any], Any],
     # Forward-looking unparameterized method
     Callable[[Any], Any],
 ]

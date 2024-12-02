@@ -14,7 +14,7 @@ import sys
 import tempfile
 import time
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 from unittest import mock
 from unittest.mock import MagicMock
 
@@ -60,13 +60,13 @@ blob_download = synchronize_api(_blob_download)
 
 
 def _get_inputs(
-    args: Tuple[Tuple, Dict] = ((42,), {}),
+    args: tuple[tuple, dict] = ((42,), {}),
     n: int = 1,
     kill_switch=True,
     method_name: Optional[str] = None,
     upload_to_blob: bool = False,
     client: Optional[Client] = None,
-) -> List[api_pb2.FunctionGetInputsResponse]:
+) -> list[api_pb2.FunctionGetInputsResponse]:
     if upload_to_blob:
         args_blob_id = blob_upload(serialize(args), client.stub)
         input_pb = api_pb2.FunctionInput(
@@ -87,7 +87,7 @@ def _get_inputs(
 
 
 def _get_inputs_batched(
-    args_list: List[Tuple[Tuple, Dict]],
+    args_list: list[tuple[tuple, dict]],
     batch_max_size: int,
     kill_switch=True,
     method_name: Optional[str] = None,
@@ -106,7 +106,7 @@ def _get_inputs_batched(
         *([api_pb2.FunctionGetInputsItem(kill_switch=True)] if kill_switch else []),
     ]
     response_list = []
-    current_batch: List[Any] = []
+    current_batch: list[Any] = []
     while inputs:
         input = inputs.pop(0)
         if input.kill_switch:
@@ -124,7 +124,7 @@ def _get_inputs_batched(
     return response_list
 
 
-def _get_multi_inputs(args: List[Tuple[str, Tuple, Dict]] = []) -> List[api_pb2.FunctionGetInputsResponse]:
+def _get_multi_inputs(args: list[tuple[str, tuple, dict]] = []) -> list[api_pb2.FunctionGetInputsResponse]:
     responses = []
     for input_n, (method_name, input_args, input_kwargs) in enumerate(args):
         resp = api_pb2.FunctionGetInputsResponse(
@@ -143,12 +143,12 @@ def _get_multi_inputs(args: List[Tuple[str, Tuple, Dict]] = []) -> List[api_pb2.
 @dataclasses.dataclass
 class ContainerResult:
     client: Client
-    items: List[api_pb2.FunctionPutOutputsItem]
-    data_chunks: List[api_pb2.DataChunk]
+    items: list[api_pb2.FunctionPutOutputsItem]
+    data_chunks: list[api_pb2.DataChunk]
     task_result: api_pb2.GenericResult
 
 
-def _get_multi_inputs_with_methods(args: List[Tuple[str, Tuple, Dict]] = []) -> List[api_pb2.FunctionGetInputsResponse]:
+def _get_multi_inputs_with_methods(args: list[tuple[str, tuple, dict]] = []) -> list[api_pb2.FunctionGetInputsResponse]:
     responses = []
     for input_n, (method_name, *input_args) in enumerate(args):
         resp = api_pb2.FunctionGetInputsResponse(
@@ -178,8 +178,8 @@ def _container_args(
     batch_wait_ms: Optional[int] = None,
     serialized_params: Optional[bytes] = None,
     is_checkpointing_function: bool = False,
-    deps: List[str] = ["im-1"],
-    volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
+    deps: list[str] = ["im-1"],
+    volume_mounts: Optional[list[api_pb2.VolumeMount]] = None,
     is_auto_snapshot: bool = False,
     max_inputs: Optional[int] = None,
     is_class: bool = False,
@@ -227,8 +227,8 @@ def _container_args(
     )
 
 
-def _flatten_outputs(outputs) -> List[api_pb2.FunctionPutOutputsItem]:
-    items: List[api_pb2.FunctionPutOutputsItem] = []
+def _flatten_outputs(outputs) -> list[api_pb2.FunctionPutOutputsItem]:
+    items: list[api_pb2.FunctionPutOutputsItem] = []
     for req in outputs:
         items += list(req.outputs)
     return items
@@ -251,8 +251,8 @@ def _run_container(
     batch_wait_ms: int = 0,
     serialized_params: Optional[bytes] = None,
     is_checkpointing_function: bool = False,
-    deps: List[str] = ["im-1"],
-    volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
+    deps: list[str] = ["im-1"],
+    volume_mounts: Optional[list[api_pb2.VolumeMount]] = None,
     is_auto_snapshot: bool = False,
     max_inputs: Optional[int] = None,
     is_class: bool = False,
@@ -328,7 +328,7 @@ def _run_container(
         items = _flatten_outputs(servicer.container_outputs)
 
         # Get data chunks
-        data_chunks: List[api_pb2.DataChunk] = []
+        data_chunks: list[api_pb2.DataChunk] = []
         if function_call_id in servicer.fc_data_out:
             try:
                 while True:
@@ -381,11 +381,11 @@ def _unwrap_batch_exception(ret: ContainerResult, batch_size):
     return outputs
 
 
-def _unwrap_generator(ret: ContainerResult) -> Tuple[List[Any], Optional[Exception]]:
+def _unwrap_generator(ret: ContainerResult) -> tuple[list[Any], Optional[Exception]]:
     assert len(ret.items) == 1
     item = ret.items[0]
 
-    values: List[Any] = [deserialize_data_format(chunk.data, chunk.data_format, None) for chunk in ret.data_chunks]
+    values: list[Any] = [deserialize_data_format(chunk.data, chunk.data_format, None) for chunk in ret.data_chunks]
 
     if item.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
         exc = deserialize(item.result.data, ret.client)
@@ -1110,8 +1110,8 @@ def test_cli(servicer, credentials):
     token_id, token_secret = credentials
     env = {"MODAL_SERVER_URL": servicer.container_addr, "MODAL_TOKEN_ID": token_id, "MODAL_TOKEN_SECRET": token_secret}
     lib_dir = pathlib.Path(__file__).parent.parent
-    args: List[str] = [sys.executable, "-m", "modal._container_entrypoint", data_base64]
-    ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    args: list[str] = [sys.executable, "-m", "modal._container_entrypoint", data_base64]
+    ret = subprocess.run(args, cwd=lib_dir, env=env, capture_output=True)
     stdout = ret.stdout.decode()
     stderr = ret.stderr.decode()
     if ret.returncode != 0:
@@ -1301,28 +1301,28 @@ def _batch_function_test_helper(batch_func, servicer, args_list, expected_output
 
 @skip_github_non_linux
 def test_batch_sync_function_full_batched(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}) for _ in range(4)]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 5), {}) for _ in range(4)]
     expected_outputs = [2] * 4
     _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_outputs)
 
 
 @skip_github_non_linux
 def test_batch_sync_function_partial_batched(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}) for _ in range(2)]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 5), {}) for _ in range(2)]
     expected_outputs = [2] * 2
     _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_outputs)
 
 
 @skip_github_non_linux
 def test_batch_sync_function_keyword_args(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10,), {"y": 5}) for _ in range(4)]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10,), {"y": 5}) for _ in range(4)]
     expected_outputs = [2] * 4
     _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_outputs)
 
 
 @skip_github_non_linux
 def test_batch_sync_function_arg_len_error(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}), ((10, 5, 1), {})]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 5), {}), ((10, 5, 1), {})]
     _batch_function_test_helper(
         "batch_function_sync",
         servicer,
@@ -1337,7 +1337,7 @@ def test_batch_sync_function_arg_len_error(servicer):
 
 @skip_github_non_linux
 def test_batch_sync_function_keyword_arg_error(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}), ((10,), {"z": 5})]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 5), {}), ((10,), {"z": 5})]
     _batch_function_test_helper(
         "batch_function_sync",
         servicer,
@@ -1352,7 +1352,7 @@ def test_batch_sync_function_keyword_arg_error(servicer):
 
 @skip_github_non_linux
 def test_batch_sync_function_multiple_args_error(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}), ((10,), {"x": 1})]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 5), {}), ((10,), {"x": 1})]
     _batch_function_test_helper(
         "batch_function_sync",
         servicer,
@@ -1367,7 +1367,7 @@ def test_batch_sync_function_multiple_args_error(servicer):
 
 @skip_github_non_linux
 def test_batch_sync_function_outputs_list_error(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {})]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 5), {})]
     _batch_function_test_helper(
         "batch_function_outputs_not_list",
         servicer,
@@ -1379,7 +1379,7 @@ def test_batch_sync_function_outputs_list_error(servicer):
 
 @skip_github_non_linux
 def test_batch_sync_function_outputs_len_error(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {})]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 5), {})]
     _batch_function_test_helper(
         "batch_function_outputs_wrong_len",
         servicer,
@@ -1394,14 +1394,14 @@ def test_batch_sync_function_outputs_len_error(servicer):
 
 @skip_github_non_linux
 def test_batch_sync_function_generic_error(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 0), {}) for _ in range(4)]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 0), {}) for _ in range(4)]
     expected_ouputs = ["ZeroDivisionError('division by zero')"] * 4
     _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_ouputs, expected_status="failure")
 
 
 @skip_github_non_linux
 def test_batch_async_function(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}) for _ in range(4)]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 5), {}) for _ in range(4)]
     expected_outputs = [2] * 4
     _batch_function_test_helper("batch_function_async", servicer, inputs, expected_outputs)
 
@@ -1495,7 +1495,7 @@ def test_volume_commit_on_exit(servicer):
     )
     volume_commit_rpcs = [r for r in servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
     assert volume_commit_rpcs
-    assert {"vo-123", "vo-456"} == set(r.volume_id for r in volume_commit_rpcs)
+    assert {"vo-123", "vo-456"} == {r.volume_id for r in volume_commit_rpcs}
     assert _unwrap_scalar(ret) == 42**2
 
 
@@ -1512,7 +1512,7 @@ def test_volume_commit_on_error(servicer, capsys):
         volume_mounts=volume_mounts,
     )
     volume_commit_rpcs = [r for r in servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
-    assert {"vo-foo", "vo-bar"} == set(r.volume_id for r in volume_commit_rpcs)
+    assert {"vo-foo", "vo-bar"} == {r.volume_id for r in volume_commit_rpcs}
     assert 'raise Exception("Failure!")' in capsys.readouterr().err
 
 
@@ -1632,10 +1632,10 @@ def _run_container_process(
     module_name,
     function_name,
     *,
-    inputs: List[Tuple[str, Tuple, Dict[str, Any]]],
+    inputs: list[tuple[str, tuple, dict[str, Any]]],
     allow_concurrent_inputs: Optional[int] = None,
     max_concurrent_inputs: Optional[int] = None,
-    cls_params: Tuple[Tuple, Dict[str, Any]] = ((), {}),
+    cls_params: tuple[tuple, dict[str, Any]] = ((), {}),
     print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
     env={},
     is_class=False,
@@ -2122,7 +2122,7 @@ def test_class_as_service_serialized(servicer):
         definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
         is_class=True,
         inputs=_get_multi_inputs_with_methods([("method_a", ("x",), {}), ("method_b", ("y",), {})]),
-        serialized_params=serialize((((), {"x": "s"}))),
+        serialized_params=serialize(((), {"x": "s"})),
     )
     assert len(result.items) == 2
     res_0 = result.items[0].result
@@ -2178,7 +2178,7 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
 
     total_inputs = 5
     servicer.container_inputs = _get_inputs(((42,), {}), n=total_inputs)
-    active_inputs: List[IOContext] = []
+    active_inputs: list[IOContext] = []
     active_input_ids = set()
     processed_inputs = 0
     triggered_assertions = []

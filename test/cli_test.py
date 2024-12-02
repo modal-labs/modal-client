@@ -12,7 +12,6 @@ import tempfile
 import threading
 import traceback
 from pickle import dumps
-from typing import List
 from unittest import mock
 
 import click
@@ -43,7 +42,7 @@ assert mod.app == app
 dummy_other_module_file = "x = 42"
 
 
-def _run(args: List[str], expected_exit_code: int = 0, expected_stderr: str = "", expected_error: str = ""):
+def _run(args: list[str], expected_exit_code: int = 0, expected_stderr: str = "", expected_error: str = ""):
     runner = click.testing.CliRunner(mix_stderr=False)
     # DEBUGGING TIP: this runs the CLI in a separate subprocess, and output from it is not echoed by default,
     # including from the mock fixtures. Print res.stdout and res.stderr for debugging tests.
@@ -202,6 +201,7 @@ def test_run_quiet(servicer, set_env_client, test_dir):
 def test_run_class_hierarchy(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "class_hierarchy.py"
     _run(["run", app_file.as_posix() + "::Wrapped.defined_on_base"])
+    _run(["run", app_file.as_posix() + "::Wrapped.overridden_on_wrapped"])
 
 
 def test_deploy(servicer, set_env_client, test_dir):
@@ -536,7 +536,7 @@ def test_nfs_get(set_env_client, servicer):
         _run(["nfs", "put", nfs_name, upload_path, "test.txt"])
 
         _run(["nfs", "get", nfs_name, "test.txt", tmpdir])
-        with open(os.path.join(tmpdir, "test.txt"), "r") as f:
+        with open(os.path.join(tmpdir, "test.txt")) as f:
             assert f.read() == "foo bar baz"
 
 
@@ -981,7 +981,7 @@ def test_call_update_environment_suffix(servicer, set_env_client):
     _run(["environment", "update", "main", "--set-web-suffix", "_"])
 
 
-def _run_subprocess(cli_cmd: List[str]) -> helpers.PopenWithCtrlC:
+def _run_subprocess(cli_cmd: list[str]) -> helpers.PopenWithCtrlC:
     p = helpers.PopenWithCtrlC(
         [sys.executable, "-m", "modal"] + cli_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf8"
     )

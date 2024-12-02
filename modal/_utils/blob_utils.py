@@ -6,9 +6,10 @@ import io
 import os
 import platform
 import time
+from collections.abc import AsyncIterator
 from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path, PurePosixPath
-from typing import Any, AsyncIterator, BinaryIO, Callable, List, Optional, Union
+from typing import Any, BinaryIO, Callable, Optional, Union
 from urllib.parse import urlparse
 
 from aiohttp import BytesIOPayload
@@ -174,7 +175,7 @@ async def perform_multipart_upload(
     *,
     content_length: int,
     max_part_size: int,
-    part_urls: List[str],
+    part_urls: list[str],
     completion_url: str,
     upload_chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
     progress_report_cb: Optional[Callable] = None,
@@ -185,7 +186,7 @@ async def perform_multipart_upload(
 
     # Give each part its own IO reader object to avoid needing to
     # lock access to the reader's position pointer.
-    data_file_readers: List[BinaryIO]
+    data_file_readers: list[BinaryIO]
     if isinstance(data_file, io.BytesIO):
         view = data_file.getbuffer()  # does not copy data
         data_file_readers = [io.BytesIO(view) for _ in range(len(part_urls))]

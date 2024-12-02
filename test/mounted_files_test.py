@@ -298,7 +298,7 @@ def test_mount_dedupe_explicit(servicer, credentials, test_dir, server_url_env):
     assert servicer.n_mounts == 3
 
     # mounts are loaded in parallel, but there
-    mounted_files_sets = set(frozenset(m.keys()) for m in servicer.mount_contents.values() if m)
+    mounted_files_sets = {frozenset(m.keys()) for m in servicer.mount_contents.values() if m}
     assert {"/root/mount_dedupe.py"} in mounted_files_sets
     mounted_files_sets.remove(frozenset({"/root/mount_dedupe.py"}))
 

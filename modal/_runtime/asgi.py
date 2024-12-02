@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
-from typing import Any, AsyncGenerator, Callable, Dict, NoReturn, Optional, Tuple, cast
+from collections.abc import AsyncGenerator
+from typing import Any, Callable, NoReturn, Optional, cast
 
 import aiohttp
 
@@ -80,8 +81,8 @@ class LifespanManager:
         await self.shutdown
 
 
-def asgi_app_wrapper(asgi_app, container_io_manager) -> Tuple[Callable[..., AsyncGenerator], LifespanManager]:
-    state: Dict[str, Any] = {}  # used for lifespan state
+def asgi_app_wrapper(asgi_app, container_io_manager) -> tuple[Callable[..., AsyncGenerator], LifespanManager]:
+    state: dict[str, Any] = {}  # used for lifespan state
 
     async def fn(scope):
         if "state" in scope:
@@ -92,8 +93,8 @@ def asgi_app_wrapper(asgi_app, container_io_manager) -> Tuple[Callable[..., Asyn
         function_call_id = current_function_call_id()
         assert function_call_id, "internal error: function_call_id not set in asgi_app() scope"
 
-        messages_from_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
-        messages_to_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
+        messages_from_app: asyncio.Queue[dict[str, Any]] = asyncio.Queue(1)
+        messages_to_app: asyncio.Queue[dict[str, Any]] = asyncio.Queue(1)
 
         async def disconnect_app():
             if scope["type"] == "http":
@@ -415,7 +416,7 @@ async def _proxy_websocket_request(session: aiohttp.ClientSession, scope, receiv
                     raise ExecutionError(f"Unexpected message type: {client_message['type']}")
 
         async def upstream_to_client():
-            msg: Dict[str, Any] = {
+            msg: dict[str, Any] = {
                 "type": "websocket.accept",
                 "subprotocol": upstream_ws.protocol,
             }

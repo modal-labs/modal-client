@@ -2,7 +2,8 @@
 import itertools
 import os
 import webbrowser
-from typing import AsyncGenerator, Optional, Tuple
+from collections.abc import AsyncGenerator
+from typing import Optional
 
 import aiohttp.web
 from rich.console import Console
@@ -24,7 +25,7 @@ class _TokenFlow:
     @asynccontextmanager
     async def start(
         self, utm_source: Optional[str] = None, next_url: Optional[str] = None
-    ) -> AsyncGenerator[Tuple[str, str, str], None]:
+    ) -> AsyncGenerator[tuple[str, str, str], None]:
         """mdmd:hidden"""
         # Run a temporary http server returning the token id on /
         # This helps us add direct validation later
