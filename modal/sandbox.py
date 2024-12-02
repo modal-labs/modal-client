@@ -211,6 +211,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         encrypted_ports: Sequence[int] = [],
         # List of ports to tunnel into the sandbox without encryption.
         unencrypted_ports: Sequence[int] = [],
+        # Reference to a Modal Proxy to use in front of this Sandbox.
+        proxy: Optional[_Proxy] = None,
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
@@ -246,6 +248,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             pty_info=pty_info,
             encrypted_ports=encrypted_ports,
             unencrypted_ports=unencrypted_ports,
+            proxy=proxy,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
         )
 
