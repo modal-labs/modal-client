@@ -224,7 +224,7 @@ class _StreamReader(Generic[T]):
 
             entry_id += 1
 
-    async def _get_logs(self) -> AsyncGenerator[Optional[bytes], None]:
+    async def _get_logs(self, skip_empty_messages: bool = True) -> AsyncGenerator[Optional[bytes], None]:
         """Streams sandbox or process logs from the server to the reader.
 
         Logs returned by this method may contain partial or multiple lines at a time.
@@ -253,6 +253,11 @@ class _StreamReader(Generic[T]):
 
                 async for message, entry_id in iterator:
                     self._last_entry_id = entry_id
+                    # Empty messages are sent when the process boots up. Don't yield them unless
+                    # we're using the empty message to signal process liveness.
+                    if skip_empty_messages and message == b"":
+                        continue
+
                     yield message
                     if message is None:
                         completed = True
