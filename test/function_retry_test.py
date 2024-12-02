@@ -26,14 +26,14 @@ class FunctionCallCountException(Exception):
         self.function_call_count = function_call_count
 
 
-def counting_function(attempt_to_return_success: int):
+def counting_function(return_success_on_attempt_number: int):
     """
     A function that updates the global function_call_count counter each time it is called.
 
     """
     global function_call_count
     function_call_count += 1
-    if function_call_count < attempt_to_return_success:
+    if function_call_count < return_success_on_attempt_number:
         raise FunctionCallCountException(function_call_count)
     return function_call_count
 
@@ -85,3 +85,28 @@ def test_retry_dealy_ms():
 
     retry_policy = api_pb2.FunctionRetryPolicy(retries=2, backoff_coefficient=3, initial_delay_ms=2000)
     assert RetryManager._retry_delay_ms(2, retry_policy) == 6000
+
+
+def test_map_all_retries_fail_raises_error(client, setup_app_and_function, monkeypatch):
+    monkeypatch.setenv("MODAL_CLIENT_RETRIES", "true")
+    app, f = setup_app_and_function
+    with app.run(client=client):
+        with pytest.raises(FunctionCallCountException) as exc_info:
+            list(f.map([999, 999, 999]))
+        assert exc_info.value.function_call_count == 10
+
+
+def test_map_failures_followed_by_success(client, setup_app_and_function, monkeypatch):
+    monkeypatch.setenv("MODAL_CLIENT_RETRIES", "true")
+    app, f = setup_app_and_function
+    with app.run(client=client):
+        results = list(f.map([3, 3, 3]))
+        assert set(results) == {3, 4, 5}
+
+
+def test_map_no_retries_when_first_call_succeeds(client, setup_app_and_function, monkeypatch):
+    monkeypatch.setenv("MODAL_CLIENT_RETRIES", "true")
+    app, f = setup_app_and_function
+    with app.run(client=client):
+        results = list(f.map([1, 1, 1]))
+        assert set(results) == {1, 2, 3}
