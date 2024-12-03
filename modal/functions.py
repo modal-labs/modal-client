@@ -205,7 +205,7 @@ class _Invocation:
             )
 
             if response.lost_input_ids:
-                raise LostInputsError(response.lost_input_ids)
+                raise LostInputsError(list(response.lost_input_ids))
 
             if len(response.outputs) > 0:
                 return response
@@ -233,7 +233,9 @@ class _Invocation:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
             await self.pop_function_call_outputs(
-                timeout=None, clear_on_success=True, expected_input_ids=[expected_input_id]
+                timeout=None,
+                clear_on_success=True,
+                expected_input_ids=[expected_input_id] if expected_input_id else None,
             )
         ).outputs[0]
         return await _process_result(item.result, item.data_format, self.stub, self.client)
@@ -254,7 +256,7 @@ class _Invocation:
 
         while True:
             try:
-                return await self._get_single_output(self._retry_context.input_id)
+                return await self._get_single_output(ctx.input_id)
             except (UserCodeException, FunctionTimeoutError, LostInputsError) as exc:
                 await user_retry_manager.raise_or_sleep(exc)
             await self._retry_input()
