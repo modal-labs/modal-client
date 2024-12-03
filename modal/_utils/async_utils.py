@@ -6,7 +6,7 @@ import inspect
 import itertools
 import time
 import typing
-from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Iterable, Iterator
+from collections.abc import AsyncGenerator, AsyncIterable, Awaitable, Iterable, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import (
@@ -484,7 +484,7 @@ class aclosing(typing.Generic[T]):  # noqa
         await self.agen.aclose()
 
 
-async def sync_or_async_iter(iter: Union[Iterable[T], AsyncIterator[T]]) -> AsyncGenerator[T, None]:
+async def sync_or_async_iter(iter: Union[Iterable[T], AsyncIterable[T]]) -> AsyncGenerator[T, None]:
     if hasattr(iter, "__aiter__"):
         agen = typing.cast(AsyncGenerator[T, None], iter)
         try:
@@ -492,8 +492,8 @@ async def sync_or_async_iter(iter: Union[Iterable[T], AsyncIterator[T]]) -> Asyn
                 yield item
         finally:
             if hasattr(agen, "aclose"):
-                # All AsyncGenerators have an aclose method
-                # but some AsyncIterators don't necessarily
+                # All AsyncGenerator's have an aclose method
+                # but some AsyncIterable's don't necessarily
                 await agen.aclose()
     else:
         assert hasattr(iter, "__iter__"), "sync_or_async_iter requires an Iterable or AsyncGenerator"
