@@ -484,7 +484,7 @@ class aclosing(typing.Generic[T]):  # noqa
         await self.agen.aclose()
 
 
-async def sync_or_async_iter(iter: Union[Iterable[T], AsyncIterator[T, None]]) -> AsyncGenerator[T, None]:
+async def sync_or_async_iter(iter: Union[Iterable[T], AsyncIterator[T]]) -> AsyncGenerator[T, None]:
     if hasattr(iter, "__aiter__"):
         agen = typing.cast(AsyncGenerator[T, None], iter)
         try:
