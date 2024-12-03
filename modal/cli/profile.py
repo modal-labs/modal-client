@@ -28,7 +28,7 @@ def current():
 
 @profile_cli.command(name="list", help="Show all Modal profiles and highlight the active one.")
 @synchronizer.create_blocking
-async def list(json: Optional[bool] = False):
+async def list_(json: Optional[bool] = False):
     config = Config()
     profiles = config_profiles()
     lookup_coros = [

@@ -2,7 +2,7 @@
 import os
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import typer
 from click import UsageError
@@ -108,7 +108,7 @@ async def get(
     rich_help_panel="Management",
 )
 @synchronizer.create_blocking
-async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+async def list_(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
     client = await _Client.from_env()
     response = await retry_transient_errors(client.stub.VolumeList, api_pb2.VolumeListRequest(environment_name=env))
@@ -257,7 +257,7 @@ async def rm(
 @synchronizer.create_blocking
 async def cp(
     volume_name: str,
-    paths: List[str],  # accepts multiple paths, last path is treated as destination path
+    paths: list[str],  # accepts multiple paths, last path is treated as destination path
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)

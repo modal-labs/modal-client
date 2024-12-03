@@ -2,9 +2,10 @@
 import asyncio
 import inspect
 import os
+from collections.abc import AsyncGenerator
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, AsyncGenerator, Callable, Dict, List, Literal, Optional, Tuple, Type
+from typing import Any, Callable, Literal, Optional
 
 from grpclib import GRPCError
 from grpclib.exceptions import StreamTerminatedError
@@ -30,7 +31,7 @@ class FunctionInfoType(Enum):
 
 
 # TODO(elias): Add support for quoted/str annotations
-CLASS_PARAM_TYPE_MAP: Dict[Type, Tuple["api_pb2.ParameterType.ValueType", str]] = {
+CLASS_PARAM_TYPE_MAP: dict[type, tuple["api_pb2.ParameterType.ValueType", str]] = {
     str: (api_pb2.PARAM_TYPE_STRING, "string_default"),
     int: (api_pb2.PARAM_TYPE_INT, "int_default"),
 }
@@ -102,7 +103,7 @@ class FunctionInfo:
 
     raw_f: Optional[Callable[..., Any]]  # if None - this is a "class service function"
     function_name: str
-    user_cls: Optional[Type[Any]]
+    user_cls: Optional[type[Any]]
     definition_type: "modal_proto.api_pb2.Function.DefinitionType.ValueType"
     module_name: Optional[str]
 
@@ -123,7 +124,7 @@ class FunctionInfo:
         f: Optional[Callable[..., Any]],
         serialized=False,
         name_override: Optional[str] = None,
-        user_cls: Optional[Type] = None,
+        user_cls: Optional[type] = None,
     ):
         self.raw_f = f
         self.user_cls = user_cls
@@ -133,6 +134,9 @@ class FunctionInfo:
         elif f is None and user_cls:
             # "service function" for running all methods of a class
             self.function_name = f"{user_cls.__name__}.*"
+        elif f and user_cls:
+            # Method may be defined on superclass of the wrapped class
+            self.function_name = f"{user_cls.__name__}.{f.__name__}"
         else:
             self.function_name = f.__qualname__
 
@@ -147,7 +151,7 @@ class FunctionInfo:
             # Get the package path
             # Note: __import__ always returns the top-level package.
             self._file = os.path.abspath(module.__file__)
-            package_paths = set([os.path.abspath(p) for p in __import__(module.__package__).__path__])
+            package_paths = {os.path.abspath(p) for p in __import__(module.__package__).__path__}
             # There might be multiple package paths in some weird cases
             base_dirs = [
                 base_dir for base_dir in package_paths if os.path.commonpath((base_dir, self._file)) == base_dir
@@ -210,7 +214,7 @@ class FunctionInfo:
             logger.debug(f"Serializing function for class service function {self.user_cls.__qualname__} as empty")
             return b""
 
-    def get_cls_vars(self) -> Dict[str, Any]:
+    def get_cls_vars(self) -> dict[str, Any]:
         if self.user_cls is not None:
             cls_vars = {
                 attr: getattr(self.user_cls, attr)
@@ -220,7 +224,7 @@ class FunctionInfo:
             return cls_vars
         return {}
 
-    def get_cls_var_attrs(self) -> Dict[str, Any]:
+    def get_cls_var_attrs(self) -> dict[str, Any]:
         import dis
 
         import opcode
@@ -241,7 +245,7 @@ class FunctionInfo:
         f_attrs = {k: cls_vars[k] for k in cls_vars if k in f_attr_ops}
         return f_attrs
 
-    def get_globals(self) -> Dict[str, Any]:
+    def get_globals(self) -> dict[str, Any]:
         from .._vendor.cloudpickle import _extract_code_globals
 
         func = self.raw_f
@@ -262,7 +266,7 @@ class FunctionInfo:
         # annotation parameters trigger strictly typed parameterization
         # which enables web endpoint for parameterized classes
 
-        modal_parameters: List[api_pb2.ClassParameterSpec] = []
+        modal_parameters: list[api_pb2.ClassParameterSpec] = []
         signature = _get_class_constructor_signature(self.user_cls)
         for param in signature.parameters.values():
             has_default = param.default is not param.empty
@@ -278,7 +282,7 @@ class FunctionInfo:
             format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO, schema=modal_parameters
         )
 
-    def get_entrypoint_mount(self) -> List[_Mount]:
+    def get_entrypoint_mount(self) -> list[_Mount]:
         """
         Includes:
         * Implicit mount of the function itself (the module or package that the function is part of)

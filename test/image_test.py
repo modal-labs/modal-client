@@ -8,7 +8,7 @@ import threading
 from hashlib import sha256
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from typing import List, Literal, get_args
+from typing import Literal, get_args
 from unittest import mock
 
 import modal
@@ -34,7 +34,7 @@ from modal_proto import api_pb2
 from .supports.skip import skip_windows
 
 # Avoid parameterizing tests over ImageBuilderVersion not supported by current Python
-PYTHON_MAJOR_MINOR = "{0}.{1}".format(*sys.version_info)
+PYTHON_MAJOR_MINOR = "{}.{}".format(*sys.version_info)
 SUPPORTED_IMAGE_BUILDER_VERSIONS = [
     v for v in get_args(ImageBuilderVersion) if PYTHON_MAJOR_MINOR in SUPPORTED_PYTHON_SERIES[v]
 ]
@@ -57,7 +57,7 @@ def test_supported_python_series():
         assert SUPPORTED_PYTHON_SERIES[builder_version] <= list(PYTHON_STANDALONE_VERSIONS)
 
 
-def get_image_layers(image_id: str, servicer) -> List[api_pb2.Image]:
+def get_image_layers(image_id: str, servicer) -> list[api_pb2.Image]:
     """Follow pointers to the previous image recursively in the servicer's list of images,
     and return a list of image layers from top to bottom."""
 
@@ -99,7 +99,7 @@ def clear_environment_cache():
 
 
 def test_python_version_validation(builder_version):
-    assert _validate_python_version(None, builder_version) == "{0}.{1}".format(*sys.version_info)
+    assert _validate_python_version(None, builder_version) == "{}.{}".format(*sys.version_info)
     assert _validate_python_version("3.12", builder_version) == "3.12"
     assert _validate_python_version("3.12.0", builder_version) == "3.12.0"
 
@@ -158,7 +158,7 @@ def test_image_base(builder_version, servicer, client, test_dir):
 
 @pytest.mark.parametrize("python_version", [None, "3.10", "3.11.4"])
 def test_python_version(builder_version, servicer, client, python_version):
-    local_python = "{0}.{1}".format(*sys.version_info)
+    local_python = "{}.{}".format(*sys.version_info)
     expected_python = local_python if python_version is None else python_version
 
     app = App()

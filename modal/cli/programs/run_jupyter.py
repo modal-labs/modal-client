@@ -8,12 +8,12 @@ import subprocess
 import threading
 import time
 import webbrowser
-from typing import Any, Dict
+from typing import Any
 
 from modal import App, Image, Mount, Queue, Secret, Volume, forward
 
 # Passed by `modal launch` locally via CLI, plumbed to remote runner through secrets.
-args: Dict[str, Any] = json.loads(os.environ.get("MODAL_LAUNCH_ARGS", "{}"))
+args: dict[str, Any] = json.loads(os.environ.get("MODAL_LAUNCH_ARGS", "{}"))
 
 
 app = App()

@@ -4,7 +4,7 @@ import inspect
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from typer import Typer
 
@@ -25,7 +25,7 @@ launch_cli = Typer(
 )
 
 
-def _launch_program(name: str, filename: str, detach: bool, args: Dict[str, Any]) -> None:
+def _launch_program(name: str, filename: str, detach: bool, args: dict[str, Any]) -> None:
     os.environ["MODAL_LAUNCH_ARGS"] = json.dumps(args)
 
     program_path = str(Path(__file__).parent / "programs" / filename)

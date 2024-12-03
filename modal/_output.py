@@ -9,8 +9,9 @@ import platform
 import re
 import socket
 import sys
+from collections.abc import Generator
 from datetime import timedelta
-from typing import Callable, ClassVar, Dict, Generator, Optional, Tuple
+from typing import Callable, ClassVar
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 from rich.console import Console, Group, RenderableType
@@ -121,25 +122,25 @@ class LineBufferedOutput(io.StringIO):
 
 
 class OutputManager:
-    _instance: ClassVar[Optional["OutputManager"]] = None
+    _instance: ClassVar[OutputManager | None] = None
 
     _console: Console
-    _task_states: Dict[str, int]
-    _task_progress_items: Dict[Tuple[str, int], TaskID]
-    _current_render_group: Optional[Group]
-    _function_progress: Optional[Progress]
-    _function_queueing_progress: Optional[Progress]
-    _snapshot_progress: Optional[Progress]
-    _line_buffers: Dict[int, LineBufferedOutput]
+    _task_states: dict[str, int]
+    _task_progress_items: dict[tuple[str, int], TaskID]
+    _current_render_group: Group | None
+    _function_progress: Progress | None
+    _function_queueing_progress: Progress | None
+    _snapshot_progress: Progress | None
+    _line_buffers: dict[int, LineBufferedOutput]
     _status_spinner: Spinner
-    _app_page_url: Optional[str]
+    _app_page_url: str | None
     _show_image_logs: bool
-    _status_spinner_live: Optional[Live]
+    _status_spinner_live: Live | None
 
     def __init__(
         self,
         *,
-        stdout: Optional[io.TextIOWrapper] = None,
+        stdout: io.TextIOWrapper | None = None,
         status_spinner_text: str = "Running app...",
     ):
         self._stdout = stdout or sys.stdout
@@ -164,12 +165,12 @@ class OutputManager:
         cls._instance = None
 
     @classmethod
-    def get(cls) -> Optional["OutputManager"]:
+    def get(cls) -> OutputManager | None:
         return cls._instance
 
     @classmethod
     @contextlib.contextmanager
-    def enable_output(cls, show_progress: bool = True) -> Generator[None, None, None]:
+    def enable_output(cls, show_progress: bool = True) -> Generator[None]:
         if show_progress:
             cls._instance = OutputManager()
         try:
@@ -252,7 +253,7 @@ class OutputManager:
                 self._current_render_group.renderables.append(self._function_queueing_progress)
         return self._function_queueing_progress
 
-    def function_progress_callback(self, tag: str, total: Optional[int]) -> Callable[[int, int], None]:
+    def function_progress_callback(self, tag: str, total: int | None) -> Callable[[int, int], None]:
         """Adds a task to the current function_progress instance, and returns a callback
         to update task progress with new completed and total counts."""
 
@@ -330,7 +331,7 @@ class OutputManager:
             pass
 
     def update_queueing_progress(
-        self, *, function_id: str, completed: int, total: Optional[int], description: Optional[str]
+        self, *, function_id: str, completed: int, total: int | None, description: str | None
     ) -> None:
         """Handle queueing updates, ignoring completion updates for functions that have no queue progress bar."""
         task_key = (function_id, api_pb2.FUNCTION_QUEUED)
@@ -449,13 +450,13 @@ class ProgressHandler:
 
     def progress(
         self,
-        task_id: Optional[TaskID] = None,
-        advance: Optional[float] = None,
-        name: Optional[str] = None,
-        size: Optional[float] = None,
-        reset: Optional[bool] = False,
-        complete: Optional[bool] = False,
-    ) -> Optional[TaskID]:
+        task_id: TaskID | None = None,
+        advance: float | None = None,
+        name: str | None = None,
+        size: float | None = None,
+        reset: bool | None = False,
+        complete: bool | None = False,
+    ) -> TaskID | None:
         try:
             if task_id is not None:
                 if reset:
@@ -527,15 +528,15 @@ async def put_pty_content(log: api_pb2.TaskLogs, stdout):
 async def get_app_logs_loop(
     client: _Client,
     output_mgr: OutputManager,
-    app_id: Optional[str] = None,
-    task_id: Optional[str] = None,
-    app_logs_url: Optional[str] = None,
+    app_id: str | None = None,
+    task_id: str | None = None,
+    app_logs_url: str | None = None,
 ):
     last_log_batch_entry_id = ""
 
     pty_shell_stdout = None
-    pty_shell_finish_event: Optional[asyncio.Event] = None
-    pty_shell_task_id: Optional[str] = None
+    pty_shell_finish_event: asyncio.Event | None = None
+    pty_shell_task_id: str | None = None
 
     async def stop_pty_shell():
         nonlocal pty_shell_finish_event

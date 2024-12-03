@@ -36,7 +36,7 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
 
 @dict_cli.command(name="list", rich_help_panel="Management")
 @synchronizer.create_blocking
-async def list(*, json: bool = False, env: Optional[str] = ENV_OPTION):
+async def list_(*, json: bool = False, env: Optional[str] = ENV_OPTION):
     """List all named Dicts."""
     env = ensure_env(env)
     client = await _Client.from_env()

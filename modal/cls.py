@@ -2,7 +2,8 @@
 import inspect
 import os
 import typing
-from typing import Any, Callable, Collection, Dict, List, Optional, Tuple, Type, TypeVar, Union
+from collections.abc import Collection
+from typing import Any, Callable, Optional, TypeVar, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -76,10 +77,10 @@ class _Obj:
 
     All this class does is to return `Function` objects."""
 
-    _functions: Dict[str, _Function]
-    _entered: bool
+    _functions: dict[str, _Function]
+    _has_entered: bool
     _user_cls_instance: Optional[Any] = None
-    _construction_args: Tuple[tuple, Dict[str, Any]]
+    _construction_args: tuple[tuple, dict[str, Any]]
 
     _instance_service_function: Optional[_Function]
 
@@ -91,7 +92,7 @@ class _Obj:
         self,
         user_cls: type,
         class_service_function: Optional[_Function],  # only None for <v0.63 classes
-        classbound_methods: Dict[str, _Function],
+        classbound_methods: dict[str, _Function],
         from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
         args,
@@ -120,8 +121,7 @@ class _Obj:
                 self._method_functions[method_name] = method
 
         # Used for construction local object lazily
-        self._entered = False
-        self._local_user_cls_instance = None
+        self._has_entered = False
         self._user_cls = user_cls
         self._construction_args = (args, kwargs)  # used for lazy construction in case of explicit constructors
 
@@ -154,7 +154,7 @@ class _Obj:
         Note that all Modal methods and web endpoints of a class share the same set
         of containers and the warm_pool_size affects that common container pool.
 
-        ```python
+        ```python notest
         # Usage on a parametrized function.
         Model = modal.Cls.lookup("my-app", "Model")
         Model("fine-tuned-model").keep_warm(2)
@@ -175,8 +175,8 @@ class _Obj:
 
         return self._user_cls_instance
 
-    def enter(self):
-        if not self._entered:
+    def _enter(self):
+        if not self._has_entered:
             if hasattr(self._user_cls_instance, "__enter__"):
                 self._user_cls_instance.__enter__()
 
@@ -187,26 +187,26 @@ class _Obj:
                 for enter_method in _find_callables_for_obj(self._user_cls_instance, method_flag).values():
                     enter_method()
 
-        self._entered = True
+        self._has_entered = True
 
     @property
-    def entered(self):
-        # needed because aenter is nowrap
-        return self._entered
+    def _entered(self) -> bool:
+        # needed because _aenter is nowrap
+        return self._has_entered
 
-    @entered.setter
-    def entered(self, val):
-        self._entered = val
+    @_entered.setter
+    def _entered(self, val: bool):
+        self._has_entered = val
 
     @synchronizer.nowrap
-    async def aenter(self):
-        if not self.entered:
+    async def _aenter(self):
+        if not self._entered:  # use the property to get at the impl class
             user_cls_instance = self._cached_user_cls_instance()
             if hasattr(user_cls_instance, "__aenter__"):
                 await user_cls_instance.__aenter__()
             elif hasattr(user_cls_instance, "__enter__"):
                 user_cls_instance.__enter__()
-        self.entered = True
+        self._has_entered = True
 
     def __getattr__(self, k):
         if k in self._method_functions:
@@ -244,9 +244,9 @@ class _Cls(_Object, type_prefix="cs"):
     _class_service_function: Optional[
         _Function
     ]  # The _Function serving *all* methods of the class, used for version >=v0.63
-    _method_functions: Optional[Dict[str, _Function]] = None  # Placeholder _Functions for each method
+    _method_functions: Optional[dict[str, _Function]] = None  # Placeholder _Functions for each method
     _options: Optional[api_pb2.FunctionOptions]
-    _callables: Dict[str, Callable[..., Any]]
+    _callables: dict[str, Callable[..., Any]]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
     _app: Optional["modal.app._App"] = None  # not set for lookups
 
@@ -265,7 +265,7 @@ class _Cls(_Object, type_prefix="cs"):
         self._callables = other._callables
         self._from_other_workspace = other._from_other_workspace
 
-    def _get_partial_functions(self) -> Dict[str, _PartialFunction]:
+    def _get_partial_functions(self) -> dict[str, _PartialFunction]:
         if not self._user_cls:
             raise AttributeError("You can only get the partial functions of a local Cls instance")
         return _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.all())
@@ -344,8 +344,8 @@ class _Cls(_Object, type_prefix="cs"):
         # validate signature
         _Cls.validate_construction_mechanism(user_cls)
 
-        method_functions: Dict[str, _Function] = {}
-        partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
+        method_functions: dict[str, _Function] = {}
+        partial_functions: dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
             user_cls, _PartialFunctionFlags.FUNCTION
         )
 
@@ -361,11 +361,11 @@ class _Cls(_Object, type_prefix="cs"):
             partial_function.wrapped = True
 
         # Get all callables
-        callables: Dict[str, Callable] = {
+        callables: dict[str, Callable] = {
             k: pf.raw_f for k, pf in _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.all()).items()
         }
 
-        def _deps() -> List[_Function]:
+        def _deps() -> list[_Function]:
             return [class_service_function]
 
         async def _load(self: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
@@ -392,7 +392,7 @@ class _Cls(_Object, type_prefix="cs"):
 
     @classmethod
     def from_name(
-        cls: Type["_Cls"],
+        cls: type["_Cls"],
         app_name: str,
         tag: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -454,11 +454,11 @@ class _Cls(_Object, type_prefix="cs"):
 
     def with_options(
         self: "_Cls",
-        cpu: Optional[Union[float, Tuple[float, float]]] = None,
-        memory: Optional[Union[int, Tuple[int, int]]] = None,
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
+        memory: Optional[Union[int, tuple[int, int]]] = None,
         gpu: GPU_T = None,
         secrets: Collection[_Secret] = (),
-        volumes: Dict[Union[str, os.PathLike], _Volume] = {},
+        volumes: dict[Union[str, os.PathLike], _Volume] = {},
         retries: Optional[Union[int, Retries]] = None,
         timeout: Optional[int] = None,
         concurrency_limit: Optional[int] = None,
@@ -524,7 +524,7 @@ class _Cls(_Object, type_prefix="cs"):
         In contrast to `modal.Cls.from_name`, this is an eager method
         that will hydrate the local object with metadata from Modal servers.
 
-        ```python
+        ```python notest
         Class = modal.Cls.lookup("other-app", "Class")
         obj = Class()
         ```

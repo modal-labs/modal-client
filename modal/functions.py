@@ -1,24 +1,18 @@
 # Copyright Modal Labs 2023
+import dataclasses
 import inspect
 import textwrap
 import time
 import typing
 import warnings
+from collections.abc import AsyncGenerator, Collection, Sequence, Sized
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import (
     TYPE_CHECKING,
     Any,
-    AsyncGenerator,
     Callable,
-    Collection,
-    Dict,
-    List,
     Optional,
-    Sequence,
-    Sized,
-    Tuple,
-    Type,
     Union,
 )
 
@@ -26,6 +20,7 @@ import typing_extensions
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
+from synchronicity.exceptions import UserCodeException
 
 from modal._utils.async_utils import aclosing
 from modal_proto import api_pb2
@@ -64,6 +59,7 @@ from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from .config import config
 from .exception import (
     ExecutionError,
+    FunctionTimeoutError,
     InvalidError,
     NotFoundError,
     OutputExpiredError,
@@ -86,7 +82,7 @@ from .parallel_map import (
     _SynchronizedQueue,
 )
 from .proxy import _Proxy
-from .retries import Retries
+from .retries import Retries, RetryManager
 from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
@@ -98,15 +94,32 @@ if TYPE_CHECKING:
     import modal.partial_function
 
 
+@dataclasses.dataclass
+class _RetryContext:
+    function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType"
+    retry_policy: api_pb2.FunctionRetryPolicy
+    function_call_jwt: str
+    input_jwt: str
+    input_id: str
+    item: api_pb2.FunctionPutInputsItem
+
+
 class _Invocation:
     """Internal client representation of a single-input call to a Modal Function or Generator"""
 
     stub: ModalClientModal
 
-    def __init__(self, stub: ModalClientModal, function_call_id: str, client: _Client):
+    def __init__(
+        self,
+        stub: ModalClientModal,
+        function_call_id: str,
+        client: _Client,
+        retry_context: Optional[_RetryContext] = None,
+    ):
         self.stub = stub
         self.client = client  # Used by the deserializer.
         self.function_call_id = function_call_id  # TODO: remove and use only input_id
+        self._retry_context = retry_context
 
     @staticmethod
     async def create(
@@ -132,7 +145,17 @@ class _Invocation:
         function_call_id = response.function_call_id
 
         if response.pipelined_inputs:
-            return _Invocation(client.stub, function_call_id, client)
+            assert len(response.pipelined_inputs) == 1
+            input = response.pipelined_inputs[0]
+            retry_context = _RetryContext(
+                function_call_invocation_type=function_call_invocation_type,
+                retry_policy=response.retry_policy,
+                function_call_jwt=response.function_call_jwt,
+                input_jwt=input.input_jwt,
+                input_id=input.input_id,
+                item=item,
+            )
+            return _Invocation(client.stub, function_call_id, client, retry_context)
 
         request_put = api_pb2.FunctionPutInputsRequest(
             function_id=function_id, inputs=[item], function_call_id=function_call_id
@@ -144,7 +167,16 @@ class _Invocation:
         processed_inputs = inputs_response.inputs
         if not processed_inputs:
             raise Exception("Could not create function call - the input queue seems to be full")
-        return _Invocation(client.stub, function_call_id, client)
+        input = inputs_response.inputs[0]
+        retry_context = _RetryContext(
+            function_call_invocation_type=function_call_invocation_type,
+            retry_policy=response.retry_policy,
+            function_call_jwt=response.function_call_jwt,
+            input_jwt=input.input_jwt,
+            input_id=input.input_id,
+            item=item,
+        )
+        return _Invocation(client.stub, function_call_id, client, retry_context)
 
     async def pop_function_call_outputs(
         self, timeout: Optional[float], clear_on_success: bool
@@ -180,12 +212,45 @@ class _Invocation:
                     # return the last response to check for state of num_unfinished_inputs
                     return response
 
-    async def run_function(self) -> Any:
+    async def _retry_input(self) -> None:
+        ctx = self._retry_context
+        if not ctx:
+            raise ValueError("Cannot retry input when _retry_context is empty.")
+
+        item = api_pb2.FunctionRetryInputsItem(input_jwt=ctx.input_jwt, input=ctx.item.input)
+        request = api_pb2.FunctionRetryInputsRequest(function_call_jwt=ctx.function_call_jwt, inputs=[item])
+        await retry_transient_errors(
+            self.client.stub.FunctionRetryInputs,
+            request,
+        )
+
+    async def _get_single_output(self) -> Any:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
             await self.pop_function_call_outputs(timeout=None, clear_on_success=True)
         ).outputs[0]
         return await _process_result(item.result, item.data_format, self.stub, self.client)
+
+    async def run_function(self) -> Any:
+        # Use retry logic only if retry policy is specified and
+        ctx = self._retry_context
+        if (
+            not ctx
+            or not ctx.retry_policy
+            or ctx.retry_policy.retries == 0
+            or ctx.function_call_invocation_type != api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
+        ):
+            return await self._get_single_output()
+
+        # User errors including timeouts are managed by the user specified retry policy.
+        user_retry_manager = RetryManager(ctx.retry_policy)
+
+        while True:
+            try:
+                return await self._get_single_output()
+            except (UserCodeException, FunctionTimeoutError) as exc:
+                await user_retry_manager.raise_or_sleep(exc)
+            await self._retry_input()
 
     async def poll_function(self, timeout: Optional[float] = None):
         """Waits up to timeout for a result from a function.
@@ -278,12 +343,12 @@ class _FunctionSpec:
     image: Optional[_Image]
     mounts: Sequence[_Mount]
     secrets: Sequence[_Secret]
-    network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem]
-    volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]
-    gpus: Union[GPU_T, List[GPU_T]]  # TODO(irfansharif): Somehow assert that it's the first kind, in sandboxes
+    network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem]
+    volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]
+    gpus: Union[GPU_T, list[GPU_T]]  # TODO(irfansharif): Somehow assert that it's the first kind, in sandboxes
     cloud: Optional[str]
     cpu: Optional[float]
-    memory: Optional[Union[int, Tuple[int, int]]]
+    memory: Optional[Union[int, tuple[int, int]]]
     ephemeral_disk: Optional[int]
     scheduler_placement: Optional[SchedulerPlacement]
 
@@ -304,7 +369,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     # TODO: more type annotations
     _info: Optional[FunctionInfo]
-    _serve_mounts: typing.FrozenSet[_Mount]  # set at load time, only by loader
+    _serve_mounts: frozenset[_Mount]  # set at load time, only by loader
     _app: Optional["modal.app._App"] = None
     _obj: Optional["modal.cls._Obj"] = None  # only set for InstanceServiceFunctions and bound instance methods
     _web_url: Optional[str]
@@ -323,7 +388,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _use_method_name: str = ""
 
     _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
-    _method_handle_metadata: Optional[Dict[str, "api_pb2.FunctionHandleMetadata"]] = None
+    _method_handle_metadata: Optional[dict[str, "api_pb2.FunctionHandleMetadata"]] = None
 
     def _bind_method(
         self,
@@ -429,14 +494,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         secrets: Sequence[_Secret] = (),
         schedule: Optional[Schedule] = None,
         is_generator=False,
-        gpu: Union[GPU_T, List[GPU_T]] = None,
+        gpu: Union[GPU_T, list[GPU_T]] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         mounts: Collection[_Mount] = (),
-        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
+        network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         allow_cross_region_volumes: bool = False,
-        volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
+        volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
-        memory: Optional[Union[int, Tuple[int, int]]] = None,
+        memory: Optional[Union[int, tuple[int, int]]] = None,
         proxy: Optional[_Proxy] = None,
         retries: Optional[Union[int, Retries]] = None,
         timeout: Optional[int] = None,
@@ -623,8 +688,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if image is not None and not isinstance(image, _Image):
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
-        method_definitions: Optional[Dict[str, api_pb2.MethodDefinition]] = None
-        partial_functions: Dict[str, "modal.partial_function._PartialFunction"] = {}
+        method_definitions: Optional[dict[str, api_pb2.MethodDefinition]] = None
+        partial_functions: dict[str, "modal.partial_function._PartialFunction"] = {}
         if info.user_cls:
             method_definitions = {}
             partial_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.FUNCTION)
@@ -640,8 +705,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         function_type = get_function_type(is_generator)
 
-        def _deps(only_explicit_mounts=False) -> List[_Object]:
-            deps: List[_Object] = list(secrets)
+        def _deps(only_explicit_mounts=False) -> list[_Object]:
+            deps: list[_Object] = list(secrets)
             if only_explicit_mounts:
                 # TODO: this is a bit hacky, but all_mounts may differ in the container vs locally
                 # We don't want the function dependencies to change, so we have this way to force it to
@@ -878,7 +943,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         raise InvalidError(f"Function {info.function_name} is too large to deploy.")
                     raise
                 function_creation_status.set_response(response)
-            serve_mounts = set(m for m in all_mounts if m.is_local())  # needed for modal.serve file watching
+            serve_mounts = {m for m in all_mounts if m.is_local()}  # needed for modal.serve file watching
             serve_mounts |= image._serve_mounts
             obj._serve_mounts = frozenset(serve_mounts)
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
@@ -897,7 +962,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._spec = function_spec  # needed for modal shell
 
         # Used to check whether we should rebuild a modal.Image which uses `run_function`.
-        gpus: List[GPU_T] = gpu if isinstance(gpu, list) else [gpu]
+        gpus: list[GPU_T] = gpu if isinstance(gpu, list) else [gpu]
         obj._build_args = dict(  # See get_build_def
             secrets=repr(secrets),
             gpu_config=repr([parse_gpu_config(_gpu) for _gpu in gpus]),
@@ -919,7 +984,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
         args: Sized,
-        kwargs: Dict[str, Any],
+        kwargs: dict[str, Any],
     ) -> "_Function":
         """mdmd:hidden
 
@@ -997,7 +1062,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         Please exercise care when using this advanced feature!
         Setting and forgetting a warm pool on functions can lead to increased costs.
 
-        ```python
+        ```python notest
         # Usage on a regular function.
         f = modal.Function.lookup("my-app", "function")
         f.keep_warm(2)
@@ -1025,7 +1090,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     @classmethod
     def from_name(
-        cls: Type["_Function"],
+        cls: type["_Function"],
         app_name: str,
         tag: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -1076,7 +1141,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         In contrast to `modal.Function.from_name`, this is an eager method
         that will hydrate the local object with metadata from Modal servers.
 
-        ```python
+        ```python notest
         f = modal.Function.lookup("other-app", "function")
         ```
         """
@@ -1232,13 +1297,18 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 yield item
 
     async def _call_function(self, args, kwargs) -> ReturnType:
+        if config.get("client_retries"):
+            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
+        else:
+            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY
         invocation = await _Invocation.create(
             self,
             args,
             kwargs,
             client=self._client,
-            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY,
+            function_call_invocation_type=function_call_invocation_type,
         )
+
         return await invocation.run_function()
 
     async def _call_function_nowait(
@@ -1355,12 +1425,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             if is_async(info.raw_f):
                 # We want to run __aenter__ and fun in the same coroutine
                 async def coro():
-                    await obj.aenter()
+                    await obj._aenter()
                     return await fun(*args, **kwargs)
 
                 return coro()  # type: ignore
             else:
-                obj.enter()
+                obj._enter()
                 return fun(*args, **kwargs)
 
     @synchronizer.no_input_translation
@@ -1476,7 +1546,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         async for res in self._invocation().run_generator():
             yield res
 
-    async def get_call_graph(self) -> List[InputInfo]:
+    async def get_call_graph(self) -> list[InputInfo]:
         """Returns a structure representing the call graph from a given root
         call ID, along with the status of execution for each node.
 

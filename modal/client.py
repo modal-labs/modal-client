@@ -3,17 +3,12 @@ import asyncio
 import os
 import platform
 import warnings
+from collections.abc import AsyncGenerator, AsyncIterator, Collection, Mapping
 from typing import (
     Any,
-    AsyncGenerator,
-    AsyncIterator,
     ClassVar,
-    Collection,
-    Dict,
     Generic,
-    Mapping,
     Optional,
-    Tuple,
     TypeVar,
     Union,
 )
@@ -40,7 +35,7 @@ CLIENT_CREATE_ATTEMPT_TIMEOUT: float = 4.0
 CLIENT_CREATE_TOTAL_TIMEOUT: float = 15.0
 
 
-def _get_metadata(client_type: int, credentials: Optional[Tuple[str, str]], version: str) -> Dict[str, str]:
+def _get_metadata(client_type: int, credentials: Optional[tuple[str, str]], version: str) -> dict[str, str]:
     # This implements a simplified version of platform.platform() that's still machine-readable
     uname: platform.uname_result = platform.uname()
     if uname.system == "Darwin":
@@ -69,7 +64,7 @@ def _get_metadata(client_type: int, credentials: Optional[Tuple[str, str]], vers
 
 ReturnType = TypeVar("ReturnType")
 _Value = Union[str, bytes]
-_MetadataLike = Union[Mapping[str, _Value], Collection[Tuple[str, _Value]]]
+_MetadataLike = Union[Mapping[str, _Value], Collection[tuple[str, _Value]]]
 RequestType = TypeVar("RequestType", bound=Message)
 ResponseType = TypeVar("ResponseType", bound=Message)
 
@@ -85,7 +80,7 @@ class _Client:
         self,
         server_url: str,
         client_type: int,
-        credentials: Optional[Tuple[str, str]],
+        credentials: Optional[tuple[str, str]],
         version: str = __version__,
     ):
         """mdmd:hidden
@@ -201,7 +196,7 @@ class _Client:
         else:
             c = config
 
-        credentials: Optional[Tuple[str, str]]
+        credentials: Optional[tuple[str, str]]
 
         if cls._client_from_env_lock is None:
             cls._client_from_env_lock = asyncio.Lock()
@@ -266,7 +261,7 @@ class _Client:
         return client
 
     @classmethod
-    async def verify(cls, server_url: str, credentials: Tuple[str, str]) -> None:
+    async def verify(cls, server_url: str, credentials: tuple[str, str]) -> None:
         """mdmd:hidden
         Check whether can the client can connect to this server with these credentials; raise if not.
         """

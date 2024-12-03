@@ -128,12 +128,16 @@ class _ContainerProcess(Generic[T]):
         on_connect = asyncio.Event()
 
         async def _write_to_fd_loop(stream: _StreamReader):
-            async for line in stream:
+            # Don't skip empty messages so we can detect when the process has booted.
+            async for chunk in stream._get_logs(skip_empty_messages=False):
+                if chunk is None:
+                    break
+
                 if not on_connect.is_set():
                     connecting_status.stop()
                     on_connect.set()
 
-                await write_to_fd(stream.file_descriptor, line.encode("utf-8"))
+                await write_to_fd(stream.file_descriptor, chunk)
 
         async def _handle_input(data: bytes, message_index: int):
             self.stdin.write(data)

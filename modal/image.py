@@ -8,18 +8,15 @@ import shlex
 import sys
 import typing
 import warnings
+from collections.abc import Sequence
 from dataclasses import dataclass
 from inspect import isfunction
 from pathlib import Path, PurePosixPath
 from typing import (
     Any,
     Callable,
-    Dict,
-    List,
     Literal,
     Optional,
-    Sequence,
-    Set,
     Union,
     cast,
     get_args,
@@ -60,7 +57,7 @@ ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10"]
 # so that we fail fast / clearly in unsupported containers. Additionally, we enumerate the supported
 # Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
 # Consider consolidating these multiple sources of truth?
-SUPPORTED_PYTHON_SERIES: Dict[ImageBuilderVersion, List[str]] = {
+SUPPORTED_PYTHON_SERIES: dict[ImageBuilderVersion, list[str]] = {
     "2024.10": ["3.9", "3.10", "3.11", "3.12", "3.13"],
     "2024.04": ["3.9", "3.10", "3.11", "3.12"],
     "2023.12": ["3.9", "3.10", "3.11", "3.12"],
@@ -75,7 +72,7 @@ def _validate_python_version(
 ) -> str:
     if python_version is None:
         # If Python version is unspecified, match the local version, up to the minor component
-        python_version = series_version = "{0}.{1}".format(*sys.version_info)
+        python_version = series_version = "{}.{}".format(*sys.version_info)
     elif not isinstance(python_version, str):
         raise InvalidError(f"Python version must be specified as a string, not {type(python_version).__name__}")
     elif not re.match(r"^3(?:\.\d{1,2}){1,2}(rc\d*)?$", python_version):
@@ -87,7 +84,7 @@ def _validate_python_version(
                 "Python version must be specified as 'major.minor' for this interface;"
                 f" micro-level specification ({python_version!r}) is not valid."
             )
-        series_version = "{0}.{1}".format(*components)
+        series_version = "{}.{}".format(*components)
 
     supported_series = SUPPORTED_PYTHON_SERIES[builder_version]
     if series_version not in supported_series:
@@ -112,13 +109,13 @@ def _dockerhub_python_version(builder_version: ImageBuilderVersion, python_versi
     # This allows us to publish one pre-built debian-slim image per Python series.
     python_versions = _base_image_config("python", builder_version)
     series_to_micro_version = dict(tuple(v.rsplit(".", 1)) for v in python_versions)
-    python_series_requested = "{0}.{1}".format(*version_components)
+    python_series_requested = "{}.{}".format(*version_components)
     micro_version = series_to_micro_version[python_series_requested]
     return f"{python_series_requested}.{micro_version}"
 
 
 def _base_image_config(group: str, builder_version: ImageBuilderVersion) -> Any:
-    with open(LOCAL_REQUIREMENTS_DIR / "base-images.json", "r") as f:
+    with open(LOCAL_REQUIREMENTS_DIR / "base-images.json") as f:
         data = json.load(f)
     return data[group][builder_version]
 
@@ -147,7 +144,7 @@ def _get_modal_requirements_command(version: ImageBuilderVersion) -> str:
     return f"{prefix} -r {CONTAINER_REQUIREMENTS_PATH}"
 
 
-def _flatten_str_args(function_name: str, arg_name: str, args: Sequence[Union[str, List[str]]]) -> List[str]:
+def _flatten_str_args(function_name: str, arg_name: str, args: Sequence[Union[str, list[str]]]) -> list[str]:
     """Takes a sequence of strings, or string lists, and flattens it.
 
     Raises an error if any of the elements are not strings or string lists.
@@ -156,7 +153,7 @@ def _flatten_str_args(function_name: str, arg_name: str, args: Sequence[Union[st
     def is_str_list(x):
         return isinstance(x, list) and all(isinstance(y, str) for y in x)
 
-    ret: List[str] = []
+    ret: list[str] = []
     for x in args:
         if isinstance(x, str):
             ret.append(x)
@@ -167,7 +164,7 @@ def _flatten_str_args(function_name: str, arg_name: str, args: Sequence[Union[st
     return ret
 
 
-def _validate_packages(packages: List[str]) -> bool:
+def _validate_packages(packages: list[str]) -> bool:
     """Validates that a list of packages does not contain any command-line options."""
     return not any(pkg.startswith("-") for pkg in packages)
 
@@ -220,7 +217,7 @@ def _get_image_builder_version(server_version: ImageBuilderVersion) -> ImageBuil
         version_source = ""
         version = server_version
 
-    supported_versions: Set[ImageBuilderVersion] = set(get_args(ImageBuilderVersion))
+    supported_versions: set[ImageBuilderVersion] = set(get_args(ImageBuilderVersion))
     if version not in supported_versions:
         if local_config_version is not None:
             update_suggestion = "or remove your local configuration"
@@ -238,7 +235,7 @@ def _get_image_builder_version(server_version: ImageBuilderVersion) -> ImageBuil
     return version
 
 
-def _extract_copy_command_patterns(dockerfile_lines: List[str]) -> List[str]:
+def _extract_copy_command_patterns(dockerfile_lines: list[str]) -> list[str]:
     """
     Extract all COPY command sources from a Dockerfile.
     Combines multiline COPY commands into a single line.
@@ -328,7 +325,7 @@ def _filter_fp_docker_pattern(filepath: str, pattern: str) -> bool:
     return fnmatch.fnmatch(filepath, pattern)
 
 
-def _create_context_mount(docker_commands: List[str]) -> _Mount:
+def _create_context_mount(docker_commands: list[str]) -> _Mount:
     """
     Creates a context mount from a list of docker commands.
     """
@@ -362,8 +359,8 @@ class _ImageRegistryConfig:
 @dataclass
 class DockerfileSpec:
     # Ideally we would use field() with default_factory=, but doesn't work with synchronicity type-stub gen
-    commands: List[str]
-    context_files: Dict[str, str]
+    commands: list[str]
+    context_files: dict[str, str]
 
 
 async def _image_await_build_result(image_id: str, client: _Client) -> api_pb2.ImageJoinStreamingResponse:
@@ -413,8 +410,8 @@ class _Image(_Object, type_prefix="im"):
     """
 
     force_build: bool
-    inside_exceptions: List[Exception]
-    _serve_mounts: typing.FrozenSet[_Mount]  # used for mounts watching in `modal serve`
+    inside_exceptions: list[Exception]
+    _serve_mounts: frozenset[_Mount]  # used for mounts watching in `modal serve`
     _deferred_mounts: Sequence[
         _Mount
     ]  # added as mounts on any container referencing the Image, see `def _mount_layers`
@@ -493,7 +490,7 @@ class _Image(_Object, type_prefix="im"):
     @staticmethod
     def _from_args(
         *,
-        base_images: Optional[Dict[str, "_Image"]] = None,
+        base_images: Optional[dict[str, "_Image"]] = None,
         dockerfile_function: Optional[Callable[[ImageBuilderVersion], DockerfileSpec]] = None,
         secrets: Optional[Sequence[_Secret]] = None,
         gpu_config: Optional[api_pb2.GPUConfig] = None,
@@ -823,7 +820,7 @@ class _Image(_Object, type_prefix="im"):
 
     def pip_install(
         self,
-        *packages: Union[str, List[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
         find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
@@ -865,7 +862,7 @@ class _Image(_Object, type_prefix="im"):
             return self
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            package_args = " ".join(shlex.quote(pkg) for pkg in sorted(pkgs))
+            package_args = shlex.join(sorted(pkgs))
             extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre, extra_options)
             commands = ["FROM base", f"RUN python -m pip install {package_args} {extra_args}"]
             if not _validate_packages(pkgs):
@@ -1027,7 +1024,7 @@ class _Image(_Object, type_prefix="im"):
     def pip_install_from_pyproject(
         self,
         pyproject_toml: str,
-        optional_dependencies: List[str] = [],
+        optional_dependencies: list[str] = [],
         *,
         find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
         index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
@@ -1071,7 +1068,7 @@ class _Image(_Object, type_prefix="im"):
                         dependencies.extend(optionals[dep_group_name])
 
             extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre, extra_options)
-            package_args = " ".join(shlex.quote(pkg) for pkg in sorted(dependencies))
+            package_args = shlex.join(sorted(dependencies))
             commands = ["FROM base", f"RUN python -m pip install {package_args} {extra_args}"]
             if version > "2023.12":  # Back-compat for legacy trailing space
                 commands = [cmd.strip() for cmd in commands]
@@ -1097,11 +1094,11 @@ class _Image(_Object, type_prefix="im"):
         old_installer: bool = False,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         # Selected optional dependency groups to install (See https://python-poetry.org/docs/cli/#install)
-        with_: List[str] = [],
+        with_: list[str] = [],
         # Selected optional dependency groups to exclude (See https://python-poetry.org/docs/cli/#install)
-        without: List[str] = [],
+        without: list[str] = [],
         # Only install dependency groups specifed in this list.
-        only: List[str] = [],
+        only: list[str] = [],
         *,
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -1169,8 +1166,8 @@ class _Image(_Object, type_prefix="im"):
 
     def dockerfile_commands(
         self,
-        *dockerfile_commands: Union[str, List[str]],
-        context_files: Dict[str, str] = {},
+        *dockerfile_commands: Union[str, list[str]],
+        context_files: dict[str, str] = {},
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
@@ -1194,7 +1191,7 @@ class _Image(_Object, type_prefix="im"):
 
     def entrypoint(
         self,
-        entrypoint_commands: List[str],
+        entrypoint_commands: list[str],
     ) -> "_Image":
         """Set the entrypoint for the image."""
         args_str = _flatten_str_args("entrypoint", "entrypoint_files", entrypoint_commands)
@@ -1205,7 +1202,7 @@ class _Image(_Object, type_prefix="im"):
 
     def shell(
         self,
-        shell_commands: List[str],
+        shell_commands: list[str],
     ) -> "_Image":
         """Overwrite default shell for the image."""
         args_str = _flatten_str_args("shell", "shell_commands", shell_commands)
@@ -1216,7 +1213,7 @@ class _Image(_Object, type_prefix="im"):
 
     def run_commands(
         self,
-        *commands: Union[str, List[str]],
+        *commands: Union[str, list[str]],
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
@@ -1248,8 +1245,8 @@ class _Image(_Object, type_prefix="im"):
 
     def conda_install(
         self,
-        *packages: Union[str, List[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
-        channels: List[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
+        *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        channels: list[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -1309,11 +1306,11 @@ class _Image(_Object, type_prefix="im"):
     def micromamba_install(
         self,
         # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
-        *packages: Union[str, List[str]],
+        *packages: Union[str, list[str]],
         # A local path to a file containing package specifications
         spec_file: Optional[str] = None,
         # A list of Conda channels, eg. ["conda-forge", "nvidia"].
-        channels: List[str] = [],
+        channels: list[str] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -1324,7 +1321,7 @@ class _Image(_Object, type_prefix="im"):
             return self
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
+            package_args = shlex.join(pkgs)
             channel_args = "".join(f" -c {channel}" for channel in channels)
 
             space = " " if package_args else ""
@@ -1352,10 +1349,10 @@ class _Image(_Object, type_prefix="im"):
     def _registry_setup_commands(
         tag: str,
         builder_version: ImageBuilderVersion,
-        setup_commands: List[str],
+        setup_commands: list[str],
         add_python: Optional[str] = None,
-    ) -> List[str]:
-        add_python_commands: List[str] = []
+    ) -> list[str]:
+        add_python_commands: list[str] = []
         if add_python:
             _validate_python_version(add_python, builder_version, allow_micro_granularity=False)
             add_python_commands = [
@@ -1386,7 +1383,7 @@ class _Image(_Object, type_prefix="im"):
         tag: str,
         *,
         secret: Optional[_Secret] = None,
-        setup_dockerfile_commands: List[str] = [],
+        setup_dockerfile_commands: list[str] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         add_python: Optional[str] = None,
         **kwargs,
@@ -1449,7 +1446,7 @@ class _Image(_Object, type_prefix="im"):
         tag: str,
         secret: Optional[_Secret] = None,
         *,
-        setup_dockerfile_commands: List[str] = [],
+        setup_dockerfile_commands: list[str] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         add_python: Optional[str] = None,
         **kwargs,
@@ -1500,7 +1497,7 @@ class _Image(_Object, type_prefix="im"):
         tag: str,
         secret: Optional[_Secret] = None,
         *,
-        setup_dockerfile_commands: List[str] = [],
+        setup_dockerfile_commands: list[str] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         add_python: Optional[str] = None,
         **kwargs,
@@ -1644,7 +1641,7 @@ class _Image(_Object, type_prefix="im"):
 
     def apt_install(
         self,
-        *packages: Union[str, List[str]],  # A list of packages, e.g. ["ssh", "libpq-dev"]
+        *packages: Union[str, list[str]],  # A list of packages, e.g. ["ssh", "libpq-dev"]
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -1661,7 +1658,7 @@ class _Image(_Object, type_prefix="im"):
         if not pkgs:
             return self
 
-        package_args = " ".join(shlex.quote(pkg) for pkg in pkgs)
+        package_args = shlex.join(pkgs)
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             commands = [
@@ -1684,11 +1681,11 @@ class _Image(_Object, type_prefix="im"):
         raw_f: Callable[..., Any],
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: Union[
-            GPU_T, List[GPU_T]
+            GPU_T, list[GPU_T]
         ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
         mounts: Sequence[_Mount] = (),  # Mounts attached to the function
-        volumes: Dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},  # Volume mount paths
-        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},  # NFS mount paths
+        volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},  # Volume mount paths
+        network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},  # NFS mount paths
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         timeout: Optional[int] = 60 * 60,  # Maximum execution time of the function in seconds.
@@ -1696,7 +1693,7 @@ class _Image(_Object, type_prefix="im"):
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         args: Sequence[Any] = (),  # Positional arguments to the function.
-        kwargs: Dict[str, Any] = {},  # Keyword arguments to the function.
+        kwargs: dict[str, Any] = {},  # Keyword arguments to the function.
     ) -> "_Image":
         """Run user-defined function `raw_f` as an image build step. The function runs just like an ordinary Modal
         function, and any kwargs accepted by `@app.function` (such as `Mount`s, `NetworkFileSystem`s,
@@ -1770,7 +1767,7 @@ class _Image(_Object, type_prefix="im"):
             force_build=self.force_build or force_build,
         )
 
-    def env(self, vars: Dict[str, str]) -> "_Image":
+    def env(self, vars: dict[str, str]) -> "_Image":
         """Sets the environment variables in an Image.
 
         **Example**
