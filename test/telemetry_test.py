@@ -27,7 +27,7 @@ from modal._runtime.telemetry import (
 class TelemetryConsumer:
     socket_filename: Path
     server: socket.socket
-    connections: typing.Set[socket.socket]
+    connections: set[socket.socket]
     events: queue.Queue
     tmp: tempfile.TemporaryDirectory
 
@@ -101,7 +101,7 @@ def test_import_tracing(monkeypatch):
     with TelemetryConsumer() as consumer, ImportInterceptor.connect(consumer.socket_filename.absolute().as_posix()):
         from .telemetry import tracing_module_1  # noqa
 
-        expected_messages: list[typing.Dict[str, typing.Any]] = [
+        expected_messages: list[dict[str, typing.Any]] = [
             {"event": "module_load_start", "attributes": {"name": "test.telemetry.tracing_module_1"}},
             {"event": "module_load_start", "attributes": {"name": "test.telemetry.tracing_module_2"}},
             {"event": "module_load_end", "attributes": {"name": "test.telemetry.tracing_module_2"}},

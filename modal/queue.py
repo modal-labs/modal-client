@@ -2,7 +2,8 @@
 import queue  # The system library
 import time
 import warnings
-from typing import Any, AsyncGenerator, AsyncIterator, List, Optional, Type
+from collections.abc import AsyncGenerator, AsyncIterator
+from typing import Any, Optional
 
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
@@ -113,7 +114,7 @@ class _Queue(_Object, type_prefix="qu"):
     @classmethod
     @asynccontextmanager
     async def ephemeral(
-        cls: Type["_Queue"],
+        cls: type["_Queue"],
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
@@ -126,7 +127,9 @@ class _Queue(_Object, type_prefix="qu"):
 
         with Queue.ephemeral() as q:
             q.put(123)
+        ```
 
+        ```python notest
         async with Queue.ephemeral() as q:
             await q.put.aio(123)
         ```
@@ -176,12 +179,6 @@ class _Queue(_Object, type_prefix="qu"):
         return _Queue._from_loader(_load, "Queue()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
-    def persisted(label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None):
-        """mdmd:hidden"""
-        message = "`Queue.persisted` is deprecated. Please use `Queue.from_name(name, create_if_missing=True)` instead."
-        deprecation_error((2024, 3, 1), message)
-
-    @staticmethod
     async def lookup(
         label: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -214,7 +211,7 @@ class _Queue(_Object, type_prefix="qu"):
         req = api_pb2.QueueDeleteRequest(queue_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.QueueDelete, req)
 
-    async def _get_nonblocking(self, partition: Optional[str], n_values: int) -> List[Any]:
+    async def _get_nonblocking(self, partition: Optional[str], n_values: int) -> list[Any]:
         request = api_pb2.QueueGetRequest(
             queue_id=self.object_id,
             partition_key=self.validate_partition_key(partition),
@@ -228,7 +225,7 @@ class _Queue(_Object, type_prefix="qu"):
         else:
             return []
 
-    async def _get_blocking(self, partition: Optional[str], timeout: Optional[float], n_values: int) -> List[Any]:
+    async def _get_blocking(self, partition: Optional[str], timeout: Optional[float], n_values: int) -> list[Any]:
         if timeout is not None:
             deadline = time.time() + timeout
         else:
@@ -298,7 +295,7 @@ class _Queue(_Object, type_prefix="qu"):
     @live_method
     async def get_many(
         self, n_values: int, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None
-    ) -> List[Any]:
+    ) -> list[Any]:
         """Remove and return up to `n_values` objects from the queue.
 
         If there are fewer than `n_values` items in the queue, return all of them.
@@ -341,7 +338,7 @@ class _Queue(_Object, type_prefix="qu"):
     @live_method
     async def put_many(
         self,
-        vs: List[Any],
+        vs: list[Any],
         block: bool = True,
         timeout: Optional[float] = None,
         *,
@@ -365,7 +362,7 @@ class _Queue(_Object, type_prefix="qu"):
             await self._put_many_nonblocking(partition, partition_ttl, vs)
 
     async def _put_many_blocking(
-        self, partition: Optional[str], partition_ttl: int, vs: List[Any], timeout: Optional[float] = None
+        self, partition: Optional[str], partition_ttl: int, vs: list[Any], timeout: Optional[float] = None
     ):
         vs_encoded = [serialize(v) for v in vs]
 
@@ -394,7 +391,7 @@ class _Queue(_Object, type_prefix="qu"):
             else:
                 raise exc
 
-    async def _put_many_nonblocking(self, partition: Optional[str], partition_ttl: int, vs: List[Any]):
+    async def _put_many_nonblocking(self, partition: Optional[str], partition_ttl: int, vs: list[Any]):
         vs_encoded = [serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,

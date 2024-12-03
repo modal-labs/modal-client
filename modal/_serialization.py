@@ -398,10 +398,8 @@ PARAM_TYPE_MAPPING = {
 }
 
 
-def serialize_proto_params(
-    python_params: typing.Dict[str, Any], schema: typing.Sequence[api_pb2.ClassParameterSpec]
-) -> bytes:
-    proto_params: typing.List[api_pb2.ClassParameterValue] = []
+def serialize_proto_params(python_params: dict[str, Any], schema: typing.Sequence[api_pb2.ClassParameterSpec]) -> bytes:
+    proto_params: list[api_pb2.ClassParameterValue] = []
     for schema_param in schema:
         type_info = PARAM_TYPE_MAPPING.get(schema_param.type)
         if not type_info:
@@ -426,9 +424,7 @@ def serialize_proto_params(
     return proto_bytes
 
 
-def deserialize_proto_params(
-    serialized_params: bytes, schema: typing.List[api_pb2.ClassParameterSpec]
-) -> typing.Dict[str, Any]:
+def deserialize_proto_params(serialized_params: bytes, schema: list[api_pb2.ClassParameterSpec]) -> dict[str, Any]:
     proto_struct = api_pb2.ClassParameterSet()
     proto_struct.ParseFromString(serialized_params)
     value_by_name = {p.name: p for p in proto_struct.parameters}

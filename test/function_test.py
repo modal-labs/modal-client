@@ -778,7 +778,7 @@ def test_default_cloud_provider(client, servicer, monkeypatch):
     monkeypatch.setenv("MODAL_DEFAULT_CLOUD", "oci")
     app.function()(dummy)
     with app.run(client=client):
-        object_id: str = app.indexed_objects["dummy"].object_id
+        object_id: str = app.registered_functions["dummy"].object_id
         f = servicer.app_functions[object_id]
 
     assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_OCI
@@ -828,11 +828,11 @@ def test_deps_explicit(client, servicer):
     app.function(image=image, network_file_systems={"/nfs_1": nfs_1, "/nfs_2": nfs_2})(dummy)
 
     with app.run(client=client):
-        object_id: str = app.indexed_objects["dummy"].object_id
+        object_id: str = app.registered_functions["dummy"].object_id
         f = servicer.app_functions[object_id]
 
-    dep_object_ids = set(d.object_id for d in f.object_dependencies)
-    assert dep_object_ids == set([image.object_id, nfs_1.object_id, nfs_2.object_id])
+    dep_object_ids = {d.object_id for d in f.object_dependencies}
+    assert dep_object_ids == {image.object_id, nfs_1.object_id, nfs_2.object_id}
 
 
 def assert_is_wrapped_dict(some_arg):
@@ -1015,3 +1015,16 @@ def test_experimental_spawn(client, servicer):
     # Verify the correct invocation type is set
     function_map = ctx.pop_request("FunctionMap")
     assert function_map.function_call_invocation_type == api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
+
+
+def test_from_name_web_url(servicer, set_env_client):
+    f = Function.from_name("dummy-app", "func")
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-1", handle_metadata=api_pb2.FunctionHandleMetadata(web_url="test.internal")
+            ),
+        )
+        assert f.web_url == "test.internal"

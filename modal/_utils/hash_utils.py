@@ -2,12 +2,12 @@
 import base64
 import dataclasses
 import hashlib
-from typing import BinaryIO, Callable, List, Union
+from typing import BinaryIO, Callable, Union
 
 HASH_CHUNK_SIZE = 4096
 
 
-def _update(hashers: List[Callable[[bytes], None]], data: Union[bytes, BinaryIO]) -> None:
+def _update(hashers: list[Callable[[bytes], None]], data: Union[bytes, BinaryIO]) -> None:
     if isinstance(data, bytes):
         for hasher in hashers:
             hasher(data)

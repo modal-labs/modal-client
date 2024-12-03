@@ -8,20 +8,15 @@ import platform
 import re
 import time
 import typing
+from collections.abc import AsyncGenerator, AsyncIterator, Generator, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import (
     IO,
     Any,
-    AsyncGenerator,
-    AsyncIterator,
     BinaryIO,
     Callable,
-    Generator,
-    List,
     Optional,
-    Sequence,
-    Type,
     Union,
 )
 
@@ -79,15 +74,6 @@ class FileEntry:
             size=proto.size,
         )
 
-    def __getattr__(self, name: str):
-        deprecation_error(
-            (2024, 4, 15),
-            (
-                f"The FileEntry dataclass was introduced to replace a private Protobuf message. "
-                f"This dataclass does not have the {name} attribute."
-            ),
-        )
-
 
 class _Volume(_Object, type_prefix="vo"):
     """A writeable volume that can be used to share files between one or more Modal functions.
@@ -131,14 +117,21 @@ class _Volume(_Object, type_prefix="vo"):
     ```
     """
 
-    _lock: asyncio.Lock
+    _lock: Optional[asyncio.Lock] = None
 
-    def _initialize_from_empty(self):
+    async def _get_lock(self):
         # To (mostly*) prevent multiple concurrent operations on the same volume, which can cause problems under
         # some unlikely circumstances.
         # *: You can bypass this by creating multiple handles to the same volume, e.g. via lookup. But this
         # covers the typical case = good enough.
-        self._lock = asyncio.Lock()
+
+        # Note: this function runs no async code but is marked as async to ensure it's
+        # being run inside the synchronicity event loop and binds the lock to the
+        # correct event loop on Python 3.9 which eagerly assigns event loops on
+        # constructions of locks
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     @staticmethod
     def new():
@@ -192,21 +185,24 @@ class _Volume(_Object, type_prefix="vo"):
     @classmethod
     @asynccontextmanager
     async def ephemeral(
-        cls: Type["_Volume"],
+        cls: type["_Volume"],
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
-    ) -> AsyncIterator["_Volume"]:
+    ) -> AsyncGenerator["_Volume", None]:
         """Creates a new ephemeral volume within a context manager:
 
         Usage:
         ```python
-        with Volume.ephemeral() as vol:
-            assert vol.listdir() == []
+        import modal
+        with modal.Volume.ephemeral() as vol:
+            assert vol.listdir("/") == []
+        ```
 
-        async with Volume.ephemeral() as vol:
-            assert await vol.listdir() == []
+        ```python notest
+        async with modal.Volume.ephemeral() as vol:
+            assert await vol.listdir("/") == []
         ```
         """
         if client is None:
@@ -223,19 +219,6 @@ class _Volume(_Object, type_prefix="vo"):
             yield cls._new_hydrated(response.volume_id, client, None, is_another_app=True)
 
     @staticmethod
-    def persisted(
-        label: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        environment_name: Optional[str] = None,
-        cloud: Optional[str] = None,
-    ):
-        """mdmd:hidden"""
-        message = (
-            "`Volume.persisted` is deprecated. Please use `Volume.from_name(name, create_if_missing=True)` instead."
-        )
-        deprecation_error((2024, 3, 1), message)
-
-    @staticmethod
     async def lookup(
         label: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -249,7 +232,7 @@ class _Volume(_Object, type_prefix="vo"):
         In contrast to `modal.Volume.from_name`, this is an eager method
         that will hydrate the local object with metadata from Modal servers.
 
-        ```python
+        ```python notest
         vol = modal.Volume.lookup("my-volume")
         print(vol.listdir("/"))
         ```
@@ -291,7 +274,7 @@ class _Volume(_Object, type_prefix="vo"):
 
     @live_method
     async def _do_reload(self, lock=True):
-        async with self._lock if lock else asyncnullcontext():
+        async with (await self._get_lock()) if lock else asyncnullcontext():
             req = api_pb2.VolumeReloadRequest(volume_id=self.object_id)
             _ = await retry_transient_errors(self._client.stub.VolumeReload, req)
 
@@ -302,7 +285,7 @@ class _Volume(_Object, type_prefix="vo"):
         If successful, the changes made are now persisted in durable storage and available to other containers accessing
         the volume.
         """
-        async with self._lock:
+        async with await self._get_lock():
             req = api_pb2.VolumeCommitRequest(volume_id=self.object_id)
             try:
                 # TODO(gongy): only apply indefinite retries on 504 status.
@@ -376,7 +359,7 @@ class _Volume(_Object, type_prefix="vo"):
                 yield FileEntry._from_proto(entry)
 
     @live_method
-    async def listdir(self, path: str, *, recursive: bool = False) -> List[FileEntry]:
+    async def listdir(self, path: str, *, recursive: bool = False) -> list[FileEntry]:
         """List all files under a path prefix in the modal.Volume.
 
         Passing a directory path lists all files in the directory. For a file path, return only that
@@ -433,7 +416,7 @@ class _Volume(_Object, type_prefix="vo"):
 
         n = fileobj.write(response.data)
         if n != len(response.data):
-            raise IOError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
+            raise OSError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
         elif n == response.size:
             return response.size
         elif n > response.size:
@@ -454,7 +437,7 @@ class _Volume(_Object, type_prefix="vo"):
 
             n = fileobj.write(response.data)
             if n != len(response.data):
-                raise IOError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
+                raise OSError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
             written += n
             if written == file_size:
                 break
@@ -536,7 +519,7 @@ class _VolumeUploadContextManager:
     _client: _Client
     _force: bool
     progress_cb: Callable[..., Any]
-    _upload_generators: List[Generator[Callable[[], FileUploadSpec], None, None]]
+    _upload_generators: list[Generator[Callable[[], FileUploadSpec], None, None]]
 
     def __init__(
         self, volume_id: str, client: _Client, progress_cb: Optional[Callable[..., Any]] = None, force: bool = False
@@ -568,7 +551,7 @@ class _VolumeUploadContextManager:
                         yield await fut
 
             # Compute checksums & Upload files
-            files: List[api_pb2.MountFile] = []
+            files: list[api_pb2.MountFile] = []
             async with aclosing(async_map(gen_file_upload_specs(), self._upload_file, concurrency=20)) as stream:
                 async for item in stream:
                     files.append(item)

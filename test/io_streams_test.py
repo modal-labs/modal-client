@@ -2,6 +2,7 @@
 import pytest
 
 from modal import enable_output
+from modal._utils.async_utils import aclosing, sync_or_async_iter
 from modal.io_streams import StreamReader
 from modal_proto import api_pb2
 
@@ -191,3 +192,46 @@ def test_stream_reader_line_buffered_bytes(servicer, client):
             by_line=True,
             text=False,
         )
+
+
+@pytest.mark.asyncio
+async def test_stream_reader_async_iter(servicer, client):
+    """Test that StreamReader behaves as a proper async iterator."""
+
+    async def sandbox_get_logs(servicer, stream):
+        await stream.recv_message()
+
+        log1 = api_pb2.TaskLogs(
+            data="foo",
+            file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+        )
+        await stream.send_message(api_pb2.TaskLogsBatch(entry_id="0", items=[log1]))
+
+        log2 = api_pb2.TaskLogs(
+            data="bar",
+            file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+        )
+        await stream.send_message(api_pb2.TaskLogsBatch(entry_id="1", items=[log2]))
+
+        # send EOF
+        await stream.send_message(api_pb2.TaskLogsBatch(eof=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("SandboxGetLogs", sandbox_get_logs)
+
+        expected = "foobar"
+
+        stdout: StreamReader[str] = StreamReader(
+            file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+            object_id="sb-123",
+            object_type="sandbox",
+            client=client,
+            by_line=True,
+        )
+
+        out = ""
+        async with aclosing(sync_or_async_iter(stdout)) as stream:
+            async for line in stream:
+                out += line
+
+        assert out == expected

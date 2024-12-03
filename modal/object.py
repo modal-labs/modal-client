@@ -1,7 +1,8 @@
 # Copyright Modal Labs 2022
 import uuid
+from collections.abc import Awaitable, Hashable, Sequence
 from functools import wraps
-from typing import Awaitable, Callable, ClassVar, Dict, Hashable, List, Optional, Sequence, Type, TypeVar
+from typing import Callable, ClassVar, Optional, TypeVar
 
 from google.protobuf.message import Message
 
@@ -17,7 +18,7 @@ O = TypeVar("O", bound="_Object")
 
 _BLOCKING_O = synchronize_api(O)
 
-EPHEMERAL_OBJECT_HEARTBEAT_SLEEP = 300
+EPHEMERAL_OBJECT_HEARTBEAT_SLEEP: int = 300
 
 
 def _get_environment_name(environment_name: Optional[str] = None, resolver: Optional[Resolver] = None) -> Optional[str]:
@@ -31,7 +32,7 @@ def _get_environment_name(environment_name: Optional[str] = None, resolver: Opti
 
 class _Object:
     _type_prefix: ClassVar[Optional[str]] = None
-    _prefix_to_type: ClassVar[Dict[str, type]] = {}
+    _prefix_to_type: ClassVar[dict[str, type]] = {}
 
     # For constructors
     _load: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]]
@@ -39,7 +40,7 @@ class _Object:
     _rep: str
     _is_another_app: bool
     _hydrate_lazily: bool
-    _deps: Optional[Callable[..., List["_Object"]]]
+    _deps: Optional[Callable[..., list["_Object"]]]
     _deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None
 
     # For hydrated objects
@@ -65,7 +66,7 @@ class _Object:
         is_another_app: bool = False,
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
-        deps: Optional[Callable[..., List["_Object"]]] = None,
+        deps: Optional[Callable[..., list["_Object"]]] = None,
         deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
@@ -159,7 +160,7 @@ class _Object:
         return obj
 
     @classmethod
-    def _get_type_from_id(cls: Type[O], object_id: str) -> Type[O]:
+    def _get_type_from_id(cls: type[O], object_id: str) -> type[O]:
         parts = object_id.split("-")
         if len(parts) != 2:
             raise InvalidError(f"Object id {object_id} has no dash in it")
@@ -169,12 +170,12 @@ class _Object:
         return cls._prefix_to_type[prefix]
 
     @classmethod
-    def _is_id_type(cls: Type[O], object_id) -> bool:
+    def _is_id_type(cls: type[O], object_id) -> bool:
         return cls._get_type_from_id(object_id) == cls
 
     @classmethod
     def _new_hydrated(
-        cls: Type[O], object_id: str, client: _Client, handle_metadata: Optional[Message], is_another_app: bool = False
+        cls: type[O], object_id: str, client: _Client, handle_metadata: Optional[Message], is_another_app: bool = False
     ) -> O:
         if cls._type_prefix is not None:
             # This is called directly on a subclass, e.g. Secret.from_id
@@ -205,7 +206,7 @@ class _Object:
         return self._local_uuid
 
     @property
-    def object_id(self):
+    def object_id(self) -> str:
         """mdmd:hidden"""
         return self._object_id
 
@@ -215,7 +216,7 @@ class _Object:
         return self._is_hydrated
 
     @property
-    def deps(self) -> Callable[..., List["_Object"]]:
+    def deps(self) -> Callable[..., list["_Object"]]:
         """mdmd:hidden"""
         return self._deps if self._deps is not None else lambda: []
 

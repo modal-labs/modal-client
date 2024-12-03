@@ -10,6 +10,57 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.67.12 (2024-12-02)
+
+- Fixed a bug that executes the wrong method when a Modal Cls overrides a `@modal.method` inherited from a parent.
+
+
+
+### 0.67.7 (2024-11-29)
+
+- Fixed a bug where pointing `modal run` at a method on a Modal Cls would fail if the method was inherited from a parent.
+
+
+
+### 0.67.0 (2024-11-27)
+
+New minor client version `0.67.x` comes with an internal data model change for how Modal creates functions for Modal classes. There are no breaking or backwards-incompatible changes with this release. All forward lookup scenarios (`.lookup()` of a `0.67` class from a pre `0.67` client) as well as backwards lookup scenarios (`.lookup()` of a pre `0.67` class from a `0.67` client) work, except for a `0.62` client looking up a `0.67` class (this maintains our current restriction of not being able to lookup a `0.63+` class from a `0.62` client).
+
+
+## 0.66
+
+
+
+### 0.66.49 (2024-11-26)
+
+- `modal config set-environment` will now raise if the requested environment does not exist.
+
+
+
+### 0.66.45 (2024-11-26)
+
+- The `modal launch` CLI now accepts a `--detach` flag to run the App in detached mode, such that it will persist after the local client disconnects.
+
+
+
+### 0.66.40 (2024-11-23)
+
+* Adds `Image.add_local_file(..., copy=False)` and `Image.add_local_dir(..., copy=False)` as a unified replacement for the old `Image.copy_local_*()` and `Mount.add_local_*` methods.
+
+
+
+### 0.66.30 (2024-11-21)
+
+- Removed the `aiostream` package from the modal client library dependencies.
+
+
+
+### 0.66.29 (2024-11-21)
+
+* Adds `Image.add_local_python_packages` which works similarly to `Mount.from_local_python_packages` but for images.
+
+
+
 ### 0.66.12 (2024-11-19)
 
 `Sandbox.exec` now accepts arguments `text` and `bufsize` for streaming output, which controls text output and line buffering.
@@ -19,6 +70,10 @@ We appreciate your patience while we speedily work towards a stable release of t
 ### 0.66.0 (2024-11-15)
 
 - Modal no longer supports Python 3.8, which has reached its [official EoL](https://devguide.python.org/versions/).
+
+
+
+## 0.65
 
 
 

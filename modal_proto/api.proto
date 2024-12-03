@@ -152,12 +152,6 @@ enum GPUType {
   GPU_TYPE_L40S = 11;
 }
 
-enum InstrumentationType {
-  INSTRUMENTATION_TYPE_UNSPECIFIED = 0;
-  INSTRUMENTATION_TYPE_METRICS = 1;
-  INSTRUMENTATION_TYPE_TRACE = 2;
-}
-
 enum ObjectCreationType {
   OBJECT_CREATION_TYPE_UNSPECIFIED = 0;  // just lookup
   OBJECT_CREATION_TYPE_CREATE_IF_MISSING = 1;
@@ -242,13 +236,6 @@ enum TaskState {
   TASK_STATE_PREEMPTIBLE = 9;
   TASK_STATE_PREEMPTED = 10;
   TASK_STATE_LOADING_CHECKPOINT_IMAGE = 11;
-}
-
-// Encoding type used for user telemetry data.
-enum TelemetryEncodingType {
-  TELEMETRY_ENCODING_TYPE_UNSPECIFIED = 0;
-  TELEMETRY_ENCODING_TYPE_PROTOBUF = 1;
-  TELEMETRY_ENCODING_TYPE_JSON = 2;
 }
 
 enum VolumeFsVersion {
@@ -352,7 +339,7 @@ message AppGetObjectsItem {
 message AppGetObjectsRequest {
   string app_id = 1;
   bool include_unindexed = 2;
-  bool only_class_function = 3;
+  bool only_class_function = 3; // True starting with 0.67.x clients, which don't create method placeholder functions
 }
 
 message AppGetObjectsResponse {
@@ -609,7 +596,7 @@ message ClassCreateRequest {
   string existing_class_id = 2;
   repeated ClassMethod methods = 3;
   reserved 4; // removed class_function_id
-  bool only_class_function = 5;
+  bool only_class_function = 5; // True starting with 0.67.x clients, which don't create method placeholder functions
 }
 
 message ClassCreateResponse {
@@ -625,7 +612,7 @@ message ClassGetRequest {
 
   bool lookup_published = 8; // Lookup class on app published by another workspace
   string workspace_name = 9;
-  bool only_class_function = 10;
+  bool only_class_function = 10; // True starting with 0.67.x clients, which don't create method placeholder functions
 }
 
 message ClassGetResponse {
@@ -1580,12 +1567,6 @@ message FunctionPutOutputsRequest {
   double requested_at = 5; // Used for waypoints.
 }
 
-message FunctionPutUserTelemetryRequest {
-  bytes data = 1;
-  TelemetryEncodingType encoding_type = 2;
-  InstrumentationType instrumentation_type = 3;
-}
-
 message FunctionRetryInputsItem {
   string input_jwt = 1;
   FunctionInput input = 2;
@@ -1773,6 +1754,7 @@ message MethodDefinition {
   WebhookConfig webhook_config = 3;
   string web_url = 4;
   WebUrlInfo web_url_info = 5;
+  repeated CustomDomainInfo custom_domain_info = 6;
 }
 
 message MountFile {
@@ -2101,6 +2083,8 @@ message Sandbox {
 
   // Network access configuration beyond simple allow/block.
   NetworkAccess network_access = 22;
+
+  optional string proxy_id = 23;
 }
 
 message SandboxCreateRequest {
@@ -2160,6 +2144,18 @@ message SandboxListRequest {
 
 message SandboxListResponse {
   repeated SandboxInfo sandboxes = 1;
+}
+
+message SandboxSnapshotFsRequest {
+  string sandbox_id = 1;
+  float timeout = 2;
+}
+
+message SandboxSnapshotFsResponse {
+  string image_id = 1;
+  GenericResult result = 2;
+  // Metadata may be empty since we may skip it for performance reasons.
+  ImageMetadata image_metadata = 3;
 }
 
 message SandboxStdinWriteRequest {
@@ -2725,7 +2721,6 @@ service ModalClient {
   rpc FunctionPrecreate(FunctionPrecreateRequest) returns (FunctionPrecreateResponse);
   rpc FunctionPutInputs(FunctionPutInputsRequest) returns (FunctionPutInputsResponse);
   rpc FunctionPutOutputs(FunctionPutOutputsRequest) returns (google.protobuf.Empty);  // For containers to return result
-  rpc FunctionPutUserTelemetry(FunctionPutUserTelemetryRequest) returns (google.protobuf.Empty);
   rpc FunctionRetryInputs(FunctionRetryInputsRequest) returns (FunctionRetryInputsResponse);
   rpc FunctionStartPtyShell(google.protobuf.Empty) returns (google.protobuf.Empty);
   rpc FunctionUpdateSchedulingParams(FunctionUpdateSchedulingParamsRequest) returns (FunctionUpdateSchedulingParamsResponse);
@@ -2762,6 +2757,7 @@ service ModalClient {
   rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse); // needed for modal container exec
   rpc SandboxGetTunnels(SandboxGetTunnelsRequest) returns (SandboxGetTunnelsResponse);
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
+  rpc SandboxSnapshotFs(SandboxSnapshotFsRequest) returns (SandboxSnapshotFsResponse);
   rpc SandboxStdinWrite(SandboxStdinWriteRequest) returns (SandboxStdinWriteResponse);
   rpc SandboxTagsSet(SandboxTagsSetRequest) returns (google.protobuf.Empty);
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);

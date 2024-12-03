@@ -9,8 +9,9 @@ import sys
 import sysconfig
 import time
 import typing
+from collections.abc import AsyncGenerator
 from pathlib import Path, PurePosixPath
-from typing import AsyncGenerator, Callable, List, Optional, Tuple, Type, Union
+from typing import Callable, Optional, Union
 
 from google.protobuf.message import Message
 
@@ -36,7 +37,7 @@ MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
 #
 # These can be updated safely, but changes will trigger a rebuild for all images
 # that rely on `add_python()` in their constructor.
-PYTHON_STANDALONE_VERSIONS: typing.Dict[str, typing.Tuple[str, str]] = {
+PYTHON_STANDALONE_VERSIONS: dict[str, tuple[str, str]] = {
     "3.9": ("20230826", "3.9.18"),
     "3.10": ("20230826", "3.10.13"),
     "3.11": ("20230826", "3.11.5"),
@@ -73,21 +74,21 @@ class _MountEntry(metaclass=abc.ABCMeta):
         ...
 
     @abc.abstractmethod
-    def get_files_to_upload(self) -> typing.Iterator[Tuple[Path, str]]:
+    def get_files_to_upload(self) -> typing.Iterator[tuple[Path, str]]:
         ...
 
     @abc.abstractmethod
-    def watch_entry(self) -> Tuple[Path, Path]:
+    def watch_entry(self) -> tuple[Path, Path]:
         ...
 
     @abc.abstractmethod
-    def top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
+    def top_level_paths(self) -> list[tuple[Path, PurePosixPath]]:
         ...
 
 
-def _select_files(entries: List[_MountEntry]) -> List[Tuple[Path, PurePosixPath]]:
+def _select_files(entries: list[_MountEntry]) -> list[tuple[Path, PurePosixPath]]:
     # TODO: make this async
-    all_files: typing.Set[Tuple[Path, PurePosixPath]] = set()
+    all_files: set[tuple[Path, PurePosixPath]] = set()
     for entry in entries:
         all_files |= set(entry.get_files_to_upload())
     return list(all_files)
@@ -113,7 +114,7 @@ class _MountFile(_MountEntry):
         safe_path = self.local_file.expanduser().absolute()
         return safe_path.parent, safe_path
 
-    def top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
+    def top_level_paths(self) -> list[tuple[Path, PurePosixPath]]:
         return [(self.local_file, self.remote_path)]
 
 
@@ -150,7 +151,7 @@ class _MountDir(_MountEntry):
     def watch_entry(self):
         return self.local_dir.resolve().expanduser(), None
 
-    def top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
+    def top_level_paths(self) -> list[tuple[Path, PurePosixPath]]:
         return [(self.local_dir, self.remote_path)]
 
 
@@ -194,7 +195,7 @@ class _MountedPythonModule(_MountEntry):
     def description(self) -> str:
         return f"PythonPackage:{self.module_name}"
 
-    def _proxy_entries(self) -> List[_MountEntry]:
+    def _proxy_entries(self) -> list[_MountEntry]:
         mount_infos = get_module_mount_info(self.module_name)
         entries = []
         for mount_info in mount_infos:
@@ -220,16 +221,16 @@ class _MountedPythonModule(_MountEntry):
                 )
         return entries
 
-    def get_files_to_upload(self) -> typing.Iterator[Tuple[Path, str]]:
+    def get_files_to_upload(self) -> typing.Iterator[tuple[Path, str]]:
         for entry in self._proxy_entries():
             yield from entry.get_files_to_upload()
 
-    def watch_entry(self) -> Tuple[Path, Path]:
+    def watch_entry(self) -> tuple[Path, Path]:
         for entry in self._proxy_entries():
             # TODO: fix watch for mounts of multi-path packages
             return entry.watch_entry()
 
-    def top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
+    def top_level_paths(self) -> list[tuple[Path, PurePosixPath]]:
         paths = []
         for sub in self._proxy_entries():
             paths.extend(sub.top_level_paths())
@@ -262,14 +263,14 @@ class _Mount(_Object, type_prefix="mo"):
     the file's contents to skip uploading files that have been uploaded before.
     """
 
-    _entries: Optional[List[_MountEntry]] = None
+    _entries: Optional[list[_MountEntry]] = None
     _deployment_name: Optional[str] = None
     _namespace: Optional[int] = None
     _environment_name: Optional[str] = None
     _content_checksum_sha256_hex: Optional[str] = None
 
     @staticmethod
-    def _new(entries: List[_MountEntry] = []) -> "_Mount":
+    def _new(entries: list[_MountEntry] = []) -> "_Mount":
         rep = f"Mount({entries})"
 
         async def mount_content_deduplication_key():
@@ -298,10 +299,10 @@ class _Mount(_Object, type_prefix="mo"):
         assert isinstance(handle_metadata, api_pb2.MountHandleMetadata)
         self._content_checksum_sha256_hex = handle_metadata.content_checksum_sha256_hex
 
-    def _top_level_paths(self) -> List[Tuple[Path, PurePosixPath]]:
+    def _top_level_paths(self) -> list[tuple[Path, PurePosixPath]]:
         # Returns [(local_absolute_path, remote_path), ...] for all top level entries in the Mount
         # Used to determine if a package mount is installed in a sys directory or not
-        res: List[Tuple[Path, PurePosixPath]] = []
+        res: list[tuple[Path, PurePosixPath]] = []
         for entry in self.entries:
             res.extend(entry.top_level_paths())
         return res
@@ -377,7 +378,9 @@ class _Mount(_Object, type_prefix="mo"):
         )
 
     def add_local_file(
-        self, local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None
+        self,
+        local_path: Union[str, Path],
+        remote_path: Union[str, PurePosixPath, None] = None,
     ) -> "_Mount":
         """
         Add a local file to the `Mount` object.
@@ -411,12 +414,12 @@ class _Mount(_Object, type_prefix="mo"):
         return _Mount._new().add_local_file(local_path, remote_path=remote_path)
 
     @staticmethod
-    def _description(entries: List[_MountEntry]) -> str:
+    def _description(entries: list[_MountEntry]) -> str:
         local_contents = [e.description() for e in entries]
         return ", ".join(local_contents)
 
     @staticmethod
-    async def _get_files(entries: List[_MountEntry]) -> AsyncGenerator[FileUploadSpec, None]:
+    async def _get_files(entries: list[_MountEntry]) -> AsyncGenerator[FileUploadSpec, None]:
         loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor() as exe:
             all_files = await loop.run_in_executor(exe, _select_files, entries)
@@ -500,7 +503,7 @@ class _Mount(_Object, type_prefix="mo"):
 
         # Upload files, or check if they already exist.
         n_concurrent_uploads = 512
-        files: List[api_pb2.MountFile] = []
+        files: list[api_pb2.MountFile] = []
         async with aclosing(
             async_map(_Mount._get_files(self._entries), _put_file, concurrency=n_concurrent_uploads)
         ) as stream:
@@ -600,7 +603,7 @@ class _Mount(_Object, type_prefix="mo"):
 
     @classmethod
     async def lookup(
-        cls: Type["_Mount"],
+        cls: type["_Mount"],
         label: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
@@ -622,12 +625,13 @@ class _Mount(_Object, type_prefix="mo"):
         client: Optional[_Client] = None,
     ) -> None:
         check_object_name(deployment_name, "Mount")
+        environment_name = _get_environment_name(environment_name, resolver=None)
         self._deployment_name = deployment_name
         self._namespace = namespace
         self._environment_name = environment_name
         if client is None:
             client = await _Client.from_env()
-        resolver = Resolver(client=client)
+        resolver = Resolver(client=client, environment_name=environment_name)
         await resolver.load(self)
 
     def _get_metadata(self) -> api_pb2.MountHandleMetadata:
@@ -712,7 +716,7 @@ def _is_modal_path(remote_path: PurePosixPath):
     return False
 
 
-def get_auto_mounts() -> typing.List[_Mount]:
+def get_auto_mounts() -> list[_Mount]:
     """mdmd:hidden
 
     Auto-mount local modules that have been imported in global scope.

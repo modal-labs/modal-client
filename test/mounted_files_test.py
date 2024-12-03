@@ -272,11 +272,13 @@ def test_mount_dedupe(servicer, credentials, test_dir, server_url_env):
         )
     )
     assert servicer.n_mounts == 2
-    assert servicer.mount_contents["mo-1"].keys() == {"/root/mount_dedupe.py"}
-    pkg_a_mount = servicer.mount_contents["mo-2"]
-    for fn in pkg_a_mount.keys():
+    # the order isn't strictly defined here
+    client_mount, entrypoint_mount, pkg_a_mount = sorted(servicer.mount_contents.items(), key=lambda item: len(item[1]))
+    assert client_mount[1] == {}
+    assert entrypoint_mount[1].keys() == {"/root/mount_dedupe.py"}
+    for fn in pkg_a_mount[1].keys():
         assert fn.startswith("/root/pkg_a")
-    assert "/root/pkg_a/normally_not_included.pyc" not in pkg_a_mount.keys()
+    assert "/root/pkg_a/normally_not_included.pyc" not in pkg_a_mount[1].keys()
 
 
 def test_mount_dedupe_explicit(servicer, credentials, test_dir, server_url_env):
@@ -296,7 +298,7 @@ def test_mount_dedupe_explicit(servicer, credentials, test_dir, server_url_env):
     assert servicer.n_mounts == 3
 
     # mounts are loaded in parallel, but there
-    mounted_files_sets = set(frozenset(m.keys()) for m in servicer.mount_contents.values() if m)
+    mounted_files_sets = {frozenset(m.keys()) for m in servicer.mount_contents.values() if m}
     assert {"/root/mount_dedupe.py"} in mounted_files_sets
     mounted_files_sets.remove(frozenset({"/root/mount_dedupe.py"}))
 
