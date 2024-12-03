@@ -17,7 +17,7 @@ def publish_python_standalone_mount(client, version: str) -> None:
     release, full_version = PYTHON_STANDALONE_VERSIONS[version]
 
     libc = "gnu"
-    arch = "x86_64" if version == "3.8" else "x86_64_v3"
+    arch = "x86_64_v3"
     url = (
         "https://github.com/indygreg/python-build-standalone/releases/download"
         + f"/{release}/cpython-{full_version}+{release}-{arch}-unknown-linux-gnu-install_only.tar.gz"
