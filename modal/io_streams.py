@@ -313,6 +313,11 @@ class _StreamReader(Generic[T]):
         else:
             return cast(T, value)
 
+    async def aclose(self):
+        """mdmd:hidden"""
+        if self._stream:
+            await self._stream.aclose()
+
 
 MAX_BUFFER_SIZE = 2 * 1024 * 1024
 
