@@ -64,7 +64,8 @@ class _OutputValue:
 
 
 @dataclass
-class _MapRetryContext:
+class _MapItemRetryContext:
+    function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType"
     input: api_pb2.FunctionInput
     input_id: str
     input_jwt: str
@@ -90,6 +91,7 @@ async def _map_invocation(
     order_outputs: bool,
     return_exceptions: bool,
     count_update_callback: Optional[Callable[[int, int], None]],
+    function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
 ):
     assert client.stub
     request = api_pb2.FunctionMapRequest(
@@ -97,6 +99,7 @@ async def _map_invocation(
         parent_input_id=current_input_id() or "",
         function_call_type=api_pb2.FUNCTION_CALL_TYPE_MAP,
         return_exceptions=return_exceptions,
+        function_call_invocation_type=function_call_invocation_type,
     )
     response = await retry_transient_errors(client.stub.FunctionMap, request)
 
@@ -112,7 +115,7 @@ async def _map_invocation(
         if count_update_callback is not None:
             count_update_callback(num_outputs, num_inputs)
 
-    pending_outputs: dict[int, _MapRetryContext | None] = {}  # Map input idx -> retry context
+    pending_outputs: dict[int, _MapItemRetryContext | None] = {}  # Map input idx -> retry context
     completed_outputs: set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
 
     input_queue: TimedPriorityQueue[
@@ -183,7 +186,8 @@ async def _map_invocation(
             original_item = items_by_idx[response_item.idx]
 
             if response_item.idx not in pending_outputs:
-                pending_outputs[response_item.idx] = _MapRetryContext(
+                pending_outputs[response_item.idx] = _MapItemRetryContext(
+                    function_call_invocation_type=function_call_invocation_type,
                     input=original_item.input,
                     input_id=response_item.input_id,
                     input_jwt=response_item.input_jwt,
@@ -284,7 +288,10 @@ async def _map_invocation(
                 else:
                     # If the output is not successful, we need to retry it.
                     retry_context = pending_outputs[item.idx]
-                    if retry_context:
+                    if (
+                        retry_context
+                        and retry_context.function_call_invocation_type == api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
+                    ):
                         delay_ms = retry_context.retry_manager.get_delay_ms()
 
                         if delay_ms is not None:
