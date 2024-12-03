@@ -900,15 +900,16 @@ def test_extract_copy_command_patterns():
         ),
         ("escaping_special_characters", "{tmp_dir}/special/file[[]1].txt", ["{tmp_path}/special/file[1].txt"]),
         ("character_range", "{tmp_dir}/dir2/test[1-2].py", ["{tmp_path}/dir2/test1.py", "{tmp_path}/dir2/test2.py"]),
-        ("abs_path", "/Users/kasper/dev/client/{tmp_path}/dir2/test1.py", ["{tmp_path}/dir2/test1.py"]),
+        ("abs_path", "{tmp_dir}/dir2/test1.py", ["{tmp_path}/dir2/test1.py"]),
     ],
 )
 def test_filter_fp_docker_pattern(name, pattern, expected_filepaths):
     with TemporaryDirectory(dir="./") as tmp_dir:
         tmp_path = Path(tmp_dir)
         all_fps = create_tmp_files(tmp_path)
-
         fmt_pattern = pattern.format(tmp_dir=tmp_dir, tmp_path=tmp_path)
+        if name == "abs_path":
+            fmt_pattern = os.path.abspath(fmt_pattern)
         fmt_expected_filepaths = [fp.format(tmp_dir=tmp_dir, tmp_path=tmp_path) for fp in expected_filepaths]
         fmt_unexpected_filepaths = [fp for fp in all_fps if fp not in fmt_expected_filepaths]
 
