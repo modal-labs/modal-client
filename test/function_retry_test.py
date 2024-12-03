@@ -3,6 +3,7 @@ import pytest
 
 import modal
 from modal import App
+from modal.exception import LostInputsError
 from modal.retries import RetryManager
 from modal_proto import api_pb2
 
@@ -56,7 +57,9 @@ def test_all_retries_fail_raises_error(client, setup_app_and_function, monkeypat
     app, f = setup_app_and_function
     with app.run(client=client):
         with pytest.raises(FunctionCallCountException) as exc_info:
+            # The client should give up after the 4th call.
             f.remote(5)
+        # Assert the function was called 4 times - the original call plus 3 retries
         assert exc_info.value.function_call_count == 4
 
 
@@ -85,3 +88,17 @@ def test_retry_dealy_ms():
 
     retry_policy = api_pb2.FunctionRetryPolicy(retries=2, backoff_coefficient=3, initial_delay_ms=2000)
     assert RetryManager._retry_delay_ms(2, retry_policy) == 6000
+
+
+def test_lost_inputs_retried(client, setup_app_and_function, monkeypatch, servicer):
+    monkeypatch.setenv("MODAL_CLIENT_RETRIES", "true")
+    app, f = setup_app_and_function
+    # This flag forces the fake server always report 1 lost input, and no successful outputs.
+    servicer.fail_get_outputs_with_lost_inputs = True
+    with app.run(client=client):
+        with pytest.raises(LostInputsError):
+            # The value we pass to the function doesn't matter. The call to GetOutputs will always fail due to lost
+            # inputs. We use function as a way to track how many times the function was retried.
+            f.remote(5)
+        # Assert the function was called 4 times - the original call plus 3 retries
+        assert function_call_count == 4
