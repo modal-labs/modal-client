@@ -78,7 +78,7 @@ def test_no_retries_when_first_call_succeeds(client, setup_app_and_function, mon
         assert function_call_count == 1
 
 
-def test_retry_dealy_ms():
+def test_retry_delay_ms():
     with pytest.raises(ValueError):
         RetryManager._retry_delay_ms(0, api_pb2.FunctionRetryPolicy())
 
@@ -99,6 +99,15 @@ def test_lost_inputs_retried(client, setup_app_and_function, monkeypatch, servic
         f.remote(10)
         # Assert the function was called 10 times
         assert function_call_count == 10
+
+
+def test_map_fails_immediately_without_retries(client, setup_app_and_function, monkeypatch):
+    monkeypatch.setenv("MODAL_CLIENT_RETRIES", "false")
+    app, f = setup_app_and_function
+    with app.run(client=client):
+        with pytest.raises(FunctionCallCountException) as exc_info:
+            list(f.map([999, 999, 999]))
+        assert exc_info.value.function_call_count == 1
 
 
 def test_map_all_retries_fail_raises_error(client, setup_app_and_function, monkeypatch):
