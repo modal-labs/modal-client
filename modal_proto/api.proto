@@ -739,6 +739,11 @@ message ContainerExecRequest {
   uint32 timeout_secs = 8;
   optional string workdir = 9;
   repeated string secret_ids = 10;
+  // Controls whether the process should be terminated after 40s of stdin inactivity.
+  // Enabled for interactive processes like container exec. Disable for long-running
+  // processes that don't require stdin, like sandbox exec.
+  // Clients before v0.67.20 use pty_info as a proxy for enabling the heartbeat instead.
+  bool stdin_heartbeat = 11;
 }
 
 message ContainerExecResponse {
