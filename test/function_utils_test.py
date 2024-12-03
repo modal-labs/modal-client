@@ -1,4 +1,6 @@
 # Copyright Modal Labs 2023
+import functools
+import pytest
 import time
 
 from grpclib import Status
@@ -13,6 +15,8 @@ from modal._utils.function_utils import (
     callable_has_non_self_params,
 )
 from modal_proto import api_pb2
+
+GLOBAL_VARIABLE = "whatever"
 
 
 def hasarg(a):
@@ -133,3 +137,21 @@ async def test_stream_function_call_data(servicer, client):
     assert 0.111 <= elapsed < 1.0
 
     assert await gen.__anext__() == "world"
+
+
+def decorator(f):
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        return f
+
+    return wrapper
+
+
+def has_global_ref():
+    assert GLOBAL_VARIABLE
+
+
+@pytest.mark.parametrize("func", [has_global_ref, decorator(has_global_ref)])
+def test_global_variable_extraction(func):
+    info = FunctionInfo(func)
+    assert info.get_globals().get("GLOBAL_VARIABLE") == GLOBAL_VARIABLE

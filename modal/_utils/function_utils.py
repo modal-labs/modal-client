@@ -248,7 +248,13 @@ class FunctionInfo:
     def get_globals(self) -> dict[str, Any]:
         from .._vendor.cloudpickle import _extract_code_globals
 
+        if self.raw_f is None:
+            return {}
+
         func = self.raw_f
+        while hasattr(func, "__wrapped__") and func is not func.__wrapped__:
+            # Unwrap functions decorated using functools.wrapped (potentially multiple times)
+            func = func.__wrapped__
         f_globals_ref = _extract_code_globals(func.__code__)
         f_globals = {k: func.__globals__[k] for k in f_globals_ref if k in func.__globals__}
         return f_globals
