@@ -743,7 +743,7 @@ message ContainerExecRequest {
   // Enabled for interactive processes like container exec. Disable for long-running
   // processes that don't require stdin, like sandbox exec.
   // Clients before v0.67.20 use pty_info as a proxy for enabling the heartbeat instead.
-  bool stdin_heartbeat = 11;
+  bool disable_stdin_heartbeat = 11;
 }
 
 message ContainerExecResponse {

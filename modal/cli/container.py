@@ -68,7 +68,7 @@ async def exec(
         command=command,
         pty_info=get_pty_info(shell=True) if pty else None,
         runtime_debug=config.get("function_runtime_debug"),
-        stdin_heartbeat=True,
+        disable_stdin_heartbeat=False,
     )
     res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(req)
 

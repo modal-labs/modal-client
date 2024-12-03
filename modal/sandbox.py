@@ -490,7 +490,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 timeout_secs=timeout or 0,
                 workdir=workdir,
                 secret_ids=[secret.object_id for secret in secrets],
-                stdin_heartbeat=False,
+                disable_stdin_heartbeat=True,
             )
         )
         by_line = bufsize == 1
