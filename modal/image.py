@@ -238,15 +238,18 @@ def _get_image_builder_version(server_version: ImageBuilderVersion) -> ImageBuil
     return version
 
 
-def _create_context_mount(docker_commands: List[str]) -> _Mount:
+def _extract_copy_command_patterns(dockerfile_lines: List[str]) -> List[str]:
+    """
+    Extract all COPY command sources from a Dockerfile.
+    Combines multiline COPY commands into a single line.
+    """
     mount_sources = set()
     current_command = ""
     copy_pattern = re.compile(r"^\s*COPY\s+(.+)$", re.IGNORECASE)
 
     # First pass: handle line continuations and collect full commands
-    for line in docker_commands:
+    for line in dockerfile_lines:
         line = line.strip()
-        # print(f"{line=}")
         if not line or line.startswith("#"):
             # ignore comments and empty lines
             continue
@@ -263,7 +266,6 @@ def _create_context_mount(docker_commands: List[str]) -> _Mount:
 
             match = copy_pattern.match(current_command)
             if match:
-                # print(f"{current_command=}")
                 args = match.group(1)
                 parts = shlex.split(args)
 
@@ -278,28 +280,62 @@ def _create_context_mount(docker_commands: List[str]) -> _Mount:
                                 f"COPY command: {source} using special flags/arguments/variables are not supported"
                             )
 
-                        # make sure all sources are absolute paths
-                        if not os.path.isabs(source):
-                            source = os.path.abspath(source)
-
-                        if not os.path.exists(source):
-                            raise InvalidError(f"Mount source does not exist: {source}")
                         mount_sources.add(source)
 
             current_command = ""
 
-    def mount_filter(source: str):
-        # TODO:
-        # https://docs.docker.com/reference/dockerfile/#pattern-matching-1
-        # https://pkg.go.dev/path/filepath#Match
-        for mount_source in mount_sources:
-            # startswith should only apply if it's a directory (ends with /)
-            if (source.startswith(mount_source) and mount_source.endswith("/")) or fnmatch.fnmatch(
-                source, mount_source
-            ):
-                return True
+    return list(mount_sources)
 
+
+def _filter_fp_docker_pattern(filepath: str, pattern: str) -> bool:
+    """
+    Validates that a filepath matches a docker copy pattern.
+    https://docs.docker.com/reference/dockerfile/#pattern-matching-1
+    https://pkg.go.dev/path/filepath#Match
+    """
+    filepath = os.path.abspath(filepath)
+    pattern = os.path.abspath(pattern)
+
+    if "**" in pattern:
+        # Match any file that ends with the pattern after '**/'
+        base_dir = pattern.split("/**/")[0]
+        file_pattern = pattern.split("/**/")[1]
+
+        # Ensure the file is within the base directory
+        if not filepath.startswith(base_dir + "/"):
+            return False
+
+        # Get the relative path after base_dir
+        rel_path = filepath[len(base_dir) + 1 :]
+
+        # Match against the filename part only
+        filename = os.path.basename(filepath)
+        if fnmatch.fnmatch(filename, file_pattern):
+            # Ensure the file is exactly one level deep
+            return rel_path.count("/") == 1
         return False
+
+    # if pattern is a directory, make sure it ends with a separator
+    if os.path.isdir(pattern) and not pattern.endswith("/"):
+        pattern += "/*"
+
+    filepath_dir = os.path.dirname(filepath)
+    pattern_dir = os.path.dirname(pattern)
+
+    if filepath_dir != pattern_dir:
+        return False
+
+    return fnmatch.fnmatch(filepath, pattern)
+
+
+def _create_context_mount(docker_commands: List[str]) -> _Mount:
+    """
+    Creates a context mount from a list of docker commands.
+    """
+    mount_sources = _extract_copy_command_patterns(docker_commands)
+
+    def mount_filter(source: str):
+        return any(_filter_fp_docker_pattern(source, mount_source) for mount_source in mount_sources)
 
     return _Mount.from_local_dir("./", remote_path="/", condition=mount_filter)
 
