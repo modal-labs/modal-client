@@ -7,7 +7,8 @@ us to avoid importing Rich for client code that runs in the container environmen
 
 """
 import contextlib
-from typing import TYPE_CHECKING, Generator, Optional
+from collections.abc import Generator
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from ._output import OutputManager

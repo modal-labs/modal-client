@@ -1,7 +1,8 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
-from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Literal, Optional, Sequence, Tuple, Union, overload
+from collections.abc import AsyncGenerator, Sequence
+from typing import TYPE_CHECKING, Literal, Optional, Union, overload
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -27,6 +28,7 @@ from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import _get_environment_name, _Object
+from .proxy import _Proxy
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 from .stream_type import StreamType
@@ -50,7 +52,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     _stderr: _StreamReader[str]
     _stdin: _StreamWriter
     _task_id: Optional[str] = None
-    _tunnels: Optional[Dict[int, Tunnel]] = None
+    _tunnels: Optional[dict[int, Tunnel]] = None
 
     @staticmethod
     def _new(
@@ -64,14 +66,15 @@ class _Sandbox(_Object, type_prefix="sb"):
         cloud: Optional[str] = None,
         region: Optional[Union[str, Sequence[str]]] = None,
         cpu: Optional[float] = None,
-        memory: Optional[Union[int, Tuple[int, int]]] = None,
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        memory: Optional[Union[int, tuple[int, int]]] = None,
+        network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         block_network: bool = False,
         cidr_allowlist: Optional[Sequence[str]] = None,
-        volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
+        volumes: dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
         pty_info: Optional[api_pb2.PTYInfo] = None,
         encrypted_ports: Sequence[int] = [],
         unencrypted_ports: Sequence[int] = [],
+        proxy: Optional[_Proxy] = None,
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
     ) -> "_Sandbox":
         """mdmd:hidden"""
@@ -101,8 +104,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
-        def _deps() -> List[_Object]:
-            deps: List[_Object] = [image] + list(mounts) + list(secrets)
+        def _deps() -> list[_Object]:
+            deps: list[_Object] = [image] + list(mounts) + list(secrets)
             for _, vol in validated_network_file_systems:
                 deps.append(vol)
             for _, vol in validated_volumes:
@@ -165,6 +168,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 worker_id=config.get("worker_id"),
                 open_ports=api_pb2.PortSpecs(ports=open_ports),
                 network_access=network_access,
+                proxy_id=(proxy.object_id if proxy else None),
             )
 
             # Note - `resolver.app_id` will be `None` for app-less sandboxes
@@ -186,7 +190,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         mounts: Sequence[_Mount] = (),  # Mounts to attach to the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,
@@ -195,11 +199,11 @@ class _Sandbox(_Object, type_prefix="sb"):
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
-        memory: Optional[Union[int, Tuple[int, int]]] = None,
+        memory: Optional[Union[int, tuple[int, int]]] = None,
         block_network: bool = False,  # Whether to block network access
         # List of CIDRs the sandbox is allowed to access. If None, all CIDRs are allowed.
         cidr_allowlist: Optional[Sequence[str]] = None,
-        volumes: Dict[
+        volumes: dict[
             Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
         pty_info: Optional[api_pb2.PTYInfo] = None,
@@ -207,6 +211,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         encrypted_ports: Sequence[int] = [],
         # List of ports to tunnel into the sandbox without encryption.
         unencrypted_ports: Sequence[int] = [],
+        # Reference to a Modal Proxy to use in front of this Sandbox.
+        proxy: Optional[_Proxy] = None,
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
@@ -242,6 +248,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             pty_info=pty_info,
             encrypted_ports=encrypted_ports,
             unencrypted_ports=unencrypted_ports,
+            proxy=proxy,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
         )
 
@@ -306,7 +313,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return obj
 
-    async def set_tags(self, tags: Dict[str, str], *, client: Optional[_Client] = None):
+    async def set_tags(self, tags: dict[str, str], *, client: Optional[_Client] = None):
         """Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in `Sandbox.list`."""
         environment_name = _get_environment_name()
         if client is None:
@@ -341,7 +348,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                     raise SandboxTerminatedError()
                 break
 
-    async def tunnels(self, timeout: int = 50) -> Dict[int, Tunnel]:
+    async def tunnels(self, timeout: int = 50) -> dict[int, Tunnel]:
         """Get tunnel metadata for the sandbox.
 
         Raises `SandboxTimeoutError` if the tunnels are not available after the timeout.
@@ -531,7 +538,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @staticmethod
     async def list(
-        *, app_id: Optional[str] = None, tags: Optional[Dict[str, str]] = None, client: Optional[_Client] = None
+        *, app_id: Optional[str] = None, tags: Optional[dict[str, str]] = None, client: Optional[_Client] = None
     ) -> AsyncGenerator["_Sandbox", None]:
         """List all sandboxes for the current environment or app ID (if specified). If tags are specified, only
         sandboxes that have at least those tags are returned. Returns an iterator over `Sandbox` objects."""

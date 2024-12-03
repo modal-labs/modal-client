@@ -2,7 +2,8 @@
 import inspect
 import os
 import typing
-from typing import Any, Callable, Collection, Dict, List, Optional, Tuple, Type, TypeVar, Union
+from collections.abc import Collection
+from typing import Any, Callable, Optional, TypeVar, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -76,10 +77,10 @@ class _Obj:
 
     All this class does is to return `Function` objects."""
 
-    _functions: Dict[str, _Function]
-    _entered: bool
+    _functions: dict[str, _Function]
+    _has_entered: bool
     _user_cls_instance: Optional[Any] = None
-    _construction_args: Tuple[tuple, Dict[str, Any]]
+    _construction_args: tuple[tuple, dict[str, Any]]
 
     _instance_service_function: Optional[_Function]
 
@@ -91,7 +92,7 @@ class _Obj:
         self,
         user_cls: type,
         class_service_function: Optional[_Function],  # only None for <v0.63 classes
-        classbound_methods: Dict[str, _Function],
+        classbound_methods: dict[str, _Function],
         from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
         args,
@@ -120,8 +121,7 @@ class _Obj:
                 self._method_functions[method_name] = method
 
         # Used for construction local object lazily
-        self._entered = False
-        self._local_user_cls_instance = None
+        self._has_entered = False
         self._user_cls = user_cls
         self._construction_args = (args, kwargs)  # used for lazy construction in case of explicit constructors
 
@@ -154,7 +154,7 @@ class _Obj:
         Note that all Modal methods and web endpoints of a class share the same set
         of containers and the warm_pool_size affects that common container pool.
 
-        ```python
+        ```python notest
         # Usage on a parametrized function.
         Model = modal.Cls.lookup("my-app", "Model")
         Model("fine-tuned-model").keep_warm(2)
@@ -175,8 +175,8 @@ class _Obj:
 
         return self._user_cls_instance
 
-    def enter(self):
-        if not self._entered:
+    def _enter(self):
+        if not self._has_entered:
             if hasattr(self._user_cls_instance, "__enter__"):
                 self._user_cls_instance.__enter__()
 
@@ -187,26 +187,26 @@ class _Obj:
                 for enter_method in _find_callables_for_obj(self._user_cls_instance, method_flag).values():
                     enter_method()
 
-        self._entered = True
+        self._has_entered = True
 
     @property
-    def entered(self):
-        # needed because aenter is nowrap
-        return self._entered
+    def _entered(self) -> bool:
+        # needed because _aenter is nowrap
+        return self._has_entered
 
-    @entered.setter
-    def entered(self, val):
-        self._entered = val
+    @_entered.setter
+    def _entered(self, val: bool):
+        self._has_entered = val
 
     @synchronizer.nowrap
-    async def aenter(self):
-        if not self.entered:
+    async def _aenter(self):
+        if not self._entered:  # use the property to get at the impl class
             user_cls_instance = self._cached_user_cls_instance()
             if hasattr(user_cls_instance, "__aenter__"):
                 await user_cls_instance.__aenter__()
             elif hasattr(user_cls_instance, "__enter__"):
                 user_cls_instance.__enter__()
-        self.entered = True
+        self._has_entered = True
 
     def __getattr__(self, k):
         if k in self._method_functions:
@@ -244,16 +244,15 @@ class _Cls(_Object, type_prefix="cs"):
     _class_service_function: Optional[
         _Function
     ]  # The _Function serving *all* methods of the class, used for version >=v0.63
-    _method_functions: Dict[str, _Function]  # Placeholder _Functions for each method
+    _method_functions: Optional[dict[str, _Function]] = None  # Placeholder _Functions for each method
     _options: Optional[api_pb2.FunctionOptions]
-    _callables: Dict[str, Callable[..., Any]]
+    _callables: dict[str, Callable[..., Any]]
     _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
     _app: Optional["modal.app._App"] = None  # not set for lookups
 
     def _initialize_from_empty(self):
         self._user_cls = None
         self._class_service_function = None
-        self._method_functions = {}
         self._options = None
         self._callables = {}
         self._from_other_workspace = None
@@ -266,35 +265,53 @@ class _Cls(_Object, type_prefix="cs"):
         self._callables = other._callables
         self._from_other_workspace = other._from_other_workspace
 
-    def _get_partial_functions(self) -> Dict[str, _PartialFunction]:
+    def _get_partial_functions(self) -> dict[str, _PartialFunction]:
         if not self._user_cls:
             raise AttributeError("You can only get the partial functions of a local Cls instance")
         return _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.all())
 
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
-
-        for method in metadata.methods:
-            if method.function_name in self._method_functions:
-                # This happens when the class is loaded locally
-                # since each function will already be a loaded dependency _Function
-                self._method_functions[method.function_name]._hydrate(
-                    method.function_id, self._client, method.function_handle_metadata
-                )
+        if (
+            self._class_service_function
+            and self._class_service_function._method_handle_metadata
+            and len(self._class_service_function._method_handle_metadata)
+        ):
+            # The class only has a class service service function and no method placeholders (v0.67+)
+            if self._method_functions:
+                # We're here when the Cls is loaded locally (e.g. _Cls.from_local) so the _method_functions mapping is
+                # populated with (un-hydrated) _Function objects
+                for (
+                    method_name,
+                    method_handle_metadata,
+                ) in self._class_service_function._method_handle_metadata.items():
+                    self._method_functions[method_name]._hydrate(
+                        self._class_service_function.object_id, self._client, method_handle_metadata
+                    )
             else:
+                # We're here when the function is loaded remotely (e.g. _Cls.from_name)
+                self._method_functions = {}
+                for (
+                    method_name,
+                    method_handle_metadata,
+                ) in self._class_service_function._method_handle_metadata.items():
+                    self._method_functions[method_name] = _Function._new_hydrated(
+                        self._class_service_function.object_id, self._client, method_handle_metadata
+                    )
+        elif self._class_service_function:
+            # A class with a class service function and method placeholder functions
+            self._method_functions = {}
+            for method in metadata.methods:
+                self._method_functions[method.function_name] = _Function._new_hydrated(
+                    self._class_service_function.object_id, self._client, method.function_handle_metadata
+                )
+        else:
+            # pre 0.63 class that does not have a class service function and only method functions
+            self._method_functions = {}
+            for method in metadata.methods:
                 self._method_functions[method.function_name] = _Function._new_hydrated(
                     method.function_id, self._client, method.function_handle_metadata
                 )
-
-    def _get_metadata(self) -> api_pb2.ClassHandleMetadata:
-        class_handle_metadata = api_pb2.ClassHandleMetadata()
-        for f_name, f in self._method_functions.items():
-            class_handle_metadata.methods.append(
-                api_pb2.ClassMethod(
-                    function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata()
-                )
-            )
-        return class_handle_metadata
 
     @staticmethod
     def validate_construction_mechanism(user_cls):
@@ -327,48 +344,35 @@ class _Cls(_Object, type_prefix="cs"):
         # validate signature
         _Cls.validate_construction_mechanism(user_cls)
 
-        functions: Dict[str, _Function] = {}
-        partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
+        method_functions: dict[str, _Function] = {}
+        partial_functions: dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
             user_cls, _PartialFunctionFlags.FUNCTION
         )
 
         for method_name, partial_function in partial_functions.items():
-            method_function = class_service_function._bind_method_old(user_cls, method_name, partial_function)
-            app._add_function(method_function, is_web_endpoint=partial_function.webhook_config is not None)
+            method_function = class_service_function._bind_method(user_cls, method_name, partial_function)
+            if partial_function.webhook_config is not None:
+                app._web_endpoints.append(method_function.tag)
             partial_function.wrapped = True
-            functions[method_name] = method_function
+            method_functions[method_name] = method_function
 
         # Disable the warning that these are not wrapped
         for partial_function in _find_partial_methods_for_user_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():
             partial_function.wrapped = True
 
         # Get all callables
-        callables: Dict[str, Callable] = {
-            k: pf.raw_f for k, pf in _find_partial_methods_for_user_cls(user_cls, ~_PartialFunctionFlags(0)).items()
+        callables: dict[str, Callable] = {
+            k: pf.raw_f for k, pf in _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.all()).items()
         }
 
-        def _deps() -> List[_Function]:
-            return [class_service_function] + list(functions.values())
+        def _deps() -> list[_Function]:
+            return [class_service_function]
 
         async def _load(self: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
-            req = api_pb2.ClassCreateRequest(app_id=resolver.app_id, existing_class_id=existing_object_id)
-            for f_name, f in self._method_functions.items():
-                req.methods.append(
-                    api_pb2.ClassMethod(
-                        function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata()
-                    )
-                )
+            req = api_pb2.ClassCreateRequest(
+                app_id=resolver.app_id, existing_class_id=existing_object_id, only_class_function=True
+            )
             resp = await resolver.client.stub.ClassCreate(req)
-            # Even though we already have the function_handle_metadata for this method locally,
-            # The RPC is going to replace it with function_handle_metadata derived from the server.
-            # We need to overwrite the definition_id sent back from the server here with the definition_id
-            # previously stored in function metadata, which may have been sent back from FunctionCreate.
-            # The problem is that this metadata propagates back and overwrites the metadata on the Function
-            # object itself. This is really messy. Maybe better to exclusively populate the method metadata
-            # from the function metadata we already have locally? Really a lot to clean up here...
-            for method in resp.handle_metadata.methods:
-                f_metadata = self._method_functions[method.function_name]._get_metadata()
-                method.function_handle_metadata.definition_id = f_metadata.definition_id
             self._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"
@@ -376,7 +380,7 @@ class _Cls(_Object, type_prefix="cs"):
         cls._app = app
         cls._user_cls = user_cls
         cls._class_service_function = class_service_function
-        cls._method_functions = functions
+        cls._method_functions = method_functions
         cls._callables = callables
         cls._from_other_workspace = False
         return cls
@@ -388,7 +392,7 @@ class _Cls(_Object, type_prefix="cs"):
 
     @classmethod
     def from_name(
-        cls: Type["_Cls"],
+        cls: type["_Cls"],
         app_name: str,
         tag: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -415,6 +419,7 @@ class _Cls(_Object, type_prefix="cs"):
                 environment_name=_environment_name,
                 lookup_published=workspace is not None,
                 workspace_name=workspace,
+                only_class_function=True,
             )
             try:
                 response = await retry_transient_errors(resolver.client.stub.ClassGet, request)
@@ -449,11 +454,11 @@ class _Cls(_Object, type_prefix="cs"):
 
     def with_options(
         self: "_Cls",
-        cpu: Optional[Union[float, Tuple[float, float]]] = None,
-        memory: Optional[Union[int, Tuple[int, int]]] = None,
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
+        memory: Optional[Union[int, tuple[int, int]]] = None,
         gpu: GPU_T = None,
         secrets: Collection[_Secret] = (),
-        volumes: Dict[Union[str, os.PathLike], _Volume] = {},
+        volumes: dict[Union[str, os.PathLike], _Volume] = {},
         retries: Optional[Union[int, Retries]] = None,
         timeout: Optional[int] = None,
         concurrency_limit: Optional[int] = None,
@@ -519,7 +524,7 @@ class _Cls(_Object, type_prefix="cs"):
         In contrast to `modal.Cls.from_name`, this is an eager method
         that will hydrate the local object with metadata from Modal servers.
 
-        ```python
+        ```python notest
         Class = modal.Cls.lookup("other-app", "Class")
         obj = Class()
         ```

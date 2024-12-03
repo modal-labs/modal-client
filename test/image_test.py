@@ -7,7 +7,7 @@ import sys
 import threading
 from hashlib import sha256
 from tempfile import NamedTemporaryFile
-from typing import List, Literal, get_args
+from typing import Literal, get_args
 from unittest import mock
 
 import modal
@@ -31,7 +31,7 @@ from modal_proto import api_pb2
 from .supports.skip import skip_windows
 
 # Avoid parameterizing tests over ImageBuilderVersion not supported by current Python
-PYTHON_MAJOR_MINOR = "{0}.{1}".format(*sys.version_info)
+PYTHON_MAJOR_MINOR = "{}.{}".format(*sys.version_info)
 SUPPORTED_IMAGE_BUILDER_VERSIONS = [
     v for v in get_args(ImageBuilderVersion) if PYTHON_MAJOR_MINOR in SUPPORTED_PYTHON_SERIES[v]
 ]
@@ -54,7 +54,7 @@ def test_supported_python_series():
         assert SUPPORTED_PYTHON_SERIES[builder_version] <= list(PYTHON_STANDALONE_VERSIONS)
 
 
-def get_image_layers(image_id: str, servicer) -> List[api_pb2.Image]:
+def get_image_layers(image_id: str, servicer) -> list[api_pb2.Image]:
     """Follow pointers to the previous image recursively in the servicer's list of images,
     and return a list of image layers from top to bottom."""
 
@@ -96,7 +96,7 @@ def clear_environment_cache():
 
 
 def test_python_version_validation(builder_version):
-    assert _validate_python_version(None, builder_version) == "{0}.{1}".format(*sys.version_info)
+    assert _validate_python_version(None, builder_version) == "{}.{}".format(*sys.version_info)
     assert _validate_python_version("3.12", builder_version) == "3.12"
     assert _validate_python_version("3.12.0", builder_version) == "3.12.0"
 
@@ -155,7 +155,7 @@ def test_image_base(builder_version, servicer, client, test_dir):
 
 @pytest.mark.parametrize("python_version", [None, "3.10", "3.11.4"])
 def test_python_version(builder_version, servicer, client, python_version):
-    local_python = "{0}.{1}".format(*sys.version_info)
+    local_python = "{}.{}".format(*sys.version_info)
     expected_python = local_python if python_version is None else python_version
 
     app = App()
@@ -1309,13 +1309,13 @@ def hydrate_image(img, client):
 
 def test_add_local_lazy_vs_copy(client, servicer, set_env_client, supports_on_path):
     deb = Image.debian_slim()
-    image_with_mount = deb.add_local_python_dir("pkg_a")
+    image_with_mount = deb.add_local_python_sources("pkg_a")
 
     hydrate_image(image_with_mount, client)
     assert image_with_mount.object_id == deb.object_id
     assert len(image_with_mount._mount_layers) == 1
 
-    image_additional_mount = image_with_mount.add_local_python_dir("pkg_b")
+    image_additional_mount = image_with_mount.add_local_python_sources("pkg_b")
     hydrate_image(image_additional_mount, client)
     assert len(image_additional_mount._mount_layers) == 2  # another mount added to lazy layer
     assert len(image_with_mount._mount_layers) == 1  # original image should not be affected
@@ -1326,12 +1326,12 @@ def test_add_local_lazy_vs_copy(client, servicer, set_env_client, supports_on_pa
         # error about using non-copy add commands before other build steps
         hydrate_image(image_non_mount, client)
 
-    image_with_copy = deb.add_local_python_dir("pkg_a", copy=True)
+    image_with_copy = deb.add_local_python_sources("pkg_a", copy=True)
     hydrate_image(image_with_copy, client)
     assert len(image_with_copy._mount_layers) == 0
 
     # do the same exact image using copy=True
-    image_with_copy_and_commands = deb.add_local_python_dir("pkg_a", copy=True).run_commands("echo 'hello'")
+    image_with_copy_and_commands = deb.add_local_python_sources("pkg_a", copy=True).run_commands("echo 'hello'")
     hydrate_image(image_with_copy_and_commands, client)
     assert len(image_with_copy_and_commands._mount_layers) == 0
 
@@ -1349,7 +1349,7 @@ def test_add_local_lazy_vs_copy(client, servicer, set_env_client, supports_on_pa
 
 def test_add_locals_are_attached_to_functions(servicer, client, supports_on_path):
     deb_slim = Image.debian_slim()
-    img = deb_slim.add_local_python_dir("pkg_a")
+    img = deb_slim.add_local_python_sources("pkg_a")
     app = App("my-app")
     control_fun: modal.Function = app.function(serialized=True, image=deb_slim, name="control")(
         dummy
@@ -1366,7 +1366,7 @@ def test_add_locals_are_attached_to_functions(servicer, client, supports_on_path
 
 def test_add_locals_are_attached_to_classes(servicer, client, supports_on_path, set_env_client):
     deb_slim = Image.debian_slim()
-    img = deb_slim.add_local_python_dir("pkg_a")
+    img = deb_slim.add_local_python_sources("pkg_a")
     app = App("my-app")
     control_fun: modal.Function = app.function(serialized=True, image=deb_slim, name="control")(
         dummy
@@ -1397,7 +1397,7 @@ def test_add_locals_are_attached_to_classes(servicer, client, supports_on_path, 
 @skip_windows("servicer sandbox implementation not working on windows")
 def test_add_locals_are_attached_to_sandboxes(servicer, client, supports_on_path):
     deb_slim = Image.debian_slim()
-    img = deb_slim.add_local_python_dir("pkg_a")
+    img = deb_slim.add_local_python_sources("pkg_a")
     app = App("my-app")
     with app.run(client=client):
         modal.Sandbox.create(image=img, app=app, client=client)
@@ -1416,7 +1416,7 @@ def empty_fun():
 
 def test_add_locals_build_function(servicer, client, supports_on_path):
     deb_slim = Image.debian_slim()
-    img = deb_slim.add_local_python_dir("pkg_a")
+    img = deb_slim.add_local_python_sources("pkg_a")
     img_with_build_function = img.run_function(empty_fun)
     with pytest.raises(InvalidError):
         # build functions could still potentially rewrite mount contents,
@@ -1424,10 +1424,55 @@ def test_add_locals_build_function(servicer, client, supports_on_path):
         # TODO(elias): what if someone wants do use an equivalent of `run_function(..., mounts=[...]) ?
         hydrate_image(img_with_build_function, client)
 
-    img_with_copy = deb_slim.add_local_python_dir("pkg_a", copy=True)
+    img_with_copy = deb_slim.add_local_python_sources("pkg_a", copy=True)
     hydrate_image(img_with_copy, client)  # this is fine
 
 
 # TODO: test modal shell w/ lazy mounts
 # this works since the image is passed on as is to a sandbox which will load it and
 # transfer any virtual mount layers from the image as mounts to the sandbox
+
+
+def test_image_only_joins_unfinished_steps(servicer, client):
+    app = App()
+    deb_slim = Image.debian_slim()
+    image = deb_slim.pip_install("foobarbaz")
+    app.function(image=image)(dummy)
+    with servicer.intercept() as ctx:
+        # default - image not built, should stream
+        with app.run(client=client):
+            pass
+        image_gets = ctx.get_requests("ImageGetOrCreate")
+        assert len(image_gets) == 2
+        image_joins = ctx.get_requests("ImageJoinStreaming")
+        assert len(image_joins) == 2
+
+    with servicer.intercept() as ctx:
+        # lets mock that deb_slim has been built already
+
+        async def custom_responder(servicer, stream):
+            image_get_or_create_request = await stream.recv_message()
+            is_base_image = any("FROM python:" in cmd for cmd in image_get_or_create_request.image.dockerfile_commands)
+            if is_base_image:
+                # base image done
+                await stream.send_message(
+                    api_pb2.ImageGetOrCreateResponse(
+                        image_id="im-123",
+                        result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
+                    )
+                )
+            else:
+                await stream.send_message(
+                    api_pb2.ImageGetOrCreateResponse(
+                        image_id="im-124",
+                    )
+                )
+
+        ctx.set_responder("ImageGetOrCreate", custom_responder)
+        with app.run(client=client):
+            pass
+        image_gets = ctx.get_requests("ImageGetOrCreate")
+        assert len(image_gets) == 2
+        image_joins = ctx.get_requests("ImageJoinStreaming")
+        assert len(image_joins) == 1  # should now skip building of second build step
+        assert image_joins[0].image_id == "im-124"

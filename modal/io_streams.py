@@ -1,14 +1,11 @@
 # Copyright Modal Labs 2022
 import asyncio
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import (
     TYPE_CHECKING,
-    AsyncGenerator,
-    AsyncIterator,
     Generic,
-    List,
     Literal,
     Optional,
-    Tuple,
     TypeVar,
     Union,
     cast,
@@ -31,7 +28,7 @@ if TYPE_CHECKING:
 
 async def _sandbox_logs_iterator(
     sandbox_id: str, file_descriptor: "api_pb2.FileDescriptor.ValueType", last_entry_id: str, client: _Client
-) -> AsyncGenerator[Tuple[Optional[bytes], str], None]:
+) -> AsyncGenerator[tuple[Optional[bytes], str], None]:
     req = api_pb2.SandboxGetLogsRequest(
         sandbox_id=sandbox_id,
         file_descriptor=file_descriptor,
@@ -137,7 +134,7 @@ class _StreamReader(Generic[T]):
             # Container process streams need to be consumed as they are produced,
             # otherwise the process will block. Use a buffer to store the stream
             # until the client consumes it.
-            self._container_process_buffer: List[Optional[bytes]] = []
+            self._container_process_buffer: list[Optional[bytes]] = []
             self._consume_container_process_task = asyncio.create_task(self._consume_container_process_stream())
 
     @property
@@ -208,7 +205,7 @@ class _StreamReader(Generic[T]):
                         break
                 raise exc
 
-    async def _stream_container_process(self) -> AsyncGenerator[Tuple[Optional[bytes], str], None]:
+    async def _stream_container_process(self) -> AsyncGenerator[tuple[Optional[bytes], str], None]:
         """Streams the container process buffer to the reader."""
         entry_id = 0
         if self._last_entry_id:
@@ -227,7 +224,7 @@ class _StreamReader(Generic[T]):
 
             entry_id += 1
 
-    async def _get_logs(self) -> AsyncGenerator[Optional[bytes], None]:
+    async def _get_logs(self, skip_empty_messages: bool = True) -> AsyncGenerator[Optional[bytes], None]:
         """Streams sandbox or process logs from the server to the reader.
 
         Logs returned by this method may contain partial or multiple lines at a time.
@@ -256,6 +253,11 @@ class _StreamReader(Generic[T]):
 
                 async for message, entry_id in iterator:
                     self._last_entry_id = entry_id
+                    # Empty messages are sent when the process boots up. Don't yield them unless
+                    # we're using the empty message to signal process liveness.
+                    if skip_empty_messages and message == b"":
+                        continue
+
                     yield message
                     if message is None:
                         completed = True
@@ -385,13 +387,14 @@ class _StreamWriter:
 
         **Usage**
 
-        ```python
-        # Synchronous
+        ```python notest
         writer.write(data)
         writer.drain()
+        ```
 
-        # Async
-        writer.write(data)
+        Async usage:
+        ```python notest
+        writer.write(data)  # not a blocking operation
         await writer.drain.aio()
         ```
         """

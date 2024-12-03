@@ -110,7 +110,7 @@ def get_by_object_path(obj: Any, obj_path: str) -> Optional[Any]:
 def _infer_function_or_help(
     app: App, module, accept_local_entrypoint: bool, accept_webhook: bool
 ) -> Union[Function, LocalEntrypoint]:
-    function_choices = set(tag for tag, func in app.registered_functions.items() if not func.info.is_service_class())
+    function_choices = set(app.registered_functions)
     if not accept_webhook:
         function_choices -= set(app.registered_web_endpoints)
     if accept_local_entrypoint:
@@ -154,7 +154,7 @@ Registered functions and local entrypoints on the selected app are:
         # entrypoint is in entrypoint registry, for now
         return app.registered_entrypoints[function_name]
 
-    function = app.indexed_objects[function_name]  # functions are in blueprint
+    function = app.registered_functions[function_name]
     assert isinstance(function, Function)
     return function
 

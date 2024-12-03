@@ -1,8 +1,9 @@
 # Copyright Modal Labs 2022
 import asyncio
+from collections.abc import Sequence
 from datetime import datetime
 from json import dumps
-from typing import Optional, Sequence, Union
+from typing import Optional, Union
 
 import typer
 from click import UsageError

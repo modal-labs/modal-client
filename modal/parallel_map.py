@@ -3,7 +3,7 @@ import asyncio
 import time
 import typing
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional, Set, Tuple
+from typing import Any, Callable, Optional
 
 from grpclib import GRPCError, Status
 
@@ -78,7 +78,7 @@ async def _map_invocation(
 ):
     assert client.stub
     request = api_pb2.FunctionMapRequest(
-        function_id=function._invocation_function_id(),
+        function_id=function.object_id,
         parent_input_id=current_input_id() or "",
         function_call_type=api_pb2.FUNCTION_CALL_TYPE_MAP,
         return_exceptions=return_exceptions,
@@ -95,8 +95,8 @@ async def _map_invocation(
         if count_update_callback is not None:
             count_update_callback(num_outputs, num_inputs)
 
-    pending_outputs: Dict[str, int] = {}  # Map input_id -> next expected gen_index value
-    completed_outputs: Set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
+    pending_outputs: dict[str, int] = {}  # Map input_id -> next expected gen_index value
+    completed_outputs: set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
 
     input_queue: asyncio.Queue = asyncio.Queue()
 
@@ -131,7 +131,7 @@ async def _map_invocation(
         nonlocal have_all_inputs, num_inputs
         async for items in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
             request = api_pb2.FunctionPutInputsRequest(
-                function_id=function._invocation_function_id(), inputs=items, function_call_id=function_call_id
+                function_id=function.object_id, inputs=items, function_call_id=function_call_id
             )
             logger.debug(
                 f"Pushing {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}."
@@ -216,7 +216,7 @@ async def _map_invocation(
             )
             await retry_transient_errors(client.stub.FunctionGetOutputs, request)
 
-    async def fetch_output(item: api_pb2.FunctionGetOutputsItem) -> Tuple[int, Any]:
+    async def fetch_output(item: api_pb2.FunctionGetOutputsItem) -> tuple[int, Any]:
         try:
             output = await _process_result(item.result, item.data_format, client.stub, client)
         except Exception as e:

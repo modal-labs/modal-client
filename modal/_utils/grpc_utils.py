@@ -7,10 +7,9 @@ import time
 import typing
 import urllib.parse
 import uuid
+from collections.abc import AsyncIterator
 from typing import (
     Any,
-    AsyncIterator,
-    Dict,
     Optional,
     TypeVar,
 )
@@ -72,7 +71,7 @@ RETRYABLE_GRPC_STATUS_CODES = [
 
 def create_channel(
     server_url: str,
-    metadata: Dict[str, str] = {},
+    metadata: dict[str, str] = {},
 ) -> grpclib.client.Channel:
     """Creates a grpclib.Channel.
 

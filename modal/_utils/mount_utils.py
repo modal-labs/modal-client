@@ -1,8 +1,9 @@
 # Copyright Modal Labs 2022
 import posixpath
 import typing
+from collections.abc import Mapping, Sequence
 from pathlib import PurePath, PurePosixPath
-from typing import Dict, List, Mapping, Sequence, Tuple, Union
+from typing import Union
 
 from ..cloud_bucket_mount import _CloudBucketMount
 from ..exception import InvalidError
@@ -15,7 +16,7 @@ T = typing.TypeVar("T", bound=Union[_Volume, _NetworkFileSystem, _CloudBucketMou
 def validate_mount_points(
     display_name: str,
     volume_likes: Mapping[Union[str, PurePosixPath], T],
-) -> List[Tuple[str, T]]:
+) -> list[tuple[str, T]]:
     """Mount point path validation for volumes and network file systems."""
 
     if not isinstance(volume_likes, dict):
@@ -57,11 +58,11 @@ def validate_network_file_systems(
 
 def validate_volumes(
     volumes: Mapping[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]],
-) -> Sequence[Tuple[str, Union[_Volume, _CloudBucketMount]]]:
+) -> Sequence[tuple[str, Union[_Volume, _CloudBucketMount]]]:
     validated_volumes = validate_mount_points("Volume", volumes)
     # We don't support mounting a modal.Volume in more than one location,
     # but the same CloudBucketMount object can be used in more than one location.
-    volume_to_paths: Dict[_Volume, List[str]] = {}
+    volume_to_paths: dict[_Volume, list[str]] = {}
     for path, volume in validated_volumes:
         if not isinstance(volume, (_Volume, _CloudBucketMount)):
             raise InvalidError(f"Object of type {type(volume)} mounted at '{path}' is not useable as a volume.")
