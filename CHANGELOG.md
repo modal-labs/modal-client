@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.67.22 (2024-12-03)
+
+- Fixed a bug introduced in v0.67.0 where it was impossible to call `modal.Cls` methods when passing a list of requested GPUs.
+
+
+
 ### 0.67.12 (2024-12-02)
 
 - Fixed a bug that executes the wrong method when a Modal Cls overrides a `@modal.method` inherited from a parent.
