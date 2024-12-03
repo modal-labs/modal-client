@@ -221,18 +221,17 @@ async def test_stream_reader_async_iter(servicer, client):
 
         expected = "foobar"
 
-        with enable_output():
-            stdout: StreamReader[str] = StreamReader(
-                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
-                object_id="sb-123",
-                object_type="sandbox",
-                client=client,
-                by_line=True,
-            )
+        stdout: StreamReader[str] = StreamReader(
+            file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+            object_id="sb-123",
+            object_type="sandbox",
+            client=client,
+            by_line=True,
+        )
 
-            out = ""
-            async with aclosing(sync_or_async_iter(stdout)) as stream:
-                async for line in stream:
-                    out += line
+        out = ""
+        async with aclosing(sync_or_async_iter(stdout)) as stream:
+            async for line in stream:
+                out += line
 
-            assert out == expected
+        assert out == expected
