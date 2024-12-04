@@ -47,7 +47,7 @@ def python_file_as_executable(path: Path) -> Generator[Path, None, None]:
 @task
 def protoc(ctx):
     protoc_cmd = f"{sys.executable} -m grpc_tools.protoc"
-    input_files = "modal_proto/api.proto modal_proto/blobs.proto modal_proto/options.proto"
+    input_files = "modal_proto/api.proto modal_proto/options.proto"
     py_protoc = (
         protoc_cmd + " --python_out=. --grpclib_python_out=." + " --grpc_python_out=. --mypy_out=. --mypy_grpc_out=."
     )
