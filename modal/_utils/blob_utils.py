@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 from aiohttp import BytesIOPayload
 from aiohttp.abc import AbstractStreamWriter
 
-from modal_proto import api_pb2, blobs_pb2, modal_blobs_grpc
+from modal_proto import api_pb2, modal_api_grpc
 from modal_proto.modal_api_grpc import ModalClientModal
 
 from ..exception import ExecutionError
@@ -124,7 +124,7 @@ class BytesIOSegmentPayload(BytesIOPayload):
 
 @retry(n_attempts=5, base_delay=0.5, timeout=None)
 async def _upload_with_request_details(
-    request_details: blobs_pb2.UploadRequestDetails,
+    request_details: api_pb2.BlobUploadRequestDetails,
     payload: BytesIOSegmentPayload,
 ) -> str:
     """Returns etag of s3 object which is a md5 hex checksum of the uploaded content"""
@@ -171,13 +171,13 @@ async def _upload_with_request_details(
 
 
 async def _stage_and_upload(
-    stub: modal_blobs_grpc.BlobsModal,
+    stub: modal_api_grpc.ModalClientModal,
     session_token: bytes,
     part: int,
     payload: BytesIOSegmentPayload,
 ) -> str:
-    req = blobs_pb2.StageBlobPartRequest(session_token=session_token, part=part)
-    resp: blobs_pb2.StageBlobPartResponse = await retry_transient_errors(stub.StageBlobPart, req)
+    req = api_pb2.BlobStagePartRequest(session_token=session_token, part=part)
+    resp = await retry_transient_errors(stub.BlobStagePart, req)
     request_details = resp.upload_request
     return await _upload_with_request_details(request_details, payload)
 
@@ -185,7 +185,7 @@ async def _stage_and_upload(
 async def _perform_multipart_upload(
     data_file: Union[BinaryIO, io.BytesIO, io.FileIO],
     *,
-    stub: modal_blobs_grpc.BlobsModal,
+    stub: modal_api_grpc.ModalClientModal,
     session_token: bytes,
     blob_size: int,
     max_part_size: int,
@@ -235,7 +235,7 @@ def _get_blob_size(data: BinaryIO) -> int:
 async def _blob_upload(
     sha256_hex: str,
     data: Union[bytes, BinaryIO],
-    stub: modal_blobs_grpc.BlobsModal,
+    stub: modal_api_grpc.ModalClientModal,
     progress_report_cb: Optional[Callable] = None
 ) -> str:
     if isinstance(data, bytes):
@@ -243,11 +243,11 @@ async def _blob_upload(
 
     blob_size = _get_blob_size(data)
 
-    create_req = blobs_pb2.CreateBlobUploadRequest(
+    create_req = api_pb2.BlobCreateUploadRequest(
         blob_hash=sha256_hex,
         blob_size=blob_size,
     )
-    create_resp: blobs_pb2.CreateBlobUploadResponse = await retry_transient_errors(stub.CreateBlobUpload, create_req)
+    create_resp = await retry_transient_errors(stub.BlobCreateUpload, create_req)
 
     session_token = create_resp.session_token
 
@@ -276,8 +276,8 @@ async def _blob_upload(
     else:
         raise NotImplementedError(f"unsupported upload mode from CreateBlobUploadResponse: {which_oneof}")
 
-    commit_req = blobs_pb2.CommitBlobUploadRequest(session_token=session_token)
-    commit_resp: blobs_pb2.CommitBlobUploadResponse = await retry_transient_errors(stub.CommitBlobUpload, commit_req)
+    commit_req = api_pb2.BlobCommitUploadRequest(session_token=session_token)
+    commit_resp = await retry_transient_errors(stub.BlobCommitUpload, commit_req)
 
     if progress_report_cb:
         progress_report_cb(complete=True)
@@ -285,7 +285,7 @@ async def _blob_upload(
     return commit_resp.blob_hash
 
 
-async def blob_upload(payload: bytes, stub: modal_blobs_grpc.BlobsModal) -> str:
+async def blob_upload(payload: bytes, stub: modal_api_grpc.ModalClientModal) -> str:
     size_mib = len(payload) / 1024 / 1024
     logger.debug(f"Uploading large blob of size {size_mib:.2f} MiB")
     t0 = time.time()
@@ -301,7 +301,7 @@ async def blob_upload(payload: bytes, stub: modal_blobs_grpc.BlobsModal) -> str:
 
 
 async def blob_upload_file(
-    file_obj: BinaryIO, stub: modal_blobs_grpc.BlobsModal, progress_report_cb: Optional[Callable] = None
+    file_obj: BinaryIO, stub: modal_api_grpc.ModalClientModal, progress_report_cb: Optional[Callable] = None
 ) -> str:
     sha256_hex = get_sha256_hex(file_obj)
     return await _blob_upload(sha256_hex, file_obj, stub, progress_report_cb)
