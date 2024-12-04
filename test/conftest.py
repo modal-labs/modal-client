@@ -685,7 +685,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         blob_hash, blob_size_str = request.session_token.decode("utf-8").split(":")
         blob_size = int(blob_size_str)
 
-        async with aiohttp.request("POST", f"{self.blob_host}/commit?blob_id={blob_hash}&expected_size={blob_size}") as r:
+        url = f"{self.blob_host}/commit?blob_id={blob_hash}&expected_size={blob_size}"
+        async with aiohttp.request("POST", url) as r:
             r.raise_for_status()
             actual_hash = await r.text()
 
