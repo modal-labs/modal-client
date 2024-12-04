@@ -661,8 +661,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def BlobStagePart(self, stream):
         request: api_pb2.BlobStagePartRequest = await stream.recv_message()
-        blob_hash, blob_size = request.session_token.decode("utf-8").split(":")
-        blob_size = int(blob_size)
+        blob_hash, blob_size_str = request.session_token.decode("utf-8").split(":")
+        blob_size = int(blob_size_str)
         part = request.part
 
         def ceildiv(a, b):
@@ -682,8 +682,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def BlobCommitUpload(self, stream):
         request: api_pb2.BlobCommitUploadRequest = await stream.recv_message()
-        blob_hash, blob_size = request.session_token.decode("utf-8").split(":")
-        blob_size = int(blob_size)
+        blob_hash, blob_size_str = request.session_token.decode("utf-8").split(":")
+        blob_size = int(blob_size_str)
 
         async with aiohttp.request("POST", f"{self.blob_host}/commit?blob_id={blob_hash}&expected_size={blob_size}") as r:
             r.raise_for_status()
