@@ -68,7 +68,7 @@ def _get_inputs(
     client: Optional[Client] = None,
 ) -> list[api_pb2.FunctionGetInputsResponse]:
     if upload_to_blob:
-        args_blob_id = blob_upload(serialize(args), client.blobs_stub)
+        args_blob_id = blob_upload(serialize(args), client.stub)
         input_pb = api_pb2.FunctionInput(
             args_blob_id=args_blob_id, data_format=api_pb2.DATA_FORMAT_PICKLE, method_name=method_name or ""
         )
