@@ -632,7 +632,7 @@ class _VolumeUploadContextManager:
                 logger.debug(f"Creating blob file for {file_spec.source_description} ({file_spec.size} bytes)")
                 with file_spec.source() as fp:
                     blob_id = await blob_upload_file(
-                        fp, self._client.stub, functools.partial(self._progress_cb, progress_task_id)
+                        fp, self._client.blobs_stub, functools.partial(self._progress_cb, progress_task_id)
                     )
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
                 request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)

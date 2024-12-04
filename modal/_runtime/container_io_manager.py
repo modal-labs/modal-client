@@ -496,7 +496,7 @@ class _ContainerIOManager:
 
     async def format_blob_data(self, data: bytes) -> dict[str, Any]:
         return (
-            {"data_blob_id": await blob_upload(data, self._client.stub)}
+            {"data_blob_id": await blob_upload(data, self._client.blobs_stub)}
             if len(data) > MAX_OBJECT_SIZE_BYTES
             else {"data": data}
         )
@@ -523,7 +523,7 @@ class _ContainerIOManager:
         for i, message_bytes in enumerate(messages_bytes):
             chunk = api_pb2.DataChunk(data_format=data_format, index=start_index + i)  # type: ignore
             if len(message_bytes) > MAX_OBJECT_SIZE_BYTES:
-                chunk.data_blob_id = await blob_upload(message_bytes, self._client.stub)
+                chunk.data_blob_id = await blob_upload(message_bytes, self._client.blobs_stub)
             else:
                 chunk.data = message_bytes
             data_chunks.append(chunk)

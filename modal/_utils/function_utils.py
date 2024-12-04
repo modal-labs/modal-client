@@ -508,7 +508,7 @@ async def _create_input(
     args_serialized = serialize((args, kwargs))
 
     if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:
-        args_blob_id = await blob_upload(args_serialized, client.stub)
+        args_blob_id = await blob_upload(args_serialized, client.blobs_stub)
 
         return api_pb2.FunctionPutInputsItem(
             input=api_pb2.FunctionInput(

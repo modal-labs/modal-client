@@ -483,7 +483,7 @@ class _Mount(_Object, type_prefix="mo"):
                 logger.debug(f"Creating blob file for {file_spec.source_description} ({file_spec.size} bytes)")
                 async with blob_upload_concurrency:
                     with file_spec.source() as fp:
-                        blob_id = await blob_upload_file(fp, resolver.client.stub)
+                        blob_id = await blob_upload_file(fp, resolver.client.blobs_stub)
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
                 request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
             else:
