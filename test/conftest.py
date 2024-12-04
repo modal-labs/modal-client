@@ -194,6 +194,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.fail_blob_create = []
         self.blob_create_metadata = None
         self.blob_multipart_threshold = 10_000_000
+        self.blobnet_chunk_size = 8 * 1024 * 1024
 
         self.precreated_functions = set()
 
@@ -629,6 +630,69 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.BlobGetRequest = await stream.recv_message()
         download_url = f"{self.blob_host}/download?blob_id={request.blob_id}"
         await stream.send_message(api_pb2.BlobGetResponse(download_url=download_url))
+
+    async def BlobCreateUpload(self, stream):
+        request: api_pb2.BlobCreateUploadRequest = await stream.recv_message()
+        blob_hash = request.blob_hash
+        blob_size = request.blob_size
+
+        session_token = f"{blob_hash}:{blob_size}".encode("utf-8")
+
+        if blob_size > self.blobnet_chunk_size:
+            response = api_pb2.BlobCreateUploadResponse(
+                session_token=session_token,
+                single_part_upload = api_pb2.BlobCreateUploadResponse.SinglePartUpload(
+                    upload_request=api_pb2.BlobUploadRequestDetails(
+                        uri=f"{self.blob_host}/upload?blob_id={blob_hash}&part_number=0",
+                        method="PUT",
+                        headers=[api_pb2.BlobUploadRequestDetails.Header(name="Content-Length", value=str(blob_size))],
+                    )
+                )
+            )
+        else:
+            response = api_pb2.BlobCreateUploadResponse(
+                session_token=session_token,
+                multi_part_upload = api_pb2.BlobCreateUploadResponse.MultiPartUpload(
+                    part_size=self.blobnet_chunk_size,
+                )
+            )
+
+        await stream.send_message(response)
+
+    async def BlobStagePart(self, stream):
+        request: api_pb2.BlobStagePartRequest = await stream.recv_message()
+        blob_hash, blob_size = request.session_token.decode("utf-8").split(":")
+        blob_size = int(blob_size)
+        part = request.part
+
+        def ceildiv(a, b):
+            return -(a // -b)
+
+        num_parts = ceildiv(blob_size, self.blobnet_chunk_size)
+        assert request.part < num_parts
+
+        upload_request = api_pb2.BlobUploadRequestDetails(
+            uri=f"{self.blob_host}/upload?blob_id={blob_hash}&part_number={part}",
+            method="PUT",
+            headers=[api_pb2.BlobUploadRequestDetails.Header(name="Content-Length", value=str(blob_size))],
+        )
+
+        response = api_pb2.BlobStagePartResponse(upload_request=upload_request)
+        await stream.send_message(response)
+
+    async def BlobCommitUpload(self, stream):
+        request: api_pb2.BlobCommitUploadRequest = await stream.recv_message()
+        blob_hash, blob_size = request.session_token.decode("utf-8").split(":")
+        blob_size = int(blob_size)
+
+        async with aiohttp.request("POST", f"{self.blob_host}/commit?blob_id={blob_hash}&expected_size={blob_size}") as r:
+            r.raise_for_status()
+            actual_hash = await r.text()
+
+        assert blob_hash == actual_hash
+
+        response = api_pb2.BlobCommitUploadResponse(blob_hash=blob_hash)
+        await stream.send_message(response)
 
     ### Class
 
@@ -1734,32 +1798,33 @@ def blob_server():
 
     async def upload(request):
         blob_id = request.query["blob_id"]
+        part_number = int(request.query["part_number"])
         content = await request.content.read()
         if content == b"FAILURE":
             return aiohttp.web.Response(status=500)
-        content_md5 = hashlib.md5(content).hexdigest()
-        etag = f'"{content_md5}"'
-        if "part_number" in request.query:
-            part_number = int(request.query["part_number"])
-            blob_parts[blob_id][part_number] = content
-        else:
-            blobs[blob_id] = content
-        return aiohttp.web.Response(text="Hello, world", headers={"ETag": etag})
+        blob_parts[blob_id][part_number] = content
+        return aiohttp.web.Response(status=200)
 
-    async def complete_multipart(request):
+    async def commit(request):
         blob_id = request.query["blob_id"]
-        blob_nums = range(min(blob_parts[blob_id].keys()), max(blob_parts[blob_id].keys()) + 1)
+        expected_size = int(request.query["expected_size"])
+        part_keys = blob_parts[blob_id].keys()
+
+        if len(part_keys) == 0:
+            return aiohttp.web.Response(status=412, text="No parts uploaded")
+
+        blob_nums = range(max(part_keys) + 1)
         content = b""
-        part_hashes = b""
         for num in blob_nums:
             part_content = blob_parts[blob_id][num]
             content += part_content
-            part_hashes += hashlib.md5(part_content).digest()
 
-        content_md5 = hashlib.md5(part_hashes).hexdigest()
-        etag = f'"{content_md5}-{len(blob_parts[blob_id])}"'
+        if len(content) != expected_size:
+            return aiohttp.web.Response(status=412, text="Uploaded blob_size doesn't match expected blob_size")
+
+        content_sha256 = hashlib.sha256(content).hexdigest()
         blobs[blob_id] = content
-        return aiohttp.web.Response(text=f"<etag>{etag}</etag>")
+        return aiohttp.web.Response(text=content_sha256)
 
     async def download(request):
         blob_id = request.query["blob_id"]
@@ -1770,7 +1835,7 @@ def blob_server():
     app = aiohttp.web.Application()
     app.add_routes([aiohttp.web.put("/upload", upload)])
     app.add_routes([aiohttp.web.get("/download", download)])
-    app.add_routes([aiohttp.web.post("/complete_multipart", complete_multipart)])
+    app.add_routes([aiohttp.web.post("/commit", commit)])
 
     started = threading.Event()
     stop_server = threading.Event()

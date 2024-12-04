@@ -126,8 +126,7 @@ class BytesIOSegmentPayload(BytesIOPayload):
 async def _upload_with_request_details(
     request_details: api_pb2.BlobUploadRequestDetails,
     payload: BytesIOSegmentPayload,
-) -> str:
-    """Returns etag of s3 object which is a md5 hex checksum of the uploaded content"""
+):
     with payload.reset_on_error():  # ensure retries read the same data
         method = request_details.method
         uri = request_details.uri
@@ -147,27 +146,12 @@ async def _upload_with_request_details(
                 logger.warning("Received SlowDown signal from S3, sleeping for 1 second before retrying.")
                 await asyncio.sleep(1)
 
-            if resp.status != 200:
+            if resp.status not in [200, 204]:
                 try:
                     text = await resp.text()
                 except Exception:
                     text = "<no body>"
                 raise ExecutionError(f"{method} to url {uri} failed with status {resp.status}: {text}")
-
-            # client side ETag checksum verification
-            # the s3 ETag of a single part upload is a quoted md5 hex of the uploaded content
-            etag = resp.headers["ETag"].strip()
-            if etag.startswith(("W/", "w/")):  # see https://www.rfc-editor.org/rfc/rfc7232#section-2.3
-                etag = etag[2:]
-            if etag[0] == '"' and etag[-1] == '"':
-                etag = etag[1:-1]
-            remote_md5 = etag
-
-            local_md5_hex = payload.md5_checksum().hexdigest()
-            if local_md5_hex != remote_md5:
-                raise ExecutionError(f"Local data and remote data checksum mismatch ({local_md5_hex} vs {remote_md5})")
-
-            return remote_md5
 
 
 async def _stage_and_upload(
@@ -175,7 +159,7 @@ async def _stage_and_upload(
     session_token: bytes,
     part: int,
     payload: BytesIOSegmentPayload,
-) -> str:
+):
     req = api_pb2.BlobStagePartRequest(session_token=session_token, part=part)
     resp = await retry_transient_errors(stub.BlobStagePart, req)
     request_details = resp.upload_request
@@ -191,10 +175,13 @@ async def _perform_multipart_upload(
     max_part_size: int,
     upload_chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
     progress_report_cb: Optional[Callable] = None,
-) -> None:
+):
+    def ceildiv(a, b):
+        return -(a // -b)
+
     upload_coros = []
     file_offset = 0
-    num_parts = math.floor(blob_size / max_part_size)
+    num_parts = ceildiv(blob_size, max_part_size)
     num_bytes_left = blob_size
 
     # Give each part its own IO reader object to avoid needing to
