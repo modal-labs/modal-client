@@ -3,7 +3,8 @@ import asyncio
 import contextlib
 import typing
 from asyncio import Future
-from typing import TYPE_CHECKING, Dict, Hashable, List, Optional
+from collections.abc import Hashable
+from typing import TYPE_CHECKING, Optional
 
 from grpclib import GRPCError, Status
 
@@ -19,14 +20,12 @@ if TYPE_CHECKING:
 
 class StatusRow:
     def __init__(self, progress: "typing.Optional[Tree]"):
-        from ._output import (
-            step_progress,
-        )
-
         self._spinner = None
         self._step_node = None
         if progress is not None:
-            self._spinner = step_progress()
+            from ._output import OutputManager
+
+            self._spinner = OutputManager.step_progress()
             self._step_node = progress.add(self._spinner)
 
     def message(self, message):
@@ -34,18 +33,18 @@ class StatusRow:
             self._spinner.update(text=message)
 
     def finish(self, message):
-        from ._output import substep_completed
-
         if self._step_node is not None:
+            from ._output import OutputManager
+
             self._spinner.update(text=message)
-            self._step_node.label = substep_completed(message)
+            self._step_node.label = OutputManager.substep_completed(message)
 
 
 class Resolver:
-    _local_uuid_to_future: Dict[str, Future]
+    _local_uuid_to_future: dict[str, Future]
     _environment_name: Optional[str]
     _app_id: Optional[str]
-    _deduplication_cache: Dict[Hashable, Future]
+    _deduplication_cache: dict[Hashable, Future]
     _client: _Client
 
     def __init__(
@@ -55,12 +54,20 @@ class Resolver:
         environment_name: Optional[str] = None,
         app_id: Optional[str] = None,
     ):
-        from rich.tree import Tree
+        try:
+            # TODO(michael) If we don't clean this up more thoroughly, it would probably
+            # be good to have a single source of truth for "rich is installed" rather than
+            # doing a try/catch everywhere we want to use it.
+            from rich.tree import Tree
 
-        from ._output import step_progress
+            from ._output import OutputManager
+
+            tree = Tree(OutputManager.step_progress("Creating objects..."), guide_style="gray50")
+        except ImportError:
+            tree = None
 
         self._local_uuid_to_future = {}
-        self._tree = Tree(step_progress("Creating objects..."), guide_style="gray50")
+        self._tree = tree
         self._client = client
         self._app_id = app_id
         self._environment_name = environment_name
@@ -124,9 +131,14 @@ class Resolver:
                         raise NotFoundError(exc.message)
                     raise
 
-                # Check that the id of functions and classes didn't change
+                # Check that the id of functions didn't change
                 # Persisted refs are ignored because their life cycle is managed independently.
-                if not obj._is_another_app and existing_object_id is not None and obj.object_id != existing_object_id:
+                if (
+                    not obj._is_another_app
+                    and existing_object_id is not None
+                    and existing_object_id.startswith("fu-")
+                    and obj.object_id != existing_object_id
+                ):
                     raise Exception(
                         f"Tried creating an object using existing id {existing_object_id}"
                         f" but it has id {obj.object_id}"
@@ -142,8 +154,8 @@ class Resolver:
         # TODO(elias): print original exception/trace rather than the Resolver-internal trace
         return await cached_future
 
-    def objects(self) -> List["_Object"]:
-        unique_objects: Dict[str, "_Object"] = {}
+    def objects(self) -> list["_Object"]:
+        unique_objects: dict[str, "_Object"] = {}
         for fut in self._local_uuid_to_future.values():
             if not fut.done():
                 # this will raise an exception if not all loads have been awaited, but that *should* never happen
@@ -157,12 +169,12 @@ class Resolver:
     @contextlib.contextmanager
     def display(self):
         # TODO(erikbern): get rid of this wrapper
-        from ._output import OutputManager, step_completed
+        from .output import _get_output_manager
 
-        if output_mgr := OutputManager.get():
+        if self._tree and (output_mgr := _get_output_manager()):
             with output_mgr.make_live(self._tree):
                 yield
-            self._tree.label = step_completed("Created objects.")
+            self._tree.label = output_mgr.step_completed("Created objects.")
             output_mgr.print(self._tree)
         else:
             yield

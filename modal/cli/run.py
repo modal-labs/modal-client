@@ -9,21 +9,22 @@ import sys
 import time
 import typing
 from functools import partial
-from typing import Any, Callable, Dict, Optional, get_type_hints
+from typing import Any, Callable, Optional, get_type_hints
 
 import click
 import typer
 from rich.console import Console
+from rich.panel import Panel
 from typing_extensions import TypedDict
 
 from .. import Cls
-from .._output import enable_output
 from ..app import App, LocalEntrypoint
 from ..config import config
 from ..environments import ensure_env
 from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
 from ..functions import Function, _FunctionSpec
 from ..image import Image
+from ..output import enable_output
 from ..runner import deploy_app, interactive_shell, run_app
 from ..serving import serve_app
 from ..volume import Volume
@@ -59,7 +60,7 @@ class NoParserAvailable(InvalidError):
     pass
 
 
-def _get_signature(f: Callable[..., Any], is_method: bool = False) -> Dict[str, ParameterMetadata]:
+def _get_signature(f: Callable[..., Any], is_method: bool = False) -> dict[str, ParameterMetadata]:
     try:
         type_hints = get_type_hints(f)
     except Exception as exc:
@@ -70,7 +71,7 @@ def _get_signature(f: Callable[..., Any], is_method: bool = False) -> Dict[str, 
     if is_method:
         self = None  # Dummy, doesn't matter
         f = functools.partial(f, self)
-    signature: Dict[str, ParameterMetadata] = {}
+    signature: dict[str, ParameterMetadata] = {}
     for param in inspect.signature(f).parameters.values():
         signature[param.name] = {
             "name": param.name,
@@ -97,7 +98,7 @@ def _get_param_type_as_str(annot: Any) -> str:
     return annot_str
 
 
-def _add_click_options(func, signature: Dict[str, ParameterMetadata]):
+def _add_click_options(func, signature: dict[str, ParameterMetadata]):
     """Adds @click.option based on function signature
 
     Kind of like typer, but using options instead of positional arguments
@@ -135,20 +136,33 @@ def _get_clean_app_description(func_ref: str) -> str:
 
 
 def _get_click_command_for_function(app: App, function_tag):
-    function = app.indexed_objects[function_tag]
+    function = app.registered_functions.get(function_tag)
+    if not function or (isinstance(function, Function) and function.info.user_cls is not None):
+        # This is either a function_tag for a class method function (e.g MyClass.foo) or a function tag for a
+        # class service function (MyClass.*)
+        class_name, method_name = function_tag.rsplit(".", 1)
+        if not function:
+            function = app.registered_functions.get(f"{class_name}.*")
     assert isinstance(function, Function)
     function = typing.cast(Function, function)
     if function.is_generator:
         raise InvalidError("`modal run` is not supported for generator functions")
 
-    signature: Dict[str, ParameterMetadata]
+    signature: dict[str, ParameterMetadata]
     cls: Optional[Cls] = None
-    method_name: Optional[str] = None
     if function.info.user_cls is not None:
-        class_name, method_name = function_tag.rsplit(".", 1)
-        cls = typing.cast(Cls, app.indexed_objects[class_name])
+        cls = typing.cast(Cls, app.registered_classes[class_name])
         cls_signature = _get_signature(function.info.user_cls)
-        fun_signature = _get_signature(function.info.raw_f, is_method=True)
+        if method_name == "*":
+            method_names = list(cls._get_partial_functions().keys())
+            if len(method_names) == 1:
+                method_name = method_names[0]
+            else:
+                class_name = function.info.user_cls.__name__
+                raise click.UsageError(
+                    f"Please specify a specific method of {class_name} to run, e.g. `modal run foo.py::MyClass.bar`"  # noqa: E501
+                )
+        fun_signature = _get_signature(getattr(cls, method_name).info.raw_f, is_method=True)
         signature = dict(**cls_signature, **fun_signature)  # Pool all arguments
         # TODO(erikbern): assert there's no overlap?
     else:
@@ -294,6 +308,11 @@ def deploy(
 
     with enable_output():
         res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
+        if res.warnings:
+            console = Console()
+            for warning in res.warnings:
+                panel = Panel(warning, title="Warning", title_align="left", border_style="yellow")
+                console.print(panel, highlight=False)
 
     if stream_logs:
         stream_app_logs(app_id=res.app_id, app_logs_url=res.app_logs_url)
@@ -331,53 +350,50 @@ def serve(
 
 
 def shell(
-    func_ref: Optional[str] = typer.Argument(
+    container_or_function: Optional[str] = typer.Argument(
         default=None,
         help=(
-            "Path to a Python file with an App or Modal function with container parameters."
-            " Can also include a function specifier, like `module.py::func`, when the file defines multiple functions."
+            "ID of running container, or path to a Python file containing a Modal App."
+            " Can also include a function specifier, like `module.py::func`, if the file defines multiple functions."
         ),
-        metavar="FUNC_REF",
+        metavar="REF",
     ),
-    cmd: str = typer.Option(default="/bin/bash", help="Command to run inside the Modal image."),
+    cmd: str = typer.Option("/bin/bash", "-c", "--cmd", help="Command to run inside the Modal image."),
     env: str = ENV_OPTION,
     image: Optional[str] = typer.Option(
-        default=None, help="Container image tag for inside the shell (if not using FUNC_REF)."
+        default=None, help="Container image tag for inside the shell (if not using REF)."
     ),
-    add_python: Optional[str] = typer.Option(default=None, help="Add Python to the image (if not using FUNC_REF)."),
-    volume: Optional[typing.List[str]] = typer.Option(
+    add_python: Optional[str] = typer.Option(default=None, help="Add Python to the image (if not using REF)."),
+    volume: Optional[list[str]] = typer.Option(
         default=None,
         help=(
-            "Name of a `modal.Volume` to mount inside the shell at `/mnt/{name}` (if not using FUNC_REF)."
+            "Name of a `modal.Volume` to mount inside the shell at `/mnt/{name}` (if not using REF)."
             " Can be used multiple times."
         ),
     ),
-    cpu: Optional[int] = typer.Option(
-        default=None, help="Number of CPUs to allocate to the shell (if not using FUNC_REF)."
-    ),
+    cpu: Optional[int] = typer.Option(default=None, help="Number of CPUs to allocate to the shell (if not using REF)."),
     memory: Optional[int] = typer.Option(
-        default=None, help="Memory to allocate for the shell, in MiB (if not using FUNC_REF)."
+        default=None, help="Memory to allocate for the shell, in MiB (if not using REF)."
     ),
     gpu: Optional[str] = typer.Option(
         default=None,
-        help="GPUs to request for the shell, if any. Examples are `any`, `a10g`, `a100:4` (if not using FUNC_REF).",
+        help="GPUs to request for the shell, if any. Examples are `any`, `a10g`, `a100:4` (if not using REF).",
     ),
     cloud: Optional[str] = typer.Option(
         default=None,
         help=(
-            "Cloud provider to run the shell on. "
-            "Possible values are `aws`, `gcp`, `oci`, `auto` (if not using FUNC_REF)."
+            "Cloud provider to run the shell on. " "Possible values are `aws`, `gcp`, `oci`, `auto` (if not using REF)."
         ),
     ),
     region: Optional[str] = typer.Option(
         default=None,
         help=(
-            "Region(s) to run the shell on. "
-            "Can be a single region or a comma-separated list to choose from (if not using FUNC_REF)."
+            "Region(s) to run the container on. "
+            "Can be a single region or a comma-separated list to choose from (if not using REF)."
         ),
     ),
 ):
-    """Run an interactive shell inside a Modal image.
+    """Run an interactive shell inside a Modal container.
 
     **Examples:**
 
@@ -387,10 +403,16 @@ def shell(
     modal shell
     ```
 
-    Start a bash shell using the spec for `my_function` in your app:
+    Start a bash shell using the spec for `my_function` in your App:
 
     ```
     modal shell hello_world.py::my_function
+    ```
+
+    Or, if you're using a [modal.Cls](/docs/reference/modal.Cls), you can refer to a `@modal.method` directly:
+
+    ```
+    modal shell hello_world.py::MyClass.my_method
     ```
 
     Start a `python` shell:
@@ -410,8 +432,21 @@ def shell(
 
     app = App("modal shell")
 
-    if func_ref is not None:
-        function = import_function(func_ref, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell")
+    if container_or_function is not None:
+        # `modal shell` with a container ID is a special case, alias for `modal container exec`.
+        if (
+            container_or_function.startswith("ta-")
+            and len(container_or_function[3:]) > 0
+            and container_or_function[3:].isalnum()
+        ):
+            from .container import exec
+
+            exec(container_id=container_or_function, command=shlex.split(cmd), pty=True)
+            return
+
+        function = import_function(
+            container_or_function, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell"
+        )
         assert isinstance(function, Function)
         function_spec: _FunctionSpec = function.spec
         start_shell = partial(

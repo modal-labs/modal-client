@@ -1,14 +1,15 @@
 # Copyright Modal Labs 2022
 from collections import defaultdict
+from collections.abc import AsyncGenerator
 from pathlib import Path
-from typing import AsyncGenerator, Dict, List, Optional, Set, Tuple
+from typing import Optional
 
 from rich.tree import Tree
 from watchfiles import Change, DefaultFilter, awatch
 
 from modal.mount import _Mount
 
-from ._output import OutputManager
+from .output import _get_output_manager
 
 _TIMEOUT_SENTINEL = object()
 
@@ -21,7 +22,7 @@ class AppFilesFilter(DefaultFilter):
         # Watching specific files is discouraged on Linux, so to watch a file we watch its
         # containing directory and then filter that directory's changes for relevant files.
         # https://github.com/notify-rs/notify/issues/394
-        dir_filters: Dict[Path, Optional[Set[Path]]],
+        dir_filters: dict[Path, Optional[set[Path]]],
     ) -> None:
         self.dir_filters = dir_filters
         super().__init__()
@@ -54,7 +55,7 @@ class AppFilesFilter(DefaultFilter):
         return super().__call__(change, path)
 
 
-async def _watch_paths(paths: Set[Path], watch_filter: AppFilesFilter) -> AsyncGenerator[Set[str], None]:
+async def _watch_paths(paths: set[Path], watch_filter: AppFilesFilter) -> AsyncGenerator[set[str], None]:
     try:
         async for changes in awatch(*paths, step=500, watch_filter=watch_filter):
             changed_paths = {stringpath for _, stringpath in changes}
@@ -64,7 +65,7 @@ async def _watch_paths(paths: Set[Path], watch_filter: AppFilesFilter) -> AsyncG
         pass
 
 
-def _print_watched_paths(paths: Set[Path]):
+def _print_watched_paths(paths: set[Path]):
     msg = "️️⚡️ Serving... hit Ctrl-C to stop!"
 
     output_tree = Tree(msg, guide_style="gray50")
@@ -72,13 +73,13 @@ def _print_watched_paths(paths: Set[Path]):
     for path in paths:
         output_tree.add(f"Watching {path}.")
 
-    if output_mgr := OutputManager.get():
+    if output_mgr := _get_output_manager():
         output_mgr.print(output_tree)
 
 
-def _watch_args_from_mounts(mounts: List[_Mount]) -> Tuple[Set[Path], AppFilesFilter]:
+def _watch_args_from_mounts(mounts: list[_Mount]) -> tuple[set[Path], AppFilesFilter]:
     paths = set()
-    dir_filters: Dict[Path, Optional[Set[Path]]] = defaultdict(set)
+    dir_filters: dict[Path, Optional[set[Path]]] = defaultdict(set)
     for mount in mounts:
         # TODO(elias): Make this part of the mount class instead, since it uses so much internals
         for entry in mount._entries:
@@ -94,7 +95,7 @@ def _watch_args_from_mounts(mounts: List[_Mount]) -> Tuple[Set[Path], AppFilesFi
     return paths, watch_filter
 
 
-async def watch(mounts: List[_Mount]) -> AsyncGenerator[Set[str], None]:
+async def watch(mounts: list[_Mount]) -> AsyncGenerator[set[str], None]:
     paths, watch_filter = _watch_args_from_mounts(mounts)
 
     _print_watched_paths(paths)

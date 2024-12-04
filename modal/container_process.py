@@ -1,9 +1,7 @@
 # Copyright Modal Labs 2024
 import asyncio
 import platform
-from typing import Optional
-
-from rich.console import Console
+from typing import Generic, Optional, TypeVar
 
 from modal_proto import api_pb2
 
@@ -13,48 +11,75 @@ from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from .client import _Client
 from .exception import InteractiveTimeoutError, InvalidError
 from .io_streams import _StreamReader, _StreamWriter
+from .stream_type import StreamType
+
+T = TypeVar("T", str, bytes)
 
 
-class _ContainerProcess:
+class _ContainerProcess(Generic[T]):
     _process_id: Optional[str] = None
-    _stdout: _StreamReader
-    _stderr: _StreamReader
+    _stdout: _StreamReader[T]
+    _stderr: _StreamReader[T]
     _stdin: _StreamWriter
+    _text: bool
+    _by_line: bool
     _returncode: Optional[int] = None
 
-    def __init__(self, process_id: str, client: _Client) -> None:
+    def __init__(
+        self,
+        process_id: str,
+        client: _Client,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        text: bool = True,
+        by_line: bool = False,
+    ) -> None:
         self._process_id = process_id
         self._client = client
-        self._stdout = _StreamReader(api_pb2.FILE_DESCRIPTOR_STDOUT, process_id, "container_process", self._client)
-        self._stderr = _StreamReader(api_pb2.FILE_DESCRIPTOR_STDERR, process_id, "container_process", self._client)
+        self._text = text
+        self._by_line = by_line
+        self._stdout = _StreamReader[T](
+            api_pb2.FILE_DESCRIPTOR_STDOUT,
+            process_id,
+            "container_process",
+            self._client,
+            stream_type=stdout,
+            text=text,
+            by_line=by_line,
+        )
+        self._stderr = _StreamReader[T](
+            api_pb2.FILE_DESCRIPTOR_STDERR,
+            process_id,
+            "container_process",
+            self._client,
+            stream_type=stderr,
+            text=text,
+            by_line=by_line,
+        )
         self._stdin = _StreamWriter(process_id, "container_process", self._client)
 
     @property
-    def stdout(self) -> _StreamReader:
-        """`StreamReader` for the container process's stdout stream."""
-
+    def stdout(self) -> _StreamReader[T]:
+        """StreamReader for the container process's stdout stream."""
         return self._stdout
 
     @property
-    def stderr(self) -> _StreamReader:
-        """`StreamReader` for the container process's stderr stream."""
-
+    def stderr(self) -> _StreamReader[T]:
+        """StreamReader for the container process's stderr stream."""
         return self._stderr
 
     @property
     def stdin(self) -> _StreamWriter:
-        """`StreamWriter` for the container process's stdin stream."""
-
+        """StreamWriter for the container process's stdin stream."""
         return self._stdin
 
     @property
-    def returncode(self) -> _StreamWriter:
+    def returncode(self) -> int:
         if self._returncode is None:
             raise InvalidError(
                 "You must call wait() before accessing the returncode. "
                 "To poll for the status of a running process, use poll() instead."
             )
-
         return self._returncode
 
     async def poll(self) -> Optional[int]:
@@ -94,6 +119,8 @@ class _ContainerProcess:
             print("interactive exec is not currently supported on Windows.")
             return
 
+        from rich.console import Console
+
         console = Console()
 
         connecting_status = console.status("Connecting...")
@@ -101,12 +128,16 @@ class _ContainerProcess:
         on_connect = asyncio.Event()
 
         async def _write_to_fd_loop(stream: _StreamReader):
-            async for line in stream:
+            # Don't skip empty messages so we can detect when the process has booted.
+            async for chunk in stream._get_logs(skip_empty_messages=False):
+                if chunk is None:
+                    break
+
                 if not on_connect.is_set():
                     connecting_status.stop()
                     on_connect.set()
 
-                await write_to_fd(stream.file_descriptor, line.encode("utf-8"))
+                await write_to_fd(stream.file_descriptor, chunk)
 
         async def _handle_input(data: bytes, message_index: int):
             self.stdin.write(data)

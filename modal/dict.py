@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
-from typing import Any, AsyncIterator, Optional, Tuple, Type
+from collections.abc import AsyncIterator
+from typing import Any, Optional
 
 from grpclib import GRPCError
 from synchronicity.async_wrap import asynccontextmanager
@@ -58,11 +59,12 @@ class _Dict(_Object, type_prefix="di"):
 
     @staticmethod
     def new(data: Optional[dict] = None):
-        """`Dict.new` is deprecated.
-
-        Please use `Dict.from_name` (for persisted) or `Dict.ephemeral` (for ephemeral) dicts.
-        """
-        deprecation_error((2024, 3, 19), Dict.new.__doc__)
+        """mdmd:hidden"""
+        message = (
+            "`Dict.new` is deprecated."
+            " Please use `Dict.from_name` (for persisted) or `Dict.ephemeral` (for ephemeral) dicts instead."
+        )
+        deprecation_error((2024, 3, 19), message)
 
     def __init__(self, data={}):
         """mdmd:hidden"""
@@ -73,7 +75,7 @@ class _Dict(_Object, type_prefix="di"):
     @classmethod
     @asynccontextmanager
     async def ephemeral(
-        cls: Type["_Dict"],
+        cls: type["_Dict"],
         data: Optional[dict] = None,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
@@ -87,7 +89,9 @@ class _Dict(_Object, type_prefix="di"):
 
         with Dict.ephemeral() as d:
             d["foo"] = "bar"
+        ```
 
+        ```python notest
         async with Dict.ephemeral() as d:
             await d.put.aio("foo", "bar")
         ```
@@ -114,15 +118,15 @@ class _Dict(_Object, type_prefix="di"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Dict":
-        """Create a reference to a persisted Dict
+        """Reference a named Dict, creating if necessary.
 
-        **Examples**
+        In contrast to `modal.Dict.lookup`, this is a lazy method
+        that defers hydrating the local object with metadata from
+        Modal servers until the first time it is actually used.
 
         ```python
-        from modal import Dict
-
-        dict = Dict.from_name("my-dict", create_if_missing=True)
-        dict[123] = 456
+        d = modal.Dict.from_name("my-dict", create_if_missing=True)
+        d[123] = 456
         ```
         """
         check_object_name(label, "Dict")
@@ -143,11 +147,6 @@ class _Dict(_Object, type_prefix="di"):
         return _Dict._from_loader(_load, "Dict()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
-    def persisted(label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None):
-        """Deprecated! Use `Dict.from_name(name, create_if_missing=True)`."""
-        deprecation_error((2024, 3, 1), _Dict.persisted.__doc__)
-
-    @staticmethod
     async def lookup(
         label: str,
         data: Optional[dict] = None,
@@ -156,12 +155,13 @@ class _Dict(_Object, type_prefix="di"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Dict":
-        """Lookup a dict with a given name and tag.
+        """Lookup a named Dict.
+
+        In contrast to `modal.Dict.from_name`, this is an eager method
+        that will hydrate the local object with metadata from Modal servers.
 
         ```python
-        from modal import Dict
-
-        d = Dict.lookup("my-dict")
+        d = modal.Dict.lookup("my-dict")
         d["xyz"] = 123
         ```
         """
@@ -317,7 +317,7 @@ class _Dict(_Object, type_prefix="di"):
             yield deserialize(resp.value, self._client)
 
     @live_method_gen
-    async def items(self) -> AsyncIterator[Tuple[Any, Any]]:
+    async def items(self) -> AsyncIterator[tuple[Any, Any]]:
         """Return an iterator over the (key, value) tuples in this dictionary.
 
         Note that (unlike with Python dicts) the return value is a simple iterator,

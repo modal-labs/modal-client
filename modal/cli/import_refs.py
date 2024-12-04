@@ -19,7 +19,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 
 from modal.app import App, LocalEntrypoint
-from modal.exception import InvalidError, _CliUserExecutionError, deprecation_warning
+from modal.exception import InvalidError, _CliUserExecutionError
 from modal.functions import Function
 
 
@@ -54,7 +54,7 @@ def import_file_or_module(file_or_module: str):
         # when using a script path, that scripts directory should also be on the path as it is
         # with `python some/script.py`
         full_path = Path(file_or_module).resolve()
-        if "." in full_path.name[:-3]:  # use removesuffix once we drop 3.8 support
+        if "." in full_path.name.removesuffix(".py"):
             raise InvalidError(
                 f"Invalid Modal source filename: {full_path.name!r}."
                 "\n\nSource filename cannot contain additional period characters."
@@ -79,7 +79,7 @@ def import_file_or_module(file_or_module: str):
     return module
 
 
-def get_by_object_path(obj: Any, obj_path: Optional[str]) -> Optional[Any]:
+def get_by_object_path(obj: Any, obj_path: str) -> Optional[Any]:
     # Try to evaluate a `.`-delimited object path in a Modal context
     # With the caveat that some object names can actually have `.` in their name (lifecycled methods' tags)
 
@@ -107,39 +107,10 @@ def get_by_object_path(obj: Any, obj_path: Optional[str]) -> Optional[Any]:
     return obj
 
 
-def get_by_object_path_try_possible_app_names(obj: Any, obj_path: Optional[str]) -> Optional[Any]:
-    """This just exists as a dumb workaround to support both "stub" and "app" """
-
-    if obj_path:
-        return get_by_object_path(obj, obj_path)
-    else:
-        app = get_by_object_path(obj, DEFAULT_APP_NAME)
-        stub = get_by_object_path(obj, "stub")
-        if isinstance(app, App):
-            return app
-        elif app is not None and isinstance(stub, App):
-            deprecation_warning(
-                (2024, 4, 20),
-                "The symbol `app` is present at the module level but it's not a Modal app."
-                " We will use `stub` instead, but this will not work in future Modal versions."
-                " Suggestion: change the name of `app` to something else.",
-            )
-            return stub
-        elif isinstance(stub, App):
-            deprecation_warning(
-                (2024, 5, 1),
-                "The symbol `app` is not present but `stub` is. This will not work in future"
-                " Modal versions. Suggestion: change the name of `stub` to `app`.",
-            )
-            return stub
-        else:
-            return None
-
-
 def _infer_function_or_help(
     app: App, module, accept_local_entrypoint: bool, accept_webhook: bool
 ) -> Union[Function, LocalEntrypoint]:
-    function_choices = set(tag for tag, func in app.registered_functions.items() if not func.info.is_service_class())
+    function_choices = set(app.registered_functions)
     if not accept_webhook:
         function_choices -= set(app.registered_web_endpoints)
     if accept_local_entrypoint:
@@ -183,7 +154,7 @@ Registered functions and local entrypoints on the selected app are:
         # entrypoint is in entrypoint registry, for now
         return app.registered_entrypoints[function_name]
 
-    function = app.indexed_objects[function_name]  # functions are in blueprint
+    function = app.registered_functions[function_name]
     assert isinstance(function, Function)
     return function
 
@@ -210,7 +181,7 @@ def import_app(app_ref: str) -> App:
     import_ref = parse_import_ref(app_ref)
 
     module = import_file_or_module(import_ref.file_or_module)
-    app = get_by_object_path_try_possible_app_names(module, import_ref.object_path)
+    app = get_by_object_path(module, import_ref.object_path or DEFAULT_APP_NAME)
 
     if app is None:
         _show_no_auto_detectable_app(import_ref)
@@ -258,7 +229,7 @@ def import_function(
     import_ref = parse_import_ref(func_ref)
 
     module = import_file_or_module(import_ref.file_or_module)
-    app_or_function = get_by_object_path_try_possible_app_names(module, import_ref.object_path)
+    app_or_function = get_by_object_path(module, import_ref.object_path or DEFAULT_APP_NAME)
 
     if app_or_function is None:
         _show_function_ref_help(import_ref, base_cmd)
@@ -279,8 +250,3 @@ def import_function(
         return app_or_function
     else:
         raise click.UsageError(f"{app_or_function} is not a Modal entity (should be an App or Function)")
-
-
-# For backwards compatibility - delete soon
-# We use it in our internal intergration tests
-import_stub = import_app

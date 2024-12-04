@@ -138,18 +138,70 @@ def test_sandbox_stdin(app, servicer):
 
 
 @skip_non_linux
-def test_sandbox_stdin_invalid_write(app, servicer):
+def test_sandbox_stdin_write_str(app, servicer):
+    sb = Sandbox.create("bash", "-c", "while read line; do echo $line; done && exit 13", app=app)
+
+    sb.stdin.write("foo\n")
+    sb.stdin.write("bar\n")
+
+    sb.stdin.write_eof()
+
+    sb.stdin.drain()
+
+    sb.wait()
+
+    assert sb.stdout.read() == "foo\nbar\n"
+    assert sb.returncode == 13
+
+
+@skip_non_linux
+def test_sandbox_stdin_write_after_terminate(app, servicer):
     sb = Sandbox.create("bash", "-c", "echo foo", app=app)
-    with pytest.raises(TypeError):
-        sb.stdin.write("foo\n")  # type: ignore
+    sb.wait()
+    with pytest.raises(ValueError):
+        sb.stdin.write(b"foo")
+        sb.stdin.drain()
 
 
 @skip_non_linux
 def test_sandbox_stdin_write_after_eof(app, servicer):
-    sb = Sandbox.create("bash", "-c", "echo foo", app=app)
+    sb = Sandbox.create(app=app)
     sb.stdin.write_eof()
-    with pytest.raises(EOFError):
+    with pytest.raises(ValueError):
         sb.stdin.write(b"foo")
+    sb.terminate()
+
+
+@skip_non_linux
+def test_sandbox_stdout(app, servicer):
+    """Test that reads from sandboxes are fully line-buffered, i.e.,
+    that we don't read partial lines or multiple lines at once."""
+
+    # normal sequence of reads
+    sb = Sandbox.create("bash", "-c", "for i in $(seq 1 3); do echo foo $i; done", app=app)
+    out = []
+    for line in sb.stdout:
+        out.append(line)
+    assert out == ["foo 1\n", "foo 2\n", "foo 3\n"]
+
+    # multiple newlines
+    sb = Sandbox.create("bash", "-c", "echo 'foo 1\nfoo 2\nfoo 3'", app=app)
+    out = []
+    for line in sb.stdout:
+        out.append(line)
+    assert out == ["foo 1\n", "foo 2\n", "foo 3\n"]
+
+    # partial lines
+    sb = Sandbox.create("sleep", "infinity", app=app)
+    cp = sb.exec("bash", "-c", "while read line; do echo $line; done")
+
+    cp.stdin.write(b"foo 1\n")
+    cp.stdin.write(b"foo 2")
+    cp.stdin.write(b"foo 3\n")
+    cp.stdin.write_eof()
+    cp.stdin.drain()
+
+    assert cp.stdout.read() == "foo 1\nfoo 2foo 3\n"
 
 
 @skip_non_linux
@@ -178,6 +230,20 @@ async def test_sandbox_async_for(app, servicer):
     # test reading after receiving EOF
     assert await sb.stdout.read.aio() == ""
     assert await sb.stderr.read.aio() == ""
+
+
+@skip_non_linux
+def test_sandbox_exec_stdout_bytes_mode(app, servicer):
+    """Test that the stream reader works in bytes mode."""
+
+    sb = Sandbox.create(app=app)
+
+    p = sb.exec("echo", "foo", text=False)
+    assert p.stdout.read() == b"foo\n"
+
+    p = sb.exec("echo", "foo", text=False)
+    for line in p.stdout:
+        assert line == b"foo\n"
 
 
 @skip_non_linux

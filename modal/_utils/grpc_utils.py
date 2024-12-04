@@ -7,10 +7,9 @@ import time
 import typing
 import urllib.parse
 import uuid
+from collections.abc import AsyncIterator
 from typing import (
     Any,
-    AsyncIterator,
-    Dict,
     Optional,
     TypeVar,
 )
@@ -25,6 +24,7 @@ from grpclib import GRPCError, Status
 from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
 
+from modal.exception import AuthError, ConnectionError
 from modal_version import __version__
 
 from .logger import logger
@@ -71,7 +71,7 @@ RETRYABLE_GRPC_STATUS_CODES = [
 
 def create_channel(
     server_url: str,
-    metadata: Dict[str, str] = {},
+    metadata: dict[str, str] = {},
 ) -> grpclib.client.Channel:
     """Creates a grpclib.Channel.
 
@@ -110,7 +110,13 @@ def create_channel(
         logger.debug(f"Sending request to {event.method_name}")
 
     grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
+
     return channel
+
+
+async def connect_channel(channel: grpclib.client.Channel):
+    """Connects socket (potentially raising errors raising to connectivity."""
+    await channel.__connect__()
 
 
 if typing.TYPE_CHECKING:
@@ -170,16 +176,27 @@ async def retry_transient_errors(
             timeout = None
         try:
             return await fn(*args, metadata=metadata, timeout=timeout)
-        except (StreamTerminatedError, GRPCError, socket.gaierror, asyncio.TimeoutError, AttributeError) as exc:
+        except (StreamTerminatedError, GRPCError, OSError, asyncio.TimeoutError, AttributeError) as exc:
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
-                raise exc
+                if exc.status == Status.UNAUTHENTICATED:
+                    raise AuthError(exc.message)
+                else:
+                    raise exc
 
             if max_retries is not None and n_retries >= max_retries:
-                raise exc
+                final_attempt = True
+            elif total_deadline is not None and time.time() + delay + attempt_timeout_floor >= total_deadline:
+                final_attempt = True
+            else:
+                final_attempt = False
 
-            if total_deadline and time.time() + delay + attempt_timeout_floor >= total_deadline:
-                # no point sleeping if that's going to push us past the deadline
-                raise exc
+            if final_attempt:
+                if isinstance(exc, OSError):
+                    raise ConnectionError(str(exc))
+                elif isinstance(exc, asyncio.TimeoutError):
+                    raise ConnectionError(str(exc))
+                else:
+                    raise exc
 
             if isinstance(exc, AttributeError) and "_write_appdata" not in str(exc):
                 # StreamTerminatedError are not properly raised in grpclib<=0.4.7

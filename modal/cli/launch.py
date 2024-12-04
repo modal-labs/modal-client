@@ -4,13 +4,13 @@ import inspect
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from typer import Typer
 
-from .._output import enable_output
 from ..app import App
 from ..exception import _CliUserExecutionError
+from ..output import enable_output
 from ..runner import run_app
 from .import_refs import import_function
 
@@ -25,7 +25,7 @@ launch_cli = Typer(
 )
 
 
-def _launch_program(name: str, filename: str, args: Dict[str, Any]) -> None:
+def _launch_program(name: str, filename: str, detach: bool, args: dict[str, Any]) -> None:
     os.environ["MODAL_LAUNCH_ARGS"] = json.dumps(args)
 
     program_path = str(Path(__file__).parent / "programs" / filename)
@@ -37,7 +37,7 @@ def _launch_program(name: str, filename: str, args: Dict[str, Any]) -> None:
     func = entrypoint.info.raw_f
     isasync = inspect.iscoroutinefunction(func)
     with enable_output():
-        with run_app(app):
+        with run_app(app, detach=detach):
             try:
                 if isasync:
                     asyncio.run(func())
@@ -57,6 +57,7 @@ def jupyter(
     add_python: Optional[str] = "3.11",
     mount: Optional[str] = None,  # Create a `modal.Mount` from a local directory.
     volume: Optional[str] = None,  # Attach a persisted `modal.Volume` by name (creating if missing).
+    detach: bool = False,  # Run the app in "detached" mode to persist after local client disconnects
 ):
     args = {
         "cpu": cpu,
@@ -68,7 +69,7 @@ def jupyter(
         "mount": mount,
         "volume": volume,
     }
-    _launch_program("jupyter", "run_jupyter.py", args)
+    _launch_program("jupyter", "run_jupyter.py", detach, args)
 
 
 @launch_cli.command(name="vscode", help="Start Visual Studio Code on Modal.")
@@ -79,6 +80,7 @@ def vscode(
     timeout: int = 3600,
     mount: Optional[str] = None,  # Create a `modal.Mount` from a local directory.
     volume: Optional[str] = None,  # Attach a persisted `modal.Volume` by name (creating if missing).
+    detach: bool = False,  # Run the app in "detached" mode to persist after local client disconnects
 ):
     args = {
         "cpu": cpu,
@@ -88,4 +90,4 @@ def vscode(
         "mount": mount,
         "volume": volume,
     }
-    _launch_program("vscode", "vscode.py", args)
+    _launch_program("vscode", "vscode.py", detach, args)

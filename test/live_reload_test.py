@@ -18,7 +18,7 @@ def app_ref(test_dir):
 
 
 @pytest.mark.asyncio
-async def test_live_reload(app_ref, server_url_env, servicer):
+async def test_live_reload(app_ref, server_url_env, token_env, servicer):
     async with serve_app.aio(app, app_ref):
         await asyncio.sleep(3.0)
     assert servicer.app_publish_count == 1
@@ -27,7 +27,7 @@ async def test_live_reload(app_ref, server_url_env, servicer):
 
 
 @pytest.mark.asyncio
-async def test_live_reload_with_logs(app_ref, server_url_env, servicer):
+async def test_live_reload_with_logs(app_ref, server_url_env, token_env, servicer):
     with enable_output():
         async with serve_app.aio(app, app_ref):
             await asyncio.sleep(3.0)
@@ -37,7 +37,7 @@ async def test_live_reload_with_logs(app_ref, server_url_env, servicer):
 
 
 @skip_windows("live-reload not supported on windows")
-def test_file_changes_trigger_reloads(app_ref, server_url_env, servicer):
+def test_file_changes_trigger_reloads(app_ref, server_url_env, token_env, servicer):
     watcher_done = threading.Event()
 
     async def fake_watch():
@@ -47,6 +47,8 @@ def test_file_changes_trigger_reloads(app_ref, server_url_env, servicer):
 
     with serve_app(app, app_ref, _watcher=fake_watch()):
         watcher_done.wait()  # wait until watcher loop is done
+        foo: Function = app.registered_functions["foo"]
+        assert foo.web_url.startswith("http://")
 
     # TODO ideally we would assert the specific expected number here, but this test
     # is consistently flaking in CI and I cannot reproduce locally to debug.
@@ -54,13 +56,10 @@ def test_file_changes_trigger_reloads(app_ref, server_url_env, servicer):
     # assert servicer.app_publish_count == 4  # 1 + number of file changes
     assert servicer.app_publish_count > 1
     assert servicer.app_client_disconnect_count == 1
-    foo = app.indexed_objects["foo"]
-    assert isinstance(foo, Function)
-    assert foo.web_url.startswith("http://")
 
 
 @pytest.mark.asyncio
-async def test_no_change(app_ref, server_url_env, servicer):
+async def test_no_change(app_ref, server_url_env, token_env, servicer):
     async def fake_watch():
         # Iterator that returns immediately, yielding nothing
         if False:
@@ -74,7 +73,7 @@ async def test_no_change(app_ref, server_url_env, servicer):
 
 
 @pytest.mark.asyncio
-async def test_heartbeats(app_ref, server_url_env, servicer):
+async def test_heartbeats(app_ref, server_url_env, token_env, servicer):
     with mock.patch("modal.runner.HEARTBEAT_INTERVAL", 1):
         t0 = time.time()
         async with serve_app.aio(app, app_ref):

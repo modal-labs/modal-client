@@ -1,8 +1,9 @@
 # Copyright Modal Labs 2023
 """Client for Modal relay servers, allowing users to expose TLS."""
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import AsyncIterator, Optional, Tuple
+from typing import Optional
 
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
@@ -35,12 +36,12 @@ class Tunnel:
         return value
 
     @property
-    def tls_socket(self) -> Tuple[str, int]:
+    def tls_socket(self) -> tuple[str, int]:
         """Get the public TLS socket as a (host, port) tuple."""
         return (self.host, self.port)
 
     @property
-    def tcp_socket(self) -> Tuple[str, int]:
+    def tcp_socket(self) -> tuple[str, int]:
         """Get the public TCP socket as a (host, port) tuple."""
         if not self.unencrypted_host:
             raise InvalidError(
@@ -61,7 +62,7 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
 
     **Usage:**
 
-    ```python
+    ```python notest
     import modal
     from flask import Flask
 

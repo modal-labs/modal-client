@@ -2,7 +2,8 @@
 import queue  # The system library
 import time
 import warnings
-from typing import Any, AsyncGenerator, AsyncIterator, List, Optional, Type
+from collections.abc import AsyncGenerator, AsyncIterator
+from typing import Any, Optional
 
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
@@ -88,11 +89,12 @@ class _Queue(_Object, type_prefix="qu"):
 
     @staticmethod
     def new():
-        """`Queue.new` is deprecated.
-
-        Please use `Queue.from_name` (for persisted) or `Queue.ephemeral` (for ephemeral) queues.
-        """
-        deprecation_error((2024, 3, 19), Queue.new.__doc__)
+        """mdmd:hidden"""
+        message = (
+            "`Queue.new` is deprecated."
+            " Please use `Queue.from_name` (for persisted) or `Queue.ephemeral` (for ephemeral) queues instead."
+        )
+        deprecation_error((2024, 3, 19), message)
 
     def __init__(self):
         """mdmd:hidden"""
@@ -112,7 +114,7 @@ class _Queue(_Object, type_prefix="qu"):
     @classmethod
     @asynccontextmanager
     async def ephemeral(
-        cls: Type["_Queue"],
+        cls: type["_Queue"],
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
@@ -125,7 +127,9 @@ class _Queue(_Object, type_prefix="qu"):
 
         with Queue.ephemeral() as q:
             q.put(123)
+        ```
 
+        ```python notest
         async with Queue.ephemeral() as q:
             await q.put.aio(123)
         ```
@@ -149,15 +153,15 @@ class _Queue(_Object, type_prefix="qu"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Queue":
-        """Create a reference to a persisted Queue
+        """Reference a named Queue, creating if necessary.
 
-        **Examples**
+        In contrast to `modal.Queue.lookup`, this is a lazy method
+        the defers hydrating the local object with metadata from
+        Modal servers until the first time it is actually used.
 
         ```python
-        from modal import Queue
-
-        queue = Queue.from_name("my-queue", create_if_missing=True)
-        queue.put(123)
+        q = modal.Queue.from_name("my-queue", create_if_missing=True)
+        q.put(123)
         ```
         """
         check_object_name(label, "Queue")
@@ -175,11 +179,6 @@ class _Queue(_Object, type_prefix="qu"):
         return _Queue._from_loader(_load, "Queue()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
-    def persisted(label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None):
-        """Deprecated! Use `Queue.from_name(name, create_if_missing=True)`."""
-        deprecation_error((2024, 3, 1), _Queue.persisted.__doc__)
-
-    @staticmethod
     async def lookup(
         label: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -187,11 +186,12 @@ class _Queue(_Object, type_prefix="qu"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Queue":
-        """Lookup a queue with a given name and tag.
+        """Lookup a named Queue.
+
+        In contrast to `modal.Queue.from_name`, this is an eager method
+        that will hydrate the local object with metadata from Modal servers.
 
         ```python
-        from modal import Queue
-
         q = modal.Queue.lookup("my-queue")
         q.put(123)
         ```
@@ -211,7 +211,7 @@ class _Queue(_Object, type_prefix="qu"):
         req = api_pb2.QueueDeleteRequest(queue_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.QueueDelete, req)
 
-    async def _get_nonblocking(self, partition: Optional[str], n_values: int) -> List[Any]:
+    async def _get_nonblocking(self, partition: Optional[str], n_values: int) -> list[Any]:
         request = api_pb2.QueueGetRequest(
             queue_id=self.object_id,
             partition_key=self.validate_partition_key(partition),
@@ -225,7 +225,7 @@ class _Queue(_Object, type_prefix="qu"):
         else:
             return []
 
-    async def _get_blocking(self, partition: Optional[str], timeout: Optional[float], n_values: int) -> List[Any]:
+    async def _get_blocking(self, partition: Optional[str], timeout: Optional[float], n_values: int) -> list[Any]:
         if timeout is not None:
             deadline = time.time() + timeout
         else:
@@ -295,7 +295,7 @@ class _Queue(_Object, type_prefix="qu"):
     @live_method
     async def get_many(
         self, n_values: int, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None
-    ) -> List[Any]:
+    ) -> list[Any]:
         """Remove and return up to `n_values` objects from the queue.
 
         If there are fewer than `n_values` items in the queue, return all of them.
@@ -338,7 +338,7 @@ class _Queue(_Object, type_prefix="qu"):
     @live_method
     async def put_many(
         self,
-        vs: List[Any],
+        vs: list[Any],
         block: bool = True,
         timeout: Optional[float] = None,
         *,
@@ -362,7 +362,7 @@ class _Queue(_Object, type_prefix="qu"):
             await self._put_many_nonblocking(partition, partition_ttl, vs)
 
     async def _put_many_blocking(
-        self, partition: Optional[str], partition_ttl: int, vs: List[Any], timeout: Optional[float] = None
+        self, partition: Optional[str], partition_ttl: int, vs: list[Any], timeout: Optional[float] = None
     ):
         vs_encoded = [serialize(v) for v in vs]
 
@@ -379,6 +379,7 @@ class _Queue(_Object, type_prefix="qu"):
                 # A full queue will return this status.
                 additional_status_codes=[Status.RESOURCE_EXHAUSTED],
                 max_delay=30.0,
+                max_retries=None,
                 total_timeout=timeout,
             )
         except GRPCError as exc:
@@ -390,7 +391,7 @@ class _Queue(_Object, type_prefix="qu"):
             else:
                 raise exc
 
-    async def _put_many_nonblocking(self, partition: Optional[str], partition_ttl: int, vs: List[Any]):
+    async def _put_many_nonblocking(self, partition: Optional[str], partition_ttl: int, vs: list[Any]):
         vs_encoded = [serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,

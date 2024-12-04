@@ -7,36 +7,54 @@ import sys
 import threading
 from hashlib import sha256
 from tempfile import NamedTemporaryFile
-from typing import List, Literal, get_args
+from typing import Literal, get_args
 from unittest import mock
 
-from modal import App, Image, Mount, Secret, build, gpu, method
+import modal
+from modal import App, Image, Mount, Secret, build, environments, gpu, method
 from modal._serialization import serialize
+from modal._utils.async_utils import synchronizer
 from modal.client import Client
 from modal.exception import DeprecationError, InvalidError, VersionError
 from modal.image import (
     SUPPORTED_PYTHON_SERIES,
     ImageBuilderVersion,
-    _dockerhub_debian_codename,
+    _base_image_config,
     _dockerhub_python_version,
     _get_modal_requirements_path,
     _validate_python_version,
 )
 from modal.mount import PYTHON_STANDALONE_VERSIONS
+from modal.runner import deploy_app
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows
 
+# Avoid parameterizing tests over ImageBuilderVersion not supported by current Python
+PYTHON_MAJOR_MINOR = "{}.{}".format(*sys.version_info)
+SUPPORTED_IMAGE_BUILDER_VERSIONS = [
+    v for v in get_args(ImageBuilderVersion) if PYTHON_MAJOR_MINOR in SUPPORTED_PYTHON_SERIES[v]
+]
 
-def dummy():
-    ...
+
+@pytest.fixture(autouse=True)
+def no_automount(monkeypatch):
+    # no tests in here use automounting, but a lot of them implicitly create
+    # functions w/ lots of modules is sys.modules which will automount
+    # which takes a lot of time, so we disable it
+    monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
+
+
+def dummy() -> None:
+    return None
 
 
 def test_supported_python_series():
-    assert SUPPORTED_PYTHON_SERIES == PYTHON_STANDALONE_VERSIONS.keys()
+    for builder_version in get_args(ImageBuilderVersion):
+        assert SUPPORTED_PYTHON_SERIES[builder_version] <= list(PYTHON_STANDALONE_VERSIONS)
 
 
-def get_image_layers(image_id: str, servicer) -> List[api_pb2.Image]:
+def get_image_layers(image_id: str, servicer) -> list[api_pb2.Image]:
     """Follow pointers to the previous image recursively in the servicer's list of images,
     and return a list of image layers from top to bottom."""
 
@@ -62,33 +80,40 @@ def get_all_dockerfile_commands(image_id: str, servicer) -> str:
     return "\n".join([cmd for layer in layers for cmd in layer.dockerfile_commands])
 
 
-@pytest.fixture(params=get_args(ImageBuilderVersion))
+@pytest.fixture(params=SUPPORTED_IMAGE_BUILDER_VERSIONS)
 def builder_version(request, server_url_env, modal_config):
-    version = request.param
+    builder_version = request.param
     with modal_config():
-        with mock.patch("test.conftest.ImageBuilderVersion", Literal[version]):  # type: ignore
-            yield version
+        with mock.patch("test.conftest.ImageBuilderVersion", Literal[builder_version]):  # type: ignore
+            yield builder_version
 
 
-def test_python_version_validation():
-    assert _validate_python_version(None) == "{0}.{1}".format(*sys.version_info)
-    assert _validate_python_version("3.12") == "3.12"
-    assert _validate_python_version("3.12.0") == "3.12.0"
+@pytest.fixture(autouse=True)
+def clear_environment_cache():
+    # Clear the environment cache so we can mock the server returning different image builder versions
+    # Alternatively could rewrite some of those tests to use different environments?
+    environments.ENVIRONMENT_CACHE.clear()
+
+
+def test_python_version_validation(builder_version):
+    assert _validate_python_version(None, builder_version) == "{}.{}".format(*sys.version_info)
+    assert _validate_python_version("3.12", builder_version) == "3.12"
+    assert _validate_python_version("3.12.0", builder_version) == "3.12.0"
 
     with pytest.raises(InvalidError, match="Unsupported Python version"):
-        _validate_python_version("3.7")
+        _validate_python_version("3.7", builder_version)
 
     with pytest.raises(InvalidError, match="Python version must be specified as a string"):
-        _validate_python_version(3.10)  # type: ignore
+        _validate_python_version(3.10, builder_version)  # type: ignore
 
     with pytest.raises(InvalidError, match="Invalid Python version"):
-        _validate_python_version("3.10.2.9")
+        _validate_python_version("3.10.2.9", builder_version)
 
     with pytest.raises(InvalidError, match="Invalid Python version"):
-        _validate_python_version("3.10.x")
+        _validate_python_version("3.10.x", builder_version)
 
     with pytest.raises(InvalidError, match="Python version must be specified as 'major.minor'"):
-        _validate_python_version("3.10.5", allow_micro_granularity=False)
+        _validate_python_version("3.10.5", builder_version, allow_micro_granularity=False)
 
 
 def test_dockerhub_python_version(builder_version):
@@ -119,20 +144,25 @@ def test_image_base(builder_version, servicer, client, test_dir):
             if builder_version == "2023.12":
                 assert "pip install -r /modal_requirements.txt" in commands
             else:
-                assert "pip install --no-cache --no-deps -r /modal_requirements.txt" in commands
                 assert "rm /modal_requirements.txt" in commands
+                if builder_version == "2024.04":
+                    assert "pip install --no-cache --no-deps -r /modal_requirements.txt" in commands
+                else:
+                    assert (
+                        "uv pip install --system --compile-bytecode" " --no-cache --no-deps -r /modal_requirements.txt"
+                    ) in commands
 
 
 @pytest.mark.parametrize("python_version", [None, "3.10", "3.11.4"])
 def test_python_version(builder_version, servicer, client, python_version):
-    local_python = "{0}.{1}".format(*sys.version_info)
+    local_python = "{}.{}".format(*sys.version_info)
     expected_python = local_python if python_version is None else python_version
 
     app = App()
     image = Image.debian_slim() if python_version is None else Image.debian_slim(python_version)
     app.function(image=image)(dummy)
     expected_dockerhub_python = _dockerhub_python_version(builder_version, expected_python)
-    expected_dockerhub_debian = _dockerhub_debian_codename(builder_version)
+    expected_dockerhub_debian = _base_image_config("debian", builder_version)
     assert expected_dockerhub_python.startswith(expected_python)
     with app.run(client):
         commands = get_all_dockerfile_commands(image.object_id, servicer)
@@ -264,8 +294,6 @@ def test_image_pip_install_pyproject(builder_version, servicer, client):
     app.function(image=image)(dummy)
     with app.run(client=client):
         layers = get_image_layers(image.object_id, servicer)
-
-        print(layers[0].dockerfile_commands)
         assert any("pip install 'banana >=1.2.0' 'potato >=0.1.0'" in cmd for cmd in layers[0].dockerfile_commands)
 
 
@@ -278,7 +306,6 @@ def test_image_pip_install_pyproject_with_optionals(builder_version, servicer, c
     with app.run(client=client):
         layers = get_image_layers(image.object_id, servicer)
 
-        print(layers[0].dockerfile_commands)
         assert any(
             "pip install 'banana >=1.2.0' 'linting-tool >=0.0.0' 'potato >=0.1.0' 'pytest >=1.2.0'" in cmd
             for cmd in layers[0].dockerfile_commands
@@ -341,35 +368,6 @@ def test_dockerfile_image(builder_version, servicer, client):
         layers = get_image_layers(app.image.object_id, servicer)
 
         assert any("RUN pip install numpy" in cmd for cmd in layers[1].dockerfile_commands)
-
-
-def test_conda_install(builder_version, servicer, client):
-    with pytest.warns(DeprecationError, match="Image.micromamba"):
-        image = Image.conda().pip_install("numpy").conda_install("pymc3", "theano").pip_install("scikit-learn")
-    app = App(image=image)
-    app.function(image=image)(dummy)
-
-    with app.run(client=client):
-        layers = get_image_layers(image.object_id, servicer)
-
-        assert any("pip install scikit-learn" in cmd for cmd in layers[0].dockerfile_commands)
-        assert any("conda install pymc3 theano --yes" in cmd for cmd in layers[1].dockerfile_commands)
-        assert any("pip install numpy" in cmd for cmd in layers[2].dockerfile_commands)
-
-
-def test_conda_update_from_environment(builder_version, servicer, client):
-    path = os.path.join(os.path.dirname(__file__), "supports/test-conda-environment.yml")
-
-    with pytest.warns(DeprecationError, match="Image.micromamba"):
-        app = App(image=Image.conda().conda_update_from_environment(path))
-
-    app.function()(dummy)
-    with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
-
-        assert any("RUN conda env update" in cmd for cmd in layers[0].dockerfile_commands)
-        assert any(b"foo=1.0" in f.data for f in layers[0].context_files)
-        assert any(b"bar=2.1" in f.data for f in layers[0].context_files)
 
 
 def test_micromamba_install(builder_version, servicer, client):
@@ -626,6 +624,87 @@ def tmp_path_with_content(tmp_path):
     return tmp_path
 
 
+@pytest.mark.parametrize(["copy"], [(True,), (False,)])
+@pytest.mark.parametrize(
+    ["remote_path", "expected_dest"],
+    [
+        ("/place/nice.txt", "/place/nice.txt"),
+        # Not supported yet, but soon:
+        ("/place/", "/place/data.txt"),  # use original basename if destination has a trailing slash
+        # ("output.txt", "/proj/output.txt")  # workdir relative target
+        # (None, "/proj/data.txt")  # default target - basename in current directory
+    ],
+)
+def test_image_add_local_file(servicer, client, tmp_path_with_content, copy, remote_path, expected_dest):
+    app = App()
+
+    if remote_path is None:
+        remote_path_kwargs = {}
+    else:
+        remote_path_kwargs = {"remote_path": remote_path}
+
+    img = (
+        Image.from_registry("unknown_image")
+        .workdir("/proj")
+        .add_local_file(tmp_path_with_content / "data.txt", **remote_path_kwargs, copy=copy)
+    )
+    app.function(image=img)(dummy)
+
+    with app.run(client=client):
+        if copy:
+            # check that dockerfile commands include COPY . .
+            layers = get_image_layers(img.object_id, servicer)
+            assert layers[0].dockerfile_commands == ["FROM base", "COPY . /"]
+            mount_id = layers[0].context_mount_id
+            # and then get the relevant context mount to check
+        if not copy:
+            assert len(img._mount_layers) == 1
+            mount_id = img._mount_layers[0].object_id
+
+        assert set(servicer.mount_contents[mount_id].keys()) == {expected_dest}
+
+
+@pytest.mark.parametrize(["copy"], [(True,), (False,)])
+@pytest.mark.parametrize(
+    ["remote_path", "expected_dest"],
+    [
+        ("/place/", "/place/sub"),  # copy full dir
+        ("/place", "/place/sub"),  # removing trailing slash on source makes no difference, unlike shell cp
+        # TODO: add support for relative paths:
+        # Not supported yet, but soon:
+        # ("place", "/proj/place/sub")  # workdir relative target
+        # (None, "/proj/sub")  # default target - copy into current directory
+    ],
+)
+def test_image_add_local_dir(servicer, client, tmp_path_with_content, copy, remote_path, expected_dest):
+    app = App()
+
+    if remote_path is None:
+        remote_path_kwargs = {}
+    else:
+        remote_path_kwargs = {"remote_path": remote_path}
+
+    img = (
+        Image.from_registry("unknown_image")
+        .workdir("/proj")
+        .add_local_dir(tmp_path_with_content / "data", **remote_path_kwargs, copy=copy)
+    )
+    app.function(image=img)(dummy)
+
+    with app.run(client=client):
+        if copy:
+            # check that dockerfile commands include COPY . .
+            layers = get_image_layers(img.object_id, servicer)
+            assert layers[0].dockerfile_commands == ["FROM base", "COPY . /"]
+            mount_id = layers[0].context_mount_id
+            # and then get the relevant context mount to check
+        if not copy:
+            assert len(img._mount_layers) == 1
+            mount_id = img._mount_layers[0].object_id
+
+        assert set(servicer.mount_contents[mount_id].keys()) == {expected_dest}
+
+
 def test_image_copy_local_dir(builder_version, servicer, client, tmp_path_with_content):
     app = App()
     app.image = Image.debian_slim().copy_local_dir(tmp_path_with_content, remote_path="/dummy")
@@ -764,6 +843,30 @@ def test_workdir(builder_version, servicer, client):
         layers = get_image_layers(app.image.object_id, servicer)
 
         assert any("WORKDIR /foo/bar" in cmd for cmd in layers[0].dockerfile_commands)
+
+
+def test_hydration_metadata(servicer, client):
+    img = Image.debian_slim()
+    app = App(image=img)
+    app.function()(dummy)
+    dummy_metadata = api_pb2.ImageMetadata(
+        workdir="/proj",
+        python_packages={"fastapi": "0.100.0"},
+        python_version_info="Python 3.11.8 (main, Feb 25 2024, 03:55:37) [Clang 17.0.6 ]",
+    )
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "ImageJoinStreaming",
+            api_pb2.ImageJoinStreamingResponse(
+                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
+                metadata=dummy_metadata,
+            ),
+        )
+
+        with app.run(client=client):
+            # TODO: change this test to use public property workdir when/if we introduce one
+            _image = synchronizer._translate_in(img)
+            assert _image._metadata == dummy_metadata
 
 
 cls_app = App()
@@ -916,36 +1019,46 @@ def test_get_modal_requirements_path(builder_version, python_version):
         assert path.endswith(f"{builder_version}.txt")
 
 
-def test_image_builder_version(servicer, test_dir, modal_config):
+def test_image_builder_version(servicer, credentials, test_dir, modal_config):
     app = App(image=Image.debian_slim())
     app.function()(dummy)
 
-    # TODO use a single with statement and tuple of managers when we drop Py3.8
+    def mock_base_image_config(group, version):
+        config = {
+            "debian": "bookworm",
+            "python": "3.11.0",
+            "package_tools": "pip wheel uv",
+        }
+        return config[group]
+
     test_requirements = str(test_dir / "supports" / "test-requirements.txt")
-    with mock.patch("modal.image._get_modal_requirements_path", lambda *_, **__: test_requirements):
-        with mock.patch("modal.image._dockerhub_python_version", lambda *_, **__: "3.11.0"):
-            with mock.patch("modal.image._dockerhub_debian_codename", lambda *_, **__: "bullseye"):
-                with mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"]):
-                    with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
-                        with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-xyz")) as client:
-                            with modal_config():
-                                with app.run(client=client):
-                                    assert servicer.image_builder_versions
-                                    for version in servicer.image_builder_versions.values():
-                                        assert version == "2000.01"
+    with (
+        mock.patch("modal.image._get_modal_requirements_path", lambda *_, **__: test_requirements),
+        mock.patch("modal.image._dockerhub_python_version", lambda *_, **__: "3.11.0"),
+        mock.patch("modal.image._base_image_config", mock_base_image_config),
+        mock.patch("test.conftest.ImageBuilderVersion", Literal["2000.01"]),
+        mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]),
+        Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client,
+        modal_config(),
+        app.run(client=client),
+    ):
+        assert servicer.image_builder_versions
+        for version in servicer.image_builder_versions.values():
+            assert version == "2000.01"
 
 
-def test_image_builder_supported_versions(servicer):
+def test_image_builder_supported_versions(servicer, credentials):
     app = App(image=Image.debian_slim())
     app.function()(dummy)
 
-    # TODO use a single with statement and tuple of managers when we drop Py3.8
-    with pytest.raises(VersionError, match=r"This version of the modal client supports.+{'2000.01'}"):
-        with mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]):
-            with mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.11"]):
-                with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, ("ak-123", "as-xyz")) as client:
-                    with app.run(client=client):
-                        pass
+    with (
+        pytest.raises(VersionError, match=r"This version of the modal client supports.+{'2000.01'}"),
+        mock.patch("modal.image.ImageBuilderVersion", Literal["2000.01"]),
+        mock.patch("test.conftest.ImageBuilderVersion", Literal["2023.11"]),
+        Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client,
+        app.run(client=client),
+    ):
+        pass
 
 
 @pytest.fixture
@@ -979,19 +1092,11 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
         img = Image.from_registry("ubuntu:22.04")
         assert get_hash(img) == "b5f1cc544a412d1b23a5ebf9a8859ea9a86975ecbc7325b83defc0ce3fe956d3"
 
-        with pytest.warns(DeprecationError):
-            img = Image.conda()
-        assert get_hash(img) == "f69d6af66fb5f1a2372a61836e6166ce79ebe2cd628d12addea8e8e80cc98dc1"
-
         img = Image.micromamba()
         assert get_hash(img) == "fa883741544ea191ecd197c8f83a1ffe9912575faa8c107c66b3dda761b2e401"
 
         img = Image.from_dockerfile(test_dir / "supports" / "test-dockerfile")
         assert get_hash(img) == "0aec2f66f28ee7511c1b36604214ae7b40d9bc1fa3e6b8883001e933a966ff78"
-
-    with pytest.warns(DeprecationError):
-        img = Image.conda(python_version="3.12")
-    assert get_hash(img) == "c4b3f7350116d323dded29c9c9b78b62593f0fc943ccf83a09b27185bfdc2a07"
 
     img = Image.micromamba(python_version="3.12")
     assert get_hash(img) == "468befe16f703a3ae1a794dfe54c1a3445ca0ffda233f55f1d66c45ad608e8aa"
@@ -1004,16 +1109,8 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
     img = base.pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
     assert get_hash(img) == "2a4fa8e3b32c70a41b3a3efd5416540b1953430543f6c27c984e7f969c2ca874"
 
-    with pytest.warns(DeprecationError):
-        img = base.conda_install("torch=2.2", "transformers<4.23.0", channels=["conda-forge", "my-channel"])
-    assert get_hash(img) == "dd6f27f636293996a64a98c250161d8092cb23d02629d9070493f00aad8d7266"
-
     img = base.pip_install_from_requirements(test_dir / "supports" / "test-requirements.txt")
     assert get_hash(img) == "69d41e699d4ecef399e51e8460f8857aa0ec57f71f00eca81c8886ec062e5c2b"
-
-    with pytest.warns(DeprecationError):
-        img = base.conda_update_from_environment(test_dir / "supports" / "test-conda-environment.yml")
-    assert get_hash(img) == "00940e0ee2998bfe0a337f51a5fdf5f4b29bf9d42dda3635641d44bfeb42537e"
 
     img = base.poetry_install_from_file(
         test_dir / "supports" / "test-pyproject.toml",
@@ -1054,18 +1151,6 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
     img = Image.from_dockerfile(test_dir / "supports" / "test-dockerfile")
     assert get_hash(img) == "a683ed2a2fd9ca960d818aebd7459932494da63aa27d5d84443c578a5ba3fe05"
 
-    with pytest.warns(DeprecationError):
-        img = Image.conda()
-    if sys.version_info[:2] == (3, 11):
-        assert get_hash(img) == "404e1d80bd639321d1115ae00b8d1b6f3d257be7d400bad46d3c39da09c193c8"
-    elif sys.version_info[:2] == (3, 10):
-        # Assert that we follow the local Python, which is a new behavior in 2024.04
-        assert get_hash(img) == "9299b7935461e021ea6a3749adac8ea4de333fd443e74192739fbdd60da3b0b5"
-
-    with pytest.warns(DeprecationError):
-        img = Image.conda(python_version="3.12")
-    assert get_hash(img) == "113d959483ff099ba161438f02a370322bc53a68d5c5989245f4002b08e3be9d"
-
     img = Image.micromamba()
     if sys.version_info[:2] == (3, 11):
         assert get_hash(img) == "8c0a30c7d14eb709953161cae39aa7d39afe3bb5014b7c6cf5dd93de56dcb32b"
@@ -1084,16 +1169,8 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
     img = base.pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
     assert get_hash(img) == "4e8cea916369fc545a5139312a9633691f7624ec2b6d4075014a7602b23584c0"
 
-    with pytest.warns(DeprecationError):
-        img = base.conda_install("torch=2.2", "transformers<4.23.0", channels=["conda-forge", "my-channel"])
-    assert get_hash(img) == "bd9fb2b86a39886d618b37950d1a7c4d8826048f191fa00c5f87c71be88bf8f7"
-
     img = base.pip_install_from_requirements(test_dir / "supports" / "test-requirements.txt")
     assert get_hash(img) == "78392aca4ea135ab53b9d183eedbb2a7e32f9b3c0cfb42b03a7bd7c4f013f3c8"
-
-    with pytest.warns(DeprecationError):
-        img = base.conda_update_from_environment(test_dir / "supports" / "test-conda-environment.yml")
-    assert get_hash(img) == "4bb5fd232956050e66256d7e00c088e1c7cd4d7217bc0d15bcc4fbd08aa2f3b6"
 
     img = base.micromamba_install(
         "torch=2.2",
@@ -1101,13 +1178,81 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
         spec_file=test_dir / "supports" / "test-conda-environment.yml",
         channels=["conda-forge", "my-channel"],
     )
-    assert get_hash(img) == "d9d4c9fe24769ce587877b9752a64486e8f7d8520731110bd2fa666de82f43fd"
+    assert get_hash(img) == "f8701ce500d6aa1fecefd9c2869aef4a13c77ab03925333c011d7eca60bbf08a"
 
     img = base.poetry_install_from_file(
         test_dir / "supports" / "test-pyproject.toml",
         poetry_lockfile=test_dir / "supports" / "special_poetry.lock",
     )
     assert get_hash(img) == "bfce5811c04c1243f12cbb9cca1522cb901f52410986925bcfa3b3c2d7adc7a0"
+
+
+@pytest.fixture
+def force_2024_10(modal_config):
+    with mock.patch("test.conftest.ImageBuilderVersion", Literal["2024.10"]):
+        with modal_config():
+            yield
+
+
+@skip_windows("Different hash values for context file paths")
+def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
+    def get_hash(img: Image) -> str:
+        app = App(image=img)
+        app.function()(dummy)
+        with app.run(client=client):
+            layers = get_image_layers(app.image.object_id, servicer)
+            commands = [layer.dockerfile_commands for layer in layers]
+            context_files = [[(f.filename, f.data) for f in layer.context_files] for layer in layers]
+        return sha256(repr(list(zip(commands, context_files))).encode()).hexdigest()
+
+    if sys.version_info[:2] == (3, 11):
+        # Matches my development environment — default is to match Python version from local system
+        img = Image.debian_slim()
+        assert get_hash(img) == "f03d3a2bd1a859349320b216311902982aebad30f135b1bef68e3c6cc8a6bfbe"
+
+    img = Image.debian_slim(python_version="3.12")
+    assert get_hash(img) == "385413df75dffe57f41d4c8eef45ce6cec6de54dda348f3b93c3b7d36fdf0973"
+
+    img = Image.from_registry("ubuntu:22.04")
+    assert get_hash(img) == "aa4b17f73658c5ae09ca8dfce9419cd50c6179ecf015208151cc2c7109ed8e40"
+
+    img = Image.from_dockerfile(test_dir / "supports" / "test-dockerfile")
+    assert get_hash(img) == "8997493d8ff7b8d25fc5c1943626d262afacc64f14ad91edbdc4536600528e3d"
+
+    img = Image.micromamba()
+    if sys.version_info[:2] == (3, 11):
+        assert get_hash(img) == "4a0241417a2e67d995cce36c0ee4907ec249b008e05658eb98ce0a655e7e9861"
+    elif sys.version_info[:2] == (3, 10):
+        # Assert that we follow the local Python, which is a new behavior in 2024.04
+        assert get_hash(img) == "e9d42609633d0e24822bcb77d0ca4de5fc706df1e38a8eebe1b322fb1964dafe"
+
+    img = Image.micromamba(python_version="3.12")
+    assert get_hash(img) == "bcccccc3dda15c813f73be58514aaadfe270a0e9a0ecb1817dea630bdb31e357"
+
+    base = Image.debian_slim(python_version="3.12")
+
+    img = base.run_commands("echo 'Hello Modal'", "rm /usr/local/bin/kubectl")
+    assert get_hash(img) == "bee3ae0a37ea24925e616d5a90bc7564848b15fac85a3d8d12c2be88038f3011"
+
+    img = base.pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
+    assert get_hash(img) == "b3f271b826547d5c2a62a58765e7456ad957c982c2dd2fd0a1d6d472b4a2e928"
+
+    img = base.pip_install_from_requirements(test_dir / "supports" / "test-requirements.txt")
+    assert get_hash(img) == "94960315ff71d9521890a0472ea389c4ef3be76b9b439a6bcb28d7e17a4ee7ea"
+
+    img = base.micromamba_install(
+        "torch=2.2",
+        "transformers<4.23.0",
+        spec_file=test_dir / "supports" / "test-conda-environment.yml",
+        channels=["conda-forge", "my-channel"],
+    )
+    assert get_hash(img) == "072e70b2f05327f606c261ad48a68cf8db5e592e7019f6ee7dbaccf28f2ef537"
+
+    img = base.poetry_install_from_file(
+        test_dir / "supports" / "test-pyproject.toml",
+        poetry_lockfile=test_dir / "supports" / "special_poetry.lock",
+    )
+    assert get_hash(img) == "78d579f243c21dcaa59e5daf97f732e2453b004bc2122de692617d4d725c6184"
 
 
 parallel_app = App()
@@ -1154,3 +1299,182 @@ async def test_logs(servicer, client):
 
     logs = [data async for data in image._logs.aio()]
     assert logs == ["build starting\n", "build finished\n"]
+
+
+def hydrate_image(img, client):
+    # there should be a more straight forward way to do this?
+    app = App()
+    app.function(serialized=True, image=img)(lambda: None)
+    with app.run(client=client):
+        pass
+
+
+def test_add_local_lazy_vs_copy(client, servicer, set_env_client, supports_on_path):
+    deb = Image.debian_slim()
+    image_with_mount = deb._add_local_python_packages("pkg_a")
+
+    hydrate_image(image_with_mount, client)
+    assert image_with_mount.object_id == deb.object_id
+    assert len(image_with_mount._mount_layers) == 1
+
+    image_additional_mount = image_with_mount._add_local_python_packages("pkg_b")
+    hydrate_image(image_additional_mount, client)
+    assert len(image_additional_mount._mount_layers) == 2  # another mount added to lazy layer
+    assert len(image_with_mount._mount_layers) == 1  # original image should not be affected
+
+    # running commands
+    image_non_mount = image_with_mount.run_commands("echo 'hello'")
+    with pytest.raises(InvalidError, match="copy=True"):
+        # error about using non-copy add commands before other build steps
+        hydrate_image(image_non_mount, client)
+
+    image_with_copy = deb._add_local_python_packages("pkg_a", copy=True)
+    hydrate_image(image_with_copy, client)
+    assert len(image_with_copy._mount_layers) == 0
+
+    # do the same exact image using copy=True
+    image_with_copy_and_commands = deb._add_local_python_packages("pkg_a", copy=True).run_commands("echo 'hello'")
+    hydrate_image(image_with_copy_and_commands, client)
+    assert len(image_with_copy_and_commands._mount_layers) == 0
+
+    layers = get_image_layers(image_with_copy_and_commands.object_id, servicer)
+
+    echo_layer = layers[0]
+    assert echo_layer.dockerfile_commands == ["FROM base", "RUN echo 'hello'"]
+
+    copy_layer = layers[1]
+    assert copy_layer.dockerfile_commands == ["FROM base", "COPY . /"]
+    copied_files = servicer.mount_contents[copy_layer.context_mount_id].keys()
+    assert len(copied_files) == 8
+    assert all(fn.startswith("/root/pkg_a/") for fn in copied_files)
+
+
+def test_add_locals_are_attached_to_functions(servicer, client, supports_on_path):
+    deb_slim = Image.debian_slim()
+    img = deb_slim._add_local_python_packages("pkg_a")
+    app = App("my-app")
+    control_fun: modal.Function = app.function(serialized=True, image=deb_slim, name="control")(
+        dummy
+    )  # no mounts on image
+    fun: modal.Function = app.function(serialized=True, image=img, name="fun")(dummy)  # mounts on image
+    deploy_app(app, client=client)
+
+    control_func_mounts = set(servicer.app_functions[control_fun.object_id].mount_ids)
+    fun_def = servicer.app_functions[fun.object_id]
+    added_mounts = set(fun_def.mount_ids) - control_func_mounts
+    assert len(added_mounts) == 1
+    assert added_mounts == {img._mount_layers[0].object_id}
+
+
+def test_add_locals_are_attached_to_classes(servicer, client, supports_on_path, set_env_client):
+    deb_slim = Image.debian_slim()
+    img = deb_slim._add_local_python_packages("pkg_a")
+    app = App("my-app")
+    control_fun: modal.Function = app.function(serialized=True, image=deb_slim, name="control")(
+        dummy
+    )  # no mounts on image
+
+    class A:
+        some_arg: str = modal.parameter()
+
+    ACls = app.cls(serialized=True, image=img)(A)  # mounts on image
+    deploy_app(app, client=client)
+
+    control_func_mounts = set(servicer.app_functions[control_fun.object_id].mount_ids)
+    fun_def = servicer.function_by_name("A.*")  # class service function
+    added_mounts = set(fun_def.mount_ids) - control_func_mounts
+    assert len(added_mounts) == 1
+    assert added_mounts == {img._mount_layers[0].object_id}
+
+    obj = ACls(some_arg="foo")  # type: ignore
+    # hacky way to force hydration of the *parameter bound* function (instance service function):
+    obj.keep_warm(0)  #  type: ignore
+
+    obj_fun_def = servicer.function_by_name("A.*", ((), {"some_arg": "foo"}))  # instance service function
+    added_mounts = set(obj_fun_def.mount_ids) - control_func_mounts
+    assert len(added_mounts) == 1
+    assert added_mounts == {img._mount_layers[0].object_id}
+
+
+@skip_windows("servicer sandbox implementation not working on windows")
+def test_add_locals_are_attached_to_sandboxes(servicer, client, supports_on_path):
+    deb_slim = Image.debian_slim()
+    img = deb_slim._add_local_python_packages("pkg_a")
+    app = App("my-app")
+    with app.run(client=client):
+        modal.Sandbox.create(image=img, app=app, client=client)
+        sandbox_def = servicer.sandbox_defs[0]
+
+    assert sandbox_def.image_id == deb_slim.object_id
+    assert sandbox_def.mount_ids == [img._mount_layers[0].object_id]
+    copied_files = servicer.mount_contents[sandbox_def.mount_ids[0]]
+    assert len(copied_files) == 8
+    assert all(fn.startswith("/root/pkg_a/") for fn in copied_files)
+
+
+def empty_fun():
+    pass
+
+
+def test_add_locals_build_function(servicer, client, supports_on_path):
+    deb_slim = Image.debian_slim()
+    img = deb_slim._add_local_python_packages("pkg_a")
+    img_with_build_function = img.run_function(empty_fun)
+    with pytest.raises(InvalidError):
+        # build functions could still potentially rewrite mount contents,
+        # so we still require them to use copy=True
+        # TODO(elias): what if someone wants do use an equivalent of `run_function(..., mounts=[...]) ?
+        hydrate_image(img_with_build_function, client)
+
+    img_with_copy = deb_slim._add_local_python_packages("pkg_a", copy=True)
+    hydrate_image(img_with_copy, client)  # this is fine
+
+
+# TODO: test modal shell w/ lazy mounts
+# this works since the image is passed on as is to a sandbox which will load it and
+# transfer any virtual mount layers from the image as mounts to the sandbox
+
+
+def test_image_only_joins_unfinished_steps(servicer, client):
+    app = App()
+    deb_slim = Image.debian_slim()
+    image = deb_slim.pip_install("foobarbaz")
+    app.function(image=image)(dummy)
+    with servicer.intercept() as ctx:
+        # default - image not built, should stream
+        with app.run(client=client):
+            pass
+        image_gets = ctx.get_requests("ImageGetOrCreate")
+        assert len(image_gets) == 2
+        image_joins = ctx.get_requests("ImageJoinStreaming")
+        assert len(image_joins) == 2
+
+    with servicer.intercept() as ctx:
+        # lets mock that deb_slim has been built already
+
+        async def custom_responder(servicer, stream):
+            image_get_or_create_request = await stream.recv_message()
+            is_base_image = any("FROM python:" in cmd for cmd in image_get_or_create_request.image.dockerfile_commands)
+            if is_base_image:
+                # base image done
+                await stream.send_message(
+                    api_pb2.ImageGetOrCreateResponse(
+                        image_id="im-123",
+                        result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
+                    )
+                )
+            else:
+                await stream.send_message(
+                    api_pb2.ImageGetOrCreateResponse(
+                        image_id="im-124",
+                    )
+                )
+
+        ctx.set_responder("ImageGetOrCreate", custom_responder)
+        with app.run(client=client):
+            pass
+        image_gets = ctx.get_requests("ImageGetOrCreate")
+        assert len(image_gets) == 2
+        image_joins = ctx.get_requests("ImageJoinStreaming")
+        assert len(image_joins) == 1  # should now skip building of second build step
+        assert image_joins[0].image_id == "im-124"

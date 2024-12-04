@@ -14,7 +14,7 @@ from typer import Typer
 
 import modal
 from modal._location import display_location
-from modal._output import ProgressHandler, step_completed
+from modal._output import OutputManager, ProgressHandler
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.cli._download import _volume_download
@@ -29,7 +29,7 @@ nfs_cli = Typer(name="nfs", help="Read and edit `modal.NetworkFileSystem` file s
 
 @nfs_cli.command(name="list", help="List the names of all network file systems.", rich_help_panel="Management")
 @synchronizer.create_blocking
-async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+async def list_(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
 
     client = await _Client.from_env()
@@ -146,7 +146,7 @@ async def put(
         with progress_handler.live:
             await volume.add_local_dir(local_path, remote_path, progress_cb=progress_handler.progress)
             progress_handler.progress(complete=True)
-        console.print(step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
+        console.print(OutputManager.step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
 
     elif "*" in local_path:
         raise UsageError("Glob uploads are currently not supported")
@@ -156,7 +156,9 @@ async def put(
             written_bytes = await volume.add_local_file(local_path, remote_path, progress_cb=progress_handler.progress)
             progress_handler.progress(complete=True)
         console.print(
-            step_completed(f"Uploaded file '{local_path}' to '{remote_path}' ({written_bytes} bytes written)")
+            OutputManager.step_completed(
+                f"Uploaded file '{local_path}' to '{remote_path}' ({written_bytes} bytes written)"
+            )
         )
 
 
@@ -194,7 +196,7 @@ async def get(
     progress_handler = ProgressHandler(type="download", console=console)
     with progress_handler.live:
         await _volume_download(volume, remote_path, destination, force, progress_cb=progress_handler.progress)
-    console.print(step_completed("Finished downloading files to local!"))
+    console.print(OutputManager.step_completed("Finished downloading files to local!"))
 
 
 @nfs_cli.command(

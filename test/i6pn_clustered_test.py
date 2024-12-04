@@ -7,7 +7,7 @@ app = App()
 
 
 @app.function()
-@modal.experimental.grouped(size=2)
+@modal.experimental.clustered(size=2)
 def f1():
     pass
 
@@ -22,7 +22,7 @@ def f3():
     pass
 
 
-def test_experimental_group(servicer, client):
+def test_experimental_cluster(servicer, client):
     with app.run(client=client):
         assert len(servicer.app_functions) == 3
 
@@ -37,3 +37,9 @@ def test_experimental_group(servicer, client):
         fn3 = servicer.app_functions["fu-3"]  # f3
         assert not fn3._experimental_group_size
         assert fn3.i6pn_enabled is True
+
+
+def test_run_experimental_cluster(client, servicer, monkeypatch):
+    with app.run(client=client):
+        # The servicer returns the sum of the squares of all arguments
+        assert f1.remote(2, 4) == 2**2 + 4**2

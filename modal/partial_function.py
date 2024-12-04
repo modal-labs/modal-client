@@ -2,15 +2,11 @@
 import enum
 import inspect
 import typing
+from collections.abc import Coroutine, Iterable
 from typing import (
     Any,
     Callable,
-    Coroutine,
-    Dict,
-    Iterable,
-    List,
     Optional,
-    Type,
     Union,
 )
 
@@ -35,7 +31,7 @@ class _PartialFunctionFlags(enum.IntFlag):
     ENTER_POST_SNAPSHOT: int = 8
     EXIT: int = 16
     BATCHED: int = 32
-    GROUPED: int = 64  # Experimental: Grouped functions
+    CLUSTERED: int = 64  # Experimental: Clustered functions
 
     @staticmethod
     def all() -> int:
@@ -58,7 +54,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     batch_max_size: Optional[int]
     batch_wait_ms: Optional[int]
     force_build: bool
-    group_size: Optional[int]  # Experimental: Grouped functions
+    cluster_size: Optional[int]  # Experimental: Clustered functions
     build_timeout: Optional[int]
 
     def __init__(
@@ -70,7 +66,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         keep_warm: Optional[int] = None,
         batch_max_size: Optional[int] = None,
         batch_wait_ms: Optional[int] = None,
-        group_size: Optional[int] = None,  # Experimental: Grouped functions
+        cluster_size: Optional[int] = None,  # Experimental: Clustered functions
         force_build: bool = False,
         build_timeout: Optional[int] = None,
     ):
@@ -82,7 +78,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
         self.batch_max_size = batch_max_size
         self.batch_wait_ms = batch_wait_ms
-        self.group_size = group_size  # Experimental: Grouped functions
+        self.cluster_size = cluster_size  # Experimental: Clustered functions
         self.force_build = force_build
         self.build_timeout = build_timeout
 
@@ -91,7 +87,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         if obj:  # accessing the method on an instance of a class, e.g. `MyClass().fun``
             if hasattr(obj, "_modal_functions"):
                 # This happens inside "local" user methods when they refer to other methods,
-                # e.g. Foo().parent_method() doing self.local.other_method()
+                # e.g. Foo().parent_method.remote() calling self.other_method.remote()
                 return getattr(obj, "_modal_functions")[k]
             else:
                 # special edge case: referencing a method of an instance of an
@@ -132,11 +128,11 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
 PartialFunction = synchronize_api(_PartialFunction)
 
 
-def _find_partial_methods_for_user_cls(user_cls: Type[Any], flags: int) -> Dict[str, _PartialFunction]:
+def _find_partial_methods_for_user_cls(user_cls: type[Any], flags: int) -> dict[str, _PartialFunction]:
     """Grabs all method on a user class, and returns partials. Includes legacy methods."""
 
     # Build up a list of legacy attributes to check
-    check_attrs: List[str] = []
+    check_attrs: list[str] = []
     if flags & _PartialFunctionFlags.BUILD:
         check_attrs += ["__build__", "__abuild__"]
     if flags & _PartialFunctionFlags.ENTER_POST_SNAPSHOT:
@@ -158,8 +154,8 @@ def _find_partial_methods_for_user_cls(user_cls: Type[Any], flags: int) -> Dict[
             )
             deprecation_error((2024, 2, 21), message)
 
-    partial_functions: Dict[str, PartialFunction] = {}
-    for parent_cls in user_cls.mro():
+    partial_functions: dict[str, PartialFunction] = {}
+    for parent_cls in reversed(user_cls.mro()):
         if parent_cls is not object:
             for k, v in parent_cls.__dict__.items():
                 if isinstance(v, PartialFunction):
@@ -170,9 +166,9 @@ def _find_partial_methods_for_user_cls(user_cls: Type[Any], flags: int) -> Dict[
     return partial_functions
 
 
-def _find_callables_for_obj(user_obj: Any, flags: int) -> Dict[str, Callable[..., Any]]:
+def _find_callables_for_obj(user_obj: Any, flags: int) -> dict[str, Callable[..., Any]]:
     """Grabs all methods for an object, and binds them to the class"""
-    user_cls: Type = type(user_obj)
+    user_cls: type = type(user_obj)
     return {k: pf.raw_f.__get__(user_obj) for k, pf in _find_partial_methods_for_user_cls(user_cls, flags).items()}
 
 
@@ -199,6 +195,7 @@ class _MethodDecoratorType:
         ...
 
 
+# TODO(elias): fix support for coroutine type unwrapping for methods (static typing)
 def _method(
     _warn_parentheses_missing=None,
     *,
@@ -207,8 +204,7 @@ def _method(
     is_generator: Optional[bool] = None,
     keep_warm: Optional[int] = None,  # Deprecated: Use keep_warm on @app.cls() instead
 ) -> _MethodDecoratorType:
-    # TODO(elias): fix support for coroutine type unwrapping for methods (static typing)
-    """Decorator for methods that should be transformed into a Modal Function registered against this class's app.
+    """Decorator for methods that should be transformed into a Modal Function registered against this class's App.
 
     **Usage:**
 
@@ -256,9 +252,9 @@ def _method(
     return wrapper
 
 
-def _parse_custom_domains(custom_domains: Optional[Iterable[str]] = None) -> List[api_pb2.CustomDomainConfig]:
+def _parse_custom_domains(custom_domains: Optional[Iterable[str]] = None) -> list[api_pb2.CustomDomainConfig]:
     assert not isinstance(custom_domains, str), "custom_domains must be `Iterable[str]` but is `str` instead."
-    _custom_domains: List[api_pb2.CustomDomainConfig] = []
+    _custom_domains: list[api_pb2.CustomDomainConfig] = []
     if custom_domains is not None:
         for custom_domain in custom_domains:
             _custom_domains.append(api_pb2.CustomDomainConfig(name=custom_domain))
@@ -272,10 +268,10 @@ def _web_endpoint(
     method: str = "GET",  # REST method for the created endpoint.
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     docs: bool = False,  # Whether to enable interactive documentation for this endpoint at /docs.
-    wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     custom_domains: Optional[
         Iterable[str]
     ] = None,  # Create an endpoint using a custom domain fully-qualified domain name (FQDN).
+    wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[P, ReturnType]], _PartialFunction[P, ReturnType, ReturnType]]:
     """Register a basic web endpoint with this application.
 
@@ -307,14 +303,11 @@ def _web_endpoint(
                 "@app.function()\n@app.web_endpoint()\ndef my_webhook():\n    ..."
             )
         if not wait_for_response:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 5, 13),
                 "wait_for_response=False has been deprecated on web endpoints. See "
-                + "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives",
+                "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives.",
             )
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
-        else:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
         # self._loose_webhook_configs.add(raw_f)
 
@@ -326,7 +319,7 @@ def _web_endpoint(
                 method=method,
                 web_endpoint_docs=docs,
                 requested_suffix=label,
-                async_mode=_response_mode,
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
                 custom_domains=_parse_custom_domains(custom_domains),
             ),
         )
@@ -338,8 +331,8 @@ def _asgi_app(
     _warn_parentheses_missing=None,
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
-    wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
+    wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering an ASGI app with a Modal function.
 
@@ -382,15 +375,17 @@ def _asgi_app(
                     f"Modal will drop support for default parameters in a future release.",
                 )
 
+        if inspect.iscoroutinefunction(raw_f):
+            raise InvalidError(
+                f"ASGI app function {raw_f.__name__} is an async function. Only sync Python functions are supported."
+            )
+
         if not wait_for_response:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 5, 13),
                 "wait_for_response=False has been deprecated on web endpoints. See "
-                + "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives",
+                "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives",
             )
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
-        else:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
         return _PartialFunction(
             raw_f,
@@ -398,7 +393,7 @@ def _asgi_app(
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
                 requested_suffix=label,
-                async_mode=_response_mode,
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
                 custom_domains=_parse_custom_domains(custom_domains),
             ),
         )
@@ -410,8 +405,8 @@ def _wsgi_app(
     _warn_parentheses_missing=None,
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
-    wait_for_response: bool = True,  # Whether requests should wait for and return the function response.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
+    wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering a WSGI app with a Modal function.
 
@@ -454,15 +449,17 @@ def _wsgi_app(
                     f"Modal will drop support for default parameters in a future release.",
                 )
 
+        if inspect.iscoroutinefunction(raw_f):
+            raise InvalidError(
+                f"WSGI app function {raw_f.__name__} is an async function. Only sync Python functions are supported."
+            )
+
         if not wait_for_response:
-            deprecation_warning(
+            deprecation_error(
                 (2024, 5, 13),
                 "wait_for_response=False has been deprecated on web endpoints. See "
-                + "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives",
+                "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives",
             )
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_TRIGGER
-        else:
-            _response_mode = api_pb2.WEBHOOK_ASYNC_MODE_AUTO  # the default
 
         return _PartialFunction(
             raw_f,
@@ -470,7 +467,7 @@ def _wsgi_app(
             api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
                 requested_suffix=label,
-                async_mode=_response_mode,
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
                 custom_domains=_parse_custom_domains(custom_domains),
             ),
         )
@@ -604,10 +601,12 @@ def _enter(
 
 
 ExitHandlerType = Union[
+    # NOTE: return types of these callables should be `Union[None, Awaitable[None]]` but
+    #       synchronicity type stubs would strip Awaitable so we use Any for now
     # Original, __exit__ style method signature (now deprecated)
-    Callable[[Any, Optional[Type[BaseException]], Optional[BaseException], Any], None],
+    Callable[[Any, Optional[type[BaseException]], Optional[BaseException], Any], Any],
     # Forward-looking unparameterized method
-    Callable[[Any], None],
+    Callable[[Any], Any],
 ]
 
 

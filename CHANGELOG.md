@@ -10,9 +10,216 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.67.23 (2024-12-04)
+
+- Image build functions that use a `functools.wraps` decorator will now have their global variables included in the cache key. Previously, the cache would use global variables referenced within the wrapper itself. This will force a rebuild for Image layers defined using wrapped functions.
+
+
+
+### 0.67.22 (2024-12-03)
+
+- Fixed a bug introduced in v0.67.0 where it was impossible to call `modal.Cls` methods when passing a list of requested GPUs.
+
+
+
+### 0.67.12 (2024-12-02)
+
+- Fixed a bug that executes the wrong method when a Modal Cls overrides a `@modal.method` inherited from a parent.
+
+
+
+### 0.67.7 (2024-11-29)
+
+- Fixed a bug where pointing `modal run` at a method on a Modal Cls would fail if the method was inherited from a parent.
+
+
+
+### 0.67.0 (2024-11-27)
+
+New minor client version `0.67.x` comes with an internal data model change for how Modal creates functions for Modal classes. There are no breaking or backwards-incompatible changes with this release. All forward lookup scenarios (`.lookup()` of a `0.67` class from a pre `0.67` client) as well as backwards lookup scenarios (`.lookup()` of a pre `0.67` class from a `0.67` client) work, except for a `0.62` client looking up a `0.67` class (this maintains our current restriction of not being able to lookup a `0.63+` class from a `0.62` client).
+
+
+## 0.66
+
+
+
+### 0.66.49 (2024-11-26)
+
+- `modal config set-environment` will now raise if the requested environment does not exist.
+
+
+
+### 0.66.45 (2024-11-26)
+
+- The `modal launch` CLI now accepts a `--detach` flag to run the App in detached mode, such that it will persist after the local client disconnects.
+
+
+
+### 0.66.40 (2024-11-23)
+
+* Adds `Image.add_local_file(..., copy=False)` and `Image.add_local_dir(..., copy=False)` as a unified replacement for the old `Image.copy_local_*()` and `Mount.add_local_*` methods.
+
+
+
+### 0.66.30 (2024-11-21)
+
+- Removed the `aiostream` package from the modal client library dependencies.
+
+
+
+### 0.66.29 (2024-11-21)
+
+* Adds `Image.add_local_python_packages` which works similarly to `Mount.from_local_python_packages` but for images.
+
+
+
+### 0.66.12 (2024-11-19)
+
+`Sandbox.exec` now accepts arguments `text` and `bufsize` for streaming output, which controls text output and line buffering.
+
+
+
+### 0.66.0 (2024-11-15)
+
+- Modal no longer supports Python 3.8, which has reached its [official EoL](https://devguide.python.org/versions/).
+
+
+
+## 0.65
+
+
+
+### 0.65.55 (2024-11-13)
+
+- Escalates stuck input cancellations to container death. This prevents unresponsive user code from holding up resources.
+- Input timeouts no longer kill the entire container. Instead, they just cancel the timed-out input, leaving the container and other concurrent inputs running.
+
+
+
+### 0.65.49 (2024-11-12)
+
+* Fixed issue in `modal serve` where files used in `Image.copy_*` commands were not watched for changes
+
+
+
+### 0.65.42 (2024-11-07)
+
+- `Sandbox.exec` can now accept `timeout`, `workdir`, and `secrets`. See the `Sandbox.create` function for context on how to use these arguments.
+
+
+
+### 0.65.33 (2024-11-06)
+
+- Removed the `interactive` parameter from `function` and `cls` decorators. This parameter has been deprecated since May 2024. Instead of specifying Modal Functions as interactive, use `modal run --interactive` to activate interactive mode.
+
+
+
+### 0.65.30 (2024-11-05)
+
+* The `checkpointing_enabled` option, deprecated in March 2024, has now been removed.
+
+
+
+### 0.65.9 (2024-10-31)
+
+- Output from `Sandbox.exec` can now be directed to `/dev/null`, `stdout`, or stored for consumption. This behavior can be controlled via the new `StreamType` arguments.
+
+
+
+### 0.65.8 (2024-10-31)
+
+- Fixed a bug where the `Image.imports` context manager would not correctly propagate ImportError when using a `modal.Cls`.
+
+
+
+### 0.65.2 (2024-10-30)
+
+* Fixed an issue where `modal run` would pause for 10s before exiting if there was a failure during app creation.
+
+
+## 0.64
+
+
+### 0.64.227 (2024-10-25)
+
+- The `modal container list` CLI command now shows the containers within a specific environment: the active profile's environment if there is one, otherwise the workspace's default environment. You can pass `--env` to list containers in other environments.
+
+
+### 0.64.223 (2024-10-24)
+
+* Fixed `modal serve` not showing progress when reloading apps on file changes since v0.63.79.
+
+
+
+### 0.64.218 (2024-10-23)
+
+- Fix a regression introduced in client version 0.64.209, which affects client authentication within a container.
+
+
+
+### 0.64.198 (2024-10-18)
+
+- Fixed a bug where `Queue.put` and `Queue.put_many` would throw `queue.Full` even if `timeout=None`.
+
+
+
+### 0.64.194 (2024-10-18)
+
+- The previously-deprecated `--confirm` flag has been removed from the `modal volume delete` CLI. Use `--yes` to force deletion without a confirmation prompt.
+
+
+
+### 0.64.193 (2024-10-18)
+
+- Passing `wait_for_response=False` in Modal webhook decorators is no longer supported. See [the docs](https://modal.com/docs/guide/webhook-timeouts#polling-solutions) for alternatives.
+
+
+
+### 0.64.187 (2024-10-16)
+
+- When writing to a `StreamWriter` that has already had EOF written, a `ValueError` is now raised instead of an `EOFError`.
+
+
+
+### 0.64.185 (2024-10-15)
+
+- Memory snapshotting can now be used with parameterized functions.
+
+
+
+### 0.64.184 (2024-10-15)
+
+- StreamWriters now accept strings as input.
+
+
+
+### 0.64.182 (2024-10-15)
+
+- Fixed a bug where App rollbacks would not restart a schedule that had been removed in an intervening deployment.
+
+
+
+### 0.64.181 (2024-10-14)
+
+- The `modal shell` CLI command now takes a container ID, allowing you to shell into a running container.
+
+
+
+### 0.64.180 (2024-10-14)
+
+- `modal shell --cmd` now can be shortened to `modal shell -c`. This means you can use it like `modal shell -c "uname -a"` to quickly run a command within the remote environment.
+
+
+
+### 0.64.168 (2024-10-03)
+
+- The `Image.conda`, `Image.conda_install`, and `Image.conda_update_from_environment` methods are now fully deprecated. We recommend using `micromamba` (via `Image.micromamba` and `Image.micromamba_install`) instead, or manually installing and using conda with `Image.run_commands` when strictly necessary.
+
+
+
 ### 0.64.153 (2024-09-30)
 
-- **Breaking Change:** `Sandbox.tunnels()` now returns a `Dict` rather than a `List`. This dict is keyed by the container's port, and it returns a `Tunnel` object just like `modal.forward` does.
+- **Breaking Change:** `Sandbox.tunnels()` now returns a `Dict` rather than a `List`. This dict is keyed by the container's port, and it returns a `Tunnel` object, just like `modal.forward` does.
 
 
 
@@ -30,7 +237,7 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 ### 0.64.123 (2024-09-18)
 
-Sandboxes can now be created without an entrypoint command. If they are created like this, they will stay alive up until their set timeout. This is useful if you want to keep a long-lived sandbox and execute code in it later.
+- Sandboxes can now be created without an entrypoint command. If they are created like this, they will stay alive up until their set timeout. This is useful if you want to keep a long-lived sandbox and execute code in it later.
 
 
 
@@ -50,38 +257,38 @@ Introduce an experimental API to allow users to set the input concurrency for a 
 
 - Creating sandboxes without an associated `App` is deprecated. If you are spawning a `Sandbox` outside a Modal container, you can lookup an `App` by name to attach to the `Sandbox`:
 
-```python
-app = modal.App.lookup('my-app', create_if_missing=True)
-modal.Sandbox.create('echo', 'hi', app=app)
-```
+  ```python
+  app = modal.App.lookup('my-app', create_if_missing=True)
+  modal.Sandbox.create('echo', 'hi', app=app)
+  ```
 
 
 
 ### 0.64.109 (2024-09-13)
 
-App handles can now be looked up by name with `modal.App.lookup(name)`. This can be useful for associating sandboxes with apps:
+- App handles can now be looked up by name with `modal.App.lookup(name)`. This can be useful for associating Sandboxes with Apps:
 
-```python
-app = modal.App.lookup("my-app", create_if_missing=True)
-modal.Sandbox.create("echo", "hi", app=app)
-```
+  ```python
+  app = modal.App.lookup("my-app", create_if_missing=True)
+  modal.Sandbox.create("echo", "hi", app=app)
+  ```
 
 
 
 ### 0.64.100 (2024-09-11)
 
-* Default timeout for `modal.Image.run_function` is now 1 hour. Previously it was 24 hours.
+* The default timeout for `modal.Image.run_function` has been lowered to 1 hour. Previously it was 24 hours.
 
 
 
 ### 0.64.99 (2024-09-11)
 
-* Fixes an issue that could cause containers using `enable_memory_snapshot=True` on Python 3.9 and below to shut down prematurely
+* Fixes an issue that could cause containers using `enable_memory_snapshot=True` on Python 3.9 and below to shut down prematurely.
 
 
 ### 0.64.97 (2024-09-11)
 
-* Adds support for [ASGI lifespan protocol](https://asgi.readthedocs.io/en/latest/specs/lifespan.html): 
+* Added support for [ASGI lifespan protocol](https://asgi.readthedocs.io/en/latest/specs/lifespan.html): 
 
     ```python
     @app.function()
@@ -105,15 +312,17 @@ modal.Sandbox.create("echo", "hi", app=app)
 
     which enables support for `gradio>=v4` amongst other libraries using lifespans
 
+
 ### 0.64.87 (2024-09-05)
 
-Sandboxes now support port tunneling. Ports can be exposed via the `open_ports` argument, and a list of active tunnels can be retrieved via the `.tunnels()` method.
+- Sandboxes now support port tunneling. Ports can be exposed via the `open_ports` argument, and a list of active tunnels can be retrieved via the `.tunnels()` method.
 
 
 
 ### 0.64.67 (2024-08-30)
 
-- Fix a regression in `modal launch` behavior not showing progress output when starting the container.
+- Fixed a regression in `modal launch` to resume displaying output when starting the container.
+
 
 
 ### 0.64.48 (2024-08-21)

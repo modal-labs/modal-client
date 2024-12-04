@@ -1,7 +1,8 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
-from typing import TYPE_CHECKING, AsyncGenerator, Dict, List, Optional, Sequence, Tuple, Union
+from collections.abc import AsyncGenerator, Sequence
+from typing import TYPE_CHECKING, Literal, Optional, Union, overload
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
@@ -27,8 +28,10 @@ from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import _get_environment_name, _Object
+from .proxy import _Proxy
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
+from .stream_type import StreamType
 
 _default_image: _Image = _Image.debian_slim()
 
@@ -45,11 +48,11 @@ class _Sandbox(_Object, type_prefix="sb"):
     """
 
     _result: Optional[api_pb2.GenericResult]
-    _stdout: _StreamReader
-    _stderr: _StreamReader
+    _stdout: _StreamReader[str]
+    _stderr: _StreamReader[str]
     _stdin: _StreamWriter
     _task_id: Optional[str] = None
-    _tunnels: Optional[Dict[int, Tunnel]] = None
+    _tunnels: Optional[dict[int, Tunnel]] = None
 
     @staticmethod
     def _new(
@@ -63,14 +66,15 @@ class _Sandbox(_Object, type_prefix="sb"):
         cloud: Optional[str] = None,
         region: Optional[Union[str, Sequence[str]]] = None,
         cpu: Optional[float] = None,
-        memory: Optional[Union[int, Tuple[int, int]]] = None,
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        memory: Optional[Union[int, tuple[int, int]]] = None,
+        network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         block_network: bool = False,
         cidr_allowlist: Optional[Sequence[str]] = None,
-        volumes: Dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
+        volumes: dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
         pty_info: Optional[api_pb2.PTYInfo] = None,
         encrypted_ports: Sequence[int] = [],
         unencrypted_ports: Sequence[int] = [],
+        proxy: Optional[_Proxy] = None,
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
     ) -> "_Sandbox":
         """mdmd:hidden"""
@@ -92,13 +96,16 @@ class _Sandbox(_Object, type_prefix="sb"):
                 "Specify a single GPU configuration, e.g. gpu='a10g'"
             )
 
+        if workdir is not None and not workdir.startswith("/"):
+            raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
+
         # Validate volumes
         validated_volumes = validate_volumes(volumes)
         cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
-        def _deps() -> List[_Object]:
-            deps: List[_Object] = [image] + list(mounts) + list(secrets)
+        def _deps() -> list[_Object]:
+            deps: list[_Object] = [image] + list(mounts) + list(secrets)
             for _, vol in validated_network_file_systems:
                 deps.append(vol)
             for _, vol in validated_volumes:
@@ -144,7 +151,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             definition = api_pb2.Sandbox(
                 entrypoint_args=entrypoint_args,
                 image_id=image.object_id,
-                mount_ids=[mount.object_id for mount in mounts],
+                mount_ids=[mount.object_id for mount in mounts] + [mount.object_id for mount in image._mount_layers],
                 secret_ids=[secret.object_id for secret in secrets],
                 timeout_secs=timeout,
                 workdir=workdir,
@@ -161,6 +168,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 worker_id=config.get("worker_id"),
                 open_ports=api_pb2.PortSpecs(ports=open_ports),
                 network_access=network_access,
+                proxy_id=(proxy.object_id if proxy else None),
             )
 
             # Note - `resolver.app_id` will be `None` for app-less sandboxes
@@ -182,7 +190,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         mounts: Sequence[_Mount] = (),  # Mounts to attach to the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
-        network_file_systems: Dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,
@@ -191,11 +199,11 @@ class _Sandbox(_Object, type_prefix="sb"):
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
-        memory: Optional[Union[int, Tuple[int, int]]] = None,
+        memory: Optional[Union[int, tuple[int, int]]] = None,
         block_network: bool = False,  # Whether to block network access
         # List of CIDRs the sandbox is allowed to access. If None, all CIDRs are allowed.
         cidr_allowlist: Optional[Sequence[str]] = None,
-        volumes: Dict[
+        volumes: dict[
             Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
         pty_info: Optional[api_pb2.PTYInfo] = None,
@@ -203,6 +211,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         encrypted_ports: Sequence[int] = [],
         # List of ports to tunnel into the sandbox without encryption.
         unencrypted_ports: Sequence[int] = [],
+        # Reference to a Modal Proxy to use in front of this Sandbox.
+        proxy: Optional[_Proxy] = None,
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
@@ -238,6 +248,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             pty_info=pty_info,
             encrypted_ports=encrypted_ports,
             unencrypted_ports=unencrypted_ports,
+            proxy=proxy,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
         )
 
@@ -276,8 +287,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         return obj
 
     def _hydrate_metadata(self, handle_metadata: Optional[Message]):
-        self._stdout = StreamReader(api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, "sandbox", self._client)
-        self._stderr = StreamReader(api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, "sandbox", self._client)
+        self._stdout: _StreamReader[str] = StreamReader[str](
+            api_pb2.FILE_DESCRIPTOR_STDOUT, self.object_id, "sandbox", self._client, by_line=True
+        )
+        self._stderr: _StreamReader[str] = StreamReader[str](
+            api_pb2.FILE_DESCRIPTOR_STDERR, self.object_id, "sandbox", self._client, by_line=True
+        )
         self._stdin = StreamWriter(self.object_id, "sandbox", self._client)
         self._result = None
 
@@ -298,7 +313,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return obj
 
-    async def set_tags(self, tags: Dict[str, str], *, client: Optional[_Client] = None):
+    async def set_tags(self, tags: dict[str, str], *, client: Optional[_Client] = None):
         """Set tags (key-value pairs) on the Sandbox. Tags can be used to filter results in `Sandbox.list`."""
         environment_name = _get_environment_name()
         if client is None:
@@ -333,7 +348,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                     raise SandboxTerminatedError()
                 break
 
-    async def tunnels(self, timeout: int = 50) -> Dict[int, Tunnel]:
+    async def tunnels(self, timeout: int = 50) -> dict[int, Tunnel]:
         """Get tunnel metadata for the sandbox.
 
         Raises `SandboxTimeoutError` if the tunnels are not available after the timeout.
@@ -388,11 +403,59 @@ class _Sandbox(_Object, type_prefix="sb"):
         while not self._task_id:
             resp = await self._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id))
             self._task_id = resp.task_id
-            # TODO: debug why sending an exec right after a task ID exists fails silently
-            await asyncio.sleep(0.5)
+            if not self._task_id:
+                await asyncio.sleep(0.5)
         return self._task_id
 
-    async def exec(self, *cmds: str, pty_info: Optional[api_pb2.PTYInfo] = None):
+    @overload
+    async def exec(
+        self,
+        *cmds: str,
+        pty_info: Optional[api_pb2.PTYInfo] = None,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
+        secrets: Sequence[_Secret] = (),
+        text: Literal[True] = True,
+        bufsize: Literal[-1, 1] = -1,
+        _pty_info: Optional[api_pb2.PTYInfo] = None,
+    ) -> _ContainerProcess[str]:
+        ...
+
+    @overload
+    async def exec(
+        self,
+        *cmds: str,
+        pty_info: Optional[api_pb2.PTYInfo] = None,
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
+        secrets: Sequence[_Secret] = (),
+        text: Literal[False] = False,
+        bufsize: Literal[-1, 1] = -1,
+        _pty_info: Optional[api_pb2.PTYInfo] = None,
+    ) -> _ContainerProcess[bytes]:
+        ...
+
+    async def exec(
+        self,
+        *cmds: str,
+        pty_info: Optional[api_pb2.PTYInfo] = None,  # Deprecated: internal use only
+        stdout: StreamType = StreamType.PIPE,
+        stderr: StreamType = StreamType.PIPE,
+        timeout: Optional[int] = None,
+        workdir: Optional[str] = None,
+        secrets: Sequence[_Secret] = (),
+        # Encode output as text.
+        text: bool = True,
+        # Control line-buffered output.
+        # -1 means unbuffered, 1 means line-buffered (only available if `text=True`).
+        bufsize: Literal[-1, 1] = -1,
+        # Internal option to set terminal size and metadata
+        _pty_info: Optional[api_pb2.PTYInfo] = None,
+    ):
         """Execute a command in the Sandbox and return
         a [`ContainerProcess`](/docs/reference/modal.ContainerProcess#modalcontainer_process) handle.
 
@@ -410,18 +473,30 @@ class _Sandbox(_Object, type_prefix="sb"):
         ```
         """
 
+        if workdir is not None and not workdir.startswith("/"):
+            raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
+
+        # Force secret resolution so we can pass the secret IDs to the backend.
+        for secret in secrets:
+            await secret.resolve(client=self._client)
+
         task_id = await self._get_task_id()
         resp = await self._client.stub.ContainerExec(
             api_pb2.ContainerExecRequest(
                 task_id=task_id,
                 command=cmds,
-                pty_info=pty_info,
+                pty_info=_pty_info or pty_info,
+                runtime_debug=config.get("function_runtime_debug"),
+                timeout_secs=timeout or 0,
+                workdir=workdir,
+                secret_ids=[secret.object_id for secret in secrets],
             )
         )
-        return _ContainerProcess(resp.exec_id, self._client)
+        by_line = bufsize == 1
+        return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr, text=text, by_line=by_line)
 
     @property
-    def stdout(self) -> _StreamReader:
+    def stdout(self) -> _StreamReader[str]:
         """
         [`StreamReader`](/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
         the sandbox's stdout stream.
@@ -430,7 +505,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         return self._stdout
 
     @property
-    def stderr(self) -> _StreamReader:
+    def stderr(self) -> _StreamReader[str]:
         """[`StreamReader`](/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
         the sandbox's stderr stream.
         """
@@ -463,7 +538,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @staticmethod
     async def list(
-        *, app_id: Optional[str] = None, tags: Optional[Dict[str, str]] = None, client: Optional[_Client] = None
+        *, app_id: Optional[str] = None, tags: Optional[dict[str, str]] = None, client: Optional[_Client] = None
     ) -> AsyncGenerator["_Sandbox", None]:
         """List all sandboxes for the current environment or app ID (if specified). If tags are specified, only
         sandboxes that have at least those tags are returned. Returns an iterator over `Sandbox` objects."""

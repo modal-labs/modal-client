@@ -212,9 +212,39 @@ def test_function_memory_limit(client):
         g.remote(0)
 
 
-def test_function_cpu_request(client):
+def test_function_cpu_request(client, servicer):
     app = App()
-    app.function(cpu=2.0)(dummy)
+    f = app.function(cpu=2.0)(dummy)
+
+    with app.run(client=client):
+        f.remote()
+        assert servicer.app_functions["fu-1"].resources.milli_cpu == 2000
+        assert servicer.app_functions["fu-1"].resources.milli_cpu_max == 0
+    assert f.spec.cpu == 2.0
+
+    app = App()
+    g = app.function(cpu=7)(dummy)
+
+    with app.run(client=client):
+        g.remote()
+        assert servicer.app_functions["fu-2"].resources.milli_cpu == 7000
+        assert servicer.app_functions["fu-2"].resources.milli_cpu_max == 0
+    assert g.spec.cpu == 7
+
+
+def test_function_cpu_limit(client, servicer):
+    app = App()
+    f = app.function(cpu=(1, 3))(dummy)
+    assert f.spec.cpu == (1, 3)
+
+    with app.run(client=client):
+        f.remote()
+        assert servicer.app_functions["fu-1"].resources.milli_cpu == 1000
+        assert servicer.app_functions["fu-1"].resources.milli_cpu_max == 3000
+
+    g = app.function(cpu=(1, 0.5))(custom_function)
+    with pytest.raises(InvalidError), app.run(client=client):
+        g.remote(0)
 
 
 def test_function_disk_request(client):
@@ -748,7 +778,7 @@ def test_default_cloud_provider(client, servicer, monkeypatch):
     monkeypatch.setenv("MODAL_DEFAULT_CLOUD", "oci")
     app.function()(dummy)
     with app.run(client=client):
-        object_id: str = app.indexed_objects["dummy"].object_id
+        object_id: str = app.registered_functions["dummy"].object_id
         f = servicer.app_functions[object_id]
 
     assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_OCI
@@ -798,11 +828,11 @@ def test_deps_explicit(client, servicer):
     app.function(image=image, network_file_systems={"/nfs_1": nfs_1, "/nfs_2": nfs_2})(dummy)
 
     with app.run(client=client):
-        object_id: str = app.indexed_objects["dummy"].object_id
+        object_id: str = app.registered_functions["dummy"].object_id
         f = servicer.app_functions[object_id]
 
-    dep_object_ids = set(d.object_id for d in f.object_dependencies)
-    assert dep_object_ids == set([image.object_id, nfs_1.object_id, nfs_2.object_id])
+    dep_object_ids = {d.object_id for d in f.object_dependencies}
+    assert dep_object_ids == {image.object_id, nfs_1.object_id, nfs_2.object_id}
 
 
 def assert_is_wrapped_dict(some_arg):
@@ -974,22 +1004,27 @@ def test_batch_function_invalid_error():
             return [x_i**2 for x_i in x]
 
 
-@pytest.mark.parametrize("feature_flag", [True, False, None])
-def test_spawn_extended_feature_flag(client, servicer, monkeypatch, feature_flag):
+def test_experimental_spawn(client, servicer):
     app = App()
     dummy_modal = app.function()(dummy)
 
-    if feature_flag is not None:
-        monkeypatch.setenv("MODAL_SPAWN_EXTENDED", str(feature_flag))
-
     with servicer.intercept() as ctx:
         with app.run(client=client):
-            dummy_modal.spawn(1, 2)
+            dummy_modal._experimental_spawn(1, 2)
 
-    # Verify the correct invocation type is set based on the feature flag
+    # Verify the correct invocation type is set
     function_map = ctx.pop_request("FunctionMap")
-    if feature_flag:
-        expected_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
-    else:
-        expected_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY
-    assert function_map.function_call_invocation_type == expected_invocation_type
+    assert function_map.function_call_invocation_type == api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
+
+
+def test_from_name_web_url(servicer, set_env_client):
+    f = Function.from_name("dummy-app", "func")
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-1", handle_metadata=api_pb2.FunctionHandleMetadata(web_url="test.internal")
+            ),
+        )
+        assert f.web_url == "test.internal"

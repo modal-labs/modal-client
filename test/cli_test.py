@@ -6,14 +6,12 @@ import os
 import platform
 import pytest
 import re
-import signal
 import subprocess
 import sys
 import tempfile
 import threading
 import traceback
 from pickle import dumps
-from typing import List
 from unittest import mock
 
 import click
@@ -25,6 +23,7 @@ from modal.cli.entry_point import entrypoint_cli
 from modal.exception import InvalidError
 from modal_proto import api_pb2
 
+from . import helpers
 from .supports.skip import skip_windows
 
 dummy_app_file = """
@@ -43,7 +42,7 @@ assert mod.app == app
 dummy_other_module_file = "x = 42"
 
 
-def _run(args: List[str], expected_exit_code: int = 0, expected_stderr: str = "", expected_error: str = ""):
+def _run(args: list[str], expected_exit_code: int = 0, expected_stderr: str = "", expected_error: str = ""):
     runner = click.testing.CliRunner(mix_stderr=False)
     # DEBUGGING TIP: this runs the CLI in a separate subprocess, and output from it is not echoed by default,
     # including from the mock fixtures. Print res.stdout and res.stderr for debugging tests.
@@ -113,12 +112,14 @@ def test_secret_list(servicer, set_env_client):
 
 
 def test_app_token_new(servicer, set_env_client, server_url_env, modal_config):
+    servicer.required_creds = {"abc": "xyz"}
     with modal_config() as config_file_path:
         _run(["token", "new", "--profile", "_test"])
         assert "_test" in toml.load(config_file_path)
 
 
 def test_app_setup(servicer, set_env_client, server_url_env, modal_config):
+    servicer.required_creds = {"abc": "xyz"}
     with modal_config() as config_file_path:
         _run(["setup", "--profile", "_test"])
         assert "_test" in toml.load(config_file_path)
@@ -139,25 +140,7 @@ def test_run(servicer, set_env_client, test_dir):
 def test_run_stub(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "app_was_once_stub.py"
     with pytest.warns(match="App"):
-        _run(["run", app_file.as_posix()])
-    with pytest.warns(match="App"):
         _run(["run", app_file.as_posix() + "::foo"])
-
-
-def test_run_stub_2(servicer, set_env_client, test_dir):
-    app_file = test_dir / "supports" / "app_run_tests" / "app_was_once_stub_2.py"
-    with pytest.warns(match="`app`"):
-        _run(["run", app_file.as_posix()])
-    _run(["run", app_file.as_posix() + "::stub"])
-    _run(["run", app_file.as_posix() + "::foo"])
-
-
-def test_run_stub_with_app(servicer, set_env_client, test_dir):
-    app_file = test_dir / "supports" / "app_run_tests" / "app_and_stub.py"
-    with pytest.warns(match="`app`"):
-        _run(["run", app_file.as_posix()])
-    _run(["run", app_file.as_posix() + "::stub"])
-    _run(["run", app_file.as_posix() + "::foo"])
 
 
 def test_run_async(servicer, set_env_client, test_dir):
@@ -213,6 +196,12 @@ def test_run_quiet(servicer, set_env_client, test_dir):
     # Just tests that the command runs without error for now (tests end up defaulting to `show_progress=False` anyway,
     # without a TTY).
     _run(["run", "--quiet", app_file.as_posix()])
+
+
+def test_run_class_hierarchy(servicer, set_env_client, test_dir):
+    app_file = test_dir / "supports" / "class_hierarchy.py"
+    _run(["run", app_file.as_posix() + "::Wrapped.defined_on_base"])
+    _run(["run", app_file.as_posix() + "::Wrapped.overridden_on_wrapped"])
 
 
 def test_deploy(servicer, set_env_client, test_dir):
@@ -359,7 +348,7 @@ def test_serve(servicer, set_env_client, server_url_env, test_dir):
 
 @pytest.fixture
 def mock_shell_pty(servicer):
-    servicer.shell_prompt = "TEST_PROMPT# "
+    servicer.shell_prompt = b"TEST_PROMPT# "
 
     def mock_get_pty_info(shell: bool) -> api_pb2.PTYInfo:
         rows, cols = (64, 128)
@@ -415,7 +404,7 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
     fake_stdin.clear()
     fake_stdin.extend([b'echo "Hello World"\n', b"exit\n"])
 
-    shell_prompt = servicer.shell_prompt.encode("utf-8")
+    shell_prompt = servicer.shell_prompt
 
     # Function is explicitly specified
     _run(["shell", app_file.as_posix() + "::foo"])
@@ -443,7 +432,7 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
 def test_shell_cmd(servicer, set_env_client, test_dir, mock_shell_pty):
     app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
     _, captured_out = mock_shell_pty
-    shell_prompt = servicer.shell_prompt.encode("utf-8")
+    shell_prompt = servicer.shell_prompt
     _run(["shell", "--cmd", "pwd", app_file.as_posix() + "::foo"])
     expected_output = subprocess.run(["pwd"], capture_output=True, check=True).stdout
     assert captured_out == [(1, shell_prompt), (1, expected_output)]
@@ -454,7 +443,7 @@ def test_shell_preserve_token(servicer, set_env_client, mock_shell_pty, monkeypa
     monkeypatch.setenv("MODAL_TOKEN_ID", "my-token-id")
 
     fake_stdin, captured_out = mock_shell_pty
-    shell_prompt = servicer.shell_prompt.encode("utf-8")
+    shell_prompt = servicer.shell_prompt
 
     fake_stdin.clear()
     fake_stdin.extend([b'echo "$MODAL_TOKEN_ID"\n', b"exit\n"])
@@ -472,7 +461,7 @@ def test_shell_unsuported_cmds_fails_on_windows(servicer, set_env_client, mock_s
         assert re.search("Windows", str(res.exception)), "exception message does not match expected string"
 
 
-def test_app_descriptions(servicer, server_url_env, test_dir):
+def test_app_descriptions(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "prints_desc_app.py"
     _run(["run", "--detach", app_file.as_posix() + "::foo"])
 
@@ -547,7 +536,7 @@ def test_nfs_get(set_env_client, servicer):
         _run(["nfs", "put", nfs_name, upload_path, "test.txt"])
 
         _run(["nfs", "get", nfs_name, "test.txt", tmpdir])
-        with open(os.path.join(tmpdir, "test.txt"), "r") as f:
+        with open(os.path.join(tmpdir, "test.txt")) as f:
             assert f.read() == "foo bar baz"
 
 
@@ -754,6 +743,7 @@ def test_profile_list(servicer, server_url_env, modal_config):
     """
 
     with modal_config(config):
+        servicer.required_creds = {"ak-abc": "as-xyz", "ak-123": "as-789"}
         res = _run(["profile", "list"])
         table_rows = res.stdout.split("\n")
         assert re.search("Profile .+ Workspace", table_rows[1])
@@ -771,6 +761,7 @@ def test_profile_list(servicer, server_url_env, modal_config):
         orig_env_token_secret = os.environ.get("MODAL_TOKEN_SECRET")
         os.environ["MODAL_TOKEN_ID"] = "ak-abc"
         os.environ["MODAL_TOKEN_SECRET"] = "as-xyz"
+        servicer.required_creds = {"ak-abc": "as-xyz"}
         try:
             res = _run(["profile", "list"])
             assert "Using test-username workspace based on environment variables" in res.stdout
@@ -783,6 +774,19 @@ def test_profile_list(servicer, server_url_env, modal_config):
                 os.environ["MODAL_TOKEN_SECRET"] = orig_env_token_secret
             else:
                 del os.environ["MODAL_TOKEN_SECRET"]
+
+
+def test_config_show(servicer, server_url_env, modal_config):
+    config = """
+    [test-profile]
+    token_id = "ak-abc"
+    token_secret = "as-xyz"
+    active = true
+    """
+    with modal_config(config):
+        res = _run(["config", "show"])
+        assert "'token_id': 'ak-abc'" in res.stdout
+        assert "'token_secret': '***'" in res.stdout
 
 
 def test_app_list(servicer, mock_dir, set_env_client):
@@ -977,16 +981,15 @@ def test_call_update_environment_suffix(servicer, set_env_client):
     _run(["environment", "update", "main", "--set-web-suffix", "_"])
 
 
-def _run_subprocess(cli_cmd: List[str]) -> subprocess.Popen:
-    p = subprocess.Popen(
+def _run_subprocess(cli_cmd: list[str]) -> helpers.PopenWithCtrlC:
+    p = helpers.PopenWithCtrlC(
         [sys.executable, "-m", "modal"] + cli_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf8"
     )
     return p
 
 
 @pytest.mark.timeout(10)
-@skip_windows("no sigint on windows")
-def test_keyboard_interrupt_during_app_load(servicer, server_url_env, supports_dir):
+def test_keyboard_interrupt_during_app_load(servicer, server_url_env, token_env, supports_dir):
     ctx: InterceptionContext
     creating_function = threading.Event()
 
@@ -999,16 +1002,15 @@ def test_keyboard_interrupt_during_app_load(servicer, server_url_env, supports_d
 
         p = _run_subprocess(["run", f"{supports_dir / 'hello.py'}::hello"])
         creating_function.wait()
-        p.send_signal(signal.SIGINT)
-        out, err = p.communicate(timeout=1)
+        p.send_ctrl_c()
+        out, err = p.communicate(timeout=5)
         print(out)
         assert "Traceback" not in err
         assert "Aborting app initialization..." in out
 
 
 @pytest.mark.timeout(10)
-@skip_windows("no sigint on windows")
-def test_keyboard_interrupt_during_app_run(servicer, server_url_env, supports_dir):
+def test_keyboard_interrupt_during_app_run(servicer, server_url_env, token_env, supports_dir):
     ctx: InterceptionContext
     waiting_for_output = threading.Event()
 
@@ -1021,15 +1023,14 @@ def test_keyboard_interrupt_during_app_run(servicer, server_url_env, supports_di
 
         p = _run_subprocess(["run", f"{supports_dir / 'hello.py'}::hello"])
         waiting_for_output.wait()
-        p.send_signal(signal.SIGINT)
-        out, err = p.communicate(timeout=1)
+        p.send_ctrl_c()
+        out, err = p.communicate(timeout=5)
         assert "App aborted. View run at https://modaltest.com/apps/ap-123" in out
         assert "Traceback" not in err
 
 
 @pytest.mark.timeout(10)
-@skip_windows("no sigint on windows")
-def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, supports_dir):
+def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, token_env, supports_dir):
     ctx: InterceptionContext
     waiting_for_output = threading.Event()
 
@@ -1042,8 +1043,8 @@ def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, supp
 
         p = _run_subprocess(["run", "--detach", f"{supports_dir / 'hello.py'}::hello"])
         waiting_for_output.wait()
-        p.send_signal(signal.SIGINT)
-        out, err = p.communicate(timeout=1)
+        p.send_ctrl_c()
+        out, err = p.communicate(timeout=5)
         print(out)
         assert "Shutting down Modal client." in out
         assert "The detached app keeps running. You can track its progress at:" in out

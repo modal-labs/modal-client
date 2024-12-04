@@ -9,11 +9,12 @@ import pkgutil
 import re
 import subprocess
 import sys
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Generator, List, Optional
+from typing import Optional
 
 import requests
 from invoke import task
@@ -135,7 +136,7 @@ def type_check(ctx):
     # use pyright for checking implementation of those files
     pyright_allowlist = [
         "modal/functions.py",
-        "modal/_asgi.py",
+        "modal/_runtime/asgi.py",
         "modal/_utils/__init__.py",
         "modal/_utils/async_utils.py",
         "modal/_utils/grpc_testing.py",
@@ -148,7 +149,9 @@ def type_check(ctx):
         "modal/_utils/rand_pb_testing.py",
         "modal/_utils/shell_utils.py",
         "test/cls_test.py",  # see mypy bug above - but this works with pyright, so we run that instead
-        "modal/_container_io_manager.py",
+        "modal/_runtime/container_io_manager.py",
+        "modal/io_streams.py",
+        "modal/image.py",
     ]
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
 
@@ -234,49 +237,6 @@ build_number = {new_build_number}  # git: {git_sha}
 
 
 @task
-def create_alias_package(ctx):
-    from modal_version import __version__
-
-    os.makedirs("alias-package", exist_ok=True)
-    with open("alias-package/setup.py", "w") as f:
-        f.write(
-            f"""\
-{copyright_header_full}
-from setuptools import setup
-setup(version="{__version__}")
-"""
-        )
-    with open("alias-package/setup.cfg", "w") as f:
-        f.write(
-            f"""\
-[metadata]
-name = modal-client
-author = Modal Labs
-author_email = support@modal.com
-description = Legacy name for the Modal client
-long_description = This is a legacy compatibility package that just requires the `modal` client library.
-            In versions before 0.51, the official name of the client library was called `modal-client`.
-            We have renamed it to `modal`, but this library is kept updated for compatibility.
-long_description_content_type = text/markdown
-project_urls =
-    Homepage = https://modal.com
-
-[options]
-install_requires =
-    modal=={__version__}
-"""
-        )
-    with open("alias-package/pyproject.toml", "w") as f:
-        f.write(
-            """\
-[build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
-"""
-        )
-
-
-@task
 def type_stubs(ctx):
     # We only generate type stubs for modules that contain synchronicity wrapped types
     from synchronicity.synchronizer import SYNCHRONIZER_ATTR
@@ -301,7 +261,7 @@ def type_stubs(ctx):
                 modules.append(full_name)
         return modules
 
-    def get_wrapped_types(module_name: str) -> List[str]:
+    def get_wrapped_types(module_name: str) -> list[str]:
         module = importlib.import_module(module_name)
         return [
             name
@@ -321,7 +281,12 @@ def type_stubs(ctx):
 @task
 def update_changelog(ctx, sha: str = ""):
     # Parse a commit message for a GitHub PR number, defaulting to most recent commit
-    res = ctx.run(f"git log --pretty=format:%s -n 1 {sha}", hide="stdout")
+    res = ctx.run(f"git log --pretty=format:%s -n 1 {sha}", hide="stdout", warn=True)
+    if res.exited:
+        print("Failed to extract changelog update!")
+        print("Last 5 commits:")
+        res = ctx.run("git log --pretty=oneline -n 5")
+        return
     m = re.search(r"\(#(\d+)\)$", res.stdout)
     if m:
         pull_number = m.group(1)
@@ -354,7 +319,7 @@ def update_changelog(ctx, sha: str = ""):
         return
 
     # Read the existing changelog and split after the header so we can prepend new content
-    with open("CHANGELOG.md", "r") as fid:
+    with open("CHANGELOG.md") as fid:
         content = fid.read()
     token_pattern = "<!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->"
     m = re.search(token_pattern, content)

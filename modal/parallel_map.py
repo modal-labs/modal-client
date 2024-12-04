@@ -1,15 +1,21 @@
 # Copyright Modal Labs 2024
 import asyncio
+import time
 import typing
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional, Set, Tuple
+from typing import Any, Callable, Optional
 
-from aiostream import pipe, stream
 from grpclib import GRPCError, Status
 
+from modal._runtime.execution_context import current_input_id
 from modal._utils.async_utils import (
     AsyncOrSyncIterable,
+    aclosing,
+    async_map_ordered,
+    async_merge,
+    async_zip,
     queue_batch_iterator,
+    sync_or_async_iter,
     synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
@@ -23,7 +29,6 @@ from modal._utils.function_utils import (
 )
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.config import logger
-from modal.execution_context import current_input_id
 from modal_proto import api_pb2
 
 if typing.TYPE_CHECKING:
@@ -73,7 +78,7 @@ async def _map_invocation(
 ):
     assert client.stub
     request = api_pb2.FunctionMapRequest(
-        function_id=function._invocation_function_id(),
+        function_id=function.object_id,
         parent_input_id=current_input_id() or "",
         function_call_type=api_pb2.FUNCTION_CALL_TYPE_MAP,
         return_exceptions=return_exceptions,
@@ -90,8 +95,8 @@ async def _map_invocation(
         if count_update_callback is not None:
             count_update_callback(num_outputs, num_inputs)
 
-    pending_outputs: Dict[str, int] = {}  # Map input_id -> next expected gen_index value
-    completed_outputs: Set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
+    pending_outputs: dict[str, int] = {}  # Map input_id -> next expected gen_index value
+    completed_outputs: set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
 
     input_queue: asyncio.Queue = asyncio.Queue()
 
@@ -106,17 +111,14 @@ async def _map_invocation(
         while 1:
             raw_input = await raw_input_queue.get()
             if raw_input is None:  # end of input sentinel
-                return
+                break
             yield raw_input  # args, kwargs
 
     async def drain_input_generator():
         # Parallelize uploading blobs
-        proto_input_stream = stream.iterate(input_iter()) | pipe.map(
-            create_input,  # type: ignore[reportArgumentType]
-            ordered=True,
-            task_limit=BLOB_MAX_PARALLELISM,
-        )
-        async with proto_input_stream.stream() as streamer:
+        async with aclosing(
+            async_map_ordered(input_iter(), create_input, concurrency=BLOB_MAX_PARALLELISM)
+        ) as streamer:
             async for item in streamer:
                 await input_queue.put(item)
 
@@ -129,7 +131,7 @@ async def _map_invocation(
         nonlocal have_all_inputs, num_inputs
         async for items in queue_batch_iterator(input_queue, MAP_INVOCATION_CHUNK_SIZE):
             request = api_pb2.FunctionPutInputsRequest(
-                function_id=function._invocation_function_id(), inputs=items, function_call_id=function_call_id
+                function_id=function.object_id, inputs=items, function_call_id=function_call_id
             )
             logger.debug(
                 f"Pushing {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}."
@@ -174,6 +176,7 @@ async def _map_invocation(
                 timeout=OUTPUTS_TIMEOUT,
                 last_entry_id=last_entry_id,
                 clear_on_success=False,
+                requested_at=time.time(),
             )
             response = await retry_transient_errors(
                 client.stub.FunctionGetOutputs,
@@ -199,8 +202,9 @@ async def _map_invocation(
     async def get_all_outputs_and_clean_up():
         assert client.stub
         try:
-            async for item in get_all_outputs():
-                yield item
+            async with aclosing(get_all_outputs()) as output_items:
+                async for item in output_items:
+                    yield item
         finally:
             # "ack" that we have all outputs we are interested in and let backend clear results
             request = api_pb2.FunctionGetOutputsRequest(
@@ -208,10 +212,11 @@ async def _map_invocation(
                 timeout=0,
                 last_entry_id="0-0",
                 clear_on_success=True,
+                requested_at=time.time(),
             )
             await retry_transient_errors(client.stub.FunctionGetOutputs, request)
 
-    async def fetch_output(item: api_pb2.FunctionGetOutputsItem) -> Tuple[int, Any]:
+    async def fetch_output(item: api_pb2.FunctionGetOutputsItem) -> tuple[int, Any]:
         try:
             output = await _process_result(item.result, item.data_format, client.stub, client)
         except Exception as e:
@@ -222,14 +227,13 @@ async def _map_invocation(
         return (item.idx, output)
 
     async def poll_outputs():
-        outputs = stream.iterate(get_all_outputs_and_clean_up())
-        outputs_fetched = outputs | pipe.map(fetch_output, ordered=True, task_limit=BLOB_MAX_PARALLELISM)  # type: ignore
-
         # map to store out-of-order outputs received
         received_outputs = {}
         output_idx = 0
 
-        async with outputs_fetched.stream() as streamer:
+        async with aclosing(
+            async_map_ordered(get_all_outputs_and_clean_up(), fetch_output, concurrency=BLOB_MAX_PARALLELISM)
+        ) as streamer:
             async for idx, output in streamer:
                 count_update()
                 if not order_outputs:
@@ -244,9 +248,7 @@ async def _map_invocation(
 
         assert len(received_outputs) == 0
 
-    response_gen = stream.merge(drain_input_generator(), pump_inputs(), poll_outputs())
-
-    async with response_gen.stream() as streamer:
+    async with aclosing(async_merge(drain_input_generator(), pump_inputs(), poll_outputs())) as streamer:
         async for response in streamer:
             if response is not None:
                 yield response.value
@@ -333,7 +335,7 @@ async def _map_async(
 
     async def feed_queue():
         # This runs in a main thread event loop, so it doesn't block the synchronizer loop
-        async with stream.zip(*[stream.iterate(it) for it in input_iterators]).stream() as streamer:
+        async with aclosing(async_zip(*[sync_or_async_iter(it) for it in input_iterators])) as streamer:
             async for args in streamer:
                 await raw_input_queue.put.aio((args, kwargs))
         await raw_input_queue.put.aio(None)  # end-of-input sentinel
@@ -345,8 +347,9 @@ async def _map_async(
         # they accept executable code in the form of
         # iterators that we don't want to run inside the synchronicity thread.
         # Instead, we delegate to `._map()` with a safer Queue as input
-        async for output in self._map.aio(raw_input_queue, order_outputs, return_exceptions):  # type: ignore[reportFunctionMemberAccess]
-            yield output
+        async with aclosing(self._map.aio(raw_input_queue, order_outputs, return_exceptions)) as map_output_stream:
+            async for output in map_output_stream:
+                yield output
     finally:
         feed_input_task.cancel()  # should only be needed in case of exceptions
 
@@ -383,7 +386,7 @@ async def _starmap_async(
 
     async def feed_queue():
         # This runs in a main thread event loop, so it doesn't block the synchronizer loop
-        async with stream.iterate(input_iterator).stream() as streamer:
+        async with aclosing(sync_or_async_iter(input_iterator)) as streamer:
             async for args in streamer:
                 await raw_input_queue.put.aio((args, kwargs))
         await raw_input_queue.put.aio(None)  # end-of-input sentinel

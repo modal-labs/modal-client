@@ -2,7 +2,7 @@
 """Helper functions related to displaying tracebacks in the CLI."""
 import functools
 import warnings
-from typing import Dict, Optional
+from typing import Optional
 
 from rich.console import Console, RenderResult, group
 from rich.panel import Panel
@@ -20,14 +20,14 @@ def _render_stack(self, stack: Stack) -> RenderResult:
 
     path_highlighter = PathHighlighter()
     theme = self.theme
-    code_cache: Dict[str, str] = {}
+    code_cache: dict[str, str] = {}
     line_cache = getattr(stack, "line_cache", {})
     task_id = None
 
     def read_code(filename: str) -> str:
         code = code_cache.get(filename)
         if code is None:
-            with open(filename, "rt", encoding="utf-8", errors="replace") as code_file:
+            with open(filename, encoding="utf-8", errors="replace") as code_file:
                 code = code_file.read()
             code_cache[filename] = code
         return code
@@ -169,7 +169,7 @@ def highlight_modal_deprecation_warnings() -> None:
             date = content[:10]
             message = content[11:].strip()
             try:
-                with open(filename, "rt", encoding="utf-8", errors="replace") as code_file:
+                with open(filename, encoding="utf-8", errors="replace") as code_file:
                     source = code_file.readlines()[lineno - 1].strip()
                 message = f"{message}\n\nSource: {filename}:{lineno}\n  {source}"
             except OSError:
