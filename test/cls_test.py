@@ -75,7 +75,7 @@ def test_run_class(client, servicer):
     }
 
 
-def test_call_class_sync(client, servicer):
+def test_call_class_sync(client, servicer, set_env_client):
     with servicer.intercept() as ctx:
         with app.run(client=client):
             assert len(ctx.get_requests("FunctionCreate")) == 1  # one for the class service function
@@ -290,10 +290,12 @@ if TYPE_CHECKING:
 
 
 def test_lookup(client, servicer):
+    # basically same test as test_from_name_lazy_method_resolve, but assumes everything is hydrated
     deploy_app(app, "my-cls-app", client=client)
 
     cls: Cls = Cls.lookup("my-cls-app", "Foo", client=client)
 
+    # objects are resolved
     assert cls.object_id.startswith("cs-")
     assert cls.bar.object_id.startswith("fu-")
 
@@ -301,7 +303,10 @@ def test_lookup(client, servicer):
     assert cls.bar.is_generator is False
 
     # Make sure we can instantiate the class
-    obj = cls("foo", 234)
+    obj = cls(a="foo", b=234)
+
+    assert obj.a == "foo"
+    assert obj.b == 234
 
     # Make sure we can methods
     # (mock servicer just returns the sum of the squares of the args)
@@ -310,6 +315,31 @@ def test_lookup(client, servicer):
     # Make sure local calls fail
     with pytest.raises(ExecutionError):
         assert obj.bar.local(1, 2)
+
+
+def test_from_name_lazy_method_resolve(client, servicer):
+    deploy_app(app, "my-cls-app", client=client)
+
+    cls: Cls = Cls.from_name("my-cls-app", "Foo")
+
+    # Make sure we can instantiate the class
+    obj = cls(a="foo", b=234)
+
+    # Check that function properties are preserved
+    assert obj.bar.is_generator is False
+
+    assert obj.a == "foo"
+    assert obj.b == 234
+    # Make sure we can methods
+    # (mock servicer just returns the sum of the squares of the args)
+    assert obj.bar.remote(42, 77) == 7693
+
+    # Make sure local calls fail
+    with pytest.raises(ExecutionError):
+        assert obj.bar.local(1, 2)
+
+    # Make sure that non-existing methods fail
+    obj.baz.remote("hello")
 
 
 def test_lookup_lazy_remote(client, servicer):
