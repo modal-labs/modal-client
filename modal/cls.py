@@ -93,7 +93,6 @@ class _Obj:
         user_cls: type,
         class_service_function: Optional[_Function],  # only None for <v0.63 classes
         classbound_methods: dict[str, _Function],
-        from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
         args,
         kwargs,
@@ -107,9 +106,7 @@ class _Obj:
         if class_service_function:
             # >= v0.63 classes
             # first create the singular object function used by all methods on this parameterization
-            self._instance_service_function = class_service_function._bind_parameters(
-                self, from_other_workspace, options, args, kwargs
-            )
+            self._instance_service_function = class_service_function._bind_parameters(self, options, args, kwargs)
             for method_name, class_bound_method in classbound_methods.items():
                 method = self._instance_service_function._bind_instance_method(class_bound_method)
                 self._method_functions[method_name] = method
@@ -117,7 +114,7 @@ class _Obj:
             # looked up <v0.63 classes - bind each individual method to the new parameters
             self._instance_service_function = None
             for method_name, class_bound_method in classbound_methods.items():
-                method = class_bound_method._bind_parameters(self, from_other_workspace, options, args, kwargs)
+                method = class_bound_method._bind_parameters(self, options, args, kwargs)
                 self._method_functions[method_name] = method
 
         # Used for construction local object lazily
@@ -247,7 +244,6 @@ class _Cls(_Object, type_prefix="cs"):
     _method_functions: Optional[dict[str, _Function]] = None  # Placeholder _Functions for each method
     _options: Optional[api_pb2.FunctionOptions]
     _callables: dict[str, Callable[..., Any]]
-    _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
     _app: Optional["modal.app._App"] = None  # not set for lookups
 
     def _initialize_from_empty(self):
@@ -255,7 +251,6 @@ class _Cls(_Object, type_prefix="cs"):
         self._class_service_function = None
         self._options = None
         self._callables = {}
-        self._from_other_workspace = None
 
     def _initialize_from_other(self, other: "_Cls"):
         self._user_cls = other._user_cls
@@ -263,7 +258,6 @@ class _Cls(_Object, type_prefix="cs"):
         self._method_functions = other._method_functions
         self._options = other._options
         self._callables = other._callables
-        self._from_other_workspace = other._from_other_workspace
 
     def _get_partial_functions(self) -> dict[str, _PartialFunction]:
         if not self._user_cls:
@@ -382,7 +376,6 @@ class _Cls(_Object, type_prefix="cs"):
         cls._class_service_function = class_service_function
         cls._method_functions = method_functions
         cls._callables = callables
-        cls._from_other_workspace = False
         return cls
 
     def _uses_common_service_function(self):
@@ -449,7 +442,6 @@ class _Cls(_Object, type_prefix="cs"):
 
         rep = f"Ref({app_name})"
         cls = cls._from_loader(_load_remote, rep, is_another_app=True)
-        cls._from_other_workspace = bool(workspace is not None)
         return cls
 
     def with_options(
@@ -543,7 +535,6 @@ class _Cls(_Object, type_prefix="cs"):
             self._user_cls,
             self._class_service_function,
             self._method_functions,
-            self._from_other_workspace,
             self._options,
             args,
             kwargs,
