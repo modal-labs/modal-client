@@ -90,7 +90,7 @@ class _Obj:
 
     def __init__(
         self,
-        user_cls: type,
+        user_cls: Optional[type],  # this would be None in case of lookups
         class_service_function: Optional[_Function],  # only None for <v0.63 classes
         classbound_methods: dict[str, _Function],
         from_other_workspace: bool,
