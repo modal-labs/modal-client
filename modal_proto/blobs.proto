@@ -1,0 +1,111 @@
+syntax = "proto3";
+
+package modal.blobs;
+
+// A service for managing blobnet blobs remotely and efficiently.
+service Blobs {
+  // Initiate a new blob upload.
+  rpc CreateBlobUpload(CreateBlobUploadRequest) returns (CreateBlobUploadResponse);
+
+  // Stage a part of a blob for a `session_token` that was previously returned
+  // from `CreateBlobUpload`.
+  rpc StageBlobPart(StageBlobPartRequest) returns (StageBlobPartResponse);
+
+  // Commit a staged blob upload after all parts have been uploaded using
+  // `StageBlobPart`.
+  rpc CommitBlobUpload(CommitBlobUploadRequest) returns (CommitBlobUploadResponse);
+}
+
+// Generic HTTP-style details for a request
+message UploadRequestDetails {
+  // The request should be made to the following URI
+  string uri = 1;
+  // The request should use the following HTTP method
+  string method = 2;
+  // The request should have the following headers
+  repeated Header headers = 3;
+
+  message Header {
+    string name = 1;
+    string value = 2;
+  }
+}
+
+// Request payload for `Blobs.CreateBlobUpload`
+message CreateBlobUploadRequest {
+  // The blob hash that we expect the resulting blob to have, as a hex-encoded
+  // SHA-256 digest. This value will not be trusted when creating the resulting
+  // blob; the service will hash and verify the actually uploaded chunks
+  // instead. However, the value can be used to skip uploads of files that
+  // already exist, and verify data integrity once the upload has completed.
+  string blob_hash = 1;
+
+  // The size of the blob to be uploaded. This value informs how many parts
+  // will be required for uploading the blob, so this size value must be
+  // accurate.
+  uint64 blob_size = 2;
+}
+
+// Response payload for `Blobs.CreateBlobUpload`
+message CreateBlobUploadResponse {
+  // Use this token for subsequent calls
+  bytes session_token = 1;
+
+  oneof upload_status {
+    // The blob with the given `blob_hash` already exists; no upload is
+    // necessary.
+    bool already_exists = 2;
+    // The blob does not exist and is small enough to be uploaded as a single
+    // part. Note that `Blobs.CommitBlobUpload` must be called after uploading the
+    // part.
+    SinglePartUpload single_part_upload = 3;
+    // The blob does not exist and needs to be uploaded in multiple parts. Note
+    // that `Blobs.CommitBlobUpload` must be called after uploading the parts.
+    MultiPartUpload multi_part_upload = 4;
+  }
+
+  // Details about a multi-part upload process involving calls to
+  // `Blobs.StageBlobPart`.
+  message MultiPartUpload {
+    // Upload parts split by this part size. All except the last part need to
+    // have exactly this size.
+    uint64 part_size = 1;
+  }
+
+  // Details about a single-part upload process.
+  message SinglePartUpload {
+    // The part should be uploaded using the following request details.
+    UploadRequestDetails upload_request = 1;
+  }
+}
+
+// Request payload for `Blobs.StageBlobPart`
+message StageBlobPartRequest {
+  // Session token previously received from `Blobs.CreateBlobUpload`.
+  bytes session_token = 1;
+  // The part that we are uploading in this request.
+  //
+  // The first part has index 0.
+  uint64 part = 2;
+}
+
+// Response payload for `Blobs.StageBlobPart`
+message StageBlobPartResponse {
+  // The part should be uploaded using the following request details. The size
+  // must not exceed the `MultiPartUpload.part_size` that was previously
+  // received. Also, all but the last part must have exactly that size.
+  UploadRequestDetails upload_request = 1;
+}
+
+// Request payload for `Blobs.CommitBlobUpload`
+message CommitBlobUploadRequest {
+  // The session token to check for completion and commit.
+  bytes session_token = 1;
+}
+
+// Response payload for `Blobs.CommitBlobUpload`
+message CommitBlobUploadResponse {
+  // The hash of the final committed blob. This blob will now be visible across
+  // other blobnet-related APIs.
+  string blob_hash = 1;
+}
