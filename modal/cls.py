@@ -72,8 +72,70 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
         return inspect.Signature(constructor_parameters)
 
 
+def _bind_instance_method(service_function: _Function, class_bound_method: _Function):
+    """mdmd:hidden
+
+    Binds an "instance service function" to a specific method.
+    This "dummy" _Function gets no unique object_id and isn't backend-backed at the moment, since all
+    it does it forward invocations to the underlying instance_service_function with the specified method,
+    and we don't support web_config for parameterized methods at the moment.
+    """
+    # TODO(elias): refactor to not use `_from_loader()` as a crutch for lazy-loading the
+    #   underlying instance_service_function. It's currently used in order to take advantage
+    #   of resolver logic and get "chained" resolution of lazy loads, even though this thin
+    #   object itself doesn't need any "loading"
+    assert service_function._obj
+    method_name = class_bound_method._use_method_name
+    full_function_name = f"{class_bound_method._function_name}[parameterized]"
+
+    def hydrate_from_instance_service_function(method_placeholder_fun):
+        method_placeholder_fun._hydrate_from_other(service_function)
+        method_placeholder_fun._obj = service_function._obj
+        method_placeholder_fun._web_url = (
+            class_bound_method._web_url
+        )  # TODO: this shouldn't be set when actual parameters are used
+        method_placeholder_fun._function_name = full_function_name
+        method_placeholder_fun._is_generator = class_bound_method._is_generator
+        method_placeholder_fun._cluster_size = class_bound_method._cluster_size
+        method_placeholder_fun._use_method_name = method_name
+        method_placeholder_fun._is_method = True
+
+    async def _load(fun: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+        # there is currently no actual loading logic executed to create each method on
+        # the *parameterized* instance of a class - it uses the parameter-bound service-function
+        # for the instance. This load method just makes sure to set all attributes after the
+        # `service_function` has been loaded (it's in the `_deps`)
+        hydrate_from_instance_service_function(fun)
+
+    def _deps():
+        if service_function.is_hydrated:
+            # without this check, the common service_function will be reloaded by all methods
+            # TODO(elias): Investigate if we can fix this multi-loader in the resolver - feels like a bug?
+            return []
+        return [service_function]
+
+    rep = f"Method({full_function_name})"
+
+    fun = _Function._from_loader(
+        _load,
+        rep,
+        deps=_deps,
+        hydrate_lazily=True,
+    )
+    if service_function.is_hydrated:
+        # Eager hydration (skip load) if the instance service function is already loaded
+        hydrate_from_instance_service_function(fun)
+
+    fun._info = class_bound_method._info
+    fun._obj = service_function._obj
+    fun._is_method = True
+    fun._app = class_bound_method._app
+    fun._spec = class_bound_method._spec
+    return fun
+
+
 class _RemoteObj:
-    def __init__(self, remote_cls: "_RemoteCls", param_args: Tuple, param_kwargs: Dict[str, Any]):
+    def __init__(self, remote_cls: "_RemoteCls", param_args: tuple, param_kwargs: dict[str, Any]):
         self._remote_cls = remote_cls
         self._args = param_args
         self._kwargs = param_kwargs
@@ -137,10 +199,9 @@ class _Obj:
 
     def __init__(
         self,
-        user_cls: type,
+        user_cls: Optional[type],  # this would be None in case of lookups
         class_service_function: Optional[_Function],  # only None for <v0.63 classes
         classbound_methods: dict[str, _Function],
-        from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
         args,
         kwargs,
@@ -154,17 +215,15 @@ class _Obj:
         if class_service_function:
             # >= v0.63 classes
             # first create the singular object function used by all methods on this parameterization
-            self._instance_service_function = class_service_function._bind_parameters(
-                self, from_other_workspace, options, args, kwargs
-            )
+            self._instance_service_function = class_service_function._bind_parameters(self, options, args, kwargs)
             for method_name, class_bound_method in classbound_methods.items():
-                method = self._instance_service_function._bind_instance_method(class_bound_method)
+                method = _bind_instance_method(self._instance_service_function, class_bound_method)
                 self._method_functions[method_name] = method
         else:
             # looked up <v0.63 classes - bind each individual method to the new parameters
             self._instance_service_function = None
             for method_name, class_bound_method in classbound_methods.items():
-                method = class_bound_method._bind_parameters(self, from_other_workspace, options, args, kwargs)
+                method = class_bound_method._bind_parameters(self, options, args, kwargs)
                 self._method_functions[method_name] = method
 
         # Used for construction local object lazily
@@ -294,7 +353,6 @@ class _Cls(_Object, type_prefix="cs"):
     _method_functions: Optional[dict[str, _Function]] = None  # Placeholder _Functions for each method
     _options: Optional[api_pb2.FunctionOptions]
     _callables: dict[str, Callable[..., Any]]
-    _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
     _app: Optional["modal.app._App"] = None  # not set for lookups
 
     def _initialize_from_empty(self):
@@ -302,7 +360,6 @@ class _Cls(_Object, type_prefix="cs"):
         self._class_service_function = None
         self._options = None
         self._callables = {}
-        self._from_other_workspace = None
 
     def _initialize_from_other(self, other: "_Cls"):
         self._user_cls = other._user_cls
@@ -310,7 +367,6 @@ class _Cls(_Object, type_prefix="cs"):
         self._method_functions = other._method_functions
         self._options = other._options
         self._callables = other._callables
-        self._from_other_workspace = other._from_other_workspace
 
     def _get_partial_functions(self) -> dict[str, _PartialFunction]:
         if not self._user_cls:
@@ -324,7 +380,7 @@ class _Cls(_Object, type_prefix="cs"):
             and self._class_service_function._method_handle_metadata
             and len(self._class_service_function._method_handle_metadata)
         ):
-            # The class only has a class service service function and no method placeholders (v0.67+)
+            # The class only has a class service function and no method placeholders (v0.67+)
             if self._method_functions:
                 # We're here when the Cls is loaded locally (e.g. _Cls.from_local) so the _method_functions mapping is
                 # populated with (un-hydrated) _Function objects
@@ -429,7 +485,6 @@ class _Cls(_Object, type_prefix="cs"):
         cls._class_service_function = class_service_function
         cls._method_functions = method_functions
         cls._callables = callables
-        cls._from_other_workspace = False
         return cls
 
     def _uses_common_service_function(self):
@@ -495,7 +550,8 @@ class _Cls(_Object, type_prefix="cs"):
             obj._hydrate(response.class_id, resolver.client, response.handle_metadata)
 
         rep = f"Ref({app_name})"
-        return _RemoteCls(cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True))
+        cls = cls._from_loader(_load_remote, rep, is_another_app=True)
+        return cls
 
     def with_options(
         self: "_Cls",
@@ -588,7 +644,6 @@ class _Cls(_Object, type_prefix="cs"):
             self._user_cls,
             self._class_service_function,
             self._method_functions,
-            self._from_other_workspace,
             self._options,
             args,
             kwargs,
