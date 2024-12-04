@@ -86,7 +86,7 @@ def render(
             buf.add("")
             buf.add(
                 f"def __init__(self, grpclib_stub: {grpclib_module}.{grpclib_stub_name}, "
-                + """client: "modal.client._Client") -> None:"""
+                + """client: "modal.client._Client", grpclib_stub_attr: str) -> None:"""
             )
             with buf.indent():
                 if len(service.methods) == 0:
@@ -106,7 +106,7 @@ def render(
                         raise TypeError(cardinality)
 
                     original_method = f"grpclib_stub.{name}"
-                    buf.add(f"self.{name} = {wrapper_cls}({original_method}, client)")
+                    buf.add(f"self.{name} = {wrapper_cls}({original_method}, client, grpclib_stub_attr)")
 
     return buf.content()
 
