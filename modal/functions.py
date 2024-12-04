@@ -982,7 +982,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     def _bind_parameters(
         self,
         obj: "modal.cls._Obj",
-        from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
         args: Sized,
         kwargs: dict[str, Any],
@@ -993,7 +992,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         """
 
         # In some cases, reuse the base function, i.e. not create new clones of each method or the "service function"
-        can_use_parent = len(args) + len(kwargs) == 0 and not from_other_workspace and options is None
+        can_use_parent = len(args) + len(kwargs) == 0 and options is None
         parent = self
 
         async def _load(param_bound_func: _Function, resolver: Resolver, existing_object_id: Optional[str]):
