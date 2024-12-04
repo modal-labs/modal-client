@@ -112,7 +112,7 @@ def test_watch_mounts_ignore_non_local(disable_auto_mount, client, servicer):
 
 def test_add_local_mount_included_in_serve_watchers(servicer, client, supports_on_path, disable_auto_mount):
     deb_slim = modal.Image.debian_slim()
-    img = deb_slim.add_local_python_sources("pkg_a")
+    img = deb_slim.add_local_python_source("pkg_a")
     app = modal.App()
 
     @app.function(serialized=True, image=img)

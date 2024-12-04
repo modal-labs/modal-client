@@ -677,7 +677,7 @@ class _Image(_Object, type_prefix="im"):
             context_mount=mount,
         )
 
-    def add_local_python_sources(self, *modules: str, copy: bool = False) -> "_Image":
+    def add_local_python_source(self, *modules: str, copy: bool = False) -> "_Image":
         """Adds locally available Python packages/modules to containers
 
         Adds all files from the specified Python package or module to containers running the Image.
@@ -1011,7 +1011,7 @@ class _Image(_Object, type_prefix="im"):
         file has to exist, unless `ignore_lockfile` is set to `True`.
 
         Note that the root project of the poetry project is not installed, only the dependencies.
-        For including local python source files see `add_local_python_sources`
+        For including local python source files see `add_local_python_source`
         """
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
