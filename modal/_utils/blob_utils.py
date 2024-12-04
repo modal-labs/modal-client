@@ -3,6 +3,7 @@ import asyncio
 import dataclasses
 import hashlib
 import io
+import math
 import os
 import platform
 import time
@@ -15,13 +16,13 @@ from urllib.parse import urlparse
 from aiohttp import BytesIOPayload
 from aiohttp.abc import AbstractStreamWriter
 
-from modal_proto import api_pb2
+from modal_proto import api_pb2, blobs_pb2, modal_blobs_grpc
 from modal_proto.modal_api_grpc import ModalClientModal
 
 from ..exception import ExecutionError
 from .async_utils import TaskContext, retry
 from .grpc_utils import retry_transient_errors
-from .hash_utils import UploadHashes, get_sha256_hex, get_upload_hashes
+from .hash_utils import get_sha256_hex
 from .http_utils import ClientSessionRegistry
 from .logger import logger
 
@@ -122,25 +123,24 @@ class BytesIOSegmentPayload(BytesIOPayload):
 
 
 @retry(n_attempts=5, base_delay=0.5, timeout=None)
-async def _upload_to_s3_url(
-    upload_url,
+async def _upload_with_request_details(
+    request_details: blobs_pb2.UploadRequestDetails,
     payload: BytesIOSegmentPayload,
-    content_md5_b64: Optional[str] = None,
-    content_type: Optional[str] = "application/octet-stream",  # set to None to force omission of ContentType header
 ) -> str:
     """Returns etag of s3 object which is a md5 hex checksum of the uploaded content"""
     with payload.reset_on_error():  # ensure retries read the same data
-        headers = {}
-        if content_md5_b64 and use_md5(upload_url):
-            headers["Content-MD5"] = content_md5_b64
-        if content_type:
-            headers["Content-Type"] = content_type
+        method = request_details.method
+        uri = request_details.uri
 
-        async with ClientSessionRegistry.get_session().put(
-            upload_url,
+        headers = {}
+        for header in request_details.headers:
+            headers[header.name] = header.value
+
+        async with ClientSessionRegistry.get_session().request(
+            method,
+            uri,
             data=payload,
             headers=headers,
-            skip_auto_headers=["content-type"] if content_type is None else [],
         ) as resp:
             # S3 signal to slow down request rate.
             if resp.status == 503:
@@ -152,7 +152,7 @@ async def _upload_to_s3_url(
                     text = await resp.text()
                 except Exception:
                     text = "<no body>"
-                raise ExecutionError(f"Put to url {upload_url} failed with status {resp.status}: {text}")
+                raise ExecutionError(f"{method} to url {uri} failed with status {resp.status}: {text}")
 
             # client side ETag checksum verification
             # the s3 ETag of a single part upload is a quoted md5 hex of the uploaded content
@@ -170,31 +170,44 @@ async def _upload_to_s3_url(
             return remote_md5
 
 
-async def perform_multipart_upload(
+async def _stage_and_upload(
+    stub: modal_blobs_grpc.BlobsModal,
+    session_token: bytes,
+    part: int,
+    payload: BytesIOSegmentPayload,
+) -> str:
+    req = blobs_pb2.StageBlobPartRequest(session_token=session_token, part=part)
+    resp: blobs_pb2.StageBlobPartResponse = await retry_transient_errors(stub.StageBlobPart, req)
+    request_details = resp.upload_request
+    return await _upload_with_request_details(request_details, payload)
+
+
+async def _perform_multipart_upload(
     data_file: Union[BinaryIO, io.BytesIO, io.FileIO],
     *,
-    content_length: int,
+    stub: modal_blobs_grpc.BlobsModal,
+    session_token: bytes,
+    blob_size: int,
     max_part_size: int,
-    part_urls: list[str],
-    completion_url: str,
     upload_chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
     progress_report_cb: Optional[Callable] = None,
 ) -> None:
     upload_coros = []
     file_offset = 0
-    num_bytes_left = content_length
+    num_parts = math.floor(blob_size / max_part_size)
+    num_bytes_left = blob_size
 
     # Give each part its own IO reader object to avoid needing to
     # lock access to the reader's position pointer.
     data_file_readers: list[BinaryIO]
     if isinstance(data_file, io.BytesIO):
         view = data_file.getbuffer()  # does not copy data
-        data_file_readers = [io.BytesIO(view) for _ in range(len(part_urls))]
+        data_file_readers = [io.BytesIO(view) for _ in range(num_parts)]
     else:
         filename = data_file.name
-        data_file_readers = [open(filename, "rb") for _ in range(len(part_urls))]
+        data_file_readers = [open(filename, "rb") for _ in range(num_parts)]
 
-    for part_number, (data_file_rdr, part_url) in enumerate(zip(data_file_readers, part_urls), start=1):
+    for part, data_file_rdr in enumerate(data_file_readers):
         part_length_bytes = min(num_bytes_left, max_part_size)
         part_payload = BytesIOSegmentPayload(
             data_file_rdr,
@@ -203,40 +216,14 @@ async def perform_multipart_upload(
             chunk_size=upload_chunk_size,
             progress_report_cb=progress_report_cb,
         )
-        upload_coros.append(_upload_to_s3_url(part_url, payload=part_payload, content_type=None))
+        upload_coros.append(_stage_and_upload(stub, session_token, part, part_payload))
         num_bytes_left -= part_length_bytes
         file_offset += part_length_bytes
 
-    part_etags = await TaskContext.gather(*upload_coros)
-
-    # The body of the complete_multipart_upload command needs some data in xml format:
-    completion_body = "<CompleteMultipartUpload>\n"
-    for part_number, etag in enumerate(part_etags, 1):
-        completion_body += f"""<Part>\n<PartNumber>{part_number}</PartNumber>\n<ETag>"{etag}"</ETag>\n</Part>\n"""
-    completion_body += "</CompleteMultipartUpload>"
-
-    # etag of combined object should be md5 hex of concatendated md5 *bytes* from parts + `-{num_parts}`
-    bin_hash_parts = [bytes.fromhex(etag) for etag in part_etags]
-
-    expected_multipart_etag = hashlib.md5(b"".join(bin_hash_parts)).hexdigest() + f"-{len(part_etags)}"
-    resp = await ClientSessionRegistry.get_session().post(
-        completion_url, data=completion_body.encode("ascii"), skip_auto_headers=["content-type"]
-    )
-    if resp.status != 200:
-        try:
-            msg = await resp.text()
-        except Exception:
-            msg = "<no body>"
-        raise ExecutionError(f"Error when completing multipart upload: {resp.status}\n{msg}")
-    else:
-        response_body = await resp.text()
-        if expected_multipart_etag not in response_body:
-            raise ExecutionError(
-                f"Hash mismatch on multipart upload assembly: {expected_multipart_etag} not in {response_body}"
-            )
+    await TaskContext.gather(*upload_coros)
 
 
-def get_content_length(data: BinaryIO) -> int:
+def _get_blob_size(data: BinaryIO) -> int:
     # *Remaining* length of file from current seek position
     pos = data.tell()
     data.seek(0, os.SEEK_END)
@@ -246,69 +233,78 @@ def get_content_length(data: BinaryIO) -> int:
 
 
 async def _blob_upload(
-    upload_hashes: UploadHashes, data: Union[bytes, BinaryIO], stub, progress_report_cb: Optional[Callable] = None
+    sha256_hex: str,
+    data: Union[bytes, BinaryIO],
+    stub: modal_blobs_grpc.BlobsModal,
+    progress_report_cb: Optional[Callable] = None
 ) -> str:
     if isinstance(data, bytes):
         data = io.BytesIO(data)
 
-    content_length = get_content_length(data)
+    blob_size = _get_blob_size(data)
 
-    req = api_pb2.BlobCreateRequest(
-        content_md5=upload_hashes.md5_base64,
-        content_sha256_base64=upload_hashes.sha256_base64,
-        content_length=content_length,
+    create_req = blobs_pb2.CreateBlobUploadRequest(
+        blob_hash=sha256_hex,
+        blob_size=blob_size,
     )
-    resp = await retry_transient_errors(stub.BlobCreate, req)
+    create_resp: blobs_pb2.CreateBlobUploadResponse = await retry_transient_errors(stub.CreateBlobUpload, create_req)
 
-    blob_id = resp.blob_id
+    session_token = create_resp.session_token
 
-    if resp.WhichOneof("upload_type_oneof") == "multipart":
-        await perform_multipart_upload(
+    which_oneof = create_resp.WhichOneof("upload_status")
+    if which_oneof == "already_exists":
+        return sha256_hex
+    elif which_oneof == "multi_part_upload":
+        await _perform_multipart_upload(
             data,
-            content_length=content_length,
-            max_part_size=resp.multipart.part_length,
-            part_urls=resp.multipart.upload_urls,
-            completion_url=resp.multipart.completion_url,
+            stub=stub,
+            session_token=session_token,
+            blob_size=blob_size,
+            max_part_size=create_resp.multi_part_upload.part_size,
             upload_chunk_size=DEFAULT_SEGMENT_CHUNK_SIZE,
             progress_report_cb=progress_report_cb,
         )
-    else:
+    elif which_oneof == "single_part_upload":
+        request_details = create_resp.single_part_upload.upload_request
         payload = BytesIOSegmentPayload(
-            data, segment_start=0, segment_length=content_length, progress_report_cb=progress_report_cb
+            data, segment_start=0, segment_length=blob_size, progress_report_cb=progress_report_cb
         )
-        await _upload_to_s3_url(
-            resp.upload_url,
+        await _upload_with_request_details(
+            request_details,
             payload,
-            # for single part uploads, we use server side md5 checksums
-            content_md5_b64=upload_hashes.md5_base64,
         )
+    else:
+        raise NotImplementedError(f"unsupported upload mode from CreateBlobUploadResponse: {which_oneof}")
+
+    commit_req = blobs_pb2.CommitBlobUploadRequest(session_token=session_token)
+    commit_resp: blobs_pb2.CommitBlobUploadResponse = await retry_transient_errors(stub.CommitBlobUpload, commit_req)
 
     if progress_report_cb:
         progress_report_cb(complete=True)
 
-    return blob_id
+    return commit_resp.blob_hash
 
 
-async def blob_upload(payload: bytes, stub: ModalClientModal) -> str:
+async def blob_upload(payload: bytes, stub: modal_blobs_grpc.BlobsModal) -> str:
     size_mib = len(payload) / 1024 / 1024
     logger.debug(f"Uploading large blob of size {size_mib:.2f} MiB")
     t0 = time.time()
     if isinstance(payload, str):
         logger.warning("Blob uploading string, not bytes - auto-encoding as utf8")
         payload = payload.encode("utf8")
-    upload_hashes = get_upload_hashes(payload)
-    blob_id = await _blob_upload(upload_hashes, payload, stub)
+    sha256_hex = get_sha256_hex(payload)
+    blob_id = await _blob_upload(sha256_hex, payload, stub)
     dur_s = max(time.time() - t0, 0.001)  # avoid division by zero
-    throughput_mib_s = (size_mib) / dur_s
+    throughput_mib_s = size_mib / dur_s
     logger.debug(f"Uploaded large blob of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s)." f" {blob_id}")
     return blob_id
 
 
 async def blob_upload_file(
-    file_obj: BinaryIO, stub: ModalClientModal, progress_report_cb: Optional[Callable] = None
+    file_obj: BinaryIO, stub: modal_blobs_grpc.BlobsModal, progress_report_cb: Optional[Callable] = None
 ) -> str:
-    upload_hashes = get_upload_hashes(file_obj)
-    return await _blob_upload(upload_hashes, file_obj, stub, progress_report_cb)
+    sha256_hex = get_sha256_hex(file_obj)
+    return await _blob_upload(sha256_hex, file_obj, stub, progress_report_cb)
 
 
 @retry(n_attempts=5, base_delay=0.1, timeout=None)
