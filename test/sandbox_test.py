@@ -399,3 +399,16 @@ def test_sandbox_exec_stdout(app, servicer, capsys):
 
     with pytest.raises(InvalidError):
         cp.stdout.read()
+
+
+@skip_non_linux
+def test_sandbox_snapshot_fs(app, servicer):
+    sb = Sandbox.create(app=app)
+    image = sb.snapshot_filesystem()
+    sb.terminate()
+
+    sb2 = Sandbox.create(image=image, app=app)
+    sb2.terminate()
+
+    assert image.object_id == "im-123"
+    assert servicer.sandbox_defs[1].image_id == "im-123"
