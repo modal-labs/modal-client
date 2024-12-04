@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2024
 """Helper functions related to displaying tracebacks in the CLI."""
 import functools
+import re
 import warnings
 from typing import Optional
 
@@ -166,8 +167,12 @@ def highlight_modal_deprecation_warnings() -> None:
     def showwarning(warning, category, filename, lineno, file=None, line=None):
         if issubclass(category, (DeprecationError, PendingDeprecationError)):
             content = str(warning)
-            date = content[:10]
-            message = content[11:].strip()
+            if re.match(r"^\d{4}-\d{2}-\d{2}", content):
+                date = content[:10]
+                message = content[11:].strip()
+            else:
+                date = ""
+                message = content
             try:
                 with open(filename, encoding="utf-8", errors="replace") as code_file:
                     source = code_file.readlines()[lineno - 1].strip()
@@ -178,7 +183,7 @@ def highlight_modal_deprecation_warnings() -> None:
             panel = Panel(
                 message,
                 style="yellow",
-                title=f"Modal Deprecation Warning ({date})",
+                title=f"Modal Deprecation Warning ({date})" if date else "Modal Deprecation Warning",
                 title_align="left",
             )
             Console().print(panel)
