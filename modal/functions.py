@@ -1188,7 +1188,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return self._web_url
 
     @property
-    def is_generator(self) -> bool:
+    @live_method
+    async def is_generator(self) -> bool:
         """mdmd:hidden"""
         assert self._is_generator is not None
         return self._is_generator

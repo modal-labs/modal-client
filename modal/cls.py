@@ -18,7 +18,7 @@ from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
-from .exception import InvalidError, NotFoundError, VersionError
+from .exception import ExecutionError, InvalidError, NotFoundError, VersionError
 from .functions import (
     _Function,
     _parse_retries,
@@ -42,7 +42,7 @@ if typing.TYPE_CHECKING:
     import modal.app
 
 
-def _use_annotation_parameters(user_cls) -> bool:
+def _use_annotation_parameters(user_cls: type) -> bool:
     has_parameters = any(is_parameter(cls_member) for cls_member in user_cls.__dict__.values())
     has_explicit_constructor = user_cls.__init__ != object.__init__
     return has_parameters and not has_explicit_constructor
@@ -134,64 +134,19 @@ def _bind_instance_method(service_function: _Function, class_bound_method: _Func
     return fun
 
 
-class _RemoteObj:
-    def __init__(self, remote_cls: "_RemoteCls", param_args: tuple, param_kwargs: dict[str, Any]):
-        self._remote_cls = remote_cls
-        self._args = param_args
-        self._kwargs = param_kwargs
-        self._obj: Optional["_Obj"] = None
-
-    async def _get_obj(self) -> "_Obj":
-        if not self._obj:
-            cls = await self._remote_cls._get_cls()
-            self._obj = cls(*self._args, **self._kwargs)
-        return self._obj
-
-    async def keep_warm(self, warm_pool_size: int) -> None:
-        return await self._get_cls().keep_warm(warm_pool_size)
-
-    def __getattr__(self, name) -> _Function:
-        async def _load(method: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
-            # haxx
-            obj = await self._get_obj()
-            obj_method = getattr(obj, name)
-            await obj_method.resolve()
-            method._hydrate_from_other(obj_method)
-
-        return _Function._from_loader(_load, f"MaybeRemoteMethod({name})", hydrate_lazily=True)
-
-
-RemoteObj = synchronize_api(_RemoteObj)
-
-
-class _RemoteCls:
-    def __init__(self, cls: "_Cls"):
-        self._cls = cls
-
-    async def _get_cls(self) -> "_Obj":
-        await self._cls.resolve()
-        return self._cls
-
-    def __call__(self, *args, **kwargs) -> _RemoteObj:
-        return _RemoteObj(self, param_args=args, param_kwargs=kwargs)
-
-    # TODO: with_options()
-
-
-RemoteCls = synchronize_api(_RemoteCls)
-
-
 class _Obj:
     """An instance of a `Cls`, i.e. `Cls("foo", 42)` returns an `Obj`.
 
     All this class does is to return `Function` objects."""
 
+    _cls: "_Cls"  # parent
     _functions: dict[str, _Function]
     _has_entered: bool
     _user_cls_instance: Optional[Any] = None
-    _construction_args: tuple[tuple, dict[str, Any]]
+    _args: tuple[Any, ...]
+    _kwargs: dict[str, Any]
 
-    _instance_service_function: Optional[_Function]
+    _instance_service_function: Optional[_Function] = None  # this gets set lazily
 
     def _uses_common_service_function(self):
         # Used for backwards compatibility checks with pre v0.63 classes
@@ -199,9 +154,8 @@ class _Obj:
 
     def __init__(
         self,
+        cls: "_Cls",
         user_cls: Optional[type],  # this would be None in case of lookups
-        class_service_function: Optional[_Function],  # only None for <v0.63 classes
-        classbound_methods: dict[str, _Function],
         options: Optional[api_pb2.FunctionOptions],
         args,
         kwargs,
@@ -210,45 +164,52 @@ class _Obj:
             check_valid_cls_constructor_arg(i + 1, arg)
         for key, kwarg in kwargs.items():
             check_valid_cls_constructor_arg(key, kwarg)
-
-        self._method_functions = {}
-        if class_service_function:
-            # >= v0.63 classes
-            # first create the singular object function used by all methods on this parameterization
-            self._instance_service_function = class_service_function._bind_parameters(self, options, args, kwargs)
-            for method_name, class_bound_method in classbound_methods.items():
-                method = _bind_instance_method(self._instance_service_function, class_bound_method)
-                self._method_functions[method_name] = method
-        else:
-            # looked up <v0.63 classes - bind each individual method to the new parameters
-            self._instance_service_function = None
-            for method_name, class_bound_method in classbound_methods.items():
-                method = class_bound_method._bind_parameters(self, options, args, kwargs)
-                self._method_functions[method_name] = method
+        self._cls = cls
 
         # Used for construction local object lazily
         self._has_entered = False
         self._user_cls = user_cls
-        self._construction_args = (args, kwargs)  # used for lazy construction in case of explicit constructors
+
+        # used for lazy construction in case of explicit constructors
+        self._args = args
+        self._kwargs = kwargs
+        self._options = options
+
+    def _cached_service_function(self) -> "modal.function._Function":
+        # only safe to call for hydrated 0.63+ classes at the moment
+        if not self._instance_service_function:
+            assert self._cls.is_hydrated and self._cls._class_service_function
+
+        self._instance_service_function = self._cls._class_service_function._bind_parameters(
+            self, self._options, self._args, self._kwargs
+        )
+        return self._instance_service_function
+
+    def _get_parameter_values(self) -> dict[str, Any]:
+        # binds args and kwargs according to the class constructor signature
+        # (implicit by parameters or explicit)
+        sig = _get_class_constructor_signature(self._user_cls)
+        bound_vars = sig.bind(*self._args, **self._kwargs)
+        bound_vars.apply_defaults()
+        return bound_vars.arguments
 
     def _new_user_cls_instance(self):
-        args, kwargs = self._construction_args
         if not _use_annotation_parameters(self._user_cls):
             # TODO(elias): deprecate this code path eventually
-            user_cls_instance = self._user_cls(*args, **kwargs)
+            user_cls_instance = self._user_cls(*self._args, **self._kwargs)
         else:
             # ignore constructor (assumes there is no custom constructor,
             # which is guaranteed by _use_annotation_parameters)
             # set the attributes on the class corresponding to annotations
             # with = parameter() specifications
-            sig = _get_class_constructor_signature(self._user_cls)
-            bound_vars = sig.bind(*args, **kwargs)
-            bound_vars.apply_defaults()
+            param_values = self._get_parameter_values()
             user_cls_instance = self._user_cls.__new__(self._user_cls)  # new instance without running __init__
-            user_cls_instance.__dict__.update(bound_vars.arguments)
+            user_cls_instance.__dict__.update(param_values)
 
         # TODO: always use Obj instances instead of making modifications to user cls
-        user_cls_instance._modal_functions = self._method_functions  # Needed for PartialFunction.__get__
+        # TODO: OR (if simpler for now) replace all the PartialFunctions on the user cls
+        #   with getattr(self, method_name)
+
         return user_cls_instance
 
     async def keep_warm(self, warm_pool_size: int) -> None:
@@ -266,11 +227,12 @@ class _Obj:
         Model("fine-tuned-model").keep_warm(2)
         ```
         """
+        # TODO: this can't be used for lazy classes until we remove <0.63
         if not self._uses_common_service_function():
             raise VersionError(
                 "Class instance `.keep_warm(...)` can't be used on classes deployed using client version <v0.63"
             )
-        await self._instance_service_function.keep_warm(warm_pool_size)
+        await self._cached_service_function().keep_warm(warm_pool_size)
 
     def _cached_user_cls_instance(self):
         """Get or construct the local object
@@ -315,23 +277,72 @@ class _Obj:
         self._has_entered = True
 
     def __getattr__(self, k):
-        if k in self._method_functions:
-            # If we know the user is accessing a *method* and not another attribute,
-            # we don't have to create an instance of the user class yet.
-            # This is because it might just be a call to `.remote()` on it which
-            # doesn't require a local instance.
-            # As long as we have the service function or params, we can do remote calls
-            # without calling the constructor of the class in the calling context.
-            return self._method_functions[k]
+        # This is a bit messy and branchy because of pre 0.63 lookups
+        # and wanting to be as efficient as possible for non-method
+        # attribute access regardless of hydration or localness
 
-        # if it's *not* a method, it *might* be an attribute of the class,
-        # so we construct it and proxy the attribute
-        # TODO: To get lazy loading (from_name) of classes to work, we need to avoid
-        #  this path, otherwise local initialization will happen regardless if user
-        #  only runs .remote(), since we don't know methods for the class until we
-        #  load it
-        user_cls_instance = self._cached_user_cls_instance()
-        return getattr(user_cls_instance, k)
+        if self._user_cls and _use_annotation_parameters(self._user_cls):
+            # if we have the definition and we use annotation parameters
+            # we can figure out the parameter values without constructing
+            # the user class:
+            parameter_values = self._get_parameter_values()
+            if k in parameter_values:
+                return parameter_values[k]
+
+        def _get_method_bound_function() -> Optional["_Function"]:
+            assert self._cls.is_hydrated  # cls._method_functions isn't set otherwise
+            if class_bound_method := self._cls._method_functions.get(k, None):
+                # If we know the user is accessing a *method* and not another attribute,
+                # we don't have to create an instance of the user class yet.
+                # This is because it might just be a call to `.remote()` on it which
+                # doesn't require a local instance.
+                # As long as we have the service function or params, we can do remote calls
+                # without calling the constructor of the class in the calling context.
+                if self._cls._class_service_function is None:
+                    # a <v0.63 lookup
+                    return class_bound_method._bind_parameters(self, self._options, self._args, self._kwargs)
+                else:
+                    return _bind_instance_method(self._cached_service_function(), class_bound_method)
+            return None
+
+        if self._cls.is_hydrated:
+            # This branch will mostly be triggered by the (common) case of an object
+            # getting constructed in the same client that deployed a class
+            # but also in cases where getattr is used on an object that has
+            # previously hydrated its class through usage like .remote calls
+            if method := _get_method_bound_function():
+                return method
+            elif self._user_cls:
+                user_cls_instance = self._cached_user_cls_instance()
+                return getattr(user_cls_instance, k)
+            else:
+                raise NotFoundError(
+                    f"Class has no method {k}, and attributes can't be accessed for `Cls.from_name` instances"
+                )
+
+        if self._user_cls:
+            # TODO: What about when self._user_cls is available but the class isn't hydrated?
+            #  This would probably only happen inside a container that hasn't been properly
+            #  hydrated before getattr is called, so it should be a bug?
+            raise ExecutionError("Unexpected: class definition exists but isn't hydrated")
+
+        # Not hydrated Cls, and we don't have the class - typically a Cls.from_name
+        async def maybe_method_loader(fun, resolver: Resolver, existing_object_id):
+            await resolver.load(self._cls)  # load class so we get info about methods
+            method_function = _get_method_bound_function()
+            if method_function is None:
+                raise NotFoundError(
+                    f"Class has no method {k}, and attributes can't be accessed for `Cls.from_name` instances"
+                )
+            await resolver.load(method_function)  # get the appropriate method handle (lazy)
+            fun._hydrate_from_other(method_function)
+
+        return _Function._from_loader(
+            maybe_method_loader,
+            f"MaybeMethod({k})",
+            deps=lambda: [],  # TODO: use deps?
+            hydrate_lazily=True,
+        )
 
 
 Obj = synchronize_api(_Obj)
@@ -550,7 +561,8 @@ class _Cls(_Object, type_prefix="cs"):
             obj._hydrate(response.class_id, resolver.client, response.handle_metadata)
 
         rep = f"Ref({app_name})"
-        cls = cls._from_loader(_load_remote, rep, is_another_app=True)
+        cls = cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
+        # TODO: when pre 0.63 is phased out, we can set class_service_function here instead
         return cls
 
     def with_options(
@@ -641,9 +653,8 @@ class _Cls(_Object, type_prefix="cs"):
     def __call__(self, *args, **kwargs) -> _Obj:
         """This acts as the class constructor."""
         return _Obj(
+            self,
             self._user_cls,
-            self._class_service_function,
-            self._method_functions,
             self._options,
             args,
             kwargs,

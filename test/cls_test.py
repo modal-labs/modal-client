@@ -303,10 +303,12 @@ def test_lookup(client, servicer):
     assert cls.bar.is_generator is False
 
     # Make sure we can instantiate the class
-    obj = cls(a="foo", b=234)
+    obj = cls("foo", 234)
 
-    assert obj.a == "foo"
-    assert obj.b == 234
+    # These are not allowed unless class is strict parameterized:
+    # TODO: Add test case for that
+    # assert obj.a == "foo"
+    # assert obj.b == 234
 
     # Make sure we can methods
     # (mock servicer just returns the sum of the squares of the args)
@@ -323,13 +325,13 @@ def test_from_name_lazy_method_resolve(client, servicer):
     cls: Cls = Cls.from_name("my-cls-app", "Foo")
 
     # Make sure we can instantiate the class
-    obj = cls(a="foo", b=234)
+    obj = cls("foo", 234)
 
     # Check that function properties are preserved
     assert obj.bar.is_generator is False
 
-    assert obj.a == "foo"
-    assert obj.b == 234
+    # assert obj.a == "foo"
+    # assert obj.b == 234
     # Make sure we can methods
     # (mock servicer just returns the sum of the squares of the args)
     assert obj.bar.remote(42, 77) == 7693
