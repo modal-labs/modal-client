@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.67.23 (2024-12-04)
+
+- Image build functions that use a `functools.wraps` decorator will now have their global variables included in the cache key. Previously, the cache would use global variables referenced within the wrapper itself. This will force a rebuild for Image layers defined using wrapped functions.
+
+
+
 ### 0.67.22 (2024-12-03)
 
 - Fixed a bug introduced in v0.67.0 where it was impossible to call `modal.Cls` methods when passing a list of requested GPUs.
