@@ -115,7 +115,7 @@ def logs(
     ```
 
     """
-    app_identifier = warn_on_name_option("stop", app_identifier, name)
+    app_identifier = warn_on_name_option("logs", app_identifier, name)
     app_id = get_app_id(app_identifier, env)
     stream_app_logs(app_id)
 
