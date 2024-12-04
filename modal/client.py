@@ -20,7 +20,7 @@ from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal._utils.async_utils import synchronizer
-from modal_proto import api_grpc, api_pb2, modal_api_grpc
+from modal_proto import api_grpc, api_pb2, blobs_grpc, modal_api_grpc, modal_blobs_grpc
 from modal_version import __version__
 
 from ._utils import async_utils
@@ -74,7 +74,11 @@ class _Client:
     _client_from_env_lock: ClassVar[Optional[asyncio.Lock]] = None
     _cancellation_context: TaskContext
     _cancellation_context_event_loop: asyncio.AbstractEventLoop = None
-    _stub: Optional[api_grpc.ModalClientStub]
+    _channel: Optional[grpclib.client.Channel] = None
+    _stub: Optional[modal_api_grpc.ModalClientModal] = None
+    _grpclib_stub: Optional[api_grpc.ModalClientStub] = None
+    _blobs_stub: Optional[modal_blobs_grpc.BlobsModal] = None
+    _grpclib_blobs_stub: Optional[blobs_grpc.BlobsStub] = None
 
     def __init__(
         self,
@@ -91,8 +95,9 @@ class _Client:
         self._credentials = credentials
         self.version = version
         self._closed = False
-        self._channel: Optional[grpclib.client.Channel] = None
-        self._stub: Optional[modal_api_grpc.ModalClientModal] = None
+        self._channel = None
+        self._stub = None
+        self._blobs_stub = None
         self._snapshotted = False
         self._owner_pid = None
 
@@ -104,6 +109,12 @@ class _Client:
         """mdmd:hidden"""
         assert self._stub
         return self._stub
+
+    @property
+    def blobs_stub(self) -> modal_blobs_grpc.BlobsModal:
+        """mdmd:hidden"""
+        assert self._blobs_stub
+        return self._blobs_stub
 
     async def _open(self):
         self._closed = False
@@ -119,6 +130,8 @@ class _Client:
         await self._cancellation_context.__aenter__()
         self._grpclib_stub = api_grpc.ModalClientStub(self._channel)
         self._stub = modal_api_grpc.ModalClientModal(self._grpclib_stub, client=self)
+        self._grpclib_blobs_stub = blobs_grpc.BlobsStub(self._channel)
+        self._blobs_stub = modal_blobs_grpc.BlobsModal(self._grpclib_blobs_stub, client=self)
         self._owner_pid = os.getpid()
 
     async def _close(self, prep_for_restore: bool = False):
@@ -311,6 +324,8 @@ class _Client:
             self._channel = None
             self._stub = None
             self._grpclib_stub = None
+            self._blobs_stub = None
+            self._grpclib_blobs_stub = None
             self._owner_pid = None
 
             self.set_env_client(None)
