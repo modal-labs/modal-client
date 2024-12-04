@@ -886,6 +886,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         is_method=function_definition.is_method,
                         use_function_id=function_definition.use_function_id,
                         use_method_name=function_definition.use_method_name,
+                        method_definitions=function_definition.method_definitions,
+                        method_definitions_set=function_definition.method_definitions_set,
                         _experimental_group_size=function_definition._experimental_group_size,
                         _experimental_buffer_containers=function_definition._experimental_buffer_containers,
                         _experimental_custom_scaling=function_definition._experimental_custom_scaling,
@@ -912,9 +914,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     function_data.ranked_functions.extend(ranked_functions)
                     function_definition = None  # function_definition is not used in this case
                 else:
-                    # TODO(irfansharif): Assert on this specific type once
-                    # we get rid of python 3.8.
-                    #   assert isinstance(gpu, GPU_T)  # includes the case where gpu==None case
+                    # TODO(irfansharif): Assert on this specific type once we get rid of python 3.9.
+                    # assert isinstance(gpu, GPU_T)  # includes the case where gpu==None case
                     function_definition.resources.CopyFrom(
                         convert_fn_config_to_resources_config(
                             cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk

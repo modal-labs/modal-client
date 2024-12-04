@@ -677,16 +677,11 @@ def _open_files_error_annotation(mount_path: str) -> Optional[str]:
             cmdline = " ".join([part.decode() for part in parts]).rstrip(" ")
 
         cwd = PurePosixPath(os.readlink(f"/proc/{pid}/cwd"))
-        # NOTE(staffan): Python 3.8 doesn't have is_relative_to(), so we're stuck with catching ValueError until
-        # we drop Python 3.8 support.
-        try:
-            _rel_cwd = cwd.relative_to(mount_path)
+        if cwd.is_relative_to(mount_path):
             if pid == self_pid:
                 return "cwd is inside volume"
             else:
                 return f"cwd of '{cmdline}' is inside volume"
-        except ValueError:
-            pass
 
         for fd in os.listdir(f"/proc/{pid}/fd"):
             try:
