@@ -1552,6 +1552,7 @@ message FunctionPutInputsResponseItem {
   int32 idx = 1;
   string input_id = 2;
   string input_jwt = 3;
+  bool requires_blob_upload = 4;
 }
 
 message FunctionPutOutputsItem {
