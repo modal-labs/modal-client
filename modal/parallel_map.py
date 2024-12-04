@@ -72,13 +72,13 @@ class _MapItemRetryContext:
     retry_manager: RetryManager
 
 
-MAP_INVOCATION_CHUNK_SIZE = 49
+# maximum number of inputs that can be in progress (either queued to be sent,
+# or waiting for completion). if this limit is reached, we will block reading
+# from the input generator until more work completed.
+MAP_MAX_INPUTS_OUTSTANDING = 1000
 
-# maximum number of inputs that can be queued to be sent to the server. once
-# this limit is reached, we will block (a) reading from the input generator
-# and (b) processing outputs from the server, until some of the already-queued
-# inputs are pushed to the server.
-MAP_INPUT_QUEUE_MAX_SIZE = 1000
+# maximum number of inputs to send to the server in a single request
+MAP_INVOCATION_CHUNK_SIZE = 49
 
 if typing.TYPE_CHECKING:
     import modal.functions
@@ -118,11 +118,10 @@ async def _map_invocation(
     pending_outputs: dict[int, asyncio.Future[_MapItemRetryContext]] = {}  # Map input idx -> retry context
     completed_outputs: set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
 
+    inputs_outstanding = asyncio.BoundedSemaphore(MAP_MAX_INPUTS_OUTSTANDING)
     input_queue: TimedPriorityQueue[
         api_pb2.FunctionPutInputsItem | api_pb2.FunctionRetryInputsItem
-    ] = TimedPriorityQueue(
-        maxsize=MAP_INPUT_QUEUE_MAX_SIZE,
-    )
+    ] = TimedPriorityQueue()
 
     async def create_input(argskwargs):
         nonlocal num_inputs
@@ -146,6 +145,16 @@ async def _map_invocation(
             async_map_ordered(input_iter(), create_input, concurrency=BLOB_MAX_PARALLELISM)
         ) as streamer:
             async for item in streamer:
+                while True:
+                    try:
+                        await asyncio.wait_for(inputs_outstanding.acquire(), timeout=30)
+                        break
+                    except TimeoutError:
+                        logger.warning(
+                            "Warning: map progress is limited. Common bottlenecks "
+                            "include slow iteration over results, or function backlogs."
+                        )
+
                 await input_queue.put_with_timestamp(time.time(), item)
 
         have_all_inputs = True
@@ -305,10 +314,11 @@ async def _map_invocation(
                                 input_jwt=retry_context.input_jwt,
                                 input=retry_context.input,
                             )
-                            await input_queue.put_with_timestamp(time.time() + delay_ms, retry)
+                            await input_queue.put_with_timestamp(time.time() + (delay_ms / 1000), retry)
                             continue
 
                 completed_outputs.add(item.input_id)
+                inputs_outstanding.release()
                 num_outputs += 1
 
                 yield item
@@ -331,7 +341,7 @@ async def _map_invocation(
             await retry_transient_errors(client.stub.FunctionGetOutputs, request)
 
             # close the input queue
-            await input_queue.put_with_timestamp(time.time(), None)
+            await input_queue.put_with_timestamp(0, None)
 
     async def fetch_output(item: api_pb2.FunctionGetOutputsItem) -> tuple[int, Any]:
         try:
