@@ -547,6 +547,19 @@ message BaseImage {
   reserved 4;
 }
 
+// Request payload for `Blobs.CommitBlobUpload`
+message BlobCommitUploadRequest {
+  // The session token to check for completion and commit.
+  bytes session_token = 1;
+}
+
+// Response payload for `Blobs.CommitBlobUpload`
+message BlobCommitUploadResponse {
+  // The hash of the final committed blob. This blob will now be visible across
+  // other blobnet-related APIs.
+  string blob_hash = 1;
+}
+
 message BlobCreateRequest {
   // TODO(erikbern): how are these garbage collected?
   // Shouldn't they belong to an app?
@@ -560,29 +573,6 @@ message BlobCreateResponse {
   oneof upload_type_oneof {
     string upload_url = 1;
     MultiPartUpload multipart = 3;
-  }
-}
-
-message BlobGetRequest {
-  string blob_id = 1;
-}
-
-message BlobGetResponse {
-  string download_url = 1;
-}
-
-// Generic HTTP-style details for a request
-message BlobUploadRequestDetails {
-  // The request should be made to the following URI
-  string uri = 1;
-  // The request should use the following HTTP method
-  string method = 2;
-  // The request should have the following headers
-  repeated Header headers = 3;
-
-  message Header {
-    string name = 1;
-    string value = 2;
   }
 }
 
@@ -634,6 +624,14 @@ message BlobCreateUploadResponse {
   }
 }
 
+message BlobGetRequest {
+  string blob_id = 1;
+}
+
+message BlobGetResponse {
+  string download_url = 1;
+}
+
 // Request payload for `Blobs.StageBlobPart`
 message BlobStagePartRequest {
   // Session token previously received from `Blobs.CreateBlobUpload`.
@@ -652,17 +650,19 @@ message BlobStagePartResponse {
   BlobUploadRequestDetails upload_request = 1;
 }
 
-// Request payload for `Blobs.CommitBlobUpload`
-message BlobCommitUploadRequest {
-  // The session token to check for completion and commit.
-  bytes session_token = 1;
-}
+// Generic HTTP-style details for a request
+message BlobUploadRequestDetails {
+  // The request should be made to the following URI
+  string uri = 1;
+  // The request should use the following HTTP method
+  string method = 2;
+  // The request should have the following headers
+  repeated Header headers = 3;
 
-// Response payload for `Blobs.CommitBlobUpload`
-message BlobCommitUploadResponse {
-  // The hash of the final committed blob. This blob will now be visible across
-  // other blobnet-related APIs.
-  string blob_hash = 1;
+  message Header {
+    string name = 1;
+    string value = 2;
+  }
 }
 
 message BuildFunction {
@@ -2749,16 +2749,17 @@ service ModalClient {
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
 
   // Blobs
-  rpc BlobCreate(BlobCreateRequest) returns (BlobCreateResponse);
-  rpc BlobGet(BlobGetRequest) returns (BlobGetResponse);
-  // Initiate a new blob upload.
-  rpc BlobCreateUpload(BlobCreateUploadRequest) returns (BlobCreateUploadResponse);
-  // Stage a part of a blob for a `session_token` that was previously returned
-  // from `CreateBlobUpload`.
-  rpc BlobStagePart(BlobStagePartRequest) returns (BlobStagePartResponse);
+
   // Commit a staged blob upload after all parts have been uploaded using
   // `StageBlobPart`.
   rpc BlobCommitUpload(BlobCommitUploadRequest) returns (BlobCommitUploadResponse);
+  rpc BlobCreate(BlobCreateRequest) returns (BlobCreateResponse);
+  // Initiate a new blob upload.
+  rpc BlobCreateUpload(BlobCreateUploadRequest) returns (BlobCreateUploadResponse);
+  rpc BlobGet(BlobGetRequest) returns (BlobGetResponse);
+  // Stage a part of a blob for a `session_token` that was previously returned
+  // from `CreateBlobUpload`.
+  rpc BlobStagePart(BlobStagePartRequest) returns (BlobStagePartResponse);
 
   // Classes
   rpc ClassCreate(ClassCreateRequest) returns (ClassCreateResponse);
