@@ -776,9 +776,10 @@ class TimedPriorityQueue(asyncio.PriorityQueue[tuple[float, int, Union[T, None]]
         """
         Add an item to the queue to be processed at a specific timestamp.
         """
+        self.nonce += 1
+        await super().put((timestamp, self.nonce, item))
+
         async with self.condition:
-            self.nonce += 1
-            await super().put((timestamp, self.nonce, item))
             self.condition.notify_all()  # notify any waiting coroutines
 
     async def get_next(self) -> Union[T, None]:
