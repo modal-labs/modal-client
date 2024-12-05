@@ -746,95 +746,66 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         raise Exception(f"Dependency {dep} isn't hydrated")
                     object_dependencies.append(api_pb2.ObjectDependency(object_id=dep.object_id))
 
-                function_data: Optional[api_pb2.FunctionData] = None
-                function_definition: Optional[api_pb2.Function] = None
-
                 # Create function remotely
-                function_definition = api_pb2.Function(
+                function_data = api_pb2.FunctionData(
                     module_name=info.module_name or "",
                     function_name=info.function_name,
+                    function_type=function_type,
+                    warm_pool_size=keep_warm or 0,
+                    concurrency_limit=concurrency_limit or 0,
+                    task_idle_timeout_secs=container_idle_timeout or 0,
+                    _experimental_group_size=cluster_size or 0,  # Experimental: Clustered functions
+                    _experimental_buffer_containers=_experimental_buffer_containers or 0,
+                    _experimental_custom_scaling=_experimental_custom_scaling_factor is not None,
+                    worker_id=config.get("worker_id"),
+                    timeout_secs=timeout_secs or 0,
+                    webhook_config=webhook_config,
+                    schedule=schedule.proto_message if schedule is not None else None,
+                    is_class=info.is_service_class(),
+                    class_parameter_info=info.class_parameter_info(),
+                    is_method=bool(info.user_cls) and not info.is_service_class(),
+                    method_definitions=method_definitions,
+                    method_definitions_set=True,
+                    _experimental_proxy_ip=_experimental_proxy_ip,
+                    snapshot_debug=config.get("snapshot_debug"),
+                    runtime_perf_record=config.get("runtime_perf_record"),
+                )
+
+                function_definition = api_pb2.Function(
                     mount_ids=loaded_mount_ids,
                     secret_ids=[secret.object_id for secret in secrets],
                     image_id=(image.object_id if image else ""),
                     definition_type=info.definition_type,
                     function_serialized=function_serialized or b"",
                     class_serialized=class_serialized or b"",
-                    function_type=function_type,
-                    webhook_config=webhook_config,
-                    method_definitions=method_definitions,
-                    method_definitions_set=True,
                     shared_volume_mounts=network_file_system_mount_protos(
                         validated_network_file_systems, allow_cross_region_volumes
                     ),
                     volume_mounts=volume_mounts,
                     proxy_id=(proxy.object_id if proxy else None),
                     retry_policy=retry_policy,
-                    timeout_secs=timeout_secs or 0,
-                    task_idle_timeout_secs=container_idle_timeout or 0,
-                    concurrency_limit=concurrency_limit or 0,
                     pty_info=pty_info,
                     cloud_provider=cloud_provider,
-                    warm_pool_size=keep_warm or 0,
                     runtime=config.get("function_runtime"),
                     runtime_debug=config.get("function_runtime_debug"),
-                    runtime_perf_record=config.get("runtime_perf_record"),
                     app_name=app_name,
                     is_builder_function=is_builder_function,
                     target_concurrent_inputs=allow_concurrent_inputs or 0,
                     batch_max_size=batch_max_size or 0,
                     batch_linger_ms=batch_wait_ms or 0,
-                    worker_id=config.get("worker_id"),
                     is_auto_snapshot=is_auto_snapshot,
-                    is_method=bool(info.user_cls) and not info.is_service_class(),
                     checkpointing_enabled=enable_memory_snapshot,
                     object_dependencies=object_dependencies,
                     block_network=block_network,
                     max_inputs=max_inputs or 0,
                     cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
-                    is_class=info.is_service_class(),
-                    class_parameter_info=info.class_parameter_info(),
                     i6pn_enabled=i6pn_enabled,
-                    schedule=schedule.proto_message if schedule is not None else None,
-                    snapshot_debug=config.get("snapshot_debug"),
-                    _experimental_group_size=cluster_size or 0,  # Experimental: Clustered functions
                     _experimental_concurrent_cancellations=True,
-                    _experimental_buffer_containers=_experimental_buffer_containers or 0,
-                    _experimental_proxy_ip=_experimental_proxy_ip,
-                    _experimental_custom_scaling=_experimental_custom_scaling_factor is not None,
                 )
 
+                ranked_functions = []
                 if isinstance(gpu, list):
-                    function_data = api_pb2.FunctionData(
-                        module_name=function_definition.module_name,
-                        function_name=function_definition.function_name,
-                        function_type=function_definition.function_type,
-                        warm_pool_size=function_definition.warm_pool_size,
-                        concurrency_limit=function_definition.concurrency_limit,
-                        task_idle_timeout_secs=function_definition.task_idle_timeout_secs,
-                        worker_id=function_definition.worker_id,
-                        timeout_secs=function_definition.timeout_secs,
-                        web_url=function_definition.web_url,
-                        web_url_info=function_definition.web_url_info,
-                        webhook_config=function_definition.webhook_config,
-                        custom_domain_info=function_definition.custom_domain_info,
-                        schedule=schedule.proto_message if schedule is not None else None,
-                        is_class=function_definition.is_class,
-                        class_parameter_info=function_definition.class_parameter_info,
-                        is_method=function_definition.is_method,
-                        use_function_id=function_definition.use_function_id,
-                        use_method_name=function_definition.use_method_name,
-                        method_definitions=function_definition.method_definitions,
-                        method_definitions_set=function_definition.method_definitions_set,
-                        _experimental_group_size=function_definition._experimental_group_size,
-                        _experimental_buffer_containers=function_definition._experimental_buffer_containers,
-                        _experimental_custom_scaling=function_definition._experimental_custom_scaling,
-                        _experimental_proxy_ip=function_definition._experimental_proxy_ip,
-                        snapshot_debug=function_definition.snapshot_debug,
-                        runtime_perf_record=function_definition.runtime_perf_record,
-                    )
-
-                    ranked_functions = []
                     for rank, _gpu in enumerate(gpu):
                         function_definition_copy = api_pb2.Function()
                         function_definition_copy.CopyFrom(function_definition)
@@ -849,22 +820,29 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                             function=function_definition_copy,
                         )
                         ranked_functions.append(ranked_function)
-                    function_data.ranked_functions.extend(ranked_functions)
-                    function_definition = None  # function_definition is not used in this case
                 else:
                     # TODO(irfansharif): Assert on this specific type once we get rid of python 3.9.
                     # assert isinstance(gpu, GPU_T)  # includes the case where gpu==None case
-                    function_definition.resources.CopyFrom(
+                    function_definition_copy = api_pb2.Function()
+                    function_definition_copy.CopyFrom(function_definition)
+
+                    function_definition_copy.resources.CopyFrom(
                         convert_fn_config_to_resources_config(
                             cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
                         ),  # type: ignore
                     )
+                    ranked_function = api_pb2.FunctionData.RankedFunction(
+                        rank=0,
+                        function=function_definition_copy,
+                    )
+                    ranked_functions.append(ranked_function)
+
+                function_data.ranked_functions.extend(ranked_functions)
+                function_definition = None  # function_definition no longer needed
 
                 assert resolver.app_id
-                assert (function_definition is None) != (function_data is None)  # xor
                 request = api_pb2.FunctionCreateRequest(
                     app_id=resolver.app_id,
-                    function=function_definition,
                     function_data=function_data,
                     existing_function_id=existing_object_id or "",
                     defer_updates=True,
