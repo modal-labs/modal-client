@@ -1211,6 +1211,17 @@ message Function {
   bool _experimental_custom_scaling = 76;
 }
 
+message FunctionAsyncUnaryRequest {
+  string function_id = 1;
+  string parent_input_id = 2;
+  FunctionInput input = 3;
+} 
+
+message FunctionAsyncUnaryResponse {
+  bool retry_with_blob_upload = 1;
+  string function_call_id = 2;
+}
+
 message FunctionBindParamsRequest {
   string function_id = 1;
   bytes serialized_params = 2;
@@ -2705,6 +2716,7 @@ service ModalClient {
   rpc EnvironmentUpdate(EnvironmentUpdateRequest) returns (EnvironmentListItem);
 
   // Functions
+  rpc FunctionAsyncUnary(FunctionAsyncUnaryRequest) returns (FunctionAsyncUnaryResponse);
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
   rpc FunctionCallGetDataIn(FunctionCallGetDataRequest) returns (stream DataChunk);
