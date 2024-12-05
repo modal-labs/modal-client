@@ -354,7 +354,7 @@ class _Cls(_Object, type_prefix="cs"):
                     self._method_functions[method_name] = _Function._new_hydrated(
                         self._class_service_function.object_id, self._client, method_handle_metadata
                     )
-        elif self._class_service_function:
+        elif self._class_service_function and self._class_service_function.object_id:
             # A class with a class service function and method placeholder functions
             self._method_functions = {}
             for method in metadata.methods:
