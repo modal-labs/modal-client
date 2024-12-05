@@ -10,11 +10,11 @@ from grpclib import GRPCError, Status
 from modal._runtime.execution_context import current_input_id
 from modal._utils.async_utils import (
     AsyncOrSyncIterable,
-    TimedPriorityQueue,
     aclosing,
     async_map_ordered,
     async_merge,
     async_zip,
+    queue_batch_iterator,
     sync_or_async_iter,
     synchronize_api,
     synchronizer,
@@ -64,7 +64,7 @@ class _OutputValue:
 
 
 @dataclass
-class _MapItemRetryContext:
+class _MapItemContext:
     function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType"
     input: api_pb2.FunctionInput
     input_id: str
@@ -73,8 +73,8 @@ class _MapItemRetryContext:
 
 
 # maximum number of inputs that can be in progress (either queued to be sent,
-# or waiting for completion). if this limit is reached, we will block reading
-# from the input generator until more work completed.
+# or waiting for completion). if this limit is reached, we will block sending
+# more inputs to the server until some of the existing inputs are completed.
 MAP_MAX_INPUTS_OUTSTANDING = 1000
 
 # maximum number of inputs to send to the server in a single request
@@ -115,13 +115,17 @@ async def _map_invocation(
         if count_update_callback is not None:
             count_update_callback(num_outputs, num_inputs)
 
-    pending_outputs: dict[int, asyncio.Future[_MapItemRetryContext]] = {}  # Map input idx -> retry context
+    pending_outputs: dict[int, asyncio.Future[_MapItemContext]] = {}  # Map input idx -> context
     completed_outputs: set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
 
+    input_queue: asyncio.Queue[api_pb2.FunctionPutInputsItem | None] = asyncio.Queue()
+
+    # semaphore to limit the number of inputs that can be in progress at once
     inputs_outstanding = asyncio.BoundedSemaphore(MAP_MAX_INPUTS_OUTSTANDING)
-    input_queue: TimedPriorityQueue[
-        api_pb2.FunctionPutInputsItem | api_pb2.FunctionRetryInputsItem
-    ] = TimedPriorityQueue()
+
+    # set of tasks that are retrying inputs. we keep a reference to these tasks
+    # to prevent them from being garbage collected before they complete.
+    retry_tasks: set[asyncio.Task] = set()
 
     async def create_input(argskwargs):
         nonlocal num_inputs
@@ -145,81 +149,91 @@ async def _map_invocation(
             async_map_ordered(input_iter(), create_input, concurrency=BLOB_MAX_PARALLELISM)
         ) as streamer:
             async for item in streamer:
-                while True:
-                    try:
-                        await asyncio.wait_for(inputs_outstanding.acquire(), timeout=30)
-                        break
-                    except TimeoutError:
-                        logger.warning(
-                            "Warning: map progress is limited. Common bottlenecks "
-                            "include slow iteration over results, or function backlogs."
-                        )
-
-                await input_queue.put_with_timestamp(time.time(), item)
+                await input_queue.put(item)
 
         have_all_inputs = True
         yield
 
-    async def pump_inputs(items):
-        request = api_pb2.FunctionPutInputsRequest(
-            function_id=function.object_id,
-            inputs=items,
-            function_call_id=function_call_id,
-        )
-        logger.debug(
-            f"Pushing {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}."
-        )
+    async def pump_inputs():
+        assert client.stub
+        nonlocal have_all_inputs, num_inputs
+        async for items in queue_batch_iterator(input_queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
+            event_loop = asyncio.get_event_loop()
+            for item in items:
+                # acquire semaphore to limit the number of inputs in progress
+                # (either queued to be sent, waiting for completion, or retrying)
+                await inputs_outstanding.acquire()
 
-        event_loop = asyncio.get_event_loop()
-        items_by_idx = {item.idx: item for item in items}
-        for item in items:
-            pending_outputs[item.idx] = event_loop.create_future()
+                # create a future for each input, to be resolved when we have
+                # received the input ID and JWT from the server. this addresses
+                # a race condition where we could receive outputs before we have
+                # recorded the input ID and JWT in `pending_outputs`.
+                pending_outputs[item.idx] = event_loop.create_future()
 
-        while True:
-            try:
-                resp = await retry_transient_errors(
-                    client.stub.FunctionPutInputs,
-                    request,
-                    # with 8 retries we log the warning below about every 30 seconds, which isn't too spammy.
-                    max_retries=8,
-                    max_delay=15,
-                    additional_status_codes=[Status.RESOURCE_EXHAUSTED],
-                )
-                break
-            except GRPCError as err:
-                if err.status != Status.RESOURCE_EXHAUSTED:
-                    raise err
-                logger.warning(
-                    "Warning: map progress is limited. Common bottlenecks "
-                    "include slow iteration over results, or function backlogs."
-                )
-
-        count_update()
-        for response_item in resp.inputs:
-            original_item = items_by_idx[response_item.idx]
-
-            pending_outputs[response_item.idx].set_result(
-                _MapItemRetryContext(
-                    function_call_invocation_type=function_call_invocation_type,
-                    input=original_item.input,
-                    input_id=response_item.input_id,
-                    input_jwt=response_item.input_jwt,
-                    retry_manager=RetryManager(retry_policy),
-                )
+            request = api_pb2.FunctionPutInputsRequest(
+                function_id=function.object_id,
+                inputs=items,
+                function_call_id=function_call_id,
             )
-        logger.debug(
-            f"Successfully pushed {len(items)} inputs to server. "
-            f"Num queued inputs awaiting push is {input_queue.qsize()}."
-        )
+            logger.debug(
+                f"Pushing {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}."
+            )
 
-    async def pump_retries(items):
+            while True:
+                try:
+                    resp = await retry_transient_errors(
+                        client.stub.FunctionPutInputs,
+                        request,
+                        # with 8 retries we log the warning below about every 30 seconds, which isn't too spammy.
+                        max_retries=8,
+                        max_delay=15,
+                        additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                    )
+                    break
+                except GRPCError as err:
+                    if err.status != Status.RESOURCE_EXHAUSTED:
+                        raise err
+                    logger.warning(
+                        "Warning: map progress is limited. Common bottlenecks "
+                        "include slow iteration over results, or function backlogs."
+                    )
+
+            count_update()
+
+            items_by_idx = {item.idx: item for item in items}
+            for response_item in resp.inputs:
+                original_item = items_by_idx[response_item.idx]
+                pending_outputs[response_item.idx].set_result(
+                    _MapItemContext(
+                        function_call_invocation_type=function_call_invocation_type,
+                        input=original_item.input,
+                        input_id=response_item.input_id,
+                        input_jwt=response_item.input_jwt,
+                        retry_manager=RetryManager(retry_policy),
+                    )
+                )
+
+            logger.debug(
+                f"Successfully pushed {len(items)} inputs to server. "
+                f"Num queued inputs awaiting push is {input_queue.qsize()}."
+            )
+
+        yield
+
+    async def retry_input(item_context: _MapItemContext, delay_ms: float):
+        await asyncio.sleep(delay_ms / 1000)
+
         request = api_pb2.FunctionRetryInputsRequest(
             function_call_jwt=function_call_jwt,
-            inputs=items,
+            inputs=[
+                api_pb2.FunctionRetryInputsItem(
+                    input_jwt=item_context.input_jwt,
+                    input=item_context.input,
+                )
+            ],
         )
-        logger.debug(
-            f"Pushing {len(items)} retry inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}."
-        )
+        logger.debug(f"Sending retry for {item_context.input_id}.")
+
         while True:
             try:
                 await retry_transient_errors(
@@ -239,32 +253,7 @@ async def _map_invocation(
                     "include slow iteration over results, or function backlogs."
                 )
 
-        logger.debug(
-            f"Successfully pushed {len(items)} retry inputs to server. "
-            f"Num queued inputs awaiting push is {input_queue.qsize()}."
-        )
-
-    async def process_input_queue():
-        assert client.stub
-        async for items in input_queue.batch(max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
-            put_items = []
-            retry_items = []
-
-            for item in items:
-                if isinstance(item, api_pb2.FunctionPutInputsItem):
-                    put_items.append(item)
-                elif isinstance(item, api_pb2.FunctionRetryInputsItem):
-                    retry_items.append(item)
-                else:
-                    raise ValueError(f"Unknown item type on queue: {item}")
-
-            if put_items:
-                await pump_inputs(put_items)
-
-            if retry_items:
-                await pump_retries(retry_items)
-
-        yield
+        logger.debug(f"Successfully pushed retry for {item_context.input_id} to server. ")
 
     async def get_all_outputs():
         assert client.stub
@@ -272,6 +261,8 @@ async def _map_invocation(
         last_entry_id = "0-0"
 
         while not have_all_inputs or num_outputs < num_inputs:
+            logger.debug(f"Requesting outputs. Have {num_outputs} outputs, {num_inputs} inputs.")
+
             request = api_pb2.FunctionGetOutputsRequest(
                 function_call_id=function_call_id,
                 timeout=OUTPUTS_TIMEOUT,
@@ -287,7 +278,10 @@ async def _map_invocation(
             )
 
             if len(response.outputs) == 0:
+                logger.debug("No outputs received.")
                 continue
+            else:
+                logger.debug(f"Received {len(response.outputs)} outputs.")
 
             last_entry_id = response.last_entry_id
             for item in response.outputs:
@@ -296,26 +290,28 @@ async def _map_invocation(
                     # processed and was received again due to a duplicate.
                     continue
 
-                retry_context = await pending_outputs[item.idx]
+                item_context = await pending_outputs[item.idx]
 
                 if item.result and item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
-                    # clear the retry context to allow it to be garbage collected
+                    # clear the item context to allow it to be garbage collected
                     del pending_outputs[item.idx]
                 else:
-                    # If the output is not successful, we need to retry it.
-                    if (
-                        retry_context
-                        and retry_context.function_call_invocation_type == api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
-                    ):
-                        delay_ms = retry_context.retry_manager.get_delay_ms()
+                    # retry failed inputs when the function call invocation type is SYNC
+                    if item_context.function_call_invocation_type == api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC:
+                        delay_ms = item_context.retry_manager.get_delay_ms()
 
                         if delay_ms is not None:
-                            retry = api_pb2.FunctionRetryInputsItem(
-                                input_jwt=retry_context.input_jwt,
-                                input=retry_context.input,
-                            )
-                            await input_queue.put_with_timestamp(time.time() + (delay_ms / 1000), retry)
+                            task = asyncio.create_task(retry_input(item_context, delay_ms))
+
+                            # keep a reference to the task to prevent it from being garbage collected
+                            # before it completes
+                            retry_tasks.add(task)
+                            task.add_done_callback(retry_tasks.discard)
+
                             continue
+                        else:
+                            # we're out of retries, so we'll just output the error
+                            pass
 
                 completed_outputs.add(item.input_id)
                 inputs_outstanding.release()
@@ -340,8 +336,8 @@ async def _map_invocation(
             )
             await retry_transient_errors(client.stub.FunctionGetOutputs, request)
 
-            # close the input queue
-            await input_queue.put_with_timestamp(0, None)
+            # close the input queue iterator
+            await input_queue.put(None)
 
     async def fetch_output(item: api_pb2.FunctionGetOutputsItem) -> tuple[int, Any]:
         try:
@@ -355,7 +351,7 @@ async def _map_invocation(
 
     async def poll_outputs():
         # map to store out-of-order outputs received
-        received_outputs_by_index = {}
+        received_outputs = {}
         output_idx = 0
 
         async with aclosing(
@@ -367,22 +363,22 @@ async def _map_invocation(
                     yield _OutputValue(output)
                 else:
                     # hold on to outputs for function maps, so we can reorder them correctly.
-                    received_outputs_by_index[idx] = output
+                    received_outputs[idx] = output
 
                     while True:
-                        if output_idx not in received_outputs_by_index:
+                        if output_idx not in received_outputs:
                             # we haven't received the output for the current index yet.
                             # stop returning outputs to the caller and instead wait for
                             # the next output to arrive from the server.
                             break
 
-                        output = received_outputs_by_index.pop(output_idx)
+                        output = received_outputs.pop(output_idx)
                         yield _OutputValue(output)
                         output_idx += 1
 
-        assert len(received_outputs_by_index) == 0
+        assert len(received_outputs) == 0
 
-    async with aclosing(async_merge(drain_input_generator(), process_input_queue(), poll_outputs())) as streamer:
+    async with aclosing(async_merge(drain_input_generator(), pump_inputs(), poll_outputs())) as streamer:
         async for response in streamer:
             if response is not None:
                 yield response.value
