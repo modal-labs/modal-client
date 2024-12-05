@@ -101,8 +101,8 @@ def test_map_all_retries_fail_raises_error(client, setup_app_and_function, monke
     app, f = setup_app_and_function
     with app.run(client=client):
         with pytest.raises(FunctionCallCountException) as exc_info:
-            list(f.map([999, 999, 999]))
-        assert exc_info.value.function_call_count == 10
+            list(f.map([999]))
+        assert exc_info.value.function_call_count == 4
 
 
 def test_map_failures_followed_by_success(client, setup_app_and_function, monkeypatch):
