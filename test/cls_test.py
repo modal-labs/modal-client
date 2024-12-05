@@ -588,17 +588,17 @@ def test_cls_keep_warm(client, servicer):
 
     with app.run(client=client):
         assert len(servicer.app_functions) == 1  # only class service function
-        cls_fun = servicer.function_by_name("ClsWithMethod.*")
-        assert cls_fun.is_class
-        assert cls_fun.warm_pool_size == 0
+        cls_service_fun = servicer.function_by_name("ClsWithMethod.*")
+        assert cls_service_fun.is_class
+        assert cls_service_fun.warm_pool_size == 0
 
         ClsWithMethod().keep_warm(2)  # type: ignore  # Python can't do type intersection
-        assert cls_fun.warm_pool_size == 2
+        assert cls_service_fun.warm_pool_size == 2
 
         ClsWithMethod("other-instance").keep_warm(5)  # type: ignore  # Python can't do type intersection
         instance_service_function = servicer.function_by_name("ClsWithMethod.*", params=((("other-instance",), {})))
         assert len(servicer.app_functions) == 2  # + instance service function
-        assert cls_fun.warm_pool_size == 2
+        assert cls_service_fun.warm_pool_size == 2
         assert instance_service_function.warm_pool_size == 5
 
 

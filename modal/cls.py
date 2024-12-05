@@ -149,7 +149,7 @@ class _Obj:
 
     def _uses_common_service_function(self):
         # Used for backwards compatibility checks with pre v0.63 classes
-        return self._instance_service_function is not None
+        return self._cls._class_service_function is not None
 
     def __init__(
         self,
@@ -226,7 +226,6 @@ class _Obj:
         Model("fine-tuned-model").keep_warm(2)
         ```
         """
-        # TODO: this can't be used for lazy classes until we remove <0.63
         if not self._uses_common_service_function():
             raise VersionError(
                 "Class instance `.keep_warm(...)` can't be used on classes deployed using client version <v0.63"
