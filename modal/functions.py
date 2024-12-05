@@ -424,68 +424,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fun._is_method = True
         return fun
 
-    def _bind_instance_method(self, class_bound_method: "_Function"):
-        """mdmd:hidden
-
-        Binds an "instance service function" to a specific method.
-        This "dummy" _Function gets no unique object_id and isn't backend-backed at the moment, since all
-        it does it forward invocations to the underlying instance_service_function with the specified method,
-        and we don't support web_config for parameterized methods at the moment.
-        """
-        # TODO(elias): refactor to not use `_from_loader()` as a crutch for lazy-loading the
-        #   underlying instance_service_function. It's currently used in order to take advantage
-        #   of resolver logic and get "chained" resolution of lazy loads, even though this thin
-        #   object itself doesn't need any "loading"
-        instance_service_function = self
-        assert instance_service_function._obj
-        method_name = class_bound_method._use_method_name
-        full_function_name = f"{class_bound_method._function_name}[parameterized]"
-
-        def hydrate_from_instance_service_function(method_placeholder_fun):
-            method_placeholder_fun._hydrate_from_other(instance_service_function)
-            method_placeholder_fun._obj = instance_service_function._obj
-            method_placeholder_fun._web_url = (
-                class_bound_method._web_url
-            )  # TODO: this shouldn't be set when actual parameters are used
-            method_placeholder_fun._function_name = full_function_name
-            method_placeholder_fun._is_generator = class_bound_method._is_generator
-            method_placeholder_fun._cluster_size = class_bound_method._cluster_size
-            method_placeholder_fun._use_method_name = method_name
-            method_placeholder_fun._is_method = True
-
-        async def _load(fun: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
-            # there is currently no actual loading logic executed to create each method on
-            # the *parameterized* instance of a class - it uses the parameter-bound service-function
-            # for the instance. This load method just makes sure to set all attributes after the
-            # `instance_service_function` has been loaded (it's in the `_deps`)
-            hydrate_from_instance_service_function(fun)
-
-        def _deps():
-            if instance_service_function.is_hydrated:
-                # without this check, the common instance_service_function will be reloaded by all methods
-                # TODO(elias): Investigate if we can fix this multi-loader in the resolver - feels like a bug?
-                return []
-            return [instance_service_function]
-
-        rep = f"Method({full_function_name})"
-
-        fun = _Function._from_loader(
-            _load,
-            rep,
-            deps=_deps,
-            hydrate_lazily=True,
-        )
-        if instance_service_function.is_hydrated:
-            # Eager hydration (skip load) if the instance service function is already loaded
-            hydrate_from_instance_service_function(fun)
-
-        fun._info = class_bound_method._info
-        fun._obj = instance_service_function._obj
-        fun._is_method = True
-        fun._app = class_bound_method._app
-        fun._spec = class_bound_method._spec
-        return fun
-
     @staticmethod
     def from_args(
         info: FunctionInfo,
@@ -886,6 +824,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         is_method=function_definition.is_method,
                         use_function_id=function_definition.use_function_id,
                         use_method_name=function_definition.use_method_name,
+                        method_definitions=function_definition.method_definitions,
+                        method_definitions_set=function_definition.method_definitions_set,
                         _experimental_group_size=function_definition._experimental_group_size,
                         _experimental_buffer_containers=function_definition._experimental_buffer_containers,
                         _experimental_custom_scaling=function_definition._experimental_custom_scaling,
@@ -912,9 +852,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     function_data.ranked_functions.extend(ranked_functions)
                     function_definition = None  # function_definition is not used in this case
                 else:
-                    # TODO(irfansharif): Assert on this specific type once
-                    # we get rid of python 3.8.
-                    #   assert isinstance(gpu, GPU_T)  # includes the case where gpu==None case
+                    # TODO(irfansharif): Assert on this specific type once we get rid of python 3.9.
+                    # assert isinstance(gpu, GPU_T)  # includes the case where gpu==None case
                     function_definition.resources.CopyFrom(
                         convert_fn_config_to_resources_config(
                             cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
@@ -981,7 +920,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     def _bind_parameters(
         self,
         obj: "modal.cls._Obj",
-        from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
         args: Sized,
         kwargs: dict[str, Any],
@@ -992,7 +930,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         """
 
         # In some cases, reuse the base function, i.e. not create new clones of each method or the "service function"
-        can_use_parent = len(args) + len(kwargs) == 0 and not from_other_workspace and options is None
+        can_use_parent = len(args) + len(kwargs) == 0 and options is None
         parent = self
 
         async def _load(param_bound_func: _Function, resolver: Resolver, existing_object_id: Optional[str]):

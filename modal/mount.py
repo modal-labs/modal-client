@@ -749,8 +749,7 @@ def get_auto_mounts() -> list[_Mount]:
             continue
 
         for local_path, remote_path in mount_paths:
-            # TODO: use is_relative_to once we deprecate Python 3.8
-            if any(str(local_path).startswith(str(p)) for p in SYS_PREFIXES) or _is_modal_path(remote_path):
+            if any(local_path.is_relative_to(p) for p in SYS_PREFIXES) or _is_modal_path(remote_path):
                 # skip any module that has paths in SYS_PREFIXES, or would overwrite the modal Package in the container
                 break
         else:
