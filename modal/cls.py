@@ -86,7 +86,6 @@ def _bind_instance_method(service_function: _Function, class_bound_method: _Func
     #   object itself doesn't need any "loading"
     assert service_function._obj
     method_name = class_bound_method._use_method_name
-    full_function_name = f"{class_bound_method._function_name}[parameterized]"
 
     def hydrate_from_instance_service_function(method_placeholder_fun):
         method_placeholder_fun._hydrate_from_other(service_function)
@@ -94,7 +93,7 @@ def _bind_instance_method(service_function: _Function, class_bound_method: _Func
         method_placeholder_fun._web_url = (
             class_bound_method._web_url
         )  # TODO: this shouldn't be set when actual parameters are used
-        method_placeholder_fun._function_name = full_function_name
+        method_placeholder_fun._function_name = f"{class_bound_method._function_name}[parameterized]"
         method_placeholder_fun._is_generator = class_bound_method._is_generator
         method_placeholder_fun._cluster_size = class_bound_method._cluster_size
         method_placeholder_fun._use_method_name = method_name
@@ -114,7 +113,7 @@ def _bind_instance_method(service_function: _Function, class_bound_method: _Func
             return []
         return [service_function]
 
-    rep = f"Method({full_function_name})"
+    rep = f"Method({method_name})"
 
     fun = _Function._from_loader(
         _load,
@@ -176,13 +175,12 @@ class _Obj:
         self._options = options
 
     def _cached_service_function(self) -> "modal.function._Function":
-        # only safe to call for hydrated 0.63+ classes at the moment
+        # only safe to call for 0.63+ classes at the moment
         if not self._instance_service_function:
-            assert self._cls.is_hydrated and self._cls._class_service_function
-
-        self._instance_service_function = self._cls._class_service_function._bind_parameters(
-            self, self._options, self._args, self._kwargs
-        )
+            assert self._cls._class_service_function
+            self._instance_service_function = self._cls._class_service_function._bind_parameters(
+                self, self._options, self._args, self._kwargs
+            )
         return self._instance_service_function
 
     def _get_parameter_values(self) -> dict[str, Any]:
@@ -194,6 +192,7 @@ class _Obj:
         return bound_vars.arguments
 
     def _new_user_cls_instance(self):
+        print("Creating user cls instance")
         if not _use_annotation_parameters(self._user_cls):
             # TODO(elias): deprecate this code path eventually
             user_cls_instance = self._user_cls(*self._args, **self._kwargs)
@@ -244,18 +243,20 @@ class _Obj:
         return self._user_cls_instance
 
     def _enter(self):
+        assert self._user_cls
         if not self._has_entered:
-            if hasattr(self._user_cls_instance, "__enter__"):
-                self._user_cls_instance.__enter__()
+            user_cls_instance = self._cached_user_cls_instance()
+            if hasattr(user_cls_instance, "__enter__"):
+                user_cls_instance.__enter__()
 
             for method_flag in (
                 _PartialFunctionFlags.ENTER_PRE_SNAPSHOT,
                 _PartialFunctionFlags.ENTER_POST_SNAPSHOT,
             ):
-                for enter_method in _find_callables_for_obj(self._user_cls_instance, method_flag).values():
+                for enter_method in _find_callables_for_obj(user_cls_instance, method_flag).values():
                     enter_method()
 
-        self._has_entered = True
+            self._has_entered = True
 
     @property
     def _entered(self) -> bool:
@@ -280,17 +281,9 @@ class _Obj:
         # This is a bit messy and branchy because of pre 0.63 lookups
         # and wanting to be as efficient as possible for non-method
         # attribute access regardless of hydration or localness
-
-        if self._user_cls and _use_annotation_parameters(self._user_cls):
-            # if we have the definition and we use annotation parameters
-            # we can figure out the parameter values without constructing
-            # the user class:
-            parameter_values = self._get_parameter_values()
-            if k in parameter_values:
-                return parameter_values[k]
-
         def _get_method_bound_function() -> Optional["_Function"]:
-            assert self._cls.is_hydrated  # cls._method_functions isn't set otherwise
+            assert self._cls._method_functions is not None
+
             if class_bound_method := self._cls._method_functions.get(k, None):
                 # If we know the user is accessing a *method* and not another attribute,
                 # we don't have to create an instance of the user class yet.
@@ -303,36 +296,21 @@ class _Obj:
                     return class_bound_method._bind_parameters(self, self._options, self._args, self._kwargs)
                 else:
                     return _bind_instance_method(self._cached_service_function(), class_bound_method)
-            return None
 
-        if self._cls.is_hydrated:
-            # This branch will mostly be triggered by the (common) case of an object
-            # getting constructed in the same client that deployed a class
-            # but also in cases where getattr is used on an object that has
-            # previously hydrated its class through usage like .remote calls
+            return None  # The attribute isn't a method
+
+        if self._cls._method_functions is not None:
+            # We get here with either a hydrated Cls or an unhydrated one with local definition
             if method := _get_method_bound_function():
                 return method
             elif self._user_cls:
+                # if we have the local definition - instantiate and try to get attribute
                 user_cls_instance = self._cached_user_cls_instance()
                 return getattr(user_cls_instance, k)
             else:
                 raise NotFoundError(
                     f"Class has no method {k}, and attributes can't be accessed for `Cls.from_name` instances"
                 )
-
-        if self._user_cls:
-            # Class isn't hydrated, but we have the definition
-            # This can happen in these cases:
-            #   * locally if using a modal.cls before starting a "run" - which could be legit in case you use .local
-            #   * inside a container - but this would be a bug if the class isn't hydrated before an obj is created
-            if k not in _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.all()):
-                # we know that the key is not a method on the class, create the local instance and return the attribute
-                user_cls_instance = self._cached_user_cls_instance()
-                return getattr(user_cls_instance, k)
-
-            repr = f"Method({k})"
-        else:
-            repr = f"MaybeMethod({k})"
 
         # Not hydrated Cls, and we don't have the class - typically a Cls.from_name
         async def method_loader(fun, resolver: Resolver, existing_object_id):
