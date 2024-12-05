@@ -18,7 +18,7 @@ from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
-from .exception import ExecutionError, InvalidError, NotFoundError, VersionError
+from .exception import InvalidError, NotFoundError, VersionError
 from .functions import (
     _Function,
     _parse_retries,
@@ -321,13 +321,21 @@ class _Obj:
                 )
 
         if self._user_cls:
-            # TODO: What about when self._user_cls is available but the class isn't hydrated?
-            #  This would probably only happen inside a container that hasn't been properly
-            #  hydrated before getattr is called, so it should be a bug?
-            raise ExecutionError("Unexpected: class definition exists but isn't hydrated")
+            # Class isn't hydrated, but we have the definition
+            # This can happen in these cases:
+            #   * locally if using a modal.cls before starting a "run" - which could be legit in case you use .local
+            #   * inside a container - but this would be a bug if the class isn't hydrated before an obj is created
+            if k not in _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.all()):
+                # we know that the key is not a method on the class, create the local instance and return the attribute
+                user_cls_instance = self._cached_user_cls_instance()
+                return getattr(user_cls_instance, k)
+
+            repr = f"Method({k})"
+        else:
+            repr = f"MaybeMethod({k})"
 
         # Not hydrated Cls, and we don't have the class - typically a Cls.from_name
-        async def maybe_method_loader(fun, resolver: Resolver, existing_object_id):
+        async def method_loader(fun, resolver: Resolver, existing_object_id):
             await resolver.load(self._cls)  # load class so we get info about methods
             method_function = _get_method_bound_function()
             if method_function is None:
@@ -336,13 +344,15 @@ class _Obj:
                 )
             await resolver.load(method_function)  # get the appropriate method handle (lazy)
             fun._hydrate_from_other(method_function)
+            fun._info = method_function._info  # ugly: for .local
 
         return _Function._from_loader(
-            maybe_method_loader,
-            f"MaybeMethod({k})",
+            method_loader,
+            repr,
             deps=lambda: [],  # TODO: use deps?
             hydrate_lazily=True,
         )
+        # TODO: .local() on unhydrated class, requires info to be set on _Function
 
 
 Obj = synchronize_api(_Obj)
@@ -373,6 +383,7 @@ class _Cls(_Object, type_prefix="cs"):
         self._callables = {}
 
     def _initialize_from_other(self, other: "_Cls"):
+        super()._initialize_from_other(other)
         self._user_cls = other._user_cls
         self._class_service_function = other._class_service_function
         self._method_functions = other._method_functions
@@ -662,6 +673,7 @@ class _Cls(_Object, type_prefix="cs"):
 
     def __getattr__(self, k):
         # Used by CLI and container entrypoint
+        # TODO: remove this method - access to attributes on classes should be discouraged
         if k in self._method_functions:
             return self._method_functions[k]
         return getattr(self._user_cls, k)
