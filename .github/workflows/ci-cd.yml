@@ -163,45 +163,6 @@ jobs:
           python -c 'import modal._container_entrypoint'
           if [ "${{ matrix.image-builder-version }}" == "2024.04" ]; then python -c 'import fastapi'; fi
 
-  publish-base-images:
-    name: |
-      Publish base images for ${{ matrix.image-name }} ${{ matrix.image-builder-version }}
-    if: github.ref == 'refs/heads/main'
-    needs: [client-test]
-    runs-on: ubuntu-20.04
-    timeout-minutes: 5
-    env:
-      MODAL_LOGLEVEL: DEBUG
-      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-    strategy:
-      matrix:
-        image-builder-version: ["2023.12", "2024.04", "2024.10"]
-        image-name: ["debian_slim", "micromamba"]
-
-    steps:
-      - uses: actions/checkout@v3
-
-      - uses: ./.github/actions/setup-cached-python
-        with:
-          version: "3.11"
-
-      - name: Build protobuf
-        run: inv protoc
-
-      - name: Build client package (installs all dependencies)
-        run: pip install -e .
-
-      - name: Set the Modal environment
-        run: modal config set-environment main
-
-      - name: Publish base images
-        env:
-          MODAL_IMAGE_BUILDER_VERSION: ${{ matrix.image-builder-version }}
-          MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT: "1"
-        run: |
-          python -m modal_global_objects.images.base_images ${{ matrix.image-name }}
-
   publish-client:
     name: Publish client package
     if: github.ref == 'refs/heads/main'
@@ -244,3 +205,42 @@ jobs:
           TWINE_USERNAME: __token__
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: twine upload dist/* --non-interactive
+
+  publish-base-images:
+    name: |
+      Publish base images for ${{ matrix.image-name }} ${{ matrix.image-builder-version }}
+    if: github.ref == 'refs/heads/main'
+    needs: [client-versioning, client-test, publish-client]
+    runs-on: ubuntu-20.04
+    timeout-minutes: 5
+    env:
+      MODAL_LOGLEVEL: DEBUG
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+    strategy:
+      matrix:
+        image-builder-version: ["2023.12", "2024.04", "2024.10"]
+        image-name: ["debian_slim", "micromamba"]
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: ./.github/actions/setup-cached-python
+        with:
+          version: "3.11"
+
+      - name: Build protobuf
+        run: inv protoc
+
+      - name: Build client package (installs all dependencies)
+        run: pip install -e .
+
+      - name: Set the Modal environment
+        run: modal config set-environment main
+
+      - name: Publish base images
+        env:
+          MODAL_IMAGE_BUILDER_VERSION: ${{ matrix.image-builder-version }}
+          MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT: "1"
+        run: |
+          python -m modal_global_objects.images.base_images ${{ matrix.image-name }}
