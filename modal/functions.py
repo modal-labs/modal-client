@@ -1188,7 +1188,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return self._web_url
 
     @property
-    def is_generator(self) -> bool:
+    @live_method
+    async def is_generator(self) -> bool:
         """mdmd:hidden"""
         assert self._is_generator is not None
         return self._is_generator
@@ -1356,10 +1357,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             return fun(*args, **kwargs)
         else:
             # This is a method on a class, so bind the self to the function
-            user_cls_instance = obj._cached_user_cls_instance()
+            fun = info.raw_f.__get__(obj)
 
-            fun = info.raw_f.__get__(user_cls_instance)
-
+            # TODO: replace implicit local enter/exit with a context manager
             if is_async(info.raw_f):
                 # We want to run __aenter__ and fun in the same coroutine
                 async def coro():
