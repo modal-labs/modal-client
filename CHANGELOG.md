@@ -10,6 +10,24 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.67.28 (2024-12-05)
+
+* Adds `Image.add_local_python_source` which works similarly to the old and soon-to-be-deprecated `Mount.from_local_python_packages` but for images. One notable difference is that the new `add_local_python_source` *only* includes `.py`-files by default
+
+
+
+### 0.67.23 (2024-12-04)
+
+- Image build functions that use a `functools.wraps` decorator will now have their global variables included in the cache key. Previously, the cache would use global variables referenced within the wrapper itself. This will force a rebuild for Image layers defined using wrapped functions.
+
+
+
+### 0.67.22 (2024-12-03)
+
+- Fixed a bug introduced in v0.67.0 where it was impossible to call `modal.Cls` methods when passing a list of requested GPUs.
+
+
+
 ### 0.67.12 (2024-12-02)
 
 - Fixed a bug that executes the wrong method when a Modal Cls overrides a `@modal.method` inherited from a parent.
@@ -52,12 +70,6 @@ New minor client version `0.67.x` comes with an internal data model change for h
 ### 0.66.30 (2024-11-21)
 
 - Removed the `aiostream` package from the modal client library dependencies.
-
-
-
-### 0.66.29 (2024-11-21)
-
-* Adds `Image.add_local_python_packages` which works similarly to `Mount.from_local_python_packages` but for images.
 
 
 
