@@ -27,33 +27,6 @@ class _Queue(_Object, type_prefix="qu"):
 
     By default, the `Queue` object acts as a single FIFO queue which supports puts and gets (blocking and non-blocking).
 
-    **Queue partitions (beta)**
-
-    Specifying partition keys gives access to other independent FIFO partitions within the same `Queue` object.
-    Across any two partitions, puts and gets are completely independent.
-    For example, a put in one partition does not affect a get in any other partition.
-
-    When no partition key is specified (by default), puts and gets will operate on a default partition.
-    This default partition is also isolated from all other partitions.
-    Please see the Usage section below for an example using partitions.
-
-    **Lifetime of a queue and its partitions**
-
-    By default, each partition is cleared 24 hours after the last `put` operation.
-    A lower TTL can be specified by the `partition_ttl` argument in the `put` or `put_many` methods.
-    Each partition's expiry is handled independently.
-
-    As such, `Queue`s are best used for communication between active functions and not relied on for persistent storage.
-
-    On app completion or after stopping an app any associated `Queue` objects are cleaned up.
-    All its partitions will be cleared.
-
-    **Limits**
-
-    A single `Queue` can contain up to 100,000 partitions, each with up to 5,000 items. Each item can be up to 256 KiB.
-
-    Partition keys must be non-empty and must not exceed 64 bytes.
-
     **Usage**
 
     ```python
@@ -90,6 +63,33 @@ class _Queue(_Object, type_prefix="qu"):
     ```
 
     For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-queues).
+
+    **Queue partitions (beta)**
+
+    Specifying partition keys gives access to other independent FIFO partitions within the same `Queue` object.
+    Across any two partitions, puts and gets are completely independent.
+    For example, a put in one partition does not affect a get in any other partition.
+
+    When no partition key is specified (by default), puts and gets will operate on a default partition.
+    This default partition is also isolated from all other partitions.
+    Please see the Usage section below for an example using partitions.
+
+    **Lifetime of a queue and its partitions**
+
+    By default, each partition is cleared 24 hours after the last `put` operation.
+    A lower TTL can be specified by the `partition_ttl` argument in the `put` or `put_many` methods.
+    Each partition's expiry is handled independently.
+
+    As such, `Queue`s are best used for communication between active functions and not relied on for persistent storage.
+
+    On app completion or after stopping an app any associated `Queue` objects are cleaned up.
+    All its partitions will be cleared.
+
+    **Limits**
+
+    A single `Queue` can contain up to 100,000 partitions, each with up to 5,000 items. Each item can be up to 256 KiB.
+
+    Partition keys must be non-empty and must not exceed 64 bytes.
     """
 
     @staticmethod
