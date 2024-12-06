@@ -82,6 +82,11 @@ class _Queue(_Object, type_prefix="qu"):
         # (beta feature) Iterate through items in place (read immutably)
         my_queue.put(1)
         assert [v for v in my_queue.iterate()] == [0, 1]
+
+    # You can also create persistent queues that can be used across apps
+    queue = Queue.from_name("my-persisted-queue", create_if_missing=True)
+    queue.put(42)
+    assert queue.get() == 42
     ```
 
     For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-queues).
