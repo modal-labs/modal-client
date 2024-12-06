@@ -331,6 +331,29 @@ class _Sandbox(_Object, type_prefix="sb"):
         except GRPCError as exc:
             raise InvalidError(exc.message) if exc.status == Status.INVALID_ARGUMENT else exc
 
+    async def snapshot_filesystem(self) -> _Image:
+        """Snapshot the filesystem of the Sandbox.
+
+        Returns an [`Image`](https://modal.com/docs/reference/modal.Image) object which
+        can be used to spawn a new Sandbox with the same filesystem.
+        """
+        req = api_pb2.SandboxSnapshotFsRequest(sandbox_id=self.object_id)
+        resp = await self._client.stub.SandboxSnapshotFs(req)
+
+        if resp.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+            raise RuntimeError(resp.result.exception)
+
+        image_id = resp.image_id
+        metadata = resp.image_metadata
+
+        async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+            self._hydrate(image_id, resolver.client, metadata)
+
+        rep = "Image()"
+        image = _Image._from_loader(_load, rep)
+
+        return image
+
     # Live handle methods
 
     async def wait(self, raise_on_termination: bool = True):
