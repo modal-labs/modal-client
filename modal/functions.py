@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2023
+import asyncio
 import dataclasses
 import inspect
 import textwrap
@@ -249,7 +250,10 @@ class _Invocation:
             try:
                 return await self._get_single_output()
             except (UserCodeException, FunctionTimeoutError) as exc:
-                await user_retry_manager.raise_or_sleep(exc)
+                delay_ms = user_retry_manager.get_delay_ms()
+                if delay_ms is None:
+                    raise exc
+                await asyncio.sleep(delay_ms / 1000)
             await self._retry_input()
 
     async def poll_function(self, timeout: Optional[float] = None):
@@ -1221,6 +1225,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         else:
             count_update_callback = None
 
+        if config.get("client_retries"):
+            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
+        else:
+            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY
+
         async with aclosing(
             _map_invocation(
                 self,  # type: ignore
@@ -1229,6 +1238,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 order_outputs,
                 return_exceptions,
                 count_update_callback,
+                function_call_invocation_type,
             )
         ) as stream:
             async for item in stream:

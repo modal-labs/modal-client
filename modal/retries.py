@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
-import asyncio
 from datetime import timedelta
+from typing import Union
 
 from modal_proto import api_pb2
 
@@ -118,15 +118,17 @@ class RetryManager:
         self.retry_policy = retry_policy
         self.attempt_count = 0
 
-    async def raise_or_sleep(self, exc: Exception):
+    def get_delay_ms(self) -> Union[float, None]:
         """
-        Raises an exception if the maximum retry count has been reached, otherwise sleeps for calculated delay.
+        Returns the delay in milliseconds before the next retry, or None
+        if the maximum number of retries has been reached.
         """
         self.attempt_count += 1
+
         if self.attempt_count > self.retry_policy.retries:
-            raise exc
-        delay_ms = self._retry_delay_ms(self.attempt_count, self.retry_policy)
-        await asyncio.sleep(delay_ms / 1000)
+            return None
+
+        return self._retry_delay_ms(self.attempt_count, self.retry_policy)
 
     @staticmethod
     def _retry_delay_ms(attempt_count: int, retry_policy: api_pb2.FunctionRetryPolicy) -> float:
