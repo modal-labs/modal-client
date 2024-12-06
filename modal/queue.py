@@ -32,6 +32,7 @@ class _Queue(_Object, type_prefix="qu"):
     ```python
     from modal import Queue
 
+    # Create an ephemeral queue which is anonymous and garbage collected
     with Queue.ephemeral() as my_queue:
         # Putting values
         my_queue.put("some value")
