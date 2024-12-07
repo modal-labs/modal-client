@@ -97,7 +97,7 @@ async def test_container_snapshot_reference_capture(container_client, tmpdir, se
     assert f.object_id == "fu-1"
     await f.remote.aio()
     assert f.object_id == "fu-1"
-    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    io_manager = ContainerIOManager(api_pb2.ContainerArguments(checkpoint_id="ch-123"), container_client)
     restore_path = temp_restore_path(tmpdir)
     with set_env_vars(restore_path, servicer.container_addr):
         io_manager.memory_snapshot()
@@ -117,7 +117,7 @@ async def test_container_snapshot_reference_capture(container_client, tmpdir, se
 
 
 def test_container_snapshot_restore_heartbeats(tmpdir, servicer, container_client):
-    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    io_manager = ContainerIOManager(api_pb2.ContainerArguments(checkpoint_id="ch-123"), container_client)
     restore_path = temp_restore_path(tmpdir)
 
     # Ensure that heartbeats only run after the snapshot
@@ -137,7 +137,7 @@ def test_container_snapshot_restore_heartbeats(tmpdir, servicer, container_clien
 @pytest.mark.asyncio
 async def test_container_debug_snapshot(container_client, tmpdir, servicer):
     # Get an IO manager, where restore takes place
-    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    io_manager = ContainerIOManager(api_pb2.ContainerArguments(checkpoint_id="ch-123"), container_client)
     restore_path = tmpdir.join("fake-restore-state.json")
     # Write the restore file to start a debugger
     restore_path.write_text(
@@ -157,7 +157,7 @@ async def test_container_debug_snapshot(container_client, tmpdir, servicer):
 async def test_rpc_wrapping_restores(container_client, servicer, tmpdir):
     import modal
 
-    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    io_manager = ContainerIOManager(api_pb2.ContainerArguments(checkpoint_id="ch-123"), container_client)
     restore_path = temp_restore_path(tmpdir)
 
     d = modal.Dict.lookup("my-amazing-dict", {"xyz": 123}, create_if_missing=True, client=container_client)
