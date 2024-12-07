@@ -22,6 +22,7 @@ from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
 from .exception import InvalidError, SandboxTerminatedError, SandboxTimeoutError, deprecation_warning
+from .file_io import _FileIO
 from .gpu import GPU_T
 from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
@@ -494,6 +495,22 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
         by_line = bufsize == 1
         return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr, text=text, by_line=by_line)
+
+    async def open(self, path: str, mode: str = "r") -> _FileIO:
+        """Open a file in the Sandbox and return
+        a [`FileIO`](/docs/reference/modal.FileIO#modalfile_io) handle.
+
+        **Usage**
+
+        ```python notest
+        sb = modal.Sandbox.create("sleep", "infinity")
+        f = sb.open("/test.txt", "w")
+        f.write("hello")
+        f.close()
+        ```
+        """
+        task_id = await self._get_task_id()
+        return await _FileIO.create(path, mode, self._client, task_id)
 
     @property
     def stdout(self) -> _StreamReader[str]:
