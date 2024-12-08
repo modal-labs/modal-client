@@ -14,6 +14,7 @@ from modal.config import config
 from modal.container_process import _ContainerProcess
 from modal.environments import ensure_env
 from modal.object import _get_environment_name
+from modal.stream_type import StreamType
 from modal_proto import api_pb2
 
 container_cli = typer.Typer(name="container", help="Manage and connect to running containers.", no_args_is_help=True)
@@ -71,7 +72,10 @@ async def exec(
     )
     res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(req)
 
-    await _ContainerProcess(res.exec_id, client).attach(pty=pty)
+    if pty:
+        await _ContainerProcess(res.exec_id, client).attach()
+    else:
+        await _ContainerProcess(res.exec_id, client, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT).wait()
 
 
 @container_cli.command("stop")

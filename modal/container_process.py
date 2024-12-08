@@ -151,7 +151,11 @@ class _ContainerProcess(Generic[T]):
                 # time out if we can't connect to the server fast enough
                 await asyncio.wait_for(on_connect.wait(), timeout=60)
 
-                async with stream_from_stdin(_handle_input, use_raw_terminal=pty):
+                if pty:
+                    async with stream_from_stdin(_handle_input, use_raw_terminal=True):
+                        await stdout_task
+                        await stderr_task
+                else:
                     await stdout_task
                     await stderr_task
 
