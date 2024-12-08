@@ -147,7 +147,7 @@ class _Client:
             )
             if resp.warning:
                 ALARM_EMOJI = chr(0x1F6A8)
-                warnings.warn(f"{ALARM_EMOJI} {resp.warning} {ALARM_EMOJI}", DeprecationError)
+                warnings.warn_explicit(f"{ALARM_EMOJI} {resp.warning} {ALARM_EMOJI}", DeprecationError, "<unknown>", 0)
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
                 raise VersionError(
