@@ -601,7 +601,7 @@ async def _interactive_shell(_app: _App, cmds: list[str], environment_name: str 
 
         container_process = await sandbox.exec(*sandbox_cmds, pty_info=get_pty_info(shell=True))
         try:
-            await container_process.attach(pty=True)
+            await container_process.attach()
         except InteractiveTimeoutError:
             # Check on status of Sandbox. It may have crashed, causing connection failure.
             req = api_pb2.SandboxWaitRequest(sandbox_id=sandbox._object_id, timeout=0)

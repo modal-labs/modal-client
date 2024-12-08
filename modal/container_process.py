@@ -114,7 +114,7 @@ class _ContainerProcess(Generic[T]):
                 self._returncode = resp.exit_code
                 return self._returncode
 
-    async def attach(self, *, pty: bool):
+    async def attach(self):
         if platform.system() == "Windows":
             print("interactive exec is not currently supported on Windows.")
             return
@@ -151,11 +151,7 @@ class _ContainerProcess(Generic[T]):
                 # time out if we can't connect to the server fast enough
                 await asyncio.wait_for(on_connect.wait(), timeout=60)
 
-                if pty:
-                    async with stream_from_stdin(_handle_input, use_raw_terminal=True):
-                        await stdout_task
-                        await stderr_task
-                else:
+                async with stream_from_stdin(_handle_input, use_raw_terminal=True):
                     await stdout_task
                     await stderr_task
 
