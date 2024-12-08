@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2022
-
+import sys
 from typing import Optional, Union
 
 import typer
@@ -58,9 +58,12 @@ def logs(container_id: str = typer.Argument(help="Container ID")):
 async def exec(
     container_id: str = typer.Argument(help="Container ID"),
     command: list[str] = typer.Argument(help="A command to run inside the container."),
-    pty: bool = typer.Option(default=True, help="Run the command using a PTY."),
+    pty: Optional[bool] = typer.Option(default=None, help="Run the command using a PTY."),
 ):
     """Execute a command in a container."""
+
+    if pty is None:
+        pty = sys.stdout.isatty()
 
     client = await _Client.from_env()
 
@@ -75,6 +78,7 @@ async def exec(
     if pty:
         await _ContainerProcess(res.exec_id, client).attach()
     else:
+        # TODO: redirect stderr to its own stream?
         await _ContainerProcess(res.exec_id, client, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT).wait()
 
 
