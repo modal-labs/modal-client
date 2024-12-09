@@ -56,9 +56,13 @@ def logs(container_id: str = typer.Argument(help="Container ID")):
 @container_cli.command("exec")
 @synchronizer.create_blocking
 async def exec(
-    container_id: str = typer.Argument(help="Container ID"),
-    command: list[str] = typer.Argument(help="A command to run inside the container."),
     pty: Optional[bool] = typer.Option(default=None, help="Run the command using a PTY."),
+    container_id: str = typer.Argument(help="Container ID"),
+    command: list[str] = typer.Argument(
+        help="A command to run inside the container.\n\n"
+        "To pass command-line flags or options, add `--` before the start of your commands. "
+        "For example: `modal container exec <id> -- /bin/bash -c 'echo hi'`"
+    ),
 ):
     """Execute a command in a container."""
 
