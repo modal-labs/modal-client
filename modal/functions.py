@@ -41,7 +41,7 @@ from ._utils.async_utils import (
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
-from ._utils.deprecation_utils import deprecation_warning, renamed_parameter
+from ._utils.deprecation import deprecation_warning, renamed_parameter
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,

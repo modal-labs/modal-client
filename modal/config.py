@@ -86,7 +86,7 @@ from google.protobuf.empty_pb2 import Empty
 
 from modal_proto import api_pb2
 
-from ._utils.deprecation_utils import deprecation_error
+from ._utils.deprecation import deprecation_error
 from ._utils.logger import configure_logger
 from .exception import InvalidError
 

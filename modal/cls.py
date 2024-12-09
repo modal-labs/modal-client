@@ -16,7 +16,7 @@ from ._resources import convert_fn_config_to_resources_config
 from ._serialization import check_valid_cls_constructor_arg
 from ._traceback import print_server_warnings
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.deprecation_utils import renamed_parameter
+from ._utils.deprecation import renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client

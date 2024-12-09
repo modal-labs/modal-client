@@ -1,8 +1,8 @@
-# Copyright Modal Labs 2024
+# Copyright Modal Labs 2022
 import inspect
 import pytest
 
-from modal._utils.deprecation_utils import renamed_parameter
+from modal._utils.deprecation import renamed_parameter
 from modal.exception import DeprecationError
 
 from .supports.functions import deprecated_function

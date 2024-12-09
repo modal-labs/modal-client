@@ -36,7 +36,7 @@ from ._utils.blob_utils import (
     get_file_upload_spec_from_fileobj,
     get_file_upload_spec_from_path,
 )
-from ._utils.deprecation_utils import deprecation_error, deprecation_warning, renamed_parameter
+from ._utils.deprecation import deprecation_error, deprecation_warning, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
