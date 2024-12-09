@@ -423,9 +423,7 @@ def shell(
     """
     env = ensure_env(env)
 
-    console = Console()
-    if not console.is_terminal:
-        raise click.UsageError("`modal shell` can only be run from a terminal.")
+    pty = sys.stdout.isatty()
 
     if platform.system() == "Windows":
         raise InvalidError("`modal shell` is currently not supported on Windows")
@@ -441,7 +439,7 @@ def shell(
         ):
             from .container import exec
 
-            exec(container_id=container_or_function, command=shlex.split(cmd), pty=True)
+            exec(container_id=container_or_function, command=shlex.split(cmd))
             return
 
         function = import_function(
@@ -461,6 +459,7 @@ def shell(
             memory=function_spec.memory,
             volumes=function_spec.volumes,
             region=function_spec.scheduler_placement.proto.regions if function_spec.scheduler_placement else None,
+            pty=pty,
         )
     else:
         modal_image = Image.from_registry(image, add_python=add_python) if image else None
@@ -474,6 +473,7 @@ def shell(
             cloud=cloud,
             volumes=volumes,
             region=region.split(",") if region else [],
+            pty=pty,
         )
 
     # NB: invoking under bash makes --cmd a lot more flexible.
