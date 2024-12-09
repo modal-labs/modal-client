@@ -19,6 +19,7 @@ from ._resolver import Resolver
 from ._runtime.execution_context import is_local
 from ._traceback import print_server_warnings, traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, gather_cancel_on_exc, synchronize_api
+from ._utils.deprecation_utils import deprecation_error
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name, is_valid_tag
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
@@ -30,7 +31,6 @@ from .exception import (
     InvalidError,
     RemoteError,
     _CliUserExecutionError,
-    deprecation_error,
 )
 from .functions import _Function
 from .object import _get_environment_name, _Object

@@ -18,7 +18,7 @@ from modal import (
     web_endpoint,
     wsgi_app,
 )
-from modal.exception import deprecation_warning
+from modal._utils.deprecation_utils import deprecation_warning
 from modal.experimental import get_local_input_concurrency, set_local_input_concurrency
 
 SLEEP_DELAY = 0.1
