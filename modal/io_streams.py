@@ -184,7 +184,7 @@ class _StreamReader(Generic[T]):
 
                 async for message in iterator:
                     if self._stream_type == StreamType.STDOUT and message:
-                        print(message, end="")
+                        print(message.decode("utf-8"), end="")
                     elif self._stream_type == StreamType.PIPE:
                         self._container_process_buffer.append(message)
                     if message is None:
