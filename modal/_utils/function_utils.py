@@ -495,7 +495,13 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
 
 
 async def _create_input(
-    args, kwargs, client, *, idx: Optional[int] = None, method_name: Optional[str] = None
+    args,
+    kwargs,
+    client,
+    *,
+    idx: Optional[int] = None,
+    method_name: Optional[str] = None,
+    force_blob_upload: bool = False,
 ) -> api_pb2.FunctionPutInputsItem:
     """Serialize function arguments and create a FunctionInput protobuf,
     uploading to blob storage if needed.
@@ -507,7 +513,7 @@ async def _create_input(
 
     args_serialized = serialize((args, kwargs))
 
-    if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:
+    if len(args_serialized) > MAX_OBJECT_SIZE_BYTES or force_blob_upload:
         args_blob_id = await blob_upload(args_serialized, client.stub)
 
         return api_pb2.FunctionPutInputsItem(
