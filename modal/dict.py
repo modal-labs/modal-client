@@ -112,7 +112,7 @@ class _Dict(_Object, type_prefix="di"):
             yield cls._new_hydrated(response.dict_id, client, None, is_another_app=True)
 
     @staticmethod
-    @renamed_parameter("name", "label", (2024, 10, 9))
+    @renamed_parameter((2024, 12, 9), "label", "name")
     def from_name(
         name: str,
         data: Optional[dict] = None,
@@ -149,7 +149,7 @@ class _Dict(_Object, type_prefix="di"):
         return _Dict._from_loader(_load, "Dict()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
-    @renamed_parameter("name", "label", (2024, 10, 9))
+    @renamed_parameter((2024, 12, 9), "label", "name")
     async def lookup(
         name: str,
         data: Optional[dict] = None,
@@ -182,7 +182,7 @@ class _Dict(_Object, type_prefix="di"):
         return obj
 
     @staticmethod
-    @renamed_parameter("name", "label", (2024, 10, 9))
+    @renamed_parameter((2024, 12, 9), "label", "name")
     async def delete(
         name: str,
         *,

@@ -162,7 +162,7 @@ class _Secret(_Object, type_prefix="st"):
         return _Secret._from_loader(_load, "Secret.from_dotenv()", hydrate_lazily=True)
 
     @staticmethod
-    @renamed_parameter("name", "label", (2024, 10, 9))
+    @renamed_parameter((2024, 12, 9), "label", "name")
     def from_name(
         name: str,  # Some global identifier, such as "aws-secret"
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -205,7 +205,7 @@ class _Secret(_Object, type_prefix="st"):
         return _Secret._from_loader(_load, "Secret()", hydrate_lazily=True)
 
     @staticmethod
-    @renamed_parameter("name", "label", (2024, 10, 9))
+    @renamed_parameter((2024, 12, 9), "label", "name")
     async def lookup(
         name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,

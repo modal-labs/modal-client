@@ -624,7 +624,7 @@ class _Mount(_Object, type_prefix="mo"):
         return mount
 
     @staticmethod
-    @renamed_parameter("name", "label", (2024, 10, 9))
+    @renamed_parameter((2024, 12, 9), "label", "name")
     def from_name(
         name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -644,7 +644,7 @@ class _Mount(_Object, type_prefix="mo"):
         return _Mount._from_loader(_load, "Mount()")
 
     @classmethod
-    @renamed_parameter("name", "label", (2024, 10, 9))
+    @renamed_parameter((2024, 12, 9), "label", "name")
     async def lookup(
         cls: type["_Mount"],
         name: str,

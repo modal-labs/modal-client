@@ -5,7 +5,7 @@ from modal._utils.deprecation_utils import renamed_parameter
 from modal.exception import DeprecationError
 
 
-@renamed_parameter("bar", "foo", (2024, 12, 1))
+@renamed_parameter((2024, 12, 1), "bar", "foo")
 def my_func(bar: int) -> int:
     return bar**2
 

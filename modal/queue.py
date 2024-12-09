@@ -154,7 +154,7 @@ class _Queue(_Object, type_prefix="qu"):
             yield cls._new_hydrated(response.queue_id, client, None, is_another_app=True)
 
     @staticmethod
-    @renamed_parameter("name", "label", (2024, 10, 9))
+    @renamed_parameter((2024, 12, 9), "label", "name")
     def from_name(
         name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -187,7 +187,7 @@ class _Queue(_Object, type_prefix="qu"):
         return _Queue._from_loader(_load, "Queue()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
-    @renamed_parameter("name", "label", (2024, 10, 9))
+    @renamed_parameter((2024, 12, 9), "label", "name")
     async def lookup(
         name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -215,7 +215,7 @@ class _Queue(_Object, type_prefix="qu"):
         return obj
 
     @staticmethod
-    @renamed_parameter("name", "label", (2024, 10, 9))
+    @renamed_parameter((2024, 12, 9), "label", "name")
     async def delete(name: str, *, client: Optional[_Client] = None, environment_name: Optional[str] = None):
         obj = await _Queue.lookup(name, client=client, environment_name=environment_name)
         req = api_pb2.QueueDeleteRequest(queue_id=obj.object_id)
