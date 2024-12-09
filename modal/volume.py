@@ -36,6 +36,7 @@ from ._utils.blob_utils import (
     get_file_upload_spec_from_fileobj,
     get_file_upload_spec_from_path,
 )
+from ._utils.deprecation_utils import renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -143,8 +144,9 @@ class _Volume(_Object, type_prefix="vo"):
         deprecation_error((2024, 3, 20), message)
 
     @staticmethod
+    @renamed_parameter("name", "label", (2024, 10, 9))
     def from_name(
-        label: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -167,11 +169,11 @@ class _Volume(_Object, type_prefix="vo"):
             pass
         ```
         """
-        check_object_name(label, "Volume")
+        check_object_name(name, "Volume")
 
         async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.VolumeGetOrCreateRequest(
-                deployment_name=label,
+                deployment_name=name,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
@@ -219,8 +221,9 @@ class _Volume(_Object, type_prefix="vo"):
             yield cls._new_hydrated(response.volume_id, client, None, is_another_app=True)
 
     @staticmethod
+    @renamed_parameter("name", "label", (2024, 10, 9))
     async def lookup(
-        label: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
@@ -238,7 +241,7 @@ class _Volume(_Object, type_prefix="vo"):
         ```
         """
         obj = _Volume.from_name(
-            label,
+            name,
             namespace=namespace,
             environment_name=environment_name,
             create_if_missing=create_if_missing,
@@ -506,8 +509,9 @@ class _Volume(_Object, type_prefix="vo"):
         )
 
     @staticmethod
-    async def delete(label: str, client: Optional[_Client] = None, environment_name: Optional[str] = None):
-        obj = await _Volume.lookup(label, client=client, environment_name=environment_name)
+    @renamed_parameter("name", "label", (2024, 10, 9))
+    async def delete(name: str, client: Optional[_Client] = None, environment_name: Optional[str] = None):
+        obj = await _Volume.lookup(name, client=client, environment_name=environment_name)
         req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.VolumeDelete, req)
 

@@ -10,6 +10,7 @@ from modal_proto import api_pb2
 
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api, synchronizer
+from ._utils.deprecation_utils import renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -52,21 +53,22 @@ class _Environment(_Object, type_prefix="en"):
         )
 
     @staticmethod
+    @renamed_parameter("name", "label", (2024, 10, 9))
     async def from_name(
-        label: str,
+        name: str,
         create_if_missing: bool = False,
     ):
-        if label:
-            # Allow null labels for the case where we want to look up the "default" environment,
+        if name:
+            # Allow null names for the case where we want to look up the "default" environment,
             # which is defined by the server. It feels messy to have "from_name" without a name, though?
             # We're adding this mostly for internal use right now. We could consider an environment-only
             # alternate constructor, like `Environment.get_default`, rather than exposing "unnamed"
             # environments as part of public API when we make this class more useful.
-            check_object_name(label, "Environment")
+            check_object_name(name, "Environment")
 
         async def _load(self: _Environment, resolver: Resolver, existing_object_id: Optional[str]):
             request = api_pb2.EnvironmentGetOrCreateRequest(
-                deployment_name=label,
+                deployment_name=name,
                 object_creation_type=(
                     api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
                     if create_if_missing
@@ -81,12 +83,13 @@ class _Environment(_Object, type_prefix="en"):
         return _Environment._from_loader(_load, "Environment()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
+    @renamed_parameter("name", "label", (2024, 10, 9))
     async def lookup(
-        label: str,
+        name: str,
         client: Optional[_Client] = None,
         create_if_missing: bool = False,
     ):
-        obj = await _Environment.from_name(label, create_if_missing=create_if_missing)
+        obj = await _Environment.from_name(name, create_if_missing=create_if_missing)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
