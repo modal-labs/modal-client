@@ -1446,6 +1446,7 @@ message FunctionGetRequest {
 message FunctionGetResponse {
   string function_id = 1;
   FunctionHandleMetadata handle_metadata = 2;
+  string warning = 3;  // Used for client deprecation warnings
 }
 
 message FunctionGetSerializedRequest {

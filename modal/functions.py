@@ -58,6 +58,7 @@ from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from .config import config
 from .exception import (
+    DeprecationError,
     ExecutionError,
     FunctionTimeoutError,
     InvalidError,
@@ -1060,6 +1061,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     raise NotFoundError(exc.message)
                 else:
                     raise
+
+            if response.warning:
+                # Used for client deprecation warnings
+                warnings.warn_explicit(f"{response.warning}", DeprecationError, "<unknown>", 0)
 
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
