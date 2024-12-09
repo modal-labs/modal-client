@@ -196,7 +196,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the sandbox on.
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        # Specify, in fractional CPU cores, how many CPU cores to request.
+        # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
+        # CPU throttling will prevent a container from exceeding its specified limit.
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: Optional[Union[int, tuple[int, int]]] = None,
