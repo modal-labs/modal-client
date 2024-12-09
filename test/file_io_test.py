@@ -315,7 +315,7 @@ def test_invalid_mode(servicer, client):
     ]
     for mode in invalid_modes:
         with pytest.raises(ValueError):
-            FileIO.create("/test.txt", mode, client, "task-123")
+            FileIO.create("/test.txt", mode, client, "task-123")  # type: ignore
 
 
 def test_client_retry(servicer, client):

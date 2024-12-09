@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2024
 import asyncio
 import io
-from typing import AsyncIterator, Generic, List, Literal, Optional, TypeVar, Union, cast
+from typing import AsyncIterator, Generic, Literal, Optional, Sequence, TypeVar, Union, cast
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
@@ -235,7 +235,7 @@ class _FileIO(Generic[T]):
             return output
         return output.decode("utf-8")
 
-    async def readlines(self) -> List[T]:
+    async def readlines(self) -> Sequence[T]:
         """Read all lines from the current position."""
         self._check_closed()
         self._check_readable()

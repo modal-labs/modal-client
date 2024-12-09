@@ -93,8 +93,8 @@ for line_bytes in cmd2.stdout:
 # check file_io
 file_io = sandbox.open("foo", "w")
 assert_type(file_io.read(), str)
-assert_type(file_io.readlines(), typing.List[str])
+assert_type(file_io.readlines(), typing.Sequence[str])
 
 file_io2 = sandbox.open("foo", "rb")
 assert_type(file_io2.read(), bytes)
-assert_type(file_io2.readlines(), typing.List[bytes])
+assert_type(file_io2.readlines(), typing.Sequence[bytes])
