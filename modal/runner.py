@@ -38,6 +38,7 @@ from .output import _get_output_manager, enable_output
 from .running_app import RunningApp
 from .sandbox import _Sandbox
 from .secret import _Secret
+from .stream_type import StreamType
 
 if TYPE_CHECKING:
     from .app import _App
@@ -557,7 +558,9 @@ async def _deploy_app(
     )
 
 
-async def _interactive_shell(_app: _App, cmds: list[str], environment_name: str = "", **kwargs: Any) -> None:
+async def _interactive_shell(
+    _app: _App, cmds: list[str], environment_name: str = "", pty: bool = True, **kwargs: Any
+) -> None:
     """Run an interactive shell (like `bash`) within the image for this app.
 
     This is useful for online debugging and interactive exploration of the
@@ -599,9 +602,17 @@ async def _interactive_shell(_app: _App, cmds: list[str], environment_name: str 
                 **kwargs,
             )
 
-        container_process = await sandbox.exec(*sandbox_cmds, pty_info=get_pty_info(shell=True))
         try:
-            await container_process.attach(pty=True)
+            if pty:
+                container_process = await sandbox.exec(
+                    *sandbox_cmds, pty_info=get_pty_info(shell=True) if pty else None
+                )
+                await container_process.attach()
+            else:
+                container_process = await sandbox.exec(
+                    *sandbox_cmds, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT
+                )
+                await container_process.wait()
         except InteractiveTimeoutError:
             # Check on status of Sandbox. It may have crashed, causing connection failure.
             req = api_pb2.SandboxWaitRequest(sandbox_id=sandbox._object_id, timeout=0)
