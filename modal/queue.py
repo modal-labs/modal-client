@@ -13,7 +13,7 @@ from modal_proto import api_pb2
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_is_not_consumed
-from ._utils.deprecation_utils import deprecation_error, renamed_parameter
+from ._utils.deprecation import deprecation_error, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client

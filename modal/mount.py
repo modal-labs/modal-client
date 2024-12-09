@@ -22,7 +22,7 @@ from modal_version import __version__
 from ._resolver import Resolver
 from ._utils.async_utils import aclosing, async_map, synchronize_api
 from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
-from ._utils.deprecation_utils import renamed_parameter
+from ._utils.deprecation import renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from ._utils.package_utils import get_module_mount_info

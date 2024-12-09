@@ -30,7 +30,7 @@ from ._resolver import Resolver
 from ._serialization import serialize
 from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
-from ._utils.deprecation_utils import deprecation_error, deprecation_warning
+from ._utils.deprecation import deprecation_error, deprecation_warning
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
 from .client import _Client

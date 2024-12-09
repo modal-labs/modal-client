@@ -15,7 +15,7 @@ import typing_extensions
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.deprecation_utils import deprecation_error, deprecation_warning
+from ._utils.deprecation import deprecation_error, deprecation_warning
 from ._utils.function_utils import callable_has_non_self_non_default_params, callable_has_non_self_params
 from .config import logger
 from .exception import InvalidError

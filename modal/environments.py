@@ -10,7 +10,7 @@ from modal_proto import api_pb2
 
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.deprecation_utils import renamed_parameter
+from ._utils.deprecation import renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client

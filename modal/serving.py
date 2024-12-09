@@ -11,7 +11,7 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal._output import OutputManager
 
 from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
-from ._utils.deprecation_utils import deprecation_error
+from ._utils.deprecation import deprecation_error
 from ._utils.logger import logger
 from ._watcher import watch
 from .cli.import_refs import import_app

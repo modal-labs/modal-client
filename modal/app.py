@@ -22,7 +22,7 @@ from modal_proto import api_pb2
 
 from ._ipython import is_notebook
 from ._utils.async_utils import synchronize_api
-from ._utils.deprecation_utils import deprecation_error, deprecation_warning
+from ._utils.deprecation import deprecation_error, deprecation_warning
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes

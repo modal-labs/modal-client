@@ -10,7 +10,7 @@ from rich.text import Text
 from typer import Argument
 
 from modal._utils.async_utils import synchronizer
-from modal._utils.deprecation_utils import deprecation_warning
+from modal._utils.deprecation import deprecation_warning
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.object import _get_environment_name
