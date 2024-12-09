@@ -11,6 +11,7 @@ from synchronicity.exceptions import UserCodeException
 
 import modal
 from modal import App, Image, Mount, NetworkFileSystem, Proxy, asgi_app, batched, web_endpoint
+from modal._serialization import deserialize
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
 from modal.exception import DeprecationError, ExecutionError, InvalidError
@@ -1009,9 +1010,9 @@ def test_experimental_spawn(client, servicer):
         with app.run(client=client):
             dummy_modal._experimental_spawn(1, 2)
 
-    # Verify the correct invocation type is set
-    function_map = ctx.pop_request("FunctionMap")
-    assert function_map.function_call_invocation_type == api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
+    # Verify the correct input was passed to the function.
+    request = ctx.pop_request("FunctionAsyncInvoke")
+    assert deserialize(request.input.args, client) == ((1, 2), {})
 
 
 def test_from_name_web_url(servicer, set_env_client):

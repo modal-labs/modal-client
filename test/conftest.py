@@ -828,6 +828,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Function
 
+    async def FunctionAsyncInvoke(self, stream):
+        self.fcidx += 1
+        request: api_pb2.FunctionAsyncInvokeRequest = await stream.recv_message()
+        function_call_id = f"fc-{self.fcidx}"
+        self.function_id_for_function_call[function_call_id] = request.function_id
+        await stream.send_message(api_pb2.FunctionAsyncInvokeResponse(function_call_id=function_call_id))
+
     async def FunctionBindParams(self, stream):
         from modal._serialization import deserialize
 
