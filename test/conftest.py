@@ -729,6 +729,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         await stream.send_message(api_pb2.RuntimeOutputBatch(exit_code=0))
 
+    async def ContainerHello(self, stream):
+        await stream.recv_message()
+        await stream.send_message(Empty())
+
     ### Dict
 
     async def DictGetOrCreate(self, stream):
