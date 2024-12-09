@@ -1391,15 +1391,35 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         """
         self._check_no_web_url("_experimental_spawn")
         if self._is_generator:
+            # TODO(dshaar): Deprecate this.
             invocation = await self._call_generator_nowait(args, kwargs)
-        else:
-            invocation = await self._call_function_nowait(
-                args, kwargs, function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
-            )
+            fc = _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
+            fc._is_generator = True
+            return fc
 
-        fc = _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
-        fc._is_generator = self._is_generator if self._is_generator else False
-        return fc
+        input = (await _create_input(args, kwargs, self._client, method_name=self._use_method_name)).input
+        request = api_pb2.FunctionAsyncInvokeRequest(
+            function_id=self.object_id,
+            parent_input_id=current_input_id() or "",
+            input=input,
+        )
+        response = await retry_transient_errors(self._client.stub.FunctionAsyncInvoke, request)
+
+        # If the server backpressures because the input size is too large, blob upload the input and retry.
+        if response.retry_with_blob_upload:
+            input = (
+                await _create_input(
+                    args, kwargs, self._client, method_name=self._use_method_name, force_blob_upload=True
+                )
+            ).input
+            request = api_pb2.FunctionAsyncInvokeRequest(
+                function_id=self.object_id,
+                parent_input_id=current_input_id() or "",
+                input=input,
+            )
+            response = await retry_transient_errors(self._client.stub.FunctionAsyncInvoke, request)
+
+        return _FunctionCall._new_hydrated(response.function_call_id, self._client, None)
 
     @synchronizer.no_input_translation
     @live_method
