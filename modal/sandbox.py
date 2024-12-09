@@ -22,6 +22,11 @@ from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
 from .exception import ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError, deprecation_warning
+from .file_io import (
+    OpenBinaryMode,
+    OpenTextMode,
+    _FileIO,
+)
 from .gpu import GPU_T
 from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
@@ -483,7 +488,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         _pty_info: Optional[api_pb2.PTYInfo] = None,
     ):
         """Execute a command in the Sandbox and return
-        a [`ContainerProcess`](/docs/reference/modal.ContainerProcess#modalcontainer_process) handle.
+        a [`ContainerProcess`](https://modal.com/docs/reference/modal.ContainerProcess#modalcontainer_process) handle.
 
         **Usage**
 
@@ -520,10 +525,46 @@ class _Sandbox(_Object, type_prefix="sb"):
         by_line = bufsize == 1
         return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr, text=text, by_line=by_line)
 
+    @overload
+    async def open(
+        self,
+        path: str,
+        mode: OpenTextMode,
+    ) -> _FileIO[str]:
+        ...
+
+    @overload
+    async def open(
+        self,
+        path: str,
+        mode: OpenBinaryMode,
+    ) -> _FileIO[bytes]:
+        ...
+
+    async def open(
+        self,
+        path: str,
+        mode: Union[OpenTextMode, OpenBinaryMode] = "r",
+    ) -> _FileIO[str]:
+        """Open a file in the Sandbox and return
+        a [`FileIO`](https://modal.com/docs/reference/modal.FileIO#modalfile_io) handle.
+
+        **Usage**
+
+        ```python notest
+        sb = modal.Sandbox.create(app=sb_app)
+        f = sb.open("/test.txt", "w")
+        f.write("hello")
+        f.close()
+        ```
+        """
+        task_id = await self._get_task_id()
+        return await _FileIO.create(path, mode, self._client, task_id)
+
     @property
     def stdout(self) -> _StreamReader[str]:
         """
-        [`StreamReader`](/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
+        [`StreamReader`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
         the sandbox's stdout stream.
         """
 
@@ -531,7 +572,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @property
     def stderr(self) -> _StreamReader[str]:
-        """[`StreamReader`](/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
+        """[`StreamReader`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
         the sandbox's stderr stream.
         """
 
@@ -540,7 +581,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     @property
     def stdin(self) -> _StreamWriter:
         """
-        [`StreamWriter`](/docs/reference/modal.io_streams#modalio_streamsstreamwriter) for
+        [`StreamWriter`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamwriter) for
         the sandbox's stdin stream.
         """
 
