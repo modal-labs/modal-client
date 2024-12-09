@@ -15,6 +15,7 @@ from modal_proto import api_pb2
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, aclosing, async_map, sync_or_async_iter, synchronize_api
 from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
+from ._utils.deprecation_utils import renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.hash_utils import get_sha256_hex
 from ._utils.name_utils import check_object_name
@@ -100,8 +101,9 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         deprecation_error((2024, 3, 20), message)
 
     @staticmethod
+    @renamed_parameter("name", "label", (2024, 10, 9))
     def from_name(
-        label: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -120,11 +122,11 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             pass
         ```
         """
-        check_object_name(label, "NetworkFileSystem")
+        check_object_name(name, "NetworkFileSystem")
 
         async def _load(self: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SharedVolumeGetOrCreateRequest(
-                deployment_name=label,
+                deployment_name=name,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
@@ -135,7 +137,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             except GRPCError as exc:
                 if exc.status == Status.NOT_FOUND and exc.message == "App has wrong entity vo":
                     raise InvalidError(
-                        f"Attempted to mount: `{label}` as a NetworkFileSystem " + "which already exists as a Volume"
+                        f"Attempted to mount: `{name}` as a NetworkFileSystem " + "which already exists as a Volume"
                     )
                 raise
 
@@ -175,8 +177,9 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             yield cls._new_hydrated(response.shared_volume_id, client, None, is_another_app=True)
 
     @staticmethod
+    @renamed_parameter("name", "label", (2024, 10, 9))
     async def lookup(
-        label: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
@@ -193,7 +196,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         ```
         """
         obj = _NetworkFileSystem.from_name(
-            label, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
+            name, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
         )
         if client is None:
             client = await _Client.from_env()
@@ -222,8 +225,9 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         return resp.shared_volume_id
 
     @staticmethod
-    async def delete(label: str, client: Optional[_Client] = None, environment_name: Optional[str] = None):
-        obj = await _NetworkFileSystem.lookup(label, client=client, environment_name=environment_name)
+    @renamed_parameter("name", "label", (2024, 10, 9))
+    async def delete(name: str, client: Optional[_Client] = None, environment_name: Optional[str] = None):
+        obj = await _NetworkFileSystem.lookup(name, client=client, environment_name=environment_name)
         req = api_pb2.SharedVolumeDeleteRequest(shared_volume_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.SharedVolumeDelete, req)
 

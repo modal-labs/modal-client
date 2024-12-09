@@ -9,6 +9,7 @@ from modal_proto import api_pb2
 from ._resolver import Resolver
 from ._runtime.execution_context import is_local
 from ._utils.async_utils import synchronize_api
+from ._utils.deprecation_utils import renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -161,8 +162,9 @@ class _Secret(_Object, type_prefix="st"):
         return _Secret._from_loader(_load, "Secret.from_dotenv()", hydrate_lazily=True)
 
     @staticmethod
+    @renamed_parameter("name", "label", (2024, 10, 9))
     def from_name(
-        label: str,  # Some global identifier, such as "aws-secret"
+        name: str,  # Some global identifier, such as "aws-secret"
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         required_keys: list[
@@ -186,7 +188,7 @@ class _Secret(_Object, type_prefix="st"):
 
         async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SecretGetOrCreateRequest(
-                deployment_name=label,
+                deployment_name=name,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
                 required_keys=required_keys,
@@ -203,8 +205,9 @@ class _Secret(_Object, type_prefix="st"):
         return _Secret._from_loader(_load, "Secret()", hydrate_lazily=True)
 
     @staticmethod
+    @renamed_parameter("name", "label", (2024, 10, 9))
     async def lookup(
-        label: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
@@ -212,7 +215,7 @@ class _Secret(_Object, type_prefix="st"):
     ) -> "_Secret":
         """mdmd:hidden"""
         obj = _Secret.from_name(
-            label, namespace=namespace, environment_name=environment_name, required_keys=required_keys
+            name, namespace=namespace, environment_name=environment_name, required_keys=required_keys
         )
         if client is None:
             client = await _Client.from_env()
