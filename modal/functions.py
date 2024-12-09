@@ -41,6 +41,7 @@ from ._utils.async_utils import (
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
+from ._utils.deprecation_utils import renamed_parameter
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
@@ -1028,10 +1029,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         await retry_transient_errors(self._client.stub.FunctionUpdateSchedulingParams, request)
 
     @classmethod
+    @renamed_parameter((2024, 12, 9), "tag", "name")
     def from_name(
         cls: type["_Function"],
         app_name: str,
-        tag: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
     ) -> "_Function":
@@ -1050,7 +1052,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             assert resolver.client and resolver.client.stub
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
-                object_tag=tag,
+                object_tag=name,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver) or "",
             )
@@ -1070,9 +1072,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
+    @renamed_parameter((2024, 12, 9), "tag", "name")
     async def lookup(
         app_name: str,
-        tag: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
@@ -1086,7 +1089,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         f = modal.Function.lookup("other-app", "function")
         ```
         """
-        obj = _Function.from_name(app_name, tag, namespace=namespace, environment_name=environment_name)
+        obj = _Function.from_name(app_name, name, namespace=namespace, environment_name=environment_name)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)

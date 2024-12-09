@@ -16,6 +16,7 @@ from ._resources import convert_fn_config_to_resources_config
 from ._serialization import check_valid_cls_constructor_arg
 from ._traceback import print_server_warnings
 from ._utils.async_utils import synchronize_api, synchronizer
+from ._utils.deprecation_utils import renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
@@ -513,10 +514,11 @@ class _Cls(_Object, type_prefix="cs"):
         return self._class_service_function is not None
 
     @classmethod
+    @renamed_parameter((2024, 12, 9), "tag", "name")
     def from_name(
         cls: type["_Cls"],
         app_name: str,
-        tag: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         workspace: Optional[str] = None,
@@ -536,7 +538,7 @@ class _Cls(_Object, type_prefix="cs"):
             _environment_name = _get_environment_name(environment_name, resolver)
             request = api_pb2.ClassGetRequest(
                 app_name=app_name,
-                object_tag=tag,
+                object_tag=name,
                 namespace=namespace,
                 environment_name=_environment_name,
                 lookup_published=workspace is not None,
@@ -554,8 +556,7 @@ class _Cls(_Object, type_prefix="cs"):
                     raise
 
             print_server_warnings(response.server_warnings)
-
-            class_function_tag = f"{tag}.*"  # special name of the base service function for the class
+            class_function_tag = f"{name}.*"  # special name of the base service function for the class
 
             class_service_function = _Function.from_name(
                 app_name,
@@ -635,9 +636,10 @@ class _Cls(_Object, type_prefix="cs"):
         return cls
 
     @staticmethod
+    @renamed_parameter((2024, 12, 9), "tag", "name")
     async def lookup(
         app_name: str,
-        tag: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
@@ -653,7 +655,9 @@ class _Cls(_Object, type_prefix="cs"):
         obj = Class()
         ```
         """
-        obj = _Cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name, workspace=workspace)
+        obj = _Cls.from_name(
+            app_name, name, namespace=namespace, environment_name=environment_name, workspace=workspace
+        )
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
