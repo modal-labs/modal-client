@@ -8,9 +8,9 @@ R = TypeVar("R")
 
 
 def renamed_parameter(
-    new_name: str,
-    old_name: str,
     date: tuple[int, int, int],
+    old_name: str,
+    new_name: str,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
         @functools.wraps(func)

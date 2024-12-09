@@ -53,7 +53,7 @@ class _Environment(_Object, type_prefix="en"):
         )
 
     @staticmethod
-    @renamed_parameter("name", "label", (2024, 10, 9))
+    @renamed_parameter((2024, 12, 9), "label", "name")
     async def from_name(
         name: str,
         create_if_missing: bool = False,
@@ -83,7 +83,7 @@ class _Environment(_Object, type_prefix="en"):
         return _Environment._from_loader(_load, "Environment()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
-    @renamed_parameter("name", "label", (2024, 10, 9))
+    @renamed_parameter((2024, 12, 9), "label", "name")
     async def lookup(
         name: str,
         client: Optional[_Client] = None,

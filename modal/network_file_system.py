@@ -101,7 +101,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         deprecation_error((2024, 3, 20), message)
 
     @staticmethod
-    @renamed_parameter("name", "label", (2024, 10, 9))
+    @renamed_parameter((2024, 12, 9), "label", "name")
     def from_name(
         name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -177,7 +177,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             yield cls._new_hydrated(response.shared_volume_id, client, None, is_another_app=True)
 
     @staticmethod
-    @renamed_parameter("name", "label", (2024, 10, 9))
+    @renamed_parameter((2024, 12, 9), "label", "name")
     async def lookup(
         name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -225,7 +225,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         return resp.shared_volume_id
 
     @staticmethod
-    @renamed_parameter("name", "label", (2024, 10, 9))
+    @renamed_parameter((2024, 12, 9), "label", "name")
     async def delete(name: str, client: Optional[_Client] = None, environment_name: Optional[str] = None):
         obj = await _NetworkFileSystem.lookup(name, client=client, environment_name=environment_name)
         req = api_pb2.SharedVolumeDeleteRequest(shared_volume_id=obj.object_id)
