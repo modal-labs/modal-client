@@ -4,7 +4,6 @@ import io
 from typing import AsyncIterator, Generic, List, Literal, Optional, TypeVar, Union, cast
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
-from typing_extensions import TypeAlias
 
 from modal._utils.grpc_utils import retry_transient_errors
 from modal_proto import api_pb2
@@ -14,11 +13,11 @@ from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from .client import _Client
 from .exception import FilesystemExecutionError
 
-OpenTextModeUpdating: TypeAlias = Literal["r+", "+r", "w+", "+w", "a+", "+a", "x+", "+x"]
-OpenTextModeWriting: TypeAlias = Literal["w", "a", "x"]
-OpenTextModeReading: TypeAlias = Literal["r"]
-OpenTextMode: TypeAlias = Union[OpenTextModeUpdating, OpenTextModeWriting, OpenTextModeReading]
-OpenBinaryModeUpdating: TypeAlias = Literal[
+OpenTextModeUpdating = Literal["r+", "+r", "w+", "+w", "a+", "+a", "x+", "+x"]
+OpenTextModeWriting = Literal["w", "a", "x"]
+OpenTextModeReading = Literal["r"]
+OpenTextMode = Union[OpenTextModeUpdating, OpenTextModeWriting, OpenTextModeReading]
+OpenBinaryModeUpdating = Literal[
     "rb+",
     "r+b",
     "+rb",
@@ -44,10 +43,9 @@ OpenBinaryModeUpdating: TypeAlias = Literal[
     "b+x",
     "+bx",
 ]
-OpenBinaryModeWriting: TypeAlias = Literal["wb", "bw", "ab", "ba", "xb", "bx"]
-OpenBinaryModeReading: TypeAlias = Literal["rb", "br"]
-OpenBinaryMode: TypeAlias = Union[OpenBinaryModeUpdating, OpenBinaryModeReading, OpenBinaryModeWriting]
-
+OpenBinaryModeWriting = Literal["wb", "bw", "ab", "ba", "xb", "bx"]
+OpenBinaryModeReading = Literal["rb", "br"]
+OpenBinaryMode = Union[OpenBinaryModeUpdating, OpenBinaryModeReading, OpenBinaryModeWriting]
 
 LARGE_FILE_SIZE_LIMIT = 16 * 1024 * 1024  # 16MB
 READ_FILE_SIZE_LIMIT = 100 * 1024 * 1024  # 100MB
@@ -103,6 +101,29 @@ class _FileIO(Generic[T]):
     _task_id: Optional[str] = None
     _file_descriptor: Optional[str] = None
     _client: Optional[_Client] = None
+
+    def _validate_mode(self, mode: str) -> None:
+        if not any(char in mode for char in "rwax"):
+            raise ValueError(f"Invalid file mode: {mode}")
+
+        self._readable = "r" in mode or "+" in mode
+        self._writable = "w" in mode or "a" in mode or "x" in mode or "+" in mode
+        self._appended = "a" in mode
+        self._binary = "b" in mode
+
+        valid_chars = set("rwaxb+")
+        if any(char not in valid_chars for char in mode):
+            raise ValueError(f"Invalid file mode: {mode}")
+
+        mode_count = sum(1 for c in mode if c in "rwax")
+        if mode_count > 1:
+            raise ValueError("must have exactly one of create/read/write/append mode")
+
+        seen_chars = set()
+        for char in mode:
+            if char in seen_chars:
+                raise ValueError(f"Invalid file mode: {mode}")
+            seen_chars.add(char)
 
     def _handle_error(self, error: api_pb2.SystemErrorMessage) -> None:
         error_class = ERROR_MAPPING.get(error.error_code, FilesystemExecutionError)
@@ -165,11 +186,14 @@ class _FileIO(Generic[T]):
         await self._wait(resp.exec_id)
 
     @classmethod
-    async def create(cls, path: str, mode: str, client: _Client, task_id: str) -> "_FileIO":
+    async def create(
+        cls, path: str, mode: Union[OpenTextMode, OpenBinaryMode], client: _Client, task_id: str
+    ) -> "_FileIO":
         """Create a new FileIO handle."""
         self = cls.__new__(cls)
         self._client = client
         self._task_id = task_id
+        self._validate_mode(mode)
         await self._open_file(path, mode)
         self._closed = False
         return self
