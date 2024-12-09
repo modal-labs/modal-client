@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2024
 import functools
 import sys
 import warnings
