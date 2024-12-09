@@ -393,32 +393,39 @@ def shell(
         ),
     ),
 ):
-    """Run an interactive shell inside a Modal container.
+    """Run a command or interactive shell inside a Modal container.
 
-    **Examples:**
+    \b**Examples:**
 
-    Start a shell inside the default Debian-based image:
+    \bStart an interactive shell inside the default Debian-based image:
 
-    ```
+    \b```
     modal shell
     ```
 
-    Start a bash shell using the spec for `my_function` in your App:
+    \bStart an interactive shell with the spec for `my_function` in your App
+    (uses the same image, volumes, mounts, etc.):
 
-    ```
+    \b```
     modal shell hello_world.py::my_function
     ```
 
-    Or, if you're using a [modal.Cls](/docs/reference/modal.Cls), you can refer to a `@modal.method` directly:
+    \bOr, if you're using a [modal.Cls](/docs/reference/modal.Cls), you can refer to a `@modal.method` directly:
 
-    ```
+    \b```
     modal shell hello_world.py::MyClass.my_method
     ```
 
     Start a `python` shell:
 
-    ```
+    \b```
     modal shell hello_world.py --cmd=python
+    ```
+
+    \bRun a command with your function's spec and pipe the output to a file:
+
+    \b```
+    modal shell hello_world.py -c 'uv pip list' > env.txt
     ```
     """
     env = ensure_env(env)
