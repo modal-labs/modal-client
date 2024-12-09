@@ -1482,6 +1482,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Network File System (née Shared volume)
 
+    async def SharedVolumeDelete(self, stream):
+        req: api_pb2.SharedVolumeDeleteRequest = await stream.recv_message()
+        self.nfs_files.pop(req.shared_volume_id)
+        self.deployed_nfss = {k: vol_id for k, vol_id in self.deployed_nfss.items() if vol_id != req.shared_volume_id}
+        await stream.send_message(Empty())
+
     async def SharedVolumeGetOrCreate(self, stream):
         request: api_pb2.SharedVolumeGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, request.namespace, request.environment_name)
@@ -1515,6 +1521,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.recv_message()
         self.n_nfs_heartbeats += 1
         await stream.send_message(Empty())
+
+    async def SharedVolumeList(self, stream):
+        req = await stream.recv_message()
+        items = []
+        for (name, _, env_name), volume_id in self.deployed_nfss.items():
+            if env_name != req.environment_name:
+                continue
+            items.append(api_pb2.SharedVolumeListItem(label=name, shared_volume_id=volume_id, created_at=1))
+        resp = api_pb2.SharedVolumeListResponse(items=items, environment_name=req.environment_name)
+        await stream.send_message(resp)
 
     async def SharedVolumePutFile(self, stream):
         req = await stream.recv_message()
