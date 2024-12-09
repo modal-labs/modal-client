@@ -5,6 +5,7 @@ from typing import AsyncIterator, List, Optional, Union, cast
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
+from modal._utils.grpc_utils import retry_transient_errors
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
@@ -37,6 +38,24 @@ ERROR_MAPPING = {
 # See https://github.com/python/cpython/blob/main/Lib/_pyio.py#L1459
 # Unlike io.FileIO, it also implements some higher level APIs, like `delete_bytes` and `overwrite_bytes`.
 class _FileIO:
+    """FileIO handle for the Sandbox filesystem API.
+
+    The API is designed to mimic Python's io.FileIO.
+
+    **Usage**
+
+    ```python
+    import modal
+
+    app = modal.App.lookup("my-app", create_if_missing=True)
+
+    sb = modal.Sandbox.create(app=app)
+    f = sb.open("/tmp/foo.txt", "w")
+    f.write("hello")
+    f.close()
+    ```
+    """
+
     _binary = False
     _readable = False
     _writable = False
@@ -88,7 +107,8 @@ class _FileIO:
             for message in batch.output:
                 yield message
 
-    async def _wait(self, exec_id: str) -> Union[bytes, str]:
+    async def _wait(self, exec_id: str) -> bytes:
+        # The logic here is similar to how output is read from `exec`
         output = b""
         completed = False
         retries_remaining = 10
@@ -109,9 +129,7 @@ class _FileIO:
                     elif isinstance(exc, StreamTerminatedError):
                         continue
                 raise
-        if self._binary:
-            return output
-        return output.decode("utf-8")
+        return output
 
     def _validate_type(self, data: Union[bytes, str]) -> None:
         if self._binary and isinstance(data, str):
@@ -133,6 +151,7 @@ class _FileIO:
 
     @classmethod
     async def create(cls, path: str, mode: str, client: _Client, task_id: str) -> "_FileIO":
+        """Create a new FileIO handle."""
         self = cls.__new__(cls)
         self._validate_mode(mode)
         self._client = client
@@ -141,31 +160,42 @@ class _FileIO:
         self._closed = False
         return self
 
-    async def read(self, n: Union[int, None] = None) -> Union[bytes, str]:
+    async def _make_request(
+        self, request: api_pb2.ContainerFilesystemExecRequest
+    ) -> api_pb2.ContainerFilesystemExecResponse:
+        return await retry_transient_errors(self._client.stub.ContainerFilesystemExec, request)
+
+    async def read(self, n: Optional[int] = None) -> Union[bytes, str]:
         """Read n bytes from the current position, or the entire remaining file if n is None."""
         self._check_closed()
         self._check_readable()
         if n is not None and n > READ_FILE_SIZE_LIMIT:
             raise ValueError("Read request payload exceeds 100MB limit")
-        resp = await self._client.stub.ContainerFilesystemExec(
+        resp = await self._make_request(
             api_pb2.ContainerFilesystemExecRequest(
                 file_read_request=api_pb2.ContainerFileReadRequest(file_descriptor=self._file_descriptor, n=n),
                 task_id=self._task_id,
             )
         )
-        return await self._wait(resp.exec_id)
+        output = await self._wait(resp.exec_id)
+        if self._binary:
+            return output
+        return output.decode("utf-8")
 
     async def readline(self) -> Union[bytes, str]:
         """Read a single line from the current position."""
         self._check_closed()
         self._check_readable()
-        resp = await self._client.stub.ContainerFilesystemExec(
+        resp = await self._make_request(
             api_pb2.ContainerFilesystemExecRequest(
                 file_read_line_request=api_pb2.ContainerFileReadLineRequest(file_descriptor=self._file_descriptor),
                 task_id=self._task_id,
             )
         )
-        return await self._wait(resp.exec_id)
+        output = await self._wait(resp.exec_id)
+        if self._binary:
+            return output
+        return output.decode("utf-8")
 
     async def readlines(self) -> Union[List[bytes], List[str]]:
         """Read all lines from the current position."""
@@ -193,7 +223,7 @@ class _FileIO:
             data = data.encode("utf-8")
         if len(data) > LARGE_FILE_SIZE_LIMIT:
             raise ValueError("Write request payload exceeds 16MB limit")
-        resp = await self._client.stub.ContainerFilesystemExec(
+        resp = await self._make_request(
             api_pb2.ContainerFilesystemExecRequest(
                 file_write_request=api_pb2.ContainerFileWriteRequest(file_descriptor=self._file_descriptor, data=data),
                 task_id=self._task_id,
@@ -205,7 +235,7 @@ class _FileIO:
         """Flush the buffer to disk."""
         self._check_closed()
         self._check_writable()
-        resp = await self._client.stub.ContainerFilesystemExec(
+        resp = await self._make_request(
             api_pb2.ContainerFilesystemExecRequest(
                 file_flush_request=api_pb2.ContainerFileFlushRequest(file_descriptor=self._file_descriptor),
                 task_id=self._task_id,
@@ -230,7 +260,7 @@ class _FileIO:
         (relative to the current position) and 2 (relative to the file's end).
         """
         self._check_closed()
-        resp = await self._client.stub.ContainerFilesystemExec(
+        resp = await self._make_request(
             api_pb2.ContainerFilesystemExecRequest(
                 file_seek_request=api_pb2.ContainerFileSeekRequest(
                     file_descriptor=self._file_descriptor,
@@ -242,7 +272,7 @@ class _FileIO:
         )
         await self._wait(resp.exec_id)
 
-    async def delete_bytes(self, start: Union[int, None] = None, end: Union[int, None] = None) -> None:
+    async def delete_bytes(self, start: Optional[int] = None, end: Optional[int] = None) -> None:
         """Delete a range of bytes from the file.
 
         `start` and `end` are byte offsets. `start` is inclusive, `end` is exclusive.
@@ -254,7 +284,7 @@ class _FileIO:
         if start is not None and end is not None:
             if start >= end:
                 raise ValueError("start must be less than end")
-        resp = await self._client.stub.ContainerFilesystemExec(
+        resp = await self._make_request(
             api_pb2.ContainerFilesystemExecRequest(
                 file_delete_bytes_request=api_pb2.ContainerFileDeleteBytesRequest(
                     file_descriptor=self._file_descriptor,
@@ -266,7 +296,7 @@ class _FileIO:
         )
         await self._wait(resp.exec_id)
 
-    async def overwrite_bytes(self, data: bytes, start: Union[int, None] = None, end: Union[int, None] = None) -> None:
+    async def overwrite_bytes(self, data: bytes, start: Optional[int] = None, end: Optional[int] = None) -> None:
         """Overwrite a range of bytes in the file with new data. The length of the data does not
         have to be the same as the length of the range being overwritten.
 
@@ -281,7 +311,7 @@ class _FileIO:
                 raise ValueError("start must be less than end")
         if len(data) > LARGE_FILE_SIZE_LIMIT:
             raise ValueError("Write request payload exceeds 16MB limit")
-        resp = await self._client.stub.ContainerFilesystemExec(
+        resp = await self._make_request(
             api_pb2.ContainerFilesystemExecRequest(
                 file_write_replace_bytes_request=api_pb2.ContainerFileWriteReplaceBytesRequest(
                     file_descriptor=self._file_descriptor,
@@ -296,7 +326,7 @@ class _FileIO:
 
     async def _close(self) -> None:
         # Buffer is flushed by the runner on close
-        resp = await self._client.stub.ContainerFilesystemExec(
+        resp = await self._make_request(
             api_pb2.ContainerFilesystemExecRequest(
                 file_close_request=api_pb2.ContainerFileCloseRequest(file_descriptor=self._file_descriptor),
                 task_id=self._task_id,

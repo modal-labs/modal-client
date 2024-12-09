@@ -503,7 +503,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         **Usage**
 
         ```python notest
-        sb = modal.Sandbox.create("sleep", "infinity")
+        sb = modal.Sandbox.create(app=sb_app)
         f = sb.open("/test.txt", "w")
         f.write("hello")
         f.close()
