@@ -908,7 +908,7 @@ class _ContainerIOManager:
         if self.checkpoint_id:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id} (Memory Snapshot ID)")
         else:
-            logger.debug("No checkpoint ID provided (Memory Snapshot ID)")
+            raise ValueError("No checkpoint ID provided for memory snapshot")
 
         # Pause heartbeats since they keep the client connection open which causes the snapshotter to crash
         async with self.heartbeat_condition:
@@ -918,7 +918,7 @@ class _ContainerIOManager:
             self.heartbeat_condition.notify_all()
 
             await self._client.stub.ContainerCheckpoint(
-                api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id or "")
+                api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
             )
 
             await self._client._close(prep_for_restore=True)

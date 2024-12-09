@@ -8,6 +8,7 @@ from pathlib import Path
 
 from modal import App, Image, Mount, NetworkFileSystem, Sandbox, Secret
 from modal.exception import DeprecationError, InvalidError
+from modal.stream_type import StreamType
 from modal_proto import api_pb2
 
 skip_non_linux = pytest.mark.skipif(platform.system() != "Linux", reason="sandbox mock uses subprocess")
@@ -385,3 +386,29 @@ def test_sandbox_no_entrypoint(app, servicer):
 def test_sandbox_gpu_fallbacks_support(client, servicer):
     with pytest.raises(InvalidError, match="do not support"):
         Sandbox.create(client=client, gpu=["t4", "a100"])  # type: ignore
+
+
+@skip_non_linux
+def test_sandbox_exec_stdout(app, servicer, capsys):
+    sb = Sandbox.create("sleep", "infinity", app=app)
+
+    cp = sb.exec("bash", "-c", "echo hi", stdout=StreamType.STDOUT)
+    cp.wait()
+
+    assert capsys.readouterr().out == "hi\n"
+
+    with pytest.raises(InvalidError):
+        cp.stdout.read()
+
+
+@skip_non_linux
+def test_sandbox_snapshot_fs(app, servicer):
+    sb = Sandbox.create(app=app)
+    image = sb.snapshot_filesystem()
+    sb.terminate()
+
+    sb2 = Sandbox.create(image=image, app=app)
+    sb2.terminate()
+
+    assert image.object_id == "im-123"
+    assert servicer.sandbox_defs[1].image_id == "im-123"

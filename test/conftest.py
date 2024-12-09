@@ -1426,6 +1426,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
             pass
         await stream.send_message(api_pb2.SandboxTerminateResponse())
 
+    async def SandboxSnapshotFs(self, stream):
+        _request: api_pb2.SandboxSnapshotFsRequest = await stream.recv_message()
+        await stream.send_message(
+            api_pb2.SandboxSnapshotFsResponse(
+                image_id="im-123",
+                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
+            )
+        )
+
     async def SandboxGetTaskId(self, stream):
         # only used for `modal shell` / `modal container exec`
         _request: api_pb2.SandboxGetTaskIdRequest = await stream.recv_message()

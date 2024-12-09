@@ -478,7 +478,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             if len(service.code_deps) != len(dep_object_ids):
                 raise ExecutionError(
                     f"Function has {len(service.code_deps)} dependencies"
-                    f" but container got {len(dep_object_ids)} object ids."
+                    f" but container got {len(dep_object_ids)} object ids.\n"
+                    f"Code deps: {service.code_deps}\n"
+                    f"Object ids: {dep_object_ids}"
                 )
             for object_id, obj in zip(dep_object_ids, service.code_deps):
                 metadata: Message = container_app.object_handle_metadata[object_id]
