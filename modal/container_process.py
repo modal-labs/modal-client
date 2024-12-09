@@ -9,7 +9,7 @@ from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from .client import _Client
-from .exception import InteractiveTimeoutError, InvalidError
+from .exception import InteractiveTimeoutError, InvalidError, deprecation_error
 from .io_streams import _StreamReader, _StreamWriter
 from .stream_type import StreamType
 
@@ -114,10 +114,17 @@ class _ContainerProcess(Generic[T]):
                 self._returncode = resp.exit_code
                 return self._returncode
 
-    async def attach(self):
+    async def attach(self, *, pty: Optional[bool] = None):
         if platform.system() == "Windows":
             print("interactive exec is not currently supported on Windows.")
             return
+
+        if pty is not None:
+            deprecation_error(
+                (2024, 12, 9),
+                "The `pty` argument to `modal.container_process.attach(pty=...)` is deprecated, "
+                "as only PTY mode is supported. Please remove the argument.",
+            )
 
         from rich.console import Console
 
