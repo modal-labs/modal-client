@@ -24,7 +24,7 @@ from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
 import modal_proto.api_pb2
-from modal.exception import VolumeUploadTimeoutError, deprecation_error, deprecation_warning
+from modal.exception import VolumeUploadTimeoutError
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
@@ -36,7 +36,7 @@ from ._utils.blob_utils import (
     get_file_upload_spec_from_fileobj,
     get_file_upload_spec_from_path,
 )
-from ._utils.deprecation_utils import renamed_parameter
+from ._utils.deprecation_utils import deprecation_error, deprecation_warning, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
