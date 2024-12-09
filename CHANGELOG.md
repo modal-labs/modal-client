@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.67.38 (2024-12-09)
+
+- Sandboxes now support filesystem snapshots. Run `Sandbox.snapshot_filesystem()` to get an Image which can be used to spawn new Sandboxes.
+
+
+
 ### 0.67.28 (2024-12-05)
 
 * Adds `Image.add_local_python_source` which works similarly to the old and soon-to-be-deprecated `Mount.from_local_python_packages` but for images. One notable difference is that the new `add_local_python_source` *only* includes `.py`-files by default
