@@ -27,7 +27,7 @@ from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import connect_channel, create_channel, retry_transient_errors
 from .config import _check_config, _is_remote, config, logger
-from .exception import AuthError, ClientClosed, ConnectionError, DeprecationError, VersionError
+from .exception import AuthError, ClientClosed, ConnectionError, VersionError, client_version_warning
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
@@ -146,8 +146,7 @@ class _Client:
                 total_timeout=CLIENT_CREATE_TOTAL_TIMEOUT,
             )
             if resp.warning:
-                ALARM_EMOJI = chr(0x1F6A8)
-                warnings.warn_explicit(f"{ALARM_EMOJI} {resp.warning} {ALARM_EMOJI}", DeprecationError, "<unknown>", 0)
+                client_version_warning(resp.warning)
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
                 raise VersionError(

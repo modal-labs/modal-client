@@ -401,6 +401,7 @@ message AppPublishRequest {
 message AppPublishResponse {
   string url = 1;
   repeated string warnings = 2;
+  string client_version_warning = 3;
 }
 
 message AppRollbackRequest {
@@ -619,6 +620,7 @@ message ClassGetRequest {
 message ClassGetResponse {
   string class_id = 1;
   ClassHandleMetadata handle_metadata = 2;
+  string client_version_warning = 3;
 }
 
 message ClassHandleMetadata {
@@ -1446,6 +1448,7 @@ message FunctionGetRequest {
 message FunctionGetResponse {
   string function_id = 1;
   FunctionHandleMetadata handle_metadata = 2;
+  string client_version_warning = 3;
 }
 
 message FunctionGetSerializedRequest {

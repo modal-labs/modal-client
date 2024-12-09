@@ -18,7 +18,7 @@ from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
-from .exception import InvalidError, NotFoundError, VersionError
+from .exception import InvalidError, NotFoundError, VersionError, client_version_warning
 from .functions import (
     _Function,
     _parse_retries,
@@ -485,6 +485,9 @@ class _Cls(_Object, type_prefix="cs"):
                     raise InvalidError(exc.message)
                 else:
                     raise
+
+            if response.client_version_warning:
+                client_version_warning(response.client_version_warning)
 
             class_function_tag = f"{tag}.*"  # special name of the base service function for the class
 

@@ -161,6 +161,11 @@ def deprecation_warning(
     warnings.warn_explicit(f"{date(*deprecated_on)}: {msg}", warning_cls, filename, lineno)
 
 
+def client_version_warning(warning_str: str):
+    ALARM_EMOJI = chr(0x1F6A8)
+    warnings.warn_explicit(f"{ALARM_EMOJI} {warning_str} {ALARM_EMOJI}", DeprecationError, "<unknown>", 0)
+
+
 def _simulate_preemption_interrupt(signum, frame):
     signal.alarm(30)  # simulate a SIGKILL after 30s
     raise KeyboardInterrupt("Simulated preemption interrupt from modal-client!")

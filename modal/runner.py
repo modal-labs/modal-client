@@ -30,6 +30,7 @@ from .exception import (
     InvalidError,
     RemoteError,
     _CliUserExecutionError,
+    client_version_warning,
     deprecation_error,
 )
 from .functions import _Function
@@ -204,6 +205,9 @@ async def _publish_app(
         if exc.status == Status.INVALID_ARGUMENT or exc.status == Status.FAILED_PRECONDITION:
             raise InvalidError(exc.message)
         raise
+
+    if response.client_version_warning:
+        client_version_warning(response.client_version_warning)
 
     return response.url, response.warnings
 
