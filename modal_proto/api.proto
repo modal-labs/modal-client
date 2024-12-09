@@ -1239,7 +1239,6 @@ message FunctionAsyncInvokeRequest {
 message FunctionAsyncInvokeResponse {
   bool retry_with_blob_upload = 1;
   string function_call_id = 2;
-  string input_id = 3;
 }
 
 message FunctionBindParamsRequest {
