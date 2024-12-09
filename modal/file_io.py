@@ -1,9 +1,10 @@
 # Copyright Modal Labs 2024
 import asyncio
 import io
-from typing import AsyncIterator, List, Optional, Union, cast
+from typing import AsyncIterator, Generic, List, Literal, Optional, TypeVar, Union, cast
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
+from typing_extensions import TypeAlias
 
 from modal._utils.grpc_utils import retry_transient_errors
 from modal_proto import api_pb2
@@ -12,6 +13,41 @@ from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from .client import _Client
 from .exception import FilesystemExecutionError
+
+OpenTextModeUpdating: TypeAlias = Literal["r+", "+r", "w+", "+w", "a+", "+a", "x+", "+x"]
+OpenTextModeWriting: TypeAlias = Literal["w", "a", "x"]
+OpenTextModeReading: TypeAlias = Literal["r"]
+OpenTextMode: TypeAlias = Union[OpenTextModeUpdating, OpenTextModeWriting, OpenTextModeReading]
+OpenBinaryModeUpdating: TypeAlias = Literal[
+    "rb+",
+    "r+b",
+    "+rb",
+    "br+",
+    "b+r",
+    "+br",
+    "wb+",
+    "w+b",
+    "+wb",
+    "bw+",
+    "b+w",
+    "+bw",
+    "ab+",
+    "a+b",
+    "+ab",
+    "ba+",
+    "b+a",
+    "+ba",
+    "xb+",
+    "x+b",
+    "+xb",
+    "bx+",
+    "b+x",
+    "+bx",
+]
+OpenBinaryModeWriting: TypeAlias = Literal["wb", "bw", "ab", "ba", "xb", "bx"]
+OpenBinaryModeReading: TypeAlias = Literal["rb", "br"]
+OpenBinaryMode: TypeAlias = Union[OpenBinaryModeUpdating, OpenBinaryModeReading, OpenBinaryModeWriting]
+
 
 LARGE_FILE_SIZE_LIMIT = 16 * 1024 * 1024  # 16MB
 READ_FILE_SIZE_LIMIT = 100 * 1024 * 1024  # 100MB
@@ -33,11 +69,13 @@ ERROR_MAPPING = {
     api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_NOSPC: OSError,
 }
 
+T = TypeVar("T", str, bytes)
+
 
 # The Sandbox file handling API is designed to mimic Python's io.FileIO
 # See https://github.com/python/cpython/blob/main/Lib/_pyio.py#L1459
 # Unlike io.FileIO, it also implements some higher level APIs, like `delete_bytes` and `overwrite_bytes`.
-class _FileIO:
+class _FileIO(Generic[T]):
     """FileIO handle for the Sandbox filesystem API.
 
     The API is designed to mimic Python's io.FileIO.
@@ -65,29 +103,6 @@ class _FileIO:
     _task_id: Optional[str] = None
     _file_descriptor: Optional[str] = None
     _client: Optional[_Client] = None
-
-    def _validate_mode(self, mode: str) -> None:
-        if not any(char in mode for char in "rwax"):
-            raise ValueError(f"Invalid file mode: {mode}")
-
-        self._readable = "r" in mode or "+" in mode
-        self._writable = "w" in mode or "a" in mode or "x" in mode or "+" in mode
-        self._appended = "a" in mode
-        self._binary = "b" in mode
-
-        valid_chars = set("rwaxb+")
-        if any(char not in valid_chars for char in mode):
-            raise ValueError(f"Invalid file mode: {mode}")
-
-        mode_count = sum(1 for c in mode if c in "rwax")
-        if mode_count > 1:
-            raise ValueError("must have exactly one of create/read/write/append mode")
-
-        seen_chars = set()
-        for char in mode:
-            if char in seen_chars:
-                raise ValueError(f"Invalid file mode: {mode}")
-            seen_chars.add(char)
 
     def _handle_error(self, error: api_pb2.SystemErrorMessage) -> None:
         error_class = ERROR_MAPPING.get(error.error_code, FilesystemExecutionError)
@@ -153,7 +168,6 @@ class _FileIO:
     async def create(cls, path: str, mode: str, client: _Client, task_id: str) -> "_FileIO":
         """Create a new FileIO handle."""
         self = cls.__new__(cls)
-        self._validate_mode(mode)
         self._client = client
         self._task_id = task_id
         await self._open_file(path, mode)
@@ -165,7 +179,7 @@ class _FileIO:
     ) -> api_pb2.ContainerFilesystemExecResponse:
         return await retry_transient_errors(self._client.stub.ContainerFilesystemExec, request)
 
-    async def read(self, n: Optional[int] = None) -> Union[bytes, str]:
+    async def read(self, n: Optional[int] = None) -> T:
         """Read n bytes from the current position, or the entire remaining file if n is None."""
         self._check_closed()
         self._check_readable()
@@ -182,7 +196,7 @@ class _FileIO:
             return output
         return output.decode("utf-8")
 
-    async def readline(self) -> Union[bytes, str]:
+    async def readline(self) -> T:
         """Read a single line from the current position."""
         self._check_closed()
         self._check_readable()
@@ -197,7 +211,7 @@ class _FileIO:
             return output
         return output.decode("utf-8")
 
-    async def readlines(self) -> Union[List[bytes], List[str]]:
+    async def readlines(self) -> List[T]:
         """Read all lines from the current position."""
         self._check_closed()
         self._check_readable()
