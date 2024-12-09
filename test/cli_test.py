@@ -540,6 +540,14 @@ def test_nfs_get(set_env_client, servicer):
             assert f.read() == "foo bar baz"
 
 
+def test_nfs_create_delete(servicer, server_url_env, set_env_client):
+    name = "test-delete-nfs"
+    _run(["nfs", "create", name])
+    assert name in _run(["nfs", "list"]).stdout
+    _run(["nfs", "delete", "--yes", name])
+    assert name not in _run(["nfs", "list"]).stdout
+
+
 def test_volume_cli(set_env_client):
     _run(["volume", "--help"])
 
