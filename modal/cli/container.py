@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-import sys
 from typing import Optional, Union
 
 import typer
@@ -8,7 +7,7 @@ from rich.text import Text
 from modal._pty import get_pty_info
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
-from modal.cli.utils import ENV_OPTION, display_table, stream_app_logs, timestamp_to_local
+from modal.cli.utils import ENV_OPTION, display_table, is_tty, stream_app_logs, timestamp_to_local
 from modal.client import _Client
 from modal.config import config
 from modal.container_process import _ContainerProcess
@@ -67,7 +66,7 @@ async def exec(
     """Execute a command in a container."""
 
     if pty is None:
-        pty = sys.stdout.isatty()
+        pty = is_tty()
 
     client = await _Client.from_env()
 

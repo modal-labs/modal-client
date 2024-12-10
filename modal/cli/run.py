@@ -29,7 +29,7 @@ from ..runner import deploy_app, interactive_shell, run_app
 from ..serving import serve_app
 from ..volume import Volume
 from .import_refs import import_app, import_function
-from .utils import ENV_OPTION, ENV_OPTION_HELP, stream_app_logs
+from .utils import ENV_OPTION, ENV_OPTION_HELP, is_tty, stream_app_logs
 
 
 class ParameterMetadata(TypedDict):
@@ -392,6 +392,7 @@ def shell(
             "Can be a single region or a comma-separated list to choose from (if not using REF)."
         ),
     ),
+    pty: Optional[bool] = typer.Option(default=None, help="Run the command using a PTY."),
 ):
     """Run a command or interactive shell inside a Modal container.
 
@@ -430,7 +431,8 @@ def shell(
     """
     env = ensure_env(env)
 
-    pty = sys.stdout.isatty()
+    if pty is None:
+        pty = is_tty()
 
     if platform.system() == "Windows":
         raise InvalidError("`modal shell` is currently not supported on Windows")
