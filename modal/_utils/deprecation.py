@@ -60,8 +60,7 @@ def renamed_parameter(
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
         @functools.wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-            # Don't reference kwargs directly to work around a bug in sigtools
-            mut_kwargs: dict[str, Any] = locals()["kwargs"]
+            mut_kwargs: dict[str, Any] = locals()["kwargs"]  # Avoid referencing kwargs directly due to bug in sigtools
             if old_name in mut_kwargs:
                 mut_kwargs[new_name] = mut_kwargs.pop(old_name)
                 func_name = func.__qualname__.removeprefix("_")  # Avoid confusion when synchronicity-wrapped

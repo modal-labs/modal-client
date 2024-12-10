@@ -74,11 +74,15 @@ def append_modal_tb(exc: BaseException, tb_dict: TBDictType, line_cache: LineCac
 
 def reduce_traceback_to_user_code(tb: Optional[TracebackType], user_source: str) -> TracebackType:
     """Return a traceback that does not contain modal entrypoint or synchronicity frames."""
+
     # Step forward all the way through the traceback and drop any synchronicity frames
+    def skip_frame(filename):
+        return "/site-packages/synchronicity/" in filename or "modal/_utils/deprecation" in filename
+
     tb_root = tb
     while tb is not None:
         while tb.tb_next is not None:
-            if "/site-packages/synchronicity/" in tb.tb_next.tb_frame.f_code.co_filename:
+            if skip_frame(tb.tb_next.tb_frame.f_code.co_filename):
                 tb.tb_next = tb.tb_next.tb_next
             else:
                 break
