@@ -68,3 +68,14 @@ def test_create_if_missing(servicer, client):
     v1: Volume = Volume.lookup("my-volume", create_if_missing=True, client=client)
     v2: Volume = Volume.lookup("my-volume", client=client)
     assert v1.object_id == v2.object_id
+
+
+def test_lookup_with_old_client(servicer, client):
+    app = App()
+
+    app.function()(square)
+    deploy_app(app, "my-function", client=client)
+
+    servicer.function_client_version_warning = "xyz"
+    with pytest.warns(match="xyz"):
+        Function.lookup("my-function", "square", client=client)

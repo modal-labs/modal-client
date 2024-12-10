@@ -255,6 +255,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.required_creds = {token_id: token_secret}  # Any of this will be accepted
         self.last_metadata = None
 
+        self.function_client_version_warning = None
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
@@ -990,9 +992,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         object_id = app_objects.get(request.object_tag)
         if object_id is None:
             raise GRPCError(Status.NOT_FOUND, f"can't find object {request.object_tag}")
-        await stream.send_message(
-            api_pb2.FunctionGetResponse(function_id=object_id, handle_metadata=self.get_function_metadata(object_id))
+        response = api_pb2.FunctionGetResponse(
+            function_id=object_id,
+            handle_metadata=self.get_function_metadata(object_id),
+            client_version_warning=self.function_client_version_warning,
         )
+        await stream.send_message(response)
 
     async def FunctionMap(self, stream):
         self.fcidx += 1
