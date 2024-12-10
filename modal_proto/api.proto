@@ -400,7 +400,8 @@ message AppPublishRequest {
 
 message AppPublishResponse {
   string url = 1;
-  repeated string warnings = 2;
+  repeated string warnings = 2;  // Deprecated soon in favor of server_warnings
+  repeated Warning server_warnings = 3;
 }
 
 message AppRollbackRequest {
@@ -619,6 +620,7 @@ message ClassGetRequest {
 message ClassGetResponse {
   string class_id = 1;
   ClassHandleMetadata handle_metadata = 2;
+  repeated Warning server_warnings = 3;
 }
 
 message ClassHandleMetadata {
@@ -1457,6 +1459,7 @@ message FunctionGetRequest {
 message FunctionGetResponse {
   string function_id = 1;
   FunctionHandleMetadata handle_metadata = 2;
+  repeated Warning server_warnings = 4;
 }
 
 message FunctionGetSerializedRequest {
@@ -2623,6 +2626,16 @@ message VolumeRemoveFileRequest {
   string volume_id = 1 [ (modal.options.audit_target_attr) = true ];
   string path = 2;
   bool recursive = 3;
+}
+
+message Warning {
+  enum WarningType {
+    WARNING_TYPE_UNSPECIFIED = 0;
+    WARNING_TYPE_CLIENT_DEPRECATION = 1;
+    WARNING_TYPE_RESOURCE_LIMIT = 2;
+  }
+  WarningType type = 1;
+  string message = 2;
 }
 
 message WebUrlInfo {
