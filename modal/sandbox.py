@@ -543,7 +543,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         self,
         path: str,
         mode: Union[OpenTextMode, OpenBinaryMode] = "r",
-    ) -> _FileIO[str]:
+    ):
         """Open a file in the Sandbox and return
         a [`FileIO`](https://modal.com/docs/reference/modal.FileIO#modalfile_io) handle.
 
