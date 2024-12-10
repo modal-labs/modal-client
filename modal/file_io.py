@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2024
 import asyncio
 import io
-from typing import AsyncIterator, Generic, Literal, Optional, Sequence, TypeVar, Union, cast
+from typing import AsyncIterator, Generic, Literal, Optional, Sequence, TypeVar, Union
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
@@ -47,8 +47,8 @@ OpenBinaryModeWriting = Literal["wb", "bw", "ab", "ba", "xb", "bx"]
 OpenBinaryModeReading = Literal["rb", "br"]
 OpenBinaryMode = Union[OpenBinaryModeUpdating, OpenBinaryModeReading, OpenBinaryModeWriting]
 
-LARGE_FILE_SIZE_LIMIT = 16 * 1024 * 1024  # 16MB
-READ_FILE_SIZE_LIMIT = 100 * 1024 * 1024  # 100MB
+LARGE_FILE_SIZE_LIMIT = 16 * 1024 * 1024  # 16 MiB
+READ_FILE_SIZE_LIMIT = 100 * 1024 * 1024  # 100 MiB
 
 ERROR_MAPPING = {
     api_pb2.SystemErrorCode.SYSTEM_ERROR_CODE_UNSPECIFIED: FilesystemExecutionError,
@@ -203,19 +203,22 @@ class _FileIO(Generic[T]):
     ) -> api_pb2.ContainerFilesystemExecResponse:
         return await retry_transient_errors(self._client.stub.ContainerFilesystemExec, request)
 
-    async def read(self, n: Optional[int] = None) -> T:
-        """Read n bytes from the current position, or the entire remaining file if n is None."""
-        self._check_closed()
-        self._check_readable()
-        if n is not None and n > READ_FILE_SIZE_LIMIT:
-            raise ValueError("Read request payload exceeds 100MB limit")
+    async def _make_read_request(self, n: Optional[int]) -> bytes:
         resp = await self._make_request(
             api_pb2.ContainerFilesystemExecRequest(
                 file_read_request=api_pb2.ContainerFileReadRequest(file_descriptor=self._file_descriptor, n=n),
                 task_id=self._task_id,
             )
         )
-        output = await self._wait(resp.exec_id)
+        return await self._wait(resp.exec_id)
+
+    async def read(self, n: Optional[int] = None) -> T:
+        """Read n bytes from the current position, or the entire remaining file if n is None."""
+        self._check_closed()
+        self._check_readable()
+        if n is not None and n > READ_FILE_SIZE_LIMIT:
+            raise ValueError("Read request payload exceeds 100 MiB limit")
+        output = await self._make_read_request(n)
         if self._binary:
             return output
         return output.decode("utf-8")
@@ -239,12 +242,12 @@ class _FileIO(Generic[T]):
         """Read all lines from the current position."""
         self._check_closed()
         self._check_readable()
-        data = await self.read()
+        output = await self._make_read_request(None)
         if self._binary:
-            lines = cast(bytes, data).split(b"\n")
-            return [line + b"\n" for line in lines[:-1]] + ([lines[-1]] if lines[-1] else [])
+            lines_bytes = output.split(b"\n")
+            return [line + b"\n" for line in lines_bytes[:-1]] + ([lines_bytes[-1]] if lines_bytes[-1] else [])
         else:
-            lines = cast(str, data).split("\n")
+            lines = output.decode("utf-8").split("\n")
             return [line + "\n" for line in lines[:-1]] + ([lines[-1]] if lines[-1] else [])
 
     async def write(self, data: Union[bytes, str]) -> None:
@@ -260,7 +263,7 @@ class _FileIO(Generic[T]):
         if isinstance(data, str):
             data = data.encode("utf-8")
         if len(data) > LARGE_FILE_SIZE_LIMIT:
-            raise ValueError("Write request payload exceeds 16MB limit")
+            raise ValueError("Write request payload exceeds 16 MiB limit")
         resp = await self._make_request(
             api_pb2.ContainerFilesystemExecRequest(
                 file_write_request=api_pb2.ContainerFileWriteRequest(file_descriptor=self._file_descriptor, data=data),
