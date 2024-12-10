@@ -559,6 +559,11 @@ class _Sandbox(_Object, type_prefix="sb"):
         task_id = await self._get_task_id()
         return await _FileIO.create(path, mode, self._client, task_id)
 
+    async def listdir(self, path: str) -> list[str]:
+        """List the contents of a directory in the Sandbox."""
+        task_id = await self._get_task_id()
+        return await _FileIO.listdir(path, self._client, task_id)
+
     @property
     def stdout(self) -> _StreamReader[str]:
         """

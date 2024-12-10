@@ -365,6 +365,46 @@ class _FileIO(Generic[T]):
         )
         await self._wait(resp.exec_id)
 
+    async def listdir(self, path: str) -> list[str]:
+        """List the contents of the provided directory."""
+        resp = await self._make_request(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_ls_request=api_pb2.ContainerFileLsRequest(path=path),
+                task_id=self._task_id,
+            )
+        )
+        return resp.file_ls_response.paths
+
+    async def mkdir(self, path: str) -> None:
+        """Create a new directory."""
+        resp = await self._make_request(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_mkdir_request=api_pb2.ContainerFileMkdirRequest(path=path),
+                task_id=self._task_id,
+            )
+        )
+        await self._wait(resp.exec_id)
+
+    async def rmdir(self, dirpath: str) -> None:
+        """Remove a directory."""
+        resp = await self._make_request(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_rm_request=api_pb2.ContainerFileRmRequest(path=dirpath, recursive=True),
+                task_id=self._task_id,
+            )
+        )
+        await self._wait(resp.exec_id)
+
+    async def rm(self, filepath: str) -> None:
+        """Remove a file."""
+        resp = await self._make_request(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_rm_request=api_pb2.ContainerFileRmRequest(path=filepath, recursive=False),
+                task_id=self._task_id,
+            )
+        )
+        await self._wait(resp.exec_id)
+
     async def _close(self) -> None:
         # Buffer is flushed by the runner on close
         resp = await self._make_request(
