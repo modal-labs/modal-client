@@ -1391,7 +1391,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         """
         self._check_no_web_url("_experimental_spawn")
         if self._is_generator:
-            # TODO(dshaar): Deprecate this.
             invocation = await self._call_generator_nowait(args, kwargs)
             fc = _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
             fc._is_generator = True
