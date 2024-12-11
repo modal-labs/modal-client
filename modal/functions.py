@@ -32,6 +32,7 @@ from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._runtime.execution_context import current_input_id, is_local
 from ._serialization import serialize, serialize_proto_params
+from ._traceback import print_server_warnings
 from ._utils.async_utils import (
     TaskContext,
     async_merge,
@@ -64,7 +65,6 @@ from .exception import (
     NotFoundError,
     OutputExpiredError,
     deprecation_warning,
-    print_server_warnings,
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
