@@ -4,7 +4,6 @@ import logging
 import pytest
 import time
 
-from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
 from modal import App, Dict, Image, Mount, Secret, Stub, Volume, enable_output, web_endpoint
@@ -167,11 +166,10 @@ async def test_grpc_protocol(client, servicer):
     app = App()
     async with app.run(client=client):
         await asyncio.sleep(0.01)  # wait for heartbeat
-    assert len(servicer.requests) == 4
-    assert isinstance(servicer.requests[0], Empty)  # ClientHello
-    assert isinstance(servicer.requests[1], api_pb2.AppCreateRequest)
-    assert isinstance(servicer.requests[2], api_pb2.AppHeartbeatRequest)
-    assert isinstance(servicer.requests[3], api_pb2.AppClientDisconnectRequest)
+    assert len(servicer.requests) == 3
+    assert isinstance(servicer.requests[0], api_pb2.AppCreateRequest)
+    assert isinstance(servicer.requests[1], api_pb2.AppHeartbeatRequest)
+    assert isinstance(servicer.requests[2], api_pb2.AppClientDisconnectRequest)
 
 
 async def web1(x):
