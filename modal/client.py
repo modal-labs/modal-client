@@ -23,6 +23,7 @@ from modal._utils.async_utils import synchronizer
 from modal_proto import api_grpc, api_pb2, modal_api_grpc
 from modal_version import __version__
 
+from ._traceback import print_server_warnings
 from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import connect_channel, create_channel, retry_transient_errors
@@ -139,7 +140,7 @@ class _Client:
         logger.debug(f"Client ({id(self)}): Starting")
         try:
             req = empty_pb2.Empty()
-            await retry_transient_errors(
+            resp = await retry_transient_errors(
                 self.stub.ClientHello,
                 req,
                 attempt_timeout=CLIENT_CREATE_ATTEMPT_TIMEOUT,
@@ -152,6 +153,8 @@ class _Client:
                 )
             else:
                 raise exc
+
+        print_server_warnings(resp.server_warnings)
 
     async def __aenter__(self):
         await self._open()
