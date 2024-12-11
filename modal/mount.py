@@ -567,6 +567,7 @@ class _Mount(_Object, type_prefix="mo"):
         # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
         # Defaults to including all files.
         condition: Optional[Callable[[str], bool]] = None,
+        include_files: Optional[Callable[[Path], bool]] = None,
     ) -> "_Mount":
         """
         Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
@@ -591,13 +592,22 @@ class _Mount(_Object, type_prefix="mo"):
 
         # Don't re-run inside container.
 
+        if condition is not None:
+            if include_files is not None:
+                raise InvalidError("Cannot specify both `include_files` and `condition`")
+
+            def converted_condition(path: Path) -> bool:
+                return condition(str(path))
+
+            include_files = converted_condition
+
         mount = _Mount._new()
         from ._runtime.execution_context import is_local
 
         if not is_local():
             return mount  # empty/non-mountable mount in case it's used from within a container
         for module_name in module_names:
-            mount = mount._extend(_MountedPythonModule(module_name, remote_dir, condition))
+            mount = mount._extend(_MountedPythonModule(module_name, remote_dir, include_files))
         return mount
 
     @staticmethod
