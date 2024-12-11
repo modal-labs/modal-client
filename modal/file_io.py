@@ -91,8 +91,6 @@ async def overwrite_bytes(file: "_FileIO", data: bytes, start: Optional[int] = N
 
 # The Sandbox file handling API is designed to mimic Python's io.FileIO
 # See https://github.com/python/cpython/blob/main/Lib/_pyio.py#L1459
-# Unlike io.FileIO, it also implements some higher level APIs, like `delete_bytes` and `overwrite_bytes`,
-# which may be useful for LLM-generated code.
 class _FileIO(Generic[T]):
     """FileIO handle for the Sandbox filesystem API.
 
@@ -332,23 +330,6 @@ class _FileIO(Generic[T]):
             )
         )
         await self._wait(resp.exec_id)
-
-    async def delete_bytes(self, start: Optional[int] = None, end: Optional[int] = None) -> None:
-        """Delete a range of bytes from the file.
-
-        `start` and `end` are byte offsets. `start` is inclusive, `end` is exclusive.
-        If either is None, the start or end of the file is used, respectively.
-        """
-        await delete_bytes(self, start, end)
-
-    async def overwrite_bytes(self, data: bytes, start: Optional[int] = None, end: Optional[int] = None) -> None:
-        """Overwrite a range of bytes in the file with new data. The length of the data does not
-        have to be the same as the length of the range being overwritten.
-
-        `start` and `end` are byte offsets. `start` is inclusive, `end` is exclusive.
-        If either is None, the start or end of the file is used, respectively.
-        """
-        await overwrite_bytes(self, data, start, end)
 
     async def _close(self) -> None:
         # Buffer is flushed by the runner on close
