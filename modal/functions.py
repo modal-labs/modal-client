@@ -1357,7 +1357,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             return fun(*args, **kwargs)
         else:
             # This is a method on a class, so bind the self to the function
-            fun = info.raw_f.__get__(obj)
+            user_cls_instance = obj._cached_user_cls_instance()
+            fun = info.raw_f.__get__(user_cls_instance)
 
             # TODO: replace implicit local enter/exit with a context manager
             if is_async(info.raw_f):

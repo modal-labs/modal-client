@@ -75,7 +75,7 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
 def _bind_instance_method(service_function: _Function, class_bound_method: _Function):
     """mdmd:hidden
 
-    Binds an "instance service function" to a specific method.
+    Binds an "instance service function" to a specific method name.
     This "dummy" _Function gets no unique object_id and isn't backend-backed at the moment, since all
     it does it forward invocations to the underlying instance_service_function with the specified method,
     and we don't support web_config for parameterized methods at the moment.
@@ -175,7 +175,10 @@ class _Obj:
         self._options = options
 
     def _cached_service_function(self) -> "modal.function._Function":
-        # only safe to call for 0.63+ classes at the moment
+        # Returns a service function for this _Obj, serving all its methods
+        # In case of methods without parameters or options, this is simply proxying to the class service function
+
+        # only safe to call for 0.63+ classes (before then, all methods had their own services)
         if not self._instance_service_function:
             assert self._cls._class_service_function
             self._instance_service_function = self._cls._class_service_function._bind_parameters(
@@ -209,6 +212,14 @@ class _Obj:
         # TODO: OR (if simpler for now) replace all the PartialFunctions on the user cls
         #   with getattr(self, method_name)
 
+        # user cls instances are only created locally, so we have all partial functions available
+        instance_methods = {}
+        for method_name in _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.FUNCTION):
+            instance_methods[method_name] = getattr(self, method_name)
+
+        print("Adding", instance_methods)
+
+        user_cls_instance._modal_functions = instance_methods
         return user_cls_instance
 
     async def keep_warm(self, warm_pool_size: int) -> None:
@@ -277,11 +288,14 @@ class _Obj:
         self._has_entered = True
 
     def __getattr__(self, k):
-        # This is a bit messy and branchy because of pre 0.63 lookups
-        # and wanting to be as efficient as possible for non-method
-        # attribute access regardless of hydration or localness
+        # This is a bit messy and branchy because:
+        # * Support for 0.63 lookups
+        # * Support attribute access (when local cls is available)
+        # * Support methods for both local and remote classes
+
+        # and supporting both
         def _get_method_bound_function() -> Optional["_Function"]:
-            assert self._cls._method_functions is not None
+            assert self._cls._method_functions is not None, "Method is not local and not hydrated"
 
             if class_bound_method := self._cls._method_functions.get(k, None):
                 # If we know the user is accessing a *method* and not another attribute,
@@ -303,15 +317,21 @@ class _Obj:
             if method := _get_method_bound_function():
                 return method
             elif self._user_cls:
-                # if we have the local definition - instantiate and try to get attribute
+                # We have the local definition, and the attribute isn't a method
+                # so we instantiate if we don't have an instance, and try to get the attribute
                 user_cls_instance = self._cached_user_cls_instance()
                 return getattr(user_cls_instance, k)
             else:
+                # This is the case for a *hydrated* class without the local definition, i.e. a lookup
+                # where the attribute isn't a registered method of the class
                 raise NotFoundError(
-                    f"Class has no method {k}, and attributes can't be accessed for `Cls.from_name` instances"
+                    f"Class has no method `{k}` and attributes (or undecorated methods) can't be accessed for"
+                    f" remote classes (`Cls.from_name` instances)"
                 )
 
-        # Not hydrated Cls, and we don't have the class - typically a Cls.from_name
+        # Not hydrated Cls, and we don't have the class - typically a Cls.from_name that
+        # has not yet been loaded. So use a special loader that loads it lazily:
+
         async def method_loader(fun, resolver: Resolver, existing_object_id):
             await resolver.load(self._cls)  # load class so we get info about methods
             method_function = _get_method_bound_function()
