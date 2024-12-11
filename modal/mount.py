@@ -23,11 +23,12 @@ from ._resolver import Resolver
 from ._utils.async_utils import aclosing, async_map, synchronize_api
 from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
 from ._utils.grpc_utils import retry_transient_errors
+from ._utils.local_file_filter import LocalFileFilter
 from ._utils.name_utils import check_object_name
 from ._utils.package_utils import get_module_mount_info
 from .client import _Client
 from .config import config, logger
-from .exception import ModuleNotMountable
+from .exception import InvalidError, ModuleNotMountable
 from .object import _get_environment_name, _Object
 
 ROOT_DIR: PurePosixPath = PurePosixPath("/root")
@@ -122,7 +123,7 @@ class _MountFile(_MountEntry):
 class _MountDir(_MountEntry):
     local_dir: Path
     remote_path: PurePosixPath
-    condition: Callable[[str], bool]
+    include_files: Callable[[Path], bool]
     recursive: bool
 
     def description(self):
@@ -143,7 +144,7 @@ class _MountDir(_MountEntry):
             gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
 
         for local_filename in gen:
-            if self.condition(local_filename):
+            if self.include_files(Path(local_filename)):
                 local_relpath = Path(local_filename).expanduser().absolute().relative_to(local_dir)
                 mount_path = self.remote_path / local_relpath.as_posix()
                 yield local_filename, mount_path
@@ -155,12 +156,11 @@ class _MountDir(_MountEntry):
         return [(self.local_dir, self.remote_path)]
 
 
-def module_mount_condition(module_base: Path):
+def module_mount_condition(module_base: Path) -> Callable[[Path], bool]:
     SKIP_BYTECODE = True  # hard coded for now
     SKIP_DOT_PREFIXED = True
 
-    def condition(f: str):
-        path = Path(f)
+    def condition(path: Path) -> bool:
         if SKIP_BYTECODE and path.suffix == ".pyc":
             return False
 
@@ -190,7 +190,7 @@ class _MountedPythonModule(_MountEntry):
 
     module_name: str
     remote_dir: Union[PurePosixPath, str] = ROOT_DIR.as_posix()  # cast needed here for type stub generation...
-    condition: typing.Optional[typing.Callable[[str], bool]] = None
+    include_files: typing.Optional[typing.Callable[[Path], bool]] = None
 
     def description(self) -> str:
         return f"PythonPackage:{self.module_name}"
@@ -206,7 +206,7 @@ class _MountedPythonModule(_MountEntry):
                     _MountDir(
                         base_path,
                         remote_path=remote_dir,
-                        condition=self.condition or module_mount_condition(base_path),
+                        include_files=self.include_files or module_mount_condition(base_path),
                         recursive=True,
                     )
                 )
@@ -324,6 +324,9 @@ class _Mount(_Object, type_prefix="mo"):
         condition: Optional[Callable[[str], bool]] = None,
         # add files from subdirectories as well
         recursive: bool = True,
+        # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
+        # Defaults to including all files.
+        include_files: Optional[Callable[[Path], bool]] = None,
     ) -> "_Mount":
         """
         Add a local directory to the `Mount` object.
@@ -332,17 +335,28 @@ class _Mount(_Object, type_prefix="mo"):
         if remote_path is None:
             remote_path = local_path.name
         remote_path = PurePosixPath("/", remote_path)
-        if condition is None:
 
-            def include_all(path):
+        if condition is not None:
+            if include_files is not None:
+                raise InvalidError("Cannot specify both `include_files` and `condition`")
+
+            def converted_condition(path: Path) -> bool:
+                return condition(str(path))
+
+            include_files = converted_condition
+
+        if include_files is None:
+            include_files = LocalFileFilter("**/*")
+
+            def include_all(path: Path) -> bool:
                 return True
 
-            condition = include_all
+            include_files = include_all
 
         return self._extend(
             _MountDir(
                 local_dir=local_path,
-                condition=condition,
+                include_files=include_files,
                 remote_path=remote_path,
                 recursive=recursive,
             ),
@@ -359,6 +373,9 @@ class _Mount(_Object, type_prefix="mo"):
         condition: Optional[Callable[[str], bool]] = None,
         # add files from subdirectories as well
         recursive: bool = True,
+        # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
+        # Defaults to including all files.
+        include_files: Optional[Callable[[Path], bool]] = None,
     ) -> "_Mount":
         """
         Create a `Mount` from a local directory.
@@ -373,8 +390,9 @@ class _Mount(_Object, type_prefix="mo"):
         )
         ```
         """
+
         return _Mount._new().add_local_dir(
-            local_path, remote_path=remote_path, condition=condition, recursive=recursive
+            local_path, remote_path=remote_path, condition=condition, recursive=recursive, include_files=include_files
         )
 
     def add_local_file(

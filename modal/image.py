@@ -639,7 +639,14 @@ class _Image(_Object, type_prefix="im"):
         mount = _Mount.from_local_file(local_path, remote_path)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
-    def add_local_dir(self, local_path: Union[str, Path], remote_path: str, *, copy: bool = False) -> "_Image":
+    def add_local_dir(
+        self,
+        local_path: Union[str, Path],
+        remote_path: str,
+        *,
+        copy: bool = False,
+        include_files: Optional[Callable[[Path], bool]] = None,
+    ) -> "_Image":
         """Adds a local directory's content to the image at `remote_path` within the container
 
         By default (`copy=False`), the files are added to containers on startup and are not built into the actual Image,
@@ -656,7 +663,7 @@ class _Image(_Object, type_prefix="im"):
             # TODO(elias): implement relative to absolute resolution using image workdir metadata
             #  + make default remote_path="./"
             raise InvalidError("image.add_local_dir() currently only supports absolute remote_path values")
-        mount = _Mount.from_local_dir(local_path, remote_path=remote_path)
+        mount = _Mount.from_local_dir(local_path, remote_path=remote_path, include_files=include_files)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
@@ -701,13 +708,18 @@ class _Image(_Object, type_prefix="im"):
         mount = _Mount.from_local_python_packages(*modules, include_files=LocalFileFilter("**/*.py"))
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
-    def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
+    def copy_local_dir(
+        self,
+        local_path: Union[str, Path],
+        remote_path: Union[str, Path] = ".",
+        include_files: Optional[Callable[[Path], bool]] = None,
+    ) -> "_Image":
         """Copy a directory into the image as a part of building the image.
 
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
         """
-        mount = _Mount.from_local_dir(local_path, remote_path="/")
+        mount = _Mount.from_local_dir(local_path, remote_path=remote_path, include_files=include_files)
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base", f"COPY . {remote_path}"], context_files={})
