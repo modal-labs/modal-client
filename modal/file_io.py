@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2024
 import asyncio
 import io
-from typing import TYPE_CHECKING, AsyncIterator, Generic, Optional, Sequence, TypeVar, Union
+from typing import TYPE_CHECKING, AsyncIterator, Generic, Optional, Sequence, TypeVar, Union, cast
 
 if TYPE_CHECKING:
     import _typeshed
@@ -242,8 +242,8 @@ class _FileIO(Generic[T]):
             raise ValueError("Read request payload exceeds 100 MiB limit")
         output = await self._make_read_request(n)
         if self._binary:
-            return output
-        return output.decode("utf-8")
+            return cast(T, output)
+        return cast(T, output.decode("utf-8"))
 
     async def readline(self) -> T:
         """Read a single line from the current position."""
@@ -257,8 +257,8 @@ class _FileIO(Generic[T]):
         )
         output = await self._wait(resp.exec_id)
         if self._binary:
-            return output
-        return output.decode("utf-8")
+            return cast(T, output)
+        return cast(T, output.decode("utf-8"))
 
     async def readlines(self) -> Sequence[T]:
         """Read all lines from the current position."""
@@ -267,10 +267,12 @@ class _FileIO(Generic[T]):
         output = await self._make_read_request(None)
         if self._binary:
             lines_bytes = output.split(b"\n")
-            return [line + b"\n" for line in lines_bytes[:-1]] + ([lines_bytes[-1]] if lines_bytes[-1] else [])
+            output = [line + b"\n" for line in lines_bytes[:-1]] + ([lines_bytes[-1]] if lines_bytes[-1] else [])
+            return cast(Sequence[T], output)
         else:
             lines = output.decode("utf-8").split("\n")
-            return [line + "\n" for line in lines[:-1]] + ([lines[-1]] if lines[-1] else [])
+            output = [line + "\n" for line in lines[:-1]] + ([lines[-1]] if lines[-1] else [])
+            return cast(Sequence[T], output)
 
     async def write(self, data: Union[bytes, str]) -> None:
         """Write data to the current position.
