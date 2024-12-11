@@ -61,6 +61,7 @@ from .exception import (
     ExecutionError,
     FunctionTimeoutError,
     InvalidError,
+    LostInputsError,
     NotFoundError,
     OutputExpiredError,
     deprecation_warning,
@@ -180,7 +181,7 @@ class _Invocation:
         return _Invocation(client.stub, function_call_id, client, retry_context)
 
     async def pop_function_call_outputs(
-        self, timeout: Optional[float], clear_on_success: bool
+        self, timeout: Optional[float], clear_on_success: bool, expected_input_ids: Optional[list[str]] = None
     ) -> api_pb2.FunctionGetOutputsResponse:
         t0 = time.time()
         if timeout is None:
@@ -196,12 +197,16 @@ class _Invocation:
                 last_entry_id="0-0",
                 clear_on_success=clear_on_success,
                 requested_at=time.time(),
+                expected_input_ids=expected_input_ids,
             )
             response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
                 request,
                 attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
+
+            if response.lost_input_ids:
+                raise LostInputsError(list(response.lost_input_ids))
 
             if len(response.outputs) > 0:
                 return response
@@ -225,10 +230,14 @@ class _Invocation:
             request,
         )
 
-    async def _get_single_output(self) -> Any:
+    async def _get_single_output(self, expected_input_id: Optional[str] = None) -> Any:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
-            await self.pop_function_call_outputs(timeout=None, clear_on_success=True)
+            await self.pop_function_call_outputs(
+                timeout=None,
+                clear_on_success=True,
+                expected_input_ids=[expected_input_id] if expected_input_id else None,
+            )
         ).outputs[0]
         return await _process_result(item.result, item.data_format, self.stub, self.client)
 
@@ -248,8 +257,8 @@ class _Invocation:
 
         while True:
             try:
-                return await self._get_single_output()
-            except (UserCodeException, FunctionTimeoutError) as exc:
+                return await self._get_single_output(ctx.input_id)
+            except (UserCodeException, FunctionTimeoutError, LostInputsError) as exc:
                 await user_retry_manager.raise_or_sleep(exc)
             await self._retry_input()
 

@@ -110,6 +110,14 @@ class PendingDeprecationError(UserWarning):
     """Soon to be deprecated feature. Only used intermittently because of multi-repo concerns."""
 
 
+class LostInputsError(Error):
+    """Raised when the server reports that it is no longer processing specified inputs."""
+
+    def __init__(self, lost_inputs: list[str]):
+        self.lost_inputs = lost_inputs
+        super().__init__()
+
+
 class _CliUserExecutionError(Exception):
     """mdmd:hidden
     Private wrapper for exceptions during when importing or running stubs from the CLI.
