@@ -66,6 +66,7 @@ RETRYABLE_GRPC_STATUS_CODES = [
     Status.UNAVAILABLE,
     Status.CANCELLED,
     Status.INTERNAL,
+    Status.UNKNOWN,
 ]
 
 
