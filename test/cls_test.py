@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import inspect
+import logging
 import pytest
 import subprocess
 import sys
@@ -14,7 +15,8 @@ from modal import App, Cls, Function, Image, Queue, build, enter, exit, method
 from modal._serialization import deserialize, serialize
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import FunctionInfo
-from modal.exception import DeprecationError, ExecutionError, InvalidError, PendingDeprecationError
+from modal.config import logger
+from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError, PendingDeprecationError
 from modal.partial_function import (
     PartialFunction,
     _find_callables_for_obj,
@@ -75,7 +77,7 @@ def test_run_class(client, servicer):
     }
 
 
-def test_call_class_sync(client, servicer):
+def test_call_class_sync(client, servicer, set_env_client):
     with servicer.intercept() as ctx:
         with app.run(client=client):
             assert len(ctx.get_requests("FunctionCreate")) == 1  # one for the class service function
@@ -290,10 +292,12 @@ if TYPE_CHECKING:
 
 
 def test_lookup(client, servicer):
+    # basically same test as test_from_name_lazy_method_resolve, but assumes everything is hydrated
     deploy_app(app, "my-cls-app", client=client)
 
     cls: Cls = Cls.lookup("my-cls-app", "Foo", client=client)
 
+    # objects are resolved
     assert cls.object_id.startswith("cs-")
     assert cls.bar.object_id.startswith("fu-")
 
@@ -303,6 +307,11 @@ def test_lookup(client, servicer):
     # Make sure we can instantiate the class
     obj = cls("foo", 234)
 
+    # These are not allowed unless class is strict parameterized:
+    # TODO: Add test case for that
+    # assert obj.a == "foo"
+    # assert obj.b == 234
+
     # Make sure we can methods
     # (mock servicer just returns the sum of the squares of the args)
     assert obj.bar.remote(42, 77) == 7693
@@ -310,6 +319,33 @@ def test_lookup(client, servicer):
     # Make sure local calls fail
     with pytest.raises(ExecutionError):
         assert obj.bar.local(1, 2)
+
+
+def test_from_name_lazy_method_resolve(client, servicer):
+    deploy_app(app, "my-cls-app", client=client)
+
+    logger.setLevel(logging.DEBUG)
+    cls: Cls = Cls.from_name("my-cls-app", "Foo")
+
+    # Make sure we can instantiate the class
+    obj = cls("foo", 234)
+
+    # Check that function properties are preserved
+    assert obj.bar.is_generator is False
+
+    # assert obj.a == "foo"
+    # assert obj.b == 234
+    # Make sure we can methods
+    # (mock servicer just returns the sum of the squares of the args)
+    assert obj.bar.remote(42, 77) == 7693
+
+    # Make sure local calls fail
+    with pytest.raises(ExecutionError):
+        assert obj.bar.local(1, 2)
+
+    # Make sure that non-existing methods fail
+    with pytest.raises(NotFoundError):
+        obj.baz.remote("hello")
 
 
 def test_lookup_lazy_remote(client, servicer):
@@ -552,17 +588,17 @@ def test_cls_keep_warm(client, servicer):
 
     with app.run(client=client):
         assert len(servicer.app_functions) == 1  # only class service function
-        cls_fun = servicer.function_by_name("ClsWithMethod.*")
-        assert cls_fun.is_class
-        assert cls_fun.warm_pool_size == 0
+        cls_service_fun = servicer.function_by_name("ClsWithMethod.*")
+        assert cls_service_fun.is_class
+        assert cls_service_fun.warm_pool_size == 0
 
         ClsWithMethod().keep_warm(2)  # type: ignore  # Python can't do type intersection
-        assert cls_fun.warm_pool_size == 2
+        assert cls_service_fun.warm_pool_size == 2
 
         ClsWithMethod("other-instance").keep_warm(5)  # type: ignore  # Python can't do type intersection
         instance_service_function = servicer.function_by_name("ClsWithMethod.*", params=((("other-instance",), {})))
         assert len(servicer.app_functions) == 2  # + instance service function
-        assert cls_fun.warm_pool_size == 2
+        assert cls_service_fun.warm_pool_size == 2
         assert instance_service_function.warm_pool_size == 5
 
 
