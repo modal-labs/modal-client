@@ -110,6 +110,10 @@ class PendingDeprecationError(UserWarning):
     """Soon to be deprecated feature. Only used intermittently because of multi-repo concerns."""
 
 
+class ServerWarning(UserWarning):
+    """Warning originating from the Modal server and re-issued in client code."""
+
+
 class _CliUserExecutionError(Exception):
     """mdmd:hidden
     Private wrapper for exceptions during when importing or running stubs from the CLI.

@@ -14,11 +14,12 @@ from modal_proto import api_pb2
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._serialization import check_valid_cls_constructor_arg
+from ._traceback import print_server_warnings
 from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
-from .exception import InvalidError, NotFoundError, VersionError, print_server_warnings
+from .exception import InvalidError, NotFoundError, VersionError
 from .functions import _Function, _parse_retries
 from .gpu import GPU_T
 from .object import _get_environment_name, _Object
