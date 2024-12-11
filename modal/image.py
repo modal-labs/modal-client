@@ -719,7 +719,7 @@ class _Image(_Object, type_prefix="im"):
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
         """
-        mount = _Mount.from_local_dir(local_path, remote_path=remote_path, include_files=include_files)
+        mount = _Mount.from_local_dir(local_path, remote_path="/", include_files=include_files)
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base", f"COPY . {remote_path}"], context_files={})
