@@ -219,6 +219,9 @@ class ClientClosed(Error):
 
 
 def print_server_warnings(server_warnings: Iterable[api_pb2.Warning]):
-    ALARM_EMOJI = chr(0x1F6A8)
+    # TODO(erikbern): move this to modal._utils.deprecation
     for warning in server_warnings:
-        warnings.warn_explicit(f"{ALARM_EMOJI} {warning} {ALARM_EMOJI}", DeprecationError, "<unknown>", 0)
+        if warning.type == api_pb2.Warning.WARNING_TYPE_CLIENT_DEPRECATION:
+            warnings.warn_explicit(warning.message, DeprecationError, "<unknown>", 0)
+        else:
+            warnings.warn_explicit(warning.message, UserWarning, "<unknown>", 0)
