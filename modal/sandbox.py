@@ -494,7 +494,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         _pty_info: Optional[api_pb2.PTYInfo] = None,
     ):
         """Execute a command in the Sandbox and return
-        a [`ContainerProcess`](https://modal.com/docs/reference/modal.ContainerProcess#modalcontainer_process) handle.
+        a [`ContainerProcess`](/docs/reference/modal.ContainerProcess#modalcontainer_process) handle.
 
         **Usage**
 
@@ -553,7 +553,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         mode: Union["_typeshed.OpenTextMode", "_typeshed.OpenBinaryMode"] = "r",
     ):
         """Open a file in the Sandbox and return
-        a [`FileIO`](https://modal.com/docs/reference/modal.FileIO#modalfile_io) handle.
+        a [`FileIO`](/docs/reference/modal.FileIO#modalfile_io) handle.
 
         **Usage**
 
@@ -570,7 +570,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     @property
     def stdout(self) -> _StreamReader[str]:
         """
-        [`StreamReader`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
+        [`StreamReader`](/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
         the sandbox's stdout stream.
         """
 
@@ -578,7 +578,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @property
     def stderr(self) -> _StreamReader[str]:
-        """[`StreamReader`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
+        """[`StreamReader`](/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
         the sandbox's stderr stream.
         """
 
@@ -587,7 +587,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     @property
     def stdin(self) -> _StreamWriter:
         """
-        [`StreamWriter`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamwriter) for
+        [`StreamWriter`](/docs/reference/modal.io_streams#modalio_streamsstreamwriter) for
         the sandbox's stdin stream.
         """
 

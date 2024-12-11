@@ -39,9 +39,60 @@ ERROR_MAPPING = {
 T = TypeVar("T", str, bytes)
 
 
+async def delete_bytes(file: "_FileIO", start: Optional[int] = None, end: Optional[int] = None) -> None:
+    """Delete a range of bytes from the file.
+
+    `start` and `end` are byte offsets. `start` is inclusive, `end` is exclusive.
+    If either is None, the start or end of the file is used, respectively.
+    """
+    file._check_closed()
+    if start is not None and end is not None:
+        if start >= end:
+            raise ValueError("start must be less than end")
+    resp = await file._make_request(
+        api_pb2.ContainerFilesystemExecRequest(
+            file_delete_bytes_request=api_pb2.ContainerFileDeleteBytesRequest(
+                file_descriptor=file._file_descriptor,
+                start_inclusive=start,
+                end_exclusive=end,
+            ),
+            task_id=file._task_id,
+        )
+    )
+    await file._wait(resp.exec_id)
+
+
+async def overwrite_bytes(file: "_FileIO", data: bytes, start: Optional[int] = None, end: Optional[int] = None) -> None:
+    """Overwrite a range of bytes in the file with new data. The length of the data does not
+    have to be the same as the length of the range being overwritten.
+
+    `start` and `end` are byte offsets. `start` is inclusive, `end` is exclusive.
+    If either is None, the start or end of the file is used, respectively.
+    """
+    file._check_closed()
+    if start is not None and end is not None:
+        if start >= end:
+            raise ValueError("start must be less than end")
+    if len(data) > LARGE_FILE_SIZE_LIMIT:
+        raise ValueError("Write request payload exceeds 16MB limit")
+    resp = await file._make_request(
+        api_pb2.ContainerFilesystemExecRequest(
+            file_write_replace_bytes_request=api_pb2.ContainerFileWriteReplaceBytesRequest(
+                file_descriptor=file._file_descriptor,
+                data=data,
+                start_inclusive=start,
+                end_exclusive=end,
+            ),
+            task_id=file._task_id,
+        )
+    )
+    await file._wait(resp.exec_id)
+
+
 # The Sandbox file handling API is designed to mimic Python's io.FileIO
 # See https://github.com/python/cpython/blob/main/Lib/_pyio.py#L1459
-# Unlike io.FileIO, it also implements some higher level APIs, like `delete_bytes` and `overwrite_bytes`.
+# Unlike io.FileIO, it also implements some higher level APIs, like `delete_bytes` and `overwrite_bytes`,
+# which may be useful for LLM-generated code.
 class _FileIO(Generic[T]):
     """FileIO handle for the Sandbox filesystem API.
 
@@ -287,24 +338,8 @@ class _FileIO(Generic[T]):
 
         `start` and `end` are byte offsets. `start` is inclusive, `end` is exclusive.
         If either is None, the start or end of the file is used, respectively.
-
-        Resets the file pointer to the start of the file.
         """
-        self._check_closed()
-        if start is not None and end is not None:
-            if start >= end:
-                raise ValueError("start must be less than end")
-        resp = await self._make_request(
-            api_pb2.ContainerFilesystemExecRequest(
-                file_delete_bytes_request=api_pb2.ContainerFileDeleteBytesRequest(
-                    file_descriptor=self._file_descriptor,
-                    start_inclusive=start,
-                    end_exclusive=end,
-                ),
-                task_id=self._task_id,
-            )
-        )
-        await self._wait(resp.exec_id)
+        await delete_bytes(self, start, end)
 
     async def overwrite_bytes(self, data: bytes, start: Optional[int] = None, end: Optional[int] = None) -> None:
         """Overwrite a range of bytes in the file with new data. The length of the data does not
@@ -312,27 +347,8 @@ class _FileIO(Generic[T]):
 
         `start` and `end` are byte offsets. `start` is inclusive, `end` is exclusive.
         If either is None, the start or end of the file is used, respectively.
-
-        Resets the file pointer to the start of the file.
         """
-        self._check_closed()
-        if start is not None and end is not None:
-            if start >= end:
-                raise ValueError("start must be less than end")
-        if len(data) > LARGE_FILE_SIZE_LIMIT:
-            raise ValueError("Write request payload exceeds 16MB limit")
-        resp = await self._make_request(
-            api_pb2.ContainerFilesystemExecRequest(
-                file_write_replace_bytes_request=api_pb2.ContainerFileWriteReplaceBytesRequest(
-                    file_descriptor=self._file_descriptor,
-                    data=data,
-                    start_inclusive=start,
-                    end_exclusive=end,
-                ),
-                task_id=self._task_id,
-            )
-        )
-        await self._wait(resp.exec_id)
+        await overwrite_bytes(self, data, start, end)
 
     async def _close(self) -> None:
         # Buffer is flushed by the runner on close
