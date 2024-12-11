@@ -14,7 +14,7 @@ from modal_proto import api_pb2
 from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from .client import _Client
-from .exception import FilesystemExecutionError
+from .exception import FilesystemExecutionError, InvalidError
 
 LARGE_FILE_SIZE_LIMIT = 16 * 1024 * 1024  # 16 MiB
 READ_FILE_SIZE_LIMIT = 100 * 1024 * 1024  # 100 MiB
@@ -45,6 +45,7 @@ async def _delete_bytes(file: "_FileIO", start: Optional[int] = None, end: Optio
     `start` and `end` are byte offsets. `start` is inclusive, `end` is exclusive.
     If either is None, the start or end of the file is used, respectively.
     """
+    assert file._file_descriptor is not None
     file._check_closed()
     if start is not None and end is not None:
         if start >= end:
@@ -62,21 +63,20 @@ async def _delete_bytes(file: "_FileIO", start: Optional[int] = None, end: Optio
     await file._wait(resp.exec_id)
 
 
-async def _overwrite_bytes(
-    file: "_FileIO", data: bytes, start: Optional[int] = None, end: Optional[int] = None
-) -> None:
-    """Overwrite a range of bytes in the file with new data. The length of the data does not
-    have to be the same as the length of the range being overwritten.
+async def _replace_bytes(file: "_FileIO", data: bytes, start: Optional[int] = None, end: Optional[int] = None) -> None:
+    """Replace a range of bytes in the file with new data. The length of the data does not
+    have to be the same as the length of the range being replaced.
 
     `start` and `end` are byte offsets. `start` is inclusive, `end` is exclusive.
     If either is None, the start or end of the file is used, respectively.
     """
+    assert file._file_descriptor is not None
     file._check_closed()
     if start is not None and end is not None:
         if start >= end:
-            raise ValueError("start must be less than end")
+            raise InvalidError("start must be less than end")
     if len(data) > LARGE_FILE_SIZE_LIMIT:
-        raise ValueError("Write request payload exceeds 16MB limit")
+        raise InvalidError("Write request payload exceeds 16 MiB limit")
     resp = await file._make_request(
         api_pb2.ContainerFilesystemExecRequest(
             file_write_replace_bytes_request=api_pb2.ContainerFileWriteReplaceBytesRequest(
@@ -118,8 +118,8 @@ class _FileIO(Generic[T]):
     _appended = False
     _closed = True
 
-    _task_id: Optional[str] = None
-    _file_descriptor: Optional[str] = None
+    _task_id: str = ""
+    _file_descriptor: str = ""
     _client: Optional[_Client] = None
 
     def _validate_mode(self, mode: str) -> None:
@@ -154,6 +154,7 @@ class _FileIO(Generic[T]):
             exec_id=exec_id,
             timeout=55,
         )
+        assert self._client is not None
         async for batch in self._client.stub.ContainerFilesystemExecGetOutput.unary_stream(req):
             if batch.eof:
                 yield None
@@ -194,7 +195,7 @@ class _FileIO(Generic[T]):
             raise TypeError("Expected str when in text mode")
 
     async def _open_file(self, path: str, mode: str) -> None:
-        resp = await self._client.stub.ContainerFilesystemExec(
+        resp = await self._make_request(
             api_pb2.ContainerFilesystemExecRequest(
                 file_open_request=api_pb2.ContainerFileOpenRequest(path=path, mode=mode),
                 task_id=self._task_id,
@@ -221,6 +222,7 @@ class _FileIO(Generic[T]):
     async def _make_request(
         self, request: api_pb2.ContainerFilesystemExecRequest
     ) -> api_pb2.ContainerFilesystemExecResponse:
+        assert self._client is not None
         return await retry_transient_errors(self._client.stub.ContainerFilesystemExec, request)
 
     async def _make_read_request(self, n: Optional[int]) -> bytes:
@@ -372,5 +374,5 @@ class _FileIO(Generic[T]):
 
 
 delete_bytes = synchronize_api(_delete_bytes)
-overwrite_bytes = synchronize_api(_overwrite_bytes)
+replace_bytes = synchronize_api(_replace_bytes)
 FileIO = synchronize_api(_FileIO)
