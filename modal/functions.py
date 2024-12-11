@@ -1284,7 +1284,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             args,
             kwargs,
             client=self._client,
-            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC,
         )
 
     @synchronizer.no_io_translation
