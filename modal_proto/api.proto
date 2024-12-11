@@ -400,7 +400,6 @@ message AppPublishRequest {
 
 message AppPublishResponse {
   string url = 1;
-  repeated string warnings = 2;  // Deprecated soon in favor of server_warnings
   repeated Warning server_warnings = 3;
 }
 
