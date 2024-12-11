@@ -559,10 +559,20 @@ class _Sandbox(_Object, type_prefix="sb"):
         task_id = await self._get_task_id()
         return await _FileIO.create(path, mode, self._client, task_id)
 
-    async def listdir(self, path: str) -> list[str]:
+    async def ls(self, path: str) -> list[str]:
         """List the contents of a directory in the Sandbox."""
         task_id = await self._get_task_id()
-        return await _FileIO.listdir(path, self._client, task_id)
+        return await _FileIO.ls(path, self._client, task_id)
+
+    async def mkdir(self, path: str, parents: bool = False) -> None:
+        """Create a new directory in the Sandbox."""
+        task_id = await self._get_task_id()
+        return await _FileIO.mkdir(path, self._client, task_id, parents)
+
+    async def rm(self, path: str, recursive: bool = False) -> None:
+        """Remove a file or directory in the Sandbox."""
+        task_id = await self._get_task_id()
+        return await _FileIO.rm(path, self._client, task_id, recursive)
 
     @property
     def stdout(self) -> _StreamReader[str]:

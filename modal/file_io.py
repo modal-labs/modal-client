@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2024
 import asyncio
 import io
+import json
 from typing import AsyncIterator, Generic, Literal, Optional, Sequence, TypeVar, Union
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
@@ -166,6 +167,12 @@ class _FileIO(Generic[T]):
                         continue
                 raise
         return output
+
+    async def _parse_list_output(self, output: bytes) -> list[str]:
+        try:
+            return json.loads(output.decode("utf-8"))["paths"]
+        except json.JSONDecodeError:
+            raise FilesystemExecutionError("failed to parse list output")
 
     def _validate_type(self, data: Union[bytes, str]) -> None:
         if self._binary and isinstance(data, str):
@@ -365,41 +372,44 @@ class _FileIO(Generic[T]):
         )
         await self._wait(resp.exec_id)
 
-    async def listdir(self, path: str) -> list[str]:
+    @classmethod
+    async def ls(cls, path: str, client: _Client, task_id: str) -> str:
         """List the contents of the provided directory."""
+        self = cls.__new__(cls)
+        self._client = client
+        self._task_id = task_id
         resp = await self._make_request(
             api_pb2.ContainerFilesystemExecRequest(
                 file_ls_request=api_pb2.ContainerFileLsRequest(path=path),
-                task_id=self._task_id,
+                task_id=task_id,
             )
         )
-        return resp.file_ls_response.paths
+        output = await self._wait(resp.exec_id)
+        return await self._parse_list_output(output)
 
-    async def mkdir(self, path: str) -> None:
+    @classmethod
+    async def mkdir(cls, path: str, client: _Client, task_id: str, parents: bool = False) -> None:
         """Create a new directory."""
+        self = cls.__new__(cls)
+        self._client = client
+        self._task_id = task_id
         resp = await self._make_request(
             api_pb2.ContainerFilesystemExecRequest(
-                file_mkdir_request=api_pb2.ContainerFileMkdirRequest(path=path),
+                file_mkdir_request=api_pb2.ContainerFileMkdirRequest(path=path, parents=parents),
                 task_id=self._task_id,
             )
         )
         await self._wait(resp.exec_id)
 
-    async def rmdir(self, dirpath: str) -> None:
-        """Remove a directory."""
+    @classmethod
+    async def rm(cls, path: str, client: _Client, task_id: str, recursive: bool = False) -> None:
+        """Remove a file or directory in the Sandbox."""
+        self = cls.__new__(cls)
+        self._client = client
+        self._task_id = task_id
         resp = await self._make_request(
             api_pb2.ContainerFilesystemExecRequest(
-                file_rm_request=api_pb2.ContainerFileRmRequest(path=dirpath, recursive=True),
-                task_id=self._task_id,
-            )
-        )
-        await self._wait(resp.exec_id)
-
-    async def rm(self, filepath: str) -> None:
-        """Remove a file."""
-        resp = await self._make_request(
-            api_pb2.ContainerFilesystemExecRequest(
-                file_rm_request=api_pb2.ContainerFileRmRequest(path=filepath, recursive=False),
+                file_rm_request=api_pb2.ContainerFileRmRequest(path=path, recursive=recursive),
                 task_id=self._task_id,
             )
         )
