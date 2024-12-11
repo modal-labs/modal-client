@@ -772,6 +772,15 @@ message ContainerFileFlushRequest {
   string file_descriptor = 1;
 }
 
+message ContainerFileLsRequest {
+  string path = 1;
+}
+
+message ContainerFileMkdirRequest {
+  string path = 1;
+  bool parents = 2;
+}
+
 message ContainerFileOpenRequest {
   // file descriptor is hydrated when sent from server -> worker
   optional string file_descriptor = 1;
@@ -786,6 +795,11 @@ message ContainerFileReadLineRequest {
 message ContainerFileReadRequest {
   string file_descriptor = 1;
   optional uint32 n = 2;
+}
+
+message ContainerFileRmRequest {
+  string path = 1;
+  bool recursive = 2;
 }
 
 message ContainerFileSeekRequest {
@@ -809,20 +823,6 @@ message ContainerFileWriteRequest {
 message ContainerFilesystemExecGetOutputRequest {
   string exec_id = 1;
   float timeout = 2;
-}
-
-message ContainerFileLsRequest {
-  string path = 1;
-}
-
-message ContainerFileMkdirRequest {
-  string path = 1;
-  bool parents = 2;
-}
-
-message ContainerFileRmRequest {
-  string path = 1;
-  bool recursive = 2;
 }
 
 message ContainerFilesystemExecRequest {
