@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-
 from typing import Optional, Union
 
 import typer
@@ -8,12 +7,13 @@ from rich.text import Text
 from modal._pty import get_pty_info
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
-from modal.cli.utils import ENV_OPTION, display_table, stream_app_logs, timestamp_to_local
+from modal.cli.utils import ENV_OPTION, display_table, is_tty, stream_app_logs, timestamp_to_local
 from modal.client import _Client
 from modal.config import config
 from modal.container_process import _ContainerProcess
 from modal.environments import ensure_env
 from modal.object import _get_environment_name
+from modal.stream_type import StreamType
 from modal_proto import api_pb2
 
 container_cli = typer.Typer(name="container", help="Manage and connect to running containers.", no_args_is_help=True)
@@ -55,11 +55,18 @@ def logs(container_id: str = typer.Argument(help="Container ID")):
 @container_cli.command("exec")
 @synchronizer.create_blocking
 async def exec(
+    pty: Optional[bool] = typer.Option(default=None, help="Run the command using a PTY."),
     container_id: str = typer.Argument(help="Container ID"),
-    command: list[str] = typer.Argument(help="A command to run inside the container."),
-    pty: bool = typer.Option(default=True, help="Run the command using a PTY."),
+    command: list[str] = typer.Argument(
+        help="A command to run inside the container.\n\n"
+        "To pass command-line flags or options, add `--` before the start of your commands. "
+        "For example: `modal container exec <id> -- /bin/bash -c 'echo hi'`"
+    ),
 ):
     """Execute a command in a container."""
+
+    if pty is None:
+        pty = is_tty()
 
     client = await _Client.from_env()
 
@@ -71,7 +78,11 @@ async def exec(
     )
     res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(req)
 
-    await _ContainerProcess(res.exec_id, client).attach(pty=pty)
+    if pty:
+        await _ContainerProcess(res.exec_id, client).attach()
+    else:
+        # TODO: redirect stderr to its own stream?
+        await _ContainerProcess(res.exec_id, client, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT).wait()
 
 
 @container_cli.command("stop")
