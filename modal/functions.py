@@ -431,7 +431,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         image: _Image,
         secrets: Sequence[_Secret] = (),
         schedule: Optional[Schedule] = None,
-        is_generator=False,
+        is_generator: bool = False,
         gpu: Union[GPU_T, list[GPU_T]] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         mounts: Collection[_Mount] = (),
@@ -627,7 +627,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
         method_definitions: Optional[dict[str, api_pb2.MethodDefinition]] = None
-        partial_functions: dict[str, "modal.partial_function._PartialFunction"] = {}
+
         if info.user_cls:
             method_definitions = {}
             partial_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.FUNCTION)
@@ -1188,10 +1188,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return self._web_url
 
     @property
-    @live_method
     async def is_generator(self) -> bool:
         """mdmd:hidden"""
-        assert self._is_generator is not None
+        if self._is_generator is not None:
+            # hacky: kind of like @live_method, but not hydrating if we have the value already from local source
+            return self._is_generator
+
+        await self.resolve()
         return self._is_generator
 
     @property
