@@ -778,7 +778,7 @@ message ContainerFileLsRequest {
 
 message ContainerFileMkdirRequest {
   string path = 1;
-  bool parents = 2;
+  bool make_parents = 2;
 }
 
 message ContainerFileOpenRequest {
