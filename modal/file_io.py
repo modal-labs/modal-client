@@ -1,7 +1,10 @@
 # Copyright Modal Labs 2024
 import asyncio
 import io
-from typing import AsyncIterator, Generic, Literal, Optional, Sequence, TypeVar, Union
+from typing import TYPE_CHECKING, AsyncIterator, Generic, Optional, Sequence, TypeVar, Union
+
+if TYPE_CHECKING:
+    import _typeshed
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
@@ -12,40 +15,6 @@ from ._utils.async_utils import synchronize_api
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from .client import _Client
 from .exception import FilesystemExecutionError
-
-OpenTextModeUpdating = Literal["r+", "+r", "w+", "+w", "a+", "+a", "x+", "+x"]
-OpenTextModeWriting = Literal["w", "a", "x"]
-OpenTextModeReading = Literal["r"]
-OpenTextMode = Union[OpenTextModeUpdating, OpenTextModeWriting, OpenTextModeReading]
-OpenBinaryModeUpdating = Literal[
-    "rb+",
-    "r+b",
-    "+rb",
-    "br+",
-    "b+r",
-    "+br",
-    "wb+",
-    "w+b",
-    "+wb",
-    "bw+",
-    "b+w",
-    "+bw",
-    "ab+",
-    "a+b",
-    "+ab",
-    "ba+",
-    "b+a",
-    "+ba",
-    "xb+",
-    "x+b",
-    "+xb",
-    "bx+",
-    "b+x",
-    "+bx",
-]
-OpenBinaryModeWriting = Literal["wb", "bw", "ab", "ba", "xb", "bx"]
-OpenBinaryModeReading = Literal["rb", "br"]
-OpenBinaryMode = Union[OpenBinaryModeUpdating, OpenBinaryModeReading, OpenBinaryModeWriting]
 
 LARGE_FILE_SIZE_LIMIT = 16 * 1024 * 1024  # 16 MiB
 READ_FILE_SIZE_LIMIT = 100 * 1024 * 1024  # 100 MiB
@@ -187,7 +156,7 @@ class _FileIO(Generic[T]):
 
     @classmethod
     async def create(
-        cls, path: str, mode: Union[OpenTextMode, OpenBinaryMode], client: _Client, task_id: str
+        cls, path: str, mode: Union["_typeshed.OpenTextMode", "_typeshed.OpenBinaryMode"], client: _Client, task_id: str
     ) -> "_FileIO":
         """Create a new FileIO handle."""
         self = cls.__new__(cls)

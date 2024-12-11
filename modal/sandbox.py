@@ -4,6 +4,9 @@ import os
 from collections.abc import AsyncGenerator, Sequence
 from typing import TYPE_CHECKING, Literal, Optional, Union, overload
 
+if TYPE_CHECKING:
+    import _typeshed
+
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
@@ -22,11 +25,7 @@ from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
 from .exception import ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError, deprecation_warning
-from .file_io import (
-    OpenBinaryMode,
-    OpenTextMode,
-    _FileIO,
-)
+from .file_io import _FileIO
 from .gpu import GPU_T
 from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
@@ -527,7 +526,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def open(
         self,
         path: str,
-        mode: OpenTextMode,
+        mode: "_typeshed.OpenTextMode",
     ) -> _FileIO[str]:
         ...
 
@@ -535,14 +534,14 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def open(
         self,
         path: str,
-        mode: OpenBinaryMode,
+        mode: "_typeshed.OpenBinaryMode",
     ) -> _FileIO[bytes]:
         ...
 
     async def open(
         self,
         path: str,
-        mode: Union[OpenTextMode, OpenBinaryMode] = "r",
+        mode: Union["_typeshed.OpenTextMode", "_typeshed.OpenBinaryMode"] = "r",
     ):
         """Open a file in the Sandbox and return
         a [`FileIO`](https://modal.com/docs/reference/modal.FileIO#modalfile_io) handle.
