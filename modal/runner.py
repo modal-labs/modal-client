@@ -176,7 +176,7 @@ async def _publish_app(
     indexed_objects: dict[str, _Object],
     name: str = "",  # Only relevant for deployments
     tag: str = "",  # Only relevant for deployments
-) -> tuple[str, list[str]]:
+) -> tuple[str, list[api_pb2.Warning]]:
     """Wrapper for AppPublish RPC."""
 
     # Could simplify this function some changing the internal representation to use
@@ -206,7 +206,7 @@ async def _publish_app(
             raise InvalidError(exc.message)
         raise
 
-    return response.url, response.warnings
+    return response.url, response.server_warnings
 
 
 async def _disconnect(
@@ -554,7 +554,7 @@ async def _deploy_app(
         app_id=running_app.app_id,
         app_page_url=running_app.app_page_url,
         app_logs_url=running_app.app_logs_url,  # type: ignore
-        warnings=warnings,
+        warnings=[warning.message for warning in warnings],
     )
 
 
