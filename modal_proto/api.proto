@@ -811,6 +811,20 @@ message ContainerFilesystemExecGetOutputRequest {
   float timeout = 2;
 }
 
+message ContainerFileLsRequest {
+  string path = 1;
+}
+
+message ContainerFileMkdirRequest {
+  string path = 1;
+  bool parents = 2;
+}
+
+message ContainerFileRmRequest {
+  string path = 1;
+  bool recursive = 2;
+}
+
 message ContainerFilesystemExecRequest {
   oneof file_exec_request_oneof {
     ContainerFileOpenRequest file_open_request = 1;
@@ -822,6 +836,9 @@ message ContainerFilesystemExecRequest {
     ContainerFileDeleteBytesRequest file_delete_bytes_request = 7;
     ContainerFileWriteReplaceBytesRequest file_write_replace_bytes_request = 8;
     ContainerFileCloseRequest file_close_request = 9;
+    ContainerFileLsRequest file_ls_request = 11;
+    ContainerFileMkdirRequest file_mkdir_request = 12;
+    ContainerFileRmRequest file_rm_request = 13;
   }
   string task_id = 10;
 }
