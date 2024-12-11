@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2024
 from pathlib import Path
 
 from .pattern_matcher import PatternMatcher

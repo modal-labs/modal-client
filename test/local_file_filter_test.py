@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2024
 import pytest
 
 from modal._utils.local_file_filter import LocalFileFilter
