@@ -6,7 +6,8 @@ import re
 import sys
 import threading
 from hashlib import sha256
-from tempfile import NamedTemporaryFile
+from pathlib import Path
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Literal, get_args
 from unittest import mock
 
@@ -21,6 +22,8 @@ from modal.image import (
     ImageBuilderVersion,
     _base_image_config,
     _dockerhub_python_version,
+    _extract_copy_command_patterns,
+    _filter_fp_docker_pattern,
     _get_modal_requirements_path,
     _validate_python_version,
 )
@@ -720,7 +723,7 @@ def test_image_copy_local_dir(builder_version, servicer, client, tmp_path_with_c
 def test_image_docker_command_copy(builder_version, servicer, client, tmp_path_with_content):
     app = App()
     data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/")
-    app.image = Image.debian_slim().dockerfile_commands(["COPY . /dummy"], context_mount=data_mount)
+    app.image = Image.debian_slim().dockerfile_commands(["COPY . /dummy"])
     app.function()(dummy)
 
     with app.run(client=client):
@@ -737,7 +740,7 @@ def test_image_dockerfile_copy(builder_version, servicer, client, tmp_path_with_
 
     app = App()
     data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/")
-    app.image = Image.debian_slim().from_dockerfile(dockerfile.name, context_mount=data_mount)
+    app.image = Image.debian_slim().from_dockerfile(dockerfile.name)
     app.function()(dummy)
 
     with app.run(client=client):
@@ -745,6 +748,177 @@ def test_image_dockerfile_copy(builder_version, servicer, client, tmp_path_with_
         assert "COPY . /dummy" in layers[1].dockerfile_commands
         files = {f.mount_filename: f.content for f in Mount._get_files(data_mount.entries)}
         assert files == {"/data.txt": b"hello", "/data/sub": b"world"}
+
+
+def create_tmp_files(tmp_path):
+    (tmp_path / "dir1").mkdir()
+    (tmp_path / "dir1" / "a.txt").write_text("a")
+    (tmp_path / "dir1" / "b.txt").write_text("b")
+
+    (tmp_path / "dir2").mkdir()
+    (tmp_path / "dir2" / "test1.py").write_text("test1")
+    (tmp_path / "dir2" / "test2.py").write_text("test2")
+
+    (tmp_path / "file1.txt").write_text("content1")
+    (tmp_path / "file10.txt").write_text("content1")
+    (tmp_path / "file2.txt").write_text("content2")
+    (tmp_path / "test.py").write_text("python")
+
+    (tmp_path / "special").mkdir()
+    (tmp_path / "special" / "file[1].txt").write_text("special1")
+    (tmp_path / "special" / "file{2}.txt").write_text("special2")
+    (tmp_path / "special" / "test?file.py").write_text("special3")
+
+    (tmp_path / "this").mkdir()
+    (tmp_path / "this" / "is").mkdir()
+    (tmp_path / "this" / "is" / "super").mkdir()
+    (tmp_path / "this" / "is" / "super" / "nested").mkdir()
+    (tmp_path / "this" / "is" / "super" / "nested" / "file.py").write_text("python")
+
+    all_fps = []
+    for root, _, files in os.walk(tmp_path):
+        for file in files:
+            all_fps.append(f"{os.path.join(root, file)}".lstrip("./"))
+
+    return all_fps
+
+
+def test_image_dockerfile_copy_messy(builder_version, servicer, client):
+    with TemporaryDirectory(dir="./") as tmp_dir:
+        tmp_path = Path(tmp_dir)
+
+        create_tmp_files(tmp_path)
+
+        dockerfile = NamedTemporaryFile("w", delete=False)
+        dockerfile.write(
+            f"""
+FROM python:3.12-slim
+
+WORKDIR /my-app
+
+RUN ls
+
+# COPY simple directory
+    CoPY {tmp_dir}/dir1 ./smth_copy
+
+RUN ls -la
+
+# COPY multiple sources
+        COPY {tmp_dir}/test.py {tmp_dir}/file10.txt /
+
+RUN ls \\
+    -l
+
+# COPY multiple lines
+copy {tmp_dir}/dir2 \\
+    {tmp_dir}/file1.txt \\
+# this is a comment
+    {tmp_dir}/file2.txt \\
+    /x
+
+        RUN ls
+        """
+        )
+        dockerfile.close()
+
+        app = App()
+        app.image = Image.debian_slim().from_dockerfile(dockerfile.name)
+        app.function()(dummy)
+
+        with app.run(client=client):
+            layers = get_image_layers(app.image.object_id, servicer)
+
+            copied_files = servicer.mount_contents[layers[1].context_mount_id].keys()
+            assert sorted(copied_files) == sorted(
+                [
+                    f"/{tmp_path}/dir1/a.txt",
+                    f"/{tmp_path}/dir1/b.txt",
+                    f"/{tmp_path}/test.py",
+                    f"/{tmp_path}/file10.txt",
+                    f"/{tmp_path}/file1.txt",
+                    f"/{tmp_path}/file2.txt",
+                    f"/{tmp_path}/dir2/test1.py",
+                    f"/{tmp_path}/dir2/test2.py",
+                ]
+            )
+
+
+def test_extract_copy_command_patterns():
+    x = [
+        (
+            ["CoPY files/dir1 ./smth_copy"],
+            ["files/dir1"],
+        ),
+        (
+            ["COPY files/*.txt /dest/", "COPY files/**/*.py /dest/"],
+            ["files/*.txt", "files/**/*.py"],
+        ),
+        (
+            ["COPY files/special/file[[]1].txt /dest/"],
+            ["files/special/file[[]1].txt"],
+        ),
+        (
+            ["COPY files/*.txt files/**/*.py /dest/"],
+            ["files/*.txt", "files/**/*.py"],
+        ),
+        (
+            [
+                "copy ./smth \\",
+                "./foo.py \\",
+                "# this is a comment",
+                "./bar.py \\",
+                "/x",
+            ],
+            ["./smth", "./foo.py", "./bar.py"],
+        ),
+    ]
+
+    for dockerfile_lines, expected in x:
+        copy_command_sources = sorted(_extract_copy_command_patterns(dockerfile_lines))
+        expected = sorted(expected)
+        assert copy_command_sources == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "pattern", "expected_filepaths"),
+    [
+        (
+            "basic_wildcards",
+            "{tmp_dir}/*.txt",
+            ["{tmp_path}/file1.txt", "{tmp_path}/file10.txt", "{tmp_path}/file2.txt"],
+        ),
+        ("single_character_wildcards", "{tmp_dir}/file?.txt", ["{tmp_path}/file1.txt", "{tmp_path}/file2.txt"]),
+        (
+            "recursive_wildcards",
+            "{tmp_dir}/**/*.py",
+            ["{tmp_path}/dir2/test1.py", "{tmp_path}/dir2/test2.py", "{tmp_path}/special/test?file.py"],
+        ),
+        (
+            "directory_specific_match",
+            "{tmp_dir}/dir1/*.txt",
+            ["{tmp_path}/dir1/a.txt", "{tmp_path}/dir1/b.txt"],
+        ),
+        ("escaping_special_characters", "{tmp_dir}/special/file[[]1].txt", ["{tmp_path}/special/file[1].txt"]),
+        ("character_range", "{tmp_dir}/dir2/test[1-2].py", ["{tmp_path}/dir2/test1.py", "{tmp_path}/dir2/test2.py"]),
+        ("abs_path", "{tmp_dir}/dir2/test1.py", ["{tmp_path}/dir2/test1.py"]),
+    ],
+)
+def test_filter_fp_docker_pattern(name, pattern, expected_filepaths):
+    with TemporaryDirectory(dir="./") as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        all_fps = create_tmp_files(tmp_path)
+        fmt_pattern = pattern.format(tmp_dir=tmp_dir, tmp_path=tmp_path)
+        if name == "abs_path":
+            fmt_pattern = os.path.abspath(fmt_pattern)
+        fmt_expected_filepaths = [fp.format(tmp_dir=tmp_dir, tmp_path=tmp_path) for fp in expected_filepaths]
+        fmt_unexpected_filepaths = [fp for fp in all_fps if fp not in fmt_expected_filepaths]
+
+        # assert only expected_filepaths are matched
+        for fp in fmt_expected_filepaths:
+            assert _filter_fp_docker_pattern(fp, fmt_pattern), f"{name=} {fp=} {fmt_pattern=}"
+        # assert no other filepaths are matched
+        for fp in fmt_unexpected_filepaths:
+            assert not _filter_fp_docker_pattern(fp, fmt_pattern), f"{name=} {fp=} {fmt_pattern=}"
 
 
 def test_image_docker_command_entrypoint(builder_version, servicer, client, tmp_path_with_content):
