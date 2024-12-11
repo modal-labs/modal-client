@@ -32,6 +32,7 @@ from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
+from ._utils.local_file_filter import LocalFileFilter
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
@@ -697,10 +698,7 @@ class _Image(_Object, type_prefix="im"):
         the destination directory.
         """
 
-        def only_py_files(filename):
-            return filename.endswith(".py")
-
-        mount = _Mount.from_local_python_packages(*modules, condition=only_py_files)
+        mount = _Mount.from_local_python_packages(*modules, include_files=LocalFileFilter("**/*.py"))
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":

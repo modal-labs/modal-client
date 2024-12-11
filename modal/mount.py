@@ -368,7 +368,7 @@ class _Mount(_Object, type_prefix="mo"):
         ```python
         assets = modal.Mount.from_local_dir(
             "~/assets",
-            condition=lambda pth: not ".venv" in pth,
+            include_files=modal.LocalFileFilter("**/*", "!*.venv"),
             remote_path="/assets",
         )
         ```

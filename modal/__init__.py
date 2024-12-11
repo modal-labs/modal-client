@@ -11,6 +11,7 @@ from modal_version import __version__
 try:
     from ._runtime.execution_context import current_function_call_id, current_input_id, interact, is_local
     from ._tunnel import Tunnel, forward
+    from ._utils.local_file_filter import LocalFileFilter
     from .app import App, Stub
     from .client import Client
     from .cloud_bucket_mount import CloudBucketMount
@@ -79,4 +80,5 @@ __all__ = [
     "web_endpoint",
     "web_server",
     "wsgi_app",
+    "LocalFileFilter",
 ]
