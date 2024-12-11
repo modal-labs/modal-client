@@ -17,7 +17,7 @@ from modal_proto import api_pb2
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._runtime.execution_context import is_local
-from ._traceback import traceback_contains_remote_call
+from ._traceback import print_server_warnings, traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, gather_cancel_on_exc, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name, is_valid_tag
@@ -206,6 +206,7 @@ async def _publish_app(
             raise InvalidError(exc.message)
         raise
 
+    print_server_warnings(response.server_warnings)
     return response.url, response.server_warnings
 
 
