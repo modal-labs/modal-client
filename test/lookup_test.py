@@ -4,6 +4,7 @@ import pytest
 from modal import App, Function, Volume, web_endpoint
 from modal.exception import ExecutionError, NotFoundError
 from modal.runner import deploy_app
+from modal_proto import api_pb2
 
 
 def test_persistent_object(servicer, client):
@@ -68,3 +69,19 @@ def test_create_if_missing(servicer, client):
     v1: Volume = Volume.lookup("my-volume", create_if_missing=True, client=client)
     v2: Volume = Volume.lookup("my-volume", client=client)
     assert v1.object_id == v2.object_id
+
+
+def test_lookup_server_warnings(servicer, client):
+    app = App()
+
+    app.function()(square)
+    deploy_app(app, "my-function", client=client)
+
+    servicer.function_get_server_warnings = [
+        api_pb2.Warning(
+            type=api_pb2.Warning.WARNING_TYPE_CLIENT_DEPRECATION,
+            message="xyz",
+        )
+    ]
+    with pytest.warns(match="xyz"):
+        Function.lookup("my-function", "square", client=client)

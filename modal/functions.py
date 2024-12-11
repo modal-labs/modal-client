@@ -64,6 +64,7 @@ from .exception import (
     NotFoundError,
     OutputExpiredError,
     deprecation_warning,
+    print_server_warnings,
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
@@ -1060,6 +1061,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     raise NotFoundError(exc.message)
                 else:
                     raise
+
+            print_server_warnings(response.server_warnings)
 
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
