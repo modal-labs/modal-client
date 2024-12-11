@@ -18,11 +18,8 @@ from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
-from .exception import InvalidError, NotFoundError, VersionError
-from .functions import (
-    _Function,
-    _parse_retries,
-)
+from .exception import InvalidError, NotFoundError, VersionError, print_server_warnings
+from .functions import _Function, _parse_retries
 from .gpu import GPU_T
 from .object import _get_environment_name, _Object
 from .partial_function import (
@@ -485,6 +482,8 @@ class _Cls(_Object, type_prefix="cs"):
                     raise InvalidError(exc.message)
                 else:
                     raise
+
+            print_server_warnings(response.server_warnings)
 
             class_function_tag = f"{tag}.*"  # special name of the base service function for the class
 

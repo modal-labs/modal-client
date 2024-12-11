@@ -7,7 +7,6 @@ import sys
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError
 
-import modal.exception
 from modal import Client
 from modal.exception import AuthError, ConnectionError, DeprecationError, InvalidError, VersionError
 from modal_proto import api_pb2
@@ -96,13 +95,6 @@ async def test_client_server_error(servicer):
 async def test_client_old_version(servicer, credentials):
     with pytest.raises(VersionError):
         async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials, version="0.0.0"):
-            pass
-
-
-@pytest.mark.asyncio
-async def test_client_deprecated(servicer, credentials):
-    with pytest.warns(modal.exception.DeprecationError):
-        async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials, version="deprecated"):
             pass
 
 

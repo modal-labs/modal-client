@@ -4,6 +4,9 @@ import signal
 import sys
 import warnings
 from datetime import date
+from typing import Iterable
+
+from modal_proto import api_pb2
 
 
 class Error(Exception):
@@ -217,3 +220,12 @@ class ClientClosed(Error):
 
 class FilesystemExecutionError(Error):
     """Raised when an unknown error is thrown during a container filesystem operation."""
+
+
+def print_server_warnings(server_warnings: Iterable[api_pb2.Warning]):
+    # TODO(erikbern): move this to modal._utils.deprecation
+    for warning in server_warnings:
+        if warning.type == api_pb2.Warning.WARNING_TYPE_CLIENT_DEPRECATION:
+            warnings.warn_explicit(warning.message, DeprecationError, "<unknown>", 0)
+        else:
+            warnings.warn_explicit(warning.message, UserWarning, "<unknown>", 0)
