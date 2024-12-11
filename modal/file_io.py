@@ -369,4 +369,6 @@ class _FileIO(Generic[T]):
         await self._close()
 
 
+delete_bytes = synchronize_api(delete_bytes)
+overwrite_bytes = synchronize_api(overwrite_bytes)
 FileIO = synchronize_api(_FileIO)
