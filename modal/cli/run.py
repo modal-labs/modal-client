@@ -311,7 +311,7 @@ def deploy(
         if res.warnings:
             console = Console()
             for warning in res.warnings:
-                panel = Panel(warning, title="Warning", title_align="left", border_style="yellow")
+                panel = Panel(warning.message, title="Warning", title_align="left", border_style="yellow")
                 console.print(panel, highlight=False)
 
     if stream_logs:
