@@ -91,10 +91,10 @@ async def _replace_bytes(file: "_FileIO", data: bytes, start: Optional[int] = No
     await file._wait(resp.exec_id)
 
 
-# The Sandbox file handling API is designed to mimic Python's io.FileIO
+# The FileIO class is designed to mimic Python's io.FileIO
 # See https://github.com/python/cpython/blob/main/Lib/_pyio.py#L1459
 class _FileIO(Generic[T]):
-    """FileIO handle for the Sandbox filesystem API.
+    """FileIO handle, used in the Sandbox filesystem API.
 
     The API is designed to mimic Python's io.FileIO.
 
