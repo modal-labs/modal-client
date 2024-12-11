@@ -16,7 +16,6 @@ from typing import (
 import grpclib.client
 from google.protobuf import empty_pb2
 from google.protobuf.message import Message
-from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal._utils.async_utils import synchronizer
@@ -28,12 +27,10 @@ from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import connect_channel, create_channel, retry_transient_errors
 from .config import _check_config, _is_remote, config, logger
-from .exception import AuthError, ClientClosed, ConnectionError, VersionError
+from .exception import AuthError, ClientClosed, ConnectionError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
-CLIENT_CREATE_ATTEMPT_TIMEOUT: float = 4.0
-CLIENT_CREATE_TOTAL_TIMEOUT: float = 15.0
 
 
 def _get_metadata(client_type: int, credentials: Optional[tuple[str, str]], version: str) -> dict[str, str]:
@@ -138,22 +135,7 @@ class _Client:
     async def hello(self):
         """Connect to server and retrieve version information; raise appropriate error for various failures."""
         logger.debug(f"Client ({id(self)}): Starting")
-        try:
-            req = empty_pb2.Empty()
-            resp = await retry_transient_errors(
-                self.stub.ClientHello,
-                req,
-                attempt_timeout=CLIENT_CREATE_ATTEMPT_TIMEOUT,
-                total_timeout=CLIENT_CREATE_TOTAL_TIMEOUT,
-            )
-        except GRPCError as exc:
-            if exc.status == Status.FAILED_PRECONDITION:
-                raise VersionError(
-                    f"The client version ({self.version}) is too old. Please update (pip install --upgrade modal)."
-                )
-            else:
-                raise exc
-
+        resp = await retry_transient_errors(self.stub.ClientHello, empty_pb2.Empty())
         print_server_warnings(resp.server_warnings)
 
     async def __aenter__(self):
