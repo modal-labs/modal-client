@@ -200,7 +200,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the sandbox on.
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        # Specify, in fractional CPU cores, how many CPU cores to request.
+        # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
+        # CPU throttling will prevent a container from exceeding its specified limit.
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: Optional[Union[int, tuple[int, int]]] = None,
@@ -508,17 +511,16 @@ class _Sandbox(_Object, type_prefix="sb"):
             await secret.resolve(client=self._client)
 
         task_id = await self._get_task_id()
-        resp = await self._client.stub.ContainerExec(
-            api_pb2.ContainerExecRequest(
-                task_id=task_id,
-                command=cmds,
-                pty_info=_pty_info or pty_info,
-                runtime_debug=config.get("function_runtime_debug"),
-                timeout_secs=timeout or 0,
-                workdir=workdir,
-                secret_ids=[secret.object_id for secret in secrets],
-            )
+        req = api_pb2.ContainerExecRequest(
+            task_id=task_id,
+            command=cmds,
+            pty_info=_pty_info or pty_info,
+            runtime_debug=config.get("function_runtime_debug"),
+            timeout_secs=timeout or 0,
+            workdir=workdir,
+            secret_ids=[secret.object_id for secret in secrets],
         )
+        resp = await retry_transient_errors(self._client.stub.ContainerExec, req)
         by_line = bufsize == 1
         return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr, text=text, by_line=by_line)
 
