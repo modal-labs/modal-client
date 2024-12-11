@@ -39,7 +39,7 @@ ERROR_MAPPING = {
 T = TypeVar("T", str, bytes)
 
 
-async def delete_bytes(file: "_FileIO", start: Optional[int] = None, end: Optional[int] = None) -> None:
+async def _delete_bytes(file: "_FileIO", start: Optional[int] = None, end: Optional[int] = None) -> None:
     """Delete a range of bytes from the file.
 
     `start` and `end` are byte offsets. `start` is inclusive, `end` is exclusive.
@@ -62,7 +62,9 @@ async def delete_bytes(file: "_FileIO", start: Optional[int] = None, end: Option
     await file._wait(resp.exec_id)
 
 
-async def overwrite_bytes(file: "_FileIO", data: bytes, start: Optional[int] = None, end: Optional[int] = None) -> None:
+async def _overwrite_bytes(
+    file: "_FileIO", data: bytes, start: Optional[int] = None, end: Optional[int] = None
+) -> None:
     """Overwrite a range of bytes in the file with new data. The length of the data does not
     have to be the same as the length of the range being overwritten.
 
@@ -369,6 +371,6 @@ class _FileIO(Generic[T]):
         await self._close()
 
 
-delete_bytes = synchronize_api(delete_bytes)
-overwrite_bytes = synchronize_api(overwrite_bytes)
+delete_bytes = synchronize_api(_delete_bytes)
+overwrite_bytes = synchronize_api(_overwrite_bytes)
 FileIO = synchronize_api(_FileIO)
