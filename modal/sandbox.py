@@ -24,7 +24,14 @@ from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
-from .exception import ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError, deprecation_warning
+from .exception import (
+    ExecutionError,
+    InvalidError,
+    SandboxTerminatedError,
+    SandboxTimeoutError,
+    deprecation_error,
+    deprecation_warning,
+)
 from .file_io import _FileIO
 from .gpu import GPU_T
 from .image import _Image
@@ -646,7 +653,7 @@ Sandbox = synchronize_api(_Sandbox)
 
 def __getattr__(name):
     if name == "LogsReader":
-        deprecation_warning(
+        deprecation_error(
             (2024, 8, 12),
             "`modal.sandbox.LogsReader` is deprecated. Please import `modal.io_streams.StreamReader` instead.",
         )
@@ -654,7 +661,7 @@ def __getattr__(name):
 
         return StreamReader
     elif name == "StreamWriter":
-        deprecation_warning(
+        deprecation_error(
             (2024, 8, 12),
             "`modal.sandbox.StreamWriter` is deprecated. Please import `modal.io_streams.StreamWriter` instead.",
         )
