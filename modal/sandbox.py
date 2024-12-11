@@ -4,6 +4,9 @@ import os
 from collections.abc import AsyncGenerator, Sequence
 from typing import TYPE_CHECKING, Literal, Optional, Union, overload
 
+if TYPE_CHECKING:
+    import _typeshed
+
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
@@ -29,6 +32,7 @@ from .exception import (
     deprecation_error,
     deprecation_warning,
 )
+from .file_io import _FileIO
 from .gpu import GPU_T
 from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
@@ -526,6 +530,42 @@ class _Sandbox(_Object, type_prefix="sb"):
         resp = await retry_transient_errors(self._client.stub.ContainerExec, req)
         by_line = bufsize == 1
         return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr, text=text, by_line=by_line)
+
+    @overload
+    async def open(
+        self,
+        path: str,
+        mode: "_typeshed.OpenTextMode",
+    ) -> _FileIO[str]:
+        ...
+
+    @overload
+    async def open(
+        self,
+        path: str,
+        mode: "_typeshed.OpenBinaryMode",
+    ) -> _FileIO[bytes]:
+        ...
+
+    async def open(
+        self,
+        path: str,
+        mode: Union["_typeshed.OpenTextMode", "_typeshed.OpenBinaryMode"] = "r",
+    ):
+        """Open a file in the Sandbox and return
+        a [`FileIO`](/docs/reference/modal.FileIO#modalfile_io) handle.
+
+        **Usage**
+
+        ```python notest
+        sb = modal.Sandbox.create(app=sb_app)
+        f = sb.open("/test.txt", "w")
+        f.write("hello")
+        f.close()
+        ```
+        """
+        task_id = await self._get_task_id()
+        return await _FileIO.create(path, mode, self._client, task_id)
 
     @property
     def stdout(self) -> _StreamReader[str]:

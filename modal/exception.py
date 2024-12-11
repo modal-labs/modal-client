@@ -222,6 +222,10 @@ class ClientClosed(Error):
     pass
 
 
+class FilesystemExecutionError(Error):
+    """Raised when an unknown error is thrown during a container filesystem operation."""
+
+
 def print_server_warnings(server_warnings: Iterable[api_pb2.Warning]):
     # TODO(erikbern): move this to modal._utils.deprecation
     for warning in server_warnings:
