@@ -4,6 +4,7 @@ import signal
 import sys
 import warnings
 from datetime import date
+from typing import Iterable
 
 from modal_proto import api_pb2
 
@@ -217,7 +218,7 @@ class ClientClosed(Error):
     pass
 
 
-def print_server_warnings(server_warnings: list[api_pb2.Warning]):
+def print_server_warnings(server_warnings: Iterable[api_pb2.Warning]):
     ALARM_EMOJI = chr(0x1F6A8)
     for warning in server_warnings:
         warnings.warn_explicit(f"{ALARM_EMOJI} {warning} {ALARM_EMOJI}", DeprecationError, "<unknown>", 0)
