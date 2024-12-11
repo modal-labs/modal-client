@@ -455,7 +455,7 @@ class DeployResult:
     app_id: str
     app_page_url: str
     app_logs_url: str
-    warnings: list[api_pb2.Warning]
+    warnings: list[str]
 
 
 async def _deploy_app(
@@ -554,7 +554,7 @@ async def _deploy_app(
         app_id=running_app.app_id,
         app_page_url=running_app.app_page_url,
         app_logs_url=running_app.app_logs_url,  # type: ignore
-        warnings=warnings,
+        warnings=[warning.message for warning in warnings],
     )
 
 
