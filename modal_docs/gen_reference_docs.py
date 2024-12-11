@@ -86,6 +86,7 @@ def run(output_dir: str = None):
         ("modal.Sandbox", "modal.sandbox"),
         ("modal.ContainerProcess", "modal.container_process"),
         ("modal.io_streams", "modal.io_streams"),
+        ("modal.FileIO", "modal.file_io"),
     ]
     # These aren't defined in `modal`, but should still be documented as top-level entries.
     forced_members = {"web_endpoint", "asgi_app", "method", "wsgi_app", "forward"}
