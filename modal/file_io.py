@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, AsyncIterator, Generic, Optional, Sequence, Ty
 if TYPE_CHECKING:
     import _typeshed
 
-from collections.abc import AsyncGenerator
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
@@ -122,6 +121,7 @@ class _FileIO(Generic[T]):
 
     _task_id: str = ""
     _file_descriptor: str = ""
+    _watch_output_buffer: list[bytes] = []
     _client: Optional[_Client] = None
 
     def _validate_mode(self, mode: str) -> None:
@@ -166,6 +166,14 @@ class _FileIO(Generic[T]):
             for message in batch.output:
                 yield message
 
+    async def _consume_watch_output(self, exec_id: str) -> None:
+        req = api_pb2.ContainerFilesystemExecGetOutputRequest(
+            exec_id=exec_id,
+            timeout=55,
+        )
+        async for batch in self._client.stub.ContainerFilesystemExecGetOutput.unary_stream(req):
+            self._watch_output_buffer.append(batch.output)
+
     async def _wait(self, exec_id: str) -> bytes:
         # The logic here is similar to how output is read from `exec`
         output = b""
@@ -189,6 +197,10 @@ class _FileIO(Generic[T]):
                         continue
                 raise
         return output
+
+    async def _wait_watch(self, exec_id: str) -> None:
+        # buffer watch events into memory
+        await self._wait(exec_id)
 
     def _validate_type(self, data: Union[bytes, str]) -> None:
         if self._binary and isinstance(data, str):
@@ -385,7 +397,7 @@ class _FileIO(Generic[T]):
     @classmethod
     async def watch(
         cls, path: str, client: _Client, task_id: str, timeout: Optional[int] = None, recursive: bool = False
-    ) -> AsyncGenerator[str, None]:
+    ) -> None:
         self = cls.__new__(cls)
         self._client = client
         self._task_id = task_id
@@ -399,10 +411,7 @@ class _FileIO(Generic[T]):
                 task_id=self._task_id,
             )
         )
-        print("resp", resp)
-        while True:
-            await asyncio.sleep(1.0)
-            yield "dummy event"
+        await self._wait(resp.exec_id)
 
     async def _close(self) -> None:
         # Buffer is flushed by the runner on close

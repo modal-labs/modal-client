@@ -587,9 +587,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         path: str,
         recursive: Optional[bool] = None,
         timeout: Optional[int] = None,
-    ) -> AsyncGenerator[str, None]:
+    ) -> None:
         task_id = await self._get_task_id()
-        return await _FileIO.watch(path, self._client, task_id, recursive, timeout)
+        await _FileIO.watch(path, self._client, task_id, recursive, timeout)
 
     @property
     def stdout(self) -> _StreamReader[str]:
