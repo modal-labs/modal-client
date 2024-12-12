@@ -326,7 +326,7 @@ class _Mount(_Object, type_prefix="mo"):
         recursive: bool = True,
         # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
         # Defaults to including all files.
-        ignore: list[str] | Callable[[Path], bool] = [],
+        ignore: Union[list[str], Callable[[Path], bool]] = [],
     ) -> "_Mount":
         """
         Add a local directory to the `Mount` object.
@@ -370,7 +370,7 @@ class _Mount(_Object, type_prefix="mo"):
         recursive: bool = True,
         # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
         # Defaults to including all files.
-        ignore: list[str] | Callable[[Path], bool] = [],
+        ignore: Union[list[str], Callable[[Path], bool]] = [],
     ) -> "_Mount":
         """
         Create a `Mount` from a local directory.
@@ -562,7 +562,7 @@ class _Mount(_Object, type_prefix="mo"):
         # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
         # Defaults to including all files.
         condition: Optional[Callable[[str], bool]] = None,
-        ignore: list[str] | Callable[[Path], bool] = [],
+        ignore: Union[list[str], Callable[[Path], bool]] = [],
     ) -> "_Mount":
         """
         Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.

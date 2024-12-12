@@ -645,7 +645,7 @@ class _Image(_Object, type_prefix="im"):
         remote_path: str,
         *,
         copy: bool = False,
-        ignore: list[str] | Callable[[Path], bool] = [],
+        ignore: Union[list[str], Callable[[Path], bool]] = [],
     ) -> "_Image":
         """Adds a local directory's content to the image at `remote_path` within the container
 
@@ -712,7 +712,7 @@ class _Image(_Object, type_prefix="im"):
         self,
         local_path: Union[str, Path],
         remote_path: Union[str, Path] = ".",
-        ignore: list[str] | Callable[[Path], bool] = [],
+        ignore: Union[list[str], Callable[[Path], bool]] = [],
     ) -> "_Image":
         """Copy a directory into the image as a part of building the image.
 
