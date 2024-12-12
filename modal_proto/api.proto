@@ -2616,6 +2616,7 @@ message WebhookConfig {
   uint32 web_server_port = 7;
   float web_server_startup_timeout = 8;
   bool web_endpoint_docs = 9;
+  bool requires_proxy_auth = 10;
 }
 
 message WorkspaceNameLookupResponse {

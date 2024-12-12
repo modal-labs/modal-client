@@ -271,6 +271,7 @@ def _web_endpoint(
     custom_domains: Optional[
         Iterable[str]
     ] = None,  # Create an endpoint using a custom domain fully-qualified domain name (FQDN).
+    requires_proxy_auth: bool = False,  # Require Proxy-Authenticate HTTP Headers on requests to the endpoint
     wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[P, ReturnType]], _PartialFunction[P, ReturnType, ReturnType]]:
     """Register a basic web endpoint with this application.
@@ -321,6 +322,7 @@ def _web_endpoint(
                 requested_suffix=label,
                 async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
                 custom_domains=_parse_custom_domains(custom_domains),
+                requires_proxy_auth=requires_proxy_auth,
             ),
         )
 
