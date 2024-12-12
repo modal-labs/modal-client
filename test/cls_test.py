@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import inspect
-import logging
 import pytest
 import subprocess
 import sys
@@ -15,7 +14,6 @@ from modal import App, Cls, Function, Image, Queue, build, enter, exit, method
 from modal._serialization import deserialize, serialize
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import FunctionInfo
-from modal.config import logger
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError, PendingDeprecationError
 from modal.partial_function import (
     PartialFunction,
@@ -323,8 +321,6 @@ def test_lookup(client, servicer):
 
 def test_from_name_lazy_method_resolve(client, servicer):
     deploy_app(app, "my-cls-app", client=client)
-
-    logger.setLevel(logging.DEBUG)
     cls: Cls = Cls.from_name("my-cls-app", "Foo")
 
     # Make sure we can instantiate the class

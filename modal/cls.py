@@ -195,7 +195,6 @@ class _Obj:
         return bound_vars.arguments
 
     def _new_user_cls_instance(self):
-        print("Creating user cls instance")
         if not _use_annotation_parameters(self._user_cls):
             # TODO(elias): deprecate this code path eventually
             user_cls_instance = self._user_cls(*self._args, **self._kwargs)
@@ -216,8 +215,6 @@ class _Obj:
         instance_methods = {}
         for method_name in _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.FUNCTION):
             instance_methods[method_name] = getattr(self, method_name)
-
-        print("Adding", instance_methods)
 
         user_cls_instance._modal_functions = instance_methods
         return user_cls_instance
