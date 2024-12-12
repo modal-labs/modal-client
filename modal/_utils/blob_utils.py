@@ -308,7 +308,10 @@ async def blob_upload_file(
     file_obj: BinaryIO, stub: ModalClientModal, progress_report_cb: Optional[Callable] = None
 ) -> str:
     upload_hashes = get_upload_hashes(file_obj)
-    return await _blob_upload(upload_hashes, file_obj, stub, progress_report_cb)
+    logger.debug("Uploading large blob from file")
+    blob_id = await _blob_upload(upload_hashes, file_obj, stub, progress_report_cb)
+    logger.debug("Uploaded blob from file: %s", blob_id)
+    return blob_id
 
 
 @retry(n_attempts=5, base_delay=0.1, timeout=None)
