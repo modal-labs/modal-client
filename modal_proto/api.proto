@@ -678,6 +678,7 @@ message ClassParameterValue {
 message ClientHelloResponse {
   string warning = 1;
   string image_builder_version = 2;  // Deprecated, no longer used in client
+  repeated Warning server_warnings = 4;
 }
 
 message CloudBucketMount {
