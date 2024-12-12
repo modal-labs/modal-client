@@ -97,10 +97,11 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
                 return getattr(obj, "_modal_functions")[k]
             else:
                 # special edge case: referencing a method of an instance of an
-                # unwrapped class (not using app.cls()) with @methods
+                # unwrapped class (not using app.cls()) or serialized class with @methods
                 # not sure what would be useful here, but let's return a bound version of the underlying function,
                 # since the class is just a vanilla class at this point
                 # This wouldn't let the user access `.remote()` and `.local()` etc. on the function
+                # TODO: we should be able to create/hydrate _modal_functions using container args/app object metadata
                 return self.raw_f.__get__(obj, objtype)
 
         else:  # accessing a method directly on the class, e.g. `MyClass.fun`

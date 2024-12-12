@@ -2100,6 +2100,10 @@ class Foo:
     def method_b(self, y):
         return self.x + f"_b_{y}"
 
+    @method()
+    def calls_local(self, y):
+        return self.method_a.local(y)
+
 
 @skip_github_non_linux
 def test_class_as_service_serialized(servicer):
@@ -2119,16 +2123,19 @@ def test_class_as_service_serialized(servicer):
         "Foo.*",
         definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
         is_class=True,
-        inputs=_get_multi_inputs_with_methods([("method_a", ("x",), {}), ("method_b", ("y",), {})]),
+        inputs=_get_multi_inputs_with_methods(
+            [("method_a", ("x",), {}), ("method_b", ("y",), {}), ("calls_local", ("y",), {})]
+        ),
         serialized_params=serialize(((), {"x": "s"})),
     )
-    assert len(result.items) == 2
-    res_0 = result.items[0].result
-    res_1 = result.items[1].result
-    assert res_0.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert res_1.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert deserialize(res_0.data, result.client) == "s_enter_a_x"
-    assert deserialize(res_1.data, result.client) == "s_enter_b_y"
+    assert len(result.items) == 3
+    res = [it.result for it in result.items]
+    assert res[0].status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert deserialize(res[0].data, result.client) == "s_enter_a_x"
+    assert res[1].status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert deserialize(res[1].data, result.client) == "s_enter_b_y"
+    assert res[2].status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert deserialize(res[2].data, result.client) == "s_enter_a_y"
 
 
 @skip_github_non_linux
