@@ -13,7 +13,7 @@ import modal
 from modal import App, Image, Mount, NetworkFileSystem, Proxy, asgi_app, batched, web_endpoint
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
-from modal.exception import ExecutionError, InvalidError
+from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall, gather
 from modal.runner import deploy_app
 from modal_proto import api_pb2
@@ -401,17 +401,8 @@ async def test_generator_future(client, servicer):
     servicer.function_body(later_gen)
     later_modal = app.function()(later_gen)
     with app.run(client=client):
-        future = later_modal.spawn()
-        assert isinstance(future, FunctionCall)
-
-        with pytest.raises(Exception, match="Cannot get"):
-            future.get()
-
-        assert next(future.get_gen()) == "foo"
-
-
-def gen_with_arg(i):
-    yield "foo"
+        with pytest.raises(DeprecationError):
+            later_modal.spawn()
 
 
 async def slo1(sleep_seconds):
@@ -696,6 +687,11 @@ def test_from_id_iter_gen(client, servicer, is_generator):
     servicer.function_body(f)
     later_modal = app.function()(f)
     with app.run(client=client):
+        if is_generator:
+            with pytest.raises(DeprecationError):
+                later_modal.spawn()
+            return
+
         future = later_modal.spawn()
         assert isinstance(future, FunctionCall)
 
@@ -876,9 +872,10 @@ def test_calls_should_not_unwrap_modal_objects_gen(servicer, client):
     # make sure the serialized object is an actual Dict and not a _Dict in all user code contexts
     with app.run(client=client):
         assert type(next(foo.remote_gen(some_modal_object))) == modal.Dict
-        foo.spawn(some_modal_object)  # spawn on generator returns None, but starts the generator
+        with pytest.raises(DeprecationError):
+            foo.spawn(some_modal_object)
 
-    assert len(servicer.client_calls) == 2
+    assert len(servicer.client_calls) == 1
 
 
 def test_mount_deps_have_ids(client, servicer, monkeypatch, test_dir):
