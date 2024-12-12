@@ -643,10 +643,14 @@ class _VolumeUploadContextManager:
                 request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
                 self._progress_cb(task_id=progress_task_id, complete=True)
 
+            logger.debug("Performing MountPutFile for {file_spec.source_description}")
+            t0 = time.monotonic()
             while (time.monotonic() - start_time) < VOLUME_PUT_FILE_CLIENT_TIMEOUT:
                 response = await retry_transient_errors(self._client.stub.MountPutFile, request2, base_delay=1)
                 if response.exists:
                     break
+            latency = time.monotonic() - t0
+            logger.debug(f"Finished MountPutFile for {file_spec.source_description}: {latency}s")
 
             if not response.exists:
                 raise VolumeUploadTimeoutError(f"Uploading of {file_spec.source_description} timed out")
