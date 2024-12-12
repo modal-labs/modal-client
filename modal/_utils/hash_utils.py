@@ -55,7 +55,7 @@ def get_upload_hashes(data: Union[bytes, BinaryIO], sha256_hex: Optional[str] = 
     if sha256_hex:
 
         def sha256_update(_data):
-            ...
+            pass
 
         def sha256_finalize():
             bytes.fromhex(sha256_hex)
