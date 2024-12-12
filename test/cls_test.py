@@ -336,7 +336,7 @@ def test_from_name_lazy_method_resolve(client, servicer):
     assert obj.bar.remote(42, 77) == 7693
 
     # Make sure local calls fail
-    with pytest.raises(ExecutionError):
+    with pytest.raises(ExecutionError, match="locally"):
         assert obj.bar.local(1, 2)
 
     # Make sure that non-existing methods fail

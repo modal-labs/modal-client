@@ -342,7 +342,6 @@ class _Obj:
                 )
             await resolver.load(method_function)  # get the appropriate method handle (lazy)
             fun._hydrate_from_other(method_function)
-            fun._info = method_function._info  # ugly: needed for .local()
 
         # The reason we don't *always* use this lazy loader is because it precludes attribute access
         # on local classes.
@@ -352,7 +351,6 @@ class _Obj:
             deps=lambda: [],  # TODO: use cls as dep instead of loading inside method_loader?
             hydrate_lazily=True,
         )
-        # TODO: .local() on unhydrated class with local definition - requires info to be set on _Function
 
 
 Obj = synchronize_api(_Obj)

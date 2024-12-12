@@ -1321,6 +1321,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         async for item in self._call_generator(args, kwargs):  # type: ignore
             yield item
 
+    def _is_local(self):
+        return self._info is not None
+
     def _get_info(self) -> FunctionInfo:
         if not self._info:
             raise ExecutionError("Can't get info for a function that isn't locally defined")
@@ -1345,19 +1348,24 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         """
         # TODO(erikbern): it would be nice to remove the nowrap thing, but right now that would cause
         # "user code" to run on the synchronicity thread, which seems bad
+        if not self._is_local():
+            msg = (
+                "The definition for this function is missing here so it is not possible to invoke it locally. "
+                "If this function was retrieved via `Function.lookup` you need to use `.remote()`."
+            )
+            raise ExecutionError(msg)
+
         info = self._get_info()
+        if not info.raw_f:
+            # Here if calling .local on a service function itself which should never happen
+            # TODO: check if we end up here in a container for a serialized function?
+            raise ExecutionError("Can't call .local on service function")
 
         if is_local() and self.spec.volumes or self.spec.network_file_systems:
             warnings.warn(
                 f"The {info.function_name} function is executing locally "
                 + "and will not have access to the mounted Volume or NetworkFileSystem data"
             )
-        if not info or not info.raw_f:
-            msg = (
-                "The definition for this function is missing so it is not possible to invoke it locally. "
-                "If this function was retrieved via `Function.lookup` you need to use `.remote()`."
-            )
-            raise ExecutionError(msg)
 
         obj: Optional["modal.cls._Obj"] = self._get_obj()
 
