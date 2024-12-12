@@ -4,7 +4,7 @@ import dataclasses
 import hashlib
 from typing import BinaryIO, Callable, Union
 
-HASH_CHUNK_SIZE = 4096
+HASH_CHUNK_SIZE = 65536
 
 
 def _update(hashers: list[Callable[[bytes], None]], data: Union[bytes, BinaryIO]) -> None:
