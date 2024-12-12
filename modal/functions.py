@@ -1277,7 +1277,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     async def _call_generator_nowait(self, args, kwargs):
         deprecation_warning(
             (2024, 12, 11),
-            "Calling spawn on a generator function is deprecated and will soon be removed.",
+            "Calling spawn on a generator function is deprecated and will soon raise an exception.",
         )
         return await _Invocation.create(
             self,
