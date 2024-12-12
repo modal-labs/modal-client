@@ -19,7 +19,7 @@ from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
-from .exception import InvalidError, NotFoundError, VersionError
+from .exception import ExecutionError, InvalidError, NotFoundError, VersionError
 from .functions import _Function, _parse_retries
 from .gpu import GPU_T
 from .object import _get_environment_name, _Object
@@ -284,13 +284,19 @@ class _Obj:
 
     def __getattr__(self, k):
         # This is a bit messy and branchy because:
-        # * Support for 0.63 lookups
+        # * Support for pre-0.63 lookups *and* newer classes
+        # * Support .remote() on both hydrated (local or remote classes) or unhydrated classes (remote classes only)
+        # * Support .local() on both hydrated and unhydrated classes (assuming local access to code)
         # * Support attribute access (when local cls is available)
-        # * Support methods for both local and remote classes
 
-        # and supporting both
         def _get_method_bound_function() -> Optional["_Function"]:
-            assert self._cls._method_functions is not None, "Method is not local and not hydrated"
+            """Gets _Function object for method - either for a local or a hydrated remote class
+
+            * If class is neither local or hydrated - raise exception (should never happen)
+            * If attribute isn't a method - return None
+            """
+            if self._cls._method_functions is None:
+                raise ExecutionError("Method is not local and not hydrated")
 
             if class_bound_method := self._cls._method_functions.get(k, None):
                 # If we know the user is accessing a *method* and not another attribute,
@@ -336,15 +342,17 @@ class _Obj:
                 )
             await resolver.load(method_function)  # get the appropriate method handle (lazy)
             fun._hydrate_from_other(method_function)
-            fun._info = method_function._info  # ugly: for .local
+            fun._info = method_function._info  # ugly: needed for .local()
 
+        # The reason we don't *always* use this lazy loader is because it precludes attribute access
+        # on local classes.
         return _Function._from_loader(
             method_loader,
             repr,
-            deps=lambda: [],  # TODO: use deps?
+            deps=lambda: [],  # TODO: use cls as dep instead of loading inside method_loader?
             hydrate_lazily=True,
         )
-        # TODO: .local() on unhydrated class, requires info to be set on _Function
+        # TODO: .local() on unhydrated class with local definition - requires info to be set on _Function
 
 
 Obj = synchronize_api(_Obj)
