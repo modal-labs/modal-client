@@ -781,6 +781,12 @@ message ContainerFileMkdirRequest {
   bool make_parents = 2;
 }
 
+message ContainerFileWatchRequest {
+  string path = 1;
+  bool recursive = 2;
+  optional uint64 timeout_secs = 3;
+}
+
 message ContainerFileOpenRequest {
   // file descriptor is hydrated when sent from server -> worker
   optional string file_descriptor = 1;
@@ -839,6 +845,7 @@ message ContainerFilesystemExecRequest {
     ContainerFileLsRequest file_ls_request = 11;
     ContainerFileMkdirRequest file_mkdir_request = 12;
     ContainerFileRmRequest file_rm_request = 13;
+    ContainerFileWatchRequest file_watch_request = 14;
   }
   string task_id = 10;
 }
