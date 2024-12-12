@@ -73,9 +73,8 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         self.raw_f = raw_f
         self.flags = flags
         self.webhook_config = webhook_config
-        if webhook_config:
-            final_is_generator = True
-        elif is_generator is None:
+        if is_generator is None:
+            # auto detect - doesn't work if the function *returns* a generator
             final_is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
         else:
             final_is_generator = is_generator
