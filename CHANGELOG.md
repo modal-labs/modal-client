@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.68.5 (2024-12-12)
+
+We're removing support for `.spawn()`ing generator functions.
+
+
+
 ### 0.68.2 (2024-12-11)
 
 - Sandboxes now support a new filesystem API. The `open()` method returns a `FileIO` handle for native file handling in sandboxes.
