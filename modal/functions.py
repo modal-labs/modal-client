@@ -32,6 +32,7 @@ from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._runtime.execution_context import current_input_id, is_local
 from ._serialization import serialize, serialize_proto_params
+from ._traceback import print_server_warnings
 from ._utils.async_utils import (
     TaskContext,
     async_merge,
@@ -1060,6 +1061,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     raise NotFoundError(exc.message)
                 else:
                     raise
+
+            print_server_warnings(response.server_warnings)
 
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 

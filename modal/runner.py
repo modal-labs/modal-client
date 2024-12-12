@@ -17,7 +17,7 @@ from modal_proto import api_pb2
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._runtime.execution_context import is_local
-from ._traceback import traceback_contains_remote_call
+from ._traceback import print_server_warnings, traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, gather_cancel_on_exc, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name, is_valid_tag
@@ -176,7 +176,7 @@ async def _publish_app(
     indexed_objects: dict[str, _Object],
     name: str = "",  # Only relevant for deployments
     tag: str = "",  # Only relevant for deployments
-) -> tuple[str, list[str]]:
+) -> tuple[str, list[api_pb2.Warning]]:
     """Wrapper for AppPublish RPC."""
 
     # Could simplify this function some changing the internal representation to use
@@ -206,7 +206,8 @@ async def _publish_app(
             raise InvalidError(exc.message)
         raise
 
-    return response.url, response.warnings
+    print_server_warnings(response.server_warnings)
+    return response.url, response.server_warnings
 
 
 async def _disconnect(
@@ -554,7 +555,7 @@ async def _deploy_app(
         app_id=running_app.app_id,
         app_page_url=running_app.app_page_url,
         app_logs_url=running_app.app_logs_url,  # type: ignore
-        warnings=warnings,
+        warnings=[warning.message for warning in warnings],
     )
 
 
