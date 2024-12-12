@@ -4,6 +4,8 @@ import dataclasses
 import hashlib
 from typing import BinaryIO, Callable, Optional, Union
 
+from _typeshed import ReadableBuffer
+
 HASH_CHUNK_SIZE = 4096
 
 
@@ -54,7 +56,7 @@ def get_upload_hashes(data: Union[bytes, BinaryIO], sha256_hex: Optional[str] = 
     # If we already have the sha256 digest, do not compute it again
     if sha256_hex:
 
-        def sha256_update(_data):
+        def sha256_update(_data: ReadableBuffer, /):
             pass
 
         def sha256_finalize():
