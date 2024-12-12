@@ -174,7 +174,7 @@ class _Obj:
         self._kwargs = kwargs
         self._options = options
 
-    def _cached_service_function(self) -> "modal.function._Function":
+    def _cached_service_function(self) -> "modal.functions._Function":
         # Returns a service function for this _Obj, serving all its methods
         # In case of methods without parameters or options, this is simply proxying to the class service function
 
