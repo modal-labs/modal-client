@@ -4,6 +4,7 @@ import pytest
 from grpclib import Status
 from grpclib.exceptions import GRPCError
 
+from modal.exception import InvalidError
 from modal.file_io import FileIO, delete_bytes, replace_bytes
 from modal_proto import api_pb2
 
@@ -17,6 +18,9 @@ SEEK_EXEC_ID = "exec-seek-123"
 WRITE_REPLACE_EXEC_ID = "exec-write-replace-123"
 DELETE_EXEC_ID = "exec-delete-123"
 CLOSE_EXEC_ID = "exec-close-123"
+LS_EXEC_ID = "exec-ls-123"
+MKDIR_EXEC_ID = "exec-mkdir-123"
+RM_EXEC_ID = "exec-rm-123"
 
 
 async def container_filesystem_exec(servicer, stream):
@@ -70,6 +74,12 @@ async def container_filesystem_exec(servicer, stream):
         )
     elif req.HasField("file_close_request"):
         await stream.send_message(api_pb2.ContainerFilesystemExecResponse(exec_id=CLOSE_EXEC_ID))
+    elif req.HasField("file_ls_request"):
+        await stream.send_message(api_pb2.ContainerFilesystemExecResponse(exec_id=LS_EXEC_ID))
+    elif req.HasField("file_mkdir_request"):
+        await stream.send_message(api_pb2.ContainerFilesystemExecResponse(exec_id=MKDIR_EXEC_ID))
+    elif req.HasField("file_rm_request"):
+        await stream.send_message(api_pb2.ContainerFilesystemExecResponse(exec_id=RM_EXEC_ID))
 
 
 def test_file_read(servicer, client):
@@ -314,7 +324,7 @@ def test_invalid_mode(servicer, client):
         "\n",  # newline
     ]
     for mode in invalid_modes:
-        with pytest.raises(ValueError):
+        with pytest.raises(InvalidError):
             FileIO.create("/test.txt", mode, client, "task-123")  # type: ignore
 
 
@@ -341,3 +351,58 @@ def test_client_retry(servicer, client):
         f.write(content)
         assert f.read() == content
         f.close()
+
+
+def test_ls(servicer, client):
+    """Test ls."""
+
+    async def container_filesystem_exec_get_output(servicer, stream):
+        req = await stream.recv_message()
+        if req.exec_id == LS_EXEC_ID:
+            await stream.send_message(
+                api_pb2.FilesystemRuntimeOutputBatch(output=[b'{"paths": ["foo", "bar", "baz"]}'])
+            )
+            await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(eof=True))
+        else:
+            raise Exception("Unexpected exec_id: " + req.exec_id)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
+        ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
+
+        files = FileIO.ls("/test.txt", client, "task-123")
+        assert files == ["foo", "bar", "baz"]
+
+
+def test_mkdir(servicer, client):
+    """Test mkdir."""
+
+    async def container_filesystem_exec_get_output(servicer, stream):
+        req = await stream.recv_message()
+        if req.exec_id == MKDIR_EXEC_ID:
+            await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(eof=True))
+        else:
+            raise Exception("Unexpected exec_id: " + req.exec_id)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
+        ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
+
+        FileIO.mkdir("/test.txt", client, "task-123")
+
+
+def test_rm(servicer, client):
+    """Test rm."""
+
+    async def container_filesystem_exec_get_output(servicer, stream):
+        req = await stream.recv_message()
+        if req.exec_id == RM_EXEC_ID:
+            await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(eof=True))
+        else:
+            raise Exception("Unexpected exec_id: " + req.exec_id)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
+        ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
+
+        FileIO.rm("/test.txt", client, "task-123")

@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, AsyncIterator, Generic, Optional, Sequence, Ty
 if TYPE_CHECKING:
     import _typeshed
 
+import json
+
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal._utils.grpc_utils import retry_transient_errors
@@ -124,7 +126,7 @@ class _FileIO(Generic[T]):
 
     def _validate_mode(self, mode: str) -> None:
         if not any(char in mode for char in "rwax"):
-            raise ValueError(f"Invalid file mode: {mode}")
+            raise InvalidError(f"Invalid file mode: {mode}")
 
         self._readable = "r" in mode or "+" in mode
         self._writable = "w" in mode or "a" in mode or "x" in mode or "+" in mode
@@ -133,16 +135,16 @@ class _FileIO(Generic[T]):
 
         valid_chars = set("rwaxb+")
         if any(char not in valid_chars for char in mode):
-            raise ValueError(f"Invalid file mode: {mode}")
+            raise InvalidError(f"Invalid file mode: {mode}")
 
         mode_count = sum(1 for c in mode if c in "rwax")
         if mode_count > 1:
-            raise ValueError("must have exactly one of create/read/write/append mode")
+            raise InvalidError("must have exactly one of create/read/write/append mode")
 
         seen_chars = set()
         for char in mode:
             if char in seen_chars:
-                raise ValueError(f"Invalid file mode: {mode}")
+                raise InvalidError(f"Invalid file mode: {mode}")
             seen_chars.add(char)
 
     def _handle_error(self, error: api_pb2.SystemErrorMessage) -> None:
@@ -187,6 +189,12 @@ class _FileIO(Generic[T]):
                         continue
                 raise
         return output
+
+    async def _parse_list_output(self, output: bytes) -> list[str]:
+        try:
+            return json.loads(output.decode("utf-8"))["paths"]
+        except json.JSONDecodeError:
+            raise FilesystemExecutionError("failed to parse list output")
 
     def _validate_type(self, data: Union[bytes, str]) -> None:
         if self._binary and isinstance(data, str):
@@ -239,7 +247,7 @@ class _FileIO(Generic[T]):
         self._check_closed()
         self._check_readable()
         if n is not None and n > READ_FILE_SIZE_LIMIT:
-            raise ValueError("Read request payload exceeds 100 MiB limit")
+            raise InvalidError("Read request payload exceeds 100 MiB limit")
         output = await self._make_read_request(n)
         if self._binary:
             return cast(T, output)
@@ -267,12 +275,12 @@ class _FileIO(Generic[T]):
         output = await self._make_read_request(None)
         if self._binary:
             lines_bytes = output.split(b"\n")
-            output = [line + b"\n" for line in lines_bytes[:-1]] + ([lines_bytes[-1]] if lines_bytes[-1] else [])
-            return cast(Sequence[T], output)
+            return_bytes = [line + b"\n" for line in lines_bytes[:-1]] + ([lines_bytes[-1]] if lines_bytes[-1] else [])
+            return cast(Sequence[T], return_bytes)
         else:
             lines = output.decode("utf-8").split("\n")
-            output = [line + "\n" for line in lines[:-1]] + ([lines[-1]] if lines[-1] else [])
-            return cast(Sequence[T], output)
+            return_strs = [line + "\n" for line in lines[:-1]] + ([lines[-1]] if lines[-1] else [])
+            return cast(Sequence[T], return_strs)
 
     async def write(self, data: Union[bytes, str]) -> None:
         """Write data to the current position.
@@ -287,7 +295,7 @@ class _FileIO(Generic[T]):
         if isinstance(data, str):
             data = data.encode("utf-8")
         if len(data) > LARGE_FILE_SIZE_LIMIT:
-            raise ValueError("Write request payload exceeds 16 MiB limit")
+            raise InvalidError("Write request payload exceeds 16 MiB limit")
         resp = await self._make_request(
             api_pb2.ContainerFilesystemExecRequest(
                 file_write_request=api_pb2.ContainerFileWriteRequest(file_descriptor=self._file_descriptor, data=data),
@@ -316,7 +324,7 @@ class _FileIO(Generic[T]):
         elif whence == 2:
             return api_pb2.SeekWhence.SEEK_END
         else:
-            raise ValueError(f"Invalid whence value: {whence}")
+            raise InvalidError(f"Invalid whence value: {whence}")
 
     async def seek(self, offset: int, whence: int = 0) -> None:
         """Move to a new position in the file.
@@ -332,6 +340,49 @@ class _FileIO(Generic[T]):
                     offset=offset,
                     whence=self._get_whence(whence),
                 ),
+                task_id=self._task_id,
+            )
+        )
+        await self._wait(resp.exec_id)
+
+    @classmethod
+    async def ls(cls, path: str, client: _Client, task_id: str) -> list[str]:
+        """List the contents of the provided directory."""
+        self = cls.__new__(cls)
+        self._client = client
+        self._task_id = task_id
+        resp = await self._make_request(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_ls_request=api_pb2.ContainerFileLsRequest(path=path),
+                task_id=task_id,
+            )
+        )
+        output = await self._wait(resp.exec_id)
+        return await self._parse_list_output(output)
+
+    @classmethod
+    async def mkdir(cls, path: str, client: _Client, task_id: str, parents: bool = False) -> None:
+        """Create a new directory."""
+        self = cls.__new__(cls)
+        self._client = client
+        self._task_id = task_id
+        resp = await self._make_request(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_mkdir_request=api_pb2.ContainerFileMkdirRequest(path=path, make_parents=parents),
+                task_id=self._task_id,
+            )
+        )
+        await self._wait(resp.exec_id)
+
+    @classmethod
+    async def rm(cls, path: str, client: _Client, task_id: str, recursive: bool = False) -> None:
+        """Remove a file or directory in the Sandbox."""
+        self = cls.__new__(cls)
+        self._client = client
+        self._task_id = task_id
+        resp = await self._make_request(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_rm_request=api_pb2.ContainerFileRmRequest(path=path, recursive=recursive),
                 task_id=self._task_id,
             )
         )
@@ -365,7 +416,7 @@ class _FileIO(Generic[T]):
     # also validated in the runner, but checked in the client to catch errors early
     def _check_closed(self) -> None:
         if self._closed:
-            raise ValueError("I/O operation on closed file")
+            raise InvalidError("I/O operation on closed file")
 
     def __enter__(self) -> "_FileIO":
         self._check_closed()
