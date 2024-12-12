@@ -10,6 +10,50 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.68.2 (2024-12-11)
+
+- Sandboxes now support a new filesystem API. The `open()` method returns a `FileIO` handle for native file handling in sandboxes.
+```python
+app = modal.App.lookup("sandbox-fs", create_if_missing=True)
+sb = modal.Sandbox.create(app=app)
+
+with sb.open("test.txt", "w") as f:
+  f.write("Hello World\n")
+
+f = sb.open("test.txt", "rb")
+print(f.read())
+```
+
+
+
+### 0.67.43 (2024-12-11)
+
+- `modal container exec` and `modal shell` now work correctly even when a pseudoterminal (PTY) is not present. This means, for example, that you can pipe the output of these commands to a file:
+
+    ```python
+    modal shell -c 'uv pip list' > env.txt
+    ```
+
+
+
+### 0.67.39 (2024-12-09)
+
+- It is now possible to delete named `NetworkFileSystem` objects via the CLI (`modal nfs delete ...`) or API `(modal.NetworkFileSystem.delete(...)`)
+
+
+
+### 0.67.38 (2024-12-09)
+
+- Sandboxes now support filesystem snapshots. Run `Sandbox.snapshot_filesystem()` to get an Image which can be used to spawn new Sandboxes.
+
+
+
+### 0.67.28 (2024-12-05)
+
+* Adds `Image.add_local_python_source` which works similarly to the old and soon-to-be-deprecated `Mount.from_local_python_packages` but for images. One notable difference is that the new `add_local_python_source` *only* includes `.py`-files by default
+
+
+
 ### 0.67.23 (2024-12-04)
 
 - Image build functions that use a `functools.wraps` decorator will now have their global variables included in the cache key. Previously, the cache would use global variables referenced within the wrapper itself. This will force a rebuild for Image layers defined using wrapped functions.
@@ -64,12 +108,6 @@ New minor client version `0.67.x` comes with an internal data model change for h
 ### 0.66.30 (2024-11-21)
 
 - Removed the `aiostream` package from the modal client library dependencies.
-
-
-
-### 0.66.29 (2024-11-21)
-
-* Adds `Image.add_local_python_packages` which works similarly to `Mount.from_local_python_packages` but for images.
 
 
 

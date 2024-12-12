@@ -27,7 +27,7 @@ from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import connect_channel, create_channel, retry_transient_errors
 from .config import _check_config, _is_remote, config, logger
-from .exception import AuthError, ClientClosed, ConnectionError, DeprecationError, VersionError
+from .exception import AuthError, ClientClosed, ConnectionError, VersionError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
@@ -139,15 +139,12 @@ class _Client:
         logger.debug(f"Client ({id(self)}): Starting")
         try:
             req = empty_pb2.Empty()
-            resp = await retry_transient_errors(
+            await retry_transient_errors(
                 self.stub.ClientHello,
                 req,
                 attempt_timeout=CLIENT_CREATE_ATTEMPT_TIMEOUT,
                 total_timeout=CLIENT_CREATE_TOTAL_TIMEOUT,
             )
-            if resp.warning:
-                ALARM_EMOJI = chr(0x1F6A8)
-                warnings.warn(f"{ALARM_EMOJI} {resp.warning} {ALARM_EMOJI}", DeprecationError)
         except GRPCError as exc:
             if exc.status == Status.FAILED_PRECONDITION:
                 raise VersionError(
@@ -158,11 +155,6 @@ class _Client:
 
     async def __aenter__(self):
         await self._open()
-        try:
-            await self.hello()
-        except BaseException:
-            await self._close()
-            raise
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
@@ -178,7 +170,6 @@ class _Client:
         client = cls(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials=None)
         try:
             await client._open()
-            # Skip client.hello
             yield client
         finally:
             await client._close()
@@ -229,7 +220,6 @@ class _Client:
             client = _Client(server_url, client_type, credentials)
             await client._open()
             async_utils.on_shutdown(client._close())
-            await client.hello()
             cls._client_from_env = client
             return client
 
@@ -252,11 +242,6 @@ class _Client:
         credentials = (token_id, token_secret)
         client = _Client(server_url, client_type, credentials)
         await client._open()
-        try:
-            await client.hello()
-        except BaseException:
-            await client._close()
-            raise
         async_utils.on_shutdown(client._close())
         return client
 
@@ -265,8 +250,8 @@ class _Client:
         """mdmd:hidden
         Check whether can the client can connect to this server with these credentials; raise if not.
         """
-        async with cls(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials):
-            pass  # Will call ClientHello RPC and possibly raise AuthError or ConnectionError
+        async with cls(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
+            client.hello()  # Will call ClientHello RPC and possibly raise AuthError or ConnectionError
 
     @classmethod
     def set_env_client(cls, client: Optional["_Client"]):
@@ -316,7 +301,6 @@ class _Client:
             self.set_env_client(None)
             # TODO(elias): reset _cancellation_context in case ?
             await self._open()
-            # intentionally not doing self.hello since we should already be authenticated etc.
 
     async def _get_grpclib_method(self, method_name: str) -> Any:
         # safely get grcplib method that is bound to a valid channel

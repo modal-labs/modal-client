@@ -255,6 +255,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.required_creds = {token_id: token_secret}  # Any of this will be accepted
         self.last_metadata = None
 
+        self.function_get_server_warnings = None
+
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
@@ -653,10 +655,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def ClientHello(self, stream):
         request: Empty = await stream.recv_message()
         self.requests.append(request)
-        warning = ""
-        if stream.metadata["x-modal-client-version"] == "deprecated":
-            warning = "SUPER OLD"
-        resp = api_pb2.ClientHelloResponse(warning=warning)
+        resp = api_pb2.ClientHelloResponse()
         await stream.send_message(resp)
 
     # Container
@@ -728,6 +727,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
             )
 
         await stream.send_message(api_pb2.RuntimeOutputBatch(exit_code=0))
+
+    async def ContainerHello(self, stream):
+        await stream.recv_message()
+        await stream.send_message(Empty())
 
     ### Dict
 
@@ -991,7 +994,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if object_id is None:
             raise GRPCError(Status.NOT_FOUND, f"can't find object {request.object_tag}")
         await stream.send_message(
-            api_pb2.FunctionGetResponse(function_id=object_id, handle_metadata=self.get_function_metadata(object_id))
+            api_pb2.FunctionGetResponse(
+                function_id=object_id,
+                handle_metadata=self.get_function_metadata(object_id),
+                server_warnings=self.function_get_server_warnings,
+            )
         )
 
     async def FunctionMap(self, stream):
@@ -1426,6 +1433,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
             pass
         await stream.send_message(api_pb2.SandboxTerminateResponse())
 
+    async def SandboxSnapshotFs(self, stream):
+        _request: api_pb2.SandboxSnapshotFsRequest = await stream.recv_message()
+        await stream.send_message(
+            api_pb2.SandboxSnapshotFsResponse(
+                image_id="im-123",
+                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
+            )
+        )
+
     async def SandboxGetTaskId(self, stream):
         # only used for `modal shell` / `modal container exec`
         _request: api_pb2.SandboxGetTaskIdRequest = await stream.recv_message()
@@ -1482,6 +1498,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Network File System (née Shared volume)
 
+    async def SharedVolumeDelete(self, stream):
+        req: api_pb2.SharedVolumeDeleteRequest = await stream.recv_message()
+        self.nfs_files.pop(req.shared_volume_id)
+        self.deployed_nfss = {k: vol_id for k, vol_id in self.deployed_nfss.items() if vol_id != req.shared_volume_id}
+        await stream.send_message(Empty())
+
     async def SharedVolumeGetOrCreate(self, stream):
         request: api_pb2.SharedVolumeGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, request.namespace, request.environment_name)
@@ -1515,6 +1537,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.recv_message()
         self.n_nfs_heartbeats += 1
         await stream.send_message(Empty())
+
+    async def SharedVolumeList(self, stream):
+        req = await stream.recv_message()
+        items = []
+        for (name, _, env_name), volume_id in self.deployed_nfss.items():
+            if env_name != req.environment_name:
+                continue
+            items.append(api_pb2.SharedVolumeListItem(label=name, shared_volume_id=volume_id, created_at=1))
+        resp = api_pb2.SharedVolumeListResponse(items=items, environment_name=req.environment_name)
+        await stream.send_message(resp)
 
     async def SharedVolumePutFile(self, stream):
         req = await stream.recv_message()
