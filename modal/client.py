@@ -132,10 +132,10 @@ class _Client:
         # Remove cached client.
         self.set_env_client(None)
 
-    async def hello(self, total_timeout: Optional[float] = None):
+    async def hello(self):
         """Connect to server and retrieve version information; raise appropriate error for various failures."""
         logger.debug(f"Client ({id(self)}): Starting")
-        resp = await retry_transient_errors(self.stub.ClientHello, empty_pb2.Empty(), total_timeout=total_timeout)
+        resp = await retry_transient_errors(self.stub.ClientHello, empty_pb2.Empty())
         print_server_warnings(resp.server_warnings)
 
     async def __aenter__(self):

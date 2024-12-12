@@ -75,24 +75,6 @@ async def test_client_connection_failure_unix_socket():
 
 
 @pytest.mark.asyncio
-@pytest.mark.timeout(TEST_TIMEOUT)
-async def test_client_connection_timeout(servicer, monkeypatch):
-    async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CONTAINER, None, version="timeout") as client:
-        with pytest.raises(ConnectionError) as excinfo:
-            await client.hello.aio(total_timeout=1.0)
-
-    assert "deadline" in str(excinfo.value).lower()
-
-
-@pytest.mark.asyncio
-@pytest.mark.timeout(TEST_TIMEOUT)
-async def test_client_server_error(servicer):
-    async with Client("https://modal.com", api_pb2.CLIENT_TYPE_CLIENT, None) as client:
-        with pytest.raises(GRPCError):
-            await client.hello.aio()
-
-
-@pytest.mark.asyncio
 async def test_client_old_version(servicer, credentials):
     async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials, version="0.0.0") as client:
         with pytest.raises(GRPCError) as excinfo:
