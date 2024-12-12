@@ -53,20 +53,20 @@ class UploadHashes:
 
 @dataclasses.dataclass
 class DummyHash:
-    digest: bytes
+    digest_hex: str
 
     def update(self, _data: Buffer, /) -> None:
         pass
 
     def digest(self) -> bytes:
-        return self.digest
+        return bytes.fromhex(self.digest_hex)
 
 
 def get_upload_hashes(data: Union[bytes, BinaryIO], sha256_hex: Optional[str] = None) -> UploadHashes:
     md5 = hashlib.md5()
     # If we already have the sha256 digest, do not compute it again
     if sha256_hex:
-        sha256 = DummyHash(bytes.fromhex(sha256_hex))
+        sha256 = DummyHash(sha256_hex)
     else:
         sha256 = hashlib.sha256()
     _update([md5.update, sha256.update], data)
