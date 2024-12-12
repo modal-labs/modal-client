@@ -49,7 +49,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     raw_f: Callable[P, ReturnType]
     flags: _PartialFunctionFlags
     webhook_config: Optional[api_pb2.WebhookConfig]
-    is_generator: Optional[bool]
+    is_generator: bool
     keep_warm: Optional[int]
     batch_max_size: Optional[int]
     batch_wait_ms: Optional[int]
@@ -73,7 +73,14 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         self.raw_f = raw_f
         self.flags = flags
         self.webhook_config = webhook_config
-        self.is_generator = is_generator
+        if webhook_config:
+            final_is_generator = True
+        elif is_generator is None:
+            final_is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
+        else:
+            final_is_generator = is_generator
+
+        self.is_generator = final_is_generator
         self.keep_warm = keep_warm
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
         self.batch_max_size = batch_max_size
@@ -101,7 +108,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
             # This happens mainly during serialization of the wrapped underlying class of a Cls
             # since we don't have the instance info here we just return the PartialFunction itself
             # to let it be bound to a variable and become a Function later on
-            return self
+            return self  # type: ignore  # this returns a PartialFunction in a special internal case
 
     def __del__(self):
         if (self.flags & _PartialFunctionFlags.FUNCTION) and self.wrapped is False:
@@ -154,14 +161,14 @@ def _find_partial_methods_for_user_cls(user_cls: type[Any], flags: int) -> dict[
             )
             deprecation_error((2024, 2, 21), message)
 
-    partial_functions: dict[str, PartialFunction] = {}
+    partial_functions: dict[str, _PartialFunction] = {}
     for parent_cls in reversed(user_cls.mro()):
         if parent_cls is not object:
             for k, v in parent_cls.__dict__.items():
-                if isinstance(v, PartialFunction):
-                    partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
-                    if partial_function.flags & flags:
-                        partial_functions[k] = partial_function
+                if isinstance(v, PartialFunction):  # type: ignore[reportArgumentType]   # synchronicity wrapper types
+                    _partial_function: _PartialFunction = typing.cast(_PartialFunction, synchronizer._translate_in(v))
+                    if _partial_function.flags & flags:
+                        partial_functions[k] = _partial_function
 
     return partial_functions
 
@@ -245,8 +252,6 @@ def _method(
                 "Batched function on classes should not be wrapped by `@method`. "
                 "Suggestion: remove the `@method` decorator."
             )
-        if is_generator is None:
-            is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
         return _PartialFunction(raw_f, _PartialFunctionFlags.FUNCTION, is_generator=is_generator, keep_warm=keep_warm)
 
     return wrapper
