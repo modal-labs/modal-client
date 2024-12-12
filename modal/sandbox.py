@@ -585,7 +585,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     @property
     def stdout(self) -> _StreamReader[str]:
         """
-        [`StreamReader`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
+        [`StreamReader`](/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
         the sandbox's stdout stream.
         """
 
@@ -593,7 +593,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @property
     def stderr(self) -> _StreamReader[str]:
-        """[`StreamReader`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
+        """[`StreamReader`](/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
         the sandbox's stderr stream.
         """
 
@@ -602,7 +602,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     @property
     def stdin(self) -> _StreamWriter:
         """
-        [`StreamWriter`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamwriter) for
+        [`StreamWriter`](/docs/reference/modal.io_streams#modalio_streamsstreamwriter) for
         the sandbox's stdin stream.
         """
 
