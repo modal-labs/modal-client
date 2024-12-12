@@ -1190,11 +1190,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     @property
     async def is_generator(self) -> bool:
         """mdmd:hidden"""
+        # hacky: kind of like @live_method, but not hydrating if we have the value already from local source
         if self._is_generator is not None:
-            # hacky: kind of like @live_method, but not hydrating if we have the value already from local source
+            # this is set if the function or class is local
             return self._is_generator
 
+        # not set - this is a from_name lookup - hydrate
         await self.resolve()
+        assert self._is_generator is not None  # should be set now
         return self._is_generator
 
     @property
