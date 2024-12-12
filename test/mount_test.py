@@ -7,9 +7,8 @@ from pathlib import Path
 
 from modal import App
 from modal._utils.blob_utils import LARGE_FILE_LIMIT
-from modal._utils.local_file_filter import LocalFileFilter
 from modal.exception import ModuleNotMountable
-from modal.mount import Mount
+from modal.mount import Mount, module_mount_ignore_condition
 
 
 @pytest.mark.asyncio
@@ -22,7 +21,7 @@ async def test_get_files(servicer, client, tmpdir):
     tmpdir.join("fluff").write("hello")
 
     files = {}
-    m = Mount.from_local_dir(Path(tmpdir), remote_path="/", include_files=LocalFileFilter("**/*.py"), recursive=True)
+    m = Mount.from_local_dir(Path(tmpdir), remote_path="/", ignore=["!**/*.py"], recursive=True)
     async for upload_spec in Mount._get_files.aio(m.entries):
         files[upload_spec.mount_filename] = upload_spec
 
@@ -57,7 +56,7 @@ async def test_get_files(servicer, client, tmpdir):
 def test_create_mount(servicer, client):
     local_dir, cur_filename = os.path.split(__file__)
 
-    m = Mount.from_local_dir(local_dir, remote_path="/foo", include_files=LocalFileFilter("**/*.py"))
+    m = Mount.from_local_dir(local_dir, remote_path="/foo", ignore=["!**/*.py"])
 
     m._deploy("my-mount", client=client)
 
@@ -90,7 +89,9 @@ def test_from_local_python_packages(servicer, client, test_dir, monkeypatch):
 
     monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
 
-    app.function(mounts=[Mount.from_local_python_packages("pkg_a", "pkg_b", "standalone_file")])(dummy)
+    app.function(
+        mounts=[Mount.from_local_python_packages("pkg_a", "pkg_b", "pkg_d", "standalone_file", ignore=["**/pkg_d/m"])]
+    )(dummy)
 
     with app.run(client=client):
         files = set(servicer.files_name2sha.keys())
@@ -99,12 +100,14 @@ def test_from_local_python_packages(servicer, client, test_dir, monkeypatch):
             "/root/pkg_a/b/c.py",
             "/root/pkg_b/f.py",
             "/root/pkg_b/g/h.py",
+            "/root/pkg_d/l.py",
             "/root/standalone_file.py",
         }
         assert expected_files.issubset(files)
 
         assert "/root/pkg_c/i.py" not in files
         assert "/root/pkg_c/j/k.py" not in files
+        assert "/root/pkg_d/m/n.py" not in files
 
 
 def test_app_mounts(servicer, client, test_dir, monkeypatch):
@@ -157,3 +160,38 @@ def test_chained_entries(test_dir):
     m.update(b"A")
     assert files[0].sha256_hex == m.hexdigest()
     assert files[0].use_blob is False
+
+
+def test_module_mount_ignore_condition():
+    ignore_condition = module_mount_ignore_condition(Path("/a/.venv/site-packages/mymod"))
+
+    assert ignore_condition(Path("/a/site-packages/mymod/foo.pyc"))
+    assert ignore_condition(Path("/a/site-packages/mymod/__pycache__/foo.py"))
+
+    assert ignore_condition(Path("/a/my_mod/.config/foo.py"))
+
+    assert not ignore_condition(Path("/a/.venv/site-packages/mymod/foo.py"))
+
+    assert not ignore_condition(Path("/a/my_mod/config/foo.txt"))
+    assert not ignore_condition(Path("/a/my_mod/config/foo.py"))
+
+
+@pytest.mark.parametrize("from_local_dir", [True, False])
+def test_mount_from_local_dir_ignore(test_dir, tmp_path_with_content, from_local_dir):
+    ignore = ["**/*.txt", "**/module", "!**/*.txt", "!**/*.py"]
+    expected = {
+        "/foo/module/sub.py",
+        "/foo/module/sub/sub.py",
+        "/foo/data/sub",
+        "/foo/module/__init__.py",
+        "/foo/data.txt",
+        "/foo/module/sub/__init__.py",
+    }
+
+    if from_local_dir:
+        mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/foo", ignore=ignore)
+    else:
+        mount = Mount._new().add_local_dir(tmp_path_with_content, remote_path="/foo", ignore=ignore)
+
+    file_names = [file.mount_filename for file in Mount._get_files(entries=mount.entries)]
+    assert set(file_names) == expected

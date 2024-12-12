@@ -69,6 +69,22 @@ def ignore_local_config():
     yield
 
 
+@pytest.fixture
+def tmp_path_with_content(tmp_path):
+    (tmp_path / "data.txt").write_text("hello")
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "sub").write_text("world")
+    (tmp_path / "module").mkdir()
+    (tmp_path / "module" / "__init__.py").write_text("foo")
+    (tmp_path / "module" / "sub.py").write_text("bar")
+    (tmp_path / "module" / "sub").mkdir()
+    (tmp_path / "module" / "sub" / "__init__.py").write_text("baz")
+    (tmp_path / "module" / "sub" / "foo.pyc").write_text("baz")
+    (tmp_path / "module" / "sub" / "sub.py").write_text("qux")
+
+    return tmp_path
+
+
 class FunctionsRegistry:
     def __init__(self):
         self._functions: dict[str, api_pb2.Function] = {}

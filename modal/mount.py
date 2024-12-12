@@ -123,7 +123,7 @@ class _MountFile(_MountEntry):
 class _MountDir(_MountEntry):
     local_dir: Path
     remote_path: PurePosixPath
-    include_files: Callable[[Path], bool]
+    ignore: Callable[[Path], bool]
     recursive: bool
 
     def description(self):
@@ -144,7 +144,7 @@ class _MountDir(_MountEntry):
             gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
 
         for local_filename in gen:
-            if self.include_files(Path(local_filename)):
+            if not self.ignore(Path(local_filename)):
                 local_relpath = Path(local_filename).expanduser().absolute().relative_to(local_dir)
                 mount_path = self.remote_path / local_relpath.as_posix()
                 yield local_filename, mount_path
@@ -156,13 +156,13 @@ class _MountDir(_MountEntry):
         return [(self.local_dir, self.remote_path)]
 
 
-def module_mount_condition(module_base: Path) -> Callable[[Path], bool]:
+def module_mount_ignore_condition(module_base: Path) -> Callable[[Path], bool]:
     SKIP_BYTECODE = True  # hard coded for now
     SKIP_DOT_PREFIXED = True
 
-    def condition(path: Path) -> bool:
+    def ignore_condition(path: Path) -> bool:
         if SKIP_BYTECODE and path.suffix == ".pyc":
-            return False
+            return True
 
         # Check parent dir names to see if file should be included,
         # but ignore dir names above root of mounted module:
@@ -170,16 +170,16 @@ def module_mount_condition(module_base: Path) -> Callable[[Path], bool]:
         # /a/my_mod/.config/foo.py should *not* be included by default
         while path != module_base and path != path.parent:
             if SKIP_BYTECODE and path.name == "__pycache__":
-                return False
+                return True
 
             if SKIP_DOT_PREFIXED and path.name.startswith("."):
-                return False
+                return True
 
             path = path.parent
 
-        return True
+        return False
 
-    return condition
+    return ignore_condition
 
 
 @dataclasses.dataclass
@@ -190,7 +190,7 @@ class _MountedPythonModule(_MountEntry):
 
     module_name: str
     remote_dir: Union[PurePosixPath, str] = ROOT_DIR.as_posix()  # cast needed here for type stub generation...
-    include_files: typing.Optional[typing.Callable[[Path], bool]] = None
+    ignore: Optional[typing.Callable[[Path], bool]] = None
 
     def description(self) -> str:
         return f"PythonPackage:{self.module_name}"
@@ -206,7 +206,7 @@ class _MountedPythonModule(_MountEntry):
                     _MountDir(
                         base_path,
                         remote_path=remote_dir,
-                        include_files=self.include_files or module_mount_condition(base_path),
+                        ignore=self.ignore or module_mount_ignore_condition(base_path),
                         recursive=True,
                     )
                 )
@@ -326,7 +326,7 @@ class _Mount(_Object, type_prefix="mo"):
         recursive: bool = True,
         # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
         # Defaults to including all files.
-        include_files: Optional[Callable[[Path], bool]] = None,
+        ignore: list[str] | Callable[[Path], bool] = [],
     ) -> "_Mount":
         """
         Add a local directory to the `Mount` object.
@@ -337,26 +337,21 @@ class _Mount(_Object, type_prefix="mo"):
         remote_path = PurePosixPath("/", remote_path)
 
         if condition is not None:
-            if include_files is not None:
-                raise InvalidError("Cannot specify both `include_files` and `condition`")
+            if len(ignore) > 0:
+                raise InvalidError("Cannot specify both `ignore` and `condition`")
 
             def converted_condition(path: Path) -> bool:
-                return condition(str(path))
+                return not condition(str(path))
 
-            include_files = converted_condition
+            ignore = converted_condition
 
-        if include_files is None:
-            include_files = LocalFileFilter("**/*")
-
-            def include_all(path: Path) -> bool:
-                return True
-
-            include_files = include_all
+        if isinstance(ignore, list):
+            ignore = LocalFileFilter(*ignore)
 
         return self._extend(
             _MountDir(
                 local_dir=local_path,
-                include_files=include_files,
+                ignore=ignore,
                 remote_path=remote_path,
                 recursive=recursive,
             ),
@@ -375,7 +370,7 @@ class _Mount(_Object, type_prefix="mo"):
         recursive: bool = True,
         # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
         # Defaults to including all files.
-        include_files: Optional[Callable[[Path], bool]] = None,
+        ignore: list[str] | Callable[[Path], bool] = [],
     ) -> "_Mount":
         """
         Create a `Mount` from a local directory.
@@ -385,14 +380,14 @@ class _Mount(_Object, type_prefix="mo"):
         ```python
         assets = modal.Mount.from_local_dir(
             "~/assets",
-            include_files=modal.LocalFileFilter("**/*", "!*.venv"),
+            ignore=["*.venv"],
             remote_path="/assets",
         )
         ```
         """
 
         return _Mount._new().add_local_dir(
-            local_path, remote_path=remote_path, condition=condition, recursive=recursive, include_files=include_files
+            local_path, remote_path=remote_path, condition=condition, recursive=recursive, ignore=ignore
         )
 
     def add_local_file(
@@ -567,7 +562,7 @@ class _Mount(_Object, type_prefix="mo"):
         # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
         # Defaults to including all files.
         condition: Optional[Callable[[str], bool]] = None,
-        include_files: Optional[Callable[[Path], bool]] = None,
+        ignore: list[str] | Callable[[Path], bool] = [],
     ) -> "_Mount":
         """
         Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
@@ -593,13 +588,16 @@ class _Mount(_Object, type_prefix="mo"):
         # Don't re-run inside container.
 
         if condition is not None:
-            if include_files is not None:
-                raise InvalidError("Cannot specify both `include_files` and `condition`")
+            if len(ignore) > 0:
+                raise InvalidError("Cannot specify both `ignore` and `condition`")
 
             def converted_condition(path: Path) -> bool:
-                return condition(str(path))
+                return not condition(str(path))
 
-            include_files = converted_condition
+            ignore = converted_condition
+
+        if isinstance(ignore, list):
+            ignore = LocalFileFilter(*ignore)
 
         mount = _Mount._new()
         from ._runtime.execution_context import is_local
@@ -607,7 +605,7 @@ class _Mount(_Object, type_prefix="mo"):
         if not is_local():
             return mount  # empty/non-mountable mount in case it's used from within a container
         for module_name in module_names:
-            mount = mount._extend(_MountedPythonModule(module_name, remote_dir, include_files))
+            mount = mount._extend(_MountedPythonModule(module_name, remote_dir, ignore))
         return mount
 
     @staticmethod
@@ -687,7 +685,7 @@ def _create_client_mount():
         client_mount = client_mount.add_local_dir(
             package_base_path,
             remote_path=f"/pkg/{pkg_name}",
-            condition=module_mount_condition(package_base_path),
+            ignore=module_mount_ignore_condition(package_base_path),
             recursive=True,
         )
 
@@ -696,7 +694,7 @@ def _create_client_mount():
     client_mount = client_mount.add_local_dir(
         synchronicity_base_path,
         remote_path="/pkg/synchronicity",
-        condition=module_mount_condition(synchronicity_base_path),
+        ignore=module_mount_ignore_condition(synchronicity_base_path),
         recursive=True,
     )
     return client_mount
