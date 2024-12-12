@@ -10,6 +10,32 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.68.2 (2024-12-11)
+
+- Sandboxes now support a new filesystem API. The `open()` method returns a `FileIO` handle for native file handling in sandboxes.
+```python
+app = modal.App.lookup("sandbox-fs", create_if_missing=True)
+sb = modal.Sandbox.create(app=app)
+
+with sb.open("test.txt", "w") as f:
+  f.write("Hello World\n")
+
+f = sb.open("test.txt", "rb")
+print(f.read())
+```
+
+
+
+### 0.67.43 (2024-12-11)
+
+- `modal container exec` and `modal shell` now work correctly even when a pseudoterminal (PTY) is not present. This means, for example, that you can pipe the output of these commands to a file:
+
+    ```python
+    modal shell -c 'uv pip list' > env.txt
+    ```
+
+
+
 ### 0.67.39 (2024-12-09)
 
 - It is now possible to delete named `NetworkFileSystem` objects via the CLI (`modal nfs delete ...`) or API `(modal.NetworkFileSystem.delete(...)`)

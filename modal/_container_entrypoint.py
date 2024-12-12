@@ -415,6 +415,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
     _client: _Client = synchronizer._translate_in(client)  # TODO(erikbern): ugly
 
+    # Call ContainerHello - currently a noop but might be used later for things
+    container_io_manager.hello()
+
     with container_io_manager.heartbeats(is_snapshotting_function), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
         if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:

@@ -77,6 +77,10 @@ def _plain(text: Union[Text, str]) -> str:
     return text.plain if isinstance(text, Text) else text
 
 
+def is_tty() -> bool:
+    return Console().is_terminal
+
+
 def display_table(
     columns: Sequence[Union[Column, str]],
     rows: Sequence[Sequence[Union[Text, str]]],

@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2024
 """Helper functions related to displaying tracebacks in the CLI."""
+
 import functools
 import re
 import warnings
@@ -11,7 +12,7 @@ from rich.syntax import Syntax
 from rich.text import Text
 from rich.traceback import PathHighlighter, Stack, Traceback, install
 
-from ..exception import DeprecationError, PendingDeprecationError
+from ..exception import DeprecationError, PendingDeprecationError, ServerWarning
 
 
 @group()
@@ -165,7 +166,7 @@ def highlight_modal_deprecation_warnings() -> None:
     base_showwarning = warnings.showwarning
 
     def showwarning(warning, category, filename, lineno, file=None, line=None):
-        if issubclass(category, (DeprecationError, PendingDeprecationError)):
+        if issubclass(category, (DeprecationError, PendingDeprecationError, ServerWarning)):
             content = str(warning)
             if re.match(r"^\d{4}-\d{2}-\d{2}", content):
                 date = content[:10]
@@ -180,10 +181,16 @@ def highlight_modal_deprecation_warnings() -> None:
             except OSError:
                 # e.g., when filename is "<unknown>"; raises FileNotFoundError on posix but OSError on windows
                 pass
+            if issubclass(category, ServerWarning):
+                title = "Modal Warning"
+            else:
+                title = "Modal Deprecation Warning"
+            if date:
+                title += f" ({date})"
             panel = Panel(
                 message,
-                style="yellow",
-                title=f"Modal Deprecation Warning ({date})" if date else "Modal Deprecation Warning",
+                border_style="yellow",
+                title=title,
                 title_align="left",
             )
             Console().print(panel)

@@ -335,6 +335,9 @@ class _ContainerIOManager:
         """Only used for tests."""
         cls._singleton = None
 
+    async def hello(self):
+        await self._client.stub.ContainerHello(Empty())
+
     async def _run_heartbeat_loop(self):
         while 1:
             t0 = time.monotonic()
