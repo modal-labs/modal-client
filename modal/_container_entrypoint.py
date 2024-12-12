@@ -6,7 +6,7 @@ from modal._runtime.user_code_imports import Service, import_class_service, impo
 
 telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
 if telemetry_socket:
-    from runtime._telemetry import instrument_imports
+    from ._runtime.telemetry import instrument_imports
 
     instrument_imports(telemetry_socket)
 
