@@ -412,3 +412,19 @@ def test_sandbox_snapshot_fs(app, servicer):
 
     assert image.object_id == "im-123"
     assert servicer.sandbox_defs[1].image_id == "im-123"
+
+
+@skip_non_linux
+def test_sandbox_cpu_request(app, servicer):
+    _ = Sandbox.create(cpu=2.0, app=app)
+
+    assert servicer.sandbox_defs[0].resources.milli_cpu == 2000
+    assert servicer.sandbox_defs[0].resources.milli_cpu_max == 0
+
+
+@skip_non_linux
+def test_sandbox_cpu_limit(app, servicer):
+    _ = Sandbox.create(cpu=(2, 4), app=app)
+
+    assert servicer.sandbox_defs[0].resources.milli_cpu == 2000
+    assert servicer.sandbox_defs[0].resources.milli_cpu_max == 4000

@@ -10,7 +10,7 @@ from grpclib import GRPCError, Status
 from rich.console import Console
 from rich.syntax import Syntax
 from rich.table import Table
-from typer import Typer
+from typer import Argument, Typer
 
 import modal
 from modal._location import display_location
@@ -18,7 +18,7 @@ from modal._output import OutputManager, ProgressHandler
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.cli._download import _volume_download
-from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
+from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.network_file_system import _NetworkFileSystem
@@ -217,3 +217,24 @@ async def rm(
         if exc.status in (Status.NOT_FOUND, Status.INVALID_ARGUMENT):
             raise UsageError(exc.message)
         raise
+
+
+@nfs_cli.command(
+    name="delete",
+    help="Delete a named, persistent modal.NetworkFileSystem.",
+    rich_help_panel="Management",
+)
+@synchronizer.create_blocking
+async def delete(
+    nfs_name: str = Argument(help="Name of the modal.NetworkFileSystem to be deleted. Case sensitive"),
+    yes: bool = YES_OPTION,
+    env: Optional[str] = ENV_OPTION,
+):
+    if not yes:
+        typer.confirm(
+            f"Are you sure you want to irrevocably delete the modal.NetworkFileSystem '{nfs_name}'?",
+            default=False,
+            abort=True,
+        )
+
+    await _NetworkFileSystem.delete(label=nfs_name, environment_name=env)

@@ -4,6 +4,9 @@ import os
 from collections.abc import AsyncGenerator, Sequence
 from typing import TYPE_CHECKING, Literal, Optional, Union, overload
 
+if TYPE_CHECKING:
+    import _typeshed
+
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
@@ -21,12 +24,15 @@ from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
-from .exception import ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError, deprecation_warning
-from .file_io import (
-    OpenBinaryMode,
-    OpenTextMode,
-    _FileIO,
+from .exception import (
+    ExecutionError,
+    InvalidError,
+    SandboxTerminatedError,
+    SandboxTimeoutError,
+    deprecation_error,
+    deprecation_warning,
 )
+from .file_io import _FileIO
 from .gpu import GPU_T
 from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
@@ -201,7 +207,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the sandbox on.
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        # Specify, in fractional CPU cores, how many CPU cores to request.
+        # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
+        # CPU throttling will prevent a container from exceeding its specified limit.
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: Optional[Union[int, tuple[int, int]]] = None,
@@ -509,17 +518,16 @@ class _Sandbox(_Object, type_prefix="sb"):
             await secret.resolve(client=self._client)
 
         task_id = await self._get_task_id()
-        resp = await self._client.stub.ContainerExec(
-            api_pb2.ContainerExecRequest(
-                task_id=task_id,
-                command=cmds,
-                pty_info=_pty_info or pty_info,
-                runtime_debug=config.get("function_runtime_debug"),
-                timeout_secs=timeout or 0,
-                workdir=workdir,
-                secret_ids=[secret.object_id for secret in secrets],
-            )
+        req = api_pb2.ContainerExecRequest(
+            task_id=task_id,
+            command=cmds,
+            pty_info=_pty_info or pty_info,
+            runtime_debug=config.get("function_runtime_debug"),
+            timeout_secs=timeout or 0,
+            workdir=workdir,
+            secret_ids=[secret.object_id for secret in secrets],
         )
+        resp = await retry_transient_errors(self._client.stub.ContainerExec, req)
         by_line = bufsize == 1
         return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr, text=text, by_line=by_line)
 
@@ -527,7 +535,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def open(
         self,
         path: str,
-        mode: OpenTextMode,
+        mode: "_typeshed.OpenTextMode",
     ) -> _FileIO[str]:
         ...
 
@@ -535,17 +543,17 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def open(
         self,
         path: str,
-        mode: OpenBinaryMode,
+        mode: "_typeshed.OpenBinaryMode",
     ) -> _FileIO[bytes]:
         ...
 
     async def open(
         self,
         path: str,
-        mode: Union[OpenTextMode, OpenBinaryMode] = "r",
-    ) -> _FileIO[str]:
+        mode: Union["_typeshed.OpenTextMode", "_typeshed.OpenBinaryMode"] = "r",
+    ):
         """Open a file in the Sandbox and return
-        a [`FileIO`](https://modal.com/docs/reference/modal.FileIO#modalfile_io) handle.
+        a [`FileIO`](/docs/reference/modal.FileIO#modalfile_io) handle.
 
         **Usage**
 
@@ -660,7 +668,7 @@ Sandbox = synchronize_api(_Sandbox)
 
 def __getattr__(name):
     if name == "LogsReader":
-        deprecation_warning(
+        deprecation_error(
             (2024, 8, 12),
             "`modal.sandbox.LogsReader` is deprecated. Please import `modal.io_streams.StreamReader` instead.",
         )
@@ -668,7 +676,7 @@ def __getattr__(name):
 
         return StreamReader
     elif name == "StreamWriter":
-        deprecation_warning(
+        deprecation_error(
             (2024, 8, 12),
             "`modal.sandbox.StreamWriter` is deprecated. Please import `modal.io_streams.StreamWriter` instead.",
         )

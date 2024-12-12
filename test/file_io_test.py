@@ -4,7 +4,7 @@ import pytest
 from grpclib import Status
 from grpclib.exceptions import GRPCError
 
-from modal.file_io import FileIO
+from modal.file_io import FileIO, delete_bytes, replace_bytes
 from modal_proto import api_pb2
 
 OPEN_EXEC_ID = "exec-open-123"
@@ -265,7 +265,7 @@ def test_file_write_replace_bytes(servicer, client):
         f = FileIO.create("/test.txt", "a+", client, "task-123")
         f.write("foo\nbar\nbaz\n")
         assert f.read() == expected_outputs[0]
-        f.overwrite_bytes(data=b"barbar", start=4, end=7)
+        replace_bytes(f, data=b"barbar", start=4, end=7)
         assert f.read() == expected_outputs[1]
         f.close()
 
@@ -290,7 +290,7 @@ def test_file_delete_bytes(servicer, client):
         f = FileIO.create("/test.txt", "a+", client, "task-123")
         f.write("foo\nbar\nbaz\n")
         assert f.read() == expected_outputs[0]
-        f.delete_bytes(start=4, end=7)
+        delete_bytes(f, start=4, end=7)
         assert f.read() == expected_outputs[1]
         f.close()
 

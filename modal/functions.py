@@ -32,6 +32,7 @@ from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._runtime.execution_context import current_input_id, is_local
 from ._serialization import serialize, serialize_proto_params
+from ._traceback import print_server_warnings
 from ._utils.async_utils import (
     TaskContext,
     async_merge,
@@ -347,7 +348,7 @@ class _FunctionSpec:
     volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]
     gpus: Union[GPU_T, list[GPU_T]]  # TODO(irfansharif): Somehow assert that it's the first kind, in sandboxes
     cloud: Optional[str]
-    cpu: Optional[float]
+    cpu: Optional[Union[float, tuple[float, float]]]
     memory: Optional[Union[int, tuple[int, int]]]
     ephemeral_disk: Optional[int]
     scheduler_placement: Optional[SchedulerPlacement]
@@ -448,7 +449,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         batch_max_size: Optional[int] = None,
         batch_wait_ms: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
-        cpu: Optional[float] = None,
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
         keep_warm: Optional[int] = None,  # keep_warm=True is equivalent to keep_warm=1
         cloud: Optional[str] = None,
         scheduler_placement: Optional[SchedulerPlacement] = None,
@@ -1060,6 +1061,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     raise NotFoundError(exc.message)
                 else:
                     raise
+
+            print_server_warnings(response.server_warnings)
 
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 

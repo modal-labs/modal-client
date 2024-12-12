@@ -13,8 +13,6 @@ from typing import Any, Callable, Optional, get_type_hints
 
 import click
 import typer
-from rich.console import Console
-from rich.panel import Panel
 from typing_extensions import TypedDict
 
 from .. import Cls
@@ -29,7 +27,7 @@ from ..runner import deploy_app, interactive_shell, run_app
 from ..serving import serve_app
 from ..volume import Volume
 from .import_refs import import_app, import_function
-from .utils import ENV_OPTION, ENV_OPTION_HELP, stream_app_logs
+from .utils import ENV_OPTION, ENV_OPTION_HELP, is_tty, stream_app_logs
 
 
 class ParameterMetadata(TypedDict):
@@ -306,14 +304,7 @@ def deploy(
     if name is None:
         name = app.name
 
-    with enable_output():
-        res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
-        if res.warnings:
-            console = Console()
-            for warning in res.warnings:
-                panel = Panel(warning, title="Warning", title_align="left", border_style="yellow")
-                console.print(panel, highlight=False)
-
+    res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
     if stream_logs:
         stream_app_logs(app_id=res.app_id, app_logs_url=res.app_logs_url)
 
@@ -392,40 +383,47 @@ def shell(
             "Can be a single region or a comma-separated list to choose from (if not using REF)."
         ),
     ),
+    pty: Optional[bool] = typer.Option(default=None, help="Run the command using a PTY."),
 ):
-    """Run an interactive shell inside a Modal container.
+    """Run a command or interactive shell inside a Modal container.
 
-    **Examples:**
+    \b**Examples:**
 
-    Start a shell inside the default Debian-based image:
+    \bStart an interactive shell inside the default Debian-based image:
 
-    ```
+    \b```
     modal shell
     ```
 
-    Start a bash shell using the spec for `my_function` in your App:
+    \bStart an interactive shell with the spec for `my_function` in your App
+    (uses the same image, volumes, mounts, etc.):
 
-    ```
+    \b```
     modal shell hello_world.py::my_function
     ```
 
-    Or, if you're using a [modal.Cls](/docs/reference/modal.Cls), you can refer to a `@modal.method` directly:
+    \bOr, if you're using a [modal.Cls](/docs/reference/modal.Cls), you can refer to a `@modal.method` directly:
 
-    ```
+    \b```
     modal shell hello_world.py::MyClass.my_method
     ```
 
     Start a `python` shell:
 
-    ```
+    \b```
     modal shell hello_world.py --cmd=python
+    ```
+
+    \bRun a command with your function's spec and pipe the output to a file:
+
+    \b```
+    modal shell hello_world.py -c 'uv pip list' > env.txt
     ```
     """
     env = ensure_env(env)
 
-    console = Console()
-    if not console.is_terminal:
-        raise click.UsageError("`modal shell` can only be run from a terminal.")
+    if pty is None:
+        pty = is_tty()
 
     if platform.system() == "Windows":
         raise InvalidError("`modal shell` is currently not supported on Windows")
@@ -441,7 +439,7 @@ def shell(
         ):
             from .container import exec
 
-            exec(container_id=container_or_function, command=shlex.split(cmd), pty=True)
+            exec(container_id=container_or_function, command=shlex.split(cmd))
             return
 
         function = import_function(
@@ -461,6 +459,7 @@ def shell(
             memory=function_spec.memory,
             volumes=function_spec.volumes,
             region=function_spec.scheduler_placement.proto.regions if function_spec.scheduler_placement else None,
+            pty=pty,
         )
     else:
         modal_image = Image.from_registry(image, add_python=add_python) if image else None
@@ -474,6 +473,7 @@ def shell(
             cloud=cloud,
             volumes=volumes,
             region=region.split(",") if region else [],
+            pty=pty,
         )
 
     # NB: invoking under bash makes --cmd a lot more flexible.
