@@ -77,13 +77,10 @@ async def test_client_connection_failure_unix_socket():
 @pytest.mark.asyncio
 @pytest.mark.timeout(TEST_TIMEOUT)
 async def test_client_connection_timeout(servicer, monkeypatch):
-    monkeypatch.setattr("modal.client.CLIENT_CREATE_ATTEMPT_TIMEOUT", 1.0)
-    monkeypatch.setattr("modal.client.CLIENT_CREATE_TOTAL_TIMEOUT", 3.0)
     async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CONTAINER, None, version="timeout") as client:
         with pytest.raises(ConnectionError) as excinfo:
-            await client.hello.aio()
+            await client.hello.aio(total_timeout=1.0)
 
-    # The HTTP lookup will return 400 because the GRPC server rejects the http request
     assert "deadline" in str(excinfo.value).lower()
 
 
