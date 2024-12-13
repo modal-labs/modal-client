@@ -385,7 +385,6 @@ def _get_file_upload_spec(
     source_description: Any,
     mount_filename: PurePosixPath,
     mode: int,
-    md5_hex: Optional[str] = None,
 ) -> FileUploadSpec:
     with source() as fp:
         # Current position is ignored - we always upload from position 0
@@ -394,13 +393,15 @@ def _get_file_upload_spec(
         fp.seek(0)
 
         if size >= LARGE_FILE_LIMIT:
+            # TODO(dano): remove the placeholder md5 once we stop requiring md5 for blobs
+            md5_hex = "baadbaadbaadbaadbaadbaadbaadbaad" if size > MULTIPART_UPLOAD_THRESHOLD else None
             use_blob = True
             content = None
             hashes = get_upload_hashes(fp, md5_hex=md5_hex)
         else:
             use_blob = False
             content = fp.read()
-            hashes = get_upload_hashes(content, md5_hex=md5_hex)
+            hashes = get_upload_hashes(content)
 
     return FileUploadSpec(
         source=source,
@@ -421,13 +422,7 @@ def get_file_upload_spec_from_path(
     # Python appears to give files 0o666 bits on Windows (equal for user, group, and global),
     # so we mask those out to 0o755 for compatibility with POSIX-based permissions.
     mode = mode or os.stat(filename).st_mode & (0o7777 if platform.system() != "Windows" else 0o7755)
-    if os.path.getsize(filename) > MULTIPART_UPLOAD_THRESHOLD:
-        # TODO(dano): remove this once we stop requiring md5 for blobs
-        md5_hex = "baadbaadbaadbaadbaadbaadbaadbaad"  # placeholder - will not be used by server
-    else:
-        md5_hex = None
-
-    return _get_file_upload_spec(lambda: open(filename, "rb"), filename, mount_filename, mode, md5_hex=md5_hex)
+    return _get_file_upload_spec(lambda: open(filename, "rb"), filename, mount_filename, mode)
 
 
 def get_file_upload_spec_from_fileobj(fp: BinaryIO, mount_filename: PurePosixPath, mode: int) -> FileUploadSpec:
