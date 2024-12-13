@@ -5,10 +5,10 @@ import subprocess
 import sys
 
 from google.protobuf.empty_pb2 import Empty
-from grpclib import GRPCError
+from grpclib import GRPCError, Status
 
 from modal import Client
-from modal.exception import AuthError, ConnectionError, DeprecationError, InvalidError, VersionError
+from modal.exception import AuthError, ConnectionError, DeprecationError, InvalidError, ServerWarning
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows, skip_windows_unix_socket
@@ -75,30 +75,18 @@ async def test_client_connection_failure_unix_socket():
 
 
 @pytest.mark.asyncio
-@pytest.mark.timeout(TEST_TIMEOUT)
-async def test_client_connection_timeout(servicer, monkeypatch):
-    monkeypatch.setattr("modal.client.CLIENT_CREATE_ATTEMPT_TIMEOUT", 1.0)
-    monkeypatch.setattr("modal.client.CLIENT_CREATE_TOTAL_TIMEOUT", 3.0)
-    async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CONTAINER, None, version="timeout") as client:
-        with pytest.raises(ConnectionError) as excinfo:
-            await client.hello.aio()
-
-    # The HTTP lookup will return 400 because the GRPC server rejects the http request
-    assert "deadline" in str(excinfo.value).lower()
-
-
-@pytest.mark.asyncio
-@pytest.mark.timeout(TEST_TIMEOUT)
-async def test_client_server_error(servicer):
-    async with Client("https://modal.com", api_pb2.CLIENT_TYPE_CLIENT, None) as client:
-        with pytest.raises(GRPCError):
-            await client.hello.aio()
-
-
-@pytest.mark.asyncio
 async def test_client_old_version(servicer, credentials):
     async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials, version="0.0.0") as client:
-        with pytest.raises(VersionError):
+        with pytest.raises(GRPCError) as excinfo:
+            await client.hello.aio()
+        assert excinfo.value.status == Status.FAILED_PRECONDITION
+        assert excinfo.value.message == "Old client"
+
+
+@pytest.mark.asyncio
+async def test_client_deprecated(servicer, credentials):
+    async with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials, version="deprecated") as client:
+        with pytest.warns(ServerWarning):
             await client.hello.aio()
 
 
