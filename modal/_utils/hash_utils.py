@@ -3,14 +3,14 @@ import base64
 import dataclasses
 import hashlib
 import time
-from typing import BinaryIO, Callable, Optional, Union
+from typing import BinaryIO, Callable, Optional, Sequence, Union
 
 from modal.config import logger
 
 HASH_CHUNK_SIZE = 65536
 
 
-def _update(hashers: list[Callable[[bytes], None]], data: Union[bytes, BinaryIO]) -> None:
+def _update(hashers: Sequence[Callable[[bytes], None]], data: Union[bytes, BinaryIO]) -> None:
     if isinstance(data, bytes):
         for hasher in hashers:
             hasher(data)
@@ -82,12 +82,12 @@ def get_upload_hashes(
         _update(updaters, data)
 
     if sha256_hex:
-        sha256_base64 = base64.b64encode(bytes.fromhex(sha256_hex))
+        sha256_base64 = base64.b64encode(bytes.fromhex(sha256_hex)).decode("ascii")
     else:
         sha256_base64 = base64.b64encode(hashers["sha256"].digest()).decode("ascii")
 
     if md5_hex:
-        md5_base64 = base64.b64encode(bytes.fromhex(md5_hex))
+        md5_base64 = base64.b64encode(bytes.fromhex(md5_hex)).decode("ascii")
     else:
         md5_base64 = base64.b64encode(hashers["md5"].digest()).decode("ascii")
 
