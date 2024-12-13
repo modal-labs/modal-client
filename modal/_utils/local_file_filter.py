@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2024
 from pathlib import Path
+from typing import Callable
 
 from .pattern_matcher import PatternMatcher
 
@@ -35,8 +36,8 @@ class LocalFileFilter:
         """
         return PatternMatcher(self.patterns).matches(str(file_path))
 
-    def __invert__(self) -> "LocalFileFilter":
-        """Invert the filter. Returns True if the path does not match any of the patterns instead.
+    def __invert__(self) -> Callable[[Path], bool]:
+        """Invert the filter. Returns a function that returns True if the path does not match any of the patterns.
 
         Usage:
         ```python

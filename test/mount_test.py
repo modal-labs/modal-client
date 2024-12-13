@@ -7,6 +7,7 @@ from pathlib import Path
 
 from modal import App
 from modal._utils.blob_utils import LARGE_FILE_LIMIT
+from modal._utils.local_file_filter import LocalFileFilter
 from modal.exception import ModuleNotMountable
 from modal.mount import Mount, module_mount_ignore_condition
 
@@ -21,7 +22,7 @@ async def test_get_files(servicer, client, tmpdir):
     tmpdir.join("fluff").write("hello")
 
     files = {}
-    m = Mount.from_local_dir(Path(tmpdir), remote_path="/", ignore=["!**/*.py"], recursive=True)
+    m = Mount.from_local_dir(Path(tmpdir), remote_path="/", ignore=~LocalFileFilter("**/*.py"), recursive=True)
     async for upload_spec in Mount._get_files.aio(m.entries):
         files[upload_spec.mount_filename] = upload_spec
 

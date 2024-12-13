@@ -344,8 +344,7 @@ class _Mount(_Object, type_prefix="mo"):
                 return not condition(str(path))
 
             ignore = converted_condition
-
-        if isinstance(ignore, list):
+        elif isinstance(ignore, list):
             ignore = LocalFileFilter(*ignore)
 
         return self._extend(
@@ -562,7 +561,7 @@ class _Mount(_Object, type_prefix="mo"):
         # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
         # Defaults to including all files.
         condition: Optional[Callable[[str], bool]] = None,
-        ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
+        ignore: Optional[Union[Sequence[str], Callable[[Path], bool]]] = None,
     ) -> "_Mount":
         """
         Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
@@ -588,15 +587,14 @@ class _Mount(_Object, type_prefix="mo"):
         # Don't re-run inside container.
 
         if condition is not None:
-            if len(ignore) > 0:
+            if ignore is not None:
                 raise InvalidError("Cannot specify both `ignore` and `condition`")
 
             def converted_condition(path: Path) -> bool:
                 return not condition(str(path))
 
             ignore = converted_condition
-
-        if isinstance(ignore, list):
+        elif isinstance(ignore, list):
             ignore = LocalFileFilter(*ignore)
 
         mount = _Mount._new()
