@@ -648,7 +648,7 @@ class _Image(_Object, type_prefix="im"):
         # Predicate filter function for file exclusion, which should accept a filepath and return `True` for exclusion.
         # Defaults to excluding no files. If a Sequence is provided, it will be converted to a LocalFileFilter.
         # Which follows dockerignore syntax.
-        ignore: Sequence[str] | Callable[[Path], bool] = [],
+        ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
     ) -> "_Image":
         """Adds a local directory's content to the image at `remote_path` within the container
 
@@ -735,7 +735,7 @@ class _Image(_Object, type_prefix="im"):
         # Predicate filter function for file exclusion, which should accept a filepath and return `True` for exclusion.
         # Defaults to excluding no files. If a Sequence is provided, it will be converted to a LocalFileFilter.
         # Which follows dockerignore syntax.
-        ignore: Sequence[str] | Callable[[Path], bool] = [],
+        ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
     ) -> "_Image":
         """Copy a directory into the image as a part of building the image.
 
