@@ -67,8 +67,9 @@ def test_run_class(client, servicer):
     assert len(servicer.precreated_functions) == 0
     assert servicer.n_functions == 0
     with app.run(client=client):
-        method_handle_object_id = Foo.bar.object_id
+        method_handle_object_id = Foo.bar.object_id  # method handle object id will probably go away
         assert isinstance(Foo, Cls)
+        assert isinstance(NoParamsCls, Cls)
         class_id = Foo.object_id
         class_id2 = NoParamsCls.object_id
         app_id = app.app_id
@@ -79,7 +80,7 @@ def test_run_class(client, servicer):
     class_function_id = objects["Foo.*"]
     class_function_id2 = objects["NoParamsCls.*"]
     assert servicer.precreated_functions == {class_function_id, class_function_id2}
-    assert method_handle_object_id == class_function_id
+    assert method_handle_object_id == class_function_id  # method handle object id will probably go away
     assert len(objects) == 4  # two classes + two class service function
     assert objects["Foo"] == class_id
     assert class_function_id.startswith("fu-")
