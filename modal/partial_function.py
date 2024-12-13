@@ -334,6 +334,7 @@ def _asgi_app(
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
+    requires_proxy_auth: bool = False,  # Require Proxy-Authenticate HTTP Headers on requests to the endpoint
     wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering an ASGI app with a Modal function.
@@ -397,6 +398,7 @@ def _asgi_app(
                 requested_suffix=label,
                 async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
                 custom_domains=_parse_custom_domains(custom_domains),
+                requires_proxy_auth=requires_proxy_auth,
             ),
         )
 
@@ -408,6 +410,7 @@ def _wsgi_app(
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
+    requires_proxy_auth: bool = False,  # Require Proxy-Authenticate HTTP Headers on requests to the endpoint
     wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering a WSGI app with a Modal function.
@@ -471,6 +474,7 @@ def _wsgi_app(
                 requested_suffix=label,
                 async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
                 custom_domains=_parse_custom_domains(custom_domains),
+                requires_proxy_auth=requires_proxy_auth,
             ),
         )
 
@@ -483,6 +487,7 @@ def _web_server(
     startup_timeout: float = 5.0,  # Maximum number of seconds to wait for the web server to start.
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
+    requires_proxy_auth: bool = False,  # Require Proxy-Authenticate HTTP Headers on requests to the endpoint
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator that registers an HTTP web server inside the container.
 
@@ -526,6 +531,7 @@ def _web_server(
                 custom_domains=_parse_custom_domains(custom_domains),
                 web_server_port=port,
                 web_server_startup_timeout=startup_timeout,
+                requires_proxy_auth=requires_proxy_auth,
             ),
         )
 
