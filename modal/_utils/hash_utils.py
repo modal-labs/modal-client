@@ -59,6 +59,7 @@ class UploadHashes:
 
 
 def get_upload_hashes(data: Union[bytes, BinaryIO], sha256_hex: Optional[str] = None) -> UploadHashes:
+    t0 = time.monotonic()
     md5 = hashlib.md5()
     # If we already have the sha256 digest, do not compute it again
     if sha256_hex:
@@ -66,8 +67,8 @@ def get_upload_hashes(data: Union[bytes, BinaryIO], sha256_hex: Optional[str] = 
             md5_base64=get_md5_base64(data),
             sha256_base64=base64.b64encode(bytes.fromhex(sha256_hex)).decode("ascii"),
         )
+        logger.debug("get_upload_hashes took %.3fs (get_md5_base64)", time.monotonic() - t0)
     else:
-        t0 = time.monotonic()
         sha256 = hashlib.sha256()
         _update([md5.update, sha256.update], data)
         hashes = UploadHashes(
