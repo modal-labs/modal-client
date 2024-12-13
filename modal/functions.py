@@ -432,7 +432,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         image: _Image,
         secrets: Sequence[_Secret] = (),
         schedule: Optional[Schedule] = None,
-        is_generator=False,
+        is_generator: bool = False,
         gpu: Union[GPU_T, list[GPU_T]] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         mounts: Collection[_Mount] = (),
@@ -628,7 +628,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
         method_definitions: Optional[dict[str, api_pb2.MethodDefinition]] = None
-        partial_functions: dict[str, "modal.partial_function._PartialFunction"] = {}
+
         if info.user_cls:
             method_definitions = {}
             partial_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.FUNCTION)
@@ -1191,9 +1191,16 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return self._web_url
 
     @property
-    def is_generator(self) -> bool:
+    async def is_generator(self) -> bool:
         """mdmd:hidden"""
-        assert self._is_generator is not None
+        # hacky: kind of like @live_method, but not hydrating if we have the value already from local source
+        if self._is_generator is not None:
+            # this is set if the function or class is local
+            return self._is_generator
+
+        # not set - this is a from_name lookup - hydrate
+        await self.resolve()
+        assert self._is_generator is not None  # should be set now
         return self._is_generator
 
     @property
@@ -1318,6 +1325,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         async for item in self._call_generator(args, kwargs):  # type: ignore
             yield item
 
+    def _is_local(self):
+        return self._info is not None
+
     def _get_info(self) -> FunctionInfo:
         if not self._info:
             raise ExecutionError("Can't get info for a function that isn't locally defined")
@@ -1342,19 +1352,24 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         """
         # TODO(erikbern): it would be nice to remove the nowrap thing, but right now that would cause
         # "user code" to run on the synchronicity thread, which seems bad
+        if not self._is_local():
+            msg = (
+                "The definition for this function is missing here so it is not possible to invoke it locally. "
+                "If this function was retrieved via `Function.lookup` you need to use `.remote()`."
+            )
+            raise ExecutionError(msg)
+
         info = self._get_info()
+        if not info.raw_f:
+            # Here if calling .local on a service function itself which should never happen
+            # TODO: check if we end up here in a container for a serialized function?
+            raise ExecutionError("Can't call .local on service function")
 
         if is_local() and self.spec.volumes or self.spec.network_file_systems:
             warnings.warn(
                 f"The {info.function_name} function is executing locally "
                 + "and will not have access to the mounted Volume or NetworkFileSystem data"
             )
-        if not info or not info.raw_f:
-            msg = (
-                "The definition for this function is missing so it is not possible to invoke it locally. "
-                "If this function was retrieved via `Function.lookup` you need to use `.remote()`."
-            )
-            raise ExecutionError(msg)
 
         obj: Optional["modal.cls._Obj"] = self._get_obj()
 
@@ -1364,9 +1379,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         else:
             # This is a method on a class, so bind the self to the function
             user_cls_instance = obj._cached_user_cls_instance()
-
             fun = info.raw_f.__get__(user_cls_instance)
 
+            # TODO: replace implicit local enter/exit with a context manager
             if is_async(info.raw_f):
                 # We want to run __aenter__ and fun in the same coroutine
                 async def coro():

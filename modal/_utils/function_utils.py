@@ -99,7 +99,11 @@ def get_function_type(is_generator: Optional[bool]) -> "api_pb2.Function.Functio
 
 
 class FunctionInfo:
-    """Class that helps us extract a bunch of information about a function."""
+    """Class that helps us extract a bunch of information about a locally defined function.
+
+    Used for populating the definition of a remote function, and for making .local() calls
+    on a host with the local definition available.
+    """
 
     raw_f: Optional[Callable[..., Any]]  # if None - this is a "class service function"
     function_name: str
