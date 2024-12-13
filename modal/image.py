@@ -683,9 +683,6 @@ class _Image(_Object, type_prefix="im"):
             #  + make default remote_path="./"
             raise InvalidError("image.add_local_dir() currently only supports absolute remote_path values")
 
-        if isinstance(ignore, list):
-            ignore = LocalFileFilter(*ignore)
-
         mount = _Mount._add_local_dir(Path(local_path), Path(remote_path), ignore)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
@@ -761,9 +758,6 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
-
-        if isinstance(ignore, list):
-            ignore = LocalFileFilter(*ignore)
 
         mount = _Mount._add_local_dir(Path(local_path), Path("/"), ignore)
 

@@ -7,7 +7,6 @@ from pathlib import Path
 
 from modal import App
 from modal._utils.blob_utils import LARGE_FILE_LIMIT
-from modal._utils.local_file_filter import LocalFileFilter
 from modal.exception import ModuleNotMountable
 from modal.mount import Mount, module_mount_ignore_condition
 
@@ -177,7 +176,7 @@ def test_module_mount_ignore_condition():
 
 
 def test_mount_from_local_dir_ignore(test_dir, tmp_path_with_content):
-    ignore = LocalFileFilter("**/*.txt", "**/module", "!**/*.txt", "!**/*.py")
+    ignore = ["**/*.txt", "**/module", "!**/*.txt", "!**/*.py"]
     expected = {
         "/foo/module/sub.py",
         "/foo/module/sub/sub.py",

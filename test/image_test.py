@@ -712,7 +712,7 @@ def test_image_copy_local_dir(builder_version, servicer, client, tmp_path_with_c
 
 def test_image_docker_command_copy(builder_version, servicer, client, tmp_path_with_content):
     app = App()
-    data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/", ignore=["**/module"])
+    data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/", condition=lambda p: "module" not in p)
     app.image = Image.debian_slim().dockerfile_commands(["COPY . /dummy"], context_mount=data_mount)
     app.function()(dummy)
 
@@ -729,7 +729,7 @@ def test_image_dockerfile_copy(builder_version, servicer, client, tmp_path_with_
     dockerfile.close()
 
     app = App()
-    data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/", ignore=["**/module"])
+    data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/", condition=lambda p: "module" not in p)
     app.image = Image.debian_slim().from_dockerfile(dockerfile.name, context_mount=data_mount)
     app.function()(dummy)
 
@@ -1338,7 +1338,7 @@ def test_add_local_lazy_vs_copy(client, servicer, set_env_client, supports_on_pa
     copy_layer = layers[1]
     assert copy_layer.dockerfile_commands == ["FROM base", "COPY . /"]
     copied_files = servicer.mount_contents[copy_layer.context_mount_id].keys()
-    assert len(copied_files) == 8, copied_files
+    assert len(copied_files) == 8
     assert all(fn.startswith("/root/pkg_a/") for fn in copied_files)
 
 

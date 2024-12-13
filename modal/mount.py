@@ -317,8 +317,11 @@ class _Mount(_Object, type_prefix="mo"):
     def _add_local_dir(
         local_path: Path,
         remote_path: Path,
-        ignore: Callable[[Path], bool],
+        ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
     ):
+        if isinstance(ignore, list):
+            ignore = LocalFileFilter(*ignore)
+
         return _Mount._new()._extend(
             _MountDir(
                 local_dir=local_path,
