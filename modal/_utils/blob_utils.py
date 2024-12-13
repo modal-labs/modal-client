@@ -305,9 +305,12 @@ async def blob_upload(payload: bytes, stub: ModalClientModal) -> str:
 
 
 async def blob_upload_file(
-    file_obj: BinaryIO, stub: ModalClientModal, progress_report_cb: Optional[Callable] = None
+    file_obj: BinaryIO,
+    stub: ModalClientModal,
+    progress_report_cb: Optional[Callable] = None,
+    sha256_hex: Optional[str] = None,
 ) -> str:
-    upload_hashes = get_upload_hashes(file_obj)
+    upload_hashes = get_upload_hashes(file_obj, sha256_hex=sha256_hex)
     return await _blob_upload(upload_hashes, file_obj, stub, progress_report_cb)
 
 
