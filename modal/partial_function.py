@@ -271,7 +271,7 @@ def _web_endpoint(
     custom_domains: Optional[
         Iterable[str]
     ] = None,  # Create an endpoint using a custom domain fully-qualified domain name (FQDN).
-    requires_proxy_auth: bool = False,  # Require Proxy-Authenticate HTTP Headers on requests to the endpoint
+    requires_proxy_auth: bool = False,  # Require Proxy-Authorization HTTP Headers on requests to the endpoint
     wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[P, ReturnType]], _PartialFunction[P, ReturnType, ReturnType]]:
     """Register a basic web endpoint with this application.
@@ -334,7 +334,7 @@ def _asgi_app(
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
-    requires_proxy_auth: bool = False,  # Require Proxy-Authenticate HTTP Headers on requests to the endpoint
+    requires_proxy_auth: bool = False,  # Require Proxy-Authorization HTTP Headers on requests to the endpoint
     wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering an ASGI app with a Modal function.
@@ -410,7 +410,7 @@ def _wsgi_app(
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
-    requires_proxy_auth: bool = False,  # Require Proxy-Authenticate HTTP Headers on requests to the endpoint
+    requires_proxy_auth: bool = False,  # Require Proxy-Authorization HTTP Headers on requests to the endpoint
     wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering a WSGI app with a Modal function.
@@ -487,7 +487,7 @@ def _web_server(
     startup_timeout: float = 5.0,  # Maximum number of seconds to wait for the web server to start.
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
-    requires_proxy_auth: bool = False,  # Require Proxy-Authenticate HTTP Headers on requests to the endpoint
+    requires_proxy_auth: bool = False,  # Require Proxy-Authorization HTTP Headers on requests to the endpoint
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator that registers an HTTP web server inside the container.
 
