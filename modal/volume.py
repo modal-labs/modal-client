@@ -636,6 +636,7 @@ class _VolumeUploadContextManager:
                         self._client.stub,
                         functools.partial(self._progress_cb, progress_task_id),
                         sha256_hex=file_spec.sha256_hex,
+                        md5_hex=file_spec.md5_hex,
                     )
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
                 request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
