@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.68.11 (2024-12-13)
+
+* `Cls.from_name(...)` now works as a lazy alternative to `Cls.lookup()` that doesn't perform any IO until a method on the class is used for a .remote() call or similar
+
+
+
 ### 0.68.6 (2024-12-12)
 
 - Fixed a bug introduced in v0.67.47 that suppressed console output from the `modal deploy` CLI.

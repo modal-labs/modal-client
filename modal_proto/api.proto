@@ -814,6 +814,12 @@ message ContainerFileSeekRequest {
   SeekWhence whence = 3;
 }
 
+message ContainerFileWatchRequest {
+  string path = 1;
+  bool recursive = 2;
+  optional uint64 timeout_secs = 3;
+}
+
 message ContainerFileWriteReplaceBytesRequest {
   string file_descriptor = 1;
   bytes data = 2;

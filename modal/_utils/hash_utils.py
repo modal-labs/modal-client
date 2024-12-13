@@ -2,9 +2,12 @@
 import base64
 import dataclasses
 import hashlib
-from typing import BinaryIO, Callable, Union
+import time
+from typing import BinaryIO, Callable, Optional, Union
 
-HASH_CHUNK_SIZE = 4096
+from modal.config import logger
+
+HASH_CHUNK_SIZE = 65536
 
 
 def _update(hashers: list[Callable[[bytes], None]], data: Union[bytes, BinaryIO]) -> None:
@@ -26,20 +29,26 @@ def _update(hashers: list[Callable[[bytes], None]], data: Union[bytes, BinaryIO]
 
 
 def get_sha256_hex(data: Union[bytes, BinaryIO]) -> str:
+    t0 = time.monotonic()
     hasher = hashlib.sha256()
     _update([hasher.update], data)
+    logger.debug("get_sha256_hex took %.3fs", time.monotonic() - t0)
     return hasher.hexdigest()
 
 
 def get_sha256_base64(data: Union[bytes, BinaryIO]) -> str:
+    t0 = time.monotonic()
     hasher = hashlib.sha256()
     _update([hasher.update], data)
+    logger.debug("get_sha256_base64 took %.3fs", time.monotonic() - t0)
     return base64.b64encode(hasher.digest()).decode("ascii")
 
 
 def get_md5_base64(data: Union[bytes, BinaryIO]) -> str:
+    t0 = time.monotonic()
     hasher = hashlib.md5()
     _update([hasher.update], data)
+    logger.debug("get_md5_base64 took %.3fs", time.monotonic() - t0)
     return base64.b64encode(hasher.digest()).decode("utf-8")
 
 
@@ -49,11 +58,22 @@ class UploadHashes:
     sha256_base64: str
 
 
-def get_upload_hashes(data: Union[bytes, BinaryIO]) -> UploadHashes:
+def get_upload_hashes(data: Union[bytes, BinaryIO], sha256_hex: Optional[str] = None) -> UploadHashes:
+    t0 = time.monotonic()
     md5 = hashlib.md5()
-    sha256 = hashlib.sha256()
-    _update([md5.update, sha256.update], data)
-    return UploadHashes(
-        md5_base64=base64.b64encode(md5.digest()).decode("ascii"),
-        sha256_base64=base64.b64encode(sha256.digest()).decode("ascii"),
-    )
+    # If we already have the sha256 digest, do not compute it again
+    if sha256_hex:
+        hashes = UploadHashes(
+            md5_base64=get_md5_base64(data),
+            sha256_base64=base64.b64encode(bytes.fromhex(sha256_hex)).decode("ascii"),
+        )
+        logger.debug("get_upload_hashes took %.3fs (get_md5_base64)", time.monotonic() - t0)
+    else:
+        sha256 = hashlib.sha256()
+        _update([md5.update, sha256.update], data)
+        hashes = UploadHashes(
+            md5_base64=base64.b64encode(md5.digest()).decode("ascii"),
+            sha256_base64=base64.b64encode(sha256.digest()).decode("ascii"),
+        )
+        logger.debug("get_upload_hashes took %.3fs (md5 + sha256)", time.monotonic() - t0)
+    return hashes

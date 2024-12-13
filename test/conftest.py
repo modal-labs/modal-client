@@ -834,21 +834,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.FunctionBindParamsRequest = await stream.recv_message()
         assert request.function_id
         assert request.serialized_params
+        base_function = self.app_functions[request.function_id]
         existing_func_id = self.bound_functions.get((request.function_id, request.serialized_params), None)
         if existing_func_id:
-            return self.app_functions[existing_func_id]
+            function_id = existing_func_id
+        else:
+            self.n_functions += 1
+            function_id = f"fu-{self.n_functions}"
+            assert not base_function.use_method_name
 
-        self.n_functions += 1
-        function_id = f"fu-{self.n_functions}"
-        base_function = self.app_functions[request.function_id]
-        assert not base_function.use_method_name
-
-        bound_func = api_pb2.Function()
-        bound_func.CopyFrom(base_function)
-        self.app_functions[function_id] = bound_func
-        self.bound_functions[(request.function_id, request.serialized_params)] = function_id
-        self.function_params[function_id] = deserialize(request.serialized_params, None)
-        self.function_options[function_id] = request.function_options
+            bound_func = api_pb2.Function()
+            bound_func.CopyFrom(base_function)
+            self.app_functions[function_id] = bound_func
+            self.bound_functions[(request.function_id, request.serialized_params)] = function_id
+            self.function_params[function_id] = deserialize(request.serialized_params, None)
+            self.function_options[function_id] = request.function_options
 
         await stream.send_message(
             api_pb2.FunctionBindParamsResponse(
