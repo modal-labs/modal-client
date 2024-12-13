@@ -423,7 +423,7 @@ def get_file_upload_spec_from_path(
     mode = mode or os.stat(filename).st_mode & (0o7777 if platform.system() != "Windows" else 0o7755)
     if os.path.getsize(filename) > MULTIPART_UPLOAD_THRESHOLD:
         # TODO(dano): remove this once we stop requiring md5 for blobs
-        md5_hex = "d41d8cd98f00b204e9800998ecf8427e"  # empty file placeholder - will not be used by server
+        md5_hex = "baadbaadbaadbaadbaadbaadbaadbaad"  # placeholder - will not be used by server
     else:
         md5_hex = None
 
