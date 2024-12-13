@@ -1548,11 +1548,13 @@ def test_image_add_local_dir_ignore_nothing(servicer, client, tmp_path_with_cont
             assert len(img._mount_layers) == 0
             layers = get_image_layers(app.image.object_id, servicer)
             mount_id = layers[0].context_mount_id
-            assert set(servicer.mount_contents[mount_id].keys()) == expected
+            assert set(Path(fn) for fn in servicer.mount_contents[mount_id].keys()) == {Path(fn) for fn in expected}
     else:
         img = img.add_local_dir(tmp_path_with_content, "/place/")
         app.function(image=img)(dummy)
         with app.run(client=client):
             assert len(img._mount_layers) == 1
             mount_id = img._mount_layers[0].object_id
-            assert set(servicer.mount_contents[mount_id].keys()) == {f"/place{f}" for f in expected}
+            assert set(Path(fn) for fn in servicer.mount_contents[mount_id].keys()) == {
+                Path(f"/place{f}") for f in expected
+            }
