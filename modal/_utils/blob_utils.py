@@ -422,7 +422,12 @@ def get_file_upload_spec_from_path(
     # Python appears to give files 0o666 bits on Windows (equal for user, group, and global),
     # so we mask those out to 0o755 for compatibility with POSIX-based permissions.
     mode = mode or os.stat(filename).st_mode & (0o7777 if platform.system() != "Windows" else 0o7755)
-    return _get_file_upload_spec(lambda: open(filename, "rb"), filename, mount_filename, mode)
+    return _get_file_upload_spec(
+        lambda: open(filename, "rb"),
+        filename,
+        mount_filename,
+        mode,
+    )
 
 
 def get_file_upload_spec_from_fileobj(fp: BinaryIO, mount_filename: PurePosixPath, mode: int) -> FileUploadSpec:
