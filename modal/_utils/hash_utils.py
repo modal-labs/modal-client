@@ -5,8 +5,6 @@ import hashlib
 import time
 from typing import BinaryIO, Callable, Optional, Union
 
-from typing_extensions import Buffer
-
 from modal.config import logger
 
 HASH_CHUNK_SIZE = 65536
@@ -65,20 +63,18 @@ def get_upload_hashes(data: Union[bytes, BinaryIO], sha256_hex: Optional[str] = 
     md5 = hashlib.md5()
     # If we already have the sha256 digest, do not compute it again
     if sha256_hex:
-
-        def sha256_update(_data: Buffer, /):
-            pass
+        hashers = {"md5": md5.update}
 
         def sha256_digest() -> bytes:
             return bytes.fromhex(sha256_hex)
     else:
         sha256 = hashlib.sha256()
-        sha256_update = sha256.update
+        hashers = {"md5": md5.update, "sha256": sha256.update}
         sha256_digest = sha256.digest
-    _update([md5.update, sha256_update], data)
+    _update(list(hashers.values()), data)
     hashes = UploadHashes(
         md5_base64=base64.b64encode(md5.digest()).decode("ascii"),
         sha256_base64=base64.b64encode(sha256_digest()).decode("ascii"),
     )
-    logger.debug("get_upload_hashes took %.3fs", time.monotonic() - t0)
+    logger.debug("get_upload_hashes took %.3fs (hashes=%s)", time.monotonic() - t0, list(hashers.keys()))
     return hashes
