@@ -313,6 +313,21 @@ class _Mount(_Object, type_prefix="mo"):
         # we can't rely on it to be set. Let's clean this up later.
         return getattr(self, "_is_local", False)
 
+    @staticmethod
+    def _add_local_dir(
+        local_path: Path,
+        remote_path: Path,
+        ignore: Callable[[Path], bool],
+    ):
+        return _Mount._new()._extend(
+            _MountDir(
+                local_dir=local_path,
+                ignore=ignore,
+                remote_path=remote_path,
+                recursive=True,
+            ),
+        )
+
     def add_local_dir(
         self,
         local_path: Union[str, Path],
@@ -324,9 +339,6 @@ class _Mount(_Object, type_prefix="mo"):
         condition: Optional[Callable[[str], bool]] = None,
         # add files from subdirectories as well
         recursive: bool = True,
-        # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
-        # Defaults to including all files.
-        ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
     ) -> "_Mount":
         """
         Add a local directory to the `Mount` object.
@@ -335,22 +347,20 @@ class _Mount(_Object, type_prefix="mo"):
         if remote_path is None:
             remote_path = local_path.name
         remote_path = PurePosixPath("/", remote_path)
+        if condition is None:
 
-        if condition is not None:
-            if len(ignore) > 0:
-                raise InvalidError("Cannot specify both `ignore` and `condition`")
+            def include_all(path):
+                return True
 
-            def converted_condition(path: Path) -> bool:
-                return not condition(str(path))
+            condition = include_all
 
-            ignore = converted_condition
-        elif isinstance(ignore, list):
-            ignore = LocalFileFilter(*ignore)
+        def converted_condition(path: Path) -> bool:
+            return not condition(str(path))
 
         return self._extend(
             _MountDir(
                 local_dir=local_path,
-                ignore=ignore,
+                ignore=converted_condition,
                 remote_path=remote_path,
                 recursive=recursive,
             ),
@@ -367,9 +377,6 @@ class _Mount(_Object, type_prefix="mo"):
         condition: Optional[Callable[[str], bool]] = None,
         # add files from subdirectories as well
         recursive: bool = True,
-        # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
-        # Defaults to including all files.
-        ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
     ) -> "_Mount":
         """
         Create a `Mount` from a local directory.
@@ -379,14 +386,13 @@ class _Mount(_Object, type_prefix="mo"):
         ```python
         assets = modal.Mount.from_local_dir(
             "~/assets",
-            ignore=["*.venv"],
+            condition=lambda pth: not ".venv" in pth,
             remote_path="/assets",
         )
         ```
         """
-
         return _Mount._new().add_local_dir(
-            local_path, remote_path=remote_path, condition=condition, recursive=recursive, ignore=ignore
+            local_path, remote_path=remote_path, condition=condition, recursive=recursive
         )
 
     def add_local_file(

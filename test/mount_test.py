@@ -22,7 +22,7 @@ async def test_get_files(servicer, client, tmpdir):
     tmpdir.join("fluff").write("hello")
 
     files = {}
-    m = Mount.from_local_dir(Path(tmpdir), remote_path="/", ignore=~LocalFileFilter("**/*.py"), recursive=True)
+    m = Mount.from_local_dir(Path(tmpdir), remote_path="/", condition=lambda fn: fn.endswith(".py"), recursive=True)
     async for upload_spec in Mount._get_files.aio(m.entries):
         files[upload_spec.mount_filename] = upload_spec
 
@@ -57,7 +57,10 @@ async def test_get_files(servicer, client, tmpdir):
 def test_create_mount(servicer, client):
     local_dir, cur_filename = os.path.split(__file__)
 
-    m = Mount.from_local_dir(local_dir, remote_path="/foo", ignore=["!**/*.py"])
+    def condition(fn):
+        return fn.endswith(".py")
+
+    m = Mount.from_local_dir(local_dir, remote_path="/foo", condition=condition)
 
     m._deploy("my-mount", client=client)
 
@@ -90,9 +93,7 @@ def test_from_local_python_packages(servicer, client, test_dir, monkeypatch):
 
     monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
 
-    app.function(
-        mounts=[Mount.from_local_python_packages("pkg_a", "pkg_b", "pkg_d", "standalone_file", ignore=["**/pkg_d/m"])]
-    )(dummy)
+    app.function(mounts=[Mount.from_local_python_packages("pkg_a", "pkg_b", "standalone_file")])(dummy)
 
     with app.run(client=client):
         files = set(servicer.files_name2sha.keys())
@@ -101,14 +102,12 @@ def test_from_local_python_packages(servicer, client, test_dir, monkeypatch):
             "/root/pkg_a/b/c.py",
             "/root/pkg_b/f.py",
             "/root/pkg_b/g/h.py",
-            "/root/pkg_d/l.py",
             "/root/standalone_file.py",
         }
         assert expected_files.issubset(files)
 
         assert "/root/pkg_c/i.py" not in files
         assert "/root/pkg_c/j/k.py" not in files
-        assert "/root/pkg_d/m/n.py" not in files
 
 
 def test_app_mounts(servicer, client, test_dir, monkeypatch):
@@ -177,9 +176,8 @@ def test_module_mount_ignore_condition():
     assert not ignore_condition(Path("/a/my_mod/config/foo.py"))
 
 
-@pytest.mark.parametrize("from_local_dir", [True, False])
-def test_mount_from_local_dir_ignore(test_dir, tmp_path_with_content, from_local_dir):
-    ignore = ["**/*.txt", "**/module", "!**/*.txt", "!**/*.py"]
+def test_mount_from_local_dir_ignore(test_dir, tmp_path_with_content):
+    ignore = LocalFileFilter("**/*.txt", "**/module", "!**/*.txt", "!**/*.py")
     expected = {
         "/foo/module/sub.py",
         "/foo/module/sub/sub.py",
@@ -189,10 +187,7 @@ def test_mount_from_local_dir_ignore(test_dir, tmp_path_with_content, from_local
         "/foo/module/sub/__init__.py",
     }
 
-    if from_local_dir:
-        mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/foo", ignore=ignore)
-    else:
-        mount = Mount._new().add_local_dir(tmp_path_with_content, remote_path="/foo", ignore=ignore)
+    mount = Mount._add_local_dir(tmp_path_with_content, Path("/foo"), ignore)
 
     file_names = [file.mount_filename for file in Mount._get_files(entries=mount.entries)]
     assert set(file_names) == expected
