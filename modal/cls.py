@@ -19,7 +19,7 @@ from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
-from .exception import InvalidError, NotFoundError, VersionError
+from .exception import ExecutionError, InvalidError, NotFoundError, VersionError
 from .functions import _Function, _parse_retries
 from .gpu import GPU_T
 from .object import _get_environment_name, _Object
@@ -40,7 +40,7 @@ if typing.TYPE_CHECKING:
     import modal.app
 
 
-def _use_annotation_parameters(user_cls) -> bool:
+def _use_annotation_parameters(user_cls: type) -> bool:
     has_parameters = any(is_parameter(cls_member) for cls_member in user_cls.__dict__.values())
     has_explicit_constructor = user_cls.__init__ != object.__init__
     return has_parameters and not has_explicit_constructor
@@ -73,7 +73,7 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
 def _bind_instance_method(service_function: _Function, class_bound_method: _Function):
     """mdmd:hidden
 
-    Binds an "instance service function" to a specific method.
+    Binds an "instance service function" to a specific method name.
     This "dummy" _Function gets no unique object_id and isn't backend-backed at the moment, since all
     it does it forward invocations to the underlying instance_service_function with the specified method,
     and we don't support web_config for parameterized methods at the moment.
@@ -84,7 +84,6 @@ def _bind_instance_method(service_function: _Function, class_bound_method: _Func
     #   object itself doesn't need any "loading"
     assert service_function._obj
     method_name = class_bound_method._use_method_name
-    full_function_name = f"{class_bound_method._function_name}[parameterized]"
 
     def hydrate_from_instance_service_function(method_placeholder_fun):
         method_placeholder_fun._hydrate_from_other(service_function)
@@ -92,7 +91,7 @@ def _bind_instance_method(service_function: _Function, class_bound_method: _Func
         method_placeholder_fun._web_url = (
             class_bound_method._web_url
         )  # TODO: this shouldn't be set when actual parameters are used
-        method_placeholder_fun._function_name = full_function_name
+        method_placeholder_fun._function_name = f"{class_bound_method._function_name}[parameterized]"
         method_placeholder_fun._is_generator = class_bound_method._is_generator
         method_placeholder_fun._cluster_size = class_bound_method._cluster_size
         method_placeholder_fun._use_method_name = method_name
@@ -112,7 +111,7 @@ def _bind_instance_method(service_function: _Function, class_bound_method: _Func
             return []
         return [service_function]
 
-    rep = f"Method({full_function_name})"
+    rep = f"Method({method_name})"
 
     fun = _Function._from_loader(
         _load,
@@ -137,22 +136,23 @@ class _Obj:
 
     All this class does is to return `Function` objects."""
 
+    _cls: "_Cls"  # parent
     _functions: dict[str, _Function]
     _has_entered: bool
     _user_cls_instance: Optional[Any] = None
-    _construction_args: tuple[tuple, dict[str, Any]]
+    _args: tuple[Any, ...]
+    _kwargs: dict[str, Any]
 
-    _instance_service_function: Optional[_Function]
+    _instance_service_function: Optional[_Function] = None  # this gets set lazily
 
     def _uses_common_service_function(self):
         # Used for backwards compatibility checks with pre v0.63 classes
-        return self._instance_service_function is not None
+        return self._cls._class_service_function is not None
 
     def __init__(
         self,
+        cls: "_Cls",
         user_cls: Optional[type],  # this would be None in case of lookups
-        class_service_function: Optional[_Function],  # only None for <v0.63 classes
-        classbound_methods: dict[str, _Function],
         options: Optional[api_pb2.FunctionOptions],
         args,
         kwargs,
@@ -161,45 +161,60 @@ class _Obj:
             check_valid_cls_constructor_arg(i + 1, arg)
         for key, kwarg in kwargs.items():
             check_valid_cls_constructor_arg(key, kwarg)
-
-        self._method_functions = {}
-        if class_service_function:
-            # >= v0.63 classes
-            # first create the singular object function used by all methods on this parameterization
-            self._instance_service_function = class_service_function._bind_parameters(self, options, args, kwargs)
-            for method_name, class_bound_method in classbound_methods.items():
-                method = _bind_instance_method(self._instance_service_function, class_bound_method)
-                self._method_functions[method_name] = method
-        else:
-            # looked up <v0.63 classes - bind each individual method to the new parameters
-            self._instance_service_function = None
-            for method_name, class_bound_method in classbound_methods.items():
-                method = class_bound_method._bind_parameters(self, options, args, kwargs)
-                self._method_functions[method_name] = method
+        self._cls = cls
 
         # Used for construction local object lazily
         self._has_entered = False
         self._user_cls = user_cls
-        self._construction_args = (args, kwargs)  # used for lazy construction in case of explicit constructors
+
+        # used for lazy construction in case of explicit constructors
+        self._args = args
+        self._kwargs = kwargs
+        self._options = options
+
+    def _cached_service_function(self) -> "modal.functions._Function":
+        # Returns a service function for this _Obj, serving all its methods
+        # In case of methods without parameters or options, this is simply proxying to the class service function
+
+        # only safe to call for 0.63+ classes (before then, all methods had their own services)
+        if not self._instance_service_function:
+            assert self._cls._class_service_function
+            self._instance_service_function = self._cls._class_service_function._bind_parameters(
+                self, self._options, self._args, self._kwargs
+            )
+        return self._instance_service_function
+
+    def _get_parameter_values(self) -> dict[str, Any]:
+        # binds args and kwargs according to the class constructor signature
+        # (implicit by parameters or explicit)
+        sig = _get_class_constructor_signature(self._user_cls)
+        bound_vars = sig.bind(*self._args, **self._kwargs)
+        bound_vars.apply_defaults()
+        return bound_vars.arguments
 
     def _new_user_cls_instance(self):
-        args, kwargs = self._construction_args
         if not _use_annotation_parameters(self._user_cls):
             # TODO(elias): deprecate this code path eventually
-            user_cls_instance = self._user_cls(*args, **kwargs)
+            user_cls_instance = self._user_cls(*self._args, **self._kwargs)
         else:
             # ignore constructor (assumes there is no custom constructor,
             # which is guaranteed by _use_annotation_parameters)
             # set the attributes on the class corresponding to annotations
             # with = parameter() specifications
-            sig = _get_class_constructor_signature(self._user_cls)
-            bound_vars = sig.bind(*args, **kwargs)
-            bound_vars.apply_defaults()
+            param_values = self._get_parameter_values()
             user_cls_instance = self._user_cls.__new__(self._user_cls)  # new instance without running __init__
-            user_cls_instance.__dict__.update(bound_vars.arguments)
+            user_cls_instance.__dict__.update(param_values)
 
         # TODO: always use Obj instances instead of making modifications to user cls
-        user_cls_instance._modal_functions = self._method_functions  # Needed for PartialFunction.__get__
+        # TODO: OR (if simpler for now) replace all the PartialFunctions on the user cls
+        #   with getattr(self, method_name)
+
+        # user cls instances are only created locally, so we have all partial functions available
+        instance_methods = {}
+        for method_name in _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.FUNCTION):
+            instance_methods[method_name] = getattr(self, method_name)
+
+        user_cls_instance._modal_functions = instance_methods
         return user_cls_instance
 
     async def keep_warm(self, warm_pool_size: int) -> None:
@@ -221,7 +236,7 @@ class _Obj:
             raise VersionError(
                 "Class instance `.keep_warm(...)` can't be used on classes deployed using client version <v0.63"
             )
-        await self._instance_service_function.keep_warm(warm_pool_size)
+        await self._cached_service_function().keep_warm(warm_pool_size)
 
     def _cached_user_cls_instance(self):
         """Get or construct the local object
@@ -233,18 +248,20 @@ class _Obj:
         return self._user_cls_instance
 
     def _enter(self):
+        assert self._user_cls
         if not self._has_entered:
-            if hasattr(self._user_cls_instance, "__enter__"):
-                self._user_cls_instance.__enter__()
+            user_cls_instance = self._cached_user_cls_instance()
+            if hasattr(user_cls_instance, "__enter__"):
+                user_cls_instance.__enter__()
 
             for method_flag in (
                 _PartialFunctionFlags.ENTER_PRE_SNAPSHOT,
                 _PartialFunctionFlags.ENTER_POST_SNAPSHOT,
             ):
-                for enter_method in _find_callables_for_obj(self._user_cls_instance, method_flag).values():
+                for enter_method in _find_callables_for_obj(user_cls_instance, method_flag).values():
                     enter_method()
 
-        self._has_entered = True
+            self._has_entered = True
 
     @property
     def _entered(self) -> bool:
@@ -266,23 +283,74 @@ class _Obj:
         self._has_entered = True
 
     def __getattr__(self, k):
-        if k in self._method_functions:
-            # If we know the user is accessing a *method* and not another attribute,
-            # we don't have to create an instance of the user class yet.
-            # This is because it might just be a call to `.remote()` on it which
-            # doesn't require a local instance.
-            # As long as we have the service function or params, we can do remote calls
-            # without calling the constructor of the class in the calling context.
-            return self._method_functions[k]
+        # This is a bit messy and branchy because:
+        # * Support for pre-0.63 lookups *and* newer classes
+        # * Support .remote() on both hydrated (local or remote classes) or unhydrated classes (remote classes only)
+        # * Support .local() on both hydrated and unhydrated classes (assuming local access to code)
+        # * Support attribute access (when local cls is available)
 
-        # if it's *not* a method, it *might* be an attribute of the class,
-        # so we construct it and proxy the attribute
-        # TODO: To get lazy loading (from_name) of classes to work, we need to avoid
-        #  this path, otherwise local initialization will happen regardless if user
-        #  only runs .remote(), since we don't know methods for the class until we
-        #  load it
-        user_cls_instance = self._cached_user_cls_instance()
-        return getattr(user_cls_instance, k)
+        def _get_method_bound_function() -> Optional["_Function"]:
+            """Gets _Function object for method - either for a local or a hydrated remote class
+
+            * If class is neither local or hydrated - raise exception (should never happen)
+            * If attribute isn't a method - return None
+            """
+            if self._cls._method_functions is None:
+                raise ExecutionError("Method is not local and not hydrated")
+
+            if class_bound_method := self._cls._method_functions.get(k, None):
+                # If we know the user is accessing a *method* and not another attribute,
+                # we don't have to create an instance of the user class yet.
+                # This is because it might just be a call to `.remote()` on it which
+                # doesn't require a local instance.
+                # As long as we have the service function or params, we can do remote calls
+                # without calling the constructor of the class in the calling context.
+                if self._cls._class_service_function is None:
+                    # a <v0.63 lookup
+                    return class_bound_method._bind_parameters(self, self._options, self._args, self._kwargs)
+                else:
+                    return _bind_instance_method(self._cached_service_function(), class_bound_method)
+
+            return None  # The attribute isn't a method
+
+        if self._cls._method_functions is not None:
+            # We get here with either a hydrated Cls or an unhydrated one with local definition
+            if method := _get_method_bound_function():
+                return method
+            elif self._user_cls:
+                # We have the local definition, and the attribute isn't a method
+                # so we instantiate if we don't have an instance, and try to get the attribute
+                user_cls_instance = self._cached_user_cls_instance()
+                return getattr(user_cls_instance, k)
+            else:
+                # This is the case for a *hydrated* class without the local definition, i.e. a lookup
+                # where the attribute isn't a registered method of the class
+                raise NotFoundError(
+                    f"Class has no method `{k}` and attributes (or undecorated methods) can't be accessed for"
+                    f" remote classes (`Cls.from_name` instances)"
+                )
+
+        # Not hydrated Cls, and we don't have the class - typically a Cls.from_name that
+        # has not yet been loaded. So use a special loader that loads it lazily:
+
+        async def method_loader(fun, resolver: Resolver, existing_object_id):
+            await resolver.load(self._cls)  # load class so we get info about methods
+            method_function = _get_method_bound_function()
+            if method_function is None:
+                raise NotFoundError(
+                    f"Class has no method {k}, and attributes can't be accessed for `Cls.from_name` instances"
+                )
+            await resolver.load(method_function)  # get the appropriate method handle (lazy)
+            fun._hydrate_from_other(method_function)
+
+        # The reason we don't *always* use this lazy loader is because it precludes attribute access
+        # on local classes.
+        return _Function._from_loader(
+            method_loader,
+            repr,
+            deps=lambda: [],  # TODO: use cls as dep instead of loading inside method_loader?
+            hydrate_lazily=True,
+        )
 
 
 Obj = synchronize_api(_Obj)
@@ -313,6 +381,7 @@ class _Cls(_Object, type_prefix="cs"):
         self._callables = {}
 
     def _initialize_from_other(self, other: "_Cls"):
+        super()._initialize_from_other(other)
         self._user_cls = other._user_cls
         self._class_service_function = other._class_service_function
         self._method_functions = other._method_functions
@@ -503,7 +572,8 @@ class _Cls(_Object, type_prefix="cs"):
             obj._hydrate(response.class_id, resolver.client, response.handle_metadata)
 
         rep = f"Ref({app_name})"
-        cls = cls._from_loader(_load_remote, rep, is_another_app=True)
+        cls = cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
+        # TODO: when pre 0.63 is phased out, we can set class_service_function here instead
         return cls
 
     def with_options(
@@ -594,9 +664,8 @@ class _Cls(_Object, type_prefix="cs"):
     def __call__(self, *args, **kwargs) -> _Obj:
         """This acts as the class constructor."""
         return _Obj(
+            self,
             self._user_cls,
-            self._class_service_function,
-            self._method_functions,
             self._options,
             args,
             kwargs,
@@ -604,6 +673,7 @@ class _Cls(_Object, type_prefix="cs"):
 
     def __getattr__(self, k):
         # Used by CLI and container entrypoint
+        # TODO: remove this method - access to attributes on classes should be discouraged
         if k in self._method_functions:
             return self._method_functions[k]
         return getattr(self._user_cls, k)

@@ -14,7 +14,7 @@ from modal import App, Cls, Function, Image, Queue, build, enter, exit, method
 from modal._serialization import deserialize, serialize
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import FunctionInfo
-from modal.exception import DeprecationError, ExecutionError, InvalidError, PendingDeprecationError
+from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError, PendingDeprecationError
 from modal.partial_function import (
     PartialFunction,
     _find_callables_for_obj,
@@ -41,29 +41,47 @@ def auto_use_set_env_client(set_env_client):
     return
 
 
+@app.cls()
+class NoParamsCls:
+    @method()
+    def bar(self, x):
+        return x**3
+
+    @method()
+    def baz(self, x):
+        return x**2
+
+
 @app.cls(cpu=42)
 class Foo:
     @method()
     def bar(self, x: int) -> float:
         return x**3
 
+    @method()
+    def baz(self, y: int) -> float:
+        return y**4
+
 
 def test_run_class(client, servicer):
     assert len(servicer.precreated_functions) == 0
     assert servicer.n_functions == 0
     with app.run(client=client):
-        method_handle_object_id = Foo.bar.object_id
+        method_handle_object_id = Foo.bar.object_id  # method handle object id will probably go away
         assert isinstance(Foo, Cls)
+        assert isinstance(NoParamsCls, Cls)
         class_id = Foo.object_id
+        class_id2 = NoParamsCls.object_id
         app_id = app.app_id
 
-    assert len(servicer.classes) == 1 and servicer.classes[0] == class_id
-    assert servicer.n_functions == 1
+    assert len(servicer.classes) == 2 and set(servicer.classes) == {class_id, class_id2}
+    assert servicer.n_functions == 2
     objects = servicer.app_objects[app_id]
     class_function_id = objects["Foo.*"]
-    assert servicer.precreated_functions == {class_function_id}
-    assert method_handle_object_id == class_function_id
-    assert len(objects) == 2  # the class + the class service function
+    class_function_id2 = objects["NoParamsCls.*"]
+    assert servicer.precreated_functions == {class_function_id, class_function_id2}
+    assert method_handle_object_id == class_function_id  # method handle object id will probably go away
+    assert len(objects) == 4  # two classes + two class service function
     assert objects["Foo"] == class_id
     assert class_function_id.startswith("fu-")
     assert servicer.app_functions[class_function_id].is_class
@@ -71,36 +89,53 @@ def test_run_class(client, servicer):
         "bar": api_pb2.MethodDefinition(
             function_name="Foo.bar",
             function_type=api_pb2.Function.FunctionType.FUNCTION_TYPE_FUNCTION,
-        )
+        ),
+        "baz": api_pb2.MethodDefinition(
+            function_name="Foo.baz",
+            function_type=api_pb2.Function.FunctionType.FUNCTION_TYPE_FUNCTION,
+        ),
     }
 
 
-def test_call_class_sync(client, servicer):
+def test_call_class_sync(client, servicer, set_env_client):
     with servicer.intercept() as ctx:
         with app.run(client=client):
-            assert len(ctx.get_requests("FunctionCreate")) == 1  # one for the class service function
-            foo: Foo = Foo()
-            assert len(ctx.get_requests("FunctionCreate")) == 1  # no additional creates for an instance
+            assert len(ctx.get_requests("FunctionCreate")) == 2  # one for Foo, one for NoParamsCls
+            foo: NoParamsCls = NoParamsCls()
+            assert len(ctx.get_requests("FunctionCreate")) == 2
+            assert len(ctx.get_requests("FunctionBindParams")) == 0  # no binding, yet
             ret: float = foo.bar.remote(42)
             assert ret == 1764
+            assert (
+                len(ctx.get_requests("FunctionBindParams")) == 0
+            )  # reuse class base function when class has no params
 
-    assert (
-        len(ctx.get_requests("FunctionBindParams")) == 0
-    )  # shouldn't need to bind in case there are no instance args etc.
     function_creates_requests: list[api_pb2.FunctionCreateRequest] = ctx.get_requests("FunctionCreate")
-    assert len(function_creates_requests) == 1
-    (class_create,) = ctx.get_requests("ClassCreate")
+    assert len(function_creates_requests) == 2
+    assert len(ctx.get_requests("ClassCreate")) == 2
     function_creates = {fc.function.function_name: fc for fc in function_creates_requests}
-    assert function_creates.keys() == {"Foo.*"}
-    service_function_id = servicer.app_objects["ap-1"]["Foo.*"]
+    assert function_creates.keys() == {"Foo.*", "NoParamsCls.*"}
+    service_function_id = servicer.app_objects["ap-1"]["NoParamsCls.*"]
     (function_map_request,) = ctx.get_requests("FunctionMap")
     assert function_map_request.function_id == service_function_id
 
 
 def test_class_with_options(client, servicer):
     with app.run(client=client):
-        foo = Foo.with_options(cpu=48, retries=5)()  # type: ignore
-        res = foo.bar.remote(2)
+        with servicer.intercept() as ctx:
+            foo = Foo.with_options(cpu=48, retries=5)()  # type: ignore
+            assert len(ctx.calls) == 0  # no rpcs
+
+            res = foo.bar.remote(2)
+            function_bind_params: api_pb2.FunctionBindParamsRequest
+            (function_bind_params,) = ctx.get_requests("FunctionBindParams")
+            assert function_bind_params.function_options.retry_policy.retries == 5
+            assert function_bind_params.function_options.resources.milli_cpu == 48000
+
+        with servicer.intercept() as ctx:
+            res = foo.bar.remote(2)
+            assert len(ctx.get_requests("FunctionBindParams")) == 0  # no need to rebind
+
         assert res == 4
         assert len(servicer.function_options) == 1
         options: api_pb2.FunctionOptions = list(servicer.function_options.values())[0]
@@ -283,17 +318,19 @@ def test_call_cls_remote_no_args(client):
 
 if TYPE_CHECKING:
     # Check that type annotations carry through to the decorated classes
-    assert_type(Foo(), Foo)
+    assert_type(NoParamsCls(), NoParamsCls)
     # can't use assert_type with named arguments, as it will diff in the name
     # vs the anonymous argument in the assertion type
     # assert_type(Foo().bar, Function[[int], float])
 
 
 def test_lookup(client, servicer):
+    # basically same test as test_from_name_lazy_method_resolve, but assumes everything is hydrated
     deploy_app(app, "my-cls-app", client=client)
 
     cls: Cls = Cls.lookup("my-cls-app", "Foo", client=client)
 
+    # objects are resolved
     assert cls.object_id.startswith("cs-")
     assert cls.bar.object_id.startswith("fu-")
 
@@ -301,15 +338,59 @@ def test_lookup(client, servicer):
     assert cls.bar.is_generator is False
 
     # Make sure we can instantiate the class
-    obj = cls("foo", 234)
+    with servicer.intercept() as ctx:
+        obj = cls("foo", 234)
+        assert len(ctx.calls) == 0  # no rpc requests for class instantiation
 
-    # Make sure we can methods
-    # (mock servicer just returns the sum of the squares of the args)
-    assert obj.bar.remote(42, 77) == 7693
+        # Make sure we can call methods
+        # (mock servicer just returns the sum of the squares of the args)
+        assert obj.bar.remote(42) == 1764
+        assert len(ctx.get_requests("FunctionBindParams")) == 1  # bind params
+
+        assert obj.baz.remote(41) == 1681
+        assert len(ctx.get_requests("FunctionBindParams")) == 1  # call to other method shouldn't need a bind
+
+    # Not allowed for remote classes:
+    with pytest.raises(NotFoundError, match="can't be accessed for remote classes"):
+        assert obj.a == "foo"
 
     # Make sure local calls fail
     with pytest.raises(ExecutionError):
         assert obj.bar.local(1, 2)
+
+
+def test_from_name_lazy_method_resolve(client, servicer):
+    deploy_app(app, "my-cls-app", client=client)
+    cls: Cls = Cls.from_name("my-cls-app", "Foo")
+
+    # Make sure we can instantiate the class
+    obj = cls("foo", 234)
+
+    # Check that function properties are preserved
+    with servicer.intercept() as ctx:
+        assert obj.bar.is_generator is False
+        assert len(ctx.get_requests("FunctionBindParams")) == 1  # to determine this attribute, hydration is needed
+
+    # Make sure we can methods
+    # (mock servicer just returns the sum of the squares of the args)
+    with servicer.intercept() as ctx:
+        assert obj.bar.remote(42) == 1764
+        assert len(ctx.get_requests("FunctionBindParams")) == 0
+
+    with servicer.intercept() as ctx:
+        assert obj.baz.remote(42) == 1764
+        assert len(ctx.get_requests("FunctionBindParams")) == 0  # other method shouldn't rebind
+
+    with pytest.raises(NotFoundError, match="can't be accessed for remote classes"):
+        assert obj.a == 234
+
+    # Make sure local calls fail
+    with pytest.raises(ExecutionError, match="locally"):
+        assert obj.bar.local(1, 2)
+
+    # Make sure that non-existing methods fail
+    with pytest.raises(NotFoundError):
+        obj.non_exist.remote("hello")
 
 
 def test_lookup_lazy_remote(client, servicer):
@@ -463,7 +544,7 @@ def test_rehydrate(client, servicer, reset_container_app):
     # Issue introduced in #922 - brief description in #931
 
     # Sanity check that local calls work
-    obj = Foo()
+    obj = NoParamsCls()
     assert obj.bar.local(7) == 343
 
     # Deploy app to get an app id
@@ -476,7 +557,7 @@ def test_rehydrate(client, servicer, reset_container_app):
     app._init_container(client, container_app)
 
     # Hydration shouldn't overwrite local function definition
-    obj = Foo()
+    obj = NoParamsCls()
     assert obj.bar.local(7) == 343
 
 
@@ -552,17 +633,17 @@ def test_cls_keep_warm(client, servicer):
 
     with app.run(client=client):
         assert len(servicer.app_functions) == 1  # only class service function
-        cls_fun = servicer.function_by_name("ClsWithMethod.*")
-        assert cls_fun.is_class
-        assert cls_fun.warm_pool_size == 0
+        cls_service_fun = servicer.function_by_name("ClsWithMethod.*")
+        assert cls_service_fun.is_class
+        assert cls_service_fun.warm_pool_size == 0
 
         ClsWithMethod().keep_warm(2)  # type: ignore  # Python can't do type intersection
-        assert cls_fun.warm_pool_size == 2
+        assert cls_service_fun.warm_pool_size == 2
 
         ClsWithMethod("other-instance").keep_warm(5)  # type: ignore  # Python can't do type intersection
         instance_service_function = servicer.function_by_name("ClsWithMethod.*", params=((("other-instance",), {})))
         assert len(servicer.app_functions) == 2  # + instance service function
-        assert cls_fun.warm_pool_size == 2
+        assert cls_service_fun.warm_pool_size == 2
         assert instance_service_function.warm_pool_size == 5
 
 

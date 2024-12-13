@@ -96,7 +96,9 @@ class _Object:
 
     def _initialize_from_other(self, other):
         # default implementation, can be overriden in subclasses
-        pass
+        self._object_id = other._object_id
+        self._is_hydrated = other._is_hydrated
+        self._client = other._client
 
     def _hydrate(self, object_id: str, client: _Client, metadata: Optional[Message]):
         assert isinstance(object_id, str)
@@ -139,7 +141,7 @@ class _Object:
 
         # Object to clone must already be hydrated, otherwise from_loader is more suitable.
         self._validate_is_hydrated()
-        obj = _Object.__new__(type(self))
+        obj = type(self).__new__(type(self))
         obj._initialize_from_other(self)
         return obj
 
