@@ -63,18 +63,20 @@ def get_upload_hashes(data: Union[bytes, BinaryIO], sha256_hex: Optional[str] = 
     md5 = hashlib.md5()
     # If we already have the sha256 digest, do not compute it again
     if sha256_hex:
-        hashers = {"md5": md5.update}
+        hashers = [md5.update]
+        hash_names = ["md5"]
 
         def sha256_digest() -> bytes:
             return bytes.fromhex(sha256_hex)
     else:
         sha256 = hashlib.sha256()
-        hashers = {"md5": md5.update, "sha256": sha256.update}
+        hashers = [md5.update, sha256.update]
+        hash_names = ["md5", "sha256"]
         sha256_digest = sha256.digest
-    _update(list(hashers.values()), data)
+    _update(hashers, data)
     hashes = UploadHashes(
         md5_base64=base64.b64encode(md5.digest()).decode("ascii"),
         sha256_base64=base64.b64encode(sha256_digest()).decode("ascii"),
     )
-    logger.debug("get_upload_hashes took %.3fs (hashes=%s)", time.monotonic() - t0, list(hashers.keys()))
+    logger.debug("get_upload_hashes took %.3fs (%s)", time.monotonic() - t0, hash_names)
     return hashes
