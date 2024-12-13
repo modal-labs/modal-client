@@ -9,6 +9,8 @@ if TYPE_CHECKING:
     import _typeshed
 
 
+import json
+
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal._utils.grpc_utils import retry_transient_errors
@@ -96,10 +98,11 @@ async def _replace_bytes(file: "_FileIO", data: bytes, start: Optional[int] = No
 
 
 class WatchEvent(Enum):
-    Access = "ACCESS"
-    Create = "CREATE"
-    Modify = "MODIFY"
-    Remove = "REMOVE"
+    Unknown = "Unknown"
+    Access = "Access"
+    Create = "Create"
+    Modify = "Modify"
+    Remove = "Remove"
 
 
 @dataclass
@@ -205,8 +208,13 @@ class _FileIO(Generic[T]):
                         break
                 raise
 
-    async def _parse_watch_output(self, event: bytes) -> FileWatchEvent:
-        return FileWatchEvent(event=WatchEvent(event_str), paths=paths)
+    async def _parse_watch_output(self, event: bytes) -> Optional[FileWatchEvent]:
+        try:
+            event_json = json.loads(event.decode())
+            return FileWatchEvent(event=WatchEvent(event_json["event_type"]), paths=event_json["paths"])
+        except Exception:
+            # skip invalid events
+            return None
 
     async def _stream_watch_output(self) -> AsyncIterator[FileWatchEvent]:
         buffer = b""
@@ -217,7 +225,9 @@ class _FileIO(Generic[T]):
                     break
                 buffer += item
                 if buffer.endswith(b"\n\n"):
-                    yield self._parse_watch_output(buffer.strip_prefix(b"data: ").strip())
+                    event = await self._parse_watch_output(buffer.strip())
+                    if event is not None:
+                        yield event
                     buffer = b""
             else:
                 await asyncio.sleep(0.1)
@@ -445,7 +455,7 @@ class _FileIO(Generic[T]):
     @classmethod
     async def watch(
         cls, path: str, client: _Client, task_id: str, timeout: Optional[int] = None, recursive: bool = False
-    ) -> AsyncIterator[bytes]:
+    ) -> AsyncIterator[FileWatchEvent]:
         self = cls.__new__(cls)
         self._client = client
         self._task_id = task_id
