@@ -133,6 +133,18 @@ def _get_clean_app_description(func_ref: str) -> str:
         return " ".join(sys.argv)
 
 
+def _save_local_result(output_path: str, res: Any):
+    if isinstance(res, str):
+        mode = "wt"
+    elif isinstance(res, bytes):
+        mode = "wb"
+    else:
+        res_type = type(res).__name__
+        raise InvalidError(f"Function must return str or bytes when using `--output`; got {res_type}.")
+    with open(output_path, mode) as fid:
+        fid.write(res)
+
+
 def _get_click_command_for_function(app: App, function_tag):
     function = app.registered_functions.get(function_tag)
     if not function or (isinstance(function, Function) and function.info.user_cls is not None):
@@ -177,7 +189,7 @@ def _get_click_command_for_function(app: App, function_tag):
                 interactive=ctx.obj["interactive"],
             ):
                 if cls is None:
-                    function.remote(**kwargs)
+                    res = function.remote(**kwargs)
                 else:
                     # unpool class and method arguments
                     # TODO(erikbern): this code is a bit hacky
@@ -186,7 +198,10 @@ def _get_click_command_for_function(app: App, function_tag):
 
                     instance = cls(**cls_kwargs)
                     method: Function = getattr(instance, method_name)
-                    method.remote(**fun_kwargs)
+                    res = method.remote(**fun_kwargs)
+
+            if output_path := ctx.obj["output"]:
+                _save_local_result(output_path, res)
 
     with_click_options = _add_click_options(f, signature)
     return click.command(with_click_options)
@@ -214,11 +229,14 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
             ):
                 try:
                     if isasync:
-                        asyncio.run(func(*args, **kwargs))
+                        res = asyncio.run(func(*args, **kwargs))
                     else:
-                        func(*args, **kwargs)
+                        res = func(*args, **kwargs)
                 except Exception as exc:
                     raise _CliUserExecutionError(inspect.getsourcefile(func)) from exc
+
+            if output_path := ctx.obj["output"]:
+                _save_local_result(output_path, res)
 
     with_click_options = _add_click_options(f, _get_signature(func))
     return click.command(with_click_options)
@@ -248,12 +266,13 @@ class RunGroup(click.Group):
     cls=RunGroup,
     subcommand_metavar="FUNC_REF",
 )
+@click.option("-o", "--output", default=None, help="Save return value (which must be str or bytes) to this local path.")
 @click.option("-q", "--quiet", is_flag=True, help="Don't show Modal progress indicators.")
 @click.option("-d", "--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
 @click.option("-i", "--interactive", is_flag=True, help="Run the app in interactive mode.")
 @click.option("-e", "--env", help=ENV_OPTION_HELP, default=None)
 @click.pass_context
-def run(ctx, detach, quiet, interactive, env):
+def run(ctx, output, detach, quiet, interactive, env):
     """Run a Modal function or local entrypoint.
 
     `FUNC_REF` should be of the format `{file or module}::{function name}`.
@@ -284,6 +303,7 @@ def run(ctx, detach, quiet, interactive, env):
     ```
     """
     ctx.ensure_object(dict)
+    ctx.obj["output"] = output
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
     ctx.obj["show_progress"] = False if quiet else True
     ctx.obj["interactive"] = interactive
