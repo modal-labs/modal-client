@@ -6,6 +6,7 @@ import re
 import sys
 import threading
 from hashlib import sha256
+from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Literal, get_args
 from unittest import mock
@@ -1531,8 +1532,6 @@ def test_image_add_local_dir_ignore_callable(servicer, client, tmp_path_with_con
 
 @pytest.mark.parametrize("copy", [True, False])
 def test_image_add_local_dir_ignore_nothing(servicer, client, tmp_path_with_content, copy):
-    from pathlib import Path
-
     file_paths = set()
     for root, _, files in os.walk(tmp_path_with_content):
         for file in files:

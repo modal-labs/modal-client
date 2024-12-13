@@ -645,6 +645,9 @@ class _Image(_Object, type_prefix="im"):
         remote_path: str,
         *,
         copy: bool = False,
+        # Predicate filter function for file exclusion, which should accept a filepath and return `True` for exclusion.
+        # Defaults to excluding no files. If a Sequence is provided, it will be converted to a LocalFileFilter.
+        # Which follows dockerignore syntax.
         ignore: Sequence[str] | Callable[[Path], bool] = [],
     ) -> "_Image":
         """Adds a local directory's content to the image at `remote_path` within the container
@@ -658,11 +661,28 @@ class _Image(_Object, type_prefix="im"):
         copy=True can slow down iteration since it requires a rebuild of the Image and any subsequent
         build steps whenever the included files change, but it is required if you want to run additional
         build steps after this one.
+
+        **Usage:**
+
+        ```python
+        image = modal.Image.debian_slim().add_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=["*.venv"],
+        )
+
+        image = modal.Image.debian_slim().add_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=lambda p: p.is_relative_to(".venv"),
+        )
+        ```
         """
         if not PurePosixPath(remote_path).is_absolute():
             # TODO(elias): implement relative to absolute resolution using image workdir metadata
             #  + make default remote_path="./"
             raise InvalidError("image.add_local_dir() currently only supports absolute remote_path values")
+
         mount = _Mount.from_local_dir(local_path, remote_path=remote_path, ignore=ignore)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
@@ -712,12 +732,31 @@ class _Image(_Object, type_prefix="im"):
         self,
         local_path: Union[str, Path],
         remote_path: Union[str, Path] = ".",
+        # Predicate filter function for file exclusion, which should accept a filepath and return `True` for exclusion.
+        # Defaults to excluding no files. If a Sequence is provided, it will be converted to a LocalFileFilter.
+        # Which follows dockerignore syntax.
         ignore: Sequence[str] | Callable[[Path], bool] = [],
     ) -> "_Image":
         """Copy a directory into the image as a part of building the image.
 
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
+
+        **Usage:**
+
+        ```python
+        image = modal.Image.debian_slim().copy_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=["*.venv"],
+        )
+
+        image = modal.Image.debian_slim().copy_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=lambda p: p.is_relative_to(".venv"),
+        )
+        ```
         """
         mount = _Mount.from_local_dir(local_path, remote_path="/", ignore=ignore)
 
