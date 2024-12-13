@@ -9,11 +9,13 @@ import time
 from collections.abc import AsyncIterator
 from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path, PurePosixPath
-from typing import Any, BinaryIO, Callable, Optional, Union
+from typing import TYPE_CHECKING, Any, BinaryIO, Callable, Optional, Union
 from urllib.parse import urlparse
 
 from aiohttp import BytesIOPayload
-from aiohttp.abc import AbstractStreamWriter
+
+if TYPE_CHECKING:
+    from aiohttp.abc import AbstractStreamWriter
 
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
@@ -95,7 +97,7 @@ class BytesIOSegmentPayload(BytesIOPayload):
     def md5_checksum(self):
         return self._md5_checksum
 
-    async def write(self, writer: AbstractStreamWriter):
+    async def write(self, writer: "AbstractStreamWriter"):
         loop = asyncio.get_event_loop()
 
         async def safe_read():
