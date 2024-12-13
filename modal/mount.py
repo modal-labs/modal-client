@@ -11,7 +11,7 @@ import time
 import typing
 from collections.abc import AsyncGenerator
 from pathlib import Path, PurePosixPath
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Sequence, Union
 
 from google.protobuf.message import Message
 
@@ -190,7 +190,7 @@ class _MountedPythonModule(_MountEntry):
 
     module_name: str
     remote_dir: Union[PurePosixPath, str] = ROOT_DIR.as_posix()  # cast needed here for type stub generation...
-    ignore: Optional[typing.Callable[[Path], bool]] = None
+    ignore: Optional[Callable[[Path], bool]] = None
 
     def description(self) -> str:
         return f"PythonPackage:{self.module_name}"
@@ -326,7 +326,7 @@ class _Mount(_Object, type_prefix="mo"):
         recursive: bool = True,
         # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
         # Defaults to including all files.
-        ignore: Union[list[str], Callable[[Path], bool]] = [],
+        ignore: Sequence[str] | Callable[[Path], bool] = [],
     ) -> "_Mount":
         """
         Add a local directory to the `Mount` object.
@@ -370,7 +370,7 @@ class _Mount(_Object, type_prefix="mo"):
         recursive: bool = True,
         # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
         # Defaults to including all files.
-        ignore: Union[list[str], Callable[[Path], bool]] = [],
+        ignore: Sequence[str] | Callable[[Path], bool] = [],
     ) -> "_Mount":
         """
         Create a `Mount` from a local directory.
@@ -562,7 +562,7 @@ class _Mount(_Object, type_prefix="mo"):
         # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
         # Defaults to including all files.
         condition: Optional[Callable[[str], bool]] = None,
-        ignore: Union[list[str], Callable[[Path], bool]] = [],
+        ignore: Sequence[str] | Callable[[Path], bool] = [],
     ) -> "_Mount":
         """
         Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
