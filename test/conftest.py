@@ -671,7 +671,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def ClientHello(self, stream):
         request: Empty = await stream.recv_message()
         self.requests.append(request)
-        resp = api_pb2.ClientHelloResponse()
+        if stream.metadata["x-modal-client-version"] == "deprecated":
+            warnings = [
+                api_pb2.Warning(
+                    type=api_pb2.Warning.WARNING_TYPE_CLIENT_DEPRECATION,
+                    message="SUPER OLD",
+                )
+            ]
+        else:
+            warnings = []
+        resp = api_pb2.ClientHelloResponse(server_warnings=warnings)
         await stream.send_message(resp)
 
     # Container
