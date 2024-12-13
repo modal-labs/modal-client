@@ -28,6 +28,8 @@ class LocalFileFilter:
 
         Usage:
         ```python
+        from pathlib import Path
+        from modal._utils.local_file_filter import LocalFileFilter
 
         filter = LocalFileFilter("*.py")
 
@@ -41,10 +43,12 @@ class LocalFileFilter:
 
         Usage:
         ```python
+        from pathlib import Path
+        from modal._utils.local_file_filter import LocalFileFilter
 
-        filter = LocalFileFilter("*.py")
+        inverted_filter = ~LocalFileFilter("**/*.py")
 
-        assert not ~filter(Path("foo.py"))
+        assert not inverted_filter(Path("foo.py"))
         ```
         """
         return lambda path: not self(path)
