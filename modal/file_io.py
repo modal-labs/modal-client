@@ -410,49 +410,6 @@ class _FileIO(Generic[T]):
         await self._wait(resp.exec_id)
 
     @classmethod
-    async def ls(cls, path: str, client: _Client, task_id: str) -> list[str]:
-        """List the contents of the provided directory."""
-        self = cls.__new__(cls)
-        self._client = client
-        self._task_id = task_id
-        resp = await self._make_request(
-            api_pb2.ContainerFilesystemExecRequest(
-                file_ls_request=api_pb2.ContainerFileLsRequest(path=path),
-                task_id=task_id,
-            )
-        )
-        output = await self._wait(resp.exec_id)
-        return await self._parse_list_output(output)
-
-    @classmethod
-    async def mkdir(cls, path: str, client: _Client, task_id: str, parents: bool = False) -> None:
-        """Create a new directory."""
-        self = cls.__new__(cls)
-        self._client = client
-        self._task_id = task_id
-        resp = await self._make_request(
-            api_pb2.ContainerFilesystemExecRequest(
-                file_mkdir_request=api_pb2.ContainerFileMkdirRequest(path=path, make_parents=parents),
-                task_id=self._task_id,
-            )
-        )
-        await self._wait(resp.exec_id)
-
-    @classmethod
-    async def rm(cls, path: str, client: _Client, task_id: str, recursive: bool = False) -> None:
-        """Remove a file or directory in the Sandbox."""
-        self = cls.__new__(cls)
-        self._client = client
-        self._task_id = task_id
-        resp = await self._make_request(
-            api_pb2.ContainerFilesystemExecRequest(
-                file_rm_request=api_pb2.ContainerFileRmRequest(path=path, recursive=recursive),
-                task_id=self._task_id,
-            )
-        )
-        await self._wait(resp.exec_id)
-
-    @classmethod
     async def watch(
         cls, path: str, client: _Client, task_id: str, timeout: Optional[int] = None, recursive: bool = False
     ) -> AsyncIterator[FileWatchEvent]:
