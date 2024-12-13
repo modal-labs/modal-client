@@ -8,7 +8,7 @@ from pathlib import Path
 from modal import App
 from modal._utils.blob_utils import LARGE_FILE_LIMIT
 from modal.exception import ModuleNotMountable
-from modal.mount import Mount, module_mount_ignore_condition
+from modal.mount import Mount, module_mount_condition, module_mount_ignore_condition
 
 
 @pytest.mark.asyncio
@@ -161,18 +161,26 @@ def test_chained_entries(test_dir):
     assert files[0].use_blob is False
 
 
-def test_module_mount_ignore_condition():
+def test_module_mount_condition():
+    condition = module_mount_condition(Path("/a/.venv/site-packages/mymod"))
     ignore_condition = module_mount_ignore_condition(Path("/a/.venv/site-packages/mymod"))
 
-    assert ignore_condition(Path("/a/site-packages/mymod/foo.pyc"))
-    assert ignore_condition(Path("/a/site-packages/mymod/__pycache__/foo.py"))
-
-    assert ignore_condition(Path("/a/my_mod/.config/foo.py"))
-
-    assert not ignore_condition(Path("/a/.venv/site-packages/mymod/foo.py"))
-
-    assert not ignore_condition(Path("/a/my_mod/config/foo.txt"))
-    assert not ignore_condition(Path("/a/my_mod/config/foo.py"))
+    include_paths = [
+        Path("/a/.venv/site-packages/mymod/foo.py"),
+        Path("/a/my_mod/config/foo.txt"),
+        Path("/a/my_mod/config/foo.py"),
+    ]
+    exclude_paths = [
+        Path("/a/site-packages/mymod/foo.pyc"),
+        Path("/a/site-packages/mymod/__pycache__/foo.py"),
+        Path("/a/my_mod/.config/foo.py"),
+    ]
+    for path in include_paths:
+        assert condition(path)
+        assert not ignore_condition(path)
+    for path in exclude_paths:
+        assert not condition(path)
+        assert ignore_condition(path)
 
 
 def test_mount_from_local_dir_ignore(test_dir, tmp_path_with_content):

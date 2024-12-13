@@ -156,13 +156,14 @@ class _MountDir(_MountEntry):
         return [(self.local_dir, self.remote_path)]
 
 
-def module_mount_ignore_condition(module_base: Path) -> Callable[[Path], bool]:
+def module_mount_condition(module_base: Path):
     SKIP_BYTECODE = True  # hard coded for now
     SKIP_DOT_PREFIXED = True
 
-    def ignore_condition(path: Path) -> bool:
+    def condition(f: str):
+        path = Path(f)
         if SKIP_BYTECODE and path.suffix == ".pyc":
-            return True
+            return False
 
         # Check parent dir names to see if file should be included,
         # but ignore dir names above root of mounted module:
@@ -170,16 +171,20 @@ def module_mount_ignore_condition(module_base: Path) -> Callable[[Path], bool]:
         # /a/my_mod/.config/foo.py should *not* be included by default
         while path != module_base and path != path.parent:
             if SKIP_BYTECODE and path.name == "__pycache__":
-                return True
+                return False
 
             if SKIP_DOT_PREFIXED and path.name.startswith("."):
-                return True
+                return False
 
             path = path.parent
 
-        return False
+        return True
 
-    return ignore_condition
+    return condition
+
+
+def module_mount_ignore_condition(module_base: Path):
+    return lambda f: not module_mount_condition(module_base)(str(f))
 
 
 @dataclasses.dataclass
