@@ -21,7 +21,7 @@ from modal_proto.modal_api_grpc import ModalClientModal
 from ..exception import ExecutionError
 from .async_utils import TaskContext, retry
 from .grpc_utils import retry_transient_errors
-from .hash_utils import UploadHashes, get_sha256_hex, get_upload_hashes
+from .hash_utils import UploadHashes, get_upload_hashes
 from .http_utils import ClientSessionRegistry
 from .logger import logger
 
@@ -37,6 +37,11 @@ BLOB_MAX_PARALLELISM = 10
 
 # read ~16MiB chunks by default
 DEFAULT_SEGMENT_CHUNK_SIZE = 2**24
+
+# Files larger than this will be multipart uploaded. The server might request multipart upload for smaller files as
+# well, but the limit will never be raised.
+# TODO(dano): remove this once we stop requiring md5 for blobs
+MULTIPART_UPLOAD_THRESHOLD = 1024**3
 
 
 class BytesIOSegmentPayload(BytesIOPayload):
@@ -309,8 +314,9 @@ async def blob_upload_file(
     stub: ModalClientModal,
     progress_report_cb: Optional[Callable] = None,
     sha256_hex: Optional[str] = None,
+    md5_hex: Optional[str] = None,
 ) -> str:
-    upload_hashes = get_upload_hashes(file_obj, sha256_hex=sha256_hex)
+    upload_hashes = get_upload_hashes(file_obj, sha256_hex=sha256_hex, md5_hex=md5_hex)
     return await _blob_upload(upload_hashes, file_obj, stub, progress_report_cb)
 
 
@@ -369,6 +375,7 @@ class FileUploadSpec:
     use_blob: bool
     content: Optional[bytes]  # typically None if using blob, required otherwise
     sha256_hex: str
+    md5_hex: str
     mode: int  # file permission bits (last 12 bits of st_mode)
     size: int
 
@@ -378,6 +385,7 @@ def _get_file_upload_spec(
     source_description: Any,
     mount_filename: PurePosixPath,
     mode: int,
+    md5_hex: Optional[str] = None,
 ) -> FileUploadSpec:
     with source() as fp:
         # Current position is ignored - we always upload from position 0
@@ -388,11 +396,11 @@ def _get_file_upload_spec(
         if size >= LARGE_FILE_LIMIT:
             use_blob = True
             content = None
-            sha256_hex = get_sha256_hex(fp)
+            hashes = get_upload_hashes(fp, md5_hex=md5_hex)
         else:
             use_blob = False
             content = fp.read()
-            sha256_hex = get_sha256_hex(content)
+            hashes = get_upload_hashes(content, md5_hex=md5_hex)
 
     return FileUploadSpec(
         source=source,
@@ -400,7 +408,8 @@ def _get_file_upload_spec(
         mount_filename=mount_filename.as_posix(),
         use_blob=use_blob,
         content=content,
-        sha256_hex=sha256_hex,
+        sha256_hex=hashes.sha256_hex(),
+        md5_hex=hashes.md5_hex(),
         mode=mode & 0o7777,
         size=size,
     )
@@ -412,12 +421,13 @@ def get_file_upload_spec_from_path(
     # Python appears to give files 0o666 bits on Windows (equal for user, group, and global),
     # so we mask those out to 0o755 for compatibility with POSIX-based permissions.
     mode = mode or os.stat(filename).st_mode & (0o7777 if platform.system() != "Windows" else 0o7755)
-    return _get_file_upload_spec(
-        lambda: open(filename, "rb"),
-        filename,
-        mount_filename,
-        mode,
-    )
+    if os.path.getsize(filename) > MULTIPART_UPLOAD_THRESHOLD:
+        # TODO(dano): remove this once we stop requiring md5 for blobs
+        md5_hex = "d41d8cd98f00b204e9800998ecf8427e"  # empty file placeholder - will not be used by server
+    else:
+        md5_hex = None
+
+    return _get_file_upload_spec(lambda: open(filename, "rb"), filename, mount_filename, mode, md5_hex=md5_hex)
 
 
 def get_file_upload_spec_from_fileobj(fp: BinaryIO, mount_filename: PurePosixPath, mode: int) -> FileUploadSpec:
