@@ -9,15 +9,6 @@ import modal._runtime.container_io_manager
 import modal.cls
 import modal.object
 from modal import Function
-from modal._runtime.asgi import (
-    LifespanManager,
-    asgi_app_wrapper,
-    get_ip_address,
-    wait_for_web_server,
-    web_server_proxy,
-    webhook_asgi_app,
-    wsgi_app_wrapper,
-)
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_object
 from modal.exception import ExecutionError, InvalidError
@@ -28,6 +19,7 @@ from modal_proto import api_pb2
 if typing.TYPE_CHECKING:
     import modal.app
     import modal.partial_function
+    from modal._runtime.asgi import LifespanManager
 
 
 @dataclass
@@ -36,7 +28,7 @@ class FinalizedFunction:
     is_async: bool
     is_generator: bool
     data_format: int  # api_pb2.DataFormat
-    lifespan_manager: Optional[LifespanManager] = None
+    lifespan_manager: Optional["LifespanManager"] = None
 
 
 class Service(metaclass=ABCMeta):
@@ -63,19 +55,22 @@ def construct_webhook_callable(
     webhook_config: api_pb2.WebhookConfig,
     container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
 ):
+    # Note: aiohttp is a significant dependency of the `asgi` module, so we import it locally
+    from modal._runtime import asgi
+
     # For webhooks, the user function is used to construct an asgi app:
     if webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
         # Function returns an asgi_app, which we can use as a callable.
-        return asgi_app_wrapper(user_defined_callable(), container_io_manager)
+        return asgi.asgi_app_wrapper(user_defined_callable(), container_io_manager)
 
     elif webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
-        # Function returns an wsgi_app, which we can use as a callable.
-        return wsgi_app_wrapper(user_defined_callable(), container_io_manager)
+        # Function returns an wsgi_app, which we can use as a callable
+        return asgi.wsgi_app_wrapper(user_defined_callable(), container_io_manager)
 
     elif webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
         # Function is a webhook without an ASGI app. Create one for it.
-        return asgi_app_wrapper(
-            webhook_asgi_app(user_defined_callable, webhook_config.method, webhook_config.web_endpoint_docs),
+        return asgi.asgi_app_wrapper(
+            asgi.webhook_asgi_app(user_defined_callable, webhook_config.method, webhook_config.web_endpoint_docs),
             container_io_manager,
         )
 
@@ -86,11 +81,11 @@ def construct_webhook_callable(
         # We intentionally try to connect to the external interface instead of the loopback
         # interface here so users are forced to expose the server. This allows us to potentially
         # change the implementation to use an external bridge in the future.
-        host = get_ip_address(b"eth0")
+        host = asgi.get_ip_address(b"eth0")
         port = webhook_config.web_server_port
         startup_timeout = webhook_config.web_server_startup_timeout
-        wait_for_web_server(host, port, timeout=startup_timeout)
-        return asgi_app_wrapper(web_server_proxy(host, port), container_io_manager)
+        asgi.wait_for_web_server(host, port, timeout=startup_timeout)
+        return asgi.asgi_app_wrapper(asgi.web_server_proxy(host, port), container_io_manager)
     else:
         raise InvalidError(f"Unrecognized web endpoint type {webhook_config.type}")
 

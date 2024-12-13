@@ -4,7 +4,7 @@ import hashlib
 import io
 import pytest
 
-from modal._utils.blob_utils import BytesIOSegmentPayload
+from modal._utils.bytes_io_segment_payload import BytesIOSegmentPayload
 from modal._utils.name_utils import (
     check_object_name,
     is_valid_environment_name,
