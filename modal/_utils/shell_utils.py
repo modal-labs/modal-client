@@ -19,14 +19,20 @@ def write_to_fd(fd: int, data: bytes):
     future = loop.create_future()
 
     def try_write():
+        nonlocal data
         try:
             nbytes = os.write(fd, data)
-            loop.remove_writer(fd)
-            future.set_result(nbytes)
+            data = data[nbytes:]
+            if not data:
+                loop.remove_writer(fd)
+                future.set_result(None)
         except OSError as e:
-            if e.errno != errno.EAGAIN:
-                future.set_exception(e)
-                raise
+            if e.errno == errno.EAGAIN:
+                # Wait for the next write notification
+                return
+            # Fail if it's not EAGAIN
+            loop.remove_writer(fd)
+            future.set_exception(e)
 
     loop.add_writer(fd, try_write)
     return future
