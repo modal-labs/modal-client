@@ -225,3 +225,19 @@ def test_from_credentials_container(servicer, container_env):
     client = Client.from_credentials(token_id, token_secret)
     client.hello()
     assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
+
+
+def test_client_verify(servicer, client):
+    token_id = "ak-foo-2"
+    token_secret = "as-bar"
+    servicer.required_creds = {token_id: token_secret}
+
+    assert len(servicer.requests) == 0
+    client.verify(servicer.client_addr, (token_id, token_secret))
+    assert len(servicer.requests) == 1
+
+    with pytest.raises(AuthError):
+        client.verify(servicer.client_addr, ("foo", "bar"))
+
+    with pytest.raises(ConnectionError):
+        client.verify("https://localhost:443", ("foo", "bar"))
