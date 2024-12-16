@@ -1625,6 +1625,9 @@ class _Image(_Object, type_prefix="im"):
     def from_dockerfile(
         # Filepath to Dockerfile.
         path: Union[str, Path],
+        # modal.Mount with local files to supply as build context for COPY commands.
+        # NOTE: The remote_path of the Mount should match the Dockerfile's WORKDIR.
+        context_mount: Optional[_Mount] = None,
         # Ignore cached builds, similar to 'docker build --no-cache'
         force_build: bool = False,
         *,
@@ -1642,7 +1645,31 @@ class _Image(_Object, type_prefix="im"):
         ```python
         image = modal.Image.from_dockerfile("./Dockerfile", add_python="3.12")
         ```
+
+        If your Dockerfile uses `COPY` instructions which copy data from the local context of the
+        build into the image, this local data will be implicitly mounted into the image.
+        TODO: add dockerignore example
         """
+
+        if context_mount is not None:
+            deprecation_warning(
+                (2024, 12, 16),
+                "`context_mount` is deprecated,"
+                + " files are now mounted implicitly without this flag and can be ignored with `dockerignore` files",
+            )
+
+            def wrapper_context_mount_function():
+                return context_mount
+
+            context_mount_function = wrapper_context_mount_function
+        else:
+
+            def base_image_context_mount_function() -> _Mount:
+                with open(os.path.expanduser(path)) as f:
+                    lines = f.readlines()
+                return _create_context_mount(lines)
+
+            context_mount_function = base_image_context_mount_function
 
         # --- Build the base dockerfile
 
@@ -1651,15 +1678,10 @@ class _Image(_Object, type_prefix="im"):
                 commands = f.read().split("\n")
             return DockerfileSpec(commands=commands, context_files={})
 
-        def base_image_context_mount_function() -> _Mount:
-            with open(os.path.expanduser(path)) as f:
-                lines = f.readlines()
-            return _create_context_mount(lines)
-
         gpu_config = parse_gpu_config(gpu)
         base_image = _Image._from_args(
             dockerfile_function=build_dockerfile_base,
-            context_mount_function=base_image_context_mount_function,
+            context_mount_function=context_mount_function,
             gpu_config=gpu_config,
             secrets=secrets,
         )
