@@ -32,12 +32,12 @@ from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
-from ._utils.pattern_matcher import PatternMatcher
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
 from .environments import _get_environment_cached
 from .exception import InvalidError, NotFoundError, RemoteError, VersionError, deprecation_error, deprecation_warning
+from .file_pattern_matcher import FilePatternMatcher
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
@@ -646,7 +646,7 @@ class _Image(_Object, type_prefix="im"):
         *,
         copy: bool = False,
         # Predicate filter function for file exclusion, which should accept a filepath and return `True` for exclusion.
-        # Defaults to excluding no files. If a Sequence is provided, it will be converted to a PatternMatcher.
+        # Defaults to excluding no files. If a Sequence is provided, it will be converted to a FilePatternMatcher.
         # Which follows dockerignore syntax.
         ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
     ) -> "_Image":
@@ -665,7 +665,7 @@ class _Image(_Object, type_prefix="im"):
         **Usage:**
 
         ```python
-        from modal._utils.pattern_matcher import PatternMatcher
+        from modal import FilePatternMatcher
 
         image = modal.Image.debian_slim().add_local_dir(
             "~/assets",
@@ -682,14 +682,14 @@ class _Image(_Object, type_prefix="im"):
         image = modal.Image.debian_slim().copy_local_dir(
             "~/assets",
             remote_path="/assets",
-            ignore=PatternMatcher("**/*.txt"),
+            ignore=FilePatternMatcher("**/*.txt"),
         )
 
         # When including files is simpler than excluding them, you can use the `~` operator to invert the matcher.
         image = modal.Image.debian_slim().copy_local_dir(
             "~/assets",
             remote_path="/assets",
-            ignore=~PatternMatcher("**/*.py"),
+            ignore=~FilePatternMatcher("**/*.py"),
         )
         ```
         """
@@ -740,7 +740,7 @@ class _Image(_Object, type_prefix="im"):
         the destination directory.
         """
 
-        mount = _Mount.from_local_python_packages(*modules, ignore=~PatternMatcher("**/*.py"))
+        mount = _Mount.from_local_python_packages(*modules, ignore=~FilePatternMatcher("**/*.py"))
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_dir(
@@ -748,7 +748,7 @@ class _Image(_Object, type_prefix="im"):
         local_path: Union[str, Path],
         remote_path: Union[str, Path] = ".",
         # Predicate filter function for file exclusion, which should accept a filepath and return `True` for exclusion.
-        # Defaults to excluding no files. If a Sequence is provided, it will be converted to a PatternMatcher.
+        # Defaults to excluding no files. If a Sequence is provided, it will be converted to a FilePatternMatcher.
         # Which follows dockerignore syntax.
         ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
     ) -> "_Image":
@@ -760,7 +760,7 @@ class _Image(_Object, type_prefix="im"):
         **Usage:**
 
         ```python
-        from modal._utils.pattern_matcher import PatternMatcher
+        from modal import FilePatternMatcher
 
         image = modal.Image.debian_slim().copy_local_dir(
             "~/assets",
@@ -777,14 +777,14 @@ class _Image(_Object, type_prefix="im"):
         image = modal.Image.debian_slim().copy_local_dir(
             "~/assets",
             remote_path="/assets",
-            ignore=PatternMatcher("**/*.txt"),
+            ignore=FilePatternMatcher("**/*.txt"),
         )
 
         # When including files is simpler than excluding them, you can use the `~` operator to invert the matcher.
         image = modal.Image.debian_slim().copy_local_dir(
             "~/assets",
             remote_path="/assets",
-            ignore=~PatternMatcher("**/*.py"),
+            ignore=~FilePatternMatcher("**/*.py"),
         )
         ```
         """
