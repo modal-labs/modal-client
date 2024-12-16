@@ -205,6 +205,27 @@ def test_run_class_hierarchy(servicer, set_env_client, test_dir):
     _run(["run", app_file.as_posix() + "::Wrapped.overridden_on_wrapped"])
 
 
+def test_run_write_result(servicer, set_env_client, test_dir):
+    # Note that this test only exercises local entrypoint functions,
+    # because the servicer doesn't appear to mock remote execution faithfully?
+    app_file = (test_dir / "supports" / "app_run_tests" / "returns_data.py").as_posix()
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _run(["run", "--write-result", result_file := f"{tmpdir}/result.txt", f"{app_file}::returns_str"])
+        with open(result_file, "rt") as f:
+            assert f.read() == "Hello!"
+
+        _run(["run", "-w", result_file := f"{tmpdir}/result.bin", f"{app_file}::returns_bytes"])
+        with open(result_file, "rb") as f:
+            assert f.read().decode("utf8") == "Hello!"
+
+        _run(
+            ["run", "-w", result_file := f"{tmpdir}/result.bin", f"{app_file}::returns_int"],
+            expected_exit_code=1,
+            expected_error="Function must return str or bytes when using `--write-result`; got int.",
+        )
+
+
 def test_deploy(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
     _run(["deploy", "--name=deployment_name", app_file.as_posix()])
