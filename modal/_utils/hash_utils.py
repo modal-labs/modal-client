@@ -3,14 +3,14 @@ import base64
 import dataclasses
 import hashlib
 import time
-from typing import BinaryIO, Callable, Optional, Union
+from typing import BinaryIO, Callable, Optional, Sequence, Union
 
 from modal.config import logger
 
 HASH_CHUNK_SIZE = 65536
 
 
-def _update(hashers: list[Callable[[bytes], None]], data: Union[bytes, BinaryIO]) -> None:
+def _update(hashers: Sequence[Callable[[bytes], None]], data: Union[bytes, BinaryIO]) -> None:
     if isinstance(data, bytes):
         for hasher in hashers:
             hasher(data)
@@ -57,23 +57,44 @@ class UploadHashes:
     md5_base64: str
     sha256_base64: str
 
+    def md5_hex(self) -> str:
+        return base64.b64decode(self.md5_base64).hex()
 
-def get_upload_hashes(data: Union[bytes, BinaryIO], sha256_hex: Optional[str] = None) -> UploadHashes:
+    def sha256_hex(self) -> str:
+        return base64.b64decode(self.sha256_base64).hex()
+
+
+def get_upload_hashes(
+    data: Union[bytes, BinaryIO], sha256_hex: Optional[str] = None, md5_hex: Optional[str] = None
+) -> UploadHashes:
     t0 = time.monotonic()
-    md5 = hashlib.md5()
-    # If we already have the sha256 digest, do not compute it again
-    if sha256_hex:
-        hashes = UploadHashes(
-            md5_base64=get_md5_base64(data),
-            sha256_base64=base64.b64encode(bytes.fromhex(sha256_hex)).decode("ascii"),
-        )
-        logger.debug("get_upload_hashes took %.3fs (get_md5_base64)", time.monotonic() - t0)
-    else:
+    hashers = {}
+
+    if not sha256_hex:
         sha256 = hashlib.sha256()
-        _update([md5.update, sha256.update], data)
-        hashes = UploadHashes(
-            md5_base64=base64.b64encode(md5.digest()).decode("ascii"),
-            sha256_base64=base64.b64encode(sha256.digest()).decode("ascii"),
-        )
-        logger.debug("get_upload_hashes took %.3fs (md5 + sha256)", time.monotonic() - t0)
+        hashers["sha256"] = sha256
+    if not md5_hex:
+        md5 = hashlib.md5()
+        hashers["md5"] = md5
+
+    if hashers:
+        updaters = [h.update for h in hashers.values()]
+        _update(updaters, data)
+
+    if sha256_hex:
+        sha256_base64 = base64.b64encode(bytes.fromhex(sha256_hex)).decode("ascii")
+    else:
+        sha256_base64 = base64.b64encode(hashers["sha256"].digest()).decode("ascii")
+
+    if md5_hex:
+        md5_base64 = base64.b64encode(bytes.fromhex(md5_hex)).decode("ascii")
+    else:
+        md5_base64 = base64.b64encode(hashers["md5"].digest()).decode("ascii")
+
+    hashes = UploadHashes(
+        md5_base64=md5_base64,
+        sha256_base64=sha256_base64,
+    )
+
+    logger.debug("get_upload_hashes took %.3fs (%s)", time.monotonic() - t0, hashers.keys())
     return hashes

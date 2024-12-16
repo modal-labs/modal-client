@@ -1,4 +1,8 @@
 # Copyright Modal Labs 2022
+
+# Note: this module isn't imported unless it's needed.
+# This is because aiohttp is a pretty big dependency that adds significant latency when imported
+
 import asyncio
 from collections.abc import AsyncGenerator
 from typing import Any, Callable, NoReturn, Optional, cast
