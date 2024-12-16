@@ -17,6 +17,7 @@ try:
     from .cls import Cls, parameter
     from .dict import Dict
     from .exception import Error
+    from .file_pattern_matcher import FilePatternMatcher
     from .functions import Function
     from .image import Image
     from .mount import Mount
@@ -48,6 +49,7 @@ __all__ = [
     "Cron",
     "Dict",
     "Error",
+    "FilePatternMatcher",
     "Function",
     "Image",
     "Mount",
