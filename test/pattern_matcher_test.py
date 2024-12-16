@@ -10,40 +10,41 @@ import os
 import os.path
 import platform
 import pytest
+from pathlib import Path
 
 from modal._utils.pattern_matcher import PatternMatcher
 
 
 def test_wildcard_matches():
-    assert PatternMatcher("*")("fileutils.go")
+    assert PatternMatcher("*")(Path("fileutils.go"))
 
 
 def test_pattern_matches():
-    assert PatternMatcher("*.go")("fileutils.go")
+    assert PatternMatcher("*.go")(Path("fileutils.go"))
 
 
 def test_exclusion_pattern_matches_pattern_before():
-    assert PatternMatcher("!fileutils.go", "*.go")("fileutils.go")
+    assert PatternMatcher("!fileutils.go", "*.go")(Path("fileutils.go"))
 
 
 def test_pattern_matches_folder_exclusions():
-    assert not PatternMatcher("docs", "!docs/README.md")("docs/README.md")
+    assert not PatternMatcher("docs", "!docs/README.md")(Path("docs/README.md"))
 
 
 def test_pattern_matches_folder_with_slash_exclusions():
-    assert not PatternMatcher("docs/", "!docs/README.md")("docs/README.md")
+    assert not PatternMatcher("docs/", "!docs/README.md")(Path("docs/README.md"))
 
 
 def test_pattern_matches_folder_wildcard_exclusions():
-    assert not PatternMatcher("docs/*", "!docs/README.md")("docs/README.md")
+    assert not PatternMatcher("docs/*", "!docs/README.md")(Path("docs/README.md"))
 
 
 def test_exclusion_pattern_matches_pattern_after():
-    assert not PatternMatcher("*.go", "!fileutils.go")("fileutils.go")
+    assert not PatternMatcher("*.go", "!fileutils.go")(Path("fileutils.go"))
 
 
 def test_exclusion_pattern_matches_whole_directory():
-    assert not PatternMatcher("*.go")(".")
+    assert not PatternMatcher("*.go")(Path("."))
 
 
 def test_single_exclamation_error():
@@ -54,7 +55,7 @@ def test_single_exclamation_error():
 
 
 def test_matches_with_no_patterns():
-    assert not PatternMatcher()("/any/path/there")
+    assert not PatternMatcher()(Path("/any/path/there"))
 
 
 def test_matches_with_malformed_patterns():
@@ -151,10 +152,10 @@ def test_matches():
     ]
 
     for pattern, text, expected in tests:
-        assert PatternMatcher(pattern)(text) is expected
+        assert PatternMatcher(pattern)(Path(text)) is expected
 
     for patterns, text, expected in multi_pattern_tests:
-        assert PatternMatcher(*patterns)(text) is expected
+        assert PatternMatcher(*patterns)(Path(text)) is expected
 
 
 def test_clean_patterns():
@@ -268,7 +269,7 @@ def test_match():
             text = os.path.normpath(text)
 
         with pytest.raises(error) if error else contextlib.nullcontext():
-            assert PatternMatcher(pattern)(text) is expected
+            assert PatternMatcher(pattern)(Path(text)) is expected
 
 
 @pytest.fixture

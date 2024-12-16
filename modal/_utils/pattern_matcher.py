@@ -188,7 +188,6 @@ class PatternMatcher:
         deprecated due to buggy behavior.
         """
         matched = False
-        # file_path = os.path.normpath(file_path)
         if str(file_path) == ".":
             # Don't let them exclude everything; kind of silly.
             return False
