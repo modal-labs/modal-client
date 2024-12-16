@@ -494,7 +494,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         _pty_info: Optional[api_pb2.PTYInfo] = None,
     ):
         """Execute a command in the Sandbox and return
-        a [`ContainerProcess`](https://modal.com/docs/reference/modal.ContainerProcess#modalcontainer_process) handle.
+        a [`ContainerProcess`](/docs/reference/modal.ContainerProcess#modalcontainer_process) handle.
 
         **Usage**
 

@@ -4,7 +4,6 @@ import pytest
 from grpclib import Status
 from grpclib.exceptions import GRPCError
 
-from modal.exception import InvalidError
 from modal.file_io import FileIO, delete_bytes, replace_bytes
 from modal_proto import api_pb2
 
@@ -324,7 +323,7 @@ def test_invalid_mode(servicer, client):
         "\n",  # newline
     ]
     for mode in invalid_modes:
-        with pytest.raises(InvalidError):
+        with pytest.raises(ValueError):
             FileIO.create("/test.txt", mode, client, "task-123")  # type: ignore
 
 
