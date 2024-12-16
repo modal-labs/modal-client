@@ -14,8 +14,6 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 Adds an `ignore` parameter to our `Image` `add_local_dir` and `copy_local_dir` methods. It is similar to the `condition` method on `Mount` methods but instead operates on a `Path` object. It takes either a list of string patterns to ignore which follows the `dockerignore` syntax implemented in our `FilePatternMatcher` class, or you can pass in a callable which allows for more flexible selection of files.
 
-Also renamed `PatternMatcher` to `FilePatternMatcher` to better match what it's doing and moved it to the public API.
-
 Usage:
 
 ```python
