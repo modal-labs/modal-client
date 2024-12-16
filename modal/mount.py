@@ -699,7 +699,7 @@ def _create_client_mount():
         client_mount = client_mount.add_local_dir(
             package_base_path,
             remote_path=f"/pkg/{pkg_name}",
-            ignore=module_mount_ignore_condition(package_base_path),
+            condition=module_mount_condition(package_base_path),
             recursive=True,
         )
 
@@ -708,7 +708,7 @@ def _create_client_mount():
     client_mount = client_mount.add_local_dir(
         synchronicity_base_path,
         remote_path="/pkg/synchronicity",
-        ignore=module_mount_ignore_condition(synchronicity_base_path),
+        condition=module_mount_condition(synchronicity_base_path),
         recursive=True,
     )
     return client_mount
