@@ -1254,12 +1254,32 @@ class _Image(_Object, type_prefix="im"):
         context_files: dict[str, str] = {},
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
+        # modal.Mount with local files to supply as build context for COPY commands
+        context_mount: Optional[_Mount] = None,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
     ) -> "_Image":
         """Extend an image with arbitrary Dockerfile-like commands."""
         cmds = _flatten_str_args("dockerfile_commands", "dockerfile_commands", dockerfile_commands)
         if not cmds:
             return self
+
+        if context_mount is not None:
+            deprecation_warning(
+                (2024, 12, 16),
+                "`context_mount` is deprecated,"
+                + " files are now mounted implicitly without this flag and can be ignored with `dockerignore` files",
+            )
+
+            def wrapper_context_mount_function():
+                return context_mount
+
+            context_mount_function = wrapper_context_mount_function
+        else:
+
+            def base_image_context_mount_function() -> _Mount:
+                return _create_context_mount(cmds)
+
+            context_mount_function = base_image_context_mount_function
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base", *cmds], context_files=context_files)
@@ -1269,7 +1289,7 @@ class _Image(_Object, type_prefix="im"):
             dockerfile_function=build_dockerfile,
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu),
-            context_mount_function=lambda: _create_context_mount(cmds),
+            context_mount_function=context_mount_function,
             force_build=self.force_build or force_build,
         )
 
