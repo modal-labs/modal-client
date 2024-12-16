@@ -808,6 +808,12 @@ message ContainerFileSeekRequest {
   SeekWhence whence = 3;
 }
 
+message ContainerFileWatchRequest {
+  string path = 1;
+  bool recursive = 2;
+  optional uint64 timeout_secs = 3;
+}
+
 message ContainerFileWriteReplaceBytesRequest {
   string file_descriptor = 1;
   bytes data = 2;
@@ -839,6 +845,7 @@ message ContainerFilesystemExecRequest {
     ContainerFileLsRequest file_ls_request = 11;
     ContainerFileMkdirRequest file_mkdir_request = 12;
     ContainerFileRmRequest file_rm_request = 13;
+    ContainerFileWatchRequest file_watch_request = 14;
   }
   string task_id = 10;
 }
@@ -2670,6 +2677,7 @@ message WebhookConfig {
   uint32 web_server_port = 7;
   float web_server_startup_timeout = 8;
   bool web_endpoint_docs = 9;
+  bool requires_proxy_auth = 10;
 }
 
 message WorkspaceNameLookupResponse {

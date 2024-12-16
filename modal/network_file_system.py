@@ -245,7 +245,10 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         if data_size > LARGE_FILE_LIMIT:
             progress_task_id = progress_cb(name=remote_path, size=data_size)
             blob_id = await blob_upload_file(
-                fp, self._client.stub, progress_report_cb=functools.partial(progress_cb, progress_task_id)
+                fp,
+                self._client.stub,
+                progress_report_cb=functools.partial(progress_cb, progress_task_id),
+                sha256_hex=sha_hash,
             )
             req = api_pb2.SharedVolumePutFileRequest(
                 shared_volume_id=self.object_id,

@@ -50,7 +50,7 @@ def patch_mock_servicer(cls):
 
     @contextlib.contextmanager
     def intercept(servicer):
-        ctx = InterceptionContext()
+        ctx = InterceptionContext(servicer)
         servicer.interception_context = ctx
         yield ctx
         ctx._assert_responses_consumed()
@@ -101,7 +101,8 @@ class ResponseNotConsumed(Exception):
 
 
 class InterceptionContext:
-    def __init__(self):
+    def __init__(self, servicer):
+        self._servicer = servicer
         self.calls: list[tuple[str, Any]] = []  # List[Tuple[method_name, message]]
         self.custom_responses: dict[str, list[tuple[Callable[[Any], bool], list[Any]]]] = defaultdict(list)
         self.custom_defaults: dict[str, Callable[["MockClientServicer", grpclib.server.Stream], Awaitable[None]]] = {}
@@ -149,6 +150,9 @@ class InterceptionContext:
         raise KeyError(f"No message of that type in call list: {self.calls}")
 
     def get_requests(self, method_name: str) -> list[Any]:
+        if not hasattr(self._servicer, method_name):
+            # we check this to prevent things like `assert ctx.get_requests("ASdfFunctionCreate") == 0` passing
+            raise ValueError(f"{method_name} not in MockServicer - did you spell it right?")
         return [msg for _method_name, msg in self.calls if _method_name == method_name]
 
     def _add_recv(self, method_name: str, msg):
