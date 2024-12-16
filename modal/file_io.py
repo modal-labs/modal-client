@@ -190,12 +190,6 @@ class _FileIO(Generic[T]):
                 raise
         return output
 
-    def _parse_list_output(self, output: bytes) -> list[str]:
-        try:
-            return json.loads(output.decode("utf-8"))["paths"]
-        except json.JSONDecodeError:
-            raise FilesystemExecutionError("failed to parse list output")
-
     def _validate_type(self, data: Union[bytes, str]) -> None:
         if self._binary and isinstance(data, str):
             raise TypeError("Expected bytes when in binary mode")
@@ -358,7 +352,10 @@ class _FileIO(Generic[T]):
             )
         )
         output = await self._wait(resp.exec_id)
-        return self._parse_list_output(output)
+        try:
+            return json.loads(output.decode("utf-8"))["paths"]
+        except json.JSONDecodeError:
+            raise FilesystemExecutionError("failed to parse list output")
 
     @classmethod
     async def mkdir(cls, path: str, client: _Client, task_id: str, parents: bool = False) -> None:
