@@ -619,14 +619,6 @@ def test_poetry(builder_version, servicer, client):
         assert context_files == {"/.poetry.lock", "/.pyproject.toml", "/modal_requirements.txt"}
 
 
-@pytest.fixture
-def tmp_path_with_content(tmp_path):
-    (tmp_path / "data.txt").write_text("hello")
-    (tmp_path / "data").mkdir()
-    (tmp_path / "data" / "sub").write_text("world")
-    return tmp_path
-
-
 @pytest.mark.parametrize(["copy"], [(True,), (False,)])
 @pytest.mark.parametrize(
     ["remote_path", "expected_dest"],
@@ -710,7 +702,7 @@ def test_image_add_local_dir(servicer, client, tmp_path_with_content, copy, remo
 
 def test_image_copy_local_dir(builder_version, servicer, client, tmp_path_with_content):
     app = App()
-    app.image = Image.debian_slim().copy_local_dir(tmp_path_with_content, remote_path="/dummy")
+    app.image = Image.debian_slim().copy_local_dir(tmp_path_with_content, remote_path="/dummy", ignore=["**/module"])
     app.function()(dummy)
 
     with app.run(client=client):
@@ -722,8 +714,8 @@ def test_image_copy_local_dir(builder_version, servicer, client, tmp_path_with_c
 
 def test_image_docker_command_copy(builder_version, servicer, client, tmp_path_with_content):
     app = App()
-    data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/")
-    app.image = Image.debian_slim().dockerfile_commands(["COPY . /dummy"])
+    data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/", condition=lambda p: "module" not in p)
+    app.image = Image.debian_slim().dockerfile_commands(["COPY . /dummy"], context_mount=data_mount)
     app.function()(dummy)
 
     with app.run(client=client):
@@ -739,8 +731,8 @@ def test_image_dockerfile_copy(builder_version, servicer, client, tmp_path_with_
     dockerfile.close()
 
     app = App()
-    data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/")
-    app.image = Image.debian_slim().from_dockerfile(dockerfile.name)
+    data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/", condition=lambda p: "module" not in p)
+    app.image = Image.debian_slim().from_dockerfile(dockerfile.name, context_mount=data_mount)
     app.function()(dummy)
 
     with app.run(client=client):
@@ -1652,3 +1644,90 @@ def test_image_only_joins_unfinished_steps(servicer, client):
         image_joins = ctx.get_requests("ImageJoinStreaming")
         assert len(image_joins) == 1  # should now skip building of second build step
         assert image_joins[0].image_id == "im-124"
+
+
+@pytest.mark.parametrize("copy", [True, False])
+def test_image_local_dir_ignore_patterns(servicer, client, tmp_path_with_content, copy):
+    ignore = ["**/*.txt", "**/module", "!**/*.txt", "!**/*.py"]
+    expected = {
+        "/module/sub.py",
+        "/module/sub/sub.py",
+        "/data/sub",
+        "/module/__init__.py",
+        "/data.txt",
+        "/module/sub/__init__.py",
+    }
+    app = App()
+
+    img = Image.from_registry("unknown_image").workdir("/proj")
+    if copy:
+        app.image = img.copy_local_dir(tmp_path_with_content, "/place/", ignore=ignore)
+        app.function()(dummy)
+        with app.run(client=client):
+            assert len(img._mount_layers) == 0
+            layers = get_image_layers(app.image.object_id, servicer)
+            mount_id = layers[0].context_mount_id
+            assert set(servicer.mount_contents[mount_id].keys()) == expected
+    else:
+        img = img.add_local_dir(tmp_path_with_content, "/place/", ignore=ignore)
+        app.function(image=img)(dummy)
+        with app.run(client=client):
+            assert len(img._mount_layers) == 1
+            mount_id = img._mount_layers[0].object_id
+            assert set(servicer.mount_contents[mount_id].keys()) == {f"/place{f}" for f in expected}
+
+
+@pytest.mark.parametrize("copy", [True, False])
+def test_image_add_local_dir_ignore_callable(servicer, client, tmp_path_with_content, copy):
+    def ignore(x):
+        return x != tmp_path_with_content / "data.txt"
+
+    expected = {"/data.txt"}
+    app = App()
+
+    img = Image.from_registry("unknown_image").workdir("/proj")
+    if copy:
+        app.image = img.copy_local_dir(tmp_path_with_content, "/place/", ignore=ignore)
+        app.function()(dummy)
+        with app.run(client=client):
+            assert len(img._mount_layers) == 0
+            layers = get_image_layers(app.image.object_id, servicer)
+            mount_id = layers[0].context_mount_id
+            assert set(servicer.mount_contents[mount_id].keys()) == expected
+    else:
+        img = img.add_local_dir(tmp_path_with_content, "/place/", ignore=ignore)
+        app.function(image=img)(dummy)
+        with app.run(client=client):
+            assert len(img._mount_layers) == 1
+            mount_id = img._mount_layers[0].object_id
+            assert set(servicer.mount_contents[mount_id].keys()) == {f"/place{f}" for f in expected}
+
+
+@pytest.mark.parametrize("copy", [True, False])
+def test_image_add_local_dir_ignore_nothing(servicer, client, tmp_path_with_content, copy):
+    file_paths = set()
+    for root, _, files in os.walk(tmp_path_with_content):
+        for file in files:
+            file_paths.add(os.path.join(root, file))
+
+    expected = {f"/{Path(fn).relative_to(tmp_path_with_content)}" for fn in file_paths}
+    app = App()
+
+    img = Image.from_registry("unknown_image").workdir("/proj")
+    if copy:
+        app.image = img.copy_local_dir(tmp_path_with_content, "/place/")
+        app.function()(dummy)
+        with app.run(client=client):
+            assert len(img._mount_layers) == 0
+            layers = get_image_layers(app.image.object_id, servicer)
+            mount_id = layers[0].context_mount_id
+            assert set(Path(fn) for fn in servicer.mount_contents[mount_id].keys()) == {Path(fn) for fn in expected}
+    else:
+        img = img.add_local_dir(tmp_path_with_content, "/place/")
+        app.function(image=img)(dummy)
+        with app.run(client=client):
+            assert len(img._mount_layers) == 1
+            mount_id = img._mount_layers[0].object_id
+            assert set(Path(fn) for fn in servicer.mount_contents[mount_id].keys()) == {
+                Path(f"/place{f}") for f in expected
+            }

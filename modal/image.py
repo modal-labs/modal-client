@@ -38,6 +38,7 @@ from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
 from .environments import _get_environment_cached
 from .exception import InvalidError, NotFoundError, RemoteError, VersionError, deprecation_error, deprecation_warning
+from .file_pattern_matcher import FilePatternMatcher
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
@@ -743,7 +744,17 @@ class _Image(_Object, type_prefix="im"):
         mount = _Mount.from_local_file(local_path, remote_path)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
-    def add_local_dir(self, local_path: Union[str, Path], remote_path: str, *, copy: bool = False) -> "_Image":
+    def add_local_dir(
+        self,
+        local_path: Union[str, Path],
+        remote_path: str,
+        *,
+        copy: bool = False,
+        # Predicate filter function for file exclusion, which should accept a filepath and return `True` for exclusion.
+        # Defaults to excluding no files. If a Sequence is provided, it will be converted to a FilePatternMatcher.
+        # Which follows dockerignore syntax.
+        ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
+    ) -> "_Image":
         """Adds a local directory's content to the image at `remote_path` within the container
 
         By default (`copy=False`), the files are added to containers on startup and are not built into the actual Image,
@@ -755,12 +766,44 @@ class _Image(_Object, type_prefix="im"):
         copy=True can slow down iteration since it requires a rebuild of the Image and any subsequent
         build steps whenever the included files change, but it is required if you want to run additional
         build steps after this one.
+
+        **Usage:**
+
+        ```python
+        from modal import FilePatternMatcher
+
+        image = modal.Image.debian_slim().add_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=["*.venv"],
+        )
+
+        image = modal.Image.debian_slim().add_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=lambda p: p.is_relative_to(".venv"),
+        )
+
+        image = modal.Image.debian_slim().copy_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=FilePatternMatcher("**/*.txt"),
+        )
+
+        # When including files is simpler than excluding them, you can use the `~` operator to invert the matcher.
+        image = modal.Image.debian_slim().copy_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=~FilePatternMatcher("**/*.py"),
+        )
+        ```
         """
         if not PurePosixPath(remote_path).is_absolute():
             # TODO(elias): implement relative to absolute resolution using image workdir metadata
             #  + make default remote_path="./"
             raise InvalidError("image.add_local_dir() currently only supports absolute remote_path values")
-        mount = _Mount.from_local_dir(local_path, remote_path=remote_path)
+
+        mount = _Mount._add_local_dir(Path(local_path), Path(remote_path), ignore)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
@@ -801,17 +844,53 @@ class _Image(_Object, type_prefix="im"):
         the destination directory.
         """
 
-        def only_py_files(filename):
-            return filename.endswith(".py")
-
-        mount = _Mount.from_local_python_packages(*modules, condition=only_py_files)
+        mount = _Mount.from_local_python_packages(*modules, ignore=~FilePatternMatcher("**/*.py"))
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
-    def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
+    def copy_local_dir(
+        self,
+        local_path: Union[str, Path],
+        remote_path: Union[str, Path] = ".",
+        # Predicate filter function for file exclusion, which should accept a filepath and return `True` for exclusion.
+        # Defaults to excluding no files. If a Sequence is provided, it will be converted to a FilePatternMatcher.
+        # Which follows dockerignore syntax.
+        ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
+    ) -> "_Image":
         """Copy a directory into the image as a part of building the image.
 
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
+
+        **Usage:**
+
+        ```python
+        from modal import FilePatternMatcher
+
+        image = modal.Image.debian_slim().copy_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=["**/*.venv"],
+        )
+
+        image = modal.Image.debian_slim().copy_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=lambda p: p.is_relative_to(".venv"),
+        )
+
+        image = modal.Image.debian_slim().copy_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=FilePatternMatcher("**/*.txt"),
+        )
+
+        # When including files is simpler than excluding them, you can use the `~` operator to invert the matcher.
+        image = modal.Image.debian_slim().copy_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=~FilePatternMatcher("**/*.py"),
+        )
+        ```
         """
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
@@ -820,7 +899,7 @@ class _Image(_Object, type_prefix="im"):
         return _Image._from_args(
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
-            context_mount_function=lambda: _Mount.from_local_dir(local_path, remote_path="/"),
+            context_mount_function=lambda: _Mount._add_local_dir(Path(local_path), Path("/"), ignore),
         )
 
     def pip_install(
