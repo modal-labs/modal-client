@@ -361,7 +361,7 @@ message AppHeartbeatRequest {
 }
 
 message AppLayout {
-  repeated Object object = 1;
+  repeated Object objects = 1;
   map<string, string> function_ids = 2;  // tag -> function id
   map<string, string> class_ids = 3;  // tag -> class id
 }
