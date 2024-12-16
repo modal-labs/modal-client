@@ -190,7 +190,7 @@ class _FileIO(Generic[T]):
                 raise
         return output
 
-    async def _parse_list_output(self, output: bytes) -> list[str]:
+    def _parse_list_output(self, output: bytes) -> list[str]:
         try:
             return json.loads(output.decode("utf-8"))["paths"]
         except json.JSONDecodeError:
@@ -358,7 +358,7 @@ class _FileIO(Generic[T]):
             )
         )
         output = await self._wait(resp.exec_id)
-        return await self._parse_list_output(output)
+        return self._parse_list_output(output)
 
     @classmethod
     async def mkdir(cls, path: str, client: _Client, task_id: str, parents: bool = False) -> None:
