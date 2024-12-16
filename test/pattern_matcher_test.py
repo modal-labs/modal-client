@@ -1,10 +1,12 @@
 # Copyright Modal Labs 2024
+
 """Tests for pattern_matcher.py.
 
 These are ported from the original patternmatcher Go library.
 """
 
 import contextlib
+import os
 import os.path
 import platform
 import pytest
@@ -13,51 +15,51 @@ from modal._utils.pattern_matcher import PatternMatcher
 
 
 def test_wildcard_matches():
-    assert PatternMatcher(["*"]).matches("fileutils.go")
+    assert PatternMatcher("*")("fileutils.go")
 
 
 def test_pattern_matches():
-    assert PatternMatcher(["*.go"]).matches("fileutils.go")
+    assert PatternMatcher("*.go")("fileutils.go")
 
 
 def test_exclusion_pattern_matches_pattern_before():
-    assert PatternMatcher(["!fileutils.go", "*.go"]).matches("fileutils.go")
+    assert PatternMatcher("!fileutils.go", "*.go")("fileutils.go")
 
 
 def test_pattern_matches_folder_exclusions():
-    assert not PatternMatcher(["docs", "!docs/README.md"]).matches("docs/README.md")
+    assert not PatternMatcher("docs", "!docs/README.md")("docs/README.md")
 
 
 def test_pattern_matches_folder_with_slash_exclusions():
-    assert not PatternMatcher(["docs/", "!docs/README.md"]).matches("docs/README.md")
+    assert not PatternMatcher("docs/", "!docs/README.md")("docs/README.md")
 
 
 def test_pattern_matches_folder_wildcard_exclusions():
-    assert not PatternMatcher(["docs/*", "!docs/README.md"]).matches("docs/README.md")
+    assert not PatternMatcher("docs/*", "!docs/README.md")("docs/README.md")
 
 
 def test_exclusion_pattern_matches_pattern_after():
-    assert not PatternMatcher(["*.go", "!fileutils.go"]).matches("fileutils.go")
+    assert not PatternMatcher("*.go", "!fileutils.go")("fileutils.go")
 
 
 def test_exclusion_pattern_matches_whole_directory():
-    assert not PatternMatcher(["*.go"]).matches(".")
+    assert not PatternMatcher("*.go")(".")
 
 
 def test_single_exclamation_error():
     try:
-        PatternMatcher(["!"])
+        PatternMatcher("!")
     except ValueError as e:
         assert str(e) == 'Illegal exclusion pattern: "!"'
 
 
 def test_matches_with_no_patterns():
-    assert not PatternMatcher([]).matches("/any/path/there")
+    assert not PatternMatcher()("/any/path/there")
 
 
 def test_matches_with_malformed_patterns():
     try:
-        PatternMatcher(["["])
+        PatternMatcher("[")
     except ValueError as e:
         assert str(e) == "Bad pattern: ["
 
@@ -149,48 +151,48 @@ def test_matches():
     ]
 
     for pattern, text, expected in tests:
-        assert PatternMatcher([pattern]).matches(text) is expected
+        assert PatternMatcher(pattern)(text) is expected
 
     for patterns, text, expected in multi_pattern_tests:
-        assert PatternMatcher(patterns).matches(text) is expected
+        assert PatternMatcher(*patterns)(text) is expected
 
 
 def test_clean_patterns():
     patterns = ["docs", "config"]
-    pm = PatternMatcher(patterns)
+    pm = PatternMatcher(*patterns)
     cleaned = pm.patterns
     assert len(cleaned) == 2
 
 
 def test_clean_patterns_strip_empty_patterns():
     patterns = ["docs", "config", ""]
-    pm = PatternMatcher(patterns)
+    pm = PatternMatcher(*patterns)
     cleaned = pm.patterns
     assert len(cleaned) == 2
 
 
 def test_clean_patterns_exception_flag():
     patterns = ["docs", "!docs/README.md"]
-    pm = PatternMatcher(patterns)
+    pm = PatternMatcher(*patterns)
     assert pm.exclusions
 
 
 def test_clean_patterns_leading_space_trimmed():
     patterns = ["docs", "  !docs/README.md"]
-    pm = PatternMatcher(patterns)
+    pm = PatternMatcher(*patterns)
     assert pm.exclusions
 
 
 def test_clean_patterns_trailing_space_trimmed():
     patterns = ["docs", "!docs/README.md  "]
-    pm = PatternMatcher(patterns)
+    pm = PatternMatcher(*patterns)
     assert pm.exclusions
 
 
 def test_clean_patterns_error_single_exception():
     patterns = ["!"]
     try:
-        PatternMatcher(patterns)
+        PatternMatcher(*patterns)
     except ValueError as e:
         assert str(e) == 'Illegal exclusion pattern: "!"'
 
@@ -266,4 +268,89 @@ def test_match():
             text = os.path.normpath(text)
 
         with pytest.raises(error) if error else contextlib.nullcontext():
-            assert PatternMatcher([pattern]).matches(text) is expected
+            assert PatternMatcher(pattern)(text) is expected
+
+
+@pytest.fixture
+def tmp_path_with_content(tmp_path):
+    (tmp_path / "venv").mkdir()
+    (tmp_path / "venv" / "lib").mkdir()
+    (tmp_path / "venv" / "lib" / "python3.12").mkdir()
+    (tmp_path / "venv" / "lib" / "python3.12" / "site-packages").mkdir()
+    fp = tmp_path / "venv" / "lib" / "python3.12" / "site-packages" / "foo.py"
+    fp.write_text("foo")
+    print(f"fp: {fp}")
+
+    (tmp_path / "data.txt").write_text("hello")
+
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "sub.txt").write_text("world")
+
+    (tmp_path / "module").mkdir()
+    (tmp_path / "module" / "__init__.py").write_text("foo")
+    (tmp_path / "module" / "sub.py").write_text("bar")
+    (tmp_path / "module" / "sub").mkdir()
+    (tmp_path / "module" / "sub" / "__init__.py").write_text("baz")
+    (tmp_path / "module" / "sub" / "foo.pyc").write_text("baz")
+    (tmp_path / "module" / "sub" / "sub.py").write_text("qux")
+
+    # walk tmp_path and add all file paths to a set
+    file_paths = set()
+    for root, _, files in os.walk(tmp_path):
+        for file in files:
+            file_paths.add(os.path.join(root, file))
+
+    return tmp_path, file_paths
+
+
+def test_against_paths(tmp_path_with_content):
+    tmp_path, file_paths = tmp_path_with_content
+
+    # match everything that's not ignored
+    lff = PatternMatcher("**/*", "!**/venv")
+
+    for file_path in file_paths:
+        if "venv" in file_path:
+            assert not lff(file_path)
+        else:
+            assert lff(file_path)
+
+    lff = PatternMatcher("**/*.py")
+
+    for file_path in file_paths:
+        if file_path.endswith(".py"):
+            assert lff(file_path)
+        else:
+            assert not lff(file_path)
+
+
+def test_empty_patterns(tmp_path_with_content):
+    tmp_path, file_paths = tmp_path_with_content
+    lff = PatternMatcher()
+
+    for file_path in file_paths:
+        assert not lff(file_path)
+
+
+def test_invert_patterns(tmp_path_with_content):
+    tmp_path, file_paths = tmp_path_with_content
+
+    # match everything that's not ignored
+    lff = ~PatternMatcher("**/*", "!**/venv")
+
+    for file_path in file_paths:
+        if "venv" in file_path:
+            assert lff(file_path)
+        else:
+            assert not lff(file_path)
+
+    # empty patterns should match nothing
+    # inverted empty patterns should match everything
+    lff = ~PatternMatcher()
+    for file_path in file_paths:
+        assert lff(file_path)
+
+    # single negative pattern should match nothing
+    lff = PatternMatcher("!**/*.txt")
+    for file_path in file_paths:
+        assert not lff(file_path)

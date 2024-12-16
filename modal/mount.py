@@ -23,9 +23,9 @@ from ._resolver import Resolver
 from ._utils.async_utils import aclosing, async_map, synchronize_api
 from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
 from ._utils.grpc_utils import retry_transient_errors
-from ._utils.local_file_filter import LocalFileFilter
 from ._utils.name_utils import check_object_name
 from ._utils.package_utils import get_module_mount_info
+from ._utils.pattern_matcher import PatternMatcher
 from .client import _Client
 from .config import config, logger
 from .exception import InvalidError, ModuleNotMountable
@@ -325,7 +325,7 @@ class _Mount(_Object, type_prefix="mo"):
         ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
     ):
         if isinstance(ignore, list):
-            ignore = LocalFileFilter(*ignore)
+            ignore = PatternMatcher(*ignore)
 
         return _Mount._new()._extend(
             _MountDir(
@@ -611,7 +611,7 @@ class _Mount(_Object, type_prefix="mo"):
 
             ignore = converted_condition
         elif isinstance(ignore, list):
-            ignore = LocalFileFilter(*ignore)
+            ignore = PatternMatcher(*ignore)
 
         mount = _Mount._new()
         from ._runtime.execution_context import is_local

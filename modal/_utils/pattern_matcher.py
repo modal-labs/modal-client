@@ -12,7 +12,8 @@ then asking it whether file paths match any of its patterns.
 import enum
 import os
 import re
-from typing import Optional, TextIO
+from pathlib import Path
+from typing import Callable, Optional, TextIO
 
 escape_chars = frozenset(".+()|{}$")
 
@@ -151,35 +152,35 @@ class Pattern:
 class PatternMatcher:
     """Allows checking paths against a list of patterns."""
 
-    def __init__(self, patterns: list[str]) -> None:
+    def __init__(self, *pattern: str) -> None:
         """Initialize a new PatternMatcher instance.
 
         Args:
-            patterns (list): A list of pattern strings.
+            pattern (str): One or more pattern strings.
 
         Raises:
             ValueError: If an illegal exclusion pattern is provided.
         """
         self.patterns: list[Pattern] = []
         self.exclusions = False
-        for pattern in patterns:
-            pattern = pattern.strip()
-            if not pattern:
+        for p in list(pattern):
+            p = p.strip()
+            if not p:
                 continue
-            pattern = os.path.normpath(pattern)
+            p = os.path.normpath(p)
             new_pattern = Pattern()
-            if pattern[0] == "!":
-                if len(pattern) == 1:
+            if p[0] == "!":
+                if len(p) == 1:
                     raise ValueError('Illegal exclusion pattern: "!"')
                 new_pattern.exclusion = True
-                pattern = pattern[1:]
+                p = p[1:]
                 self.exclusions = True
             # In Python, we can proceed without explicit syntax checking
-            new_pattern.cleaned_pattern = pattern
-            new_pattern.dirs = pattern.split(os.path.sep)
+            new_pattern.cleaned_pattern = p
+            new_pattern.dirs = p.split(os.path.sep)
             self.patterns.append(new_pattern)
 
-    def matches(self, file_path: str) -> bool:
+    def matches(self, file_path: Path) -> bool:
         """Check if the file path or any of its parent directories match the patterns.
 
         This is equivalent to `MatchesOrParentMatches()` in the original Go
@@ -187,8 +188,8 @@ class PatternMatcher:
         deprecated due to buggy behavior.
         """
         matched = False
-        file_path = os.path.normpath(file_path)
-        if file_path == ".":
+        # file_path = os.path.normpath(file_path)
+        if str(file_path) == ".":
             # Don't let them exclude everything; kind of silly.
             return False
         parent_path = os.path.dirname(file_path)
@@ -201,7 +202,7 @@ class PatternMatcher:
             if pattern.exclusion != matched:
                 continue
 
-            match = pattern.match(file_path)
+            match = pattern.match(str(file_path))
 
             if not match and parent_path != ".":
                 # Check if the pattern matches any of the parent directories
@@ -215,6 +216,42 @@ class PatternMatcher:
                 matched = not pattern.exclusion
 
         return matched
+
+    def __call__(self, file_path: Path) -> bool:
+        """Check if the path matches any of the patterns.
+
+        Args:
+            file_path (Path): The path to check.
+
+        Returns:
+            True if the path matches any of the patterns.
+
+        Usage:
+        ```python
+        from pathlib import Path
+        from modal._utils.pattern_matcher import PatternMatcher
+
+        matcher = PatternMatcher("*.py")
+
+        assert matcher(Path("foo.py"))
+        ```
+        """
+        return self.matches(file_path)
+
+    def __invert__(self) -> Callable[[Path], bool]:
+        """Invert the filter. Returns a function that returns True if the path does not match any of the patterns.
+
+        Usage:
+        ```python
+        from pathlib import Path
+        from modal._utils.pattern_matcher import PatternMatcher
+
+        inverted_matcher = ~PatternMatcher("**/*.py")
+
+        assert not inverted_matcher(Path("foo.py"))
+        ```
+        """
+        return lambda path: not self(path)
 
 
 def read_ignorefile(reader: TextIO) -> list[str]:
