@@ -221,6 +221,12 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         resp = await retry_transient_errors(client.stub.SharedVolumeGetOrCreate, request)
         return resp.shared_volume_id
 
+    @staticmethod
+    async def delete(label: str, client: Optional[_Client] = None, environment_name: Optional[str] = None):
+        obj = await _NetworkFileSystem.lookup(label, client=client, environment_name=environment_name)
+        req = api_pb2.SharedVolumeDeleteRequest(shared_volume_id=obj.object_id)
+        await retry_transient_errors(obj._client.stub.SharedVolumeDelete, req)
+
     @live_method
     async def write_file(self, remote_path: str, fp: BinaryIO, progress_cb: Optional[Callable[..., Any]] = None) -> int:
         """Write from a file object to a path on the network file system, atomically.
@@ -239,7 +245,10 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         if data_size > LARGE_FILE_LIMIT:
             progress_task_id = progress_cb(name=remote_path, size=data_size)
             blob_id = await blob_upload_file(
-                fp, self._client.stub, progress_report_cb=functools.partial(progress_cb, progress_task_id)
+                fp,
+                self._client.stub,
+                progress_report_cb=functools.partial(progress_cb, progress_task_id),
+                sha256_hex=sha_hash,
             )
             req = api_pb2.SharedVolumePutFileRequest(
                 shared_volume_id=self.object_id,

@@ -32,6 +32,7 @@ from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._runtime.execution_context import current_input_id, is_local
 from ._serialization import serialize, serialize_proto_params
+from ._traceback import print_server_warnings
 from ._utils.async_utils import (
     TaskContext,
     async_merge,
@@ -347,7 +348,7 @@ class _FunctionSpec:
     volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]
     gpus: Union[GPU_T, list[GPU_T]]  # TODO(irfansharif): Somehow assert that it's the first kind, in sandboxes
     cloud: Optional[str]
-    cpu: Optional[float]
+    cpu: Optional[Union[float, tuple[float, float]]]
     memory: Optional[Union[int, tuple[int, int]]]
     ephemeral_disk: Optional[int]
     scheduler_placement: Optional[SchedulerPlacement]
@@ -424,68 +425,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         fun._is_method = True
         return fun
 
-    def _bind_instance_method(self, class_bound_method: "_Function"):
-        """mdmd:hidden
-
-        Binds an "instance service function" to a specific method.
-        This "dummy" _Function gets no unique object_id and isn't backend-backed at the moment, since all
-        it does it forward invocations to the underlying instance_service_function with the specified method,
-        and we don't support web_config for parameterized methods at the moment.
-        """
-        # TODO(elias): refactor to not use `_from_loader()` as a crutch for lazy-loading the
-        #   underlying instance_service_function. It's currently used in order to take advantage
-        #   of resolver logic and get "chained" resolution of lazy loads, even though this thin
-        #   object itself doesn't need any "loading"
-        instance_service_function = self
-        assert instance_service_function._obj
-        method_name = class_bound_method._use_method_name
-        full_function_name = f"{class_bound_method._function_name}[parameterized]"
-
-        def hydrate_from_instance_service_function(method_placeholder_fun):
-            method_placeholder_fun._hydrate_from_other(instance_service_function)
-            method_placeholder_fun._obj = instance_service_function._obj
-            method_placeholder_fun._web_url = (
-                class_bound_method._web_url
-            )  # TODO: this shouldn't be set when actual parameters are used
-            method_placeholder_fun._function_name = full_function_name
-            method_placeholder_fun._is_generator = class_bound_method._is_generator
-            method_placeholder_fun._cluster_size = class_bound_method._cluster_size
-            method_placeholder_fun._use_method_name = method_name
-            method_placeholder_fun._is_method = True
-
-        async def _load(fun: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
-            # there is currently no actual loading logic executed to create each method on
-            # the *parameterized* instance of a class - it uses the parameter-bound service-function
-            # for the instance. This load method just makes sure to set all attributes after the
-            # `instance_service_function` has been loaded (it's in the `_deps`)
-            hydrate_from_instance_service_function(fun)
-
-        def _deps():
-            if instance_service_function.is_hydrated:
-                # without this check, the common instance_service_function will be reloaded by all methods
-                # TODO(elias): Investigate if we can fix this multi-loader in the resolver - feels like a bug?
-                return []
-            return [instance_service_function]
-
-        rep = f"Method({full_function_name})"
-
-        fun = _Function._from_loader(
-            _load,
-            rep,
-            deps=_deps,
-            hydrate_lazily=True,
-        )
-        if instance_service_function.is_hydrated:
-            # Eager hydration (skip load) if the instance service function is already loaded
-            hydrate_from_instance_service_function(fun)
-
-        fun._info = class_bound_method._info
-        fun._obj = instance_service_function._obj
-        fun._is_method = True
-        fun._app = class_bound_method._app
-        fun._spec = class_bound_method._spec
-        return fun
-
     @staticmethod
     def from_args(
         info: FunctionInfo,
@@ -493,7 +432,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         image: _Image,
         secrets: Sequence[_Secret] = (),
         schedule: Optional[Schedule] = None,
-        is_generator=False,
+        is_generator: bool = False,
         gpu: Union[GPU_T, list[GPU_T]] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
         mounts: Collection[_Mount] = (),
@@ -510,7 +449,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         batch_max_size: Optional[int] = None,
         batch_wait_ms: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
-        cpu: Optional[float] = None,
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
         keep_warm: Optional[int] = None,  # keep_warm=True is equivalent to keep_warm=1
         cloud: Optional[str] = None,
         scheduler_placement: Optional[SchedulerPlacement] = None,
@@ -689,7 +628,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
         method_definitions: Optional[dict[str, api_pb2.MethodDefinition]] = None
-        partial_functions: dict[str, "modal.partial_function._PartialFunction"] = {}
+
         if info.user_cls:
             method_definitions = {}
             partial_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.FUNCTION)
@@ -982,7 +921,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     def _bind_parameters(
         self,
         obj: "modal.cls._Obj",
-        from_other_workspace: bool,
         options: Optional[api_pb2.FunctionOptions],
         args: Sized,
         kwargs: dict[str, Any],
@@ -993,7 +931,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         """
 
         # In some cases, reuse the base function, i.e. not create new clones of each method or the "service function"
-        can_use_parent = len(args) + len(kwargs) == 0 and not from_other_workspace and options is None
+        can_use_parent = len(args) + len(kwargs) == 0 and options is None
         parent = self
 
         async def _load(param_bound_func: _Function, resolver: Resolver, existing_object_id: Optional[str]):
@@ -1124,6 +1062,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 else:
                     raise
 
+            print_server_warnings(response.server_warnings)
+
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Ref({app_name})"
@@ -1251,9 +1191,16 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return self._web_url
 
     @property
-    def is_generator(self) -> bool:
+    async def is_generator(self) -> bool:
         """mdmd:hidden"""
-        assert self._is_generator is not None
+        # hacky: kind of like @live_method, but not hydrating if we have the value already from local source
+        if self._is_generator is not None:
+            # this is set if the function or class is local
+            return self._is_generator
+
+        # not set - this is a from_name lookup - hydrate
+        await self.resolve()
+        assert self._is_generator is not None  # should be set now
         return self._is_generator
 
     @property
@@ -1335,6 +1282,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     @synchronizer.no_io_translation
     async def _call_generator_nowait(self, args, kwargs):
+        deprecation_warning(
+            (2024, 12, 11),
+            "Calling spawn on a generator function is deprecated and will soon raise an exception.",
+        )
         return await _Invocation.create(
             self,
             args,
@@ -1374,6 +1325,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         async for item in self._call_generator(args, kwargs):  # type: ignore
             yield item
 
+    def _is_local(self):
+        return self._info is not None
+
     def _get_info(self) -> FunctionInfo:
         if not self._info:
             raise ExecutionError("Can't get info for a function that isn't locally defined")
@@ -1398,19 +1352,24 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         """
         # TODO(erikbern): it would be nice to remove the nowrap thing, but right now that would cause
         # "user code" to run on the synchronicity thread, which seems bad
+        if not self._is_local():
+            msg = (
+                "The definition for this function is missing here so it is not possible to invoke it locally. "
+                "If this function was retrieved via `Function.lookup` you need to use `.remote()`."
+            )
+            raise ExecutionError(msg)
+
         info = self._get_info()
+        if not info.raw_f:
+            # Here if calling .local on a service function itself which should never happen
+            # TODO: check if we end up here in a container for a serialized function?
+            raise ExecutionError("Can't call .local on service function")
 
         if is_local() and self.spec.volumes or self.spec.network_file_systems:
             warnings.warn(
                 f"The {info.function_name} function is executing locally "
                 + "and will not have access to the mounted Volume or NetworkFileSystem data"
             )
-        if not info or not info.raw_f:
-            msg = (
-                "The definition for this function is missing so it is not possible to invoke it locally. "
-                "If this function was retrieved via `Function.lookup` you need to use `.remote()`."
-            )
-            raise ExecutionError(msg)
 
         obj: Optional["modal.cls._Obj"] = self._get_obj()
 
@@ -1420,9 +1379,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         else:
             # This is a method on a class, so bind the self to the function
             user_cls_instance = obj._cached_user_cls_instance()
-
             fun = info.raw_f.__get__(user_cls_instance)
 
+            # TODO: replace implicit local enter/exit with a context manager
             if is_async(info.raw_f):
                 # We want to run __aenter__ and fun in the same coroutine
                 async def coro():

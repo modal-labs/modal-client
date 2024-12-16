@@ -18,6 +18,7 @@ import click
 import click.testing
 import toml
 
+from modal import App, Sandbox
 from modal._utils.grpc_testing import InterceptionContext
 from modal.cli.entry_point import entrypoint_cli
 from modal.exception import InvalidError
@@ -384,12 +385,14 @@ def mock_shell_pty(servicer):
         yield
         write_task.cancel()
 
-    with mock.patch("rich.console.Console.is_terminal", True), mock.patch(
-        "modal._pty.get_pty_info", mock_get_pty_info
-    ), mock.patch("modal.runner.get_pty_info", mock_get_pty_info), mock.patch(
-        "modal._utils.shell_utils.stream_from_stdin", fake_stream_from_stdin
-    ), mock.patch("modal.container_process.stream_from_stdin", fake_stream_from_stdin), mock.patch(
-        "modal.container_process.write_to_fd", write_to_fd
+    with (
+        mock.patch("rich.console.Console.is_terminal", True),
+        mock.patch("modal.cli.container.get_pty_info", mock_get_pty_info),
+        mock.patch("modal._pty.get_pty_info", mock_get_pty_info),
+        mock.patch("modal.runner.get_pty_info", mock_get_pty_info),
+        mock.patch("modal._utils.shell_utils.stream_from_stdin", fake_stream_from_stdin),
+        mock.patch("modal.container_process.stream_from_stdin", fake_stream_from_stdin),
+        mock.patch("modal.container_process.write_to_fd", write_to_fd),
     ):
         yield fake_stdin, captured_out
 
@@ -538,6 +541,14 @@ def test_nfs_get(set_env_client, servicer):
         _run(["nfs", "get", nfs_name, "test.txt", tmpdir])
         with open(os.path.join(tmpdir, "test.txt")) as f:
             assert f.read() == "foo bar baz"
+
+
+def test_nfs_create_delete(servicer, server_url_env, set_env_client):
+    name = "test-delete-nfs"
+    _run(["nfs", "create", name])
+    assert name in _run(["nfs", "list"]).stdout
+    _run(["nfs", "delete", "--yes", name])
+    assert name not in _run(["nfs", "list"]).stdout
 
 
 def test_volume_cli(set_env_client):
@@ -1049,3 +1060,28 @@ def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, toke
         assert "Shutting down Modal client." in out
         assert "The detached app keeps running. You can track its progress at:" in out
         assert "Traceback" not in err
+
+
+@pytest.fixture
+def app(client):
+    app = App()
+    with app.run(client):
+        yield app
+
+
+@skip_windows("modal shell is not supported on Windows.")
+def test_container_exec(servicer, set_env_client, mock_shell_pty, app):
+    sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
+
+    fake_stdin, captured_out = mock_shell_pty
+
+    fake_stdin.clear()
+    fake_stdin.extend([b'echo "Hello World"\n', b"exit\n"])
+
+    shell_prompt = servicer.shell_prompt
+
+    _run(["container", "exec", "--pty", sb.object_id, "/bin/bash"])
+    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
+    captured_out.clear()
+
+    sb.terminate()

@@ -27,6 +27,44 @@ class _Queue(_Object, type_prefix="qu"):
 
     By default, the `Queue` object acts as a single FIFO queue which supports puts and gets (blocking and non-blocking).
 
+    **Usage**
+
+    ```python
+    from modal import Queue
+
+    # Create an ephemeral queue which is anonymous and garbage collected
+    with Queue.ephemeral() as my_queue:
+        # Putting values
+        my_queue.put("some value")
+        my_queue.put(123)
+
+        # Getting values
+        assert my_queue.get() == "some value"
+        assert my_queue.get() == 123
+
+        # Using partitions
+        my_queue.put(0)
+        my_queue.put(1, partition="foo")
+        my_queue.put(2, partition="bar")
+
+        # Default and "foo" partition are ignored by the get operation.
+        assert my_queue.get(partition="bar") == 2
+
+        # Set custom 10s expiration time on "foo" partition.
+        my_queue.put(3, partition="foo", partition_ttl=10)
+
+        # (beta feature) Iterate through items in place (read immutably)
+        my_queue.put(1)
+        assert [v for v in my_queue.iterate()] == [0, 1]
+
+    # You can also create persistent queues that can be used across apps
+    queue = Queue.from_name("my-persisted-queue", create_if_missing=True)
+    queue.put(42)
+    assert queue.get() == 42
+    ```
+
+    For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-queues).
+
     **Queue partitions (beta)**
 
     Specifying partition keys gives access to other independent FIFO partitions within the same `Queue` object.
@@ -53,38 +91,6 @@ class _Queue(_Object, type_prefix="qu"):
     A single `Queue` can contain up to 100,000 partitions, each with up to 5,000 items. Each item can be up to 256 KiB.
 
     Partition keys must be non-empty and must not exceed 64 bytes.
-
-    **Usage**
-
-    ```python
-    from modal import Queue
-
-    with Queue.ephemeral() as my_queue:
-        # Putting values
-        my_queue.put("some value")
-        my_queue.put(123)
-
-        # Getting values
-        assert my_queue.get() == "some value"
-        assert my_queue.get() == 123
-
-        # Using partitions
-        my_queue.put(0)
-        my_queue.put(1, partition="foo")
-        my_queue.put(2, partition="bar")
-
-        # Default and "foo" partition are ignored by the get operation.
-        assert my_queue.get(partition="bar") == 2
-
-        # Set custom 10s expiration time on "foo" partition.
-        my_queue.put(3, partition="foo", partition_ttl=10)
-
-        # (beta feature) Iterate through items in place (read immutably)
-        my_queue.put(1)
-        assert [v for v in my_queue.iterate()] == [0, 1]
-    ```
-
-    For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-queues).
     """
 
     @staticmethod

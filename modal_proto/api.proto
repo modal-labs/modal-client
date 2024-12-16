@@ -400,7 +400,7 @@ message AppPublishRequest {
 
 message AppPublishResponse {
   string url = 1;
-  repeated string warnings = 2;
+  repeated Warning server_warnings = 3;
 }
 
 message AppRollbackRequest {
@@ -589,6 +589,7 @@ message CheckpointInfo {
   string runtime_fingerprint = 4;
   int64 size = 5;
   bool checksum_is_file_index = 6;
+  string original_task_id = 7;
 }
 
 message ClassCreateRequest {
@@ -618,6 +619,7 @@ message ClassGetRequest {
 message ClassGetResponse {
   string class_id = 1;
   ClassHandleMetadata handle_metadata = 2;
+  repeated Warning server_warnings = 3;
 }
 
 message ClassHandleMetadata {
@@ -676,6 +678,7 @@ message ClassParameterValue {
 message ClientHelloResponse {
   string warning = 1;
   string image_builder_version = 2;  // Deprecated, no longer used in client
+  repeated Warning server_warnings = 4;
 }
 
 message CloudBucketMount {
@@ -769,6 +772,15 @@ message ContainerFileFlushRequest {
   string file_descriptor = 1;
 }
 
+message ContainerFileLsRequest {
+  string path = 1;
+}
+
+message ContainerFileMkdirRequest {
+  string path = 1;
+  bool make_parents = 2;
+}
+
 message ContainerFileOpenRequest {
   // file descriptor is hydrated when sent from server -> worker
   optional string file_descriptor = 1;
@@ -785,10 +797,21 @@ message ContainerFileReadRequest {
   optional uint32 n = 2;
 }
 
+message ContainerFileRmRequest {
+  string path = 1;
+  bool recursive = 2;
+}
+
 message ContainerFileSeekRequest {
   string file_descriptor = 1;
   int32 offset = 2;
   SeekWhence whence = 3;
+}
+
+message ContainerFileWatchRequest {
+  string path = 1;
+  bool recursive = 2;
+  optional uint64 timeout_secs = 3;
 }
 
 message ContainerFileWriteReplaceBytesRequest {
@@ -819,6 +842,10 @@ message ContainerFilesystemExecRequest {
     ContainerFileDeleteBytesRequest file_delete_bytes_request = 7;
     ContainerFileWriteReplaceBytesRequest file_write_replace_bytes_request = 8;
     ContainerFileCloseRequest file_close_request = 9;
+    ContainerFileLsRequest file_ls_request = 11;
+    ContainerFileMkdirRequest file_mkdir_request = 12;
+    ContainerFileRmRequest file_rm_request = 13;
+    ContainerFileWatchRequest file_watch_request = 14;
   }
   string task_id = 10;
 }
@@ -1210,6 +1237,17 @@ message Function {
   bool _experimental_custom_scaling = 76;
 }
 
+message FunctionAsyncInvokeRequest {
+  string function_id = 1;
+  string parent_input_id = 2;
+  FunctionInput input = 3;
+} 
+
+message FunctionAsyncInvokeResponse {
+  bool retry_with_blob_upload = 1;
+  string function_call_id = 2;
+}
+
 message FunctionBindParamsRequest {
   string function_id = 1;
   bytes serialized_params = 2;
@@ -1445,6 +1483,7 @@ message FunctionGetRequest {
 message FunctionGetResponse {
   string function_id = 1;
   FunctionHandleMetadata handle_metadata = 2;
+  repeated Warning server_warnings = 4;
 }
 
 message FunctionGetSerializedRequest {
@@ -2613,6 +2652,16 @@ message VolumeRemoveFileRequest {
   bool recursive = 3;
 }
 
+message Warning {
+  enum WarningType {
+    WARNING_TYPE_UNSPECIFIED = 0;
+    WARNING_TYPE_CLIENT_DEPRECATION = 1;
+    WARNING_TYPE_RESOURCE_LIMIT = 2;
+  }
+  WarningType type = 1;
+  string message = 2;
+}
+
 message WebUrlInfo {
   bool truncated = 1;
   bool has_unique_hash = 2 [deprecated=true];
@@ -2628,6 +2677,7 @@ message WebhookConfig {
   uint32 web_server_port = 7;
   float web_server_startup_timeout = 8;
   bool web_endpoint_docs = 9;
+  bool requires_proxy_auth = 10;
 }
 
 message WorkspaceNameLookupResponse {
@@ -2674,6 +2724,7 @@ service ModalClient {
   rpc ContainerFilesystemExec(ContainerFilesystemExecRequest) returns (ContainerFilesystemExecResponse);
   rpc ContainerFilesystemExecGetOutput(ContainerFilesystemExecGetOutputRequest) returns (stream FilesystemRuntimeOutputBatch);
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (ContainerHeartbeatResponse);
+  rpc ContainerHello(google.protobuf.Empty) returns (google.protobuf.Empty);
   rpc ContainerLog(ContainerLogRequest) returns (google.protobuf.Empty);
   rpc ContainerStop(ContainerStopRequest) returns (ContainerStopResponse);
 
@@ -2703,6 +2754,7 @@ service ModalClient {
   rpc EnvironmentUpdate(EnvironmentUpdateRequest) returns (EnvironmentListItem);
 
   // Functions
+  rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
   rpc FunctionCallGetDataIn(FunctionCallGetDataRequest) returns (stream DataChunk);

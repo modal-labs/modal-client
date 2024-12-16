@@ -49,7 +49,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     raw_f: Callable[P, ReturnType]
     flags: _PartialFunctionFlags
     webhook_config: Optional[api_pb2.WebhookConfig]
-    is_generator: Optional[bool]
+    is_generator: bool
     keep_warm: Optional[int]
     batch_max_size: Optional[int]
     batch_wait_ms: Optional[int]
@@ -73,7 +73,13 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         self.raw_f = raw_f
         self.flags = flags
         self.webhook_config = webhook_config
-        self.is_generator = is_generator
+        if is_generator is None:
+            # auto detect - doesn't work if the function *returns* a generator
+            final_is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
+        else:
+            final_is_generator = is_generator
+
+        self.is_generator = final_is_generator
         self.keep_warm = keep_warm
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
         self.batch_max_size = batch_max_size
@@ -101,7 +107,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
             # This happens mainly during serialization of the wrapped underlying class of a Cls
             # since we don't have the instance info here we just return the PartialFunction itself
             # to let it be bound to a variable and become a Function later on
-            return self
+            return self  # type: ignore  # this returns a PartialFunction in a special internal case
 
     def __del__(self):
         if (self.flags & _PartialFunctionFlags.FUNCTION) and self.wrapped is False:
@@ -154,14 +160,14 @@ def _find_partial_methods_for_user_cls(user_cls: type[Any], flags: int) -> dict[
             )
             deprecation_error((2024, 2, 21), message)
 
-    partial_functions: dict[str, PartialFunction] = {}
+    partial_functions: dict[str, _PartialFunction] = {}
     for parent_cls in reversed(user_cls.mro()):
         if parent_cls is not object:
             for k, v in parent_cls.__dict__.items():
-                if isinstance(v, PartialFunction):
-                    partial_function = synchronizer._translate_in(v)  # TODO: remove need for?
-                    if partial_function.flags & flags:
-                        partial_functions[k] = partial_function
+                if isinstance(v, PartialFunction):  # type: ignore[reportArgumentType]   # synchronicity wrapper types
+                    _partial_function: _PartialFunction = typing.cast(_PartialFunction, synchronizer._translate_in(v))
+                    if _partial_function.flags & flags:
+                        partial_functions[k] = _partial_function
 
     return partial_functions
 
@@ -245,8 +251,6 @@ def _method(
                 "Batched function on classes should not be wrapped by `@method`. "
                 "Suggestion: remove the `@method` decorator."
             )
-        if is_generator is None:
-            is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
         return _PartialFunction(raw_f, _PartialFunctionFlags.FUNCTION, is_generator=is_generator, keep_warm=keep_warm)
 
     return wrapper
@@ -271,6 +275,7 @@ def _web_endpoint(
     custom_domains: Optional[
         Iterable[str]
     ] = None,  # Create an endpoint using a custom domain fully-qualified domain name (FQDN).
+    requires_proxy_auth: bool = False,  # Require Proxy-Authorization HTTP Headers on requests to the endpoint
     wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[P, ReturnType]], _PartialFunction[P, ReturnType, ReturnType]]:
     """Register a basic web endpoint with this application.
@@ -321,6 +326,7 @@ def _web_endpoint(
                 requested_suffix=label,
                 async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
                 custom_domains=_parse_custom_domains(custom_domains),
+                requires_proxy_auth=requires_proxy_auth,
             ),
         )
 
@@ -332,6 +338,7 @@ def _asgi_app(
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
+    requires_proxy_auth: bool = False,  # Require Proxy-Authorization HTTP Headers on requests to the endpoint
     wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering an ASGI app with a Modal function.
@@ -395,6 +402,7 @@ def _asgi_app(
                 requested_suffix=label,
                 async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
                 custom_domains=_parse_custom_domains(custom_domains),
+                requires_proxy_auth=requires_proxy_auth,
             ),
         )
 
@@ -406,6 +414,7 @@ def _wsgi_app(
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
+    requires_proxy_auth: bool = False,  # Require Proxy-Authorization HTTP Headers on requests to the endpoint
     wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering a WSGI app with a Modal function.
@@ -469,6 +478,7 @@ def _wsgi_app(
                 requested_suffix=label,
                 async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
                 custom_domains=_parse_custom_domains(custom_domains),
+                requires_proxy_auth=requires_proxy_auth,
             ),
         )
 
@@ -481,6 +491,7 @@ def _web_server(
     startup_timeout: float = 5.0,  # Maximum number of seconds to wait for the web server to start.
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
+    requires_proxy_auth: bool = False,  # Require Proxy-Authorization HTTP Headers on requests to the endpoint
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator that registers an HTTP web server inside the container.
 
@@ -524,6 +535,7 @@ def _web_server(
                 custom_domains=_parse_custom_domains(custom_domains),
                 web_server_port=port,
                 web_server_startup_timeout=startup_timeout,
+                requires_proxy_auth=requires_proxy_auth,
             ),
         )
 

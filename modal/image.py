@@ -781,13 +781,13 @@ class _Image(_Object, type_prefix="im"):
             context_mount_function=lambda: _Mount.from_local_file(local_path, remote_path=f"/{basename}"),
         )
 
-    def _add_local_python_packages(self, *packages: str, copy: bool = False) -> "_Image":
-        """Adds Python package files to containers
+    def add_local_python_source(self, *modules: str, copy: bool = False) -> "_Image":
+        """Adds locally available Python packages/modules to containers
 
-        Adds all files from the specified Python packages to containers running the Image.
+        Adds all files from the specified Python package or module to containers running the Image.
 
         Packages are added to the `/root` directory of containers, which is on the `PYTHONPATH`
-        of any executed Modal Functions.
+        of any executed Modal Functions, enabling import of the module by that name.
 
         By default (`copy=False`), the files are added to containers on startup and are not built into the actual Image,
         which speeds up deployment.
@@ -797,9 +797,14 @@ class _Image(_Object, type_prefix="im"):
         required if you want to run additional build steps after this one.
 
         **Note:** This excludes all dot-prefixed subdirectories or files and all `.pyc`/`__pycache__` files.
-        To add full directories with finer control, use `.add_local_dir()` instead.
+        To add full directories with finer control, use `.add_local_dir()` instead and specify `/root` as
+        the destination directory.
         """
-        mount = _Mount.from_local_python_packages(*packages)
+
+        def only_py_files(filename):
+            return filename.endswith(".py")
+
+        mount = _Mount.from_local_python_packages(*modules, condition=only_py_files)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
@@ -1108,8 +1113,8 @@ class _Image(_Object, type_prefix="im"):
         If not provided as argument the path to the lockfile is inferred. However, the
         file has to exist, unless `ignore_lockfile` is set to `True`.
 
-        Note that the root project of the poetry project is not installed,
-        only the dependencies. For including local packages see `modal.Mount.from_local_python_packages`
+        Note that the root project of the poetry project is not installed, only the dependencies.
+        For including local python source files see `add_local_python_source`
         """
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
