@@ -762,7 +762,7 @@ class _App:
                     raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
                 scheduler_placement = SchedulerPlacement(region=region)
 
-            function = _Function.from_args(
+            function = _Function.from_local(
                 info,
                 app=self,
                 image=image,
@@ -895,7 +895,7 @@ class _App:
 
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
-            cls_func = _Function.from_args(
+            cls_func = _Function.from_local(
                 info,
                 app=self,
                 image=image or self._get_default_image(),

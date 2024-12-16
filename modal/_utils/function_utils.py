@@ -16,7 +16,7 @@ from modal_proto import api_pb2
 
 from .._serialization import deserialize, deserialize_data_format, serialize
 from .._traceback import append_modal_tb
-from ..config import config, logger
+from ..config import logger
 from ..exception import DeserializationError, ExecutionError, FunctionTimeoutError, InvalidError, RemoteError
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
 from .blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
@@ -309,20 +309,22 @@ class FunctionInfo:
             return []
 
         # make sure the function's own entrypoint is included:
-        if self._type == FunctionInfoType.PACKAGE:
-            if config.get("automount"):
-                return [_Mount.from_local_python_packages(self.module_name)]
-            elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
-                # mount only relevant file and __init__.py:s
-                return [
-                    _Mount.from_local_dir(
-                        self._base_dir,
-                        remote_path=self._remote_dir,
-                        recursive=True,
-                        condition=entrypoint_only_package_mount_condition(self._file),
-                    )
-                ]
+        if self._type == FunctionInfoType.PACKAGE and self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
+            # mount with only entrypoint file and __init__.py:s, to ensure importability
+            # Anything else in the package needs to come from automounts
+            return [
+                _Mount.from_local_dir(
+                    self._base_dir,
+                    remote_path=self._remote_dir,
+                    recursive=True,
+                    condition=entrypoint_only_package_mount_condition(self._file),
+                )
+            ]
         elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
+            # TODO: would be nice if this checked if the file is included
+            #  in the image already and just referenced the existing file + path
+            #  if that was the case. Otherwise this risks duplicating the module
+            #  in two different locations
             remote_path = ROOT_DIR / Path(self._file).name
             if not _is_modal_path(remote_path):
                 return [

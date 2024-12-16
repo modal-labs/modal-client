@@ -718,14 +718,14 @@ def _is_modal_path(remote_path: PurePosixPath):
     return False
 
 
-def get_auto_mounts() -> list[_Mount]:
+def get_auto_mounts() -> dict[str, _Mount]:
     """mdmd:hidden
 
     Auto-mount local modules that have been imported in global scope.
     This may or may not include the "entrypoint" of the function as well, depending on how modal is invoked
     Note: sys.modules may change during the iteration
     """
-    auto_mounts = []
+    auto_mounts = {}
     top_level_modules = []
     skip_prefixes = set()
     for name, module in sorted(sys.modules.items(), key=lambda kv: len(kv[0])):
@@ -755,6 +755,6 @@ def get_auto_mounts() -> list[_Mount]:
                 # skip any module that has paths in SYS_PREFIXES, or would overwrite the modal Package in the container
                 break
         else:
-            auto_mounts.append(potential_mount)
+            auto_mounts[module_name] = potential_mount
 
     return auto_mounts
