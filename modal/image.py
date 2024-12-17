@@ -338,6 +338,53 @@ def _create_context_mount(docker_commands: list[str]) -> _Mount:
     return _Mount.from_local_dir("./", remote_path="/", condition=mount_filter)
 
 
+def find_dockerignore_file(dockerfile_path: Path) -> Optional[Path]:
+    current_working_dir = Path.cwd()
+    # 1. file next to the Dockerfile but do NOT look for parent directories
+
+    dockerignore_file = None
+    if dockerignore_file.exists():
+        return dockerignore_file
+
+    dockerignore_file = None
+    if dockerignore_file.exists():
+        return dockerignore_file
+
+    dockerignore_file = None
+    if dockerignore_file.exists():
+        return dockerignore_file
+
+    dockerignore_file = None
+    if dockerignore_file:
+        return dockerignore_file
+
+    def valid_dockerignore_file(fp):
+        # fp has to exist
+        if not fp.exists():
+            return False
+        # fp has to be subpath to current working directory
+        if not fp.is_relative_to(current_working_dir):
+            return False
+
+        return True
+
+    generic_name = ".dockerignore"
+    specific_name = f"{dockerfile_path.name}.dockerignore"
+
+    possible_locations = [
+        # 1. check if specific <dockerfile_name>.dockerignore file exists in the same directory as <dockerfile_name>
+        dockerfile_path.parent / specific_name,
+        # 2. check if generic .dockerignore file exists in the same directory as <dockerfile_name>
+        dockerfile_path.parent / generic_name,
+        # 3. check if generic .dockerignore file exists in current working directory
+        current_working_dir / generic_name,
+        # 4. ?????? check if specific <dockerfile_name>.dockerignore file exists in current working directory
+        current_working_dir / specific_name,
+    ]
+
+    return next((e for e in possible_locations if valid_dockerignore_file(e)), None)
+
+
 class _ImageRegistryConfig:
     """mdmd:hidden"""
 
