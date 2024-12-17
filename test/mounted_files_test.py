@@ -273,16 +273,16 @@ def test_mount_dedupe(servicer, credentials, test_dir, server_url_env):
     )
     assert servicer.n_mounts == 2
     # the order isn't strictly defined here
-    client_mount, entrypoint_mount, pkg_a_mount = sorted(servicer.mount_contents.items(), key=lambda item: len(item[1]))
-    assert client_mount[1] == {}
+    entrypoint_mount, pkg_a_mount = sorted(
+        servicer.mounts_excluding_published_client().items(), key=lambda item: len(item[1])
+    )
     assert entrypoint_mount[1].keys() == {"/root/mount_dedupe.py"}
     for fn in pkg_a_mount[1].keys():
         assert fn.startswith("/root/pkg_a")
     assert "/root/pkg_a/normally_not_included.pyc" not in pkg_a_mount[1].keys()
 
 
-def test_mount_dedupe_explicit(servicer, credentials, test_dir, server_url_env):
-    supports_dir = test_dir / "supports"
+def test_mount_dedupe_explicit(servicer, credentials, supports_dir, server_url_env):
     normally_not_included_file = supports_dir / "pkg_a" / "normally_not_included.pyc"
     normally_not_included_file.touch(exist_ok=True)
     print(
@@ -298,7 +298,7 @@ def test_mount_dedupe_explicit(servicer, credentials, test_dir, server_url_env):
     assert servicer.n_mounts == 3
 
     # mounts are loaded in parallel, but there
-    mounted_files_sets = {frozenset(m.keys()) for m in servicer.mount_contents.values() if m}
+    mounted_files_sets = {frozenset(m.keys()) for m in servicer.mounts_excluding_published_client().values()}
     assert {"/root/mount_dedupe.py"} in mounted_files_sets
     mounted_files_sets.remove(frozenset({"/root/mount_dedupe.py"}))
 
@@ -317,6 +317,26 @@ def test_mount_dedupe_explicit(servicer, credentials, test_dir, server_url_env):
         assert fn.startswith("/root/pkg_a")
 
     assert len(mount_with_pyc) == len(remaining_mount) + 1
+    normally_not_included_file.unlink()  # cleanup
+
+
+def test_mount_dedupe_relative_path_entrypoint(servicer, credentials, supports_dir, server_url_env, monkeypatch):
+    workdir = supports_dir / "pkg_a"
+    target_app = "../hello.py"  # in parent directory - requiring `..` expansion in path normalization
+
+    helpers.deploy_app_externally(
+        # two explicit mounts of the same package
+        servicer,
+        credentials,
+        target_app,
+        cwd=workdir,
+    )
+    # should be only one unique set of files in mounts
+    mounted_files_sets = {frozenset(m.keys()) for m in servicer.mounts_excluding_published_client().values()}
+    assert len(mounted_files_sets) == 1
+
+    # but there should also be only one actual mount if deduplication works as expected
+    assert len(servicer.mounts_excluding_published_client()) == 1
 
 
 # @skip_windows("pip-installed pdm seems somewhat broken on windows")
