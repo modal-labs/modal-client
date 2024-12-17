@@ -137,6 +137,26 @@ class H100(_GPUConfig):
         return f"GPU(H100, count={self.count})"
 
 
+class L40S(_GPUConfig):
+    """
+    [NVIDIA L40S](https://www.nvidia.com/en-us/data-center/l40s/) GPU class.
+
+    It's a good one! Much CUDA. Very tensor.
+    """
+
+    def __init__(
+        self,
+        *,
+        # Number of GPUs per container. Defaults to 1.
+        # Useful if you have very large models that don't fit on a single GPU.
+        count: int = 1,
+    ):
+        super().__init__(api_pb2.GPU_TYPE_L40S, count)
+
+    def __repr__(self):
+        return f"GPU(L40S, count={self.count})"
+
+
 class Any(_GPUConfig):
     """Selects any one of the GPU classes available within Modal, according to availability."""
 
@@ -154,6 +174,7 @@ STRING_TO_GPU_CONFIG: dict[str, Callable] = {
     "a100-80gb": lambda: A100(size="80GB"),
     "h100": H100,
     "a10g": A10G,
+    "l40s": L40S,
     "any": Any,
 }
 display_string_to_config = "\n".join(f'- "{key}" → `{c()}`' for key, c in STRING_TO_GPU_CONFIG.items() if key != "inf2")
