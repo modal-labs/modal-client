@@ -254,7 +254,7 @@ def test_mounts_are_not_traversed_on_declaration(test_dir, monkeypatch, client, 
         for fn, _ in r:
             files.add(fn)
     # sanity check - this test file should be included since we mounted the test dir
-    assert __file__ in files  # this test file should have been included
+    assert Path(__file__) in files  # this test file should have been included
 
 
 def test_mount_dedupe(servicer, credentials, test_dir, server_url_env):
