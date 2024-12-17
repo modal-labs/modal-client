@@ -10,7 +10,7 @@ from modal_proto import api_pb2
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.deprecation import deprecation_error
+from ._utils.deprecation import Renamed, deprecation_error, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -113,11 +113,12 @@ class _Dict(_Object, type_prefix="di"):
 
     @staticmethod
     def from_name(
-        label: str,
+        name: str = "",
         data: Optional[dict] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
+        label=Renamed,  # Deprecated: use `name`
     ) -> "_Dict":
         """Reference a named Dict, creating if necessary.
 
@@ -130,12 +131,16 @@ class _Dict(_Object, type_prefix="di"):
         d[123] = 456
         ```
         """
-        check_object_name(label, "Dict")
+        name = renamed_parameter((2024, 12, 17), "Dict.from_name", "label", "name", label, name)
+        # TODO Remove the default value for name when expiring the deprecation on label
+        if not name:
+            raise TypeError("Dict.from_name() missing required positional argument: 'name'")
+        check_object_name(name, "Dict")
 
         async def _load(self: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
             serialized = _serialize_dict(data if data is not None else {})
             req = api_pb2.DictGetOrCreateRequest(
-                deployment_name=label,
+                deployment_name=name,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
@@ -149,12 +154,13 @@ class _Dict(_Object, type_prefix="di"):
 
     @staticmethod
     async def lookup(
-        label: str,
+        name: str = "",
         data: Optional[dict] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
+        label=Renamed,  # Deprecated: use `name`
     ) -> "_Dict":
         """Lookup a named Dict.
 
@@ -166,8 +172,13 @@ class _Dict(_Object, type_prefix="di"):
         d["xyz"] = 123
         ```
         """
+        name = renamed_parameter((2024, 12, 17), "Dict.lookup", "label", "name", label, name)
+        # TODO Remove the default value for name when expiring the deprecation on label
+        if not name:
+            raise TypeError("Dict.from_name() missing required positional argument: 'name'")
+        check_object_name(name, "Dict")
         obj = _Dict.from_name(
-            label,
+            name,
             data=data,
             namespace=namespace,
             environment_name=environment_name,

@@ -2,6 +2,7 @@
 import sys
 import warnings
 from datetime import date
+from typing import Any, TypeVar, cast
 
 from ..exception import DeprecationError, PendingDeprecationError
 
@@ -42,3 +43,35 @@ def deprecation_warning(
 
     # This is a lower-level function that warnings.warn uses
     warnings.warn_explicit(f"{date(*deprecated_on)}: {msg}", warning_cls, filename, lineno)
+
+
+class RenamedSingleton:
+    """Singleton to use as the default value for renamed parameters."""
+
+    def __repr__(self):
+        return "<deprecated>"
+
+
+Renamed = RenamedSingleton()
+
+
+T = TypeVar("T")
+
+
+def renamed_parameter(
+    date: tuple[int, int, int],
+    func_name: str,
+    old_name: str,
+    new_name: str,
+    old_value: Any,
+    new_value: T,
+) -> T:
+    """Helper function for issuing a deprecation warning about renamed parameters."""
+    msg = (
+        f"The '{old_name}' parameter of `{func_name}` has been renamed to '{new_name}'."
+        "\nUsing the old name will become an error in a future release. Please update your code."
+    )
+    if old_value is not Renamed:
+        deprecation_warning(date, msg, show_source=False)
+        return cast(T, old_value)
+    return new_value
