@@ -19,18 +19,13 @@ from ._location import parse_cloud_provider
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import synchronize_api
+from ._utils.deprecation import deprecation_error
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
-from .exception import (
-    ExecutionError,
-    InvalidError,
-    SandboxTerminatedError,
-    SandboxTimeoutError,
-    deprecation_error,
-)
+from .exception import ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
 from .file_io import _FileIO
 from .gpu import GPU_T
 from .image import _Image

@@ -22,6 +22,7 @@ from modal_proto import api_pb2
 
 from ._ipython import is_notebook
 from ._utils.async_utils import synchronize_api
+from ._utils.deprecation import deprecation_error, deprecation_warning
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
@@ -29,7 +30,7 @@ from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, parameter
 from .config import logger
-from .exception import ExecutionError, InvalidError, deprecation_error, deprecation_warning
+from .exception import ExecutionError, InvalidError
 from .functions import Function, _Function
 from .gpu import GPU_T
 from .image import _Image
