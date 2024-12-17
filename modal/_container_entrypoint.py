@@ -463,12 +463,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 batch_max_size = function_def.batch_max_size or 0
                 batch_wait_ms = function_def.batch_linger_ms or 0
 
-        # Get ids and metadata for objects (primarily functions and classes) on the app
-        container_app: RunningApp = container_io_manager.get_app_objects()
-
         # Initialize objects on the app.
         # This is basically only functions and classes - anything else is deprecated and will be unsupported soon
         if active_app is not None:
+            container_app: RunningApp = container_io_manager.create_running_app(container_args.app_layout)
             app: App = synchronizer._translate_out(active_app)
             app._init_container(client, container_app)
 
