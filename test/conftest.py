@@ -151,6 +151,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.done = False
         self.rate_limit_sleep_duration = None
         self.fail_get_inputs = False
+        self.fail_get_outputs_with_lost_inputs = False
         self.slow_put_inputs = False
         self.container_inputs = []
         self.container_outputs = []
@@ -1121,6 +1122,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 output_exc = api_pb2.FunctionGetOutputsItem(
                     input_id=input_id, idx=idx, result=result, data_format=api_pb2.DATA_FORMAT_PICKLE
                 )
+
+            if self.fail_get_outputs_with_lost_inputs:
+                # We fail the output after invoking the input's function because so our tests use the number of function
+                # invocations to assert the function was retried the correct number of times.
+                await stream.send_message(
+                    api_pb2.FunctionGetOutputsResponse(num_unfinished_inputs=1, lost_input_ids=[input_id])
+                )
+                return
 
             if output_exc:
                 output = output_exc
