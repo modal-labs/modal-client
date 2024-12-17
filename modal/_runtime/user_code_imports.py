@@ -119,7 +119,9 @@ class ImportedFunction(Service):
             }
 
         web_callable, lifespan_manager = construct_webhook_callable(
-            self._user_defined_callable, fun_def.webhook_config, container_io_manager
+            self._user_defined_callable,
+            fun_def.webhook_config,
+            container_io_manager,
         )
 
         return {
