@@ -144,10 +144,11 @@ class _MountDir(_MountEntry):
             gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
 
         for local_filename in gen:
-            if not self.ignore(Path(local_filename)):
-                local_relpath = Path(local_filename).expanduser().absolute().relative_to(local_dir)
+            local_path = Path(local_filename)
+            if not self.ignore(local_path):
+                local_relpath = local_path.expanduser().absolute().relative_to(local_dir)
                 mount_path = self.remote_path / local_relpath.as_posix()
-                yield local_filename, mount_path
+                yield local_path, mount_path
 
     def watch_entry(self):
         return self.local_dir.resolve().expanduser(), None
@@ -279,8 +280,11 @@ class _Mount(_Object, type_prefix="mo"):
         rep = f"Mount({entries})"
 
         async def mount_content_deduplication_key():
+            def normalized_selected_files():
+                return [(local_path.resolve(), remote_path) for local_path, remote_path in _select_files(entries)]
+
             try:
-                included_files = await asyncio.get_event_loop().run_in_executor(None, _select_files, entries)
+                included_files = await asyncio.get_event_loop().run_in_executor(None, normalized_selected_files)
             except NonLocalMountError:
                 return None
             return (_Mount._type_prefix, "local", frozenset(included_files))
