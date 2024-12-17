@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2024
 import asyncio
+import enum
 import io
 from dataclasses import dataclass
-from enum import Enum
 from typing import TYPE_CHECKING, AsyncIterator, Generic, Optional, Sequence, TypeVar, Union, cast
 
 if TYPE_CHECKING:
@@ -97,7 +97,7 @@ async def _replace_bytes(file: "_FileIO", data: bytes, start: Optional[int] = No
     await file._wait(resp.exec_id)
 
 
-class WatchEvent(Enum):
+class WatchEvent(enum.Enum):
     Unknown = "Unknown"
     Access = "Access"
     Create = "Create"
