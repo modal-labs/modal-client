@@ -26,6 +26,7 @@ class LifespanManager:
     shutdown: asyncio.Future
     queue: asyncio.Queue
     has_run_init: bool = False
+    lifespan_supported: bool = False
 
     def __init__(self, asgi_app, state):
         self.asgi_app = asgi_app
@@ -46,6 +47,7 @@ class LifespanManager:
         await self.ensure_init()
 
         async def receive():
+            self.lifespan_supported = True
             return await self.queue.get()
 
         async def send(message):
@@ -63,16 +65,17 @@ class LifespanManager:
         try:
             await self.asgi_app({"type": "lifespan", "state": self.state}, receive, send)
         except Exception as e:
+            if not self.lifespan_supported:
+                logger.info(f"ASGI lifespan task exited before receiving any messages with exception:\n{e}")
+                self.startup.set_result(None)
+                self.shutdown.set_result(None)
+                return
+
             logger.error(f"Error in ASGI lifespan task: {e}")
             if not self.startup.done():
                 self.startup.set_exception(ExecutionError("ASGI lifespan task exited startup"))
             if not self.shutdown.done():
                 self.shutdown.set_exception(ExecutionError("ASGI lifespan task exited shutdown"))
-        else:
-            if not self.startup.done():
-                self.startup.set_result("ASGI Lifespan protocol is probably not supported by this library")
-            if not self.shutdown.done():
-                self.shutdown.set_result("ASGI Lifespan protocol is probably not supported by this library")
 
     async def lifespan_startup(self):
         await self.ensure_init()
