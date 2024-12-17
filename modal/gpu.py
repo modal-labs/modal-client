@@ -141,7 +141,8 @@ class L40S(_GPUConfig):
     """
     [NVIDIA L40S](https://www.nvidia.com/en-us/data-center/l40s/) GPU class.
 
-    It's a good one! Much CUDA. Very tensor.
+    The L40S is a data center GPU for the Ada Lovelace architecture. It has 48 GB of on-chip
+    GDDR6 RAM and enhanced support for FP8 precision.
     """
 
     def __init__(
