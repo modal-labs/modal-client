@@ -1,10 +1,11 @@
 # Copyright Modal Labs 2024
+import json
 import pytest
 
 from grpclib import Status
 from grpclib.exceptions import GRPCError
 
-from modal.file_io import FileIO, delete_bytes, replace_bytes
+from modal.file_io import FileIO, FileWatchEvent, WatchEvent, delete_bytes, replace_bytes
 from modal_proto import api_pb2
 
 OPEN_EXEC_ID = "exec-open-123"
@@ -17,6 +18,7 @@ SEEK_EXEC_ID = "exec-seek-123"
 WRITE_REPLACE_EXEC_ID = "exec-write-replace-123"
 DELETE_EXEC_ID = "exec-delete-123"
 CLOSE_EXEC_ID = "exec-close-123"
+WATCH_EXEC_ID = "exec-watch-123"
 
 
 async def container_filesystem_exec(servicer, stream):
@@ -70,6 +72,8 @@ async def container_filesystem_exec(servicer, stream):
         )
     elif req.HasField("file_close_request"):
         await stream.send_message(api_pb2.ContainerFilesystemExecResponse(exec_id=CLOSE_EXEC_ID))
+    elif req.HasField("file_watch_request"):
+        await stream.send_message(api_pb2.ContainerFilesystemExecResponse(exec_id=WATCH_EXEC_ID))
 
 
 def test_file_read(servicer, client):
@@ -341,3 +345,62 @@ def test_client_retry(servicer, client):
         f.write(content)
         assert f.read() == content
         f.close()
+
+
+def test_file_watch(servicer, client):
+    """Test file watching."""
+    expected_events = [
+        FileWatchEvent(paths=["/foo.txt"], event=WatchEvent.Access),
+        FileWatchEvent(paths=["/bar.txt"], event=WatchEvent.Create),
+        FileWatchEvent(paths=["/baz.txt", "/baz/foo.txt"], event=WatchEvent.Modify),
+    ]
+
+    async def container_filesystem_exec_get_output(servicer, stream):
+        req = await stream.recv_message()
+        if req.exec_id == WATCH_EXEC_ID:
+            for event in expected_events:
+                await stream.send_message(
+                    api_pb2.FilesystemRuntimeOutputBatch(
+                        output=[
+                            f'{{"paths": {json.dumps(event.paths)}, "event_type": "{event.event.value}"}}\n\n'.encode()
+                        ]
+                    )
+                )
+            await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(eof=True))
+        else:
+            raise Exception("Unexpected exec_id: " + req.exec_id)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
+        ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
+
+        events = FileIO.watch("/test.txt", client, "task-123")
+        seen_events: list[FileWatchEvent] = []
+        for event in events:
+            seen_events.append(event)
+        assert len(seen_events) == len(expected_events)
+        for e, se in zip(expected_events, seen_events):
+            assert e.paths == se.paths
+            assert e.event == se.event
+
+
+def test_file_watch_ignore_invalid_events(servicer, client):
+    """Test file watching ignores invalid events."""
+
+    async def container_filesystem_exec_get_output(servicer, stream):
+        req = await stream.recv_message()
+        if req.exec_id == WATCH_EXEC_ID:
+            await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(output=[b"invalid\n\n"]))
+            await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(eof=True))
+        else:
+            raise Exception("Unexpected exec_id: " + req.exec_id)
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
+        ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
+
+        events = FileIO.watch("/test.txt", client, "task-123")
+        seen_events: list[FileWatchEvent] = []
+        for event in events:
+            seen_events.append(event)
+        assert len(seen_events) == 0
