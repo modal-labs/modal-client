@@ -530,6 +530,18 @@ class _Sandbox(_Object, type_prefix="sb"):
         resp = await retry_transient_errors(self._client.stub.ContainerExec, req)
         by_line = bufsize == 1
         return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr, text=text, by_line=by_line)
+    
+    async def snapshot(self) -> str:
+        task_id = await self._get_task_id()
+        req = api_pb2.SandboxSnapshotRequest(task_id=task_id)
+        resp = await retry_transient_errors(self._client.stub.SandboxSnapshot, req)
+        return resp.snapshot_id
+
+    @staticmethod
+    async def from_snapshot(snapshot_id: str):
+        req = api_pb2.SandboxRestoreRequest(snapshot_id=snapshot_id)
+        # TODO (colin) how tf do loaders work?
+        return
 
     @overload
     async def open(
