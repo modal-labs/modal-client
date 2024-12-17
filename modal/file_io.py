@@ -367,11 +367,10 @@ class _FileIO(Generic[T]):
         if self._closed:
             raise ValueError("I/O operation on closed file")
 
-    def __enter__(self) -> "_FileIO":
-        self._check_closed()
+    async def __aenter__(self) -> "_FileIO":
         return self
 
-    async def __exit__(self, exc_type, exc_value, traceback) -> None:
+    async def __aexit__(self, exc_type, exc_value, traceback) -> None:
         await self._close()
 
 

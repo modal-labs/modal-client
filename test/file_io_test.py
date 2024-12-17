@@ -341,3 +341,42 @@ def test_client_retry(servicer, client):
         f.write(content)
         assert f.read() == content
         f.close()
+
+
+@pytest.mark.asyncio
+async def test_file_io_async_context_manager(servicer, client):
+    """Test file io context manager."""
+    content = "foo\nbar\nbaz\n"
+
+    async def container_filesystem_exec_get_output(servicer, stream):
+        req = await stream.recv_message()
+        if req.exec_id == READ_EXEC_ID:
+            await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(output=[content.encode()]))
+        await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(eof=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
+        ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
+
+        async with FileIO.create("/test.txt", "w+", client, "task-123") as f:
+            await f.write.aio(content)
+            assert await f.read.aio() == content
+
+
+def test_file_io_sync_context_manager(servicer, client):
+    """Test file io context manager."""
+    content = "foo\nbar\nbaz\n"
+
+    async def container_filesystem_exec_get_output(servicer, stream):
+        req = await stream.recv_message()
+        if req.exec_id == READ_EXEC_ID:
+            await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(output=[content.encode()]))
+        await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(eof=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
+        ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
+
+        with FileIO.create("/test.txt", "w+", client, "task-123") as f:
+            f.write(content)
+            assert f.read() == content

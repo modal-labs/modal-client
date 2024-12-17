@@ -360,6 +360,12 @@ message AppHeartbeatRequest {
   string app_id = 1;
 }
 
+message AppLayout {
+  repeated Object objects = 1;
+  map<string, string> function_ids = 2;  // tag -> function id
+  map<string, string> class_ids = 3;  // tag -> class id
+}
+
 message AppListRequest {
   string environment_name = 1;
 }
@@ -710,6 +716,7 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   string runtime = 11;
   string environment_name = 13;
   optional string checkpoint_id = 14;
+  AppLayout app_layout = 15;
 }
 
 message ContainerCheckpointRequest {
