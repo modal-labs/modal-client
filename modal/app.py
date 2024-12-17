@@ -45,7 +45,6 @@ from .partial_function import (
 from .proxy import _Proxy
 from .retries import Retries
 from .running_app import RunningApp
-from .sandbox import _Sandbox
 from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
@@ -964,36 +963,16 @@ class _App:
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
-    ) -> _Sandbox:
-        """`App.spawn_sandbox` is deprecated in favor of `Sandbox.create(app=...)`.
-
-        See https://modal.com/docs/guide/sandbox for more info on working with sandboxes.
-        """
-        deprecation_warning((2024, 7, 5), _App.spawn_sandbox.__doc__)
-        if not self._running_app:
-            raise InvalidError("`app.spawn_sandbox` requires a running app.")
-
-        return await _Sandbox.create(
-            *entrypoint_args,
-            app=self,
-            environment_name=self._running_app.environment_name,
-            image=image or _default_image,
-            mounts=mounts,
-            secrets=secrets,
-            timeout=timeout,
-            workdir=workdir,
-            gpu=gpu,
-            cloud=cloud,
-            region=region,
-            cpu=cpu,
-            memory=memory,
-            network_file_systems=network_file_systems,
-            block_network=block_network,
-            volumes=volumes,
-            pty_info=pty_info,
-            _experimental_scheduler_placement=_experimental_scheduler_placement,
-            client=self._client,
+    ) -> None:
+        """mdmd:hidden"""
+        arglist = ", ".join(repr(s) for s in entrypoint_args)
+        message = (
+            "`App.spawn_sandbox` is deprecated.\n\n"
+            "Sandboxes can be created using the `Sandbox` object:\n\n"
+            f"```\nsb = Sandbox.create({arglist}, app=app)\n```\n\n"
+            "See https://modal.com/docs/guide/sandbox for more info on working with sandboxes."
         )
+        deprecation_error((2024, 7, 5), message)
 
     def include(self, /, other_app: "_App"):
         """Include another App's objects in this one.

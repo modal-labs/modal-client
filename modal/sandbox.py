@@ -30,7 +30,6 @@ from .exception import (
     SandboxTerminatedError,
     SandboxTimeoutError,
     deprecation_error,
-    deprecation_warning,
 )
 from .file_io import _FileIO
 from .gpu import GPU_T
@@ -284,13 +283,14 @@ class _Sandbox(_Object, type_prefix="sb"):
             app_id = _App._container_app.app_id
             app_client = _App._container_app.client
         else:
-            deprecation_warning(
+            arglist = ", ".join(repr(s) for s in entrypoint_args)
+            deprecation_error(
                 (2024, 9, 14),
-                "Creating a `Sandbox` without an `App` is deprecated.\n"
-                "You may pass in an `App` object, or reference one by name with `App.lookup`:\n"
+                "Creating a `Sandbox` without an `App` is deprecated.\n\n"
+                "You may pass in an `App` object, or reference one by name with `App.lookup`:\n\n"
                 "```\n"
-                "app = modal.App.lookup('my-app', create_if_missing=True)\n"
-                "modal.Sandbox.create('echo', 'hi', app=app)\n"
+                "app = modal.App.lookup('sandbox-app', create_if_missing=True)\n"
+                f"sb = modal.Sandbox.create({arglist}, app=app)\n"
                 "```",
             )
 

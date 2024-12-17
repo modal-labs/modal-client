@@ -253,13 +253,14 @@ def test_app_sandbox(client, servicer):
     secret = Secret.from_dict({"FOO": "bar"})
     mount = Mount.from_local_file(__file__, "/xyz")
 
+    with pytest.raises(DeprecationError, match="Creating a `Sandbox` without an `App`"):
+        Sandbox.create("bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret], mounts=[mount])
+
     app = App()
     with app.run(client):
         # Create sandbox
-        with pytest.warns(DeprecationError):
-            sb = app.spawn_sandbox(
-                "bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret], mounts=[mount]
-            )
+        with pytest.raises(DeprecationError, match="`App.spawn_sandbox` is deprecated"):
+            app.spawn_sandbox("bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret], mounts=[mount])
 
         sb = Sandbox.create(
             "bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret], mounts=[mount], app=app
