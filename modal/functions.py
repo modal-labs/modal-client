@@ -41,6 +41,7 @@ from ._utils.async_utils import (
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
+from ._utils.deprecation import deprecation_warning
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
@@ -58,14 +59,7 @@ from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from .config import config
-from .exception import (
-    ExecutionError,
-    FunctionTimeoutError,
-    InvalidError,
-    NotFoundError,
-    OutputExpiredError,
-    deprecation_warning,
-)
+from .exception import ExecutionError, FunctionTimeoutError, InvalidError, NotFoundError, OutputExpiredError
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount, get_auto_mounts
