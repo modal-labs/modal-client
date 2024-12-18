@@ -41,6 +41,7 @@ from ._utils.async_utils import (
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
+from ._utils.deprecation import deprecation_warning
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
@@ -58,14 +59,7 @@ from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from .config import config
-from .exception import (
-    ExecutionError,
-    FunctionTimeoutError,
-    InvalidError,
-    NotFoundError,
-    OutputExpiredError,
-    deprecation_warning,
-)
+from .exception import ExecutionError, FunctionTimeoutError, InvalidError, NotFoundError, OutputExpiredError
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount, get_auto_mounts
@@ -352,6 +346,7 @@ class _FunctionSpec:
     memory: Optional[Union[int, tuple[int, int]]]
     ephemeral_disk: Optional[int]
     scheduler_placement: Optional[SchedulerPlacement]
+    proxy: Optional[_Proxy]
 
 
 P = typing_extensions.ParamSpec("P")
@@ -536,6 +531,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             memory=memory,
             ephemeral_disk=ephemeral_disk,
             scheduler_placement=scheduler_placement,
+            proxy=proxy,
         )
 
         if info.user_cls and not is_auto_snapshot:

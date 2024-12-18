@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, AsyncIterator, Generic, Optional, Sequence, Ty
 if TYPE_CHECKING:
     import _typeshed
 
-
 import json
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
@@ -97,7 +96,7 @@ async def _replace_bytes(file: "_FileIO", data: bytes, start: Optional[int] = No
     await file._wait(resp.exec_id)
 
 
-class WatchEvent(enum.Enum):
+class FileWatchEventType(enum.Enum):
     Unknown = "Unknown"
     Access = "Access"
     Create = "Create"
@@ -108,7 +107,7 @@ class WatchEvent(enum.Enum):
 @dataclass
 class FileWatchEvent:
     paths: list[str]
-    event: WatchEvent
+    type: FileWatchEventType
 
 
 # The FileIO class is designed to mimic Python's io.FileIO
@@ -211,7 +210,7 @@ class _FileIO(Generic[T]):
     async def _parse_watch_output(self, event: bytes) -> Optional[FileWatchEvent]:
         try:
             event_json = json.loads(event.decode())
-            return FileWatchEvent(event=WatchEvent(event_json["event_type"]), paths=event_json["paths"])
+            return FileWatchEvent(type=FileWatchEventType(event_json["event_type"]), paths=event_json["paths"])
         except Exception:
             # skip invalid events
             return None
@@ -339,12 +338,12 @@ class _FileIO(Generic[T]):
         output = await self._make_read_request(None)
         if self._binary:
             lines_bytes = output.split(b"\n")
-            output = [line + b"\n" for line in lines_bytes[:-1]] + ([lines_bytes[-1]] if lines_bytes[-1] else [])
-            return cast(Sequence[T], output)
+            return_bytes = [line + b"\n" for line in lines_bytes[:-1]] + ([lines_bytes[-1]] if lines_bytes[-1] else [])
+            return cast(Sequence[T], return_bytes)
         else:
             lines = output.decode("utf-8").split("\n")
-            output = [line + "\n" for line in lines[:-1]] + ([lines[-1]] if lines[-1] else [])
-            return cast(Sequence[T], output)
+            return_strs = [line + "\n" for line in lines[:-1]] + ([lines[-1]] if lines[-1] else [])
+            return cast(Sequence[T], return_strs)
 
     async def write(self, data: Union[bytes, str]) -> None:
         """Write data to the current position.
@@ -410,6 +409,51 @@ class _FileIO(Generic[T]):
         await self._wait(resp.exec_id)
 
     @classmethod
+    async def ls(cls, path: str, client: _Client, task_id: str) -> list[str]:
+        """List the contents of the provided directory."""
+        self = cls.__new__(cls)
+        self._client = client
+        self._task_id = task_id
+        resp = await self._make_request(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_ls_request=api_pb2.ContainerFileLsRequest(path=path),
+                task_id=task_id,
+            )
+        )
+        output = await self._wait(resp.exec_id)
+        try:
+            return json.loads(output.decode("utf-8"))["paths"]
+        except json.JSONDecodeError:
+            raise FilesystemExecutionError("failed to parse list output")
+
+    @classmethod
+    async def mkdir(cls, path: str, client: _Client, task_id: str, parents: bool = False) -> None:
+        """Create a new directory."""
+        self = cls.__new__(cls)
+        self._client = client
+        self._task_id = task_id
+        resp = await self._make_request(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_mkdir_request=api_pb2.ContainerFileMkdirRequest(path=path, make_parents=parents),
+                task_id=self._task_id,
+            )
+        )
+        await self._wait(resp.exec_id)
+
+    @classmethod
+    async def rm(cls, path: str, client: _Client, task_id: str, recursive: bool = False) -> None:
+        """Remove a file or directory in the Sandbox."""
+        self = cls.__new__(cls)
+        self._client = client
+        self._task_id = task_id
+        resp = await self._make_request(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_rm_request=api_pb2.ContainerFileRmRequest(path=path, recursive=recursive),
+                task_id=self._task_id,
+            )
+        )
+        await self._wait(resp.exec_id)
+
     async def watch(
         cls, path: str, client: _Client, task_id: str, timeout: Optional[int] = None, recursive: bool = False
     ) -> AsyncIterator[FileWatchEvent]:
@@ -460,11 +504,10 @@ class _FileIO(Generic[T]):
         if self._closed:
             raise ValueError("I/O operation on closed file")
 
-    def __enter__(self) -> "_FileIO":
-        self._check_closed()
+    async def __aenter__(self) -> "_FileIO":
         return self
 
-    async def __exit__(self, exc_type, exc_value, traceback) -> None:
+    async def __aexit__(self, exc_type, exc_value, traceback) -> None:
         await self._close()
 
 

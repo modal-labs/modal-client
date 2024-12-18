@@ -5,7 +5,7 @@ This is the same pattern-matching logic used by Docker, except it is written in
 Python rather than Go. Also, the original Go library has a couple deprecated
 functions that we don't implement in this port.
 
-The main way to use this library is by constructing a `PatternMatcher` object,
+The main way to use this library is by constructing a `FilePatternMatcher` object,
 then asking it whether file paths match any of its patterns.
 """
 
@@ -146,75 +146,6 @@ class Pattern:
             return self.regexp.match(path) is not None
         else:
             return False
-
-
-class PatternMatcher:
-    """Allows checking paths against a list of patterns."""
-
-    def __init__(self, patterns: list[str]) -> None:
-        """Initialize a new PatternMatcher instance.
-
-        Args:
-            patterns (list): A list of pattern strings.
-
-        Raises:
-            ValueError: If an illegal exclusion pattern is provided.
-        """
-        self.patterns: list[Pattern] = []
-        self.exclusions = False
-        for pattern in patterns:
-            pattern = pattern.strip()
-            if not pattern:
-                continue
-            pattern = os.path.normpath(pattern)
-            new_pattern = Pattern()
-            if pattern[0] == "!":
-                if len(pattern) == 1:
-                    raise ValueError('Illegal exclusion pattern: "!"')
-                new_pattern.exclusion = True
-                pattern = pattern[1:]
-                self.exclusions = True
-            # In Python, we can proceed without explicit syntax checking
-            new_pattern.cleaned_pattern = pattern
-            new_pattern.dirs = pattern.split(os.path.sep)
-            self.patterns.append(new_pattern)
-
-    def matches(self, file_path: str) -> bool:
-        """Check if the file path or any of its parent directories match the patterns.
-
-        This is equivalent to `MatchesOrParentMatches()` in the original Go
-        library. The reason is that `Matches()` in the original library is
-        deprecated due to buggy behavior.
-        """
-        matched = False
-        file_path = os.path.normpath(file_path)
-        if file_path == ".":
-            # Don't let them exclude everything; kind of silly.
-            return False
-        parent_path = os.path.dirname(file_path)
-        if parent_path == "":
-            parent_path = "."
-        parent_path_dirs = parent_path.split(os.path.sep)
-
-        for pattern in self.patterns:
-            # Skip evaluation based on current match status and pattern exclusion
-            if pattern.exclusion != matched:
-                continue
-
-            match = pattern.match(file_path)
-
-            if not match and parent_path != ".":
-                # Check if the pattern matches any of the parent directories
-                for i in range(len(parent_path_dirs)):
-                    dir_path = os.path.sep.join(parent_path_dirs[: i + 1])
-                    if pattern.match(dir_path):
-                        match = True
-                        break
-
-            if match:
-                matched = not pattern.exclusion
-
-        return matched
 
 
 def read_ignorefile(reader: TextIO) -> list[str]:

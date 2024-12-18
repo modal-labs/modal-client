@@ -10,6 +10,72 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.68.29 (2024-12-17)
+
+- The internal `deprecation_error` and `deprecation_warning` utilities have been moved to a private namespace
+
+
+
+### 0.68.28 (2024-12-17)
+
+- Sandboxes now support additional filesystem commands `mkdir`, `rm`, and `ls`.
+```python
+app = modal.App.lookup("sandbox-fs", create_if_missing=True)
+sb = modal.Sandbox.create(app=app)
+sb.mkdir("/foo")
+with sb.open("/foo/bar.txt", "w") as f:
+    f.write("baz")
+print(sb.ls("/foo"))
+```
+
+
+
+### 0.68.27 (2024-12-17)
+
+- Two previously-introduced deprecations are now enforced and raise an error:
+    - The `App.spawn_sandbox` method has been removed in favor of `Sandbox.create`
+    - `Sandbox.create` now requires an `App` object to be passed
+
+
+
+### 0.68.24 (2024-12-16)
+
+- The `modal run` CLI now has a `--write-result` option. When you pass a filename, Modal will write the return value of the entrypoint function to that location on your local filesystem. The return value of the function must be either `str` or `bytes` to use this option; otherwise, an error will be raised. It can be useful for exercising a remote function that returns text, image data, etc.
+
+
+
+### 0.68.21 (2024-11-13)
+
+Adds an `ignore` parameter to our `Image` `add_local_dir` and `copy_local_dir` methods. It is similar to the `condition` method on `Mount` methods but instead operates on a `Path` object. It takes either a list of string patterns to ignore which follows the `dockerignore` syntax implemented in our `FilePatternMatcher` class, or you can pass in a callable which allows for more flexible selection of files.
+
+Usage:
+
+```python
+img.add_local_dir(
+  "./local-dir", 
+  remote_path="/remote-path", 
+  ignore=FilePatternMatcher("**/*", "!*.txt") # ignore everything except files ending with .txt
+)
+
+img.add_local_dir(
+  ...,
+  ignore=~FilePatternMatcher("**/*.py") # can be inverted for when inclusion filters are simpler to write
+)
+
+img.add_local_dir(
+  ...,
+  ignore=["**/*.py", "!module/*.py"] # ignore all .py files except those in the module directory
+)
+
+img.add_local_dir(
+  ...,
+  ignore=lambda fp: fp.is_relative_to("somewhere") # use a custom callable
+)
+```
+
+
+which will add the `./local-dir` directory to the image but ignore all files except `.txt` files
+
 ### 0.68.11 (2024-12-13)
 
 * `Cls.from_name(...)` now works as a lazy alternative to `Cls.lookup()` that doesn't perform any IO until a method on the class is used for a .remote() call or similar

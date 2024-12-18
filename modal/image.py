@@ -30,13 +30,15 @@ from ._resolver import Resolver
 from ._serialization import serialize
 from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
+from ._utils.deprecation import deprecation_error, deprecation_warning
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
 from .environments import _get_environment_cached
-from .exception import InvalidError, NotFoundError, RemoteError, VersionError, deprecation_error, deprecation_warning
+from .exception import InvalidError, NotFoundError, RemoteError, VersionError
+from .file_pattern_matcher import NON_PYTHON_FILES
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
@@ -638,7 +640,17 @@ class _Image(_Object, type_prefix="im"):
         mount = _Mount.from_local_file(local_path, remote_path)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
-    def add_local_dir(self, local_path: Union[str, Path], remote_path: str, *, copy: bool = False) -> "_Image":
+    def add_local_dir(
+        self,
+        local_path: Union[str, Path],
+        remote_path: str,
+        *,
+        copy: bool = False,
+        # Predicate filter function for file exclusion, which should accept a filepath and return `True` for exclusion.
+        # Defaults to excluding no files. If a Sequence is provided, it will be converted to a FilePatternMatcher.
+        # Which follows dockerignore syntax.
+        ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
+    ) -> "_Image":
         """Adds a local directory's content to the image at `remote_path` within the container
 
         By default (`copy=False`), the files are added to containers on startup and are not built into the actual Image,
@@ -650,12 +662,44 @@ class _Image(_Object, type_prefix="im"):
         copy=True can slow down iteration since it requires a rebuild of the Image and any subsequent
         build steps whenever the included files change, but it is required if you want to run additional
         build steps after this one.
+
+        **Usage:**
+
+        ```python
+        from modal import FilePatternMatcher
+
+        image = modal.Image.debian_slim().add_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=["*.venv"],
+        )
+
+        image = modal.Image.debian_slim().add_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=lambda p: p.is_relative_to(".venv"),
+        )
+
+        image = modal.Image.debian_slim().copy_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=FilePatternMatcher("**/*.txt"),
+        )
+
+        # When including files is simpler than excluding them, you can use the `~` operator to invert the matcher.
+        image = modal.Image.debian_slim().copy_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=~FilePatternMatcher("**/*.py"),
+        )
+        ```
         """
         if not PurePosixPath(remote_path).is_absolute():
             # TODO(elias): implement relative to absolute resolution using image workdir metadata
             #  + make default remote_path="./"
             raise InvalidError("image.add_local_dir() currently only supports absolute remote_path values")
-        mount = _Mount.from_local_dir(local_path, remote_path=remote_path)
+
+        mount = _Mount._add_local_dir(Path(local_path), Path(remote_path), ignore)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
@@ -677,7 +721,9 @@ class _Image(_Object, type_prefix="im"):
             context_mount=mount,
         )
 
-    def add_local_python_source(self, *modules: str, copy: bool = False) -> "_Image":
+    def add_local_python_source(
+        self, *modules: str, copy: bool = False, ignore: Union[Sequence[str], Callable[[Path], bool]] = NON_PYTHON_FILES
+    ) -> "_Image":
         """Adds locally available Python packages/modules to containers
 
         Adds all files from the specified Python package or module to containers running the Image.
@@ -695,21 +741,71 @@ class _Image(_Object, type_prefix="im"):
         **Note:** This excludes all dot-prefixed subdirectories or files and all `.pyc`/`__pycache__` files.
         To add full directories with finer control, use `.add_local_dir()` instead and specify `/root` as
         the destination directory.
+
+        By default only includes `.py`-files in the source modules. Set the `ignore` argument to a list of patterns
+        or a callable to override this behavior, e.g.:
+
+        ```py
+        # includes everything except data.json
+        modal.Image.debian_slim().add_local_python_source("mymodule", ignore=["data.json"])
+
+        # exclude large files
+        modal.Image.debian_slim().add_local_python_source(
+            "mymodule",
+            ignore=lambda p: p.stat().st_size > 1e9
+        )
+        ```
         """
-
-        def only_py_files(filename):
-            return filename.endswith(".py")
-
-        mount = _Mount.from_local_python_packages(*modules, condition=only_py_files)
+        mount = _Mount.from_local_python_packages(*modules, ignore=ignore)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
-    def copy_local_dir(self, local_path: Union[str, Path], remote_path: Union[str, Path] = ".") -> "_Image":
+    def copy_local_dir(
+        self,
+        local_path: Union[str, Path],
+        remote_path: Union[str, Path] = ".",
+        # Predicate filter function for file exclusion, which should accept a filepath and return `True` for exclusion.
+        # Defaults to excluding no files. If a Sequence is provided, it will be converted to a FilePatternMatcher.
+        # Which follows dockerignore syntax.
+        ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
+    ) -> "_Image":
         """Copy a directory into the image as a part of building the image.
 
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
+
+        **Usage:**
+
+        ```python
+        from modal import FilePatternMatcher
+
+        image = modal.Image.debian_slim().copy_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=["**/*.venv"],
+        )
+
+        image = modal.Image.debian_slim().copy_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=lambda p: p.is_relative_to(".venv"),
+        )
+
+        image = modal.Image.debian_slim().copy_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=FilePatternMatcher("**/*.txt"),
+        )
+
+        # When including files is simpler than excluding them, you can use the `~` operator to invert the matcher.
+        image = modal.Image.debian_slim().copy_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=~FilePatternMatcher("**/*.py"),
+        )
+        ```
         """
-        mount = _Mount.from_local_dir(local_path, remote_path="/")
+
+        mount = _Mount._add_local_dir(Path(local_path), Path("/"), ignore)
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base", f"COPY . {remote_path}"], context_files={})

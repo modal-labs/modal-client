@@ -236,7 +236,7 @@ class _Client:
         Check whether can the client can connect to this server with these credentials; raise if not.
         """
         async with cls(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
-            client.hello()  # Will call ClientHello RPC and possibly raise AuthError or ConnectionError
+            await client.hello()  # Will call ClientHello RPC and possibly raise AuthError or ConnectionError
 
     @classmethod
     def set_env_client(cls, client: Optional["_Client"]):
