@@ -19,18 +19,13 @@ from ._location import parse_cloud_provider
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import synchronize_api
+from ._utils.deprecation import deprecation_error
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
-from .exception import (
-    ExecutionError,
-    InvalidError,
-    SandboxTerminatedError,
-    SandboxTimeoutError,
-    deprecation_error,
-)
+from .exception import ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
 from .file_io import _FileIO
 from .gpu import GPU_T
 from .image import _Image
@@ -566,6 +561,21 @@ class _Sandbox(_Object, type_prefix="sb"):
         """
         task_id = await self._get_task_id()
         return await _FileIO.create(path, mode, self._client, task_id)
+
+    async def ls(self, path: str) -> list[str]:
+        """List the contents of a directory in the Sandbox."""
+        task_id = await self._get_task_id()
+        return await _FileIO.ls(path, self._client, task_id)
+
+    async def mkdir(self, path: str, parents: bool = False) -> None:
+        """Create a new directory in the Sandbox."""
+        task_id = await self._get_task_id()
+        return await _FileIO.mkdir(path, self._client, task_id, parents)
+
+    async def rm(self, path: str, recursive: bool = False) -> None:
+        """Remove a file or directory in the Sandbox."""
+        task_id = await self._get_task_id()
+        return await _FileIO.rm(path, self._client, task_id, recursive)
 
     @property
     def stdout(self) -> _StreamReader[str]:

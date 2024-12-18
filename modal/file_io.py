@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, AsyncIterator, Generic, Optional, Sequence, Ty
 if TYPE_CHECKING:
     import _typeshed
 
+import json
+
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal._utils.grpc_utils import retry_transient_errors
@@ -267,12 +269,12 @@ class _FileIO(Generic[T]):
         output = await self._make_read_request(None)
         if self._binary:
             lines_bytes = output.split(b"\n")
-            output = [line + b"\n" for line in lines_bytes[:-1]] + ([lines_bytes[-1]] if lines_bytes[-1] else [])
-            return cast(Sequence[T], output)
+            return_bytes = [line + b"\n" for line in lines_bytes[:-1]] + ([lines_bytes[-1]] if lines_bytes[-1] else [])
+            return cast(Sequence[T], return_bytes)
         else:
             lines = output.decode("utf-8").split("\n")
-            output = [line + "\n" for line in lines[:-1]] + ([lines[-1]] if lines[-1] else [])
-            return cast(Sequence[T], output)
+            return_strs = [line + "\n" for line in lines[:-1]] + ([lines[-1]] if lines[-1] else [])
+            return cast(Sequence[T], return_strs)
 
     async def write(self, data: Union[bytes, str]) -> None:
         """Write data to the current position.
@@ -332,6 +334,52 @@ class _FileIO(Generic[T]):
                     offset=offset,
                     whence=self._get_whence(whence),
                 ),
+                task_id=self._task_id,
+            )
+        )
+        await self._wait(resp.exec_id)
+
+    @classmethod
+    async def ls(cls, path: str, client: _Client, task_id: str) -> list[str]:
+        """List the contents of the provided directory."""
+        self = cls.__new__(cls)
+        self._client = client
+        self._task_id = task_id
+        resp = await self._make_request(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_ls_request=api_pb2.ContainerFileLsRequest(path=path),
+                task_id=task_id,
+            )
+        )
+        output = await self._wait(resp.exec_id)
+        try:
+            return json.loads(output.decode("utf-8"))["paths"]
+        except json.JSONDecodeError:
+            raise FilesystemExecutionError("failed to parse list output")
+
+    @classmethod
+    async def mkdir(cls, path: str, client: _Client, task_id: str, parents: bool = False) -> None:
+        """Create a new directory."""
+        self = cls.__new__(cls)
+        self._client = client
+        self._task_id = task_id
+        resp = await self._make_request(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_mkdir_request=api_pb2.ContainerFileMkdirRequest(path=path, make_parents=parents),
+                task_id=self._task_id,
+            )
+        )
+        await self._wait(resp.exec_id)
+
+    @classmethod
+    async def rm(cls, path: str, client: _Client, task_id: str, recursive: bool = False) -> None:
+        """Remove a file or directory in the Sandbox."""
+        self = cls.__new__(cls)
+        self._client = client
+        self._task_id = task_id
+        resp = await self._make_request(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_rm_request=api_pb2.ContainerFileRmRequest(path=path, recursive=recursive),
                 task_id=self._task_id,
             )
         )
