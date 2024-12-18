@@ -3,7 +3,9 @@ import functools
 import sys
 import warnings
 from datetime import date
-from typing import Any, Callable, ParamSpec, TypeVar
+from typing import Any, Callable, TypeVar
+
+from typing_extensions import ParamSpec  # Needed for Python 3.9
 
 from ..exception import DeprecationError, PendingDeprecationError
 
