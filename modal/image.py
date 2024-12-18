@@ -747,10 +747,10 @@ class _Image(_Object, type_prefix="im"):
 
         ```py
         # includes everything except data.json
-        Image.debian_slim().add_local_python_source("mymodule", ignore=["data.json"])
+        modal.Image.debian_slim().add_local_python_source("mymodule", ignore=["data.json"])
 
         # exclude large files
-        Image.debian_slim().add_local_python_source(
+        modal.Image.debian_slim().add_local_python_source(
             "mymodule",
             ignore=lambda p: p.stat().st_size > 1e9
         )
