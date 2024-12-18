@@ -49,7 +49,7 @@ class RenamedSingleton:
     """Singleton to use as the default value for renamed parameters."""
 
     def __repr__(self):
-        return "<deprecated>"
+        return "..."
 
 
 Renamed = RenamedSingleton()
