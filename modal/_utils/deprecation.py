@@ -1,7 +1,9 @@
 # Copyright Modal Labs 2024
+import functools
 import sys
 import warnings
 from datetime import date
+from typing import Any, Callable, ParamSpec, TypeVar
 
 from ..exception import DeprecationError, PendingDeprecationError
 
@@ -42,3 +44,32 @@ def deprecation_warning(
 
     # This is a lower-level function that warnings.warn uses
     warnings.warn_explicit(f"{date(*deprecated_on)}: {msg}", warning_cls, filename, lineno)
+
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def renamed_parameter(
+    date: tuple[int, int, int],
+    old_name: str,
+    new_name: str,
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+        @functools.wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            mut_kwargs: dict[str, Any] = locals()["kwargs"]  # Avoid referencing kwargs directly due to bug in sigtools
+            if old_name in mut_kwargs:
+                mut_kwargs[new_name] = mut_kwargs.pop(old_name)
+                func_name = func.__qualname__.removeprefix("_")  # Avoid confusion when synchronicity-wrapped
+                message = (
+                    f"The '{old_name}' parameter of `{func_name}` has been renamed to '{new_name}'."
+                    "\nUsing the old name will become an error in a future release. Please update your code."
+                )
+                deprecation_warning(date, message, show_source=False)
+
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
