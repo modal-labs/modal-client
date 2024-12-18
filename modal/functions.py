@@ -346,6 +346,7 @@ class _FunctionSpec:
     memory: Optional[Union[int, tuple[int, int]]]
     ephemeral_disk: Optional[int]
     scheduler_placement: Optional[SchedulerPlacement]
+    proxy: Optional[_Proxy]
 
 
 P = typing_extensions.ParamSpec("P")
@@ -530,6 +531,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             memory=memory,
             ephemeral_disk=ephemeral_disk,
             scheduler_placement=scheduler_placement,
+            proxy=proxy,
         )
 
         if info.user_cls and not is_auto_snapshot:
