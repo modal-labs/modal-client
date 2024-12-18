@@ -63,7 +63,9 @@ jobs:
           default_author: github_actions
 
       - name: Install the client
-        run: pip install .
+        run: |
+          inv protoc
+          pip install .
 
       - name: Publish client mount
         env:
