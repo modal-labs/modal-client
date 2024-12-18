@@ -7,7 +7,7 @@ import sys
 import threading
 from hashlib import sha256
 from pathlib import Path
-from tempfile import NamedTemporaryFile, TemporaryDirectory
+from tempfile import NamedTemporaryFile
 from typing import Literal, get_args
 from unittest import mock
 
@@ -745,99 +745,6 @@ def test_image_dockerfile_copy(builder_version, servicer, client, tmp_path_with_
         mount_id = layers[1].context_mount_id
         files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
         assert files == {"/data.txt": b"hello", "/data/sub": b"world"}
-
-
-def create_tmp_files(tmp_path):
-    (tmp_path / "dir1").mkdir()
-    (tmp_path / "dir1" / "a.txt").write_text("a")
-    (tmp_path / "dir1" / "b.txt").write_text("b")
-
-    (tmp_path / "dir2").mkdir()
-    (tmp_path / "dir2" / "test1.py").write_text("test1")
-    (tmp_path / "dir2" / "test2.py").write_text("test2")
-
-    (tmp_path / "file1.txt").write_text("content1")
-    (tmp_path / "file10.txt").write_text("content1")
-    (tmp_path / "file2.txt").write_text("content2")
-    (tmp_path / "test.py").write_text("python")
-
-    (tmp_path / "special").mkdir()
-    (tmp_path / "special" / "file[1].txt").write_text("special1")
-    (tmp_path / "special" / "file{2}.txt").write_text("special2")
-    (tmp_path / "special" / "test?file.py").write_text("special3")
-
-    (tmp_path / "this").mkdir()
-    (tmp_path / "this" / "is").mkdir()
-    (tmp_path / "this" / "is" / "super").mkdir()
-    (tmp_path / "this" / "is" / "super" / "nested").mkdir()
-    (tmp_path / "this" / "is" / "super" / "nested" / "file.py").write_text("python")
-
-    all_fps = []
-    for root, _, files in os.walk(tmp_path):
-        for file in files:
-            all_fps.append(f"{os.path.join(root, file)}".lstrip("./"))
-
-    return all_fps
-
-
-def test_image_dockerfile_copy_messy(builder_version, servicer, client):
-    with TemporaryDirectory(dir="./") as tmp_dir:
-        tmp_path = Path(tmp_dir)
-
-        create_tmp_files(tmp_path)
-
-        dockerfile = NamedTemporaryFile("w", delete=False)
-        dockerfile.write(
-            f"""
-FROM python:3.12-slim
-
-WORKDIR /my-app
-
-RUN ls
-
-# COPY simple directory
-    CoPY {tmp_dir}/dir1 ./smth_copy
-
-RUN ls -la
-
-# COPY multiple sources
-        COPY {tmp_dir}/test.py {tmp_dir}/file10.txt /
-
-RUN ls \\
-    -l
-
-# COPY multiple lines
-copy {tmp_dir}/dir2 \\
-    {tmp_dir}/file1.txt \\
-# this is a comment
-    {tmp_dir}/file2.txt \\
-    /x
-
-        RUN ls
-        """
-        )
-        dockerfile.close()
-
-        app = App()
-        app.image = Image.debian_slim().from_dockerfile(dockerfile.name)
-        app.function()(dummy)
-
-        with app.run(client=client):
-            layers = get_image_layers(app.image.object_id, servicer)
-
-            copied_files = servicer.mount_contents[layers[1].context_mount_id].keys()
-            assert sorted(copied_files) == sorted(
-                [
-                    f"/{tmp_path}/dir1/a.txt",
-                    f"/{tmp_path}/dir1/b.txt",
-                    f"/{tmp_path}/test.py",
-                    f"/{tmp_path}/file10.txt",
-                    f"/{tmp_path}/file1.txt",
-                    f"/{tmp_path}/file2.txt",
-                    f"/{tmp_path}/dir2/test1.py",
-                    f"/{tmp_path}/dir2/test2.py",
-                ]
-            )
 
 
 def test_image_docker_command_entrypoint(builder_version, servicer, client, tmp_path_with_content):

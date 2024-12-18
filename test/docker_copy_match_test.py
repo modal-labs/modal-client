@@ -4,7 +4,7 @@
 import platform
 import pytest
 
-from modal._utils.match import PatternError, match
+from modal._utils.docker_copy_match import PatternError, dockerfile_match
 
 
 def match_tests():
@@ -77,7 +77,7 @@ def test_match(pattern, s, is_match, err):
 
     if err is not None:
         with pytest.raises(PatternError):
-            match(pattern, s)
+            dockerfile_match(pattern, s)
     else:
-        actual_match = match(pattern, s)
+        actual_match = dockerfile_match(pattern, s)
         assert is_match == actual_match, f"{pattern=} {s=} {is_match=} {actual_match=}"

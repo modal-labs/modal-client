@@ -4,7 +4,7 @@ import shlex
 from pathlib import Path
 from typing import Optional
 
-from .exception import InvalidError
+from ..exception import InvalidError
 
 
 def extract_copy_command_patterns(dockerfile_lines: list[str]) -> list[str]:

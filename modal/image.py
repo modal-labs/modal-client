@@ -31,10 +31,10 @@ from ._serialization import serialize
 from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.deprecation import deprecation_error, deprecation_warning
+from ._utils.docker_copy_match import dockerfile_match
 from ._utils.docker_utils import extract_copy_command_patterns, find_dockerignore_file
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
-from ._utils.match import match
 from ._utils.pattern_utils import read_ignorefile
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
@@ -239,7 +239,7 @@ def _get_image_builder_version(server_version: ImageBuilderVersion) -> ImageBuil
     return version
 
 
-def _create_context_mount(docker_commands: list[str], ignore: Callable[[Path], bool]) -> _Mount:
+def _create_context_mount(docker_commands: Sequence[str], ignore: Callable[[Path], bool]) -> _Mount:
     """
     Creates a context mount from a list of docker commands.
     """
@@ -248,7 +248,7 @@ def _create_context_mount(docker_commands: list[str], ignore: Callable[[Path], b
     def mount_filter(source: Path):
         # check if the source path matches any pattern from the docker file
         # and it doesnt match any ignore pattern
-        matches_any_copy_pattern = any(match(source, mount_source) for mount_source in mount_sources)
+        matches_any_copy_pattern = any(dockerfile_match(source, mount_source) for mount_source in mount_sources)
         matches_any_ignore_pattern = ignore(source)
 
         return matches_any_copy_pattern and not matches_any_ignore_pattern

@@ -12,10 +12,10 @@ class PatternError(Exception):
     pass
 
 
-def match(pattern: str, name: str) -> bool:
+def dockerfile_match(pattern: str, name: str) -> bool:
     while len(pattern) > 0:
         continue_outer_loop = False
-        star, chunk, pattern = scan_chunk(pattern)
+        star, chunk, pattern = _scan_chunk(pattern)
 
         if star and chunk == "":
             # Trailing * matches rest of string unless it has a /.
@@ -23,7 +23,7 @@ def match(pattern: str, name: str) -> bool:
             return name.find("/") < 0
 
         # Look for match at current position.
-        t, ok = match_chunk(chunk, name)
+        t, ok = _match_chunk(chunk, name)
         # if we're the last chunk, make sure we've exhausted the name
         # otherwise we'll give a false result even if we could still match
         # using the star
@@ -34,7 +34,7 @@ def match(pattern: str, name: str) -> bool:
         if star:
             i = 0
             while i < len(name) and name[i] != "/":
-                t, ok = match_chunk(chunk, name[i + 1 :])
+                t, ok = _match_chunk(chunk, name[i + 1 :])
                 if ok:
                     if len(pattern) == 0 and len(t) > 0:
                         i += 1
@@ -48,15 +48,15 @@ def match(pattern: str, name: str) -> bool:
                 continue
 
         while len(pattern) > 0:
-            _, chunk, pattern = scan_chunk(pattern)
-            match_chunk(chunk, "")
+            _, chunk, pattern = _scan_chunk(pattern)
+            _match_chunk(chunk, "")
 
         return False
 
     return len(name) == 0
 
 
-def scan_chunk(pattern: str) -> tuple[bool, str, str]:
+def _scan_chunk(pattern: str) -> tuple[bool, str, str]:
     star = False
     while len(pattern) > 0 and pattern[0] == "*":
         pattern = pattern[1:]
@@ -80,7 +80,7 @@ def scan_chunk(pattern: str) -> tuple[bool, str, str]:
     return star, pattern[0:i], pattern[i:]
 
 
-def match_chunk(chunk: str, s: str) -> tuple[str, bool]:
+def _match_chunk(chunk: str, s: str) -> tuple[str, bool]:
     failed = False
 
     while len(chunk) > 0:
@@ -105,11 +105,11 @@ def match_chunk(chunk: str, s: str) -> tuple[str, bool]:
                 if len(chunk) > 0 and chunk[0] == "]" and nrange > 0:
                     chunk = chunk[1:]
                     break
-                lo, chunk = get_esc(chunk)
+                lo, chunk = _get_esc(chunk)
                 hi = lo
 
                 if chunk[0] == "-":
-                    hi, chunk = get_esc(chunk[1:])
+                    hi, chunk = _get_esc(chunk[1:])
                 if lo <= r and r <= hi:
                     match = True
                 nrange += 1
@@ -144,7 +144,7 @@ def match_chunk(chunk: str, s: str) -> tuple[str, bool]:
     return s, True
 
 
-def get_esc(chunk: str) -> tuple[str, str]:
+def _get_esc(chunk: str) -> tuple[str, str]:
     if len(chunk) == 0 or chunk[0] == "-" or chunk[0] == "]":
         raise PatternError("Bad pattern")
     if chunk[0] == "\\":
