@@ -180,7 +180,7 @@ class FunctionInfo:
             self._base_dir = base_dirs[0]
             self.module_name = module.__spec__.name
             self._remote_dir = ROOT_DIR / PurePosixPath(module.__package__.split(".")[0])
-            self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
+            self._is_serialized = False
             self._type = FunctionInfoType.PACKAGE
         elif hasattr(module, "__file__") and not serialized:
             # This generally covers the case where it's invoked with
@@ -190,18 +190,18 @@ class FunctionInfo:
             self._file = os.path.abspath(inspect.getfile(module))
             self.module_name = inspect.getmodulename(self._file)
             self._base_dir = os.path.dirname(self._file)
-            self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
+            self._is_serialized = False
             self._type = FunctionInfoType.FILE
         else:
             self.module_name = None
             self._base_dir = os.path.abspath("")  # get current dir
-            self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED
-            if serialized:
+            self._is_serialized = True  # either explicitly, or by being in a notebook
+            if serialized:  # if explicit
                 self._type = FunctionInfoType.SERIALIZED
             else:
                 self._type = FunctionInfoType.NOTEBOOK
 
-        if self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
+        if not self.is_serialized():
             # Sanity check that this function is defined in global scope
             # Unfortunately, there's no "clean" way to do this in Python
             qualname = f.__qualname__ if f else user_cls.__qualname__
@@ -211,7 +211,7 @@ class FunctionInfo:
                 )
 
     def is_serialized(self) -> bool:
-        return self.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED
+        return self._is_serialized
 
     def serialized_function(self) -> bytes:
         # Note: this should only be called from .load() and not at function decoration time
@@ -320,7 +320,7 @@ class FunctionInfo:
         if self._type == FunctionInfoType.PACKAGE:
             if config.get("automount"):
                 return [_Mount.from_local_python_packages(self.module_name)]
-            elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
+            elif not self.is_serialized():
                 # mount only relevant file and __init__.py:s
                 return [
                     _Mount.from_local_dir(
@@ -330,7 +330,7 @@ class FunctionInfo:
                         condition=entrypoint_only_package_mount_condition(self._file),
                     )
                 ]
-        elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
+        elif not self.is_serialized():
             remote_path = ROOT_DIR / Path(self._file).name
             if not _is_modal_path(remote_path):
                 return [
