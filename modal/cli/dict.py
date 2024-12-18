@@ -89,7 +89,8 @@ async def get(name: str, key: str, *, env: Optional[str] = ENV_OPTION):
     console.print(val)
 
 
-def _truncate(val: str) -> str:
+def _display(input: str, use_repr: bool) -> str:
+    val = repr(input) if use_repr else str(input)
     return val[:80] + "..." if len(val) > 80 else val
 
 
@@ -121,8 +122,7 @@ async def items(
             if json:
                 display_item = key, val
             else:
-                cast = repr if use_repr else str
-                display_item = _truncate(cast(key)), _truncate(cast(val))  # type: ignore  # mypy/issue/12056
+                display_item = _display(key, use_repr), _display(val, use_repr)  # type: ignore  # mypy/issue/12056
             items.append(display_item)
 
     display_table(["Key", "Value"], items, json)
