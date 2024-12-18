@@ -31,6 +31,7 @@ from ._serialization import serialize
 from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.deprecation import deprecation_error, deprecation_warning
+from ._utils.docker_utils import extract_copy_command_patterns, find_dockerignore_file
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
 from ._utils.match import match
@@ -238,60 +239,11 @@ def _get_image_builder_version(server_version: ImageBuilderVersion) -> ImageBuil
     return version
 
 
-def _extract_copy_command_patterns(dockerfile_lines: list[str]) -> list[str]:
-    """
-    Extract all COPY command sources from a Dockerfile.
-    Combines multiline COPY commands into a single line.
-    """
-    mount_sources = set()
-    current_command = ""
-    copy_pattern = re.compile(r"^\s*COPY\s+(.+)$", re.IGNORECASE)
-
-    # First pass: handle line continuations and collect full commands
-    for line in dockerfile_lines:
-        line = line.strip()
-        if not line or line.startswith("#"):
-            # ignore comments and empty lines
-            continue
-
-        if current_command:
-            # Continue previous line
-            current_command += " " + line.rstrip("\\").strip()
-        else:
-            # Start new command
-            current_command = line.rstrip("\\").strip()
-
-        if not line.endswith("\\"):
-            # Command is complete
-
-            match = copy_pattern.match(current_command)
-            if match:
-                args = match.group(1)
-                parts = shlex.split(args)
-
-                if len(parts) >= 2:
-                    # Last part is destination, everything else is a mount source
-                    sources = parts[:-1]
-
-                    for source in sources:
-                        special_pattern = re.compile(r"^\s*--|\$\s*")
-                        if special_pattern.match(source):
-                            raise InvalidError(
-                                f"COPY command: {source} using special flags/arguments/variables are not supported"
-                            )
-
-                        mount_sources.add(source)
-
-            current_command = ""
-
-    return list(mount_sources)
-
-
 def _create_context_mount(docker_commands: list[str], ignore: Callable[[Path], bool]) -> _Mount:
     """
     Creates a context mount from a list of docker commands.
     """
-    mount_sources = _extract_copy_command_patterns(docker_commands)
+    mount_sources = extract_copy_command_patterns(docker_commands)
 
     def mount_filter(source: Path):
         # check if the source path matches any pattern from the docker file
@@ -302,37 +254,6 @@ def _create_context_mount(docker_commands: list[str], ignore: Callable[[Path], b
         return matches_any_copy_pattern and not matches_any_ignore_pattern
 
     return _Mount._add_local_dir(Path("./"), Path("/"), ignore=mount_filter)
-
-
-def _find_dockerignore_file(dockerfile_path: Path) -> Optional[Path]:
-    current_working_dir = Path.cwd()
-    # 1. file next to the Dockerfile but do NOT look for parent directories
-
-    def valid_dockerignore_file(fp):
-        # fp has to exist
-        if not fp.exists():
-            return False
-        # fp has to be subpath to current working directory
-        if not fp.is_relative_to(current_working_dir):
-            return False
-
-        return True
-
-    generic_name = ".dockerignore"
-    specific_name = f"{dockerfile_path.name}.dockerignore"
-
-    possible_locations = [
-        # 1. check if specific <dockerfile_name>.dockerignore file exists in the same directory as <dockerfile_name>
-        dockerfile_path.parent / specific_name,
-        # 2. check if generic .dockerignore file exists in the same directory as <dockerfile_name>
-        dockerfile_path.parent / generic_name,
-        # 3. check if generic .dockerignore file exists in current working directory
-        current_working_dir / generic_name,
-        # 4. ?????? check if specific <dockerfile_name>.dockerignore file exists in current working directory
-        current_working_dir / specific_name,
-    ]
-
-    return next((e for e in possible_locations if valid_dockerignore_file(e)), None)
 
 
 class _ImageRegistryConfig:
@@ -1667,7 +1588,7 @@ class _Image(_Object, type_prefix="im"):
         build into the image, this local data will be implicitly mounted into the image.
         """
 
-        dockerignore_fp = _find_dockerignore_file(Path(path))
+        dockerignore_fp = find_dockerignore_file(Path(path), context_directory=Path.cwd())
         ignore = FilePatternMatcher(*read_ignorefile(dockerignore_fp)) if dockerignore_fp else FilePatternMatcher()
 
         if context_mount is not None:
