@@ -33,6 +33,7 @@ from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
+from ._utils.pattern_utils import read_ignorefile
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
@@ -326,37 +327,28 @@ def _filter_fp_docker_pattern(filepath: str, pattern: str) -> bool:
     return fnmatch.fnmatch(filepath, pattern)
 
 
-def _create_context_mount(docker_commands: list[str]) -> _Mount:
+def _create_context_mount(docker_commands: list[str], ignore: Callable[[Path], bool]) -> _Mount:
     """
     Creates a context mount from a list of docker commands.
     """
     mount_sources = _extract_copy_command_patterns(docker_commands)
 
-    def mount_filter(source: str):
-        return any(_filter_fp_docker_pattern(source, mount_source) for mount_source in mount_sources)
+    def mount_filter(source: Path):
+        # check if the source path matches any pattern from the docker file
+        # and it doesnt match any ignore pattern
+        matches_any_copy_pattern = any(
+            _filter_fp_docker_pattern(source, mount_source) for mount_source in mount_sources
+        )
+        matches_any_ignore_pattern = ignore(source)
 
-    return _Mount.from_local_dir("./", remote_path="/", condition=mount_filter)
+        return matches_any_copy_pattern and not matches_any_ignore_pattern
+
+    return _Mount._add_local_dir(Path("./"), Path("/"), ignore=mount_filter)
 
 
-def find_dockerignore_file(dockerfile_path: Path) -> Optional[Path]:
+def _find_dockerignore_file(dockerfile_path: Path) -> Optional[Path]:
     current_working_dir = Path.cwd()
     # 1. file next to the Dockerfile but do NOT look for parent directories
-
-    dockerignore_file = None
-    if dockerignore_file.exists():
-        return dockerignore_file
-
-    dockerignore_file = None
-    if dockerignore_file.exists():
-        return dockerignore_file
-
-    dockerignore_file = None
-    if dockerignore_file.exists():
-        return dockerignore_file
-
-    dockerignore_file = None
-    if dockerignore_file:
-        return dockerignore_file
 
     def valid_dockerignore_file(fp):
         # fp has to exist
@@ -1324,7 +1316,7 @@ class _Image(_Object, type_prefix="im"):
         else:
 
             def base_image_context_mount_function() -> _Mount:
-                return _create_context_mount(cmds)
+                return _create_context_mount(cmds, FilePatternMatcher())
 
             context_mount_function = base_image_context_mount_function
 
@@ -1715,8 +1707,10 @@ class _Image(_Object, type_prefix="im"):
 
         If your Dockerfile uses `COPY` instructions which copy data from the local context of the
         build into the image, this local data will be implicitly mounted into the image.
-        TODO: add dockerignore example
         """
+
+        dockerignore_fp = _find_dockerignore_file(Path(path))
+        ignore = FilePatternMatcher(*read_ignorefile(dockerignore_fp)) if dockerignore_fp else FilePatternMatcher()
 
         if context_mount is not None:
             deprecation_warning(
@@ -1734,7 +1728,7 @@ class _Image(_Object, type_prefix="im"):
             def base_image_context_mount_function() -> _Mount:
                 with open(os.path.expanduser(path)) as f:
                     lines = f.readlines()
-                return _create_context_mount(lines)
+                return _create_context_mount(lines, ignore)
 
             context_mount_function = base_image_context_mount_function
 
