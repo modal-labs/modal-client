@@ -394,13 +394,14 @@ def show_deprecations(ctx):
                 and node.func.id in func_name_to_level
                 and isinstance(node.args[0], ast.Tuple)
             ):
-                print(node.func.id, dir(node.args[0].elts[0]))
-                depr_date = date(*(elt.n for elt in node.args[0].elts))
+                depr_date = date(*(getattr(elt, "n") for elt in node.args[0].elts))
                 function = (
                     f"{self.current_class}.{self.current_function}" if self.current_class else self.current_function
                 )
                 if node.func.id == "renamed_parameter":
-                    message = f"Renamed parameter: {node.args[1].s} -> {node.args[2].s}"
+                    old_name = getattr(node.args[1], "s")
+                    new_name = getattr(node.args[2], "s")
+                    message = f"Renamed parameter: {old_name} -> {new_name}"
                 else:
                     message = node.args[1]
                     # Handle a few different ways that the message can get passed to the deprecation helper
