@@ -99,22 +99,30 @@ def get_function_type(is_generator: Optional[bool]) -> "api_pb2.Function.Functio
 
 
 class FunctionInfo:
-    """Class that helps us extract a bunch of information about a locally defined function.
+    """Utility that determines serialization/deserialization mechanisms for functions
 
-    Used for populating the definition of a remote function, and for making .local() calls
-    on a host with the local definition available.
+    * Stored as file vs serialized
+    * If serialized: how to serialize the function
+    * If file: which module/function name should be used to retrieve
+
+    Used for populating the definition of a remote function
     """
 
     raw_f: Optional[Callable[..., Any]]  # if None - this is a "class service function"
     function_name: str
     user_cls: Optional[type[Any]]
-    definition_type: "modal_proto.api_pb2.Function.DefinitionType.ValueType"
     module_name: Optional[str]
 
     _type: FunctionInfoType
     _file: Optional[str]
     _base_dir: str
     _remote_dir: Optional[PurePosixPath] = None
+
+    def get_definition_type(self) -> "modal_proto.api_pb2.Function.DefinitionType.ValueType":
+        if self.is_serialized():
+            return modal_proto.api_pb2.Function.DEFINITION_TYPE_SERIALIZED
+        else:
+            return modal_proto.api_pb2.Function.DEFINITION_TYPE_FILE
 
     def is_service_class(self):
         if self.raw_f is None:
