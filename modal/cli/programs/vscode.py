@@ -10,25 +10,20 @@ import time
 import webbrowser
 from typing import Any
 
-from modal import App, Image, Mount, Queue, Secret, Volume, forward
+from modal import App, Image, Queue, Secret, Volume, forward
 
 # Passed by `modal launch` locally via CLI, plumbed to remote runner through secrets.
 args: dict[str, Any] = json.loads(os.environ.get("MODAL_LAUNCH_ARGS", "{}"))
 
 
 app = App()
-app.image = Image.from_registry("codercom/code-server", add_python="3.11").dockerfile_commands("ENTRYPOINT []")
+image = Image.from_registry("codercom/code-server", add_python="3.11").dockerfile_commands("ENTRYPOINT []")
 
-
-mount = (
-    Mount.from_local_dir(
+if args.get("mount"):
+    image = image.add_local_dir(
         args.get("mount"),
         remote_path="/home/coder/mount",
     )
-    if args.get("mount")
-    else None
-)
-mounts = [mount] if mount else []
 
 volume = (
     Volume.from_name(
@@ -55,12 +50,12 @@ def wait_for_port(data: tuple[str, str], q: Queue):
 
 
 @app.function(
+    image=image,
     cpu=args.get("cpu"),
     memory=args.get("memory"),
     gpu=args.get("gpu"),
     timeout=args.get("timeout"),
     secrets=[Secret.from_dict({"MODAL_LAUNCH_ARGS": json.dumps(args)})],
-    mounts=mounts,
     volumes=volumes,
     concurrency_limit=1 if volume else None,
 )
