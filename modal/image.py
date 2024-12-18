@@ -637,7 +637,7 @@ class _Image(_Object, type_prefix="im"):
         if remote_path.endswith("/"):
             remote_path = remote_path + Path(local_path).name
 
-        mount = _Mount.from_local_file(local_path, remote_path)
+        mount = _Mount._from_local_file(local_path, remote_path)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def add_local_dir(
@@ -710,7 +710,7 @@ class _Image(_Object, type_prefix="im"):
         """
         # TODO(elias): add pending deprecation with suggestion to use add_* instead
         basename = str(Path(local_path).name)
-        mount = _Mount.from_local_file(local_path, remote_path=f"/{basename}")
+        mount = _Mount._from_local_file(local_path, remote_path=f"/{basename}")
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base", f"COPY {basename} {remote_path}"], context_files={})
