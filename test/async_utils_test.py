@@ -639,6 +639,7 @@ async def test_async_merge_exception():
         try:
             await asyncio.sleep(0.1)
             yield 1
+            await asyncio.sleep(0.1)  # ensure that 4 gets added by gen2 before the exception cancels it
             raise SampleException("test")
         finally:
             await asyncio.sleep(0)
