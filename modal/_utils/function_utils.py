@@ -311,7 +311,7 @@ class FunctionInfo:
         # make sure the function's own entrypoint is included:
         if self._type == FunctionInfoType.PACKAGE:
             if config.get("automount"):
-                return [_Mount.from_local_python_packages(self.module_name)]
+                return [_Mount._from_local_python_packages(self.module_name)]
             elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
                 # mount only relevant file and __init__.py:s
                 return [

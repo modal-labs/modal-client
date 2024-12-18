@@ -741,7 +741,7 @@ class _Image(_Object, type_prefix="im"):
         the destination directory.
         """
 
-        mount = _Mount.from_local_python_packages(*modules, ignore=~FilePatternMatcher("**/*.py"))
+        mount = _Mount._from_local_python_packages(*modules, ignore=~FilePatternMatcher("**/*.py"))
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_dir(
