@@ -36,7 +36,7 @@ def test_deprecation():
     assert record[0].filename == functions.__file__
 
 
-@renamed_parameter((2024, 12, 1), "bar", "foo")
+@renamed_parameter((2024, 12, 1), "foo", "bar")
 def my_func(bar: int) -> int:
     return bar**2
 
