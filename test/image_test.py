@@ -712,14 +712,14 @@ def test_image_copy_local_dir(builder_version, servicer, client, tmp_path_with_c
 
 def test_image_docker_command_copy(builder_version, servicer, client, tmp_path_with_content):
     app = App()
-    data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/", condition=lambda p: "module" not in p)
     app.image = Image.debian_slim().dockerfile_commands(["COPY . /dummy"])
     app.function()(dummy)
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
         assert "COPY . /dummy" in layers[0].dockerfile_commands
-        files = {f.mount_filename: f.content for f in Mount._get_files(data_mount.entries)}
+        mount_id = layers[1].context_mount_id
+        files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
         assert files == {"/data.txt": b"hello", "/data/sub": b"world"}
 
 
@@ -729,19 +729,12 @@ def test_image_dockerfile_copy(builder_version, servicer, client, tmp_path_with_
     dockerfile.close()
 
     app = App()
-    # data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/", condition=lambda p: "module" not in p)
     app.image = Image.debian_slim().from_dockerfile(dockerfile.name)
     app.function()(dummy)
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
         assert f"COPY {tmp_path_with_content} /dummy" in layers[1].dockerfile_commands
-        # TODO:
-        # get files from the image layers instead
-        # files = {f.mount_filename: f.content for f in Mount._get_files(data_mount.entries)}
-        files = {}
-        print()
-        print(f"{layers[1]=}")
         mount_id = layers[1].context_mount_id
         files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
         assert files == {"/data.txt": b"hello", "/data/sub": b"world"}

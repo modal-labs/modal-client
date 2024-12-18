@@ -12,7 +12,7 @@ def extract_copy_command_patterns(dockerfile_lines: list[str]) -> list[str]:
     Extract all COPY command sources from a Dockerfile.
     Combines multiline COPY commands into a single line.
     """
-    mount_sources = set()
+    copy_source_patterns: set[str] = set()
     current_command = ""
     copy_pattern = re.compile(r"^\s*COPY\s+(.+)$", re.IGNORECASE)
 
@@ -49,11 +49,11 @@ def extract_copy_command_patterns(dockerfile_lines: list[str]) -> list[str]:
                                 f"COPY command: {source} using special flags/arguments/variables are not supported"
                             )
 
-                        mount_sources.add(source)
+                        copy_source_patterns.add(source)
 
             current_command = ""
 
-    return list(mount_sources)
+    return list(copy_source_patterns)
 
 
 def find_dockerignore_file(dockerfile_path: Path, context_directory: Path) -> Optional[Path]:
