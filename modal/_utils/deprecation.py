@@ -57,15 +57,15 @@ def renamed_parameter(
     old_name: str,
     new_name: str,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    """Decorator for semi-gracefully renaming a parameter name.
+    """Decorator for semi-gracefully changing a parameter name.
 
     Functions wrapped with this decorator can be defined using only the `new_name` of the parameter.
-    If the function is invoked with the `old_name`, the wrapper will pass the argument as a keyword
-    argument for `old_name` and issue a Modal deprecation warning about the change.
+    If the function is invoked with the `old_name`, the wrapper will pass the value as a keyword
+    argument for `new_name` and issue a Modal deprecation warning about the change.
 
     Note that this only prevents parameter renamings from breaking code at runtime.
-    Type checking code that uses `old_name` will still fail. To avoid this, the `old_name`
-    can be preserved to the function signature with an `Annotated` type hint indicating the renaming.
+    Type checking will fail when code uses `old_name`. To avoid this, the `old_name` can be
+    preserved in the function signature with an `Annotated` type hint indicating the renaming.
     """
 
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
