@@ -630,7 +630,9 @@ class _Mount(_Object, type_prefix="mo"):
         deprecation_warning(
             (2024, 12, 18), MOUNT_DEPRECATION_MESSAGE.format(replacement="add_local_python_source"), pending=True
         )
-        return _Mount._from_local_python_packages(*module_names, remote_dir, condition=condition, ignore=ignore)
+        return _Mount._from_local_python_packages(
+            *module_names, remote_dir=remote_dir, condition=condition, ignore=ignore
+        )
 
     @staticmethod
     def _from_local_python_packages(
@@ -737,7 +739,7 @@ def _create_client_mount():
 
     for pkg_name in MODAL_PACKAGES:
         package_base_path = Path(modal_parent_dir) / pkg_name
-        client_mount = client_mount._add_local_dir(
+        client_mount = client_mount.add_local_dir(
             package_base_path,
             remote_path=f"/pkg/{pkg_name}",
             condition=module_mount_condition(package_base_path),
@@ -746,7 +748,7 @@ def _create_client_mount():
 
     # Mount synchronicity, so version changes don't trigger image rebuilds for users.
     synchronicity_base_path = Path(synchronicity.__path__[0])
-    client_mount = client_mount._add_local_dir(
+    client_mount = client_mount.add_local_dir(
         synchronicity_base_path,
         remote_path="/pkg/synchronicity",
         condition=module_mount_condition(synchronicity_base_path),
