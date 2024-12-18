@@ -371,10 +371,16 @@ def test_file_watch(servicer, client):
                 await stream.send_message(
                     api_pb2.FilesystemRuntimeOutputBatch(
                         output=[
-                            f'{{"paths": {json.dumps(event.paths)}, "event_type": "{event.event.value}"}}\n\n'.encode()
+                            f'{{"paths": {json.dumps(event.paths)}, "event_type": "{event.type.value}"}}\n\n'.encode()
                         ]
                     )
                 )
+        await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(eof=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
+        ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
+
         events = FileIO.watch("/test.txt", client, "task-123")
         seen_events: list[FileWatchEvent] = []
         for event in events:
@@ -382,7 +388,7 @@ def test_file_watch(servicer, client):
         assert len(seen_events) == len(expected_events)
         for e, se in zip(expected_events, seen_events):
             assert e.paths == se.paths
-            assert e.event == se.event
+            assert e.type == se.type
 
 
 def test_file_watch_ignore_invalid_events(servicer, client):

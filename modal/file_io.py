@@ -454,8 +454,9 @@ class _FileIO(Generic[T]):
         )
         await self._wait(resp.exec_id)
 
+    @classmethod
     async def watch(
-        cls, path: str, client: _Client, task_id: str, timeout: Optional[int] = None, recursive: bool = False
+        cls, path: str, client: _Client, task_id: str, recursive: bool = False, timeout: Optional[int] = None
     ) -> AsyncIterator[FileWatchEvent]:
         self = cls.__new__(cls)
         self._client = client
