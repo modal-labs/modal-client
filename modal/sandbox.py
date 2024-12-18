@@ -4,6 +4,8 @@ import os
 from collections.abc import AsyncGenerator, Sequence
 from typing import TYPE_CHECKING, Literal, Optional, Union, overload
 
+from modal.app import _App
+
 if TYPE_CHECKING:
     import _typeshed
 
@@ -538,10 +540,38 @@ class _Sandbox(_Object, type_prefix="sb"):
         return resp.snapshot_id
 
     @staticmethod
-    async def from_snapshot(snapshot_id: str):
+    async def from_snapshot(snapshot_id: str, app: Optional["modal.app._App"] = None):
+        app_client: Optional[_Client] = None
+
+        if app is not None:
+            if app.app_id is None:
+                raise ValueError(
+                    "App has not been initialized yet. To create an App lazily, use `App.lookup`: \n"
+                    "app = modal.App.lookup('my-app', create_if_missing=True)\n"
+                    "modal.Sandbox.create('echo', 'hi', app=app)\n"
+                    "In order to initialize an existing `App` object, refer to our docs: https://modal.com/docs/guide/apps"
+                )
+
+            app_client = app._client
+        elif _App._container_app is not None:
+            app_client = _App._container_app.client
+        else:
+            deprecation_error(
+                (2024, 9, 14),
+                "Creating a `Sandbox` without an `App` is deprecated.\n\n"
+                "You may pass in an `App` object, or reference one by name with `App.lookup`:\n\n"
+                "```\n"
+                "app = modal.App.lookup('sandbox-app', create_if_missing=True)\n"
+                f"sb = modal.Sandbox.from_snapshot({snapshot_id}, app=app)\n"
+                "```",
+            )
+
+        client = client or app_client or await _Client.from_env()
+
         req = api_pb2.SandboxRestoreRequest(snapshot_id=snapshot_id)
-        # TODO (colin) how tf do loaders work?
-        return
+        resp: api_pb2.SandboxRestoreResponse = retry_transient_errors(client.stub.SandboxWait, req)
+        sandbox = await _Sandbox.from_id(resp.sandbox_id, client)
+        return sandbox
 
     @overload
     async def open(

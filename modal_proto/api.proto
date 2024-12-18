@@ -873,12 +873,13 @@ message SandboxSnapshotResponse {
 }
 
 message SandboxRestoreRequest {
-  string snapshot_id = 1;
+  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string snapshot_id = 2;
+  string environment_name = 3;
 }
 
-// TODO (colin) this should return a sandbox
 message SandboxRestoreResponse {
-
+  string sandbox_id = 1;
 }
 
 message ContainerHeartbeatRequest {
@@ -2106,6 +2107,13 @@ message S3Mount {
   bool read_only = 4;
 }
 
+message SandboxSnapshotInfo {
+  string checksum = 1;
+  string snapshot_id = 2; // TODO (colin) i don't think this field needs to exist
+  string runtime_version = 3;
+  string original_task_id = 4;
+}
+
 message Sandbox {
   repeated string entrypoint_args = 1;
   repeated string mount_ids = 2;
@@ -2149,6 +2157,8 @@ message Sandbox {
   NetworkAccess network_access = 22;
 
   optional string proxy_id = 23;
+
+  optional SandboxSnapshotInfo snapshot = 24;
 }
 
 message SandboxCreateRequest {
