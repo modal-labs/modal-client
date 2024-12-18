@@ -56,6 +56,7 @@ def renamed_parameter(
     date: tuple[int, int, int],
     old_name: str,
     new_name: str,
+    show_source: bool = True,
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """Decorator for semi-gracefully changing a parameter name.
 
@@ -79,7 +80,7 @@ def renamed_parameter(
                     f"The '{old_name}' parameter of `{func_name}` has been renamed to '{new_name}'."
                     "\nUsing the old name will become an error in a future release. Please update your code."
                 )
-                deprecation_warning(date, message, show_source=False)
+                deprecation_warning(date, message, show_source=show_source)
 
             return func(*args, **kwargs)
 

@@ -22,7 +22,7 @@ from modal_proto import api_pb2
 
 from ._ipython import is_notebook
 from ._utils.async_utils import synchronize_api
-from ._utils.deprecation import deprecation_error, deprecation_warning
+from ._utils.deprecation import deprecation_error, deprecation_warning, renamed_parameter
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
@@ -260,8 +260,9 @@ class _App:
         return self._description
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
-        label: str,
+        name: str,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -283,14 +284,14 @@ class _App:
         environment_name = _get_environment_name(environment_name)
 
         request = api_pb2.AppGetOrCreateRequest(
-            app_name=label,
+            app_name=name,
             environment_name=environment_name,
             object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
         )
 
         response = await retry_transient_errors(client.stub.AppGetOrCreate, request)
 
-        app = _App(label)
+        app = _App(name)
         app._app_id = response.app_id
         app._client = client
         app._running_app = RunningApp(
