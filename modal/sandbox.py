@@ -534,8 +534,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr, text=text, by_line=by_line)
     
     async def snapshot(self) -> str:
-        task_id = await self._get_task_id()
-        req = api_pb2.SandboxSnapshotRequest(task_id=task_id)
+        req = api_pb2.SandboxSnapshotRequest(sandbox_id=self.object_id)
         resp = await retry_transient_errors(self._client.stub.SandboxSnapshot, req)
         return resp.snapshot_id
 
