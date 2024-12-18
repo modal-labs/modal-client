@@ -62,6 +62,9 @@ jobs:
           pull: "--rebase --autostash"
           default_author: github_actions
 
+      - name: Install the client
+        run: pip install .
+
       - name: Publish client mount
         env:
           MODAL_ENVIRONMENT: main
