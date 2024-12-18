@@ -19,19 +19,13 @@ from ._location import parse_cloud_provider
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import synchronize_api
+from ._utils.deprecation import deprecation_error
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
-from .exception import (
-    ExecutionError,
-    InvalidError,
-    SandboxTerminatedError,
-    SandboxTimeoutError,
-    deprecation_error,
-    deprecation_warning,
-)
+from .exception import ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
 from .file_io import _FileIO
 from .gpu import GPU_T
 from .image import _Image
@@ -284,13 +278,14 @@ class _Sandbox(_Object, type_prefix="sb"):
             app_id = _App._container_app.app_id
             app_client = _App._container_app.client
         else:
-            deprecation_warning(
+            arglist = ", ".join(repr(s) for s in entrypoint_args)
+            deprecation_error(
                 (2024, 9, 14),
-                "Creating a `Sandbox` without an `App` is deprecated.\n"
-                "You may pass in an `App` object, or reference one by name with `App.lookup`:\n"
+                "Creating a `Sandbox` without an `App` is deprecated.\n\n"
+                "You may pass in an `App` object, or reference one by name with `App.lookup`:\n\n"
                 "```\n"
-                "app = modal.App.lookup('my-app', create_if_missing=True)\n"
-                "modal.Sandbox.create('echo', 'hi', app=app)\n"
+                "app = modal.App.lookup('sandbox-app', create_if_missing=True)\n"
+                f"sb = modal.Sandbox.create({arglist}, app=app)\n"
                 "```",
             )
 
@@ -566,6 +561,21 @@ class _Sandbox(_Object, type_prefix="sb"):
         """
         task_id = await self._get_task_id()
         return await _FileIO.create(path, mode, self._client, task_id)
+
+    async def ls(self, path: str) -> list[str]:
+        """List the contents of a directory in the Sandbox."""
+        task_id = await self._get_task_id()
+        return await _FileIO.ls(path, self._client, task_id)
+
+    async def mkdir(self, path: str, parents: bool = False) -> None:
+        """Create a new directory in the Sandbox."""
+        task_id = await self._get_task_id()
+        return await _FileIO.mkdir(path, self._client, task_id, parents)
+
+    async def rm(self, path: str, recursive: bool = False) -> None:
+        """Remove a file or directory in the Sandbox."""
+        task_id = await self._get_task_id()
+        return await _FileIO.rm(path, self._client, task_id, recursive)
 
     @property
     def stdout(self) -> _StreamReader[str]:
