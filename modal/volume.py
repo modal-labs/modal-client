@@ -135,15 +135,6 @@ class _Volume(_Object, type_prefix="vo"):
         return self._lock
 
     @staticmethod
-    def new():
-        """mdmd:hidden"""
-        message = (
-            "`Volume.new` is deprecated."
-            " Please use `Volume.from_name` (for persisted) or `Volume.ephemeral` (for ephemeral) volumes instead."
-        )
-        deprecation_error((2024, 3, 20), message)
-
-    @staticmethod
     @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
         name: str,
