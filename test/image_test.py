@@ -23,7 +23,6 @@ from modal.image import (
     _base_image_config,
     _dockerhub_python_version,
     _extract_copy_command_patterns,
-    _filter_fp_docker_pattern,
     _find_dockerignore_file,
     _get_modal_requirements_path,
     _validate_python_version,
@@ -877,48 +876,6 @@ def test_extract_copy_command_patterns():
         copy_command_sources = sorted(_extract_copy_command_patterns(dockerfile_lines))
         expected = sorted(expected)
         assert copy_command_sources == expected
-
-
-@pytest.mark.parametrize(
-    ("name", "pattern", "expected_filepaths"),
-    [
-        (
-            "basic_wildcards",
-            "{tmp_dir}/*.txt",
-            ["{tmp_path}/file1.txt", "{tmp_path}/file10.txt", "{tmp_path}/file2.txt"],
-        ),
-        ("single_character_wildcards", "{tmp_dir}/file?.txt", ["{tmp_path}/file1.txt", "{tmp_path}/file2.txt"]),
-        (
-            "recursive_wildcards",
-            "{tmp_dir}/**/*.py",
-            ["{tmp_path}/dir2/test1.py", "{tmp_path}/dir2/test2.py", "{tmp_path}/special/test?file.py"],
-        ),
-        (
-            "directory_specific_match",
-            "{tmp_dir}/dir1/*.txt",
-            ["{tmp_path}/dir1/a.txt", "{tmp_path}/dir1/b.txt"],
-        ),
-        ("escaping_special_characters", "{tmp_dir}/special/file[[]1].txt", ["{tmp_path}/special/file[1].txt"]),
-        ("character_range", "{tmp_dir}/dir2/test[1-2].py", ["{tmp_path}/dir2/test1.py", "{tmp_path}/dir2/test2.py"]),
-        ("abs_path", "{tmp_dir}/dir2/test1.py", ["{tmp_path}/dir2/test1.py"]),
-    ],
-)
-def test_filter_fp_docker_pattern(name, pattern, expected_filepaths):
-    with TemporaryDirectory(dir="./") as tmp_dir:
-        tmp_path = Path(tmp_dir)
-        all_fps = create_tmp_files(tmp_path)
-        fmt_pattern = pattern.format(tmp_dir=tmp_dir, tmp_path=tmp_path)
-        if name == "abs_path":
-            fmt_pattern = os.path.abspath(fmt_pattern)
-        fmt_expected_filepaths = [fp.format(tmp_dir=tmp_dir, tmp_path=tmp_path) for fp in expected_filepaths]
-        fmt_unexpected_filepaths = [fp for fp in all_fps if fp not in fmt_expected_filepaths]
-
-        # assert only expected_filepaths are matched
-        for fp in fmt_expected_filepaths:
-            assert _filter_fp_docker_pattern(fp, fmt_pattern), f"{name=} {fp=} {fmt_pattern=}"
-        # assert no other filepaths are matched
-        for fp in fmt_unexpected_filepaths:
-            assert not _filter_fp_docker_pattern(fp, fmt_pattern), f"{name=} {fp=} {fmt_pattern=}"
 
 
 def test_image_docker_command_entrypoint(builder_version, servicer, client, tmp_path_with_content):
