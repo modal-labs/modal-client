@@ -76,7 +76,7 @@ def test_match(pattern, s, is_match, err):
         return
 
     if err is not None:
-        with pytest.raises(ValueError):
+        with pytest.raises(PatternError):
             match(pattern, s)
     else:
         actual_match = match(pattern, s)
