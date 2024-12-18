@@ -10,13 +10,56 @@ then asking it whether file paths match any of its patterns.
 """
 
 import os
+from abc import abstractmethod
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
 
 from ._utils.pattern_utils import Pattern
 
 
-class FilePatternMatcher:
+class _AbstractPatternMatcher:
+    _custom_repr: Optional[str] = None
+
+    def __invert__(self) -> "_AbstractPatternMatcher":
+        """Invert the filter. Returns a function that returns True if the path does not match any of the patterns.
+
+        Usage:
+        ```python
+        from pathlib import Path
+        from modal import FilePatternMatcher
+
+        inverted_matcher = ~FilePatternMatcher("**/*.py")
+
+        assert not inverted_matcher(Path("foo.py"))
+        ```
+        """
+        return _CustomPatternMatcher(lambda path: not self(path))
+
+    def with_repr(self, custom_repr) -> "_AbstractPatternMatcher":
+        # use to give an instance of a matcher a custom name - useful for visualizing default values in signatures
+        self._custom_repr = custom_repr
+        return self
+
+    def __repr__(self) -> str:
+        if self._custom_repr:
+            return self._custom_repr
+
+        return super().__repr__()
+
+    @abstractmethod
+    def __call__(self, path: Path) -> bool:
+        ...
+
+
+class _CustomPatternMatcher(_AbstractPatternMatcher):
+    def __init__(self, predicate: Callable[[Path], bool]):
+        self._predicate = predicate
+
+    def __call__(self, path: Path) -> bool:
+        return self._predicate(path)
+
+
+class FilePatternMatcher(_AbstractPatternMatcher):
     """Allows matching file paths against a list of patterns."""
 
     def __init__(self, *pattern: str) -> None:
@@ -105,17 +148,7 @@ class FilePatternMatcher:
         """
         return self._matches(str(file_path))
 
-    def __invert__(self) -> Callable[[Path], bool]:
-        """Invert the filter. Returns a function that returns True if the path does not match any of the patterns.
 
-        Usage:
-        ```python
-        from pathlib import Path
-        from modal import FilePatternMatcher
-
-        inverted_matcher = ~FilePatternMatcher("**/*.py")
-
-        assert not inverted_matcher(Path("foo.py"))
-        ```
-        """
-        return lambda path: not self(path)
+# with_repr allows us to use this matcher as a default value in a function signature
+#  and get a nice repr in the docs and auto-generated type stubs:
+NON_PYTHON_FILES = (~FilePatternMatcher("**/*.py")).with_repr(f"{__name__}.NON_PYTHON_FILES")
