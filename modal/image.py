@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import contextlib
-import fnmatch
 import json
 import os
 import re
@@ -33,6 +32,7 @@ from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
+from ._utils.match import match
 from ._utils.pattern_utils import read_ignorefile
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
@@ -286,47 +286,6 @@ def _extract_copy_command_patterns(dockerfile_lines: list[str]) -> list[str]:
     return list(mount_sources)
 
 
-def _filter_fp_docker_pattern(filepath: str, pattern: str) -> bool:
-    """
-    Validates that a filepath matches a docker copy pattern.
-    https://docs.docker.com/reference/dockerfile/#pattern-matching-1
-    https://pkg.go.dev/path/filepath#Match
-    """
-    filepath = os.path.abspath(filepath)
-    pattern = os.path.abspath(pattern)
-
-    if "**" in pattern:
-        # Match any file that ends with the pattern after '**/'
-        base_dir = pattern.split("/**/")[0]
-        file_pattern = pattern.split("/**/")[1]
-
-        # Ensure the file is within the base directory
-        if not filepath.startswith(base_dir + "/"):
-            return False
-
-        # Get the relative path after base_dir
-        rel_path = filepath[len(base_dir) + 1 :]
-
-        # Match against the filename part only
-        filename = os.path.basename(filepath)
-        if fnmatch.fnmatch(filename, file_pattern):
-            # Ensure the file is exactly one level deep
-            return rel_path.count("/") == 1
-        return False
-
-    # if pattern is a directory, make sure it ends with a separator
-    if os.path.isdir(pattern) and not pattern.endswith("/"):
-        pattern += "/*"
-
-    filepath_dir = os.path.dirname(filepath)
-    pattern_dir = os.path.dirname(pattern)
-
-    if filepath_dir != pattern_dir:
-        return False
-
-    return fnmatch.fnmatch(filepath, pattern)
-
-
 def _create_context_mount(docker_commands: list[str], ignore: Callable[[Path], bool]) -> _Mount:
     """
     Creates a context mount from a list of docker commands.
@@ -336,9 +295,7 @@ def _create_context_mount(docker_commands: list[str], ignore: Callable[[Path], b
     def mount_filter(source: Path):
         # check if the source path matches any pattern from the docker file
         # and it doesnt match any ignore pattern
-        matches_any_copy_pattern = any(
-            _filter_fp_docker_pattern(source, mount_source) for mount_source in mount_sources
-        )
+        matches_any_copy_pattern = any(match(source, mount_source) for mount_source in mount_sources)
         matches_any_ignore_pattern = ignore(source)
 
         return matches_any_copy_pattern and not matches_any_ignore_pattern
