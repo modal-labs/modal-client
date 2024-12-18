@@ -878,12 +878,15 @@ def test_calls_should_not_unwrap_modal_objects_gen(servicer, client):
     assert len(servicer.client_calls) == 1
 
 
-def test_mount_deps_have_ids(client, servicer, monkeypatch, test_dir):
-    # This test can possibly break if a function's deps diverge between
-    # local and remote environments
+def test_function_deps_have_ids(client, servicer, monkeypatch, test_dir, set_env_client):
     monkeypatch.syspath_prepend(test_dir / "supports")
     app = App()
-    app.function(mounts=[Mount.from_local_python_packages("pkg_a")])(dummy)
+    app.function(
+        image=modal.Image.debian_slim().add_local_python_source("pkg_a"),
+        volumes={"/vol": modal.Volume.from_name("vol", create_if_missing=True)},
+        network_file_systems={"/vol": modal.NetworkFileSystem.from_name("nfs", create_if_missing=True)},
+        secrets=[modal.Secret.from_dict({"foo": "bar"})],
+    )(dummy)
 
     with servicer.intercept() as ctx:
         with app.run(client=client):
