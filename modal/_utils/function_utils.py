@@ -315,7 +315,7 @@ class FunctionInfo:
             elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
                 # mount only relevant file and __init__.py:s
                 return [
-                    _Mount.from_local_dir(
+                    _Mount._from_local_dir(
                         self._base_dir,
                         remote_path=self._remote_dir,
                         recursive=True,
@@ -326,7 +326,7 @@ class FunctionInfo:
             remote_path = ROOT_DIR / Path(self._file).name
             if not _is_modal_path(remote_path):
                 return [
-                    _Mount.from_local_file(
+                    _Mount._from_local_file(
                         self._file,
                         remote_path=remote_path,
                     )
