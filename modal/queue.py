@@ -13,7 +13,7 @@ from modal_proto import api_pb2
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_is_not_consumed
-from ._utils.deprecation import deprecation_error, renamed_parameter
+from ._utils.deprecation import renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -93,15 +93,6 @@ class _Queue(_Object, type_prefix="qu"):
 
     Partition keys must be non-empty and must not exceed 64 bytes.
     """
-
-    @staticmethod
-    def new():
-        """mdmd:hidden"""
-        message = (
-            "`Queue.new` is deprecated."
-            " Please use `Queue.from_name` (for persisted) or `Queue.ephemeral` (for ephemeral) queues instead."
-        )
-        deprecation_error((2024, 3, 19), message)
 
     def __init__(self):
         """mdmd:hidden"""
