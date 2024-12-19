@@ -253,7 +253,7 @@ def _web_endpoint(
     custom_domains: Optional[
         Iterable[str]
     ] = None,  # Create an endpoint using a custom domain fully-qualified domain name (FQDN).
-    requires_proxy_auth: bool = False,  # Require Proxy-Authorization HTTP Headers on requests to the endpoint
+    requires_proxy_auth: bool = False,  # Require Proxy-Authorization HTTP Headers on requests
     wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[P, ReturnType]], _PartialFunction[P, ReturnType, ReturnType]]:
     """Register a basic web endpoint with this application.
@@ -277,6 +277,8 @@ def _web_endpoint(
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@web_endpoint()`."
         )
+    if requires_proxy_auth:
+        raise InvalidError("This feature is not supported yet.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if isinstance(raw_f, _Function):
@@ -316,7 +318,7 @@ def _asgi_app(
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
-    requires_proxy_auth: bool = False,  # Require Proxy-Authorization HTTP Headers on requests to the endpoint
+    requires_proxy_auth: bool = False,  # Require Proxy-Authorization HTTP Headers on requests
     wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering an ASGI app with a Modal function.
@@ -346,6 +348,8 @@ def _asgi_app(
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@asgi_app()`."
         )
+    if requires_proxy_auth:
+        raise InvalidError("This feature is not supported yet.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if callable_has_non_self_params(raw_f):
@@ -392,7 +396,7 @@ def _wsgi_app(
     *,
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
-    requires_proxy_auth: bool = False,  # Require Proxy-Authorization HTTP Headers on requests to the endpoint
+    requires_proxy_auth: bool = False,  # Require Proxy-Authorization HTTP Headers on requests
     wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering a WSGI app with a Modal function.
@@ -422,6 +426,8 @@ def _wsgi_app(
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@wsgi_app()`."
         )
+    if requires_proxy_auth:
+        raise InvalidError("This feature is not supported yet.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if callable_has_non_self_params(raw_f):
@@ -469,7 +475,7 @@ def _web_server(
     startup_timeout: float = 5.0,  # Maximum number of seconds to wait for the web server to start.
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
-    requires_proxy_auth: bool = False,  # Require Proxy-Authorization HTTP Headers on requests to the endpoint
+    requires_proxy_auth: bool = False,  # Require Proxy-Authorization HTTP Headers on requests
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator that registers an HTTP web server inside the container.
 
@@ -501,6 +507,8 @@ def _web_server(
         raise InvalidError("First argument of `@web_server` must be a local port, such as `@web_server(8000)`.")
     if startup_timeout <= 0:
         raise InvalidError("The `startup_timeout` argument of `@web_server` must be positive.")
+    if requires_proxy_auth:
+        raise InvalidError("This feature is not supported yet.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         return _PartialFunction(
