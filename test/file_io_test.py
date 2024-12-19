@@ -391,6 +391,40 @@ def test_file_watch(servicer, client):
             assert e.type == se.type
 
 
+def test_file_watch_with_filter(servicer, client):
+    """Test file watching with filter."""
+    expected_events = [
+        FileWatchEvent(paths=["/foo.txt"], type=FileWatchEventType.Access),
+        FileWatchEvent(paths=["/bar.txt"], type=FileWatchEventType.Create),
+        FileWatchEvent(paths=["/baz.txt", "/baz/foo.txt"], type=FileWatchEventType.Modify),
+    ]
+
+    async def container_filesystem_exec_get_output(servicer, stream):
+        req = await stream.recv_message()
+        if req.exec_id == WATCH_EXEC_ID:
+            for event in expected_events:
+                await stream.send_message(
+                    api_pb2.FilesystemRuntimeOutputBatch(
+                        output=[
+                            f'{{"paths": {json.dumps(event.paths)}, "event_type": "{event.type.value}"}}\n\n'.encode()
+                        ]
+                    )
+                )
+        await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(eof=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
+        ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
+
+        events = FileIO.watch("/test.txt", client, "task-123", filter=[FileWatchEventType.Access])
+        seen_events: list[FileWatchEvent] = []
+        for event in events:
+            seen_events.append(event)
+        assert len(seen_events) == 1
+        assert seen_events[0].paths == expected_events[0].paths
+        assert seen_events[0].type == expected_events[0].type
+
+
 def test_file_watch_ignore_invalid_events(servicer, client):
     """Test file watching ignores invalid events."""
 

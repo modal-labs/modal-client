@@ -13,7 +13,7 @@ import json
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal._utils.grpc_utils import retry_transient_errors
-from modal.exception import ClientClosed
+from modal.io_streams_helper import consume_stream_with_retries
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
@@ -185,33 +185,23 @@ class _FileIO(Generic[T]):
                 yield message
 
     async def _consume_watch_output(self, exec_id: str) -> None:
-        completed = False
-        retries_remaining = 10
-        while not completed:
-            try:
-                async for data in self._consume_output(exec_id):
-                    self._watch_output_buffer.append(data)
-                    if data is None:
-                        completed = True
-                        break
-            except (GRPCError, StreamTerminatedError, ClientClosed) as exc:
-                if retries_remaining > 0:
-                    retries_remaining -= 1
-                    if isinstance(exc, GRPCError):
-                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
-                            await asyncio.sleep(1.0)
-                            continue
-                    elif isinstance(exc, StreamTerminatedError):
-                        continue
-                    elif isinstance(exc, ClientClosed):
-                        break
-                raise
+        def item_handler(item: Optional[bytes]):
+            self._watch_output_buffer.append(item)
+
+        def completion_check(item: Optional[bytes]):
+            return item is None
+
+        await consume_stream_with_retries(
+            self._consume_output(exec_id),
+            item_handler,
+            completion_check,
+        )
 
     async def _parse_watch_output(self, event: bytes) -> Optional[FileWatchEvent]:
         try:
             event_json = json.loads(event.decode())
             return FileWatchEvent(type=FileWatchEventType(event_json["event_type"]), paths=event_json["paths"])
-        except Exception:
+        except (json.JSONDecodeError, KeyError, ValueError):
             # skip invalid events
             return None
 
@@ -254,10 +244,6 @@ class _FileIO(Generic[T]):
                         continue
                 raise
         return output
-
-    async def _wait_watch(self, exec_id: str) -> None:
-        # buffer watch events into memory
-        await self._wait(exec_id)
 
     def _validate_type(self, data: Union[bytes, str]) -> None:
         if self._binary and isinstance(data, str):
@@ -456,7 +442,13 @@ class _FileIO(Generic[T]):
 
     @classmethod
     async def watch(
-        cls, path: str, client: _Client, task_id: str, recursive: bool = False, timeout: Optional[int] = None
+        cls,
+        path: str,
+        client: _Client,
+        task_id: str,
+        filter: Optional[list[FileWatchEventType]] = None,
+        recursive: bool = False,
+        timeout: Optional[int] = None,
     ) -> AsyncIterator[FileWatchEvent]:
         self = cls.__new__(cls)
         self._client = client
@@ -471,9 +463,12 @@ class _FileIO(Generic[T]):
                 task_id=self._task_id,
             )
         )
-        asyncio.create_task(self._consume_watch_output(resp.exec_id))
+        task = asyncio.create_task(self._consume_watch_output(resp.exec_id))
         async for event in self._stream_watch_output():
+            if filter and event.type not in filter:
+                continue
             yield event
+        task.cancel()
 
     async def _close(self) -> None:
         # Buffer is flushed by the runner on close
