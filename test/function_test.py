@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from synchronicity.exceptions import UserCodeException
 
 import modal
-from modal import App, Image, Mount, NetworkFileSystem, Proxy, asgi_app, batched, web_endpoint
+from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, web_endpoint
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
 from modal.exception import DeprecationError, ExecutionError, InvalidError
@@ -878,38 +878,54 @@ def test_calls_should_not_unwrap_modal_objects_gen(servicer, client):
     assert len(servicer.client_calls) == 1
 
 
-def test_mount_deps_have_ids(client, servicer, monkeypatch, test_dir):
-    # This test can possibly break if a function's deps diverge between
-    # local and remote environments
+def test_function_deps_have_ids(client, servicer, monkeypatch, test_dir, set_env_client, disable_auto_mount):
     monkeypatch.syspath_prepend(test_dir / "supports")
     app = App()
-    app.function(mounts=[Mount.from_local_python_packages("pkg_a")])(dummy)
+    app.function(
+        image=modal.Image.debian_slim().add_local_python_source("pkg_a"),
+        volumes={"/vol": modal.Volume.from_name("vol", create_if_missing=True)},
+        network_file_systems={"/vol": modal.NetworkFileSystem.from_name("nfs", create_if_missing=True)},
+        secrets=[modal.Secret.from_dict({"foo": "bar"})],
+    )(dummy)
 
     with servicer.intercept() as ctx:
         with app.run(client=client):
             pass
 
     function_create = ctx.pop_request("FunctionCreate")
+    assert len(function_create.function.mount_ids) == 3  # client mount, explicit mount, entrypoint mount
+    for mount_id in function_create.function.mount_ids:
+        assert mount_id
+
     for dep in function_create.function.object_dependencies:
         assert dep.object_id
 
 
-def test_no_state_reuse(client, servicer, supports_dir):
+def test_no_state_reuse(client, servicer, supports_dir, disable_auto_mount):
     # two separate instances of the same mount content - triggers deduplication logic
-    mount_instance_1 = Mount.from_local_file(supports_dir / "pyproject.toml")
-    mount_instance_2 = Mount.from_local_file(supports_dir / "pyproject.toml")
 
+    img = (
+        Image.debian_slim()
+        .add_local_file(supports_dir / "pyproject.toml", "/root/")
+        .add_local_file(supports_dir / "pyproject.toml", "/root/")
+    )
     app = App("reuse-mount-app")
-    app.function(mounts=[mount_instance_1, mount_instance_2])(dummy)
+    app.function(image=img)(dummy)
 
-    deploy_app(app, client=client)
-    first_deploy = {mount_instance_1.object_id, mount_instance_2.object_id}
+    with servicer.intercept() as ctx:
+        deploy_app(app, client=client)
+        func_create = ctx.pop_request("FunctionCreate")
+        first_deploy_mounts = set(func_create.function.mount_ids)
+        assert len(first_deploy_mounts) == 3  # client mount, one of the explicit mounts, entrypoint mount
 
-    deploy_app(app, client=client)
-    second_deploy = {mount_instance_1.object_id, mount_instance_2.object_id}
+    with servicer.intercept() as ctx:
+        deploy_app(app, client=client)
+        func_create = ctx.pop_request("FunctionCreate")
+        second_deploy_mounts = set(func_create.function.mount_ids)
+        assert len(second_deploy_mounts) == 3  # client mount, one of the explicit mounts, entrypoint mount
 
-    # mount ids should not overlap between first and second deploy
-    assert not (first_deploy & second_deploy)
+    # mount ids should not overlap between first and second deploy, except for client mount
+    assert first_deploy_mounts & second_deploy_mounts == {servicer.default_published_client_mount}
 
 
 @pytest.mark.asyncio
