@@ -10,6 +10,18 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.68.44 (2024-12-19)
+
+- You can now run GPU workloads on [Nvidia L40S GPUs](https://www.nvidia.com/en-us/data-center/l40s/):
+
+    ```python
+    @app.function(gpu="L40S")
+    def my_gpu_fn():
+        ...
+    ```
+
+
+
 ### 0.68.43 (2024-12-19)
 
 - Fixed a bug introduced in v0.68.39 that changed the exception type raise when the target object for `.from_name`/`.lookup` methods was not found.
