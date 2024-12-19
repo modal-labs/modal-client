@@ -293,3 +293,85 @@ async def test_cancellation_when_first_input_arrives():
     await asyncio.sleep(0.1)  # resume event loop to resolve tasks if possible
     remaining_tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
     assert len(remaining_tasks) == 0
+
+
+@pytest.mark.asyncio
+async def test_lifespan_supported():
+    lifespan_startup_complete = False
+    lifespan_shutdown_complete = False
+
+    async def asgi_app(scope, receive, send):
+        if scope["type"] == "lifespan":
+            while True:
+                message = await receive()
+                if message["type"] == "lifespan.startup":
+                    print("startup complete")
+                    nonlocal lifespan_startup_complete
+                    lifespan_startup_complete = True
+                    await send({"type": "lifespan.startup.complete"})
+                elif message["type"] == "lifespan.shutdown":
+                    nonlocal lifespan_shutdown_complete
+                    lifespan_shutdown_complete = True
+                    await send({"type": "lifespan.shutdown.complete"})
+                    return
+        else:
+            await send({"type": "http.response.start", "status": 200})
+            await send({"type": "http.response.body", "body": b'{"some_result":"foo"}'})
+
+    mock_manager = MockIOManager()
+    _set_current_context_ids(["in-123"], ["fc-123"])
+    wrapped_app, lifespan_manager = asgi_app_wrapper(asgi_app, mock_manager)
+
+    asyncio.create_task(lifespan_manager.background_task())
+    await lifespan_manager.lifespan_startup()
+
+    assert lifespan_startup_complete
+
+    asgi_scope = _asgi_get_scope("/")
+    outputs = [output async for output in wrapped_app(asgi_scope)]
+    assert len(outputs) == 2
+    before_body = outputs[0]
+    assert before_body["status"] == 200
+    assert before_body["type"] == "http.response.start"
+    body = outputs[1]
+    assert body["body"] == b'{"some_result":"foo"}'
+    assert body["type"] == "http.response.body"
+
+    await lifespan_manager.lifespan_shutdown()
+
+    assert lifespan_shutdown_complete
+
+    assert lifespan_manager.lifespan_supported
+
+
+@pytest.mark.asyncio
+async def test_lifespan_unsupported():
+    async def asgi_app(scope, receive, send):
+        if scope["type"] == "lifespan":
+            raise
+        else:
+            await send({"type": "http.response.start", "status": 200})
+            await send({"type": "http.response.body", "body": b'{"some_result":"foo"}'})
+
+    mock_manager = MockIOManager()
+    _set_current_context_ids(["in-123"], ["fc-123"])
+    wrapped_app, lifespan_manager = asgi_app_wrapper(asgi_app, mock_manager)
+
+    # Failing lifespan should not affect the app
+    asyncio.create_task(lifespan_manager.background_task())
+    await lifespan_manager.lifespan_startup()
+
+    # works with stuff after
+    asgi_scope = _asgi_get_scope("/")
+    outputs = [output async for output in wrapped_app(asgi_scope)]
+    assert len(outputs) == 2
+    before_body = outputs[0]
+    assert before_body["status"] == 200
+    assert before_body["type"] == "http.response.start"
+    body = outputs[1]
+    assert body["body"] == b'{"some_result":"foo"}'
+    assert body["type"] == "http.response.body"
+
+    await lifespan_manager.lifespan_shutdown()
+
+    assert not lifespan_manager.lifespan_supported
