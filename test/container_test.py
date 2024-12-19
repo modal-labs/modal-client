@@ -977,9 +977,15 @@ def test_cls_web_endpoint(servicer):
 
 @skip_github_non_linux
 def test_cls_web_asgi_construction(servicer):
-    servicer.app_objects.setdefault("ap-1", {}).setdefault("square", "fu-2")
-    servicer.app_functions["fu-2"] = api_pb2.Function()
-
+    app_layout = api_pb2.AppLayout(
+        objects=[
+            api_pb2.Object(object_id="im-1"),
+            api_pb2.Object(object_id="fu-2", function_handle_metadata=api_pb2.FunctionHandleMetadata()),
+        ],
+        function_ids={
+            "square": "fu-2",
+        },
+    )
     inputs = _get_web_inputs(method_name="asgi_web")
     ret = _run_container(
         servicer,
@@ -987,6 +993,7 @@ def test_cls_web_asgi_construction(servicer):
         "Cls.*",
         inputs=inputs,
         is_class=True,
+        app_layout=app_layout,
     )
 
     _, second_message = _unwrap_asgi(ret)
@@ -1107,11 +1114,13 @@ def test_cli(servicer, credentials):
         function_id="fu-123",
         app_id="ap-123",
         function_def=function_def,
+        app_layout=api_pb2.AppLayout(
+            objects=[
+                api_pb2.Object(object_id="im-123"),
+            ],
+        ),
     )
     data_base64: str = base64.b64encode(container_args.SerializeToString()).decode("ascii")
-
-    # Needed for function hydration
-    servicer.app_objects["ap-123"] = {"": "im-123"}
 
     # Inputs that will be consumed by the container
     servicer.container_inputs = _get_inputs()
