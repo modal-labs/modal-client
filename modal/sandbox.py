@@ -565,10 +565,10 @@ class _Sandbox(_Object, type_prefix="sb"):
                 "```",
             )
 
-        client = client or app_client or await _Client.from_env()
+        client = app_client or await _Client.from_env()
 
         req = api_pb2.SandboxRestoreRequest(snapshot_id=snapshot_id)
-        resp: api_pb2.SandboxRestoreResponse = retry_transient_errors(client.stub.SandboxWait, req)
+        resp: api_pb2.SandboxRestoreResponse = await retry_transient_errors(client.stub.SandboxRestore, req)
         sandbox = await _Sandbox.from_id(resp.sandbox_id, client)
         return sandbox
 
