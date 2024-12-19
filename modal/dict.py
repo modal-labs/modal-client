@@ -10,7 +10,7 @@ from modal_proto import api_pb2
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.deprecation import deprecation_error, renamed_parameter
+from ._utils.deprecation import renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -57,15 +57,6 @@ class _Dict(_Object, type_prefix="di"):
 
     For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-dicts).
     """
-
-    @staticmethod
-    def new(data: Optional[dict] = None):
-        """mdmd:hidden"""
-        message = (
-            "`Dict.new` is deprecated."
-            " Please use `Dict.from_name` (for persisted) or `Dict.ephemeral` (for ephemeral) dicts instead."
-        )
-        deprecation_error((2024, 3, 19), message)
 
     def __init__(self, data={}):
         """mdmd:hidden"""

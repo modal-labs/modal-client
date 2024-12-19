@@ -15,7 +15,7 @@ from modal_proto import api_pb2
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, aclosing, async_map, sync_or_async_iter, synchronize_api
 from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
-from ._utils.deprecation import deprecation_error, renamed_parameter
+from ._utils.deprecation import renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.hash_utils import get_sha256_hex
 from ._utils.name_utils import check_object_name
@@ -89,16 +89,6 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         ...
     ```
     """
-
-    @staticmethod
-    def new(cloud: Optional[str] = None):
-        """mdmd:hidden"""
-        message = (
-            "`NetworkFileSystem.new` is deprecated."
-            " Please use `NetworkFileSystem.from_name` (for persisted)"
-            " or `NetworkFileSystem.ephemeral` (for ephemeral) network filesystems instead."
-        )
-        deprecation_error((2024, 3, 20), message)
 
     @staticmethod
     @renamed_parameter((2024, 12, 18), "label", "name")
