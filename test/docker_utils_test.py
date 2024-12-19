@@ -56,10 +56,11 @@ def test_find_dockerignore_file():
         dockerfile_path = dir1 / "Dockerfile"
         dockerignore_path = tmp_path / ".dockerignore"
         dockerignore_path.write_text("**/*")
-        assert find_dockerignore_file(dockerfile_path, test_cwd / tmp_dir) == dockerignore_path
+        assert find_dockerignore_file(test_cwd / tmp_dir, dockerfile_path) == dockerignore_path
 
     # case 2:
-    # specific dockerignore file in cwd --> find it
+    # should not match specific dockerignore file in cwd
+    # when dockerfile is nested
     with TemporaryDirectory(dir=test_cwd) as tmp_dir:
         tmp_path = Path(tmp_dir)
         dir1 = tmp_path / "dir1"
@@ -68,7 +69,7 @@ def test_find_dockerignore_file():
         dockerfile_path = dir1 / "foo"
         dockerignore_path = tmp_path / "foo.dockerignore"
         dockerignore_path.write_text("**/*")
-        assert find_dockerignore_file(dockerfile_path, test_cwd / tmp_dir) == dockerignore_path
+        assert find_dockerignore_file(test_cwd / tmp_dir, dockerfile_path) is None
 
     # case 3:
     # generic dockerignore file and nested dockerignore file in cwd
@@ -83,8 +84,8 @@ def test_find_dockerignore_file():
         generic_dockerignore_path.write_text("**/*.py")
         specific_dockerignore_path = tmp_path / "Dockerfile.dockerignore"
         specific_dockerignore_path.write_text("**/*")
-        assert find_dockerignore_file(dockerfile_path, test_cwd / tmp_dir) == specific_dockerignore_path
-        assert find_dockerignore_file(dockerfile_path, test_cwd / tmp_dir) != generic_dockerignore_path
+        assert find_dockerignore_file(test_cwd / tmp_dir, dockerfile_path) == specific_dockerignore_path
+        assert find_dockerignore_file(test_cwd / tmp_dir, dockerfile_path) != generic_dockerignore_path
 
     # case 4:
     # should not match nested dockerignore files
@@ -112,7 +113,7 @@ def test_find_dockerignore_file():
         nested_specific_dockerignore_path = dir2 / "Dockerfile.dockerignore"
         nested_specific_dockerignore_path.write_text("**/*")
 
-        assert find_dockerignore_file(dockerfile_path, dir1) is None
+        assert find_dockerignore_file(dir1, dockerfile_path) is None
 
     # case 5:
     # should match dockerignore file next to dockerfile
@@ -129,7 +130,7 @@ def test_find_dockerignore_file():
         dockerignore_path = tmp_path / ".dockerignore"
         dockerignore_path.write_text("**/*")
 
-        assert find_dockerignore_file(dockerfile_path, test_cwd / tmp_dir) == dockerignore_path
+        assert find_dockerignore_file(test_cwd / tmp_dir, dockerfile_path) == dockerignore_path
 
 
 def create_tmp_files(tmp_path):

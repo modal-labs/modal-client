@@ -56,8 +56,14 @@ def extract_copy_command_patterns(dockerfile_lines: list[str]) -> list[str]:
     return list(copy_source_patterns)
 
 
-def find_dockerignore_file(dockerfile_path: Path, context_directory: Path) -> Optional[Path]:
-    # 1. file next to the Dockerfile but do NOT look for parent directories
+def find_dockerignore_file(context_directory: Path, dockerfile_path: Optional[Path] = None) -> Optional[Path]:
+    """
+    Find dockerignore file relative to current context directory
+    and if dockerfile path is provided, check if specific <dockerfile_name>.dockerignore
+    file exists in the same directory as <dockerfile_name>
+
+    Finds the most specific dockerignore file that exists.
+    """
 
     def valid_dockerignore_file(fp):
         # fp has to exist
@@ -70,17 +76,15 @@ def find_dockerignore_file(dockerfile_path: Path, context_directory: Path) -> Op
         return True
 
     generic_name = ".dockerignore"
-    specific_name = f"{dockerfile_path.name}.dockerignore"
-
-    possible_locations = [
+    possible_locations = []
+    if dockerfile_path:
+        specific_name = f"{dockerfile_path.name}.dockerignore"
         # 1. check if specific <dockerfile_name>.dockerignore file exists in the same directory as <dockerfile_name>
-        dockerfile_path.parent / specific_name,
+        possible_locations.append(dockerfile_path.parent / specific_name)
         # 2. check if generic .dockerignore file exists in the same directory as <dockerfile_name>
-        dockerfile_path.parent / generic_name,
-        # 3. check if generic .dockerignore file exists in current working directory
-        context_directory / generic_name,
-        # 4. ?????? check if specific <dockerfile_name>.dockerignore file exists in current working directory
-        context_directory / specific_name,
-    ]
+        possible_locations.append(dockerfile_path.parent / generic_name)
+
+    # 3. check if generic .dockerignore file exists in current working directory
+    possible_locations.append(context_directory / generic_name)
 
     return next((e for e in possible_locations if valid_dockerignore_file(e)), None)

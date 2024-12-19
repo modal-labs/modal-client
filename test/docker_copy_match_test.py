@@ -4,7 +4,7 @@
 import platform
 import pytest
 
-from modal._utils.docker_copy_match import PatternError, dockerfile_match
+from modal._utils.docker_copy_match import dockerfile_match
 
 
 def match_tests():
@@ -48,36 +48,36 @@ def match_tests():
         ("[\\-x]", "x", True, None),
         ("[\\-x]", "-", True, None),
         ("[\\-x]", "a", False, None),
-        ("[]a]", "]", False, PatternError),
-        ("[-]", "-", False, PatternError),
-        ("[x-]", "x", False, PatternError),
-        ("[x-]", "-", False, PatternError),
-        ("[x-]", "z", False, PatternError),
-        ("[-x]", "x", False, PatternError),
-        ("[-x]", "-", False, PatternError),
-        ("[-x]", "a", False, PatternError),
-        ("\\", "a", False, PatternError),
-        ("[a-b-c]", "a", False, PatternError),
-        ("[", "a", False, PatternError),
-        ("[^", "a", False, PatternError),
-        ("[^bc", "a", False, PatternError),
-        ("a[", "a", False, PatternError),
-        ("a[", "ab", False, PatternError),
-        ("a[", "x", False, PatternError),
-        ("a/b[", "x", False, PatternError),
+        ("[]a]", "]", False, ValueError),
+        ("[-]", "-", False, ValueError),
+        ("[x-]", "x", False, ValueError),
+        ("[x-]", "-", False, ValueError),
+        ("[x-]", "z", False, ValueError),
+        ("[-x]", "x", False, ValueError),
+        ("[-x]", "-", False, ValueError),
+        ("[-x]", "a", False, ValueError),
+        ("\\", "a", False, ValueError),
+        ("[a-b-c]", "a", False, ValueError),
+        ("[", "a", False, ValueError),
+        ("[^", "a", False, ValueError),
+        ("[^bc", "a", False, ValueError),
+        ("a[", "a", False, ValueError),
+        ("a[", "ab", False, ValueError),
+        ("a[", "x", False, ValueError),
+        ("a/b[", "x", False, ValueError),
         ("*x", "xxx", True, None),
     ]
 
 
-@pytest.mark.parametrize("pattern, s, is_match, err", match_tests())
-def test_match(pattern, s, is_match, err):
-    if platform.system() == "Windows" and "\\" in pattern:
-        # No escape allowed on Windows.
-        return
+def test_match():
+    for pattern, s, expected_match, err in match_tests():
+        if platform.system() == "Windows" and "\\" in pattern:
+            # No escape allowed on Windows.
+            return
 
-    if err is not None:
-        with pytest.raises(PatternError):
-            dockerfile_match(pattern, s)
-    else:
-        actual_match = dockerfile_match(pattern, s)
-        assert is_match == actual_match, f"{pattern=} {s=} {is_match=} {actual_match=}"
+        if err is not None:
+            with pytest.raises(ValueError):
+                dockerfile_match(pattern, s)
+        else:
+            actual_match = dockerfile_match(pattern, s)
+            assert expected_match == actual_match, f"{pattern=} {s=} {expected_match=} {actual_match=}"

@@ -6,12 +6,6 @@ except it is written in Python rather than Go.
 """
 
 
-class PatternError(Exception):
-    """Indicates a pattern was malformed."""
-
-    pass
-
-
 def dockerfile_match(pattern: str, name: str) -> bool:
     while len(pattern) > 0:
         continue_outer_loop = False
@@ -125,7 +119,7 @@ def _match_chunk(chunk: str, s: str) -> tuple[str, bool]:
         elif chunk[0] == "\\":
             chunk = chunk[1:]
             if len(chunk) == 0:
-                raise PatternError("Bad pattern")
+                raise ValueError("Bad pattern")
 
             if not failed:
                 if chunk[0] != s[0]:
@@ -146,16 +140,16 @@ def _match_chunk(chunk: str, s: str) -> tuple[str, bool]:
 
 def _get_esc(chunk: str) -> tuple[str, str]:
     if len(chunk) == 0 or chunk[0] == "-" or chunk[0] == "]":
-        raise PatternError("Bad pattern")
+        raise ValueError("Bad pattern")
     if chunk[0] == "\\":
         chunk = chunk[1:]
         if len(chunk) == 0:
-            raise PatternError("Bad pattern")
+            raise ValueError("Bad pattern")
     try:
         r = chunk[0]
         nchunk = chunk[1:]
     except IndexError:
-        raise PatternError("Invalid pattern")
+        raise ValueError("Invalid pattern")
     if len(nchunk) == 0:
-        raise PatternError("Bad pattern")
+        raise ValueError("Bad pattern")
     return r, nchunk
