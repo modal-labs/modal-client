@@ -450,18 +450,12 @@ class _ContainerIOManager:
 
             await asyncio.sleep(DYNAMIC_CONCURRENCY_INTERVAL_SECS)
 
-    async def get_app_objects(self) -> RunningApp:
-        req = api_pb2.AppGetObjectsRequest(app_id=self.app_id, include_unindexed=True, only_class_function=True)
-        resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
-        logger.debug(f"AppGetObjects received {len(resp.items)} objects for app {self.app_id}")
-
-        tag_to_object_id = {}
+    def create_running_app(self, app_layout: api_pb2.AppLayout) -> RunningApp:
+        tag_to_object_id = dict(**app_layout.function_ids, **app_layout.class_ids)
         object_handle_metadata = {}
-        for item in resp.items:
-            handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
-            object_handle_metadata[item.object.object_id] = handle_metadata
-            if item.tag:
-                tag_to_object_id[item.tag] = item.object.object_id
+        for obj in app_layout.objects:
+            handle_metadata: Optional[Message] = get_proto_oneof(obj, "handle_metadata_oneof")
+            object_handle_metadata[obj.object_id] = handle_metadata
 
         return RunningApp(
             self.app_id,
