@@ -611,12 +611,6 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
         if isinstance(f, _PartialFunction):
             _disallow_wrapping_method(f, "exit")
 
-        if callable_has_non_self_params(f):
-            message = (
-                "Support for decorating parameterized methods with `@exit` has been deprecated."
-                " Please update your code by removing the parameters."
-            )
-            deprecation_error((2024, 2, 23), message)
         return _PartialFunction(f, _PartialFunctionFlags.EXIT)
 
     return wrapper
