@@ -178,7 +178,7 @@ class _StreamReader(Generic[T]):
             return
 
         def item_handler(item: Optional[bytes]):
-            if self._stream_type == StreamType.STDOUT:
+            if self._stream_type == StreamType.STDOUT and item is not None:
                 print(item.decode("utf-8"), end="")
             elif self._stream_type == StreamType.PIPE:
                 self._container_process_buffer.append(item)

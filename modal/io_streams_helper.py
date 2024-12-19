@@ -18,7 +18,8 @@ async def consume_stream_with_retries(
     max_retries: int = 10,
     retry_delay: float = 1.0,
 ) -> None:
-    """Helper function to consume a stream with retry logic for transient errors.
+    """mdmd:hidden
+    Helper function to consume a stream with retry logic for transient errors.
 
     Args:
         stream_generator: Function that returns an AsyncIterator to consume
