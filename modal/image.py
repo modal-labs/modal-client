@@ -40,7 +40,7 @@ from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
 from .environments import _get_environment_cached
 from .exception import InvalidError, NotFoundError, RemoteError, VersionError
-from .file_pattern_matcher import FilePatternMatcher
+from .file_pattern_matcher import NON_PYTHON_FILES
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
@@ -592,21 +592,6 @@ class _Image(_Object, type_prefix="im"):
         obj.force_build = force_build
         return obj
 
-    def extend(self, **kwargs) -> "_Image":
-        """mdmd:hidden"""
-        deprecation_error(
-            (2024, 3, 7),
-            "`Image.extend` is deprecated; please use a higher-level method, such as `Image.dockerfile_commands`.",
-        )
-
-        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            return DockerfileSpec(
-                commands=kwargs.pop("dockerfile_commands", []),
-                context_files=kwargs.pop("context_files", {}),
-            )
-
-        return _Image._from_args(base_images={"base": self}, dockerfile_function=build_dockerfile, **kwargs)
-
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy the entire contents of a `modal.Mount` into an image.
         Useful when files only available locally are required during the image
@@ -741,7 +726,9 @@ class _Image(_Object, type_prefix="im"):
             context_mount_function=lambda: _Mount.from_local_file(local_path, remote_path=f"/{basename}"),
         )
 
-    def add_local_python_source(self, *modules: str, copy: bool = False) -> "_Image":
+    def add_local_python_source(
+        self, *modules: str, copy: bool = False, ignore: Union[Sequence[str], Callable[[Path], bool]] = NON_PYTHON_FILES
+    ) -> "_Image":
         """Adds locally available Python packages/modules to containers
 
         Adds all files from the specified Python package or module to containers running the Image.
@@ -759,9 +746,22 @@ class _Image(_Object, type_prefix="im"):
         **Note:** This excludes all dot-prefixed subdirectories or files and all `.pyc`/`__pycache__` files.
         To add full directories with finer control, use `.add_local_dir()` instead and specify `/root` as
         the destination directory.
-        """
 
-        mount = _Mount.from_local_python_packages(*modules, ignore=~FilePatternMatcher("**/*.py"))
+        By default only includes `.py`-files in the source modules. Set the `ignore` argument to a list of patterns
+        or a callable to override this behavior, e.g.:
+
+        ```py
+        # includes everything except data.json
+        modal.Image.debian_slim().add_local_python_source("mymodule", ignore=["data.json"])
+
+        # exclude large files
+        modal.Image.debian_slim().add_local_python_source(
+            "mymodule",
+            ignore=lambda p: p.stat().st_size > 1e9
+        )
+        ```
+        """
+        mount = _Mount.from_local_python_packages(*modules, ignore=ignore)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_dir(

@@ -118,6 +118,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             for _, cloud_bucket_mount in cloud_bucket_mounts:
                 if cloud_bucket_mount.secret:
                     deps.append(cloud_bucket_mount.secret)
+            if proxy:
+                deps.append(proxy)
             return deps
 
         async def _load(self: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):

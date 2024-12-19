@@ -482,6 +482,7 @@ def shell(
             volumes=function_spec.volumes,
             region=function_spec.scheduler_placement.proto.regions if function_spec.scheduler_placement else None,
             pty=pty,
+            proxy=function_spec.proxy,
         )
     else:
         modal_image = Image.from_registry(image, add_python=add_python) if image else None

@@ -138,29 +138,6 @@ PartialFunction = synchronize_api(_PartialFunction)
 def _find_partial_methods_for_user_cls(user_cls: type[Any], flags: int) -> dict[str, _PartialFunction]:
     """Grabs all method on a user class, and returns partials. Includes legacy methods."""
 
-    # Build up a list of legacy attributes to check
-    check_attrs: list[str] = []
-    if flags & _PartialFunctionFlags.BUILD:
-        check_attrs += ["__build__", "__abuild__"]
-    if flags & _PartialFunctionFlags.ENTER_POST_SNAPSHOT:
-        check_attrs += ["__enter__", "__aenter__"]
-    if flags & _PartialFunctionFlags.EXIT:
-        check_attrs += ["__exit__", "__aexit__"]
-
-    # Grab legacy lifecycle methods
-    for attr in check_attrs:
-        if hasattr(user_cls, attr):
-            suggested = attr.strip("_")
-            if is_async := suggested.startswith("a"):
-                suggested = suggested[1:]
-            async_suggestion = " (on an async method)" if is_async else ""
-            message = (
-                f"Using `{attr}` methods for class lifecycle management is deprecated."
-                f" Please try using the `modal.{suggested}` decorator{async_suggestion} instead."
-                " See https://modal.com/docs/guide/lifecycle-functions for more information."
-            )
-            deprecation_error((2024, 2, 21), message)
-
     partial_functions: dict[str, _PartialFunction] = {}
     for parent_cls in reversed(user_cls.mro()):
         if parent_cls is not object:
@@ -634,12 +611,6 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
         if isinstance(f, _PartialFunction):
             _disallow_wrapping_method(f, "exit")
 
-        if callable_has_non_self_params(f):
-            message = (
-                "Support for decorating parameterized methods with `@exit` has been deprecated."
-                " Please update your code by removing the parameters."
-            )
-            deprecation_error((2024, 2, 23), message)
         return _PartialFunction(f, _PartialFunctionFlags.EXIT)
 
     return wrapper
