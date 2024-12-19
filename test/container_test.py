@@ -58,6 +58,12 @@ SLEEP_DELAY = 0.1
 blob_upload = synchronize_api(_blob_upload)
 blob_download = synchronize_api(_blob_download)
 
+DEFAULT_APP_LAYOUT = api_pb2.AppLayout(
+    objects=[
+        api_pb2.Object(object_id="im-1"),
+    ],
+)
+
 
 def _get_inputs(
     args: tuple[tuple, dict] = ((42,), {}),
@@ -187,6 +193,7 @@ def _container_args(
         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
     ),
     app_id: str = "ap-1",
+    app_layout: api_pb2.AppLayout = DEFAULT_APP_LAYOUT,
 ):
     if webhook_type:
         webhook_config = api_pb2.WebhookConfig(
@@ -224,6 +231,7 @@ def _container_args(
         function_def=function_def,
         serialized_params=serialized_params,
         checkpoint_id=f"ch-{uuid.uuid4()}",
+        app_layout=app_layout,
     )
 
 
@@ -259,6 +267,7 @@ def _run_container(
     class_parameter_info=api_pb2.ClassParameterInfo(
         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
     ),
+    app_layout=DEFAULT_APP_LAYOUT,
 ) -> ContainerResult:
     container_args = _container_args(
         module_name,
@@ -280,6 +289,7 @@ def _run_container(
         max_inputs,
         is_class=is_class,
         class_parameter_info=class_parameter_info,
+        app_layout=app_layout,
     )
     with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
         if inputs is None:
