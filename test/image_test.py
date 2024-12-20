@@ -1150,9 +1150,10 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
         app = App(image=img)
         app.function()(dummy)
         with app.run(client=client):
-            layers = get_image_layers(app.image.object_id, servicer)
+            layers = get_image_layers(img.object_id, servicer)
             commands = [layer.dockerfile_commands for layer in layers]
             context_files = [[(f.filename, f.data) for f in layer.context_files] for layer in layers]
+
         return sha256(repr(list(zip(commands, context_files))).encode()).hexdigest()
 
     if sys.version_info[:2] == (3, 11):

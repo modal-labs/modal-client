@@ -1628,7 +1628,8 @@ class _Image(_Object, type_prefix="im"):
         # --- Build the base dockerfile
 
         def build_dockerfile_base(version: ImageBuilderVersion) -> DockerfileSpec:
-            commands = Path(path).read_text("utf8").splitlines()
+            with open(os.path.expanduser(path)) as f:
+                commands = f.read().split("\n")
             return DockerfileSpec(commands=commands, context_files={})
 
         gpu_config = parse_gpu_config(gpu)
