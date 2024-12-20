@@ -105,7 +105,7 @@ class _MountFile(_MountEntry):
         return str(self.local_file)
 
     def get_files_to_upload(self):
-        local_file = self.local_file.expanduser().absolute()
+        local_file = self.local_file.resolve()
         if not local_file.exists():
             raise FileNotFoundError(local_file)
 
@@ -149,7 +149,7 @@ class _MountDir(_MountEntry):
             if not self.ignore(local_path):
                 local_relpath = local_path.expanduser().absolute().relative_to(local_dir)
                 mount_path = self.remote_path / local_relpath.as_posix()
-                yield local_path, mount_path
+                yield local_path.resolve(), mount_path
 
     def watch_entry(self):
         return self.local_dir.resolve().expanduser(), None
@@ -281,11 +281,8 @@ class _Mount(_Object, type_prefix="mo"):
         rep = f"Mount({entries})"
 
         async def mount_content_deduplication_key():
-            def normalized_selected_files():
-                return [(local_path.resolve(), remote_path) for local_path, remote_path in _select_files(entries)]
-
             try:
-                included_files = await asyncio.get_event_loop().run_in_executor(None, normalized_selected_files)
+                included_files = await asyncio.get_event_loop().run_in_executor(None, _select_files, entries)
             except NonLocalMountError:
                 return None
             return (_Mount._type_prefix, "local", frozenset(included_files))
