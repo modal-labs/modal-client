@@ -228,8 +228,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.secrets = {}
 
         self.deployed_dicts = {}
+        self.default_published_client_mount = "mo-123"
         self.deployed_mounts = {
-            (client_mount_name(), api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL): "mo-123",
+            (client_mount_name(), api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL): self.default_published_client_mount,
         }
         self.deployed_nfss = {}
         self.deployed_queues = {}
