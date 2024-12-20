@@ -1195,17 +1195,17 @@ class _Image(_Object, type_prefix="im"):
             if ignore:
                 raise InvalidError("Cannot set both `context_mount` and `ignore`")
 
-            def wrapper_context_mount_function():
+            def identity_context_mount_fn() -> Optional[_Mount]:
                 return context_mount
 
-            context_mount_function = wrapper_context_mount_function
+            context_mount_function = identity_context_mount_fn
         else:
 
-            def base_image_context_mount_function() -> _Mount:
+            def auto_created_context_mount_fn() -> Optional[_Mount]:
                 # use COPY commands and ignore patterns to construct implicit context mount
                 return _create_context_mount(cmds, ignore)
 
-            context_mount_function = base_image_context_mount_function
+            context_mount_function = auto_created_context_mount_fn
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base", *cmds], context_files=context_files)
@@ -1603,17 +1603,17 @@ class _Image(_Object, type_prefix="im"):
             if ignore:
                 raise InvalidError("Cannot set both `context_mount` and `ignore`")
 
-            def wrapper_context_mount_function():
+            def identity_context_mount_fn() -> Optional[_Mount]:
                 return context_mount
 
-            context_mount_function = wrapper_context_mount_function
+            context_mount_function = identity_context_mount_fn
         else:
 
-            def base_image_context_mount_function() -> _Mount:
+            def auto_created_context_mount_fn() -> Optional[_Mount]:
                 lines = path.read_text("utf8").splitlines()
                 return _create_context_mount(lines, ignore)
 
-            context_mount_function = base_image_context_mount_function
+            context_mount_function = auto_created_context_mount_fn
 
         # --- Build the base dockerfile
 
