@@ -3,7 +3,9 @@
 import asyncio
 import base64
 import dataclasses
+import gc
 import json
+import logging
 import os
 import pathlib
 import pickle
@@ -758,6 +760,31 @@ def test_cls_web_asgi_with_lifespan(servicer):
     from test.supports import functions
 
     assert ["enter1", "enter2", "foo1", "exit1", "exit2", "exit"] == functions.lifespan_global_asgi_app_cls
+
+
+@skip_github_non_linux
+@pytest.mark.filterwarnings("error")
+def test_app_with_slow_lifespan_wind_down(servicer, caplog):
+    inputs = _get_web_inputs()
+    with caplog.at_level(logging.WARNING):
+        ret = _run_container(
+            servicer,
+            "test.supports.functions",
+            "asgi_app_with_slow_lifespan_wind_down",
+            inputs=inputs,
+            webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+        )
+        asyncio.get_event_loop()
+        # There should be one message for the header, and one for the body
+        first_message, second_message = _unwrap_asgi(ret)
+        # Check the headers
+        assert first_message["status"] == 200
+        # Check body
+        assert json.loads(second_message["body"]) == {"some_result": "foo"}
+        gc.collect()  # trigger potential "Task was destroyed but it is pending"
+
+    for m in caplog.messages:
+        assert "Task was destroyed" not in m
 
 
 @skip_github_non_linux
