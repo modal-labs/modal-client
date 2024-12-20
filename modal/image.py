@@ -239,25 +239,35 @@ def _get_image_builder_version(server_version: ImageBuilderVersion) -> ImageBuil
     return version
 
 
+def _ignore_fn(ignore: Union[Sequence[str], Callable[[Path], bool]]) -> Callable[[Path], bool]:
+    # if a callable is passed, return it
+    # otherwise, treat input as a sequence of patterns and return a callable pattern matcher for those
+    if callable(ignore):
+        return ignore
+
+    return FilePatternMatcher(*ignore)
+
+
 def _create_context_mount(
-    docker_commands: Sequence[str], ignore: Union[Sequence[str], Callable[[Path], bool]]
+    docker_commands: Sequence[str],
+    ignore_fn: Callable[[Path], bool],
+    context_dir: Path,
 ) -> Optional[_Mount]:
     """
     Creates a context mount from a list of docker commands.
+
+    1. Paths are evaluated relative to context_dir.
+    2. First selects inclusions based on COPY commands in the list of commands.
+    3. Then ignore any files as per the ignore predicate.
     """
     copy_patterns = extract_copy_command_patterns(docker_commands)
     if not copy_patterns:
         return None  # no mount needed
-    include = FilePatternMatcher(*copy_patterns)
+    include_fn = FilePatternMatcher(*copy_patterns)
 
-    if not callable(ignore):
-        ignore = FilePatternMatcher(*ignore)
-
-    ignore = typing.cast(Callable[[Path], bool], ignore)
-
-    def ignore_with_include(source: Path):
-        relative_source = source.relative_to(Path.cwd())
-        if not include(relative_source) or ignore(relative_source):
+    def ignore_with_include(source: Path) -> bool:
+        relative_source = source.relative_to(context_dir)
+        if not include_fn(relative_source) or ignore_fn(relative_source):
             return True
 
         return False
@@ -1203,7 +1213,7 @@ class _Image(_Object, type_prefix="im"):
 
             def auto_created_context_mount_fn() -> Optional[_Mount]:
                 # use COPY commands and ignore patterns to construct implicit context mount
-                return _create_context_mount(cmds, ignore)
+                return _create_context_mount(cmds, ignore_fn=_ignore_fn(ignore), context_dir=Path.cwd())
 
             context_mount_function = auto_created_context_mount_fn
 
@@ -1611,7 +1621,7 @@ class _Image(_Object, type_prefix="im"):
 
             def auto_created_context_mount_fn() -> Optional[_Mount]:
                 lines = path.read_text("utf8").splitlines()
-                return _create_context_mount(lines, ignore)
+                return _create_context_mount(lines, ignore_fn=_ignore_fn(ignore), context_dir=Path.cwd())
 
             context_mount_function = auto_created_context_mount_fn
 
