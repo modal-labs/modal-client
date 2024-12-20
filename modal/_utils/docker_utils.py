@@ -91,21 +91,11 @@ def find_dockerignore_file(context_directory: Path, dockerfile_path: Optional[Pa
 
 
 class _AutoDockerIgnoreSentinel:
-    _custom_repr: Optional[str] = None
-
-    def with_repr(self, custom_repr) -> "_AutoDockerIgnoreSentinel":
-        # use to give an instance of a matcher a custom name - useful for visualizing default values in signatures
-        self._custom_repr = custom_repr
-        return self
-
     def __repr__(self) -> str:
-        if self._custom_repr:
-            return self._custom_repr
-
-        return super().__repr__()
+        return f"{__name__}.AUTO_DOCKERIGNORE"
 
     def __call__(self, _: Path) -> bool:
         raise NotImplementedError("This is only a placeholder. Do not call")
 
 
-AUTO_DOCKERIGNORE = _AutoDockerIgnoreSentinel().with_repr(f"{__name__}.AUTO_DOCKERIGNORE")
+AUTO_DOCKERIGNORE = _AutoDockerIgnoreSentinel()
