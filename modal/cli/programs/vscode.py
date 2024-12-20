@@ -25,7 +25,7 @@ FIXUD_INSTALLER = "https://github.com/boxboat/fixuid/releases/download/v0.6.0/fi
 app = App()
 app.image = (
     Image.from_registry(args.get("image"), add_python="3.11")
-    .apt_install("curl")
+    .apt_install("curl", "dumb-init", "git", "git-lfs")
     .run_commands(
         f"curl -fsSL {CODE_SERVER_INSTALLER} | sh",
         f"curl -fsSL {CODE_SERVER_ENTRYPOINT}  > /code-server.sh",
