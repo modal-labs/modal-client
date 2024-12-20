@@ -501,15 +501,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.app_state_history[request.app_id].append(api_pb2.APP_STATE_DEPLOYED)
         await stream.send_message(Empty())
 
-    async def AppSetObjects(self, stream):
-        request: api_pb2.AppSetObjectsRequest = await stream.recv_message()
-        self.app_objects[request.app_id] = dict(request.indexed_object_ids)
-        self.app_unindexed_objects[request.app_id] = list(request.unindexed_object_ids)
-        self.app_set_objects_count += 1
-        if request.new_app_state:
-            self.app_state_history[request.app_id].append(request.new_app_state)
-        await stream.send_message(Empty())
-
     async def AppDeploy(self, stream):
         request: api_pb2.AppDeployRequest = await stream.recv_message()
         self.deployed_apps[request.name] = request.app_id
