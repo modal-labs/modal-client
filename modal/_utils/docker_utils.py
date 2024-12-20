@@ -7,12 +7,6 @@ from typing import Optional, Sequence
 from ..exception import InvalidError
 
 
-class AUTO_DOCKERIGNORE:
-    """Flag indicating that present .dockerignore files should be used for file exclusion patterns."""
-
-    pass
-
-
 def extract_copy_command_patterns(dockerfile_lines: Sequence[str]) -> list[str]:
     """
     Extract all COPY command sources from a Dockerfile.
