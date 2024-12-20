@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2022
+import inspect
 import pytest
 
+from modal._utils.deprecation import renamed_parameter
 from modal.exception import DeprecationError
 
 from .supports.functions import deprecated_function
@@ -32,3 +34,21 @@ def test_deprecation():
     from .supports import functions
 
     assert record[0].filename == functions.__file__
+
+
+@renamed_parameter((2024, 12, 1), "foo", "bar")
+def my_func(bar: int) -> int:
+    return bar**2
+
+
+def test_renamed_parameter():
+    message = "The 'foo' parameter .+ has been renamed to 'bar'"
+    with pytest.warns(DeprecationError, match=message):
+        res = my_func(foo=2)  # type: ignore
+        assert res == 4
+    assert my_func(bar=3) == 9
+    assert my_func(4) == 16
+
+    sig = inspect.signature(my_func)
+    assert "bar" in sig.parameters
+    assert "foo" not in sig.parameters

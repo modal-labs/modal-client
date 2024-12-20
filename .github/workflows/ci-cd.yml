@@ -62,6 +62,20 @@ jobs:
           pull: "--rebase --autostash"
           default_author: github_actions
 
+      - name: Install the client
+        run: |
+          inv protoc
+          pip install .
+
+      - name: Publish client mount
+        env:
+          MODAL_ENVIRONMENT: main
+          MODAL_LOGLEVEL: DEBUG
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: python -m modal_global_objects.mounts.modal_client_package
+
+
   client-test:
     name: Unit tests on ${{ matrix.python-version }} and ${{ matrix.os }} (protobuf=${{ matrix.proto-version }})
     timeout-minutes: 30
@@ -192,14 +206,6 @@ jobs:
       - name: Build wheel
         run: python setup.py bdist_wheel
 
-      - name: Publish client mount
-        env:
-          MODAL_ENVIRONMENT: main
-          MODAL_LOGLEVEL: DEBUG
-          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: python -m modal_global_objects.mounts.modal_client_package
-
       - name: Upload to PyPI
         env:
           TWINE_USERNAME: __token__
@@ -224,6 +230,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v3
+        with:
+          ref: v${{ needs.client-versioning.outputs.client-version}}
 
       - uses: ./.github/actions/setup-cached-python
         with:

@@ -10,6 +10,58 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.68.44 (2024-12-19)
+
+- You can now run GPU workloads on [Nvidia L40S GPUs](https://www.nvidia.com/en-us/data-center/l40s/):
+
+    ```python
+    @app.function(gpu="L40S")
+    def my_gpu_fn():
+        ...
+    ```
+
+
+
+### 0.68.43 (2024-12-19)
+
+- Fixed a bug introduced in v0.68.39 that changed the exception type raise when the target object for `.from_name`/`.lookup` methods was not found.
+
+
+
+### 0.68.39 (2024-12-18)
+
+- Standardized terminology in `.from_name`/`.lookup`/`.delete` methods to use `name` consistently where `label` and `tag` were used interchangeably before. Code that invokes these methods using `label=` as an explicit keyword argument will issue a deprecation warning and will break in a future release.
+
+
+
+### 0.68.29 (2024-12-17)
+
+- The internal `deprecation_error` and `deprecation_warning` utilities have been moved to a private namespace
+
+
+
+### 0.68.28 (2024-12-17)
+
+- Sandboxes now support additional filesystem commands `mkdir`, `rm`, and `ls`.
+```python
+app = modal.App.lookup("sandbox-fs", create_if_missing=True)
+sb = modal.Sandbox.create(app=app)
+sb.mkdir("/foo")
+with sb.open("/foo/bar.txt", "w") as f:
+    f.write("baz")
+print(sb.ls("/foo"))
+```
+
+
+
+### 0.68.27 (2024-12-17)
+
+- Two previously-introduced deprecations are now enforced and raise an error:
+    - The `App.spawn_sandbox` method has been removed in favor of `Sandbox.create`
+    - `Sandbox.create` now requires an `App` object to be passed
+
+
+
 ### 0.68.24 (2024-12-16)
 
 - The `modal run` CLI now has a `--write-result` option. When you pass a filename, Modal will write the return value of the entrypoint function to that location on your local filesystem. The return value of the function must be either `str` or `bytes` to use this option; otherwise, an error will be raised. It can be useful for exercising a remote function that returns text, image data, etc.

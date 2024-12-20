@@ -22,6 +22,7 @@ from modal_proto import api_pb2
 
 from ._ipython import is_notebook
 from ._utils.async_utils import synchronize_api
+from ._utils.deprecation import deprecation_error, deprecation_warning, renamed_parameter
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
@@ -29,7 +30,7 @@ from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, parameter
 from .config import logger
-from .exception import ExecutionError, InvalidError, deprecation_error, deprecation_warning
+from .exception import ExecutionError, InvalidError
 from .functions import Function, _Function
 from .gpu import GPU_T
 from .image import _Image
@@ -45,7 +46,6 @@ from .partial_function import (
 from .proxy import _Proxy
 from .retries import Retries
 from .running_app import RunningApp
-from .sandbox import _Sandbox
 from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
@@ -260,8 +260,9 @@ class _App:
         return self._description
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
-        label: str,
+        name: str,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -283,14 +284,14 @@ class _App:
         environment_name = _get_environment_name(environment_name)
 
         request = api_pb2.AppGetOrCreateRequest(
-            app_name=label,
+            app_name=name,
             environment_name=environment_name,
             object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
         )
 
         response = await retry_transient_errors(client.stub.AppGetOrCreate, request)
 
-        app = _App(label)
+        app = _App(name)
         app._app_id = response.app_id
         app._client = client
         app._running_app = RunningApp(
@@ -964,36 +965,16 @@ class _App:
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
-    ) -> _Sandbox:
-        """`App.spawn_sandbox` is deprecated in favor of `Sandbox.create(app=...)`.
-
-        See https://modal.com/docs/guide/sandbox for more info on working with sandboxes.
-        """
-        deprecation_warning((2024, 7, 5), _App.spawn_sandbox.__doc__)
-        if not self._running_app:
-            raise InvalidError("`app.spawn_sandbox` requires a running app.")
-
-        return await _Sandbox.create(
-            *entrypoint_args,
-            app=self,
-            environment_name=self._running_app.environment_name,
-            image=image or _default_image,
-            mounts=mounts,
-            secrets=secrets,
-            timeout=timeout,
-            workdir=workdir,
-            gpu=gpu,
-            cloud=cloud,
-            region=region,
-            cpu=cpu,
-            memory=memory,
-            network_file_systems=network_file_systems,
-            block_network=block_network,
-            volumes=volumes,
-            pty_info=pty_info,
-            _experimental_scheduler_placement=_experimental_scheduler_placement,
-            client=self._client,
+    ) -> None:
+        """mdmd:hidden"""
+        arglist = ", ".join(repr(s) for s in entrypoint_args)
+        message = (
+            "`App.spawn_sandbox` is deprecated.\n\n"
+            "Sandboxes can be created using the `Sandbox` object:\n\n"
+            f"```\nsb = Sandbox.create({arglist}, app=app)\n```\n\n"
+            "See https://modal.com/docs/guide/sandbox for more info on working with sandboxes."
         )
+        deprecation_error((2024, 7, 5), message)
 
     def include(self, /, other_app: "_App"):
         """Include another App's objects in this one.

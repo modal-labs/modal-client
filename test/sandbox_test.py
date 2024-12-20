@@ -6,7 +6,7 @@ import pytest
 import time
 from pathlib import Path
 
-from modal import App, Image, Mount, NetworkFileSystem, Sandbox, Secret
+from modal import App, Image, Mount, NetworkFileSystem, Proxy, Sandbox, Secret
 from modal.exception import DeprecationError, InvalidError
 from modal.stream_type import StreamType
 from modal_proto import api_pb2
@@ -253,13 +253,14 @@ def test_app_sandbox(client, servicer):
     secret = Secret.from_dict({"FOO": "bar"})
     mount = Mount.from_local_file(__file__, "/xyz")
 
+    with pytest.raises(DeprecationError, match="Creating a `Sandbox` without an `App`"):
+        Sandbox.create("bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret], mounts=[mount])
+
     app = App()
     with app.run(client):
         # Create sandbox
-        with pytest.warns(DeprecationError):
-            sb = app.spawn_sandbox(
-                "bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret], mounts=[mount]
-            )
+        with pytest.raises(DeprecationError, match="`App.spawn_sandbox` is deprecated"):
+            app.spawn_sandbox("bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret], mounts=[mount])
 
         sb = Sandbox.create(
             "bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret], mounts=[mount], app=app
@@ -428,3 +429,10 @@ def test_sandbox_cpu_limit(app, servicer):
 
     assert servicer.sandbox_defs[0].resources.milli_cpu == 2000
     assert servicer.sandbox_defs[0].resources.milli_cpu_max == 4000
+
+
+@skip_non_linux
+def test_sandbox_proxy(app, servicer):
+    _ = Sandbox.create(proxy=Proxy.from_name("my-proxy"), app=app)
+
+    assert servicer.sandbox_defs[0].proxy_id == "pr-123"

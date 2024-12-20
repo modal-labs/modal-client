@@ -133,7 +133,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     container_addr: str
 
     def __init__(self, blob_host, blobs, credentials):
-        self.published_client_mount_id = "mo-123"
+        self.default_published_client_mount = "mo-123"
         self.use_blob_outputs = False
         self.put_outputs_barrier = threading.Barrier(
             1, timeout=10
@@ -185,7 +185,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_vol_heartbeats = 0
         self.n_mounts = 0
         self.n_mount_files = 0
-        self.mount_contents = {self.published_client_mount_id: {"/pkg/modal_client.py": "0x1337"}}
+        self.mount_contents = {self.default_published_client_mount: {"/pkg/modal_client.py": "0x1337"}}
         self.files_name2sha = {}
         self.files_sha2data = {}
         self.function_id_for_function_call = {}
@@ -229,8 +229,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.secrets = {}
 
         self.deployed_dicts = {}
+        self.default_published_client_mount = "mo-123"
         self.deployed_mounts = {
-            (client_mount_name(), api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL): self.published_client_mount_id,
+            (client_mount_name(), api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL): self.default_published_client_mount,
         }
 
         self.deployed_nfss = {}
@@ -402,7 +403,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         return {
             mount_id: content
             for mount_id, content in self.mount_contents.items()
-            if mount_id != self.published_client_mount_id
+            if mount_id != self.default_published_client_mount
         }
 
     ### App
