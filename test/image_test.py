@@ -710,6 +710,25 @@ def test_image_copy_local_dir(builder_version, servicer, client, tmp_path_with_c
         assert set(servicer.mount_contents[mount_id].keys()) == {"/data.txt", "/data/sub"}
 
 
+def test_image_docker_command_no_copy(builder_version, servicer, client, disable_auto_mount):
+    test_cwd = Path.cwd()
+    with TemporaryDirectory(dir=test_cwd) as tmp_dir:
+        tmp_path = Path(tmp_dir).relative_to(test_cwd)
+        (tmp_path / "data.txt").write_text("hello")
+        (tmp_path / "data").mkdir()
+        (tmp_path / "data" / "sub").write_text("world")
+        app = App()
+        img = Image.debian_slim().dockerfile_commands(["RUN something"])
+        app.function(image=img, serialized=True)(dummy)
+
+        with app.run(client=client):
+            layers = get_image_layers(img.object_id, servicer)
+            assert "RUN something" in layers[0].dockerfile_commands
+            mount_id = layers[0].context_mount_id
+            assert not mount_id  # there should be no mount
+        assert not servicer.mount_contents
+
+
 def test_image_docker_command_copy(builder_version, servicer, client):
     test_cwd = Path.cwd()
     with TemporaryDirectory(dir=test_cwd) as tmp_dir:
