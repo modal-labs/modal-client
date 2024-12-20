@@ -44,6 +44,8 @@ from modal._utils.http_utils import run_temporary_http_server
 from modal._vendor import cloudpickle
 from modal.app import _App
 from modal.client import Client
+from modal.cls import _Cls
+from modal.functions import _Function
 from modal.image import ImageBuilderVersion
 from modal.mount import client_mount_name
 from modal_proto import api_grpc, api_pb2
@@ -404,6 +406,30 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if mount_id != self.default_published_client_mount
         }
 
+    def app_get_layout(self, app_id):
+        # Returns the app layout for any deployed app
+        app_objects = self.app_objects.get(app_id, {})
+        function_ids = {}
+        class_ids = {}
+        object_ids = set(app_objects.values()) | set(self.app_unindexed_objects.get(app_id, []))
+        for tag, object_id in app_objects.items():
+            if _Function._is_id_type(object_id):
+                function_ids[tag] = object_id
+                definition = self.app_functions[object_id]
+                if isinstance(definition, api_pb2.FunctionData):
+                    for ranked_fn in definition.ranked_functions:
+                        object_ids |= {obj.object_id for obj in ranked_fn.function.object_dependencies}
+                else:
+                    object_ids |= {obj.object_id for obj in definition.object_dependencies}
+            elif _Cls._is_id_type(object_id):
+                class_ids[tag] = object_id
+
+        return api_pb2.AppLayout(
+            function_ids=function_ids,
+            class_ids=class_ids,
+            objects=[self.get_object_metadata(object_id) for object_id in object_ids],
+        )
+
     ### App
 
     async def AppCreate(self, stream):
@@ -432,6 +458,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
             state_history.append(api_pb2.APP_STATE_STOPPED)
         await stream.send_message(Empty())
 
+    async def AppGetLayout(self, stream):
+        request: api_pb2.AppGetLayoutRequest = await stream.recv_message()
+        app_layout = self.app_get_layout(request.app_id)
+        await stream.send_message(api_pb2.AppGetLayoutResponse(app_layout=app_layout))
+
     async def AppGetLogs(self, stream):
         request: api_pb2.AppGetLogsRequest = await stream.recv_message()
         if not request.last_entry_id:
@@ -450,26 +481,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if self.done:
                 await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
                 return
-
-    async def AppGetObjects(self, stream):
-        request: api_pb2.AppGetObjectsRequest = await stream.recv_message()
-        object_ids = self.app_objects.get(request.app_id, {})
-        objects = list(object_ids.items())  # list of (tag, object_id)
-        if request.include_unindexed:
-            unindexed_object_ids = set(self.app_unindexed_objects.get(request.app_id, []))
-            for object_id in object_ids.values():
-                if object_id.startswith("fu-"):
-                    definition = self.app_functions[object_id]
-                    if isinstance(definition, api_pb2.FunctionData):
-                        for ranked_fn in definition.ranked_functions:
-                            unindexed_object_ids |= {obj.object_id for obj in ranked_fn.function.object_dependencies}
-                    else:
-                        unindexed_object_ids |= {obj.object_id for obj in definition.object_dependencies}
-            objects += [(None, object_id) for object_id in unindexed_object_ids]
-        items = [
-            api_pb2.AppGetObjectsItem(tag=tag, object=self.get_object_metadata(object_id)) for tag, object_id in objects
-        ]
-        await stream.send_message(api_pb2.AppGetObjectsResponse(items=items))
 
     async def AppRollback(self, stream):
         request: api_pb2.AppRollbackRequest = await stream.recv_message()

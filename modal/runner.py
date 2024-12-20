@@ -30,7 +30,7 @@ from .exception import InteractiveTimeoutError, InvalidError, RemoteError, _CliU
 from .functions import _Function
 from .object import _get_environment_name, _Object
 from .output import _get_output_manager, enable_output
-from .running_app import RunningApp
+from .running_app import RunningApp, running_app_from_layout
 from .sandbox import _Sandbox
 from .secret import _Secret
 from .stream_type import StreamType
@@ -54,15 +54,19 @@ async def _heartbeat(client: _Client, app_id: str) -> None:
 
 async def _init_local_app_existing(client: _Client, existing_app_id: str, environment_name: str) -> RunningApp:
     # Get all the objects first
-    obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id, only_class_function=True)
+    obj_req = api_pb2.AppGetLayoutRequest(app_id=existing_app_id)
     obj_resp, _ = await gather_cancel_on_exc(
-        retry_transient_errors(client.stub.AppGetObjects, obj_req),
+        retry_transient_errors(client.stub.AppGetLayout, obj_req),
         # Cache the environment associated with the app now as we will use it later
         _get_environment_cached(environment_name, client),
     )
     app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
-    object_ids = {item.tag: item.object.object_id for item in obj_resp.items}
-    return RunningApp(existing_app_id, app_page_url=app_page_url, tag_to_object_id=object_ids, client=client)
+    return running_app_from_layout(
+        existing_app_id,
+        obj_resp.app_layout,
+        client,
+        app_page_url=app_page_url,
+    )
 
 
 async def _init_local_app_new(
