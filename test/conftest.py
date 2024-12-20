@@ -133,6 +133,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     container_addr: str
 
     def __init__(self, blob_host, blobs, credentials):
+        self.default_published_client_mount = "mo-123"
         self.use_blob_outputs = False
         self.put_outputs_barrier = threading.Barrier(
             1, timeout=10
@@ -184,7 +185,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_vol_heartbeats = 0
         self.n_mounts = 0
         self.n_mount_files = 0
-        self.mount_contents = {}
+        self.mount_contents = {self.default_published_client_mount: {"/pkg/modal_client.py": "0x1337"}}
         self.files_name2sha = {}
         self.files_sha2data = {}
         self.function_id_for_function_call = {}
@@ -232,6 +233,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.deployed_mounts = {
             (client_mount_name(), api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL): self.default_published_client_mount,
         }
+
         self.deployed_nfss = {}
         self.deployed_queues = {}
         self.deployed_secrets = {}
@@ -396,6 +398,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         res.object_id = object_id
         return res
+
+    def mounts_excluding_published_client(self):
+        return {
+            mount_id: content
+            for mount_id, content in self.mount_contents.items()
+            if mount_id != self.default_published_client_mount
+        }
 
     ### App
 
@@ -1247,6 +1256,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if k not in self.deployed_mounts:
                 raise GRPCError(Status.NOT_FOUND, f"Mount {k} not found")
             mount_id = self.deployed_mounts[k]
+            await stream.send_message(
+                api_pb2.MountGetOrCreateResponse(
+                    mount_id=mount_id,
+                    handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="deadbeef"),
+                )
+            )
+            return
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
             self.n_mounts += 1
             mount_id = f"mo-{self.n_mounts}"

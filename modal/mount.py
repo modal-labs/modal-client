@@ -105,7 +105,7 @@ class _MountFile(_MountEntry):
         return str(self.local_file)
 
     def get_files_to_upload(self):
-        local_file = self.local_file.expanduser().absolute()
+        local_file = self.local_file.resolve()
         if not local_file.exists():
             raise FileNotFoundError(local_file)
 
@@ -131,6 +131,8 @@ class _MountDir(_MountEntry):
         return str(self.local_dir.expanduser().absolute())
 
     def get_files_to_upload(self):
+        # we can't use .resolve() eagerly here since that could end up "renaming" symlinked files
+        # see test_mount_directory_with_symlinked_file
         local_dir = self.local_dir.expanduser().absolute()
 
         if not local_dir.exists():
@@ -145,10 +147,11 @@ class _MountDir(_MountEntry):
             gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
 
         for local_filename in gen:
-            if not self.ignore(Path(local_filename)):
-                local_relpath = Path(local_filename).expanduser().absolute().relative_to(local_dir)
+            local_path = Path(local_filename)
+            if not self.ignore(local_path):
+                local_relpath = local_path.expanduser().absolute().relative_to(local_dir)
                 mount_path = self.remote_path / local_relpath.as_posix()
-                yield local_filename, mount_path
+                yield local_path.resolve(), mount_path
 
     def watch_entry(self):
         return self.local_dir.resolve().expanduser(), None
