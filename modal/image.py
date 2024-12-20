@@ -31,7 +31,7 @@ from ._serialization import serialize
 from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.deprecation import deprecation_error, deprecation_warning
-from ._utils.docker_utils import extract_copy_command_patterns, find_dockerignore_file
+from ._utils.docker_utils import AUTO_DOCKERIGNORE, extract_copy_command_patterns, find_dockerignore_file
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
 from ._utils.pattern_utils import read_ignorefile
@@ -40,7 +40,7 @@ from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
 from .environments import _get_environment_cached
 from .exception import InvalidError, NotFoundError, RemoteError, VersionError
-from .file_pattern_matcher import NON_PYTHON_FILES
+from .file_pattern_matcher import NON_PYTHON_FILES, FilePatternMatcher
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
@@ -238,12 +238,19 @@ def _get_image_builder_version(server_version: ImageBuilderVersion) -> ImageBuil
     return version
 
 
-def _create_context_mount(docker_commands: Sequence[str], ignore: Callable[[Path], bool]) -> _Mount:
+def _create_context_mount(
+    docker_commands: Sequence[str], ignore: Union[Sequence[str], Callable[[Path], bool]]
+) -> _Mount:
     """
     Creates a context mount from a list of docker commands.
     """
     copy_patterns = extract_copy_command_patterns(docker_commands)
     include = FilePatternMatcher(*copy_patterns)
+
+    if not callable(ignore):
+        ignore = FilePatternMatcher(*ignore)
+
+    ignore = typing.cast(Callable[[Path], bool], ignore)
 
     def ignore_with_include(source: Path):
         relative_source = source.relative_to(Path.cwd())
@@ -1174,35 +1181,36 @@ class _Image(_Object, type_prefix="im"):
         # modal.Mount with local files to supply as build context for COPY commands
         context_mount: Optional[_Mount] = None,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        ignore: Optional[Union[Sequence[str], Callable[[Path], bool]]] = None,
+        ignore: Union[Sequence[str], Callable[[Path], bool], AUTO_DOCKERIGNORE] = AUTO_DOCKERIGNORE,
     ) -> "_Image":
         """Extend an image with arbitrary Dockerfile-like commands."""
         cmds = _flatten_str_args("dockerfile_commands", "dockerfile_commands", dockerfile_commands)
         if not cmds:
             return self
 
-        if ignore is None:
-            dockerignore_fp = find_dockerignore_file(Path.cwd())
-            if dockerignore_fp:
-                with open(dockerignore_fp) as f:
-                    ignore = FilePatternMatcher(*read_ignorefile(f))
-            else:
-                ignore = FilePatternMatcher()
-        elif isinstance(ignore, list):
-            ignore = FilePatternMatcher(*ignore)
-
         if context_mount is not None:
             deprecation_warning(
                 (2024, 12, 16),
-                "`context_mount` is deprecated,"
-                + " files are now mounted implicitly without this flag and can be ignored with `dockerignore` files",
+                "`context_mount` is deprecated, files are now mounted implicitly"
+                + " without this flag and can be ignored with the `ignore` argument."
+                + " Defaults to using .dockerignore files.",
             )
+            if not isinstance(ignore, AUTO_DOCKERIGNORE):
+                raise InvalidError("Cannot set both `context_mount` and `ignore`")
 
             def wrapper_context_mount_function():
                 return context_mount
 
             context_mount_function = wrapper_context_mount_function
+
         else:
+            if isinstance(ignore, AUTO_DOCKERIGNORE):
+                dockerignore_fp = find_dockerignore_file(Path.cwd())
+                if dockerignore_fp is not None:
+                    with open(dockerignore_fp) as f:
+                        ignore = FilePatternMatcher(*read_ignorefile(f))
+                else:
+                    ignore = FilePatternMatcher()
 
             def base_image_context_mount_function() -> _Mount:
                 return _create_context_mount(cmds, ignore)
@@ -1584,7 +1592,7 @@ class _Image(_Object, type_prefix="im"):
         add_python: Optional[str] = None,
         # If ignore is set to None
         # it will look for a dockerignore file to get ignore patterns
-        ignore: Optional[Union[Sequence[str], Callable[[Path], bool]]] = None,
+        ignore: Union[Sequence[str], Callable[[Path], bool], AUTO_DOCKERIGNORE] = AUTO_DOCKERIGNORE,
     ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
 
@@ -1601,28 +1609,28 @@ class _Image(_Object, type_prefix="im"):
         build into the image, this local data will be implicitly mounted into the image.
         """
 
-        if ignore is None:
-            dockerignore_fp = find_dockerignore_file(Path.cwd(), Path(path))
-            if dockerignore_fp:
-                with open(dockerignore_fp) as f:
-                    ignore = FilePatternMatcher(*read_ignorefile(f))
-            else:
-                ignore = FilePatternMatcher()
-        elif isinstance(ignore, list):
-            ignore = FilePatternMatcher(*ignore)
-
         if context_mount is not None:
             deprecation_warning(
                 (2024, 12, 16),
-                "`context_mount` is deprecated,"
-                + " files are now mounted implicitly without this flag and can be ignored with `dockerignore` files",
+                "`context_mount` is deprecated, files are now mounted implicitly"
+                + " without this flag and can be ignored with the `ignore` argument."
+                + " Defaults to using .dockerignore files.",
             )
+            if not isinstance(ignore, AUTO_DOCKERIGNORE):
+                raise InvalidError("Cannot set both `context_mount` and `ignore`")
 
             def wrapper_context_mount_function():
                 return context_mount
 
             context_mount_function = wrapper_context_mount_function
         else:
+            if isinstance(ignore, AUTO_DOCKERIGNORE):
+                dockerignore_fp = find_dockerignore_file(Path.cwd())
+                if dockerignore_fp is not None:
+                    with open(dockerignore_fp) as f:
+                        ignore = FilePatternMatcher(*read_ignorefile(f))
+                else:
+                    ignore = FilePatternMatcher()
 
             def base_image_context_mount_function() -> _Mount:
                 with open(os.path.expanduser(path)) as f:

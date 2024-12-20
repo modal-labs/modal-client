@@ -2,12 +2,18 @@
 import re
 import shlex
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Sequence
 
 from ..exception import InvalidError
 
 
-def extract_copy_command_patterns(dockerfile_lines: list[str]) -> list[str]:
+class AUTO_DOCKERIGNORE:
+    """Flag indicating that present .dockerignore files should be used for file exclusion patterns."""
+
+    pass
+
+
+def extract_copy_command_patterns(dockerfile_lines: Sequence[str]) -> list[str]:
     """
     Extract all COPY command sources from a Dockerfile.
     Combines multiline COPY commands into a single line.

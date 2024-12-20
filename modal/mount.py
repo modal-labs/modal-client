@@ -325,7 +325,7 @@ class _Mount(_Object, type_prefix="mo"):
         remote_path: Path,
         ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
     ):
-        if isinstance(ignore, list):
+        if not callable(ignore):
             ignore = FilePatternMatcher(*ignore)
 
         return _Mount._new()._extend(
