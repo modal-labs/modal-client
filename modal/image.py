@@ -33,7 +33,7 @@ from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.deprecation import deprecation_error, deprecation_warning
 from ._utils.docker_utils import (
     AUTO_DOCKERIGNORE,
-    _AutoDockerIgnore,
+    _AutoDockerIgnoreSentinel,
     extract_copy_command_patterns,
     find_dockerignore_file,
 )
@@ -1200,7 +1200,7 @@ class _Image(_Object, type_prefix="im"):
                 + " without this flag and can be ignored with the `ignore` argument."
                 + " Defaults to using .dockerignore files.",
             )
-            if not isinstance(ignore, _AutoDockerIgnore):
+            if not isinstance(ignore, _AutoDockerIgnoreSentinel):
                 raise InvalidError("Cannot set both `context_mount` and `ignore`")
 
             def wrapper_context_mount_function():
@@ -1210,14 +1210,17 @@ class _Image(_Object, type_prefix="im"):
         else:
 
             def base_image_context_mount_function() -> _Mount:
-                if isinstance(ignore, _AutoDockerIgnore):
+                if isinstance(ignore, _AutoDockerIgnoreSentinel):
                     dockerignore_fp = find_dockerignore_file(Path.cwd())
                     if dockerignore_fp is not None:
                         with open(dockerignore_fp) as f:
-                            ignore = FilePatternMatcher(*read_ignorefile(f))
+                            ignore_patterns = FilePatternMatcher(*read_ignorefile(f))
                     else:
-                        ignore = FilePatternMatcher()
-                return _create_context_mount(cmds, ignore)
+                        ignore_patterns = FilePatternMatcher()
+                    ignore_patterns = ignore
+                else:
+                    ignore_patterns = ignore
+                return _create_context_mount(cmds, ignore_patterns)
 
             context_mount_function = base_image_context_mount_function
 
@@ -1620,7 +1623,7 @@ class _Image(_Object, type_prefix="im"):
                 + " without this flag and can be ignored with the `ignore` argument."
                 + " Defaults to using .dockerignore files.",
             )
-            if not isinstance(ignore, _AutoDockerIgnore):
+            if not isinstance(ignore, _AutoDockerIgnoreSentinel):
                 raise InvalidError("Cannot set both `context_mount` and `ignore`")
 
             def wrapper_context_mount_function():
@@ -1630,16 +1633,19 @@ class _Image(_Object, type_prefix="im"):
         else:
 
             def base_image_context_mount_function() -> _Mount:
-                if isinstance(ignore, _AutoDockerIgnore):
+                if isinstance(ignore, _AutoDockerIgnoreSentinel):
                     dockerignore_fp = find_dockerignore_file(Path.cwd())
                     if dockerignore_fp is not None:
                         with open(dockerignore_fp) as f:
-                            ignore = FilePatternMatcher(*read_ignorefile(f))
+                            ignore_patterns = FilePatternMatcher(*read_ignorefile(f))
                     else:
-                        ignore = FilePatternMatcher()
+                        ignore_patterns = FilePatternMatcher()
+                    ignore_patterns = ignore
+                else:
+                    ignore_patterns = ignore
                 with open(os.path.expanduser(path)) as f:
                     lines = f.readlines()
-                return _create_context_mount(lines, ignore)
+                return _create_context_mount(lines, ignore_patterns)
 
             context_mount_function = base_image_context_mount_function
 

@@ -90,10 +90,10 @@ def find_dockerignore_file(context_directory: Path, dockerfile_path: Optional[Pa
     return next((e for e in possible_locations if valid_dockerignore_file(e)), None)
 
 
-class _AutoDockerIgnore:
+class _AutoDockerIgnoreSentinel:
     _custom_repr: Optional[str] = None
 
-    def with_repr(self, custom_repr) -> "_AutoDockerIgnore":
+    def with_repr(self, custom_repr) -> "_AutoDockerIgnoreSentinel":
         # use to give an instance of a matcher a custom name - useful for visualizing default values in signatures
         self._custom_repr = custom_repr
         return self
@@ -105,7 +105,7 @@ class _AutoDockerIgnore:
         return super().__repr__()
 
     def __call__(self, _: Path) -> bool:
-        return True
+        raise NotImplementedError("This is only a placeholder. Do not call")
 
 
-AUTO_DOCKERIGNORE = _AutoDockerIgnore().with_repr(f"{__name__}.AUTO_DOCKERIGNORE")
+AUTO_DOCKERIGNORE = _AutoDockerIgnoreSentinel().with_repr(f"{__name__}.AUTO_DOCKERIGNORE")
