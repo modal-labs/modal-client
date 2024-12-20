@@ -1620,7 +1620,7 @@ class _Image(_Object, type_prefix="im"):
         else:
 
             def auto_created_context_mount_fn() -> Optional[_Mount]:
-                lines = path.read_text("utf8").splitlines()
+                lines = Path(path).read_text("utf8").splitlines()
                 return _create_context_mount(lines, ignore_fn=_ignore_fn(ignore), context_dir=Path.cwd())
 
             context_mount_function = auto_created_context_mount_fn
@@ -1628,7 +1628,7 @@ class _Image(_Object, type_prefix="im"):
         # --- Build the base dockerfile
 
         def build_dockerfile_base(version: ImageBuilderVersion) -> DockerfileSpec:
-            commands = path.read_text("utf8").splitlines()
+            commands = Path(path).read_text("utf8").splitlines()
             return DockerfileSpec(commands=commands, context_files={})
 
         gpu_config = parse_gpu_config(gpu)
@@ -1643,7 +1643,7 @@ class _Image(_Object, type_prefix="im"):
         # This happening in two steps is probably a vestigial consequence of previous limitations,
         # but it will be difficult to merge them without forcing rebuilds of images.
 
-        def context_mount_function():
+        def add_python_mount():
             return (
                 _Mount.from_name(
                     python_standalone_mount_name(add_python),
@@ -1662,7 +1662,7 @@ class _Image(_Object, type_prefix="im"):
         return _Image._from_args(
             base_images={"base": base_image},
             dockerfile_function=build_dockerfile_python,
-            context_mount_function=context_mount_function,
+            context_mount_function=add_python_mount,
             force_build=force_build,
         )
 
