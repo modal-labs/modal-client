@@ -571,21 +571,6 @@ class _Image(_Object, type_prefix="im"):
         obj.force_build = force_build
         return obj
 
-    def extend(self, **kwargs) -> "_Image":
-        """mdmd:hidden"""
-        deprecation_error(
-            (2024, 3, 7),
-            "`Image.extend` is deprecated; please use a higher-level method, such as `Image.dockerfile_commands`.",
-        )
-
-        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            return DockerfileSpec(
-                commands=kwargs.pop("dockerfile_commands", []),
-                context_files=kwargs.pop("context_files", {}),
-            )
-
-        return _Image._from_args(base_images={"base": self}, dockerfile_function=build_dockerfile, **kwargs)
-
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy the entire contents of a `modal.Mount` into an image.
         Useful when files only available locally are required during the image

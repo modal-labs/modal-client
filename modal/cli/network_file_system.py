@@ -237,4 +237,4 @@ async def delete(
             abort=True,
         )
 
-    await _NetworkFileSystem.delete(label=nfs_name, environment_name=env)
+    await _NetworkFileSystem.delete(nfs_name, environment_name=env)
