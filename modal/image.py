@@ -1207,17 +1207,16 @@ class _Image(_Object, type_prefix="im"):
                 return context_mount
 
             context_mount_function = wrapper_context_mount_function
-
         else:
-            if isinstance(ignore, _AutoDockerIgnore):
-                dockerignore_fp = find_dockerignore_file(Path.cwd())
-                if dockerignore_fp is not None:
-                    with open(dockerignore_fp) as f:
-                        ignore = FilePatternMatcher(*read_ignorefile(f))
-                else:
-                    ignore = FilePatternMatcher()
 
             def base_image_context_mount_function() -> _Mount:
+                if isinstance(ignore, _AutoDockerIgnore):
+                    dockerignore_fp = find_dockerignore_file(Path.cwd())
+                    if dockerignore_fp is not None:
+                        with open(dockerignore_fp) as f:
+                            ignore = FilePatternMatcher(*read_ignorefile(f))
+                    else:
+                        ignore = FilePatternMatcher()
                 return _create_context_mount(cmds, ignore)
 
             context_mount_function = base_image_context_mount_function
@@ -1629,15 +1628,15 @@ class _Image(_Object, type_prefix="im"):
 
             context_mount_function = wrapper_context_mount_function
         else:
-            if isinstance(ignore, _AutoDockerIgnore):
-                dockerignore_fp = find_dockerignore_file(Path.cwd())
-                if dockerignore_fp is not None:
-                    with open(dockerignore_fp) as f:
-                        ignore = FilePatternMatcher(*read_ignorefile(f))
-                else:
-                    ignore = FilePatternMatcher()
 
             def base_image_context_mount_function() -> _Mount:
+                if isinstance(ignore, _AutoDockerIgnore):
+                    dockerignore_fp = find_dockerignore_file(Path.cwd())
+                    if dockerignore_fp is not None:
+                        with open(dockerignore_fp) as f:
+                            ignore = FilePatternMatcher(*read_ignorefile(f))
+                    else:
+                        ignore = FilePatternMatcher()
                 with open(os.path.expanduser(path)) as f:
                     lines = f.readlines()
                 return _create_context_mount(lines, ignore)
