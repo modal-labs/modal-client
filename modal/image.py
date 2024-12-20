@@ -1217,7 +1217,6 @@ class _Image(_Object, type_prefix="im"):
                             ignore_patterns = FilePatternMatcher(*read_ignorefile(f))
                     else:
                         ignore_patterns = FilePatternMatcher()
-                    ignore_patterns = ignore
                 else:
                     ignore_patterns = ignore
                 return _create_context_mount(cmds, ignore_patterns)
@@ -1640,7 +1639,6 @@ class _Image(_Object, type_prefix="im"):
                             ignore_patterns = FilePatternMatcher(*read_ignorefile(f))
                     else:
                         ignore_patterns = FilePatternMatcher()
-                    ignore_patterns = ignore
                 else:
                     ignore_patterns = ignore
                 with open(os.path.expanduser(path)) as f:
