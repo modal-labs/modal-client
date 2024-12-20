@@ -174,9 +174,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             }
         ]
         self.app_objects = {}
-        self.app_unindexed_objects = {
-            "ap-1": ["im-1", "vo-1"],
-        }
+        self.app_unindexed_objects = {}
         self.n_inputs = 0
         self.n_queues = 0
         self.n_dict_heartbeats = 0
@@ -456,9 +454,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def AppGetObjects(self, stream):
         request: api_pb2.AppGetObjectsRequest = await stream.recv_message()
         object_ids = self.app_objects.get(request.app_id, {})
-        objects = list(object_ids.items())
+        objects = list(object_ids.items())  # list of (tag, object_id)
         if request.include_unindexed:
-            unindexed_object_ids = set()
+            unindexed_object_ids = set(self.app_unindexed_objects.get(request.app_id, []))
             for object_id in object_ids.values():
                 if object_id.startswith("fu-"):
                     definition = self.app_functions[object_id]
@@ -468,11 +466,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     else:
                         unindexed_object_ids |= {obj.object_id for obj in definition.object_dependencies}
             objects += [(None, object_id) for object_id in unindexed_object_ids]
-            # TODO(michael) This perpetuates a hack! The container_test tests rely on hardcoded unindexed_object_ids
-            # but we now look those up dynamically from the indexed objects in (the real) AppGetObjects. But the
-            # container tests never actually set indexed objects on the app. We need a total rewrite here.
-            if (None, "im-1") not in objects:
-                objects.append((None, "im-1"))
         items = [
             api_pb2.AppGetObjectsItem(tag=tag, object=self.get_object_metadata(object_id)) for tag, object_id in objects
         ]
