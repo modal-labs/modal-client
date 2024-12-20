@@ -10,6 +10,14 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.68.53 (2024-12-20)
+
+- You can now point `modal launch vscode` at an arbitrary Dockerhub base image:
+
+    `modal launch vscode --image=nvidia/cuda:12.4.0-devel-ubuntu22.04`
+
+
+
 ### 0.68.44 (2024-12-19)
 
 - You can now run GPU workloads on [Nvidia L40S GPUs](https://www.nvidia.com/en-us/data-center/l40s/):
