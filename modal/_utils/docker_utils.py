@@ -49,7 +49,10 @@ def extract_copy_command_patterns(dockerfile_lines: Sequence[str]) -> list[str]:
                                 f"COPY command: {source} using special flags/arguments/variables are not supported"
                             )
 
-                        copy_source_patterns.add(source)
+                        if source == ".":
+                            copy_source_patterns.add("./**")
+                        else:
+                            copy_source_patterns.add(source)
 
             current_command = ""
 
