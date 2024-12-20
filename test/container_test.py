@@ -59,6 +59,12 @@ blob_upload = synchronize_api(_blob_upload)
 blob_download = synchronize_api(_blob_download)
 
 
+@pytest.fixture(autouse=True)
+def deploy_simple_app(servicer):
+    # TODO(erikbern): this is a hack that we can remove once we pass the app layout through container arguments
+    servicer.app_unindexed_objects["ap-1"] = ["im-1"]
+
+
 def _get_inputs(
     args: tuple[tuple, dict] = ((42,), {}),
     n: int = 1,
