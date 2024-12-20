@@ -2,7 +2,7 @@
 import asyncio
 import os
 from collections.abc import AsyncGenerator, Sequence
-from typing import TYPE_CHECKING, Literal, Optional, Union, overload
+from typing import TYPE_CHECKING, AsyncIterator, Literal, Optional, Union, overload
 
 if TYPE_CHECKING:
     import _typeshed
@@ -578,6 +578,16 @@ class _Sandbox(_Object, type_prefix="sb"):
         """Remove a file or directory in the Sandbox."""
         task_id = await self._get_task_id()
         return await _FileIO.rm(path, self._client, task_id, recursive)
+
+    async def watch(
+        self,
+        path: str,
+        recursive: Optional[bool] = None,
+        timeout: Optional[int] = None,
+    ) -> AsyncIterator[bytes]:
+        task_id = await self._get_task_id()
+        async for event in _FileIO.watch(path, self._client, task_id, recursive, timeout):
+            yield event
 
     @property
     def stdout(self) -> _StreamReader[str]:
