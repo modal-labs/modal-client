@@ -34,7 +34,7 @@ from grpclib import GRPCError, Status
 from grpclib.events import RecvRequest, listen
 
 import modal._serialization
-from modal import __version__, config
+from modal import Cls, Function, __version__, config
 from modal._runtime.container_io_manager import _ContainerIOManager
 from modal._serialization import serialize_data_format
 from modal._utils.async_utils import asyncify, synchronize_api
@@ -173,9 +173,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
             }
         ]
         self.app_objects = {}
-        self.app_unindexed_objects = {
-            "ap-1": ["im-1", "vo-1"],
-        }
         self.n_inputs = 0
         self.n_queues = 0
         self.n_dict_heartbeats = 0
@@ -396,6 +393,29 @@ class MockClientServicer(api_grpc.ModalClientBase):
         res.object_id = object_id
         return res
 
+    def app_get_layout(self, app_id):
+        # Returns the app layout for any deployed app
+        function_ids = {}
+        class_ids = {}
+        object_ids = set(self.app_objects[app_id].values())
+        for tag, object_id in self.app_objects[app_id].items():
+            if Function._is_id_type(object_id):
+                function_ids[tag] = object_id
+                definition = self.app_functions[object_id]
+                if isinstance(definition, api_pb2.FunctionData):
+                    for ranked_fn in definition.ranked_functions:
+                        object_ids |= {obj.object_id for obj in ranked_fn.function.object_dependencies}
+                else:
+                    object_ids |= {obj.object_id for obj in definition.object_dependencies}
+            elif Cls._is_id_type(object_id):
+                class_ids[tag] = object_id
+
+        return api_pb2.AppLayout(
+            function_ids=function_ids,
+            class_ids=class_ids,
+            objects=[self.get_object_metadata(object_id) for object_id in object_ids],
+        )
+
     ### App
 
     async def AppCreate(self, stream):
@@ -443,31 +463,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
                 return
 
-    async def AppGetObjects(self, stream):
-        request: api_pb2.AppGetObjectsRequest = await stream.recv_message()
-        object_ids = self.app_objects.get(request.app_id, {})
-        objects = list(object_ids.items())
-        if request.include_unindexed:
-            unindexed_object_ids = set()
-            for object_id in object_ids.values():
-                if object_id.startswith("fu-"):
-                    definition = self.app_functions[object_id]
-                    if isinstance(definition, api_pb2.FunctionData):
-                        for ranked_fn in definition.ranked_functions:
-                            unindexed_object_ids |= {obj.object_id for obj in ranked_fn.function.object_dependencies}
-                    else:
-                        unindexed_object_ids |= {obj.object_id for obj in definition.object_dependencies}
-            objects += [(None, object_id) for object_id in unindexed_object_ids]
-            # TODO(michael) This perpetuates a hack! The container_test tests rely on hardcoded unindexed_object_ids
-            # but we now look those up dynamically from the indexed objects in (the real) AppGetObjects. But the
-            # container tests never actually set indexed objects on the app. We need a total rewrite here.
-            if (None, "im-1") not in objects:
-                objects.append((None, "im-1"))
-        items = [
-            api_pb2.AppGetObjectsItem(tag=tag, object=self.get_object_metadata(object_id)) for tag, object_id in objects
-        ]
-        await stream.send_message(api_pb2.AppGetObjectsResponse(items=items))
-
     async def AppRollback(self, stream):
         request: api_pb2.AppRollbackRequest = await stream.recv_message()
         current_version = self.app_deployment_history[request.app_id][-1]["version"]
@@ -494,7 +489,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def AppSetObjects(self, stream):
         request: api_pb2.AppSetObjectsRequest = await stream.recv_message()
         self.app_objects[request.app_id] = dict(request.indexed_object_ids)
-        self.app_unindexed_objects[request.app_id] = list(request.unindexed_object_ids)
         self.app_set_objects_count += 1
         if request.new_app_state:
             self.app_state_history[request.app_id].append(request.new_app_state)

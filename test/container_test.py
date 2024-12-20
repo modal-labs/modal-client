@@ -1142,14 +1142,16 @@ def test_cli(servicer, credentials):
 @skip_github_non_linux
 def test_function_sibling_hydration(servicer, credentials):
     deploy_app_externally(servicer, credentials, "test.supports.functions", "app", capture_output=False)
-    ret = _run_container(servicer, "test.supports.functions", "check_sibling_hydration")
+    app_layout = servicer.app_get_layout("ap-1")
+    ret = _run_container(servicer, "test.supports.functions", "check_sibling_hydration", app_layout=app_layout)
     assert _unwrap_scalar(ret) is None
 
 
 @skip_github_non_linux
 def test_multiapp(servicer, credentials, caplog):
     deploy_app_externally(servicer, credentials, "test.supports.multiapp", "a")
-    ret = _run_container(servicer, "test.supports.multiapp", "a_func")
+    app_layout = servicer.app_get_layout("ap-1")
+    ret = _run_container(servicer, "test.supports.multiapp", "a_func", app_layout=app_layout)
     assert _unwrap_scalar(ret) is None
     assert len(caplog.messages) == 0
     # Note that the app can be inferred from the function, even though there are multiple
@@ -1458,11 +1460,13 @@ def test_derived_cls(servicer):
 @skip_github_non_linux
 def test_call_function_that_calls_function(servicer, credentials):
     deploy_app_externally(servicer, credentials, "test.supports.functions", "app")
+    app_layout = servicer.app_get_layout("ap-1")
     ret = _run_container(
         servicer,
         "test.supports.functions",
         "cube",
         inputs=_get_inputs(((42,), {})),
+        app_layout=app_layout,
     )
     assert _unwrap_scalar(ret) == 42**3
 
@@ -1471,11 +1475,13 @@ def test_call_function_that_calls_function(servicer, credentials):
 def test_call_function_that_calls_method(servicer, credentials, set_env_client):
     # TODO (elias): Remove set_env_client fixture dependency - shouldn't need an env client here?
     deploy_app_externally(servicer, credentials, "test.supports.functions", "app")
+    app_layout = servicer.app_get_layout("ap-1")
     ret = _run_container(
         servicer,
         "test.supports.functions",
         "function_calling_method",
         inputs=_get_inputs(((42, "abc", 123), {})),
+        app_layout=app_layout,
     )
     assert _unwrap_scalar(ret) == 123**2  # servicer's implementation of function calling
 
@@ -2158,7 +2164,8 @@ def test_function_lazy_resolution(servicer, credentials, set_env_client):
 
     # Run container
     deploy_app_externally(servicer, credentials, "test.supports.lazy_hydration", "app", capture_output=False)
-    ret = _run_container(servicer, "test.supports.lazy_hydration", "f", deps=["im-1", "vo-0"])
+    app_layout = servicer.app_get_layout("ap-1")
+    ret = _run_container(servicer, "test.supports.lazy_hydration", "f", deps=["im-2", "vo-0"], app_layout=app_layout)
     assert _unwrap_scalar(ret) is None
 
 
@@ -2345,6 +2352,7 @@ def test_deserialization_error_returns_exception(servicer, client):
 def test_cls_self_doesnt_call_bind(servicer, credentials, set_env_client):
     # first populate app objects, so they can be fetched by AppGetObjects
     deploy_app_externally(servicer, credentials, "test.supports.user_code_import_samples.cls")
+    app_layout = servicer.app_get_layout("ap-1")
 
     with servicer.intercept() as ctx:
         ret = _run_container(
@@ -2353,6 +2361,7 @@ def test_cls_self_doesnt_call_bind(servicer, credentials, set_env_client):
             "C.*",
             is_class=True,
             inputs=_get_inputs(args=((3,), {}), method_name="calls_f_remote"),
+            app_layout=app_layout,
         )
         assert _unwrap_scalar(ret) == 9  # implies successful container run (.remote will use dummy servicer function)
 
