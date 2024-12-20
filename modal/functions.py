@@ -753,7 +753,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     mount_ids=loaded_mount_ids,
                     secret_ids=[secret.object_id for secret in secrets],
                     image_id=(image.object_id if image else ""),
-                    definition_type=info.definition_type,
+                    definition_type=info.get_definition_type(),
                     function_serialized=function_serialized or b"",
                     class_serialized=class_serialized or b"",
                     function_type=function_type,
