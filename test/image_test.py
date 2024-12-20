@@ -839,7 +839,7 @@ def test_image_dockerfile_copy_ignore(builder_version, servicer, client, use_cal
     def cb(x):
         return str(x).endswith(".txt")
 
-    ignore = cb if use_callable else ["**/*.txt"]
+    ignore_patterns = cb if use_callable else ["**/*.txt"]
 
     test_cwd = Path.cwd()
     with TemporaryDirectory(dir=test_cwd) as tmp_dir:
@@ -851,10 +851,10 @@ def test_image_dockerfile_copy_ignore(builder_version, servicer, client, use_cal
 
         app = App()
         if use_dockerfile:
-            app.image = Image.debian_slim().from_dockerfile(dockerfile, ignore=ignore)
+            app.image = Image.debian_slim().from_dockerfile(dockerfile, ignore=ignore_patterns)
             layer = 1
         else:
-            app.image = Image.debian_slim().dockerfile_commands([f"COPY {tmp_path} /dummy"], ignore=ignore)
+            app.image = Image.debian_slim().dockerfile_commands([f"COPY {tmp_path} /dummy"], ignore=ignore_patterns)
             layer = 0
         app.function()(dummy)
 
