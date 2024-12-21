@@ -770,11 +770,13 @@ def test_image_docker_command_copy(
     builder_version, servicer, client, docker_commands, expected_mount_files, use_dockerfile
 ):
     app = App()
+    maybe_dockerfile = None
     if use_dockerfile:
-        f = NamedTemporaryFile("w")
-        f.write("\n".join(docker_commands))
-        f.flush()
-        image = Image.from_dockerfile(f.name)
+        # auto deleting files appears to break windows ci
+        maybe_dockerfile = NamedTemporaryFile("w", delete=False)
+        maybe_dockerfile.write("\n".join(docker_commands))
+        maybe_dockerfile.close()
+        image = Image.from_dockerfile(maybe_dockerfile.name)
         copy_layer_index = 1  # layer 0 is the base image
     else:
         image = Image.debian_slim().dockerfile_commands(*docker_commands)
@@ -787,6 +789,9 @@ def test_image_docker_command_copy(
         mount_id = layers[copy_layer_index].context_mount_id
         files = set(servicer.mount_contents[mount_id].keys())
         assert files == expected_mount_files
+
+    if maybe_dockerfile:
+        Path(maybe_dockerfile.name).unlink()
 
 
 @pytest.mark.parametrize("use_callable", (True, False))
