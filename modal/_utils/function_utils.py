@@ -578,12 +578,15 @@ class FunctionCreationStatus:
 
         elif self.response.function.web_url:
             url_info = self.response.function.web_url_info
+            requires_proxy_auth = self.response.function.webhook_config.requires_proxy_auth
+            proxy_auth_suffix = " 🔑" if requires_proxy_auth else ""
             # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
             suffix = _get_suffix_from_web_url_info(url_info)
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
             web_url = self.response.handle_metadata.web_url
             self.status_row.finish(
-                f"Created web function {self.tag} => [magenta underline]{web_url}[/magenta underline]{suffix}"
+                f"Created web function {self.tag} => [magenta underline]{web_url}[/magenta underline]"
+                f"{proxy_auth_suffix}{suffix}"
             )
 
             # Print custom domain in terminal
