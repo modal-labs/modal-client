@@ -4,7 +4,6 @@ import os
 import pytest
 import re
 import sys
-import tempfile
 import threading
 from hashlib import sha256
 from pathlib import Path
@@ -728,14 +727,6 @@ def test_image_docker_command_no_copy(builder_version, servicer, client, disable
         context_mount_id = layers[0].context_mount_id
         assert not context_mount_id  # there should be no mount
         assert not servicer.mounts_excluding_published_client()
-
-
-@pytest.fixture
-def tmp_cwd(monkeypatch):
-    with tempfile.TemporaryDirectory() as tmp_cwd:
-        with monkeypatch.context() as m:
-            m.chdir(tmp_cwd)
-            yield
 
 
 @pytest.mark.usefixtures("tmp_cwd")

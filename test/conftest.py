@@ -2149,3 +2149,11 @@ def decode_function_call_jwt(function_call_jwt: str) -> tuple[str, str]:
     parts = function_call_jwt.split(":")
     assert len(parts) == 2
     return parts[0], parts[1]
+
+
+@pytest.fixture
+def tmp_cwd(monkeypatch):
+    with tempfile.TemporaryDirectory() as tmp_cwd:
+        with monkeypatch.context() as m:
+            m.chdir(tmp_cwd)
+            yield

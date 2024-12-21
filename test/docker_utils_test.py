@@ -1,5 +1,7 @@
 # Copyright Modal Labs 2024
 import os
+import pytest
+import sys
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 
@@ -42,12 +44,11 @@ def test_extract_copy_command_patterns():
         assert copy_command_sources == expected
 
 
+@pytest.mark.usefixture("tmp_cwd")
 def test_find_dockerignore_file():
-    print()
-    test_cwd = Path.cwd()
-
     # case 1:
     # generic dockerignore file in cwd --> find it
+    test_cwd = Path.cwd()
     with TemporaryDirectory(dir=test_cwd) as tmp_dir:
         tmp_path = Path(tmp_dir)
         dir1 = tmp_path / "dir1"
@@ -150,7 +151,9 @@ def create_tmp_files(tmp_path):
     (tmp_path / "special").mkdir()
     (tmp_path / "special" / "file[1].txt").write_text("special1")
     (tmp_path / "special" / "file{2}.txt").write_text("special2")
-    (tmp_path / "special" / "test?file.py").write_text("special3")
+
+    if sys.platform != "win32":
+        (tmp_path / "special" / "test?file.py").write_text("special3")
 
     (tmp_path / "this").mkdir()
     (tmp_path / "this" / "is").mkdir()
@@ -166,6 +169,7 @@ def create_tmp_files(tmp_path):
     return all_fps
 
 
+@pytest.mark.usefixture("tmp_cwd")
 def test_image_dockerfile_copy_messy():
     with TemporaryDirectory(dir="./") as tmp_dir:
         tmp_path = Path(tmp_dir)
