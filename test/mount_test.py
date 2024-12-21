@@ -3,7 +3,7 @@ import hashlib
 import os
 import platform
 import pytest
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from modal import App, FilePatternMatcher
 from modal._utils.blob_utils import LARGE_FILE_LIMIT
@@ -194,7 +194,7 @@ def test_mount_from_local_dir_ignore(test_dir, tmp_path_with_content):
         "/foo/module/sub/__init__.py",
     }
 
-    mount = Mount._add_local_dir(tmp_path_with_content, Path("/foo"), ignore=ignore)
+    mount = Mount._add_local_dir(tmp_path_with_content, PurePosixPath("/foo"), ignore=ignore)
 
     file_names = [file.mount_filename for file in Mount._get_files(entries=mount.entries)]
     assert set(file_names) == expected

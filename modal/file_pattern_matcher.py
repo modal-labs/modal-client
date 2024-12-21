@@ -152,6 +152,7 @@ class FilePatternMatcher(_AbstractPatternMatcher):
 # with_repr allows us to use this matcher as a default value in a function signature
 #  and get a nice repr in the docs and auto-generated type stubs:
 NON_PYTHON_FILES = (~FilePatternMatcher("**/*.py")).with_repr(f"{__name__}.NON_PYTHON_FILES")
+_NOTHING = (~FilePatternMatcher()).with_repr(f"{__name__}._NOTHING")  # match everything = ignore nothing
 
 
 def _ignore_fn(ignore: Union[Sequence[str], Callable[[Path], bool]]) -> Callable[[Path], bool]:

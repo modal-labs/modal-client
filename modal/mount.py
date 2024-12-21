@@ -16,6 +16,7 @@ from typing import Callable, Optional, Sequence, Union
 from google.protobuf.message import Message
 
 import modal.exception
+import modal.file_pattern_matcher
 from modal_proto import api_pb2
 from modal_version import __version__
 
@@ -326,7 +327,7 @@ class _Mount(_Object, type_prefix="mo"):
     def _add_local_dir(
         local_path: Path,
         remote_path: PurePosixPath,
-        ignore: Callable[[Path], bool] = lambda _: False,  # ignore nothing by default
+        ignore: Callable[[Path], bool] = modal.file_pattern_matcher._NOTHING,
     ):
         return _Mount._new()._extend(
             _MountDir(
