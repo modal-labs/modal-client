@@ -325,12 +325,9 @@ class _Mount(_Object, type_prefix="mo"):
     @staticmethod
     def _add_local_dir(
         local_path: Path,
-        remote_path: Path,
-        ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
+        remote_path: PurePosixPath,
+        ignore: Callable[[Path], bool] = lambda _: False,  # ignore nothing by default
     ):
-        if not callable(ignore):
-            ignore = FilePatternMatcher(*ignore)
-
         return _Mount._new()._extend(
             _MountDir(
                 local_dir=local_path,

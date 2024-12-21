@@ -41,7 +41,7 @@ from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
 from .environments import _get_environment_cached
 from .exception import InvalidError, NotFoundError, RemoteError, VersionError
-from .file_pattern_matcher import NON_PYTHON_FILES, FilePatternMatcher
+from .file_pattern_matcher import NON_PYTHON_FILES, FilePatternMatcher, _ignore_fn
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
@@ -237,15 +237,6 @@ def _get_image_builder_version(server_version: ImageBuilderVersion) -> ImageBuil
         )
 
     return version
-
-
-def _ignore_fn(ignore: Union[Sequence[str], Callable[[Path], bool]]) -> Callable[[Path], bool]:
-    # if a callable is passed, return it
-    # otherwise, treat input as a sequence of patterns and return a callable pattern matcher for those
-    if callable(ignore):
-        return ignore
-
-    return FilePatternMatcher(*ignore)
 
 
 def _create_context_mount(
@@ -725,7 +716,7 @@ class _Image(_Object, type_prefix="im"):
             #  + make default remote_path="./"
             raise InvalidError("image.add_local_dir() currently only supports absolute remote_path values")
 
-        mount = _Mount._add_local_dir(Path(local_path), Path(remote_path), ignore)
+        mount = _Mount._add_local_dir(Path(local_path), Path(remote_path), ignore=_ignore_fn(ignore))
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
@@ -836,7 +827,9 @@ class _Image(_Object, type_prefix="im"):
         return _Image._from_args(
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
-            context_mount_function=lambda: _Mount._add_local_dir(Path(local_path), Path("/"), ignore),
+            context_mount_function=lambda: _Mount._add_local_dir(
+                Path(local_path), Path("/"), ignore=_ignore_fn(ignore)
+            ),
         )
 
     def pip_install(
@@ -1590,8 +1583,6 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
         add_python: Optional[str] = None,
-        # If ignore is set to None
-        # it will look for a dockerignore file to get ignore patterns
         ignore: Union[Sequence[str], Callable[[Path], bool]] = (),
     ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
@@ -1604,9 +1595,6 @@ class _Image(_Object, type_prefix="im"):
         ```python
         image = modal.Image.from_dockerfile("./Dockerfile", add_python="3.12")
         ```
-
-        If your Dockerfile uses `COPY` instructions which copy data from the local context of the
-        build into the image, this local data will be implicitly mounted into the image.
         """
 
         if context_mount:

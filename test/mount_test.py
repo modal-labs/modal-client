@@ -5,7 +5,7 @@ import platform
 import pytest
 from pathlib import Path
 
-from modal import App
+from modal import App, FilePatternMatcher
 from modal._utils.blob_utils import LARGE_FILE_LIMIT
 from modal.exception import ModuleNotMountable
 from modal.mount import Mount, module_mount_condition, module_mount_ignore_condition
@@ -184,7 +184,7 @@ def test_module_mount_condition():
 
 
 def test_mount_from_local_dir_ignore(test_dir, tmp_path_with_content):
-    ignore = ["**/*.txt", "**/module", "!**/*.txt", "!**/*.py"]
+    ignore = FilePatternMatcher("**/*.txt", "**/module", "!**/*.txt", "!**/*.py")
     expected = {
         "/foo/module/sub.py",
         "/foo/module/sub/sub.py",
@@ -194,7 +194,7 @@ def test_mount_from_local_dir_ignore(test_dir, tmp_path_with_content):
         "/foo/module/sub/__init__.py",
     }
 
-    mount = Mount._add_local_dir(tmp_path_with_content, Path("/foo"), ignore)
+    mount = Mount._add_local_dir(tmp_path_with_content, Path("/foo"), ignore=ignore)
 
     file_names = [file.mount_filename for file in Mount._get_files(entries=mount.entries)]
     assert set(file_names) == expected

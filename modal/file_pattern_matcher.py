@@ -12,7 +12,7 @@ then asking it whether file paths match any of its patterns.
 import os
 from abc import abstractmethod
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, Sequence, Union
 
 from ._utils.pattern_utils import Pattern
 
@@ -152,3 +152,12 @@ class FilePatternMatcher(_AbstractPatternMatcher):
 # with_repr allows us to use this matcher as a default value in a function signature
 #  and get a nice repr in the docs and auto-generated type stubs:
 NON_PYTHON_FILES = (~FilePatternMatcher("**/*.py")).with_repr(f"{__name__}.NON_PYTHON_FILES")
+
+
+def _ignore_fn(ignore: Union[Sequence[str], Callable[[Path], bool]]) -> Callable[[Path], bool]:
+    # if a callable is passed, return it
+    # otherwise, treat input as a sequence of patterns and return a callable pattern matcher for those
+    if callable(ignore):
+        return ignore
+
+    return FilePatternMatcher(*ignore)
