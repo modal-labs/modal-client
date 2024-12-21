@@ -21,7 +21,6 @@ from typing import (
 )
 
 from google.protobuf.empty_pb2 import Empty
-from google.protobuf.message import Message
 from grpclib import Status
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -31,12 +30,12 @@ from modal._traceback import extract_traceback, print_exception
 from modal._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
 from modal._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from modal._utils.function_utils import _stream_function_call_data
-from modal._utils.grpc_utils import get_proto_oneof, retry_transient_errors
+from modal._utils.grpc_utils import retry_transient_errors
 from modal._utils.package_utils import parse_major_minor_version
 from modal.client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from modal.config import config, logger
 from modal.exception import ClientClosed, InputCancellation, InvalidError, SerializationError
-from modal.running_app import RunningApp
+from modal.running_app import RunningApp, running_app_from_layout
 from modal_proto import api_pb2
 
 if TYPE_CHECKING:
@@ -451,24 +450,15 @@ class _ContainerIOManager:
             await asyncio.sleep(DYNAMIC_CONCURRENCY_INTERVAL_SECS)
 
     async def get_app_objects(self) -> RunningApp:
-        req = api_pb2.AppGetObjectsRequest(app_id=self.app_id, include_unindexed=True, only_class_function=True)
-        resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
-        logger.debug(f"AppGetObjects received {len(resp.items)} objects for app {self.app_id}")
+        req = api_pb2.AppGetLayoutRequest(app_id=self.app_id)
+        resp = await retry_transient_errors(self._client.stub.AppGetLayout, req)
+        logger.debug(f"AppGetLayout received {len(resp.app_layout.objects)} objects for app {self.app_id}")
 
-        tag_to_object_id = {}
-        object_handle_metadata = {}
-        for item in resp.items:
-            handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
-            object_handle_metadata[item.object.object_id] = handle_metadata
-            if item.tag:
-                tag_to_object_id[item.tag] = item.object.object_id
-
-        return RunningApp(
+        return running_app_from_layout(
             self.app_id,
+            resp.app_layout,
+            self._client,
             environment_name=self._environment_name,
-            tag_to_object_id=tag_to_object_id,
-            object_handle_metadata=object_handle_metadata,
-            client=self._client,
         )
 
     async def get_serialized_function(self) -> tuple[Optional[Any], Optional[Callable[..., Any]]]:
