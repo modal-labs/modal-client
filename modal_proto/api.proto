@@ -2107,6 +2107,7 @@ message S3Mount {
   bool read_only = 4;
 }
 
+// TODO (colin) this can move to the backend
 message SandboxSnapshotInfo {
   string checksum = 1;
   string snapshot_id = 2; // TODO (colin) i don't think this field needs to exist
@@ -2157,8 +2158,6 @@ message Sandbox {
   NetworkAccess network_access = 22;
 
   optional string proxy_id = 23;
-
-  optional SandboxSnapshotInfo snapshot = 24;
 }
 
 message SandboxCreateRequest {
