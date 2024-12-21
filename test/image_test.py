@@ -733,8 +733,9 @@ def test_image_docker_command_no_copy(builder_version, servicer, client, disable
 @pytest.fixture
 def tmp_cwd(monkeypatch):
     with tempfile.TemporaryDirectory() as tmp_cwd:
-        monkeypatch.chdir(tmp_cwd)
-        yield
+        with monkeypatch.context() as m:
+            m.chdir(tmp_cwd)
+            yield
 
 
 @pytest.mark.usefixtures("tmp_cwd")
