@@ -67,8 +67,10 @@ class LifespanManager:
         except Exception as e:
             if not self._lifespan_supported:
                 logger.info(f"ASGI lifespan task exited before receiving any messages with exception:\n{e}")
-                self._startup.set_result(None)
-                self._shutdown.set_result(None)
+                if not self._startup.done():
+                    self._startup.set_result(None)
+                if not self._shutdown.done():
+                    self._shutdown.set_result(None)
                 return
 
             logger.error(f"Error in ASGI lifespan task: {e}")
@@ -78,8 +80,10 @@ class LifespanManager:
                 self._shutdown.set_exception(ExecutionError("ASGI lifespan task exited shutdown"))
         else:
             logger.info("ASGI Lifespan protocol is probably not supported by this library")
-            self._startup.set_result(None)
-            self._shutdown.set_result(None)
+            if not self._startup.done():
+                self._startup.set_result(None)
+            if not self._shutdown.done():
+                self._shutdown.set_result(None)
 
     async def lifespan_startup(self):
         await self.ensure_init()
