@@ -449,14 +449,17 @@ class _ContainerIOManager:
 
             await asyncio.sleep(DYNAMIC_CONCURRENCY_INTERVAL_SECS)
 
-    async def get_app_objects(self) -> RunningApp:
-        req = api_pb2.AppGetLayoutRequest(app_id=self.app_id)
-        resp = await retry_transient_errors(self._client.stub.AppGetLayout, req)
-        logger.debug(f"AppGetLayout received {len(resp.app_layout.objects)} objects for app {self.app_id}")
+    async def get_app_objects(self, app_layout: api_pb2.AppLayout) -> RunningApp:
+        if len(app_layout.objects) == 0:
+            # TODO(erikbern): this is a temporary fallback until we flip the switch and the worker provides arguments
+            req = api_pb2.AppGetLayoutRequest(app_id=self.app_id)
+            resp = await retry_transient_errors(self._client.stub.AppGetLayout, req)
+            app_layout = resp.app_layout
+            logger.debug(f"AppGetLayout received {len(app_layout.objects)} objects for app {self.app_id}")
 
         return running_app_from_layout(
             self.app_id,
-            resp.app_layout,
+            app_layout,
             self._client,
             environment_name=self._environment_name,
         )
