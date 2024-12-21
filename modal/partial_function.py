@@ -299,8 +299,6 @@ def _web_endpoint(
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@web_endpoint()`."
         )
-    if requires_proxy_auth:
-        raise InvalidError("This feature is not supported yet.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if isinstance(raw_f, _Function):
@@ -370,8 +368,6 @@ def _asgi_app(
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@asgi_app()`."
         )
-    if requires_proxy_auth:
-        raise InvalidError("This feature is not supported yet.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if callable_has_non_self_params(raw_f):
@@ -448,8 +444,6 @@ def _wsgi_app(
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@wsgi_app()`."
         )
-    if requires_proxy_auth:
-        raise InvalidError("This feature is not supported yet.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if callable_has_non_self_params(raw_f):
@@ -529,8 +523,6 @@ def _web_server(
         raise InvalidError("First argument of `@web_server` must be a local port, such as `@web_server(8000)`.")
     if startup_timeout <= 0:
         raise InvalidError("The `startup_timeout` argument of `@web_server` must be positive.")
-    if requires_proxy_auth:
-        raise InvalidError("This feature is not supported yet.")
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         return _PartialFunction(
