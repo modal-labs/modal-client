@@ -716,7 +716,7 @@ class _Image(_Object, type_prefix="im"):
             #  + make default remote_path="./"
             raise InvalidError("image.add_local_dir() currently only supports absolute remote_path values")
 
-        mount = _Mount._add_local_dir(Path(local_path), Path(remote_path), ignore=_ignore_fn(ignore))
+        mount = _Mount._add_local_dir(Path(local_path), PurePosixPath(remote_path), ignore=_ignore_fn(ignore))
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
@@ -828,7 +828,7 @@ class _Image(_Object, type_prefix="im"):
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
             context_mount_function=lambda: _Mount._add_local_dir(
-                Path(local_path), Path("/"), ignore=_ignore_fn(ignore)
+                Path(local_path), PurePosixPath("/"), ignore=_ignore_fn(ignore)
             ),
         )
 

@@ -8,6 +8,7 @@ import sys
 import threading
 from hashlib import sha256
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Callable, Literal, Sequence, Union, get_args
 from unittest import mock
 
@@ -746,7 +747,7 @@ def dummy_context_dir(tmp_cwd):
 ALL_DUMMY_FILES = {"/top/data/sub", "/top/module/__init__.py", "/top/module/sub.py", "/top/module/sub/__init__.py"}
 
 
-@pytest.mark.usefixtures("dummy_context_dir")
+@pytest.mark.usefixtures("tmp_cwd", "dummy_context_dir")
 @pytest.mark.parametrize(
     ("docker_commands", "expected_mount_files"),
     [
@@ -764,50 +765,35 @@ ALL_DUMMY_FILES = {"/top/data/sub", "/top/module/__init__.py", "/top/module/sub.
         ),  # multiple copy statements
     ],
 )
-def test_image_docker_command_copy(builder_version, servicer, client, docker_commands, expected_mount_files):
+@pytest.mark.parametrize("use_dockerfile", [False, True])
+def test_image_docker_command_copy(
+    builder_version, servicer, client, docker_commands, expected_mount_files, use_dockerfile
+):
     app = App()
-    app.image = Image.debian_slim().dockerfile_commands(*docker_commands)
-    app.function()(dummy)
+    if use_dockerfile:
+        f = NamedTemporaryFile("w")
+        f.write("\n".join(docker_commands))
+        f.flush()
+        image = Image.from_dockerfile(f.name)
+        copy_layer_index = 1  # layer 0 is the base image
+    else:
+        image = Image.debian_slim().dockerfile_commands(*docker_commands)
+        copy_layer_index = 0
+
+    app.function(image=image)(dummy)
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
-        assert layers[0].dockerfile_commands[1:] == docker_commands
-        mount_id = layers[0].context_mount_id
+        layers = get_image_layers(image.object_id, servicer)
+        mount_id = layers[copy_layer_index].context_mount_id
         files = set(servicer.mount_contents[mount_id].keys())
         assert files == expected_mount_files
-
-
-@pytest.mark.usefixtures("tmp_cwd")
-def test_image_dockerfile_copy(builder_version, servicer, client, dummy_data_rel_dir):
-    dockerfile = Path("Dockerfile")
-    dockerfile.write_text(f"COPY {dummy_data_rel_dir} /dummy\n")
-
-    app = App()
-    app.image = Image.debian_slim().from_dockerfile(dockerfile)
-    app.function()(dummy)
-
-    with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
-        assert f"COPY {dummy_data_rel_dir} /dummy" in layers[1].dockerfile_commands
-        mount_id = layers[1].context_mount_id
-        files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
-        assert files == {
-            Path("/") / dummy_data_rel_dir / "data/sub",
-            Path("/") / dummy_data_rel_dir / "module/__init__.py",
-            Path("/") / dummy_data_rel_dir / "module/sub.py",
-            Path("/") / dummy_data_rel_dir / "module/sub/__init__.py",
-        }
 
 
 @pytest.mark.parametrize("use_callable", (True, False))
 @pytest.mark.parametrize("use_dockerfile", (True, False))
 @pytest.mark.usefixtures("tmp_cwd")
 def test_image_dockerfile_copy_ignore(builder_version, servicer, client, use_callable, use_dockerfile):
-    # TODO tests (elias/kasper):
-    #  * reference dockerfile that is itself outside of cwd or in a different path than other things
-    #  * copying files from outside of cwd
-    #  * copying files from subdirectories
-    #  * copy individual files
+    # TODO: combine with test_image_docker_command_copy?
     def cb(x: Path):
         return x.suffix == ".txt"
 
