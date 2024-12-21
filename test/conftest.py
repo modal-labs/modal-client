@@ -2152,8 +2152,7 @@ def decode_function_call_jwt(function_call_jwt: str) -> tuple[str, str]:
 
 
 @pytest.fixture
-def tmp_cwd(monkeypatch):
-    with tempfile.TemporaryDirectory() as tmp_cwd:
-        with monkeypatch.context() as m:
-            m.chdir(tmp_cwd)
-            yield
+def tmp_cwd(tmp_path, monkeypatch):
+    with monkeypatch.context() as m:
+        m.chdir(tmp_path)
+        yield

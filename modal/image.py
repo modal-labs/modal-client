@@ -263,7 +263,7 @@ def _create_context_mount(
 
         return False
 
-    return _Mount._add_local_dir(Path("./"), Path("/"), ignore=ignore_with_include)
+    return _Mount._add_local_dir(Path("./"), PurePosixPath("/"), ignore=ignore_with_include)
 
 
 class _ImageRegistryConfig:

@@ -3,6 +3,7 @@ import asyncio
 import os
 import pytest
 import re
+import shutil
 import sys
 import threading
 from hashlib import sha256
@@ -711,12 +712,9 @@ def test_image_copy_local_dir(builder_version, servicer, client, tmp_path_with_c
 
 
 @pytest.mark.usefixtures("tmp_cwd")
-def test_image_docker_command_no_copy(builder_version, servicer, client, disable_auto_mount):
-    rel_top_dir = Path("top")
-    rel_top_dir.mkdir()
-    (rel_top_dir / "data.txt").write_text("hello")
-    (rel_top_dir / "data").mkdir()
-    (rel_top_dir / "data" / "sub").write_text("world")
+def test_image_docker_command_no_copy_commands(builder_version, servicer, client, disable_auto_mount):
+    # make sure that no mount is created if there are no copy commands
+    Path("data.txt").write_text("hello")
     app = App()
     image = Image.debian_slim().dockerfile_commands(["RUN something"])
     app.function(image=image, serialized=True)(dummy)
@@ -729,27 +727,9 @@ def test_image_docker_command_no_copy(builder_version, servicer, client, disable
         assert not servicer.mounts_excluding_published_client()
 
 
-@pytest.mark.usefixtures("tmp_cwd")
-def test_image_docker_command_copy(builder_version, servicer, client):
-    rel_top_dir = Path("top")
-    rel_top_dir.mkdir()
-    (rel_top_dir / "data.txt").write_text("hello")
-    (rel_top_dir / "data").mkdir()
-    (rel_top_dir / "data" / "sub").write_text("world")
-    app = App()
-    app.image = Image.debian_slim().dockerfile_commands(["COPY top /dummy"])
-    app.function()(dummy)
-
-    with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
-        assert f"COPY {rel_top_dir} /dummy" in layers[0].dockerfile_commands
-        mount_id = layers[0].context_mount_id
-        files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
-        assert files == {Path("/") / rel_top_dir / "data.txt", Path("/") / rel_top_dir / "data" / "sub"}
-
-
-@pytest.mark.usefixtures("tmp_cwd")
-def test_image_dockerfile_copy(builder_version, servicer, client):
+@pytest.fixture()
+def dummy_context_dir(tmp_cwd):
+    # create dummy data in current working directory
     rel_top_dir = Path("top")
     rel_top_dir.mkdir()
     (rel_top_dir / "data").mkdir()
@@ -759,8 +739,48 @@ def test_image_dockerfile_copy(builder_version, servicer, client):
     (rel_top_dir / "module" / "sub.py").write_text("bar")
     (rel_top_dir / "module" / "sub").mkdir()
     (rel_top_dir / "module" / "sub" / "__init__.py").write_text("baz")
-    dockerfile = rel_top_dir / "Dockerfile"
-    dockerfile.write_text(f"COPY {rel_top_dir} /dummy\n")
+    yield
+    shutil.rmtree(rel_top_dir)
+
+
+ALL_DUMMY_FILES = {"/top/data/sub", "/top/module/__init__.py", "/top/module/sub.py", "/top/module/sub/__init__.py"}
+
+
+@pytest.mark.usefixtures("dummy_context_dir")
+@pytest.mark.parametrize(
+    ("docker_commands", "expected_mount_files"),
+    [
+        (["COPY . /"], ALL_DUMMY_FILES),  # common
+        (["COPY top /"], ALL_DUMMY_FILES),  # single dir
+        (["COPY top/ /"], ALL_DUMMY_FILES),  # trailing slash
+        # changing the destination directory shouldn't matter for how the *context mount* looks:
+        (["COPY top /dummy"], ALL_DUMMY_FILES),
+        (["COPY top/data /"], {"/top/data/sub"}),  # from subdir
+        (["COPY top/data/sub /"], {"/top/data/sub"}),  # individual file
+        (["COPY ./** /"], ALL_DUMMY_FILES),  # glob
+        (
+            ["COPY top/data/sub /", "COPY top/module/sub.py /"],
+            {"/top/data/sub", "/top/module/sub.py"},
+        ),  # multiple copy statements
+    ],
+)
+def test_image_docker_command_copy(builder_version, servicer, client, docker_commands, expected_mount_files):
+    app = App()
+    app.image = Image.debian_slim().dockerfile_commands(*docker_commands)
+    app.function()(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(app.image.object_id, servicer)
+        assert layers[0].dockerfile_commands[1:] == docker_commands
+        mount_id = layers[0].context_mount_id
+        files = set(servicer.mount_contents[mount_id].keys())
+        assert files == expected_mount_files
+
+
+@pytest.mark.usefixtures("tmp_cwd")
+def test_image_dockerfile_copy(builder_version, servicer, client, dummy_data_rel_dir):
+    dockerfile = Path("Dockerfile")
+    dockerfile.write_text(f"COPY {dummy_data_rel_dir} /dummy\n")
 
     app = App()
     app.image = Image.debian_slim().from_dockerfile(dockerfile)
@@ -768,15 +788,14 @@ def test_image_dockerfile_copy(builder_version, servicer, client):
 
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
-        assert f"COPY {rel_top_dir} /dummy" in layers[1].dockerfile_commands
+        assert f"COPY {dummy_data_rel_dir} /dummy" in layers[1].dockerfile_commands
         mount_id = layers[1].context_mount_id
         files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
         assert files == {
-            Path("/") / rel_top_dir / "Dockerfile",
-            Path("/") / rel_top_dir / "data/sub",
-            Path("/") / rel_top_dir / "module/__init__.py",
-            Path("/") / rel_top_dir / "module/sub.py",
-            Path("/") / rel_top_dir / "module/sub/__init__.py",
+            Path("/") / dummy_data_rel_dir / "data/sub",
+            Path("/") / dummy_data_rel_dir / "module/__init__.py",
+            Path("/") / dummy_data_rel_dir / "module/sub.py",
+            Path("/") / dummy_data_rel_dir / "module/sub/__init__.py",
         }
 
 
@@ -784,8 +803,11 @@ def test_image_dockerfile_copy(builder_version, servicer, client):
 @pytest.mark.parametrize("use_dockerfile", (True, False))
 @pytest.mark.usefixtures("tmp_cwd")
 def test_image_dockerfile_copy_ignore(builder_version, servicer, client, use_callable, use_dockerfile):
-    # TODO (elias/kasper):
-    #  * test referencing dockerfile that is itself outside of cwd or in a different path than other things
+    # TODO tests (elias/kasper):
+    #  * reference dockerfile that is itself outside of cwd or in a different path than other things
+    #  * copying files from outside of cwd
+    #  * copying files from subdirectories
+    #  * copy individual files
     def cb(x: Path):
         return x.suffix == ".txt"
 
