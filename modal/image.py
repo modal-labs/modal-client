@@ -1113,6 +1113,8 @@ class _Image(_Object, type_prefix="im"):
         without: list[str] = [],
         # Only install dependency groups specifed in this list.
         only: list[str] = [],
+        # Install all extras (See https://python-poetry.org/docs/cli/#options-2)
+        all_extras: bool = False,
         *,
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -1160,6 +1162,10 @@ class _Image(_Object, type_prefix="im"):
 
             if only:
                 install_cmd += f" --only {','.join(only)}"
+
+            if all_extras:
+                install_cmd += " --all-extras"
+
             install_cmd += " --compile"  # no .pyc compilation slows down cold-start.
 
             commands += [
