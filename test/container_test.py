@@ -58,11 +58,11 @@ SLEEP_DELAY = 0.1
 blob_upload = synchronize_api(_blob_upload)
 blob_download = synchronize_api(_blob_download)
 
-
-@pytest.fixture(autouse=True)
-def deploy_simple_app(servicer):
-    # TODO(erikbern): this is a hack that we can remove once we pass the app layout through container arguments
-    servicer.app_unindexed_objects["ap-1"] = ["im-1"]
+DEFAULT_APP_LAYOUT = api_pb2.AppLayout(
+    objects=[
+        api_pb2.Object(object_id="im-1"),
+    ],
+)
 
 
 def _get_inputs(
@@ -193,6 +193,7 @@ def _container_args(
         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
     ),
     app_id: str = "ap-1",
+    app_layout: api_pb2.AppLayout = DEFAULT_APP_LAYOUT,
 ):
     if webhook_type:
         webhook_config = api_pb2.WebhookConfig(
@@ -230,6 +231,7 @@ def _container_args(
         function_def=function_def,
         serialized_params=serialized_params,
         checkpoint_id=f"ch-{uuid.uuid4()}",
+        app_layout=app_layout,
     )
 
 
@@ -265,6 +267,7 @@ def _run_container(
     class_parameter_info=api_pb2.ClassParameterInfo(
         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
     ),
+    app_layout=DEFAULT_APP_LAYOUT,
 ) -> ContainerResult:
     container_args = _container_args(
         module_name,
@@ -286,6 +289,7 @@ def _run_container(
         max_inputs,
         is_class=is_class,
         class_parameter_info=class_parameter_info,
+        app_layout=app_layout,
     )
     with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
         if inputs is None:
@@ -973,9 +977,15 @@ def test_cls_web_endpoint(servicer):
 
 @skip_github_non_linux
 def test_cls_web_asgi_construction(servicer):
-    servicer.app_objects.setdefault("ap-1", {}).setdefault("square", "fu-2")
-    servicer.app_functions["fu-2"] = api_pb2.Function()
-
+    app_layout = api_pb2.AppLayout(
+        objects=[
+            api_pb2.Object(object_id="im-1"),
+            api_pb2.Object(object_id="fu-2", function_handle_metadata=api_pb2.FunctionHandleMetadata()),
+        ],
+        function_ids={
+            "square": "fu-2",
+        },
+    )
     inputs = _get_web_inputs(method_name="asgi_web")
     ret = _run_container(
         servicer,
@@ -983,6 +993,7 @@ def test_cls_web_asgi_construction(servicer):
         "Cls.*",
         inputs=inputs,
         is_class=True,
+        app_layout=app_layout,
     )
 
     _, second_message = _unwrap_asgi(ret)
@@ -1103,11 +1114,13 @@ def test_cli(servicer, credentials):
         function_id="fu-123",
         app_id="ap-123",
         function_def=function_def,
+        app_layout=api_pb2.AppLayout(
+            objects=[
+                api_pb2.Object(object_id="im-123"),
+            ],
+        ),
     )
     data_base64: str = base64.b64encode(container_args.SerializeToString()).decode("ascii")
-
-    # Needed for function hydration
-    servicer.app_objects["ap-123"] = {"": "im-123"}
 
     # Inputs that will be consumed by the container
     servicer.container_inputs = _get_inputs()
@@ -1129,14 +1142,16 @@ def test_cli(servicer, credentials):
 @skip_github_non_linux
 def test_function_sibling_hydration(servicer, credentials):
     deploy_app_externally(servicer, credentials, "test.supports.functions", "app", capture_output=False)
-    ret = _run_container(servicer, "test.supports.functions", "check_sibling_hydration")
+    app_layout = servicer.app_get_layout("ap-1")
+    ret = _run_container(servicer, "test.supports.functions", "check_sibling_hydration", app_layout=app_layout)
     assert _unwrap_scalar(ret) is None
 
 
 @skip_github_non_linux
 def test_multiapp(servicer, credentials, caplog):
     deploy_app_externally(servicer, credentials, "test.supports.multiapp", "a")
-    ret = _run_container(servicer, "test.supports.multiapp", "a_func")
+    app_layout = servicer.app_get_layout("ap-1")
+    ret = _run_container(servicer, "test.supports.multiapp", "a_func", app_layout=app_layout)
     assert _unwrap_scalar(ret) is None
     assert len(caplog.messages) == 0
     # Note that the app can be inferred from the function, even though there are multiple
@@ -1445,11 +1460,13 @@ def test_derived_cls(servicer):
 @skip_github_non_linux
 def test_call_function_that_calls_function(servicer, credentials):
     deploy_app_externally(servicer, credentials, "test.supports.functions", "app")
+    app_layout = servicer.app_get_layout("ap-1")
     ret = _run_container(
         servicer,
         "test.supports.functions",
         "cube",
         inputs=_get_inputs(((42,), {})),
+        app_layout=app_layout,
     )
     assert _unwrap_scalar(ret) == 42**3
 
@@ -1458,11 +1475,13 @@ def test_call_function_that_calls_function(servicer, credentials):
 def test_call_function_that_calls_method(servicer, credentials, set_env_client):
     # TODO (elias): Remove set_env_client fixture dependency - shouldn't need an env client here?
     deploy_app_externally(servicer, credentials, "test.supports.functions", "app")
+    app_layout = servicer.app_get_layout("ap-1")
     ret = _run_container(
         servicer,
         "test.supports.functions",
         "function_calling_method",
         inputs=_get_inputs(((42, "abc", 123), {})),
+        app_layout=app_layout,
     )
     assert _unwrap_scalar(ret) == 123**2  # servicer's implementation of function calling
 
@@ -2145,7 +2164,8 @@ def test_function_lazy_resolution(servicer, credentials, set_env_client):
 
     # Run container
     deploy_app_externally(servicer, credentials, "test.supports.lazy_hydration", "app", capture_output=False)
-    ret = _run_container(servicer, "test.supports.lazy_hydration", "f", deps=["im-1", "vo-0"])
+    app_layout = servicer.app_get_layout("ap-1")
+    ret = _run_container(servicer, "test.supports.lazy_hydration", "f", deps=["im-2", "vo-0"], app_layout=app_layout)
     assert _unwrap_scalar(ret) is None
 
 
@@ -2332,6 +2352,7 @@ def test_deserialization_error_returns_exception(servicer, client):
 def test_cls_self_doesnt_call_bind(servicer, credentials, set_env_client):
     # first populate app objects, so they can be fetched by AppGetObjects
     deploy_app_externally(servicer, credentials, "test.supports.user_code_import_samples.cls")
+    app_layout = servicer.app_get_layout("ap-1")
 
     with servicer.intercept() as ctx:
         ret = _run_container(
@@ -2340,6 +2361,7 @@ def test_cls_self_doesnt_call_bind(servicer, credentials, set_env_client):
             "C.*",
             is_class=True,
             inputs=_get_inputs(args=((3,), {}), method_name="calls_f_remote"),
+            app_layout=app_layout,
         )
         assert _unwrap_scalar(ret) == 9  # implies successful container run (.remote will use dummy servicer function)
 
