@@ -759,7 +759,7 @@ def test_cls_web_asgi_with_lifespan(servicer):
 
     from test.supports import functions
 
-    assert ["enter1", "enter2", "foo1", "exit1", "exit2", "exit"] == functions.lifespan_global_asgi_app_cls
+    assert functions.lifespan_global_asgi_app_cls == ["enter1", "enter2", "foo1", "exit1", "exit2", "exit"]
 
 
 @skip_github_non_linux

@@ -534,12 +534,12 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         with container_io_manager.handle_user_exception():
             finalized_functions = service.get_finalized_functions(function_def, container_io_manager)
         # Execute the function.
-        lifespan_background_task = None
+        lifespan_background_tasks = []
         try:
             for finalized_function in finalized_functions.values():
                 if finalized_function.lifespan_manager:
-                    lifespan_background_task = event_loop.create_task(
-                        finalized_function.lifespan_manager.background_task()
+                    lifespan_background_tasks.append(
+                        event_loop.create_task(finalized_function.lifespan_manager.background_task())
                     )
                     with container_io_manager.handle_user_exception():
                         event_loop.run(finalized_function.lifespan_manager.lifespan_startup())
@@ -564,12 +564,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                         if finalized_function.lifespan_manager:
                             with container_io_manager.handle_user_exception():
                                 event_loop.run(finalized_function.lifespan_manager.lifespan_shutdown())
-
-                            # no need to keep the lifespan asgi call around - we send it no more messages
-                            if lifespan_background_task:
-                                lifespan_background_task.cancel()  # prevent dangling task
-
                 finally:
+                    # no need to keep the lifespan asgi call around - we send it no more messages
+                    for lifespan_background_task in lifespan_background_tasks:
+                        lifespan_background_task.cancel()  # prevent dangling tasks
+
                     # Identify "exit" methods and run them.
                     # want to make sure this is called even if the lifespan manager fails
                     if service.user_cls_instance is not None and not is_auto_snapshot:
