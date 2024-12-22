@@ -168,7 +168,6 @@ class _App:
     """
 
     _all_apps: ClassVar[dict[Optional[str], list["_App"]]] = {}
-    _container_app: ClassVar[Optional[RunningApp]] = None
 
     _name: Optional[str]
     _description: Optional[str]
@@ -487,8 +486,6 @@ class _App:
         self._app_id = running_app.app_id
         self._running_app = running_app
         self._client = client
-
-        _App._container_app = running_app
 
         # Hydrate objects on app -- hydrating functions first so that when a class is being hydrated its
         # corresponding class service function is already hydrated.
@@ -1046,11 +1043,6 @@ class _App:
                 for log in log_batch.items:
                     if log.data:
                         yield log.data
-
-    @classmethod
-    def _reset_container_app(cls):
-        """Only used for tests."""
-        cls._container_app = None
 
 
 App = synchronize_api(_App)
