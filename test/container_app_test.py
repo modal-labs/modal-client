@@ -48,7 +48,7 @@ async def test_container_function_lazily_imported(container_client):
         "fu-123": api_pb2.FunctionHandleMetadata(),
     }
     container_app = RunningApp(
-        "ap-123", container_client, tag_to_object_id=tag_to_object_id, object_handle_metadata=object_handle_metadata
+        "ap-123", tag_to_object_id=tag_to_object_id, object_handle_metadata=object_handle_metadata
     )
     app = App()
 

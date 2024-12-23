@@ -337,14 +337,17 @@ def call_function(
                     signal.signal(signal.SIGUSR1, usr1_handler)  # reset signal handler
 
 
-def get_active_app_fallback(function_def: api_pb2.Function) -> Optional[_App]:
+def get_active_app_fallback(function_def: api_pb2.Function) -> _App:
     # This branch is reached in the special case that the imported function/class is:
     # 1) not serialized, and
     # 2) isn't a FunctionHandle - i.e, not decorated at definition time
     # Look at all instantiated apps - if there is only one with the indicated name, use that one
     app_name: Optional[str] = function_def.app_name or None  # coalesce protobuf field to None
     matching_apps = _App._all_apps.get(app_name, [])
-    active_app = None
+    if len(matching_apps) == 1:
+        active_app: _App = matching_apps[0]
+        return active_app
+
     if len(matching_apps) > 1:
         if app_name is not None:
             warning_sub_message = f"app with the same name ('{app_name}')"
@@ -354,12 +357,10 @@ def get_active_app_fallback(function_def: api_pb2.Function) -> Optional[_App]:
             f"You have more than one {warning_sub_message}. "
             "It's recommended to name all your Apps uniquely when using multiple apps"
         )
-    elif len(matching_apps) == 1:
-        (active_app,) = matching_apps
-    # there could also technically be zero found apps, but that should probably never be an
-    # issue since that would mean user won't use is_inside or other function handles anyway
 
-    return active_app
+    # If we don't have an active app, create one on the fly
+    # The app object is used to carry the app layout etc
+    return _App()
 
 
 def call_lifecycle_functions(
@@ -403,7 +404,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     # This is a bit weird but we need both the blocking and async versions of ContainerIOManager.
     # At some point, we should fix that by having built-in support for running "user code"
     container_io_manager = ContainerIOManager(container_args, client)
-    active_app: Optional[_App] = None
+    active_app: _App
     service: Service
     function_def = container_args.function_def
     is_auto_snapshot: bool = function_def.is_auto_snapshot
@@ -450,8 +451,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 )
 
             # If the cls/function decorator was applied in local scope, but the app is global, we can look it up
-            active_app = service.app
-            if active_app is None:
+            if service.app is not None:
+                active_app = service.app
+            else:
                 # if the app can't be inferred by the imported function, use name-based fallback
                 active_app = get_active_app_fallback(function_def)
 
@@ -468,9 +470,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
         # Initialize objects on the app.
         # This is basically only functions and classes - anything else is deprecated and will be unsupported soon
-        if active_app is not None:
-            app: App = synchronizer._translate_out(active_app)
-            app._init_container(client, container_app)
+        app: App = synchronizer._translate_out(active_app)
+        app._init_container(client, container_app)
 
         # Hydrate all function dependencies.
         # TODO(erikbern): we an remove this once we
