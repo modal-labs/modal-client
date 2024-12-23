@@ -1044,6 +1044,9 @@ class _App:
 
     @classmethod
     def container_app(cls) -> Optional["_App"]:
+        """Returns the `App` running inside a container.
+
+        This will return `None` outside of a Modal container."""
         return cls._container_app
 
     @classmethod
