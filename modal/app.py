@@ -296,7 +296,6 @@ class _App:
         app._client = client
         app._running_app = RunningApp(
             response.app_id,
-            client=client,
             environment_name=environment_name,
             interactive=False,
         )

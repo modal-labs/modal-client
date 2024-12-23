@@ -64,7 +64,6 @@ async def _init_local_app_existing(client: _Client, existing_app_id: str, enviro
     return running_app_from_layout(
         existing_app_id,
         obj_resp.app_layout,
-        client,
         app_page_url=app_page_url,
     )
 
@@ -89,7 +88,6 @@ async def _init_local_app_new(
     logger.debug(f"Created new app with id {app_resp.app_id}")
     return RunningApp(
         app_resp.app_id,
-        client=client,
         app_page_url=app_resp.app_page_url,
         app_logs_url=app_resp.app_logs_url,
         environment_name=environment_name,
