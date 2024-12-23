@@ -294,12 +294,7 @@ class _App:
         app = _App(name)
         app._app_id = response.app_id
         app._client = client
-        app._running_app = RunningApp(
-            response.app_id,
-            client=client,
-            environment_name=environment_name,
-            interactive=False,
-        )
+        app._running_app = RunningApp(response.app_id, interactive=False)
         return app
 
     def set_description(self, description: str):

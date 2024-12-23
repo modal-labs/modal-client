@@ -7,14 +7,10 @@ from google.protobuf.message import Message
 from modal._utils.grpc_utils import get_proto_oneof
 from modal_proto import api_pb2
 
-from .client import _Client
-
 
 @dataclass
 class RunningApp:
     app_id: str
-    client: _Client
-    environment_name: Optional[str] = None
     app_page_url: Optional[str] = None
     app_logs_url: Optional[str] = None
     tag_to_object_id: dict[str, str] = field(default_factory=dict)
@@ -25,8 +21,6 @@ class RunningApp:
 def running_app_from_layout(
     app_id: str,
     app_layout: api_pb2.AppLayout,
-    client: _Client,
-    environment_name: Optional[str] = None,
     app_page_url: Optional[str] = None,
 ) -> RunningApp:
     tag_to_object_id = dict(**app_layout.function_ids, **app_layout.class_ids)
@@ -37,8 +31,6 @@ def running_app_from_layout(
 
     return RunningApp(
         app_id,
-        client,
-        environment_name=environment_name,
         tag_to_object_id=tag_to_object_id,
         object_handle_metadata=object_handle_metadata,
         app_page_url=app_page_url,
