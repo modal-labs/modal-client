@@ -460,7 +460,6 @@ class _ContainerIOManager:
         return running_app_from_layout(
             self.app_id,
             app_layout,
-            environment_name=self._environment_name,
         )
 
     async def get_serialized_function(self) -> tuple[Optional[Any], Optional[Callable[..., Any]]]:

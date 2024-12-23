@@ -90,7 +90,6 @@ async def _init_local_app_new(
         app_resp.app_id,
         app_page_url=app_resp.app_page_url,
         app_logs_url=app_resp.app_logs_url,
-        environment_name=environment_name,
         interactive=interactive,
     )
 
