@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2024
-from modal.app import _App
+from modal.app import App
 
 
 def f(x):
-    assert _App._container_app
+    assert App.container_app()
     return 123
