@@ -276,9 +276,9 @@ class _Sandbox(_Object, type_prefix="sb"):
 
             app_id = app.app_id
             app_client = app._client
-        elif _App._container_app is not None:
-            app_id = _App._container_app.app_id
-            app_client = _App._container_app.client
+        elif (container_app := _App.container_app()) is not None:
+            app_id = container_app.app_id
+            app_client = container_app._client
         else:
             arglist = ", ".join(repr(s) for s in entrypoint_args)
             deprecation_error(
