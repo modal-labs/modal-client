@@ -2371,3 +2371,9 @@ def test_cls_self_doesnt_call_bind(servicer, credentials, set_env_client):
         assert not ctx.get_requests("FunctionBindParams")
 
         # TODO: add test for using self.keep_warm()
+
+
+@skip_github_non_linux
+def test_function_without_app(servicer, event_loop):
+    ret = _run_container(servicer, "test.supports.function_without_app", "f")
+    assert _unwrap_scalar(ret) == 123
