@@ -451,11 +451,11 @@ class _ContainerIOManager:
 
     async def get_app_objects(self, app_layout: api_pb2.AppLayout) -> RunningApp:
         if len(app_layout.objects) == 0:
-            # TODO(erikbern): this is a temporary fallback until we flip the switch and the worker provides arguments
+            # TODO(erikbern): this should never happen! let's keep it in here for a short second
+            # until we've sanity checked that this is, in fact, dead code.
             req = api_pb2.AppGetLayoutRequest(app_id=self.app_id)
             resp = await retry_transient_errors(self._client.stub.AppGetLayout, req)
             app_layout = resp.app_layout
-            logger.debug(f"AppGetLayout received {len(app_layout.objects)} objects for app {self.app_id}")
 
         return running_app_from_layout(
             self.app_id,
