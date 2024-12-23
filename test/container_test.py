@@ -2374,6 +2374,11 @@ def test_cls_self_doesnt_call_bind(servicer, credentials, set_env_client):
 
 
 @skip_github_non_linux
-def test_function_without_app(servicer, event_loop):
+def test_container_app_zero_matching(servicer, event_loop):
     ret = _run_container(servicer, "test.supports.function_without_app", "f")
     assert _unwrap_scalar(ret) == 123
+
+
+@skip_github_non_linux
+def test_container_app_one_matching(servicer, event_loop):
+    _run_container(servicer, "test.supports.functions", "check_container_app")
