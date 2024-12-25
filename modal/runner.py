@@ -135,8 +135,9 @@ async def _create_all_objects(
     )
     with resolver.display():
         # Get current objects, and reset all objects
-        tag_to_object_id = running_app.tag_to_object_id
-        running_app.tag_to_object_id = {}
+        tag_to_object_id = {**running_app.function_ids, **running_app.class_ids}
+        running_app.function_ids = {}
+        running_app.class_ids = {}
 
         # Assign all objects
         for tag, obj in indexed_objects.items():
@@ -163,7 +164,12 @@ async def _create_all_objects(
         async def _load(tag, obj):
             existing_object_id = tag_to_object_id.get(tag)
             await resolver.load(obj, existing_object_id)
-            running_app.tag_to_object_id[tag] = obj.object_id
+            if _Function._is_id_type(obj.object_id):
+                running_app.function_ids[tag] = obj.object_id
+            elif _Cls._is_id_type(obj.object_id):
+                running_app.class_ids[tag] = obj.object_id
+            else:
+                raise RuntimeError(f"Unexpected object {obj.object_id}")
 
         await TaskContext.gather(*(_load(tag, obj) for tag, obj in indexed_objects.items()))
 
@@ -183,10 +189,7 @@ async def _publish_app(
     def filter_values(full_dict: dict[str, V], condition: Callable[[V], bool]) -> dict[str, V]:
         return {k: v for k, v in full_dict.items() if condition(v)}
 
-    function_ids = filter_values(running_app.tag_to_object_id, _Function._is_id_type)
-    class_ids = filter_values(running_app.tag_to_object_id, _Cls._is_id_type)
-
-    function_objs = filter_values(indexed_objects, lambda v: v.object_id in function_ids.values())
+    function_objs = filter_values(indexed_objects, lambda v: v.object_id in running_app.function_ids.values())
     definition_ids = {obj.object_id: obj._get_metadata().definition_id for obj in function_objs.values()}  # type: ignore
 
     request = api_pb2.AppPublishRequest(
@@ -194,8 +197,8 @@ async def _publish_app(
         name=name,
         deployment_tag=tag,
         app_state=app_state,  # type: ignore  : should be a api_pb2.AppState.value
-        function_ids=function_ids,
-        class_ids=class_ids,
+        function_ids=running_app.function_ids,
+        class_ids=running_app.class_ids,
         definition_ids=definition_ids,
     )
     try:
