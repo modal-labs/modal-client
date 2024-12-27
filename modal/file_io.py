@@ -18,7 +18,8 @@ from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 from .client import _Client
 from .exception import FilesystemExecutionError, InvalidError
 
-LARGE_FILE_SIZE_LIMIT = 16 * 1024 * 1024  # 16 MiB
+WRITE_CHUNK_SIZE = 16 * 1024 * 1024  # 16 MiB
+WRITE_FILE_SIZE_LIMIT = 1024 * 1024 * 1024  # 1 GiB
 READ_FILE_SIZE_LIMIT = 100 * 1024 * 1024  # 100 MiB
 
 ERROR_MAPPING = {
@@ -77,7 +78,7 @@ async def _replace_bytes(file: "_FileIO", data: bytes, start: Optional[int] = No
     if start is not None and end is not None:
         if start >= end:
             raise InvalidError("start must be less than end")
-    if len(data) > LARGE_FILE_SIZE_LIMIT:
+    if len(data) > WRITE_CHUNK_SIZE:
         raise InvalidError("Write request payload exceeds 16 MiB limit")
     resp = await file._make_request(
         api_pb2.ContainerFilesystemExecRequest(
@@ -288,15 +289,20 @@ class _FileIO(Generic[T]):
         self._validate_type(data)
         if isinstance(data, str):
             data = data.encode("utf-8")
-        if len(data) > LARGE_FILE_SIZE_LIMIT:
-            raise ValueError("Write request payload exceeds 16 MiB limit")
-        resp = await self._make_request(
-            api_pb2.ContainerFilesystemExecRequest(
-                file_write_request=api_pb2.ContainerFileWriteRequest(file_descriptor=self._file_descriptor, data=data),
-                task_id=self._task_id,
+        if len(data) > WRITE_FILE_SIZE_LIMIT:
+            raise ValueError("Write request payload exceeds 1 GiB limit")
+        for i in range(0, len(data), WRITE_CHUNK_SIZE):
+            chunk = data[i : i + WRITE_CHUNK_SIZE]
+            resp = await self._make_request(
+                api_pb2.ContainerFilesystemExecRequest(
+                    file_write_request=api_pb2.ContainerFileWriteRequest(
+                        file_descriptor=self._file_descriptor,
+                        data=chunk,
+                    ),
+                    task_id=self._task_id,
+                )
             )
-        )
-        await self._wait(resp.exec_id)
+            await self._wait(resp.exec_id)
 
     async def flush(self) -> None:
         """Flush the buffer to disk."""
