@@ -26,6 +26,7 @@ from modal._utils.docker_utils import extract_copy_command_patterns
         ),
         (
             [
+                "copy --from=a b",
                 "copy ./smth \\",
                 "./foo.py \\",
                 "# this is a comment",
@@ -33,6 +34,12 @@ from modal._utils.docker_utils import extract_copy_command_patterns
                 "/x",
             ],
             {"./smth", "./foo.py", "./bar.py"},
+        ),
+        (
+            [
+                "COPY --from=a b",
+            ],
+            set(),
         ),
     ],
 )
