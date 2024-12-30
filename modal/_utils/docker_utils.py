@@ -37,6 +37,12 @@ def extract_copy_command_patterns(dockerfile_lines: Sequence[str]) -> list[str]:
                 args = match.group(1)
                 parts = shlex.split(args)
 
+                # COPY --from=... commands reference external sources and do not need a context mount.
+                # https://docs.docker.com/reference/dockerfile/#copy---from
+                if parts[0].startswith("--from="):
+                    current_command = ""
+                    continue
+
                 if len(parts) >= 2:
                     # Last part is destination, everything else is a mount source
                     sources = parts[:-1]
