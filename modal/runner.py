@@ -6,7 +6,7 @@ import time
 import typing
 from collections.abc import AsyncGenerator
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Optional, TypeVar
 
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
@@ -124,10 +124,12 @@ async def _init_local_app_from_name(
 async def _create_all_objects(
     client: _Client,
     running_app: RunningApp,
-    indexed_objects: dict[str, _Object],
+    functions: dict[str, _Function],
+    classes: dict[str, _Cls],
     environment_name: str,
 ) -> None:
     """Create objects that have been defined but not created on the server."""
+    indexed_objects: dict[str, _Object] = {**functions, **classes}
     resolver = Resolver(
         client,
         environment_name=environment_name,
@@ -135,8 +137,9 @@ async def _create_all_objects(
     )
     with resolver.display():
         # Get current objects, and reset all objects
-        tag_to_object_id = running_app.tag_to_object_id
-        running_app.tag_to_object_id = {}
+        tag_to_object_id = {**running_app.function_ids, **running_app.class_ids}
+        running_app.function_ids = {}
+        running_app.class_ids = {}
 
         # Assign all objects
         for tag, obj in indexed_objects.items():
@@ -163,7 +166,12 @@ async def _create_all_objects(
         async def _load(tag, obj):
             existing_object_id = tag_to_object_id.get(tag)
             await resolver.load(obj, existing_object_id)
-            running_app.tag_to_object_id[tag] = obj.object_id
+            if _Function._is_id_type(obj.object_id):
+                running_app.function_ids[tag] = obj.object_id
+            elif _Cls._is_id_type(obj.object_id):
+                running_app.class_ids[tag] = obj.object_id
+            else:
+                raise RuntimeError(f"Unexpected object {obj.object_id}")
 
         await TaskContext.gather(*(_load(tag, obj) for tag, obj in indexed_objects.items()))
 
@@ -172,30 +180,22 @@ async def _publish_app(
     client: _Client,
     running_app: RunningApp,
     app_state: int,  # api_pb2.AppState.value
-    indexed_objects: dict[str, _Object],
+    functions: dict[str, _Function],
+    classes: dict[str, _Cls],
     name: str = "",  # Only relevant for deployments
     tag: str = "",  # Only relevant for deployments
 ) -> tuple[str, list[api_pb2.Warning]]:
     """Wrapper for AppPublish RPC."""
 
-    # Could simplify this function some changing the internal representation to use
-    # function_ids / class_ids rather than the current tag_to_object_id (i.e. "indexed_objects")
-    def filter_values(full_dict: dict[str, V], condition: Callable[[V], bool]) -> dict[str, V]:
-        return {k: v for k, v in full_dict.items() if condition(v)}
-
-    function_ids = filter_values(running_app.tag_to_object_id, _Function._is_id_type)
-    class_ids = filter_values(running_app.tag_to_object_id, _Cls._is_id_type)
-
-    function_objs = filter_values(indexed_objects, lambda v: v.object_id in function_ids.values())
-    definition_ids = {obj.object_id: obj._get_metadata().definition_id for obj in function_objs.values()}  # type: ignore
+    definition_ids = {obj.object_id: obj._get_metadata().definition_id for obj in functions.values()}  # type: ignore
 
     request = api_pb2.AppPublishRequest(
         app_id=running_app.app_id,
         name=name,
         deployment_tag=tag,
         app_state=app_state,  # type: ignore  : should be a api_pb2.AppState.value
-        function_ids=function_ids,
-        class_ids=class_ids,
+        function_ids=running_app.function_ids,
+        class_ids=running_app.class_ids,
         definition_ids=definition_ids,
     )
     try:
@@ -329,13 +329,11 @@ async def _run_app(
             )
 
         try:
-            indexed_objects = dict(**app._functions, **app._classes)  # TODO(erikbern): remove
-
             # Create all members
-            await _create_all_objects(client, running_app, indexed_objects, environment_name)
+            await _create_all_objects(client, running_app, app._functions, app._classes, environment_name)
 
             # Publish the app
-            await _publish_app(client, running_app, app_state, indexed_objects)
+            await _publish_app(client, running_app, app_state, app._functions, app._classes)
         except asyncio.CancelledError as e:
             # this typically happens on sigint/ctrl-C during setup (the KeyboardInterrupt happens in the main thread)
             if output_mgr := _get_output_manager():
@@ -428,18 +426,17 @@ async def _serve_update(
     try:
         running_app: RunningApp = await _init_local_app_existing(client, existing_app_id, environment_name)
 
-        indexed_objects = dict(**app._functions, **app._classes)  # TODO(erikbern): remove
-
         # Create objects
         await _create_all_objects(
             client,
             running_app,
-            indexed_objects,
+            app._functions,
+            app._classes,
             environment_name,
         )
 
         # Publish the updated app
-        await _publish_app(client, running_app, api_pb2.APP_STATE_UNSPECIFIED, indexed_objects)
+        await _publish_app(client, running_app, api_pb2.APP_STATE_UNSPECIFIED, app._functions, app._classes)
 
         # Communicate to the parent process
         is_ready.set()
@@ -527,19 +524,18 @@ async def _deploy_app(
 
         tc.infinite_loop(heartbeat, sleep=HEARTBEAT_INTERVAL)
 
-        indexed_objects = dict(**app._functions, **app._classes)  # TODO(erikbern): remove
-
         try:
             # Create all members
             await _create_all_objects(
                 client,
                 running_app,
-                indexed_objects,
+                app._functions,
+                app._classes,
                 environment_name=environment_name,
             )
 
             app_url, warnings = await _publish_app(
-                client, running_app, api_pb2.APP_STATE_DEPLOYED, indexed_objects, name, tag
+                client, running_app, api_pb2.APP_STATE_DEPLOYED, app._functions, app._classes, name, tag
             )
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.

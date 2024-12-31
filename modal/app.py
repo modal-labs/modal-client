@@ -463,8 +463,8 @@ class _App:
         if self._running_app:
             # If this is inside a container, then objects can be defined after app initialization.
             # So we may have to initialize objects once they get bound to the app.
-            if function.tag in self._running_app.tag_to_object_id:
-                object_id: str = self._running_app.tag_to_object_id[function.tag]
+            if function.tag in self._running_app.function_ids:
+                object_id: str = self._running_app.function_ids[function.tag]
                 metadata: Message = self._running_app.object_handle_metadata[object_id]
                 function._hydrate(object_id, self._client, metadata)
 
@@ -476,8 +476,8 @@ class _App:
         if self._running_app:
             # If this is inside a container, then objects can be defined after app initialization.
             # So we may have to initialize objects once they get bound to the app.
-            if tag in self._running_app.tag_to_object_id:
-                object_id: str = self._running_app.tag_to_object_id[tag]
+            if tag in self._running_app.class_ids:
+                object_id: str = self._running_app.class_ids[tag]
                 metadata: Message = self._running_app.object_handle_metadata[object_id]
                 cls._hydrate(object_id, self._client, metadata)
 
@@ -490,19 +490,19 @@ class _App:
 
         _App._container_app = running_app
 
-        # Hydrate objects on app -- hydrating functions first so that when a class is being hydrated its
-        # corresponding class service function is already hydrated.
-        def hydrate_objects(objects_dict):
-            for tag, object_id in running_app.tag_to_object_id.items():
-                if tag in objects_dict:
-                    obj = objects_dict[tag]
-                    handle_metadata = running_app.object_handle_metadata[object_id]
-                    obj._hydrate(object_id, client, handle_metadata)
-
         # Hydrate function objects
-        hydrate_objects(self._functions)
+        for tag, object_id in running_app.function_ids.items():
+            if tag in self._functions:
+                obj = self._functions[tag]
+                handle_metadata = running_app.object_handle_metadata[object_id]
+                obj._hydrate(object_id, client, handle_metadata)
+
         # Hydrate class objects
-        hydrate_objects(self._classes)
+        for tag, object_id in running_app.class_ids.items():
+            if tag in self._classes:
+                obj = self._classes[tag]
+                handle_metadata = running_app.object_handle_metadata[object_id]
+                obj._hydrate(object_id, client, handle_metadata)
 
     @property
     def registered_functions(self) -> dict[str, _Function]:
