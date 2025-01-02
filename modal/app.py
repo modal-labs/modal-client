@@ -1043,7 +1043,7 @@ class _App:
                         yield log.data
 
     @classmethod
-    def container_app(cls) -> Optional["_App"]:
+    def _get_container_app(cls) -> Optional["_App"]:
         """Returns the `App` running inside a container.
 
         This will return `None` outside of a Modal container."""
