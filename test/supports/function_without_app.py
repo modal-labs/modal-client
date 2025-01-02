@@ -3,5 +3,5 @@ from modal.app import App
 
 
 def f(x):
-    assert App.container_app()
+    assert App._get_container_app()
     return 123
