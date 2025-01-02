@@ -276,7 +276,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
             app_id = app.app_id
             app_client = app._client
-        elif (container_app := _App.container_app()) is not None:
+        elif (container_app := _App._get_container_app()) is not None:
             app_id = container_app.app_id
             app_client = container_app._client
         else:

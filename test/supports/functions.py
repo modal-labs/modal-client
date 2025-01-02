@@ -683,4 +683,4 @@ def set_input_concurrency(start: float):
 @app.function()
 def check_container_app():
     # The container app should be associated with the app object
-    assert App.container_app() == app
+    assert App._get_container_app() == app
