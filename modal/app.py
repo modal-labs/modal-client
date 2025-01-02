@@ -168,7 +168,7 @@ class _App:
     """
 
     _all_apps: ClassVar[dict[Optional[str], list["_App"]]] = {}
-    _container_app: ClassVar[Optional[RunningApp]] = None
+    _container_app: ClassVar[Optional["_App"]] = None
 
     _name: Optional[str]
     _description: Optional[str]
@@ -294,12 +294,7 @@ class _App:
         app = _App(name)
         app._app_id = response.app_id
         app._client = client
-        app._running_app = RunningApp(
-            response.app_id,
-            client=client,
-            environment_name=environment_name,
-            interactive=False,
-        )
+        app._running_app = RunningApp(response.app_id, interactive=False)
         return app
 
     def set_description(self, description: str):
@@ -488,7 +483,7 @@ class _App:
         self._running_app = running_app
         self._client = client
 
-        _App._container_app = running_app
+        _App._container_app = self
 
         # Hydrate function objects
         for tag, object_id in running_app.function_ids.items():
@@ -1046,6 +1041,13 @@ class _App:
                 for log in log_batch.items:
                     if log.data:
                         yield log.data
+
+    @classmethod
+    def container_app(cls) -> Optional["_App"]:
+        """Returns the `App` running inside a container.
+
+        This will return `None` outside of a Modal container."""
+        return cls._container_app
 
     @classmethod
     def _reset_container_app(cls):
