@@ -457,12 +457,7 @@ class _ContainerIOManager:
             resp = await retry_transient_errors(self._client.stub.AppGetLayout, req)
             app_layout = resp.app_layout
 
-        return running_app_from_layout(
-            self.app_id,
-            app_layout,
-            self._client,
-            environment_name=self._environment_name,
-        )
+        return running_app_from_layout(self.app_id, app_layout)
 
     async def get_serialized_function(self) -> tuple[Optional[Any], Optional[Callable[..., Any]]]:
         # Fetch the serialized function definition
