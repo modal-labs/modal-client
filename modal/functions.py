@@ -181,7 +181,7 @@ class _Invocation:
         return _Invocation(client.stub, function_call_id, client, retry_context)
 
     async def pop_function_call_outputs(
-        self, timeout: Optional[float], clear_on_success: bool, expected_jwts: Optional[list[str]] = None
+        self, timeout: Optional[float], clear_on_success: bool, input_jwts: Optional[list[str]] = None
     ) -> api_pb2.FunctionGetOutputsResponse:
         t0 = time.time()
         if timeout is None:
@@ -197,7 +197,7 @@ class _Invocation:
                 last_entry_id="0-0",
                 clear_on_success=clear_on_success,
                 requested_at=time.time(),
-                expected_jwts=expected_jwts,
+                input_jwts=input_jwts,
             )
             response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
@@ -233,7 +233,7 @@ class _Invocation:
             await self.pop_function_call_outputs(
                 timeout=None,
                 clear_on_success=True,
-                expected_jwts=[expected_jwt] if expected_jwt else None,
+                input_jwts=[expected_jwt] if expected_jwt else None,
             )
         ).outputs[0]
         return await _process_result(item.result, item.data_format, self.stub, self.client)
