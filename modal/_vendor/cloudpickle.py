@@ -127,13 +127,15 @@ def _get_or_create_tracker_id(class_def):
 def _lookup_class_or_track(class_tracker_id, class_def):
     if class_tracker_id is not None:
         with _DYNAMIC_CLASS_TRACKER_LOCK:
-            class_def = _DYNAMIC_CLASS_TRACKER_BY_ID.setdefault(class_tracker_id, class_def)
+            class_def = _DYNAMIC_CLASS_TRACKER_BY_ID.setdefault(
+                class_tracker_id, class_def
+            )
             _DYNAMIC_CLASS_TRACKER_BY_CLASS[class_def] = class_tracker_id
     return class_def
 
 
 def register_pickle_by_value(module):
-    """Register a module to make it functions and classes picklable by value.
+    """Register a module to make its functions and classes picklable by value.
 
     By default, functions and classes that are attributes of an importable
     module are to be pickled by reference, that is relying on re-importing
@@ -164,7 +166,10 @@ def register_pickle_by_value(module):
     # this introspection yet, in order to avoid a possible breaking change
     # later, we still enforce the presence of module inside sys.modules.
     if module.__name__ not in sys.modules:
-        raise ValueError(f"{module} was not imported correctly, have you used an " "`import` statement to access it?")
+        raise ValueError(
+            f"{module} was not imported correctly, have you used an "
+            "`import` statement to access it?"
+        )
     _PICKLE_BY_VALUE_MODULES.add(module.__name__)
 
 
@@ -215,7 +220,12 @@ def _whichmodule(obj, name):
     for module_name, module in sys.modules.copy().items():
         # Some modules such as coverage can inject non-module objects inside
         # sys.modules
-        if module_name == "__main__" or module is None or not isinstance(module, types.ModuleType):
+        if (
+            module_name == "__main__"
+            or module_name == "__mp_main__"
+            or module is None
+            or not isinstance(module, types.ModuleType)
+        ):
             continue
         try:
             if _getattribute(module, name)[0] is obj:
@@ -256,7 +266,9 @@ def _should_pickle_by_reference(obj, name=None):
             return False
         return obj.__name__ in sys.modules
     else:
-        raise TypeError(f"cannot check importability of {type(obj).__name__} instances")
+        raise TypeError(
+            "cannot check importability of {} instances".format(type(obj).__name__)
+        )
 
 
 def _lookup_module_and_qualname(obj, name=None):
@@ -353,7 +365,11 @@ def _find_imported_submodules(code, top_level_dependencies):
     subimports = []
     # check if any known dependency is an imported package
     for x in top_level_dependencies:
-        if isinstance(x, types.ModuleType) and hasattr(x, "__package__") and x.__package__:
+        if (
+            isinstance(x, types.ModuleType)
+            and hasattr(x, "__package__")
+            and x.__package__
+        ):
             # check if the package has any currently loaded sub-imports
             prefix = x.__name__ + "."
             # A concurrent thread could mutate sys.modules,
@@ -403,7 +419,10 @@ def _walk_global_ops(code):
 
 def _extract_class_dict(cls):
     """Retrieve a copy of the dict of a class without the inherited method."""
-    clsdict = dict(cls.__dict__)  # copy dict proxy to a dict
+    # Hack to circumvent non-predictable memoization caused by string interning.
+    # See the inline comment in _class_setstate for details.
+    clsdict = {"".join(k): cls.__dict__[k] for k in sorted(cls.__dict__)}
+
     if len(cls.__bases__) == 1:
         inherited_dict = cls.__bases__[0].__dict__
     else:
@@ -514,7 +533,9 @@ def _make_cell(value=_empty_cell_value):
     return cell
 
 
-def _make_skeleton_class(type_constructor, name, bases, type_kwargs, class_tracker_id, extra):
+def _make_skeleton_class(
+    type_constructor, name, bases, type_kwargs, class_tracker_id, extra
+):
     """Build dynamic class with an empty __dict__ to be filled once memoized
 
     If class_tracker_id is not None, try to lookup an existing class definition
@@ -525,11 +546,21 @@ def _make_skeleton_class(type_constructor, name, bases, type_kwargs, class_track
     The "extra" variable is meant to be a dict (or None) that can be used for
     forward compatibility shall the need arise.
     """
-    skeleton_class = types.new_class(name, bases, {"metaclass": type_constructor}, lambda ns: ns.update(type_kwargs))
+    # We need to intern the keys of the type_kwargs dict to avoid having
+    # different pickles for the same dynamic class depending on whether it was
+    # dynamically created or reconstructed from a pickled stream.
+    type_kwargs = {sys.intern(k): v for k, v in type_kwargs.items()}
+
+    skeleton_class = types.new_class(
+        name, bases, {"metaclass": type_constructor}, lambda ns: ns.update(type_kwargs)
+    )
+
     return _lookup_class_or_track(class_tracker_id, skeleton_class)
 
 
-def _make_skeleton_enum(bases, name, qualname, members, module, class_tracker_id, extra):
+def _make_skeleton_enum(
+    bases, name, qualname, members, module, class_tracker_id, extra
+):
     """Build dynamic enum with an empty __dict__ to be filled once memoized
 
     The creation of the enum class is inspired by the code of
@@ -682,8 +713,10 @@ def _function_getstate(func):
     #   unpickling time by iterating over slotstate and calling setattr(func,
     #   slotname, slotvalue)
     slotstate = {
-        "__name__": func.__name__,
-        "__qualname__": func.__qualname__,
+        # Hack to circumvent non-predictable memoization caused by string interning.
+        # See the inline comment in _class_setstate for details.
+        "__name__": "".join(func.__name__),
+        "__qualname__": "".join(func.__qualname__),
         "__annotations__": func.__annotations__,
         "__kwdefaults__": func.__kwdefaults__,
         "__defaults__": func.__defaults__,
@@ -709,7 +742,9 @@ def _function_getstate(func):
     )
     slotstate["__globals__"] = f_globals
 
-    state = func.__dict__
+    # Hack to circumvent non-predictable memoization caused by string interning.
+    # See the inline comment in _class_setstate for details.
+    state = {"".join(k): v for k, v in func.__dict__.items()}
     return state, slotstate
 
 
@@ -790,6 +825,19 @@ def _code_reduce(obj):
     # of the specific type from types, for example:
     # >>> from types import CodeType
     # >>> help(CodeType)
+
+    # Hack to circumvent non-predictable memoization caused by string interning.
+    # See the inline comment in _class_setstate for details.
+    co_name = "".join(obj.co_name)
+
+    # Create shallow copies of these tuple to make cloudpickle payload deterministic.
+    # When creating a code object during load, copies of these four tuples are
+    # created, while in the main process, these tuples can be shared.
+    # By always creating copies, we make sure the resulting payload is deterministic.
+    co_names = tuple(name for name in obj.co_names)
+    co_varnames = tuple(name for name in obj.co_varnames)
+    co_freevars = tuple(name for name in obj.co_freevars)
+    co_cellvars = tuple(name for name in obj.co_cellvars)
     if hasattr(obj, "co_exceptiontable"):
         # Python 3.11 and later: there are some new attributes
         # related to the enhanced exceptions.
@@ -802,16 +850,16 @@ def _code_reduce(obj):
             obj.co_flags,
             obj.co_code,
             obj.co_consts,
-            obj.co_names,
-            obj.co_varnames,
+            co_names,
+            co_varnames,
             obj.co_filename,
-            obj.co_name,
+            co_name,
             obj.co_qualname,
             obj.co_firstlineno,
             obj.co_linetable,
             obj.co_exceptiontable,
-            obj.co_freevars,
-            obj.co_cellvars,
+            co_freevars,
+            co_cellvars,
         )
     elif hasattr(obj, "co_linetable"):
         # Python 3.10 and later: obj.co_lnotab is deprecated and constructor
@@ -825,14 +873,14 @@ def _code_reduce(obj):
             obj.co_flags,
             obj.co_code,
             obj.co_consts,
-            obj.co_names,
-            obj.co_varnames,
+            co_names,
+            co_varnames,
             obj.co_filename,
-            obj.co_name,
+            co_name,
             obj.co_firstlineno,
             obj.co_linetable,
-            obj.co_freevars,
-            obj.co_cellvars,
+            co_freevars,
+            co_cellvars,
         )
     elif hasattr(obj, "co_nmeta"):  # pragma: no cover
         # "nogil" Python: modified attributes from 3.9
@@ -847,15 +895,15 @@ def _code_reduce(obj):
             obj.co_flags,
             obj.co_code,
             obj.co_consts,
-            obj.co_varnames,
+            co_varnames,
             obj.co_filename,
-            obj.co_name,
+            co_name,
             obj.co_firstlineno,
             obj.co_lnotab,
             obj.co_exc_handlers,
             obj.co_jump_table,
-            obj.co_freevars,
-            obj.co_cellvars,
+            co_freevars,
+            co_cellvars,
             obj.co_free2reg,
             obj.co_cell2reg,
         )
@@ -870,14 +918,14 @@ def _code_reduce(obj):
             obj.co_flags,
             obj.co_code,
             obj.co_consts,
-            obj.co_names,
-            obj.co_varnames,
+            co_names,
+            co_varnames,
             obj.co_filename,
-            obj.co_name,
+            co_name,
             obj.co_firstlineno,
             obj.co_lnotab,
-            obj.co_freevars,
-            obj.co_cellvars,
+            co_freevars,
+            co_cellvars,
         )
     return types.CodeType, args
 
@@ -902,7 +950,9 @@ def _file_reduce(obj):
     import io
 
     if not hasattr(obj, "name") or not hasattr(obj, "mode"):
-        raise pickle.PicklingError("Cannot pickle files that do not map to an actual file")
+        raise pickle.PicklingError(
+            "Cannot pickle files that do not map to an actual file"
+        )
     if obj is sys.stdout:
         return getattr, (sys, "stdout")
     if obj is sys.stderr:
@@ -914,7 +964,9 @@ def _file_reduce(obj):
     if hasattr(obj, "isatty") and obj.isatty():
         raise pickle.PicklingError("Cannot pickle files that map to tty objects")
     if "r" not in obj.mode and "+" not in obj.mode:
-        raise pickle.PicklingError("Cannot pickle files that are not opened for reading: %s" % obj.mode)
+        raise pickle.PicklingError(
+            "Cannot pickle files that are not opened for reading: %s" % obj.mode
+        )
 
     name = obj.name
 
@@ -927,7 +979,9 @@ def _file_reduce(obj):
         contents = obj.read()
         obj.seek(curloc)
     except OSError as e:
-        raise pickle.PicklingError("Cannot pickle file %s as it cannot be read" % name) from e
+        raise pickle.PicklingError(
+            "Cannot pickle file %s as it cannot be read" % name
+        ) from e
     retval.write(contents)
     retval.seek(curloc)
 
@@ -1109,7 +1163,30 @@ def _class_setstate(obj, state):
         if attrname == "_abc_impl":
             registry = attr
         else:
+            # Note: setting attribute names on a class automatically triggers their
+            # interning in CPython:
+            # https://github.com/python/cpython/blob/v3.12.0/Objects/object.c#L957
+            #
+            # This means that to get deterministic pickling for a dynamic class that
+            # was initially defined in a different Python process, the pickler
+            # needs to ensure that dynamic class and function attribute names are
+            # systematically copied into a non-interned version to avoid
+            # unpredictable pickle payloads.
+            #
+            # Indeed the Pickler's memoizer relies on physical object identity to break
+            # cycles in the reference graph of the object being serialized.
             setattr(obj, attrname, attr)
+
+    if sys.version_info >= (3, 13) and "__firstlineno__" in state:
+        # Set the Python 3.13+ only __firstlineno__  attribute one more time, as it
+        # will be automatically deleted by the `setattr(obj, attrname, attr)` call
+        # above when `attrname` is "__firstlineno__". We assume that preserving this
+        # information might be important for some users and that it not stale in the
+        # context of cloudpickle usage, hence legitimate to propagate. Furthermore it
+        # is necessary to do so to keep deterministic chained pickling as tested in
+        # test_deterministic_str_interning_for_chained_dynamic_class_pickling.
+        obj.__firstlineno__ = state["__firstlineno__"]
+
     if registry is not None:
         for subclass in registry:
             obj.register(subclass)
@@ -1368,7 +1445,9 @@ class Pickler(pickle.Pickler):
             elif obj is type(NotImplemented):
                 return self.save_reduce(type, (NotImplemented,), obj=obj)
             elif obj in _BUILTIN_TYPE_NAMES:
-                return self.save_reduce(_builtin_type, (_BUILTIN_TYPE_NAMES[obj],), obj=obj)
+                return self.save_reduce(
+                    _builtin_type, (_BUILTIN_TYPE_NAMES[obj],), obj=obj
+                )
 
             if name is not None:
                 super().save_global(obj, name=name)
@@ -1390,7 +1469,9 @@ class Pickler(pickle.Pickler):
             elif PYPY and isinstance(obj.__code__, builtin_code_type):
                 return self.save_pypy_builtin_func(obj)
             else:
-                return self._save_reduce_pickle5(*self._dynamic_function_reduce(obj), obj=obj)
+                return self._save_reduce_pickle5(
+                    *self._dynamic_function_reduce(obj), obj=obj
+                )
 
         def save_pypy_builtin_func(self, obj):
             """Save pypy equivalent of builtin functions.
