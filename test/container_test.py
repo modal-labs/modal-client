@@ -1652,6 +1652,7 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, servicer)
 
 def _run_container_process(
     servicer,
+    tmp_path,
     module_name,
     function_name,
     *,
@@ -1659,7 +1660,7 @@ def _run_container_process(
     allow_concurrent_inputs: Optional[int] = None,
     max_concurrent_inputs: Optional[int] = None,
     cls_params: tuple[tuple, dict[str, Any]] = ((), {}),
-    print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
+    _print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
     env={},
     is_class=False,
 ) -> subprocess.Popen:
@@ -1676,13 +1677,17 @@ def _run_container_process(
     env["MODAL_TASK_ID"] = "ta-123"
     env["MODAL_IS_REMOTE"] = "1"
 
-    encoded_container_args = base64.b64encode(container_args.SerializeToString())
+    container_args_path = tmp_path / "container-arguments.bin"
+    with container_args_path.open("wb") as f:
+        f.write(container_args.SerializeToString())
+    env["MODAL_CONTAINER_ARGUMENTS_PATH"] = str(container_args_path)
+
     servicer.container_inputs = _get_multi_inputs(inputs)
     return subprocess.Popen(
-        [sys.executable, "-m", "modal._container_entrypoint", encoded_container_args],
+        [sys.executable, "-m", "modal._container_entrypoint"],
         env={**os.environ, **env},
-        stdout=subprocess.PIPE if not print else None,
-        stderr=subprocess.PIPE if not print else None,
+        stdout=subprocess.PIPE if not _print else None,
+        stderr=subprocess.PIPE if not _print else None,
     )
 
 
@@ -1701,7 +1706,7 @@ def _run_container_process(
     ],
 )
 def test_cancellation_aborts_current_input_on_match(
-    servicer, function_name, input_args, cancelled_input_ids, expected_container_output, live_cancellations
+    tmp_path, servicer, function_name, input_args, cancelled_input_ids, expected_container_output, live_cancellations
 ):
     # NOTE: for a cancellation to actually happen in this test, it needs to be
     #    triggered while the relevant input is being processed. A future input
@@ -1710,6 +1715,7 @@ def test_cancellation_aborts_current_input_on_match(
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
             "test.supports.functions",
             function_name,
             inputs=[("", (arg,), {}) for arg in input_args],
@@ -1749,11 +1755,12 @@ def test_cancellation_aborts_current_input_on_match(
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
-def test_cancellation_stops_subset_of_async_concurrent_inputs(servicer):
+def test_cancellation_stops_subset_of_async_concurrent_inputs(servicer, tmp_path):
     num_inputs = 2
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
             "test.supports.functions",
             "delay_async",
             inputs=[("", (1,), {})] * num_inputs,
@@ -1780,10 +1787,11 @@ def test_cancellation_stops_subset_of_async_concurrent_inputs(servicer):
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
-def test_sigint_concurrent_async_cancel_doesnt_reraise(servicer):
+def test_sigint_concurrent_async_cancel_doesnt_reraise(servicer, tmp_path):
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
             "test.supports.functions",
             "async_cancel_doesnt_reraise",
             inputs=[("", (1,), {})] * 2,  # two inputs
@@ -1804,10 +1812,11 @@ def test_sigint_concurrent_async_cancel_doesnt_reraise(servicer):
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
-def test_cancellation_stops_task_with_concurrent_inputs(servicer):
+def test_cancellation_stops_task_with_concurrent_inputs(servicer, tmp_path):
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
             "test.supports.functions",
             "delay",
             inputs=[("", (20,), {})] * 2,  # two inputs
@@ -1843,10 +1852,11 @@ def test_inputs_outputs_with_blob_id(servicer, client, monkeypatch):
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
-def test_lifecycle_full(servicer):
+def test_lifecycle_full(servicer, tmp_path):
     # Sync and async container lifecycle methods on a sync function.
     container_process = _run_container_process(
         servicer,
+        tmp_path,
         "test.supports.functions",
         "LifecycleCls.*",
         inputs=[("f_sync", (), {})],
@@ -1860,6 +1870,7 @@ def test_lifecycle_full(servicer):
     # Sync and async container lifecycle methods on an async function.
     container_process = _run_container_process(
         servicer,
+        tmp_path,
         "test.supports.functions",
         "LifecycleCls.*",
         inputs=[("f_async", (), {})],
@@ -1965,11 +1976,12 @@ def test_container_doesnt_send_large_exceptions(servicer):
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
-def test_sigint_termination_input_concurrent(servicer):
+def test_sigint_termination_input_concurrent(servicer, tmp_path):
     # Sync and async container lifecycle methods on a sync function.
     with servicer.input_lockstep() as input_barrier:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
             "test.supports.functions",
             "LifecycleCls.*",
             inputs=[("delay", (10,), {})] * 3,
@@ -2000,11 +2012,12 @@ def test_sigint_termination_input_concurrent(servicer):
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
 @pytest.mark.parametrize("method", ["delay", "delay_async"])
-def test_sigint_termination_input(servicer, method):
+def test_sigint_termination_input(servicer, tmp_path, method):
     # Sync and async container lifecycle methods on a sync function.
     with servicer.input_lockstep() as input_barrier:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
             "test.supports.functions",
             "LifecycleCls.*",
             inputs=[(method, (5,), {})],
@@ -2040,10 +2053,11 @@ def test_sigint_termination_input(servicer, method):
 @pytest.mark.usefixtures("server_url_env")
 @pytest.mark.parametrize("enter_type", ["sync_enter", "async_enter"])
 @pytest.mark.parametrize("method", ["delay", "delay_async"])
-def test_sigint_termination_enter_handler(servicer, method, enter_type):
+def test_sigint_termination_enter_handler(servicer, tmp_path, method, enter_type):
     # Sync and async container lifecycle methods on a sync function.
     container_process = _run_container_process(
         servicer,
+        tmp_path,
         "test.supports.functions",
         "LifecycleCls.*",
         inputs=[(method, (5,), {})],
@@ -2071,11 +2085,12 @@ def test_sigint_termination_enter_handler(servicer, method, enter_type):
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
 @pytest.mark.parametrize("exit_type", ["sync_exit", "async_exit"])
-def test_sigint_termination_exit_handler(servicer, exit_type):
+def test_sigint_termination_exit_handler(servicer, tmp_path, exit_type):
     # Sync and async container lifecycle methods on a sync function.
     with servicer.output_lockstep() as outputs:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
             "test.supports.functions",
             "LifecycleCls.*",
             inputs=[("delay", (0,), {})],
