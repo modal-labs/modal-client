@@ -108,6 +108,12 @@ class ServerWarning(UserWarning):
     """Warning originating from the Modal server and re-issued in client code."""
 
 
+class InternalFailure(Error):
+    """
+    Retriable internal error.
+    """
+
+
 class _CliUserExecutionError(Exception):
     """mdmd:hidden
     Private wrapper for exceptions during when importing or running stubs from the CLI.

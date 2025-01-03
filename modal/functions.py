@@ -59,7 +59,14 @@ from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from .config import config
-from .exception import ExecutionError, FunctionTimeoutError, InvalidError, NotFoundError, OutputExpiredError
+from .exception import (
+    ExecutionError,
+    FunctionTimeoutError,
+    InternalFailure,
+    InvalidError,
+    NotFoundError,
+    OutputExpiredError,
+)
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount, get_auto_mounts
@@ -174,7 +181,7 @@ class _Invocation:
         return _Invocation(client.stub, function_call_id, client, retry_context)
 
     async def pop_function_call_outputs(
-        self, timeout: Optional[float], clear_on_success: bool
+        self, timeout: Optional[float], clear_on_success: bool, input_jwts: Optional[list[str]] = None
     ) -> api_pb2.FunctionGetOutputsResponse:
         t0 = time.time()
         if timeout is None:
@@ -190,6 +197,7 @@ class _Invocation:
                 last_entry_id="0-0",
                 clear_on_success=clear_on_success,
                 requested_at=time.time(),
+                input_jwts=input_jwts,
             )
             response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
@@ -219,10 +227,14 @@ class _Invocation:
             request,
         )
 
-    async def _get_single_output(self) -> Any:
+    async def _get_single_output(self, expected_jwt: Optional[str] = None) -> Any:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
-            await self.pop_function_call_outputs(timeout=None, clear_on_success=True)
+            await self.pop_function_call_outputs(
+                timeout=None,
+                clear_on_success=True,
+                input_jwts=[expected_jwt] if expected_jwt else None,
+            )
         ).outputs[0]
         return await _process_result(item.result, item.data_format, self.stub, self.client)
 
@@ -242,9 +254,12 @@ class _Invocation:
 
         while True:
             try:
-                return await self._get_single_output()
+                return await self._get_single_output(ctx.input_jwt)
             except (UserCodeException, FunctionTimeoutError) as exc:
                 await user_retry_manager.raise_or_sleep(exc)
+            except InternalFailure:
+                # For system failures on the server, we retry immediately.
+                pass
             await self._retry_input()
 
     async def poll_function(self, timeout: Optional[float] = None):
