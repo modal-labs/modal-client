@@ -11,7 +11,6 @@ if telemetry_socket:
     instrument_imports(telemetry_socket)
 
 import asyncio
-import base64
 import concurrent.futures
 import inspect
 import queue
@@ -582,7 +581,15 @@ if __name__ == "__main__":
     logger.debug("Container: starting")
 
     container_args = api_pb2.ContainerArguments()
-    container_args.ParseFromString(base64.b64decode(sys.argv[1]))
+
+    container_arguments_path: Optional[str] = os.environ.get("MODAL_CONTAINER_ARGUMENTS_PATH")
+    if container_arguments_path is None:
+        # TODO(erikbern): this fallback is for old workers and we can remove it very soon (days)
+        import base64
+
+        container_args.ParseFromString(base64.b64decode(sys.argv[1]))
+    else:
+        container_args.ParseFromString(open(container_arguments_path, "rb").read())
 
     # Note that we're creating the client in a synchronous context, but it will be running in a separate thread.
     # This is good because if the function is long running then we the client can still send heartbeats
