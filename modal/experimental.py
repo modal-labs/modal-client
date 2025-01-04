@@ -48,6 +48,9 @@ def clustered(size: int, broadcast: bool = True):
 
     assert broadcast, "broadcast=False has not been implemented yet!"
 
+    if size <= 0:
+        raise ValueError("cluster size must be greater than 0")
+
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if isinstance(raw_f, _Function):
             raw_f = raw_f.get_raw_f()

@@ -1479,6 +1479,8 @@ message FunctionGetOutputsRequest {
   string last_entry_id = 6;
   bool clear_on_success = 7; // expires *any* remaining outputs soon after this call, not just the returned ones
   double requested_at = 8; // Used for waypoints.
+  // The jwts the client expects the server to be processing. This is optional and used for sync inputs only.
+  repeated string input_jwts = 9;
 }
 
 message FunctionGetOutputsResponse {
@@ -1678,6 +1680,7 @@ message GenericResult {  // Used for both tasks and function outputs
     // Used when the user's function fails to initialize (ex. S3 mount failed due to invalid credentials).
     // Terminates the function and all remaining inputs.
     GENERIC_STATUS_INIT_FAILURE = 5;
+    GENERIC_STATUS_INTERNAL_FAILURE = 6;
   }
 
   GenericStatus status = 1; // Status of the task or function output.

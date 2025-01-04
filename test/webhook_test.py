@@ -36,7 +36,7 @@ async def test_webhook(servicer, client, reset_container_app):
         assert await f.local(100) == {"square": 10000}
 
         # Make sure the container gets the app id as well
-        container_app = RunningApp(app.app_id, client)
+        container_app = RunningApp(app.app_id)
         app._init_container(client, container_app)
         assert isinstance(f, Function)
         assert f.web_url
