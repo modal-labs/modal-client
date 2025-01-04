@@ -64,6 +64,13 @@ class UploadHashes:
         return base64.b64decode(self.sha256_base64).hex()
 
 
+DUMMY_HASH_HEX = "baadbaadbaadbaadbaadbaadbaadbaad"
+DUMMY_HASHES = UploadHashes(
+    base64.b64encode(bytes.fromhex(DUMMY_HASH_HEX)).decode("ascii"),
+    base64.b64encode(bytes.fromhex(DUMMY_HASH_HEX)).decode("ascii"),
+)
+
+
 def get_upload_hashes(
     data: Union[bytes, BinaryIO], sha256_hex: Optional[str] = None, md5_hex: Optional[str] = None
 ) -> UploadHashes:

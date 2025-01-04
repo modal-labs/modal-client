@@ -38,6 +38,7 @@ from ._utils.blob_utils import (
 )
 from ._utils.deprecation import deprecation_error, deprecation_warning, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
+from ._utils.hash_utils import DUMMY_HASH_HEX
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import logger
@@ -581,9 +582,13 @@ class _VolumeUploadContextManager:
 
         def gen():
             if isinstance(local_file, str) or isinstance(local_file, Path):
-                yield lambda: get_file_upload_spec_from_path(local_file, PurePosixPath(remote_path), mode)
+                yield lambda: get_file_upload_spec_from_path(
+                    local_file, PurePosixPath(remote_path), mode, multipart_hash=False
+                )
             else:
-                yield lambda: get_file_upload_spec_from_fileobj(local_file, PurePosixPath(remote_path), mode or 0o644)
+                yield lambda: get_file_upload_spec_from_fileobj(
+                    local_file, PurePosixPath(remote_path), mode or 0o644, multipart_hash=False
+                )
 
         self._upload_generators.append(gen())
 
@@ -604,7 +609,7 @@ class _VolumeUploadContextManager:
 
         def create_file_spec_provider(subpath):
             relpath_str = subpath.relative_to(local_path)
-            return lambda: get_file_upload_spec_from_path(subpath, remote_path / relpath_str)
+            return lambda: get_file_upload_spec_from_path(subpath, remote_path / relpath_str, multipart_hash=False)
 
         def gen():
             glob = local_path.rglob("*") if recursive else local_path.glob("*")
@@ -618,11 +623,17 @@ class _VolumeUploadContextManager:
     async def _upload_file(self, file_spec: FileUploadSpec) -> api_pb2.MountFile:
         remote_filename = file_spec.mount_filename
         progress_task_id = self._progress_cb(name=remote_filename, size=file_spec.size)
-        request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
-        response = await retry_transient_errors(self._client.stub.MountPutFile, request, base_delay=1)
+
+        exists = False
+        resulting_sha256_hex = None
+        if file_spec.sha256_hex != DUMMY_HASH_HEX:
+            resulting_sha256_hex = file_spec.sha256_hex
+            request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
+            response = await retry_transient_errors(self._client.stub.MountPutFile, request, base_delay=1)
+            exists = response.exists
 
         start_time = time.monotonic()
-        if not response.exists:
+        if not exists:
             if file_spec.use_blob:
                 logger.debug(f"Creating blob file for {file_spec.source_description} ({file_spec.size} bytes)")
                 with file_spec.source() as fp:
@@ -634,7 +645,8 @@ class _VolumeUploadContextManager:
                         md5_hex=file_spec.md5_hex,
                     )
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
-                request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
+                sha256_hex = file_spec.sha256_hex if file_spec.sha256_hex != DUMMY_HASH_HEX else ""
+                request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=sha256_hex)
             else:
                 logger.debug(
                     f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
@@ -645,6 +657,7 @@ class _VolumeUploadContextManager:
             while (time.monotonic() - start_time) < VOLUME_PUT_FILE_CLIENT_TIMEOUT:
                 response = await retry_transient_errors(self._client.stub.MountPutFile, request2, base_delay=1)
                 if response.exists:
+                    resulting_sha256_hex = response.sha256_hex
                     break
 
             if not response.exists:
@@ -653,7 +666,7 @@ class _VolumeUploadContextManager:
             self._progress_cb(task_id=progress_task_id, complete=True)
         return api_pb2.MountFile(
             filename=remote_filename,
-            sha256_hex=file_spec.sha256_hex,
+            sha256_hex=resulting_sha256_hex,
             mode=file_spec.mode,
         )
 
