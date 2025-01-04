@@ -3,6 +3,8 @@ import asyncio
 import concurrent.futures
 import enum
 import functools
+import hashlib
+import io
 import os
 import platform
 import re
@@ -38,6 +40,7 @@ from ._utils.blob_utils import (
 )
 from ._utils.deprecation import deprecation_error, deprecation_warning, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
+from ._utils.hash_utils import DUMMY_HASH_HEX
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import logger
@@ -515,6 +518,7 @@ class _VolumeUploadContextManager:
     _force: bool
     progress_cb: Callable[..., Any]
     _upload_generators: list[Generator[Callable[[], FileUploadSpec], None, None]]
+    _executor: concurrent.futures.ThreadPoolExecutor
 
     def __init__(
         self, volume_id: str, client: _Client, progress_cb: Optional[Callable[..., Any]] = None, force: bool = False
@@ -525,12 +529,13 @@ class _VolumeUploadContextManager:
         self._upload_generators = []
         self._progress_cb = progress_cb or (lambda *_, **__: None)
         self._force = force
+        self._executor = concurrent.futures.ThreadPoolExecutor()
 
     async def __aenter__(self):
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        if not exc_val:
+        async def _upload():
             # Flatten all the uploads yielded by the upload generators in the batch
             def gen_upload_providers():
                 for gen in self._upload_generators:
@@ -538,12 +543,11 @@ class _VolumeUploadContextManager:
 
             async def gen_file_upload_specs() -> AsyncGenerator[FileUploadSpec, None]:
                 loop = asyncio.get_event_loop()
-                with concurrent.futures.ThreadPoolExecutor() as exe:
-                    # TODO: avoid eagerly expanding
-                    futs = [loop.run_in_executor(exe, f) for f in gen_upload_providers()]
-                    logger.debug(f"Computing checksums for {len(futs)} files using {exe._max_workers} workers")
-                    for fut in asyncio.as_completed(futs):
-                        yield await fut
+                # TODO: avoid eagerly expanding
+                futs = [loop.run_in_executor(self._executor, f) for f in gen_upload_providers()]
+                logger.debug(f"Computing checksums for {len(futs)} files using {self._executor._max_workers} workers")
+                for fut in asyncio.as_completed(futs):
+                    yield await fut
 
             # Compute checksums & Upload files
             files: list[api_pb2.MountFile] = []
@@ -563,6 +567,10 @@ class _VolumeUploadContextManager:
             except GRPCError as exc:
                 raise FileExistsError(exc.message) if exc.status == Status.ALREADY_EXISTS else exc
 
+        with self._executor:
+            if not exc_val:
+                await _upload()
+
     def put_file(
         self,
         local_file: Union[Path, str, BinaryIO],
@@ -581,9 +589,13 @@ class _VolumeUploadContextManager:
 
         def gen():
             if isinstance(local_file, str) or isinstance(local_file, Path):
-                yield lambda: get_file_upload_spec_from_path(local_file, PurePosixPath(remote_path), mode)
+                yield lambda: get_file_upload_spec_from_path(
+                    local_file, PurePosixPath(remote_path), mode, multipart_hash=False
+                )
             else:
-                yield lambda: get_file_upload_spec_from_fileobj(local_file, PurePosixPath(remote_path), mode or 0o644)
+                yield lambda: get_file_upload_spec_from_fileobj(
+                    local_file, PurePosixPath(remote_path), mode or 0o644, multipart_hash=False
+                )
 
         self._upload_generators.append(gen())
 
@@ -604,7 +616,7 @@ class _VolumeUploadContextManager:
 
         def create_file_spec_provider(subpath):
             relpath_str = subpath.relative_to(local_path)
-            return lambda: get_file_upload_spec_from_path(subpath, remote_path / relpath_str)
+            return lambda: get_file_upload_spec_from_path(subpath, remote_path / relpath_str, multipart_hash=False)
 
         def gen():
             glob = local_path.rglob("*") if recursive else local_path.glob("*")
@@ -618,14 +630,31 @@ class _VolumeUploadContextManager:
     async def _upload_file(self, file_spec: FileUploadSpec) -> api_pb2.MountFile:
         remote_filename = file_spec.mount_filename
         progress_task_id = self._progress_cb(name=remote_filename, size=file_spec.size)
-        request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
-        response = await retry_transient_errors(self._client.stub.MountPutFile, request, base_delay=1)
+
+        exists = False
+        sha256_hex = None
+        if file_spec.sha256_hex != DUMMY_HASH_HEX:
+            sha256_hex = file_spec.sha256_hex
+            request = api_pb2.MountPutFileRequest(sha256_hex=sha256_hex)
+            response = await retry_transient_errors(self._client.stub.MountPutFile, request, base_delay=1)
+            exists = response.exists
+
+        def get_sha256(fp: BinaryIO):
+            if isinstance(fp, io.BytesIO):
+                data = fp
+            else:
+                data = open(fp.name, "rb")
+            return hashlib.file_digest(data, "sha256").hexdigest()
 
         start_time = time.monotonic()
-        if not response.exists:
+        if not exists:
             if file_spec.use_blob:
                 logger.debug(f"Creating blob file for {file_spec.source_description} ({file_spec.size} bytes)")
                 with file_spec.source() as fp:
+                    sha256_fut = None
+                    if not sha256_hex:
+                        sha256_fut = asyncio.get_event_loop().run_in_executor(self._executor, get_sha256, fp)
+
                     blob_id = await blob_upload_file(
                         fp,
                         self._client.stub,
@@ -633,13 +662,23 @@ class _VolumeUploadContextManager:
                         sha256_hex=file_spec.sha256_hex,
                         md5_hex=file_spec.md5_hex,
                     )
+                if sha256_fut:
+                    t0 = time.monotonic()
+                    sha256_hex = await sha256_fut
+                    logger.debug(
+                        f"Awaited concurrent sha256 of {file_spec.source_description} for {time.monotonic() - t0:.3}s"
+                    )
+                else:
+                    sha256_hex = file_spec.sha256_hex
                 logger.debug(f"Uploading blob file {file_spec.source_description} as {remote_filename}")
-                request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=file_spec.sha256_hex)
+                request2 = api_pb2.MountPutFileRequest(data_blob_id=blob_id, sha256_hex=sha256_hex)
             else:
+                assert sha256_hex
+                assert sha256_hex != DUMMY_HASH_HEX
                 logger.debug(
                     f"Uploading file {file_spec.source_description} to {remote_filename} ({file_spec.size} bytes)"
                 )
-                request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=file_spec.sha256_hex)
+                request2 = api_pb2.MountPutFileRequest(data=file_spec.content, sha256_hex=sha256_hex)
                 self._progress_cb(task_id=progress_task_id, complete=True)
 
             while (time.monotonic() - start_time) < VOLUME_PUT_FILE_CLIENT_TIMEOUT:
@@ -653,7 +692,7 @@ class _VolumeUploadContextManager:
             self._progress_cb(task_id=progress_task_id, complete=True)
         return api_pb2.MountFile(
             filename=remote_filename,
-            sha256_hex=file_spec.sha256_hex,
+            sha256_hex=sha256_hex,
             mode=file_spec.mode,
         )
 
