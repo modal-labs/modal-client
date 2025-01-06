@@ -10,6 +10,22 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.71.1 (2025-01-06)
+
+- Sandboxes now support fsnotify-like file watching:
+```python
+from modal.file_io import FileWatchEventType
+
+app = modal.App.lookup("file-watch", create_if_missing=True)
+sb = modal.Sandbox.create(app=app)
+events = sb.watch("/foo")
+for event in events:
+    if event.type == FileWatchEventType.Modify:
+        print(event.paths)
+```
+
+
+
 ### 0.70.1 (2024-12-27)
 
 - The sandbox filesystem API now accepts write payloads of sizes up to 1 GiB.
