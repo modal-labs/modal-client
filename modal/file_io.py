@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2024
 import asyncio
+import enum
 import io
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, AsyncIterator, Generic, Optional, Sequence, TypeVar, Union, cast
 
 if TYPE_CHECKING:
@@ -11,6 +13,7 @@ import json
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal._utils.grpc_utils import retry_transient_errors
+from modal.io_streams_helper import consume_stream_with_retries
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
@@ -94,6 +97,20 @@ async def _replace_bytes(file: "_FileIO", data: bytes, start: Optional[int] = No
     await file._wait(resp.exec_id)
 
 
+class FileWatchEventType(enum.Enum):
+    Unknown = "Unknown"
+    Access = "Access"
+    Create = "Create"
+    Modify = "Modify"
+    Remove = "Remove"
+
+
+@dataclass
+class FileWatchEvent:
+    paths: list[str]
+    type: FileWatchEventType
+
+
 # The FileIO class is designed to mimic Python's io.FileIO
 # See https://github.com/python/cpython/blob/main/Lib/_pyio.py#L1459
 class _FileIO(Generic[T]):
@@ -124,6 +141,7 @@ class _FileIO(Generic[T]):
     _task_id: str = ""
     _file_descriptor: str = ""
     _client: Optional[_Client] = None
+    _watch_output_buffer: list[Optional[bytes]] = []
 
     def _validate_mode(self, mode: str) -> None:
         if not any(char in mode for char in "rwax"):
@@ -166,6 +184,44 @@ class _FileIO(Generic[T]):
                 self._handle_error(batch.error)
             for message in batch.output:
                 yield message
+
+    async def _consume_watch_output(self, exec_id: str) -> None:
+        def item_handler(item: Optional[bytes]):
+            self._watch_output_buffer.append(item)
+
+        def completion_check(item: Optional[bytes]):
+            return item is None
+
+        await consume_stream_with_retries(
+            self._consume_output(exec_id),
+            item_handler,
+            completion_check,
+        )
+
+    async def _parse_watch_output(self, event: bytes) -> Optional[FileWatchEvent]:
+        try:
+            event_json = json.loads(event.decode())
+            return FileWatchEvent(type=FileWatchEventType(event_json["event_type"]), paths=event_json["paths"])
+        except (json.JSONDecodeError, KeyError, ValueError):
+            # skip invalid events
+            return None
+
+    async def _stream_watch_output(self) -> AsyncIterator[FileWatchEvent]:
+        buffer = b""
+        while True:
+            if len(self._watch_output_buffer) > 0:
+                item = self._watch_output_buffer.pop(0)
+                if item is None:
+                    break
+                buffer += item
+                # a single event may be split across multiple messages, the end of an event is marked by two newlines
+                if buffer.endswith(b"\n\n"):
+                    event = await self._parse_watch_output(buffer.strip())
+                    if event is not None:
+                        yield event
+                    buffer = b""
+            else:
+                await asyncio.sleep(0.1)
 
     async def _wait(self, exec_id: str) -> bytes:
         # The logic here is similar to how output is read from `exec`
@@ -390,6 +446,36 @@ class _FileIO(Generic[T]):
             )
         )
         await self._wait(resp.exec_id)
+
+    @classmethod
+    async def watch(
+        cls,
+        path: str,
+        client: _Client,
+        task_id: str,
+        filter: Optional[list[FileWatchEventType]] = None,
+        recursive: bool = False,
+        timeout: Optional[int] = None,
+    ) -> AsyncIterator[FileWatchEvent]:
+        self = cls.__new__(cls)
+        self._client = client
+        self._task_id = task_id
+        resp = await self._make_request(
+            api_pb2.ContainerFilesystemExecRequest(
+                file_watch_request=api_pb2.ContainerFileWatchRequest(
+                    path=path,
+                    recursive=recursive,
+                    timeout_secs=timeout,
+                ),
+                task_id=self._task_id,
+            )
+        )
+        task = asyncio.create_task(self._consume_watch_output(resp.exec_id))
+        async for event in self._stream_watch_output():
+            if filter and event.type not in filter:
+                continue
+            yield event
+        task.cancel()
 
     async def _close(self) -> None:
         # Buffer is flushed by the runner on close
