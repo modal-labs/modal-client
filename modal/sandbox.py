@@ -320,7 +320,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         resp = await retry_transient_errors(client.stub.SandboxWait, req)
 
         obj = _Sandbox._new_hydrated(sandbox_id, client, None)
-        obj._result = resp.result
+
+        if resp.result.status:
+            obj._result = resp.result
 
         return obj
 
