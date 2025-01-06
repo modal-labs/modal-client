@@ -26,7 +26,7 @@ from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
 from .exception import ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
-from .file_io import _FileIO
+from .file_io import FileWatchEvent, FileWatchEventType, _FileIO
 from .gpu import GPU_T
 from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
@@ -276,9 +276,9 @@ class _Sandbox(_Object, type_prefix="sb"):
 
             app_id = app.app_id
             app_client = app._client
-        elif _App._container_app is not None:
-            app_id = _App._container_app.app_id
-            app_client = _App._container_app.client
+        elif (container_app := _App._get_container_app()) is not None:
+            app_id = container_app.app_id
+            app_client = container_app._client
         else:
             arglist = ", ".join(repr(s) for s in entrypoint_args)
             deprecation_error(
@@ -582,11 +582,12 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def watch(
         self,
         path: str,
+        filter: Optional[list[FileWatchEventType]] = None,
         recursive: Optional[bool] = None,
         timeout: Optional[int] = None,
-    ) -> AsyncIterator[bytes]:
+    ) -> AsyncIterator[FileWatchEvent]:
         task_id = await self._get_task_id()
-        async for event in _FileIO.watch(path, self._client, task_id, recursive, timeout):
+        async for event in _FileIO.watch(path, self._client, task_id, filter, recursive, timeout):
             yield event
 
     @property

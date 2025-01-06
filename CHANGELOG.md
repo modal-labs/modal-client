@@ -10,6 +10,50 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.70.1 (2024-12-27)
+
+- The sandbox filesystem API now accepts write payloads of sizes up to 1 GiB.
+
+
+
+### 0.69.0 (2024-12-21)
+
+* `Image.from_dockerfile()` and `image.dockerfile_commands()` now auto-infer which files need to be uploaded based on COPY commands in the source if `context_mount` is omitted. The `ignore=` argument to these methods can be used to selectively omit files using a set of glob patterns.
+
+
+
+### 0.68.53 (2024-12-20)
+
+- You can now point `modal launch vscode` at an arbitrary Dockerhub base image:
+
+    `modal launch vscode --image=nvidia/cuda:12.4.0-devel-ubuntu22.04`
+
+
+
+### 0.68.44 (2024-12-19)
+
+- You can now run GPU workloads on [Nvidia L40S GPUs](https://www.nvidia.com/en-us/data-center/l40s/):
+
+    ```python
+    @app.function(gpu="L40S")
+    def my_gpu_fn():
+        ...
+    ```
+
+
+
+### 0.68.43 (2024-12-19)
+
+- Fixed a bug introduced in v0.68.39 that changed the exception type raise when the target object for `.from_name`/`.lookup` methods was not found.
+
+
+
+### 0.68.39 (2024-12-18)
+
+- Standardized terminology in `.from_name`/`.lookup`/`.delete` methods to use `name` consistently where `label` and `tag` were used interchangeably before. Code that invokes these methods using `label=` as an explicit keyword argument will issue a deprecation warning and will break in a future release.
+
+
+
 ### 0.68.29 (2024-12-17)
 
 - The internal `deprecation_error` and `deprecation_warning` utilities have been moved to a private namespace
@@ -44,7 +88,7 @@ print(sb.ls("/foo"))
 
 
 
-### 0.68.21 (2024-11-13)
+### 0.68.21 (2024-12-13)
 
 Adds an `ignore` parameter to our `Image` `add_local_dir` and `copy_local_dir` methods. It is similar to the `condition` method on `Mount` methods but instead operates on a `Path` object. It takes either a list of string patterns to ignore which follows the `dockerignore` syntax implemented in our `FilePatternMatcher` class, or you can pass in a callable which allows for more flexible selection of files.
 
@@ -75,6 +119,10 @@ img.add_local_dir(
 
 
 which will add the `./local-dir` directory to the image but ignore all files except `.txt` files
+
+### 0.68.15 (2024-12-13)
+
+Adds the `requires_proxy_auth` parameter to `web_endpoint`, `asgi_app`, `wsgi_app`, and `web_server` decorators. Requests to the app will respond with 407 Proxy Authorization Required if a webhook token is not supplied in the HTTP headers. Protects against DoS attacks that will unnecessarily charge users.
 
 ### 0.68.11 (2024-12-13)
 

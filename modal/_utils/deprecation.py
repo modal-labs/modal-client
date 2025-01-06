@@ -1,7 +1,11 @@
 # Copyright Modal Labs 2024
+import functools
 import sys
 import warnings
 from datetime import date
+from typing import Any, Callable, TypeVar
+
+from typing_extensions import ParamSpec  # Needed for Python 3.9
 
 from ..exception import DeprecationError, PendingDeprecationError
 
@@ -42,3 +46,44 @@ def deprecation_warning(
 
     # This is a lower-level function that warnings.warn uses
     warnings.warn_explicit(f"{date(*deprecated_on)}: {msg}", warning_cls, filename, lineno)
+
+
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+def renamed_parameter(
+    date: tuple[int, int, int],
+    old_name: str,
+    new_name: str,
+    show_source: bool = True,
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    """Decorator for semi-gracefully changing a parameter name.
+
+    Functions wrapped with this decorator can be defined using only the `new_name` of the parameter.
+    If the function is invoked with the `old_name`, the wrapper will pass the value as a keyword
+    argument for `new_name` and issue a Modal deprecation warning about the change.
+
+    Note that this only prevents parameter renamings from breaking code at runtime.
+    Type checking will fail when code uses `old_name`. To avoid this, the `old_name` can be
+    preserved in the function signature with an `Annotated` type hint indicating the renaming.
+    """
+
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+        @functools.wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            mut_kwargs: dict[str, Any] = locals()["kwargs"]  # Avoid referencing kwargs directly due to bug in sigtools
+            if old_name in mut_kwargs:
+                mut_kwargs[new_name] = mut_kwargs.pop(old_name)
+                func_name = func.__qualname__.removeprefix("_")  # Avoid confusion when synchronicity-wrapped
+                message = (
+                    f"The '{old_name}' parameter of `{func_name}` has been renamed to '{new_name}'."
+                    "\nUsing the old name will become an error in a future release. Please update your code."
+                )
+                deprecation_warning(date, message, show_source=show_source)
+
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator

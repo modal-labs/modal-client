@@ -5,7 +5,15 @@ import pytest
 from grpclib import Status
 from grpclib.exceptions import GRPCError
 
-from modal.file_io import FileIO, FileWatchEvent, FileWatchEventType, delete_bytes, replace_bytes
+from modal.file_io import (  # type: ignore
+    WRITE_CHUNK_SIZE,
+    WRITE_FILE_SIZE_LIMIT,
+    FileIO,
+    FileWatchEvent,
+    FileWatchEventType,
+    delete_bytes,
+    replace_bytes,
+)
 from modal_proto import api_pb2
 
 OPEN_EXEC_ID = "exec-open-123"
@@ -122,6 +130,44 @@ def test_file_write(servicer, client):
         f.write(content)
         assert f.read() == content
         f.close()
+
+
+def test_file_write_large(servicer, client):
+    """Test file write chunking logic."""
+    content = "A" * WRITE_FILE_SIZE_LIMIT
+    write_counter = 0
+
+    async def container_filesystem_exec_get_output(servicer, stream):
+        nonlocal write_counter
+        req = await stream.recv_message()
+        if req.exec_id == WRITE_EXEC_ID:
+            write_counter += 1
+        await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(eof=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
+        ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
+
+        f = FileIO.create("/test.txt", "a+", client, "task-123")
+        f.write(content)
+        assert write_counter == WRITE_FILE_SIZE_LIMIT // WRITE_CHUNK_SIZE
+        f.close()
+
+
+def test_file_write_too_large(servicer, client):
+    """Test that writing a file larger than WRITE_FILE_SIZE_LIMIT raises an error."""
+    content = "A" * (WRITE_FILE_SIZE_LIMIT + 1)
+
+    async def container_filesystem_exec_get_output(servicer, stream):
+        await stream.recv_message()
+        await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(eof=True))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerFilesystemExec", container_filesystem_exec)
+        ctx.set_responder("ContainerFilesystemExecGetOutput", container_filesystem_exec_get_output)
+
+        with pytest.raises(ValueError):
+            FileIO.create("/test.txt", "a+", client, "task-123").write(content)
 
 
 def test_file_readline(servicer, client):

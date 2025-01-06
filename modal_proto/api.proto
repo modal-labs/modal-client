@@ -321,6 +321,14 @@ message AppGetByDeploymentNameResponse {
   string app_id = 1;
 }
 
+message AppGetLayoutRequest {
+  string app_id = 1;
+}
+
+message AppGetLayoutResponse {
+  AppLayout app_layout = 1;
+}
+
 message AppGetLogsRequest {
   string app_id = 1;
   float timeout = 2;
@@ -1471,6 +1479,8 @@ message FunctionGetOutputsRequest {
   string last_entry_id = 6;
   bool clear_on_success = 7; // expires *any* remaining outputs soon after this call, not just the returned ones
   double requested_at = 8; // Used for waypoints.
+  // The jwts the client expects the server to be processing. This is optional and used for sync inputs only.
+  repeated string input_jwts = 9;
 }
 
 message FunctionGetOutputsResponse {
@@ -1670,6 +1680,7 @@ message GenericResult {  // Used for both tasks and function outputs
     // Used when the user's function fails to initialize (ex. S3 mount failed due to invalid credentials).
     // Terminates the function and all remaining inputs.
     GENERIC_STATUS_INIT_FAILURE = 5;
+    GENERIC_STATUS_INTERNAL_FAILURE = 6;
   }
 
   GenericStatus status = 1; // Status of the task or function output.
@@ -2700,6 +2711,7 @@ service ModalClient {
   rpc AppDeploy(AppDeployRequest) returns (AppDeployResponse);
   rpc AppDeploymentHistory(AppDeploymentHistoryRequest) returns (AppDeploymentHistoryResponse);
   rpc AppGetByDeploymentName(AppGetByDeploymentNameRequest) returns (AppGetByDeploymentNameResponse);
+  rpc AppGetLayout(AppGetLayoutRequest) returns (AppGetLayoutResponse);
   rpc AppGetLogs(AppGetLogsRequest) returns (stream TaskLogsBatch);
   rpc AppGetObjects(AppGetObjectsRequest) returns (AppGetObjectsResponse);
   rpc AppGetOrCreate(AppGetOrCreateRequest) returns (AppGetOrCreateResponse);

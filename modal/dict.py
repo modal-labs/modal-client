@@ -10,7 +10,7 @@ from modal_proto import api_pb2
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.deprecation import deprecation_error
+from ._utils.deprecation import renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -58,15 +58,6 @@ class _Dict(_Object, type_prefix="di"):
     For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-dicts).
     """
 
-    @staticmethod
-    def new(data: Optional[dict] = None):
-        """mdmd:hidden"""
-        message = (
-            "`Dict.new` is deprecated."
-            " Please use `Dict.from_name` (for persisted) or `Dict.ephemeral` (for ephemeral) dicts instead."
-        )
-        deprecation_error((2024, 3, 19), message)
-
     def __init__(self, data={}):
         """mdmd:hidden"""
         raise RuntimeError(
@@ -112,8 +103,9 @@ class _Dict(_Object, type_prefix="di"):
             yield cls._new_hydrated(response.dict_id, client, None, is_another_app=True)
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
-        label: str,
+        name: str,
         data: Optional[dict] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
@@ -130,12 +122,12 @@ class _Dict(_Object, type_prefix="di"):
         d[123] = 456
         ```
         """
-        check_object_name(label, "Dict")
+        check_object_name(name, "Dict")
 
         async def _load(self: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
             serialized = _serialize_dict(data if data is not None else {})
             req = api_pb2.DictGetOrCreateRequest(
-                deployment_name=label,
+                deployment_name=name,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
@@ -148,8 +140,9 @@ class _Dict(_Object, type_prefix="di"):
         return _Dict._from_loader(_load, "Dict()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
-        label: str,
+        name: str,
         data: Optional[dict] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
@@ -167,7 +160,7 @@ class _Dict(_Object, type_prefix="di"):
         ```
         """
         obj = _Dict.from_name(
-            label,
+            name,
             data=data,
             namespace=namespace,
             environment_name=environment_name,
@@ -180,13 +173,14 @@ class _Dict(_Object, type_prefix="di"):
         return obj
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     async def delete(
-        label: str,
+        name: str,
         *,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ):
-        obj = await _Dict.lookup(label, client=client, environment_name=environment_name)
+        obj = await _Dict.lookup(name, client=client, environment_name=environment_name)
         req = api_pb2.DictDeleteRequest(dict_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.DictDelete, req)
 

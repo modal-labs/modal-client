@@ -22,7 +22,7 @@ from modal_proto import api_pb2
 
 from ._ipython import is_notebook
 from ._utils.async_utils import synchronize_api
-from ._utils.deprecation import deprecation_error, deprecation_warning
+from ._utils.deprecation import deprecation_error, deprecation_warning, renamed_parameter
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
@@ -168,7 +168,7 @@ class _App:
     """
 
     _all_apps: ClassVar[dict[Optional[str], list["_App"]]] = {}
-    _container_app: ClassVar[Optional[RunningApp]] = None
+    _container_app: ClassVar[Optional["_App"]] = None
 
     _name: Optional[str]
     _description: Optional[str]
@@ -260,8 +260,9 @@ class _App:
         return self._description
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
-        label: str,
+        name: str,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -283,22 +284,17 @@ class _App:
         environment_name = _get_environment_name(environment_name)
 
         request = api_pb2.AppGetOrCreateRequest(
-            app_name=label,
+            app_name=name,
             environment_name=environment_name,
             object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
         )
 
         response = await retry_transient_errors(client.stub.AppGetOrCreate, request)
 
-        app = _App(label)
+        app = _App(name)
         app._app_id = response.app_id
         app._client = client
-        app._running_app = RunningApp(
-            response.app_id,
-            client=client,
-            environment_name=environment_name,
-            interactive=False,
-        )
+        app._running_app = RunningApp(response.app_id, interactive=False)
         return app
 
     def set_description(self, description: str):
@@ -462,8 +458,8 @@ class _App:
         if self._running_app:
             # If this is inside a container, then objects can be defined after app initialization.
             # So we may have to initialize objects once they get bound to the app.
-            if function.tag in self._running_app.tag_to_object_id:
-                object_id: str = self._running_app.tag_to_object_id[function.tag]
+            if function.tag in self._running_app.function_ids:
+                object_id: str = self._running_app.function_ids[function.tag]
                 metadata: Message = self._running_app.object_handle_metadata[object_id]
                 function._hydrate(object_id, self._client, metadata)
 
@@ -475,8 +471,8 @@ class _App:
         if self._running_app:
             # If this is inside a container, then objects can be defined after app initialization.
             # So we may have to initialize objects once they get bound to the app.
-            if tag in self._running_app.tag_to_object_id:
-                object_id: str = self._running_app.tag_to_object_id[tag]
+            if tag in self._running_app.class_ids:
+                object_id: str = self._running_app.class_ids[tag]
                 metadata: Message = self._running_app.object_handle_metadata[object_id]
                 cls._hydrate(object_id, self._client, metadata)
 
@@ -487,21 +483,21 @@ class _App:
         self._running_app = running_app
         self._client = client
 
-        _App._container_app = running_app
-
-        # Hydrate objects on app -- hydrating functions first so that when a class is being hydrated its
-        # corresponding class service function is already hydrated.
-        def hydrate_objects(objects_dict):
-            for tag, object_id in running_app.tag_to_object_id.items():
-                if tag in objects_dict:
-                    obj = objects_dict[tag]
-                    handle_metadata = running_app.object_handle_metadata[object_id]
-                    obj._hydrate(object_id, client, handle_metadata)
+        _App._container_app = self
 
         # Hydrate function objects
-        hydrate_objects(self._functions)
+        for tag, object_id in running_app.function_ids.items():
+            if tag in self._functions:
+                obj = self._functions[tag]
+                handle_metadata = running_app.object_handle_metadata[object_id]
+                obj._hydrate(object_id, client, handle_metadata)
+
         # Hydrate class objects
-        hydrate_objects(self._classes)
+        for tag, object_id in running_app.class_ids.items():
+            if tag in self._classes:
+                obj = self._classes[tag]
+                handle_metadata = running_app.object_handle_metadata[object_id]
+                obj._hydrate(object_id, client, handle_metadata)
 
     @property
     def registered_functions(self) -> dict[str, _Function]:
@@ -1045,6 +1041,13 @@ class _App:
                 for log in log_batch.items:
                     if log.data:
                         yield log.data
+
+    @classmethod
+    def _get_container_app(cls) -> Optional["_App"]:
+        """Returns the `App` running inside a container.
+
+        This will return `None` outside of a Modal container."""
+        return cls._container_app
 
     @classmethod
     def _reset_container_app(cls):

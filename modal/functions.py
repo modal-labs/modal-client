@@ -22,7 +22,6 @@ from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
 from synchronicity.exceptions import UserCodeException
 
-from modal._utils.async_utils import aclosing
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
@@ -35,13 +34,14 @@ from ._serialization import serialize, serialize_proto_params
 from ._traceback import print_server_warnings
 from ._utils.async_utils import (
     TaskContext,
+    aclosing,
     async_merge,
     callable_to_agen,
     synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
-from ._utils.deprecation import deprecation_warning
+from ._utils.deprecation import deprecation_warning, renamed_parameter
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
@@ -753,7 +753,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     mount_ids=loaded_mount_ids,
                     secret_ids=[secret.object_id for secret in secrets],
                     image_id=(image.object_id if image else ""),
-                    definition_type=info.definition_type,
+                    definition_type=info.get_definition_type(),
                     function_serialized=function_serialized or b"",
                     class_serialized=class_serialized or b"",
                     function_type=function_type,
@@ -1024,10 +1024,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         await retry_transient_errors(self._client.stub.FunctionUpdateSchedulingParams, request)
 
     @classmethod
+    @renamed_parameter((2024, 12, 18), "tag", "name")
     def from_name(
         cls: type["_Function"],
         app_name: str,
-        tag: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
     ) -> "_Function":
@@ -1046,7 +1047,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             assert resolver.client and resolver.client.stub
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
-                object_tag=tag,
+                object_tag=name,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver) or "",
             )
@@ -1066,9 +1067,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "tag", "name")
     async def lookup(
         app_name: str,
-        tag: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
@@ -1082,7 +1084,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         f = modal.Function.lookup("other-app", "function")
         ```
         """
-        obj = _Function.from_name(app_name, tag, namespace=namespace, environment_name=environment_name)
+        obj = _Function.from_name(app_name, name, namespace=namespace, environment_name=environment_name)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
