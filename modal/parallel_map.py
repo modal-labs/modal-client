@@ -119,6 +119,7 @@ async def _map_invocation(
         if count_update_callback is not None:
             count_update_callback(num_outputs, num_inputs)
 
+    retry_queue = _TimestampPriorityQueue()
     pending_outputs: dict[int, asyncio.Future[_MapItemContext]] = {}  # Map input idx -> context
     completed_outputs: set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
 
@@ -126,10 +127,6 @@ async def _map_invocation(
 
     # semaphore to limit the number of inputs that can be in progress at once
     inputs_outstanding = asyncio.BoundedSemaphore(MAP_MAX_INPUTS_OUTSTANDING)
-
-    # set of tasks that are retrying inputs. we keep a reference to these tasks
-    # to prevent them from being garbage collected before they complete.
-    retry_tasks: set[asyncio.Task] = set()
 
     async def create_input(argskwargs):
         nonlocal num_inputs
@@ -220,40 +217,44 @@ async def _map_invocation(
 
         yield
 
-    async def retry_input(item_context: _MapItemContext, delay_ms: float):
-        await asyncio.sleep(delay_ms / 1000)
-
-        request = api_pb2.FunctionRetryInputsRequest(
-            function_call_jwt=function_call_jwt,
-            inputs=[
-                api_pb2.FunctionRetryInputsItem(
-                    input_jwt=item_context.input_jwt,
-                    input=item_context.input,
-                )
-            ],
-        )
-        logger.debug(f"Sending retry for {item_context.input_id}.")
-
-        while True:
-            try:
-                await retry_transient_errors(
-                    client.stub.FunctionRetryInputs,
-                    request,
-                    # with 8 retries we log the warning below about every 30 seconds, which isn't too spammy.
-                    max_retries=8,
-                    max_delay=15,
-                    additional_status_codes=[Status.RESOURCE_EXHAUSTED],
-                )
-                break
-            except GRPCError as err:
-                if err.status != Status.RESOURCE_EXHAUSTED:
-                    raise err
-                logger.warning(
-                    "Warning: map progress is limited. Common bottlenecks "
-                    "include slow iteration over results, or function backlogs."
+    async def retry_inputs():
+        async for retriable_input_ids in queue_batch_iterator(retry_queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
+            inputs = []
+            for retriable_input_id in retriable_input_ids:
+                item_context = pending_outputs[retriable_input_id]
+                inputs.append(
+                    api_pb2.FunctionRetryInputsItem(
+                        input_jwt=item_context.input_jwt,
+                        input=item_context.input,
+                    )
                 )
 
-        logger.debug(f"Successfully pushed retry for {item_context.input_id} to server. ")
+            request = api_pb2.FunctionRetryInputsRequest(
+                function_call_jwt=function_call_jwt,
+                inputs=inputs,
+            )
+            logger.debug(f"Sending retry for {inputs}.")
+
+            while True:
+                try:
+                    await retry_transient_errors(
+                        client.stub.FunctionRetryInputs,
+                        request,
+                        # with 8 retries we log the warning below about every 30 seconds, which isn't too spammy.
+                        max_retries=8,
+                        max_delay=15,
+                        additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                    )
+                    break
+                except GRPCError as err:
+                    if err.status != Status.RESOURCE_EXHAUSTED:
+                        raise err
+                    logger.warning(
+                        "Warning: map progress is limited. Common bottlenecks "
+                        "include slow iteration over results, or function backlogs."
+                    )
+
+            logger.debug(f"Successfully pushed retry for {inputs} to server. ")
 
     async def get_all_outputs():
         assert client.stub
@@ -284,6 +285,7 @@ async def _map_invocation(
                 logger.debug(f"Received {len(response.outputs)} outputs.")
 
             last_entry_id = response.last_entry_id
+            now_seconds = int(time.time())
             for item in response.outputs:
                 if item.input_id in completed_outputs:
                     # If this input is already completed, it means the output has already been
@@ -301,13 +303,7 @@ async def _map_invocation(
                         delay_ms = item_context.retry_manager.get_delay_ms()
 
                         if delay_ms is not None:
-                            task = asyncio.create_task(retry_input(item_context, delay_ms))
-
-                            # keep a reference to the task to prevent it from being garbage collected
-                            # before it completes
-                            retry_tasks.add(task)
-                            task.add_done_callback(retry_tasks.discard)
-
+                            retry_queue.put(item.idx, now_seconds + (delay_ms / 1000))
                             continue
                         else:
                             # we're out of retries, so we'll just output the error
@@ -378,7 +374,9 @@ async def _map_invocation(
 
         assert len(received_outputs) == 0
 
-    async with aclosing(async_merge(drain_input_generator(), pump_inputs(), poll_outputs())) as streamer:
+    async with aclosing(
+        async_merge(drain_input_generator(), pump_inputs(), poll_outputs(), retry_inputs())
+    ) as streamer:
         async for response in streamer:
             if response is not None:
                 yield response.value
@@ -563,3 +561,26 @@ def _starmap_sync(
             "Use Function.map.aio()/Function.for_each.aio() instead."
         ),
     )
+
+
+class _TimestampPriorityQueue:
+    """
+    A priority queue that returns the oldest item that has a timestamp before the current time.
+    """
+
+    def __init__(self):
+        self._queue = asyncio.PriorityQueue()
+
+    async def put(self, idx: int, timestamp_seconds: int) -> None:
+        await self._queue.put((timestamp_seconds, idx))
+
+    async def get(self) -> int:
+        while True:
+            (timestamp_seconds, idx) = await self._queue.get()
+            if timestamp_seconds < int(time.time()):
+                return idx
+            self._queue.put((timestamp_seconds, idx))
+            asyncio.sleep(1)
+
+    def empty(self) -> bool:
+        return self._queue.empty()
