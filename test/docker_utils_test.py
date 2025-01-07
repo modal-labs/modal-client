@@ -180,8 +180,6 @@ def test_find_next_to_dockerfile_dockerignore_file():
         dir1 = tmp_path / "dir1"
         dir1.mkdir()
 
-        # os.chdir(context_directory)
-
         dockerfile_path = dir1 / "Dockerfile"
         dockerignore_path = tmp_path / ".dockerignore"
         dockerignore_path.write_text("**/*")

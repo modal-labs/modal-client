@@ -1189,7 +1189,7 @@ class _Image(_Object, type_prefix="im"):
         # modal.Mount with local files to supply as build context for COPY commands
         context_mount: Optional[_Mount] = None,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        ignore: Union[Sequence[str], Callable[[Path], bool]] = AUTO_DOCKERIGNORE,
+        ignore: Union[Sequence[str], Callable[[Path], bool], Path] = AUTO_DOCKERIGNORE,
     ) -> "_Image":
         """Extend an image with arbitrary Dockerfile-like commands."""
         cmds = _flatten_str_args("dockerfile_commands", "dockerfile_commands", dockerfile_commands)
@@ -1209,11 +1209,10 @@ class _Image(_Object, type_prefix="im"):
             def auto_created_context_mount_fn() -> Optional[_Mount]:
                 context_dir = Path.cwd()
                 dockerignore_file = find_dockerignore_file(context_dir)
-                print(f"{dockerignore_file=}")
                 ignore_fn = (
                     FilePatternMatcher(*dockerignore_file.read_text("utf8").splitlines())
                     if dockerignore_file
-                    else modal.file_pattern_matcher._NOTHING
+                    else _ignore_fn(())
                 )
 
                 return _create_context_mount(cmds, ignore_fn=ignore_fn, context_dir=context_dir)
@@ -1609,7 +1608,7 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
         add_python: Optional[str] = None,
-        ignore: Union[Sequence[str], Callable[[Path], bool]] = AUTO_DOCKERIGNORE,
+        ignore: Union[Sequence[str], Callable[[Path], bool], Path] = AUTO_DOCKERIGNORE,
     ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
 
@@ -1636,11 +1635,10 @@ class _Image(_Object, type_prefix="im"):
             def auto_created_context_mount_fn() -> Optional[_Mount]:
                 context_dir = Path.cwd()
                 dockerignore_file = find_dockerignore_file(context_dir, Path(path))
-                print(f"{dockerignore_file=}")
                 ignore_fn = (
                     FilePatternMatcher(*dockerignore_file.read_text("utf8").splitlines())
                     if dockerignore_file
-                    else modal.file_pattern_matcher._NOTHING
+                    else _ignore_fn(())
                 )
 
                 lines = Path(path).read_text("utf8").splitlines()
