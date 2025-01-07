@@ -278,6 +278,57 @@ def _create_context_mount(
     return _Mount._add_local_dir(Path("./"), PurePosixPath("/"), ignore=ignore_with_include)
 
 
+def _create_context_mount_function(
+    ignore: Union[Sequence[str], Callable[[Path], bool], Path],
+    dockerfile_cmds: list[str] = [],
+    dockerfile_path: Optional[Path] = None,
+    context_mount: Optional[_Mount] = None,
+):
+    if dockerfile_path and dockerfile_cmds:
+        raise InvalidError("Cannot provide both dockerfile and docker commands")
+
+    if context_mount:
+        if ignore is not AUTO_DOCKERIGNORE:
+            raise InvalidError("Cannot set both `context_mount` and `ignore`")
+
+        def identity_context_mount_fn() -> Optional[_Mount]:
+            return context_mount
+
+        return identity_context_mount_fn
+    elif ignore is AUTO_DOCKERIGNORE:
+
+        def auto_created_context_mount_fn() -> Optional[_Mount]:
+            context_dir = Path.cwd()
+            dockerignore_file = find_dockerignore_file(context_dir, dockerfile_path)
+            ignore_fn = (
+                FilePatternMatcher(*dockerignore_file.read_text("utf8").splitlines())
+                if dockerignore_file
+                else _ignore_fn(())
+            )
+
+            cmds = dockerfile_path.read_text("utf8").splitlines() if dockerfile_path else dockerfile_cmds
+            return _create_context_mount(cmds, ignore_fn=ignore_fn, context_dir=context_dir)
+
+        return auto_created_context_mount_fn
+    elif isinstance(ignore, Path):
+
+        def auto_created_context_mount_fn() -> Optional[_Mount]:
+            context_dir = Path.cwd()
+            ignore_fn = FilePatternMatcher(*ignore.read_text("utf8").splitlines())
+
+            cmds = dockerfile_path.read_text("utf8").splitlines() if dockerfile_path else dockerfile_cmds
+            return _create_context_mount(cmds, ignore_fn=ignore_fn, context_dir=context_dir)
+
+        return auto_created_context_mount_fn
+
+    def auto_created_context_mount_fn() -> Optional[_Mount]:
+        # use COPY commands and ignore patterns to construct implicit context mount
+        cmds = dockerfile_path.read_text("utf8").splitlines() if dockerfile_path else dockerfile_cmds
+        return _create_context_mount(cmds, ignore_fn=_ignore_fn(ignore), context_dir=Path.cwd())
+
+    return auto_created_context_mount_fn
+
+
 class _ImageRegistryConfig:
     """mdmd:hidden"""
 
@@ -1206,45 +1257,6 @@ class _Image(_Object, type_prefix="im"):
         if not cmds:
             return self
 
-        if context_mount:
-            if ignore is not AUTO_DOCKERIGNORE:
-                raise InvalidError("Cannot set both `context_mount` and `ignore`")
-
-            def identity_context_mount_fn() -> Optional[_Mount]:
-                return context_mount
-
-            context_mount_function = identity_context_mount_fn
-        elif ignore is AUTO_DOCKERIGNORE:
-
-            def auto_created_context_mount_fn() -> Optional[_Mount]:
-                context_dir = Path.cwd()
-                dockerignore_file = find_dockerignore_file(context_dir)
-                ignore_fn = (
-                    FilePatternMatcher(*dockerignore_file.read_text("utf8").splitlines())
-                    if dockerignore_file
-                    else _ignore_fn(())
-                )
-
-                return _create_context_mount(cmds, ignore_fn=ignore_fn, context_dir=context_dir)
-
-            context_mount_function = auto_created_context_mount_fn
-        elif isinstance(ignore, Path):
-
-            def auto_created_context_mount_fn() -> Optional[_Mount]:
-                context_dir = Path.cwd()
-                ignore_fn = FilePatternMatcher(*ignore.read_text("utf8").splitlines())
-
-                return _create_context_mount(cmds, ignore_fn=ignore_fn, context_dir=context_dir)
-
-            context_mount_function = auto_created_context_mount_fn
-        else:
-
-            def auto_created_context_mount_fn() -> Optional[_Mount]:
-                # use COPY commands and ignore patterns to construct implicit context mount
-                return _create_context_mount(cmds, ignore_fn=_ignore_fn(ignore), context_dir=Path.cwd())
-
-            context_mount_function = auto_created_context_mount_fn
-
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base", *cmds], context_files=context_files)
 
@@ -1253,7 +1265,9 @@ class _Image(_Object, type_prefix="im"):
             dockerfile_function=build_dockerfile,
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu),
-            context_mount_function=context_mount_function,
+            context_mount_function=_create_context_mount_function(
+                ignore=ignore, dockerfile_cmds=cmds, context_mount=context_mount
+            ),
             force_build=self.force_build or force_build,
         )
 
@@ -1632,47 +1646,6 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
 
-        if context_mount:
-            if ignore is not AUTO_DOCKERIGNORE:
-                raise InvalidError("Cannot set both `context_mount` and `ignore`")
-
-            def identity_context_mount_fn() -> Optional[_Mount]:
-                return context_mount
-
-            context_mount_function = identity_context_mount_fn
-        elif ignore is AUTO_DOCKERIGNORE:
-
-            def auto_created_context_mount_fn() -> Optional[_Mount]:
-                context_dir = Path.cwd()
-                dockerignore_file = find_dockerignore_file(context_dir, Path(path))
-                ignore_fn = (
-                    FilePatternMatcher(*dockerignore_file.read_text("utf8").splitlines())
-                    if dockerignore_file
-                    else _ignore_fn(())
-                )
-
-                lines = Path(path).read_text("utf8").splitlines()
-                return _create_context_mount(lines, ignore_fn=ignore_fn, context_dir=context_dir)
-
-            context_mount_function = auto_created_context_mount_fn
-        elif isinstance(ignore, Path):
-
-            def auto_created_context_mount_fn() -> Optional[_Mount]:
-                context_dir = Path.cwd()
-                ignore_fn = FilePatternMatcher(*ignore.read_text("utf8").splitlines())
-
-                lines = Path(path).read_text("utf8").splitlines()
-                return _create_context_mount(lines, ignore_fn=ignore_fn, context_dir=context_dir)
-
-            context_mount_function = auto_created_context_mount_fn
-        else:
-
-            def auto_created_context_mount_fn() -> Optional[_Mount]:
-                lines = Path(path).read_text("utf8").splitlines()
-                return _create_context_mount(lines, ignore_fn=_ignore_fn(ignore), context_dir=Path.cwd())
-
-            context_mount_function = auto_created_context_mount_fn
-
         # --- Build the base dockerfile
 
         def build_dockerfile_base(version: ImageBuilderVersion) -> DockerfileSpec:
@@ -1683,7 +1656,9 @@ class _Image(_Object, type_prefix="im"):
         gpu_config = parse_gpu_config(gpu)
         base_image = _Image._from_args(
             dockerfile_function=build_dockerfile_base,
-            context_mount_function=context_mount_function,
+            context_mount_function=_create_context_mount_function(
+                ignore=ignore, dockerfile_path=Path(path), context_mount=context_mount
+            ),
             gpu_config=gpu_config,
             secrets=secrets,
         )
