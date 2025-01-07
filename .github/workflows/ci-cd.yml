@@ -17,12 +17,11 @@ env:
   PYTHONIOENCODING: utf-8
 
 jobs:
-
   client-versioning:
     if: github.ref == 'refs/heads/main'
     name: Update changelog and client version
     concurrency: client-versioning
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     outputs:
@@ -75,7 +74,6 @@ jobs:
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: python -m modal_global_objects.mounts.modal_client_package
 
-
   client-test:
     name: Unit tests on ${{ matrix.python-version }} and ${{ matrix.os }} (protobuf=${{ matrix.proto-version }})
     timeout-minutes: 30
@@ -84,7 +82,7 @@ jobs:
       fail-fast: false # run all variants across python versions/os to completion
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
-        os: ["ubuntu-20.04"]
+        os: ["ubuntu-24.04"]
         proto-version: ["latest"]
         include:
           - os: "macos-13" # x86-64
@@ -96,7 +94,7 @@ jobs:
           - os: "windows-latest"
             python-version: "3.10"
             proto-version: "latest"
-          - os: "ubuntu-20.04"
+          - os: "ubuntu-24.04"
             python-version: "3.9"
             proto-version: "3.19"
 
@@ -131,7 +129,7 @@ jobs:
 
   container-dependencies:
     name: Check minimal container dependencies for ${{ matrix.python-version }} / ${{ matrix.image-builder-version }}
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 4
     strategy:
       matrix:
@@ -181,11 +179,10 @@ jobs:
     name: Publish client package
     if: github.ref == 'refs/heads/main'
     needs: [client-versioning, client-test]
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     concurrency: publish-client
     timeout-minutes: 5
     steps:
-
       - uses: actions/checkout@v3
         with:
           ref: v${{ needs.client-versioning.outputs.client-version}}
@@ -217,7 +214,7 @@ jobs:
       Publish base images for ${{ matrix.image-name }} ${{ matrix.image-builder-version }}
     if: github.ref == 'refs/heads/main'
     needs: [client-versioning, client-test, publish-client]
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
       MODAL_LOGLEVEL: DEBUG
