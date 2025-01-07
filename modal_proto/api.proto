@@ -1730,6 +1730,15 @@ message ImageContextFile {
   bytes data = 2;
 }
 
+message ImageFromIdRequest {
+  string image_id = 1;
+}
+
+message ImageFromIdResponse {
+  string image_id = 1;
+  ImageMetadata metadata = 2;
+} 
+
 message ImageGetOrCreateRequest {
   Image image = 2;
   string app_id = 4 [ (modal.options.audit_target_attr) = true ];
@@ -2797,6 +2806,7 @@ service ModalClient {
   rpc FunctionUpdateSchedulingParams(FunctionUpdateSchedulingParamsRequest) returns (FunctionUpdateSchedulingParamsResponse);
 
   // Images
+  rpc ImageFromId(ImageFromIdRequest) returns (ImageFromIdResponse);
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
   rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
 
