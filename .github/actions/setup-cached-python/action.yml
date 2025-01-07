@@ -4,7 +4,7 @@ inputs:
   version:
     description: Which Python version to install
     required: true
-    default: "3.9"
+    default: "3.11"
 
 runs:
   using: composite
