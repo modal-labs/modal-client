@@ -208,6 +208,17 @@ def test_image_python_packages(builder_version, servicer, client):
             pass
 
 
+def test_image_from_id(builder_version, servicer, client):
+    app = App()
+    image = Image.debian_slim().pip_install("numpy")
+    app.function(image=image)(dummy)
+    with app.run(client=client):
+        image_id = image.object_id
+        image2 = Image.from_id(image_id)
+        modal.Sandbox.create(app=app, image=image2)
+        assert image2.object_id == image_id
+
+
 def test_image_kwargs_validation(builder_version, servicer, client):
     app = App()
     image = Image.debian_slim().run_commands(
