@@ -96,14 +96,3 @@ def find_dockerignore_file(context_directory: Path, dockerfile_path: Optional[Pa
     possible_locations.append(context_directory / generic_name)
 
     return next((e for e in possible_locations if valid_dockerignore_file(e)), None)
-
-
-class _AutoDockerIgnoreSentinel:
-    def __repr__(self) -> str:
-        return f"{__name__}.AUTO_DOCKERIGNORE"
-
-    def __call__(self, _: Path) -> bool:
-        raise NotImplementedError("This is only a placeholder. Do not call")
-
-
-AUTO_DOCKERIGNORE = _AutoDockerIgnoreSentinel()

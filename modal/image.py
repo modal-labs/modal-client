@@ -32,7 +32,6 @@ from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.deprecation import deprecation_error, deprecation_warning
 from ._utils.docker_utils import (
-    AUTO_DOCKERIGNORE,
     extract_copy_command_patterns,
     find_dockerignore_file,
 )
@@ -71,6 +70,17 @@ SUPPORTED_PYTHON_SERIES: dict[ImageBuilderVersion, list[str]] = {
 
 LOCAL_REQUIREMENTS_DIR = Path(__file__).parent / "requirements"
 CONTAINER_REQUIREMENTS_PATH = "/modal_requirements.txt"
+
+
+class _AutoDockerIgnoreSentinel:
+    def __repr__(self) -> str:
+        return f"{__name__}.AUTO_DOCKERIGNORE"
+
+    def __call__(self, _: Path) -> bool:
+        raise NotImplementedError("This is only a placeholder. Do not call")
+
+
+AUTO_DOCKERIGNORE = _AutoDockerIgnoreSentinel()
 
 
 def _validate_python_version(
