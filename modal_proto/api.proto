@@ -298,6 +298,7 @@ message AppDeploymentHistory {
   string client_version = 3;
   double deployed_at = 4;
   string deployed_by = 5;
+  string deployed_by_avatar_url = 9;
   string tag = 6;
   uint32 rollback_version = 7;
   bool rollback_allowed = 8;
