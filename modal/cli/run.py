@@ -461,7 +461,7 @@ def shell(
         ):
             from .container import exec
 
-            exec(container_id=container_or_function, command=shlex.split(cmd))
+            exec(container_id=container_or_function, command=shlex.split(cmd), pty=pty)
             return
 
         function = import_function(

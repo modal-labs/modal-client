@@ -17,7 +17,14 @@ from modal_proto import api_pb2
 from .._serialization import deserialize, deserialize_data_format, serialize
 from .._traceback import append_modal_tb
 from ..config import config, logger
-from ..exception import DeserializationError, ExecutionError, FunctionTimeoutError, InvalidError, RemoteError
+from ..exception import (
+    DeserializationError,
+    ExecutionError,
+    FunctionTimeoutError,
+    InternalFailure,
+    InvalidError,
+    RemoteError,
+)
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
 from .blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
@@ -463,6 +470,8 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
 
     if result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
         raise FunctionTimeoutError(result.exception)
+    elif result.status == api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
+        raise InternalFailure(result.exception)
     elif result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
         if data:
             try:
@@ -578,12 +587,15 @@ class FunctionCreationStatus:
 
         elif self.response.function.web_url:
             url_info = self.response.function.web_url_info
+            requires_proxy_auth = self.response.function.webhook_config.requires_proxy_auth
+            proxy_auth_suffix = " 🔑" if requires_proxy_auth else ""
             # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
             suffix = _get_suffix_from_web_url_info(url_info)
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
             web_url = self.response.handle_metadata.web_url
             self.status_row.finish(
-                f"Created web function {self.tag} => [magenta underline]{web_url}[/magenta underline]{suffix}"
+                f"Created web function {self.tag} => [magenta underline]{web_url}[/magenta underline]"
+                f"{proxy_auth_suffix}{suffix}"
             )
 
             # Print custom domain in terminal

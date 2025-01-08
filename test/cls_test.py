@@ -550,7 +550,7 @@ def test_rehydrate(client, servicer, reset_container_app):
     app_id = deploy_app(app, "my-cls-app", client=client).app_id
 
     # Initialize a container
-    container_app = RunningApp(app_id=app_id)
+    container_app = RunningApp(app_id)
 
     # Associate app with app
     app._init_container(client, container_app)

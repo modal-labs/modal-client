@@ -698,3 +698,9 @@ def set_input_concurrency(start: float):
     set_local_input_concurrency(3)
     time.sleep(1)
     return time.time() - start
+
+
+@app.function()
+def check_container_app():
+    # The container app should be associated with the app object
+    assert App._get_container_app() == app

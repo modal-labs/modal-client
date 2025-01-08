@@ -16,6 +16,7 @@ from typing import Callable, Optional, Sequence, Union
 from google.protobuf.message import Message
 
 import modal.exception
+import modal.file_pattern_matcher
 from modal_proto import api_pb2
 from modal_version import __version__
 
@@ -105,7 +106,7 @@ class _MountFile(_MountEntry):
         return str(self.local_file)
 
     def get_files_to_upload(self):
-        local_file = self.local_file.expanduser().absolute()
+        local_file = self.local_file.resolve()
         if not local_file.exists():
             raise FileNotFoundError(local_file)
 
@@ -131,6 +132,8 @@ class _MountDir(_MountEntry):
         return str(self.local_dir.expanduser().absolute())
 
     def get_files_to_upload(self):
+        # we can't use .resolve() eagerly here since that could end up "renaming" symlinked files
+        # see test_mount_directory_with_symlinked_file
         local_dir = self.local_dir.expanduser().absolute()
 
         if not local_dir.exists():
@@ -145,10 +148,11 @@ class _MountDir(_MountEntry):
             gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
 
         for local_filename in gen:
-            if not self.ignore(Path(local_filename)):
-                local_relpath = Path(local_filename).expanduser().absolute().relative_to(local_dir)
+            local_path = Path(local_filename)
+            if not self.ignore(local_path):
+                local_relpath = local_path.expanduser().absolute().relative_to(local_dir)
                 mount_path = self.remote_path / local_relpath.as_posix()
-                yield local_filename, mount_path
+                yield local_path.resolve(), mount_path
 
     def watch_entry(self):
         return self.local_dir.resolve().expanduser(), None
@@ -322,12 +326,9 @@ class _Mount(_Object, type_prefix="mo"):
     @staticmethod
     def _add_local_dir(
         local_path: Path,
-        remote_path: Path,
-        ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
+        remote_path: PurePosixPath,
+        ignore: Callable[[Path], bool] = modal.file_pattern_matcher._NOTHING,
     ):
-        if isinstance(ignore, list):
-            ignore = FilePatternMatcher(*ignore)
-
         return _Mount._new()._extend(
             _MountDir(
                 local_dir=local_path,
