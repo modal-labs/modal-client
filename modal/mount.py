@@ -47,9 +47,9 @@ PYTHON_STANDALONE_VERSIONS: dict[str, tuple[str, str]] = {
     "3.13": ("20241008", "3.13.0"),
 }
 
-MOUNT_DEPRECATION_MESSAGE = """modal.Mount usage will soon be deprecated.
+MOUNT_DEPRECATION_MESSAGE_PATTERN = """modal.Mount usage will soon be deprecated.
 
-Use {replacement} instead.
+Use {replacement} instead, which is functionally and performance-wise equivalent.
 """
 
 
@@ -405,7 +405,9 @@ class _Mount(_Object, type_prefix="mo"):
         )
         ```
         """
-        deprecation_warning((2024, 12, 18), MOUNT_DEPRECATION_MESSAGE.format(replacement="add_local_dir"), pending=True)
+        deprecation_warning(
+            (2024, 1, 8), MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"), pending=True
+        )
         return _Mount._from_local_dir(local_path, remote_path=remote_path, condition=condition, recursive=recursive)
 
     @staticmethod
@@ -459,7 +461,7 @@ class _Mount(_Object, type_prefix="mo"):
         ```
         """
         deprecation_warning(
-            (2024, 12, 18), MOUNT_DEPRECATION_MESSAGE.format(replacement="add_local_file"), pending=True
+            (2024, 1, 8), MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"), pending=True
         )
         return _Mount._from_local_file(local_path, remote_path)
 
@@ -628,7 +630,9 @@ class _Mount(_Object, type_prefix="mo"):
         ```
         """
         deprecation_warning(
-            (2024, 12, 18), MOUNT_DEPRECATION_MESSAGE.format(replacement="add_local_python_source"), pending=True
+            (2024, 1, 8),
+            MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_python_source"),
+            pending=True,
         )
         return _Mount._from_local_python_packages(
             *module_names, remote_dir=remote_dir, condition=condition, ignore=ignore
