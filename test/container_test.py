@@ -417,8 +417,20 @@ def _unwrap_asgi(ret: ContainerResult):
     return values
 
 
+def _get_web_inputs(path="/", method_name=""):
+    scope = {
+        "method": "GET",
+        "type": "http",
+        "path": path,
+        "headers": {},
+        "query_string": b"arg=space",
+        "http_version": "2",
+    }
+    return _get_inputs(((scope,), {}), method_name=method_name)
+
+
 @skip_github_non_linux
-def test_success(servicer, event_loop):
+def test_success(servicer):
     t0 = time.time()
     ret = _run_container(servicer, "test.supports.functions", "square")
     assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
@@ -539,18 +551,6 @@ def test_from_local_python_packages_inside_container(servicer):
     all the containers."""
     ret = _run_container(servicer, "test.supports.package_mount", "num_mounts")
     assert _unwrap_scalar(ret) == 0
-
-
-def _get_web_inputs(path="/", method_name=""):
-    scope = {
-        "method": "GET",
-        "type": "http",
-        "path": path,
-        "headers": {},
-        "query_string": b"arg=space",
-        "http_version": "2",
-    }
-    return _get_inputs(((scope,), {}), method_name=method_name)
 
 
 # needs to be synchronized so the asyncio.Queue gets used from the same event loop as the servicer
