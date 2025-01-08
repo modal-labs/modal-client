@@ -339,6 +339,26 @@ class fastapi_class_lifespan_shutdown_failure:
 
 @app.function()
 @asgi_app()
+def asgi_app_with_slow_lifespan_wind_down():
+    async def _asgi_app(scope, receive, send):
+        if scope["type"] == "lifespan":
+            while True:
+                message = await receive()
+                if message["type"] == "lifespan.startup":
+                    await send({"type": "lifespan.startup.complete"})
+                elif message["type"] == "lifespan.shutdown":
+                    await send({"type": "lifespan.shutdown.complete"})
+                await asyncio.sleep(1)  # take some time to shut down - this should either be cancelled or awaited
+        else:
+            # dummy response to other requests
+            await send({"type": "http.response.start", "status": 200})
+            await send({"type": "http.response.body", "body": b'{"some_result":"foo"}'})
+
+    return _asgi_app
+
+
+@app.function()
+@asgi_app()
 def non_lifespan_asgi():
     async def app(scope, receive, send):
         if not scope["type"] == "http":

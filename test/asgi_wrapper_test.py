@@ -340,14 +340,14 @@ async def test_lifespan_supported():
 
     assert lifespan_shutdown_complete
 
-    assert lifespan_manager.lifespan_supported
+    assert lifespan_manager._lifespan_supported
 
 
 @pytest.mark.asyncio
 async def test_lifespan_unsupported():
     async def asgi_app(scope, receive, send):
         if scope["type"] == "lifespan":
-            raise
+            raise Exception("broken lifespan scope handler")
         else:
             await send({"type": "http.response.start", "status": 200})
             await send({"type": "http.response.body", "body": b'{"some_result":"foo"}'})
@@ -373,4 +373,4 @@ async def test_lifespan_unsupported():
 
     await lifespan_manager.lifespan_shutdown()
 
-    assert not lifespan_manager.lifespan_supported
+    assert not lifespan_manager._lifespan_supported
