@@ -160,16 +160,19 @@ def fastapi_app():
 
 
 @app.function()
-@web_server(8764)
+@web_server(8764, startup_timeout=10)
 def blocking_web_server():
     from http.server import HTTPServer, SimpleHTTPRequestHandler
 
     httpd = HTTPServer(("0.0.0.0", 8764), SimpleHTTPRequestHandler)
-    httpd.serve_forever()
+    try:
+        httpd.serve_forever()
+    finally:
+        httpd.shutdown()
 
 
 @app.function()
-@web_server(8765)
+@web_server(8765, startup_timeout=10)
 def non_blocking_web_server():
     import subprocess
 
