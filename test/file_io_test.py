@@ -473,11 +473,25 @@ def test_file_watch_with_filter(servicer, client):
 
 def test_file_watch_ignore_invalid_events(servicer, client):
     """Test file watching ignores invalid events."""
+    index = 0
+    expected_events = [
+        FileWatchEvent(paths=["/foo.txt"], type=FileWatchEventType.Access),
+        FileWatchEvent(paths=["/bar.txt"], type=FileWatchEventType.Create),
+        FileWatchEvent(paths=["/baz.txt", "/baz/foo.txt"], type=FileWatchEventType.Modify),
+    ]
+    raw_events = []
+    for i, event in enumerate(expected_events):
+        raw_events.append(f'{{"paths": {json.dumps(event.paths)}, "event_type": "{event.type.value}"}}\n\n'.encode())
+        if i % 2 == 0:
+            # interweave invalid events to test that they are ignored
+            raw_events.append(b"invalid\n\n")
 
     async def container_filesystem_exec_get_output(servicer, stream):
+        nonlocal index
         req = await stream.recv_message()
         if req.exec_id == WATCH_EXEC_ID:
-            await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(output=[b"invalid\n\n"]))
+            for event in raw_events:
+                await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(output=[event]))
         await stream.send_message(api_pb2.FilesystemRuntimeOutputBatch(eof=True))
 
     with servicer.intercept() as ctx:
@@ -488,7 +502,10 @@ def test_file_watch_ignore_invalid_events(servicer, client):
         seen_events: list[FileWatchEvent] = []
         for event in events:
             seen_events.append(event)
-        assert len(seen_events) == 0
+        assert len(seen_events) == len(expected_events)
+        for e, se in zip(expected_events, seen_events):
+            assert e.paths == se.paths
+            assert e.type == se.type
 
 
 @pytest.mark.asyncio

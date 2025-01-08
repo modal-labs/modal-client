@@ -12,7 +12,7 @@ T = TypeVar("T")
 
 
 async def consume_stream_with_retries(
-    stream: AsyncIterator[T],
+    stream_constructor: Callable[[], AsyncIterator[T]],
     item_handler: Callable[[T], None],
     completion_check: Callable[[T], bool],
     max_retries: int = 10,
@@ -22,7 +22,7 @@ async def consume_stream_with_retries(
     Helper function to consume a stream with retry logic for transient errors.
 
     Args:
-        stream_generator: Function that returns an AsyncIterator to consume
+        stream_constructor: Function that returns the stream to consume
         item_handler: Callback function to handle each item from the stream
         completion_check: Callback function to check if the stream is complete
         max_retries: Maximum number of retry attempts
@@ -33,6 +33,7 @@ async def consume_stream_with_retries(
 
     while not completed:
         try:
+            stream = stream_constructor()
             async for item in stream:
                 item_handler(item)
                 if completion_check(item):

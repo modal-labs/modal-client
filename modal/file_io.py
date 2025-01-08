@@ -12,8 +12,9 @@ import json
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
+from modal._io_streams_helper import consume_stream_with_retries
+from modal._utils.async_utils import TaskContext
 from modal._utils.grpc_utils import retry_transient_errors
-from modal.io_streams_helper import consume_stream_with_retries
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
@@ -143,6 +144,13 @@ class _FileIO(Generic[T]):
     _client: Optional[_Client] = None
     _watch_output_buffer: list[Optional[bytes]] = []
 
+    @classmethod
+    def _new(cls, client: _Client, task_id: str) -> "_FileIO":
+        self = cls.__new__(cls)
+        self._client = client
+        self._task_id = task_id
+        return self
+
     def _validate_mode(self, mode: str) -> None:
         if not any(char in mode for char in "rwax"):
             raise ValueError(f"Invalid file mode: {mode}")
@@ -186,6 +194,9 @@ class _FileIO(Generic[T]):
                 yield message
 
     async def _consume_watch_output(self, exec_id: str) -> None:
+        def stream_constructor():
+            return self._consume_output(exec_id)
+
         def item_handler(item: Optional[bytes]):
             self._watch_output_buffer.append(item)
 
@@ -193,7 +204,7 @@ class _FileIO(Generic[T]):
             return item is None
 
         await consume_stream_with_retries(
-            self._consume_output(exec_id),
+            stream_constructor,
             item_handler,
             completion_check,
         )
@@ -205,23 +216,6 @@ class _FileIO(Generic[T]):
         except (json.JSONDecodeError, KeyError, ValueError):
             # skip invalid events
             return None
-
-    async def _stream_watch_output(self) -> AsyncIterator[FileWatchEvent]:
-        buffer = b""
-        while True:
-            if len(self._watch_output_buffer) > 0:
-                item = self._watch_output_buffer.pop(0)
-                if item is None:
-                    break
-                buffer += item
-                # a single event may be split across multiple messages, the end of an event is marked by two newlines
-                if buffer.endswith(b"\n\n"):
-                    event = await self._parse_watch_output(buffer.strip())
-                    if event is not None:
-                        yield event
-                    buffer = b""
-            else:
-                await asyncio.sleep(0.1)
 
     async def _wait(self, exec_id: str) -> bytes:
         # The logic here is similar to how output is read from `exec`
@@ -270,9 +264,7 @@ class _FileIO(Generic[T]):
         cls, path: str, mode: Union["_typeshed.OpenTextMode", "_typeshed.OpenBinaryMode"], client: _Client, task_id: str
     ) -> "_FileIO":
         """Create a new FileIO handle."""
-        self = cls.__new__(cls)
-        self._client = client
-        self._task_id = task_id
+        self = cls._new(client, task_id)
         self._validate_mode(mode)
         await self._open_file(path, mode)
         self._closed = False
@@ -404,9 +396,7 @@ class _FileIO(Generic[T]):
     @classmethod
     async def ls(cls, path: str, client: _Client, task_id: str) -> list[str]:
         """List the contents of the provided directory."""
-        self = cls.__new__(cls)
-        self._client = client
-        self._task_id = task_id
+        self = cls._new(client, task_id)
         resp = await self._make_request(
             api_pb2.ContainerFilesystemExecRequest(
                 file_ls_request=api_pb2.ContainerFileLsRequest(path=path),
@@ -422,9 +412,7 @@ class _FileIO(Generic[T]):
     @classmethod
     async def mkdir(cls, path: str, client: _Client, task_id: str, parents: bool = False) -> None:
         """Create a new directory."""
-        self = cls.__new__(cls)
-        self._client = client
-        self._task_id = task_id
+        self = cls._new(client, task_id)
         resp = await self._make_request(
             api_pb2.ContainerFilesystemExecRequest(
                 file_mkdir_request=api_pb2.ContainerFileMkdirRequest(path=path, make_parents=parents),
@@ -436,9 +424,7 @@ class _FileIO(Generic[T]):
     @classmethod
     async def rm(cls, path: str, client: _Client, task_id: str, recursive: bool = False) -> None:
         """Remove a file or directory in the Sandbox."""
-        self = cls.__new__(cls)
-        self._client = client
-        self._task_id = task_id
+        self = cls._new(client, task_id)
         resp = await self._make_request(
             api_pb2.ContainerFilesystemExecRequest(
                 file_rm_request=api_pb2.ContainerFileRmRequest(path=path, recursive=recursive),
@@ -457,9 +443,7 @@ class _FileIO(Generic[T]):
         recursive: bool = False,
         timeout: Optional[int] = None,
     ) -> AsyncIterator[FileWatchEvent]:
-        self = cls.__new__(cls)
-        self._client = client
-        self._task_id = task_id
+        self = cls._new(client, task_id)
         resp = await self._make_request(
             api_pb2.ContainerFilesystemExecRequest(
                 file_watch_request=api_pb2.ContainerFileWatchRequest(
@@ -470,12 +454,33 @@ class _FileIO(Generic[T]):
                 task_id=self._task_id,
             )
         )
-        task = asyncio.create_task(self._consume_watch_output(resp.exec_id))
-        async for event in self._stream_watch_output():
-            if filter and event.type not in filter:
-                continue
-            yield event
-        task.cancel()
+        async with TaskContext() as tc:
+            tc.create_task(self._consume_watch_output(resp.exec_id))
+
+            buffer = b""
+            while True:
+                if len(self._watch_output_buffer) > 0:
+                    item = self._watch_output_buffer.pop(0)
+                    if item is None:
+                        break
+                    buffer += item
+                    # a single event may be split across multiple messages
+                    # the end of an event is marked by two newlines
+                    if buffer.endswith(b"\n\n"):
+                        try:
+                            event_json = json.loads(buffer.strip().decode())
+                            event = FileWatchEvent(
+                                type=FileWatchEventType(event_json["event_type"]),
+                                paths=event_json["paths"],
+                            )
+                            if not filter or event.type in filter:
+                                yield event
+                        except (json.JSONDecodeError, KeyError, ValueError):
+                            # skip invalid events
+                            pass
+                        buffer = b""
+                else:
+                    await asyncio.sleep(0.1)
 
     async def _close(self) -> None:
         # Buffer is flushed by the runner on close
