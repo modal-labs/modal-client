@@ -853,6 +853,7 @@ class _Image(_Object, type_prefix="im"):
         **Usage:**
 
         ```python
+        from pathlib import Path
         from modal import FilePatternMatcher
 
         image = modal.Image.debian_slim().copy_local_dir(

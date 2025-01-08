@@ -334,3 +334,15 @@ def test_invert_patterns(tmp_path_with_content):
     lff = FilePatternMatcher("!**/*.txt")
     for file_path in file_paths:
         assert not lff(file_path)
+
+
+@pytest.mark.usefixtures("tmp_cwd")
+def test_from_file():
+    rel_top_dir = Path("top")
+    rel_top_dir.mkdir()
+    ignore_file = rel_top_dir / "pattern_file"
+    ignore_file.write_text("**/*.txt")
+
+    lff = FilePatternMatcher.from_file(ignore_file)
+    assert lff(Path("top/data.txt"))
+    assert not lff(Path("top/data.py"))
