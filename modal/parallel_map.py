@@ -3,13 +3,14 @@ import asyncio
 import time
 import typing
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Union
+from typing import Any, Callable, Optional
 
 from grpclib import GRPCError, Status
 
 from modal._runtime.execution_context import current_input_id
 from modal._utils.async_utils import (
     AsyncOrSyncIterable,
+    TimestampPriorityQueue,
     aclosing,
     async_map_ordered,
     async_merge,
@@ -119,7 +120,7 @@ async def _map_invocation(
         if count_update_callback is not None:
             count_update_callback(num_outputs, num_inputs)
 
-    retry_queue = _TimestampPriorityQueue()
+    retry_queue = TimestampPriorityQueue()
     pending_outputs: dict[int, asyncio.Future[_MapItemContext]] = {}  # Map input idx -> context
     completed_outputs: set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
 
@@ -304,7 +305,7 @@ async def _map_invocation(
                         delay_ms = item_context.retry_manager.get_delay_ms()
 
                         if delay_ms is not None:
-                            await retry_queue.put(item.idx, now_seconds + (delay_ms / 1000))
+                            await retry_queue.put(now_seconds + (delay_ms / 1000), item.idx)
                             continue
                         else:
                             # we're out of retries, so we'll just output the error
@@ -563,33 +564,3 @@ def _starmap_sync(
             "Use Function.map.aio()/Function.for_each.aio() instead."
         ),
     )
-
-
-class _TimestampPriorityQueue:
-    """
-    A priority queue that returns the oldest item that has a timestamp before the current time.
-    """
-
-    _MAX_PRIORITY = float("inf")
-
-    def __init__(self):
-        self._queue = asyncio.PriorityQueue()
-
-    async def close(self):
-        await self._queue.put((self._MAX_PRIORITY, None))
-
-    async def put(self, idx: int, timestamp_seconds: int) -> None:
-        await self._queue.put((timestamp_seconds, idx))
-
-    async def get(self) -> Union[int, None]:
-        while True:
-            (timestamp_seconds, idx) = await self._queue.get()
-            if timestamp_seconds < int(time.time()):
-                return idx
-            if timestamp_seconds == self._MAX_PRIORITY:
-                return None
-            await self._queue.put((timestamp_seconds, idx))
-            await asyncio.sleep(1)
-
-    def empty(self) -> bool:
-        return self._queue.empty()
