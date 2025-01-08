@@ -283,10 +283,8 @@ class TimestampPriorityQueue(Generic[T]):
         """
         Add an item to the queue to be processed at a specific timestamp.
         """
-        print(f"QUEUE PUT putting {timestamp} {item}")
         await self._queue.put((timestamp, item))
         async with self.condition:
-            print("QUEUE PUT notifying")
             self.condition.notify_all()  # notify any waiting coroutines
 
     async def get(self) -> Union[T, None]:
