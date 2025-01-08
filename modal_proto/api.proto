@@ -298,6 +298,7 @@ message AppDeploymentHistory {
   string client_version = 3;
   double deployed_at = 4;
   string deployed_by = 5;
+  string deployed_by_avatar_url = 9;
   string tag = 6;
   uint32 rollback_version = 7;
   bool rollback_allowed = 8;
@@ -1730,6 +1731,15 @@ message ImageContextFile {
   bytes data = 2;
 }
 
+message ImageFromIdRequest {
+  string image_id = 1;
+}
+
+message ImageFromIdResponse {
+  string image_id = 1;
+  ImageMetadata metadata = 2;
+} 
+
 message ImageGetOrCreateRequest {
   Image image = 2;
   string app_id = 4 [ (modal.options.audit_target_attr) = true ];
@@ -2797,6 +2807,7 @@ service ModalClient {
   rpc FunctionUpdateSchedulingParams(FunctionUpdateSchedulingParamsRequest) returns (FunctionUpdateSchedulingParamsResponse);
 
   // Images
+  rpc ImageFromId(ImageFromIdRequest) returns (ImageFromIdResponse);
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
   rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
 

@@ -154,6 +154,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.done = False
         self.rate_limit_sleep_duration = None
         self.fail_get_inputs = False
+        self.failure_status = api_pb2.GenericResult.GENERIC_STATUS_FAILURE
         self.slow_put_inputs = False
         self.container_inputs = []
         self.container_outputs = []
@@ -1118,7 +1119,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             except Exception as exc:
                 serialized_exc = cloudpickle.dumps(exc)
                 result = api_pb2.GenericResult(
-                    status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
+                    status=self.failure_status,
                     data=serialized_exc,
                     exception=repr(exc),
                     traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
