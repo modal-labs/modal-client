@@ -3,7 +3,9 @@
 import asyncio
 import base64
 import dataclasses
+import gc
 import json
+import logging
 import os
 import pathlib
 import pickle
@@ -415,8 +417,20 @@ def _unwrap_asgi(ret: ContainerResult):
     return values
 
 
+def _get_web_inputs(path="/", method_name=""):
+    scope = {
+        "method": "GET",
+        "type": "http",
+        "path": path,
+        "headers": {},
+        "query_string": b"arg=space",
+        "http_version": "2",
+    }
+    return _get_inputs(((scope,), {}), method_name=method_name)
+
+
 @skip_github_non_linux
-def test_success(servicer, event_loop):
+def test_success(servicer):
     t0 = time.time()
     ret = _run_container(servicer, "test.supports.functions", "square")
     assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
@@ -537,18 +551,6 @@ def test_from_local_python_packages_inside_container(servicer):
     all the containers."""
     ret = _run_container(servicer, "test.supports.package_mount", "num_mounts")
     assert _unwrap_scalar(ret) == 0
-
-
-def _get_web_inputs(path="/", method_name=""):
-    scope = {
-        "method": "GET",
-        "type": "http",
-        "path": path,
-        "headers": {},
-        "query_string": b"arg=space",
-        "http_version": "2",
-    }
-    return _get_inputs(((scope,), {}), method_name=method_name)
 
 
 # needs to be synchronized so the asyncio.Queue gets used from the same event loop as the servicer
@@ -767,7 +769,32 @@ def test_cls_web_asgi_with_lifespan(servicer):
 
     from test.supports import functions
 
-    assert ["enter1", "enter2", "foo1", "exit1", "exit2", "exit"] == functions.lifespan_global_asgi_app_cls
+    assert functions.lifespan_global_asgi_app_cls == ["enter1", "enter2", "foo1", "exit1", "exit2", "exit"]
+
+
+@skip_github_non_linux
+@pytest.mark.filterwarnings("error")
+def test_app_with_slow_lifespan_wind_down(servicer, caplog):
+    inputs = _get_web_inputs()
+    with caplog.at_level(logging.WARNING):
+        ret = _run_container(
+            servicer,
+            "test.supports.functions",
+            "asgi_app_with_slow_lifespan_wind_down",
+            inputs=inputs,
+            webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+        )
+        asyncio.get_event_loop()
+        # There should be one message for the header, and one for the body
+        first_message, second_message = _unwrap_asgi(ret)
+        # Check the headers
+        assert first_message["status"] == 200
+        # Check body
+        assert json.loads(second_message["body"]) == {"some_result": "foo"}
+        gc.collect()  # trigger potential "Task was destroyed but it is pending"
+
+    for m in caplog.messages:
+        assert "Task was destroyed" not in m
 
 
 @skip_github_non_linux

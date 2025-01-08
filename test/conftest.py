@@ -1859,6 +1859,11 @@ def blob_server():
 
         loop.run_until_complete(async_main())
 
+        # clean up event loop
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.run_until_complete(loop.shutdown_default_executor())
+        loop.close()
+
     # run server on separate thread to not lock up the server event loop in case of blocking calls in tests
     thread = threading.Thread(target=run_server_other_thread)
     thread.start()
