@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.71.11 (2025-01-08)
+
+- Modal Volumes can now be renamed via the CLI (`modal volume rename`) or SDK (`modal.Volume.rename`).
+
+
+
 ### 0.71.7 (2025-01-08)
 
 - Adds `Image.from_id`, which returns an `Image` object from an existing image id.
