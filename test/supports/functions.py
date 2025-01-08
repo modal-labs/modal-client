@@ -171,12 +171,17 @@ def blocking_web_server():
         httpd.shutdown()
 
 
-@app.function()
-@web_server(8765, startup_timeout=10)
-def non_blocking_web_server():
-    import subprocess
+@app.cls()
+class NonBlockingWebServer:
+    @web_server(8765, startup_timeout=10)
+    def server(self):
+        import subprocess
 
-    subprocess.Popen(["python", "-m", "http.server", "-b", "0.0.0.0", "8765"])
+        self.subprocess = subprocess.Popen(["python", "-m", "http.server", "-b", "0.0.0.0", "8765"])
+
+    @exit()
+    def exit(self):
+        self.subprocess.kill()
 
 
 lifespan_global_asgi_app_func: list[str] = []

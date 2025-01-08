@@ -725,16 +725,17 @@ def test_non_blocking_web_server(servicer, monkeypatch):
     get_ip_address.return_value = "127.0.0.1"
     monkeypatch.setattr(asgi, "get_ip_address", get_ip_address)
 
-    inputs = _get_web_inputs(path="/")
+    inputs = _get_web_inputs(method_name="server")
     _put_web_body(servicer, b"")
     ret = _run_container(
         servicer,
         "test.supports.functions",
-        "non_blocking_web_server",
+        "NonBlockingWebServer.*",
         inputs=inputs,
         webhook_type=api_pb2.WEBHOOK_TYPE_WEB_SERVER,
         web_server_port=8765,
         web_server_startup_timeout=1,
+        is_class=True,
     )
     first_message, second_message, _ = _unwrap_asgi(ret)
 
