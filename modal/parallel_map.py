@@ -221,7 +221,7 @@ async def _map_invocation(
         async for retriable_input_ids in queue_batch_iterator(retry_queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
             inputs = []
             for retriable_input_id in retriable_input_ids:
-                item_context = pending_outputs[retriable_input_id]
+                item_context = await pending_outputs[retriable_input_id]
                 inputs.append(
                     api_pb2.FunctionRetryInputsItem(
                         input_jwt=item_context.input_jwt,
@@ -255,6 +255,7 @@ async def _map_invocation(
                     )
 
             logger.debug(f"Successfully pushed retry for {inputs} to server. ")
+        yield
 
     async def get_all_outputs():
         assert client.stub
@@ -303,7 +304,7 @@ async def _map_invocation(
                         delay_ms = item_context.retry_manager.get_delay_ms()
 
                         if delay_ms is not None:
-                            retry_queue.put(item.idx, now_seconds + (delay_ms / 1000))
+                            await retry_queue.put(item.idx, now_seconds + (delay_ms / 1000))
                             continue
                         else:
                             # we're out of retries, so we'll just output the error
@@ -334,6 +335,7 @@ async def _map_invocation(
 
             # close the input queue iterator
             await input_queue.put(None)
+            await retry_queue.close()
 
     async def fetch_output(item: api_pb2.FunctionGetOutputsItem) -> tuple[int, Any]:
         try:
@@ -568,19 +570,26 @@ class _TimestampPriorityQueue:
     A priority queue that returns the oldest item that has a timestamp before the current time.
     """
 
+    _MAX_PRIORITY = float("inf")
+
     def __init__(self):
         self._queue = asyncio.PriorityQueue()
+
+    async def close(self):
+        await self._queue.put((self._MAX_PRIORITY, None))
 
     async def put(self, idx: int, timestamp_seconds: int) -> None:
         await self._queue.put((timestamp_seconds, idx))
 
-    async def get(self) -> int:
+    async def get(self) -> int | None:
         while True:
             (timestamp_seconds, idx) = await self._queue.get()
             if timestamp_seconds < int(time.time()):
                 return idx
-            self._queue.put((timestamp_seconds, idx))
-            asyncio.sleep(1)
+            if timestamp_seconds == self._MAX_PRIORITY:
+                return None
+            await self._queue.put((timestamp_seconds, idx))
+            await asyncio.sleep(1)
 
     def empty(self) -> bool:
         return self._queue.empty()
