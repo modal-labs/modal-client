@@ -4,8 +4,8 @@ import typing
 
 import modal
 from modal.client import Client
-from modal.exception import ExecutionError
-from modal.runner import run_app
+from modal.exception import AuthError
+from modal.runner import deploy_app, run_app
 from modal_proto import api_pb2
 
 T = typing.TypeVar("T")
@@ -25,7 +25,7 @@ def test_run_app(servicer, client):
 def test_run_app_unauthenticated(servicer):
     dummy_app = modal.App()
     with Client.anonymous(servicer.client_addr) as client:
-        with pytest.raises(ExecutionError, match=".+unauthenticated client"):
+        with pytest.raises(AuthError):
             with run_app(dummy_app, client=client):
                 pass
 
@@ -83,3 +83,9 @@ def test_run_app_custom_env_with_refs(servicer, client, monkeypatch):
 
     secret_get_or_create_2 = ctx.pop_request("SecretGetOrCreate")
     assert secret_get_or_create_2.environment_name == "third"
+
+
+def test_deploy_without_rich(servicer, client, no_rich):
+    app = modal.App("dummy-app")
+    app.function()(dummy)
+    deploy_app(app, client=client)

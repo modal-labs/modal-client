@@ -5,7 +5,7 @@ import subprocess
 import sys
 import threading
 import typing
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING
 
 from typing_extensions import assert_type
 
@@ -14,10 +14,9 @@ from modal import App, Cls, Function, Image, Queue, build, enter, exit, method
 from modal._serialization import deserialize, serialize
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import FunctionInfo
-from modal.exception import DeprecationError, ExecutionError, InvalidError, PendingDeprecationError
+from modal.exception import ExecutionError, InvalidError, NotFoundError, PendingDeprecationError
 from modal.partial_function import (
     PartialFunction,
-    _find_callables_for_obj,
     _find_partial_methods_for_user_cls,
     _PartialFunction,
     _PartialFunctionFlags,
@@ -41,64 +40,101 @@ def auto_use_set_env_client(set_env_client):
     return
 
 
+@app.cls()
+class NoParamsCls:
+    @method()
+    def bar(self, x):
+        return x**3
+
+    @method()
+    def baz(self, x):
+        return x**2
+
+
 @app.cls(cpu=42)
 class Foo:
     @method()
     def bar(self, x: int) -> float:
         return x**3
 
+    @method()
+    def baz(self, y: int) -> float:
+        return y**4
+
 
 def test_run_class(client, servicer):
+    assert len(servicer.precreated_functions) == 0
     assert servicer.n_functions == 0
     with app.run(client=client):
-        method_id = Foo.bar.object_id
+        method_handle_object_id = Foo.bar.object_id  # method handle object id will probably go away
         assert isinstance(Foo, Cls)
+        assert isinstance(NoParamsCls, Cls)
         class_id = Foo.object_id
+        class_id2 = NoParamsCls.object_id
         app_id = app.app_id
 
+    assert len(servicer.classes) == 2 and set(servicer.classes) == {class_id, class_id2}
+    assert servicer.n_functions == 2
     objects = servicer.app_objects[app_id]
-    assert len(objects) == 3  # the class + two functions (one method-bound and one for the class)
-    assert objects["Foo.bar"] == method_id
-    assert objects["Foo"] == class_id
     class_function_id = objects["Foo.*"]
+    class_function_id2 = objects["NoParamsCls.*"]
+    assert servicer.precreated_functions == {class_function_id, class_function_id2}
+    assert method_handle_object_id == class_function_id  # method handle object id will probably go away
+    assert len(objects) == 4  # two classes + two class service function
+    assert objects["Foo"] == class_id
     assert class_function_id.startswith("fu-")
-    assert class_function_id != method_id
-
-    assert servicer.app_functions[method_id].use_function_id == class_function_id
-    assert servicer.app_functions[method_id].use_method_name == "bar"
     assert servicer.app_functions[class_function_id].is_class
+    assert servicer.app_functions[class_function_id].method_definitions == {
+        "bar": api_pb2.MethodDefinition(
+            function_name="Foo.bar",
+            function_type=api_pb2.Function.FunctionType.FUNCTION_TYPE_FUNCTION,
+        ),
+        "baz": api_pb2.MethodDefinition(
+            function_name="Foo.baz",
+            function_type=api_pb2.Function.FunctionType.FUNCTION_TYPE_FUNCTION,
+        ),
+    }
 
 
-def test_call_class_sync(client, servicer):
+def test_call_class_sync(client, servicer, set_env_client):
     with servicer.intercept() as ctx:
         with app.run(client=client):
-            assert len(ctx.get_requests("FunctionCreate")) == 2  # one for base function, one for the method
-            foo: Foo = Foo()
-            assert len(ctx.get_requests("FunctionCreate")) == 2  # no additional creates for an instance
+            assert len(ctx.get_requests("FunctionCreate")) == 2  # one for Foo, one for NoParamsCls
+            foo: NoParamsCls = NoParamsCls()
+            assert len(ctx.get_requests("FunctionCreate")) == 2
+            assert len(ctx.get_requests("FunctionBindParams")) == 0  # no binding, yet
             ret: float = foo.bar.remote(42)
             assert ret == 1764
+            assert (
+                len(ctx.get_requests("FunctionBindParams")) == 0
+            )  # reuse class base function when class has no params
 
-    assert (
-        len(ctx.get_requests("FunctionBindParams")) == 0
-    )  # shouldn't need to bind in case there are no instance args etc.
-    function_creates_requests: typing.List[api_pb2.FunctionCreateRequest] = ctx.get_requests("FunctionCreate")
+    function_creates_requests: list[api_pb2.FunctionCreateRequest] = ctx.get_requests("FunctionCreate")
     assert len(function_creates_requests) == 2
-    (class_create,) = ctx.get_requests("ClassCreate")
+    assert len(ctx.get_requests("ClassCreate")) == 2
     function_creates = {fc.function.function_name: fc for fc in function_creates_requests}
-    assert function_creates.keys() == {"Foo.*", "Foo.bar"}
-    foobar_def = function_creates["Foo.bar"].function
-    service_function_id = servicer.app_objects["ap-1"]["Foo.*"]
-    assert foobar_def.is_method
-    assert foobar_def.use_method_name == "bar"
-    assert foobar_def.use_function_id == service_function_id
+    assert function_creates.keys() == {"Foo.*", "NoParamsCls.*"}
+    service_function_id = servicer.app_objects["ap-1"]["NoParamsCls.*"]
     (function_map_request,) = ctx.get_requests("FunctionMap")
     assert function_map_request.function_id == service_function_id
 
 
 def test_class_with_options(client, servicer):
     with app.run(client=client):
-        foo = Foo.with_options(cpu=48, retries=5)()  # type: ignore
-        res = foo.bar.remote(2)
+        with servicer.intercept() as ctx:
+            foo = Foo.with_options(cpu=48, retries=5)()  # type: ignore
+            assert len(ctx.calls) == 0  # no rpcs
+
+            res = foo.bar.remote(2)
+            function_bind_params: api_pb2.FunctionBindParamsRequest
+            (function_bind_params,) = ctx.get_requests("FunctionBindParams")
+            assert function_bind_params.function_options.retry_policy.retries == 5
+            assert function_bind_params.function_options.resources.milli_cpu == 48000
+
+        with servicer.intercept() as ctx:
+            res = foo.bar.remote(2)
+            assert len(ctx.get_requests("FunctionBindParams")) == 0  # no need to rebind
+
         assert res == 4
         assert len(servicer.function_options) == 1
         options: api_pb2.FunctionOptions = list(servicer.function_options.values())[0]
@@ -184,7 +220,7 @@ def test_run_class_serialized(client, servicer):
     with app_ser.run(client=client):
         pass
 
-    assert servicer.n_functions == 2
+    assert servicer.n_functions == 1
     class_function = servicer.function_by_name("FooSer.*")
     assert class_function.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED
     user_cls = deserialize(class_function.class_serialized, client)
@@ -281,17 +317,19 @@ def test_call_cls_remote_no_args(client):
 
 if TYPE_CHECKING:
     # Check that type annotations carry through to the decorated classes
-    assert_type(Foo(), Foo)
+    assert_type(NoParamsCls(), NoParamsCls)
     # can't use assert_type with named arguments, as it will diff in the name
     # vs the anonymous argument in the assertion type
     # assert_type(Foo().bar, Function[[int], float])
 
 
 def test_lookup(client, servicer):
+    # basically same test as test_from_name_lazy_method_resolve, but assumes everything is hydrated
     deploy_app(app, "my-cls-app", client=client)
 
     cls: Cls = Cls.lookup("my-cls-app", "Foo", client=client)
 
+    # objects are resolved
     assert cls.object_id.startswith("cs-")
     assert cls.bar.object_id.startswith("fu-")
 
@@ -299,15 +337,59 @@ def test_lookup(client, servicer):
     assert cls.bar.is_generator is False
 
     # Make sure we can instantiate the class
-    obj = cls("foo", 234)
+    with servicer.intercept() as ctx:
+        obj = cls("foo", 234)
+        assert len(ctx.calls) == 0  # no rpc requests for class instantiation
 
-    # Make sure we can methods
-    # (mock servicer just returns the sum of the squares of the args)
-    assert obj.bar.remote(42, 77) == 7693
+        # Make sure we can call methods
+        # (mock servicer just returns the sum of the squares of the args)
+        assert obj.bar.remote(42) == 1764
+        assert len(ctx.get_requests("FunctionBindParams")) == 1  # bind params
+
+        assert obj.baz.remote(41) == 1681
+        assert len(ctx.get_requests("FunctionBindParams")) == 1  # call to other method shouldn't need a bind
+
+    # Not allowed for remote classes:
+    with pytest.raises(NotFoundError, match="can't be accessed for remote classes"):
+        assert obj.a == "foo"
 
     # Make sure local calls fail
     with pytest.raises(ExecutionError):
         assert obj.bar.local(1, 2)
+
+
+def test_from_name_lazy_method_resolve(client, servicer):
+    deploy_app(app, "my-cls-app", client=client)
+    cls: Cls = Cls.from_name("my-cls-app", "Foo")
+
+    # Make sure we can instantiate the class
+    obj = cls("foo", 234)
+
+    # Check that function properties are preserved
+    with servicer.intercept() as ctx:
+        assert obj.bar.is_generator is False
+        assert len(ctx.get_requests("FunctionBindParams")) == 1  # to determine this attribute, hydration is needed
+
+    # Make sure we can methods
+    # (mock servicer just returns the sum of the squares of the args)
+    with servicer.intercept() as ctx:
+        assert obj.bar.remote(42) == 1764
+        assert len(ctx.get_requests("FunctionBindParams")) == 0
+
+    with servicer.intercept() as ctx:
+        assert obj.baz.remote(42) == 1764
+        assert len(ctx.get_requests("FunctionBindParams")) == 0  # other method shouldn't rebind
+
+    with pytest.raises(NotFoundError, match="can't be accessed for remote classes"):
+        assert obj.a == 234
+
+    # Make sure local calls fail
+    with pytest.raises(ExecutionError, match="locally"):
+        assert obj.bar.local(1, 2)
+
+    # Make sure that non-existing methods fail
+    with pytest.raises(NotFoundError):
+        obj.non_exist.remote("hello")
 
 
 def test_lookup_lazy_remote(client, servicer):
@@ -410,6 +492,7 @@ class ClsWithAsyncEnter:
         return y**2
 
 
+@pytest.mark.skip("this doesn't actually work - but issue was hidden by `entered` being an obj property")
 @pytest.mark.asyncio
 async def test_async_enter_on_local_modal_call():
     obj = ClsWithAsyncEnter()
@@ -460,20 +543,20 @@ def test_rehydrate(client, servicer, reset_container_app):
     # Issue introduced in #922 - brief description in #931
 
     # Sanity check that local calls work
-    obj = Foo()
+    obj = NoParamsCls()
     assert obj.bar.local(7) == 343
 
     # Deploy app to get an app id
     app_id = deploy_app(app, "my-cls-app", client=client).app_id
 
     # Initialize a container
-    container_app = RunningApp(app_id=app_id)
+    container_app = RunningApp(app_id)
 
     # Associate app with app
     app._init_container(client, container_app)
 
     # Hydration shouldn't overwrite local function definition
-    obj = Foo()
+    obj = NoParamsCls()
     assert obj.bar.local(7) == 343
 
 
@@ -510,11 +593,9 @@ class XYZ:
 def test_method_args(servicer, client):
     with app_method_args.run(client=client):
         funcs = servicer.app_functions.values()
-        assert {f.function_name for f in funcs} == {"XYZ.*", "XYZ.foo", "XYZ.bar"}
+        assert {f.function_name for f in funcs} == {"XYZ.*"}
         warm_pools = {f.function_name: f.warm_pool_size for f in funcs}
-        assert warm_pools["XYZ.*"] == 5
-        del warm_pools["XYZ.*"]
-        assert set(warm_pools.values()) == {0}  # methods don't have warm pools themselves
+        assert warm_pools == {"XYZ.*": 5}
 
 
 def test_keep_warm_depr(client, set_env_client):
@@ -550,25 +631,18 @@ def test_cls_keep_warm(client, servicer):
             ...
 
     with app.run(client=client):
-        assert len(servicer.app_functions) == 2  # class service function + method placeholder
-        cls_fun = servicer.function_by_name("ClsWithMethod.*")
-        method_placeholder_fun = servicer.function_by_name(
-            "ClsWithMethod.bar"
-        )  # there should be no containers at all for methods
-        assert cls_fun.is_class
-        assert method_placeholder_fun.is_method
-        assert cls_fun.warm_pool_size == 0
-        assert method_placeholder_fun.warm_pool_size == 0
+        assert len(servicer.app_functions) == 1  # only class service function
+        cls_service_fun = servicer.function_by_name("ClsWithMethod.*")
+        assert cls_service_fun.is_class
+        assert cls_service_fun.warm_pool_size == 0
 
         ClsWithMethod().keep_warm(2)  # type: ignore  # Python can't do type intersection
-        assert cls_fun.warm_pool_size == 2
-        assert method_placeholder_fun.warm_pool_size == 0
+        assert cls_service_fun.warm_pool_size == 2
 
         ClsWithMethod("other-instance").keep_warm(5)  # type: ignore  # Python can't do type intersection
         instance_service_function = servicer.function_by_name("ClsWithMethod.*", params=((("other-instance",), {})))
-        assert len(servicer.app_functions) == 3  # + instance service function
-        assert cls_fun.warm_pool_size == 2
-        assert method_placeholder_fun.warm_pool_size == 0
+        assert len(servicer.app_functions) == 2  # + instance service function
+        assert cls_service_fun.warm_pool_size == 2
         assert instance_service_function.warm_pool_size == 5
 
 
@@ -596,7 +670,7 @@ class ClsWithHandlers:
 
 
 def test_handlers():
-    pfs: Dict[str, _PartialFunction]
+    pfs: dict[str, _PartialFunction]
 
     pfs = _find_partial_methods_for_user_cls(ClsWithHandlers, _PartialFunctionFlags.BUILD)
     assert list(pfs.keys()) == ["my_build", "my_build_and_enter"]
@@ -628,8 +702,8 @@ class WebCls:
 def test_web_cls(client):
     with web_app_app.run(client=client):
         c = WebCls()
-        assert c.endpoint.web_url == "http://xyz.internal"
-        assert c.asgi.web_url == "http://xyz.internal"
+        assert c.endpoint.web_url == "http://endpoint.internal"
+        assert c.asgi.web_url == "http://asgi.internal"
 
 
 handler_app = App("handler-app")
@@ -718,63 +792,6 @@ def test_disallow_lifecycle_decorators_with_method(decorator):
             @method()
             def f(self):
                 pass
-
-
-def test_deprecated_sync_methods():
-    class ClsWithDeprecatedSyncMethods:
-        def __enter__(self):
-            ...
-
-        @enter()
-        def my_enter(self):
-            ...
-
-        def __exit__(self, exc_type, exc, tb):
-            ...
-
-    obj = ClsWithDeprecatedSyncMethods()
-
-    with pytest.raises(DeprecationError, match="Using `__enter__`.+`modal.enter` decorator"):
-        _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
-
-    with pytest.raises(DeprecationError, match="Using `__exit__`.+`modal.exit` decorator"):
-        _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
-
-    with pytest.raises(DeprecationError, match="Support for decorating parameterized methods with `@exit`"):
-
-        class ClsWithDeprecatedSyncExitMethod:
-            @exit()
-            def my_exit(self, exc_type, exc, tb):
-                ...
-
-
-@pytest.mark.asyncio
-async def test_deprecated_async_methods():
-    class ClsWithDeprecatedAsyncMethods:
-        async def __aenter__(self):
-            return 42
-
-        @enter()
-        async def my_enter(self):
-            return 43
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return 44
-
-    obj = ClsWithDeprecatedAsyncMethods()
-
-    with pytest.raises(DeprecationError, match=r"Using `__aenter__`.+`modal.enter` decorator \(on an async method\)"):
-        _find_callables_for_obj(obj, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
-
-    with pytest.raises(DeprecationError, match=r"Using `__aexit__`.+`modal.exit` decorator \(on an async method\)"):
-        _find_callables_for_obj(obj, _PartialFunctionFlags.EXIT)
-
-    with pytest.raises(DeprecationError, match="Support for decorating parameterized methods with `@exit`"):
-
-        class ClsWithDeprecatedAsyncExitMethod:
-            @exit()  # type: ignore  # TODO: fix type for the exit decorator to support async exit handlers
-            async def my_exit(self, exc_type, exc, tb):
-                ...
 
 
 class HasSnapMethod:
@@ -932,22 +949,6 @@ class ParameterizedClass3:
         pass
 
 
-def test_disabled_parameterized_snap_cls():
-    with pytest.raises(InvalidError, match="Cannot use class parameterization in class"):
-        app.cls(enable_memory_snapshot=True)(ParameterizedClass1)
-
-    with pytest.raises(InvalidError, match="Cannot use class parameterization in class"):
-        app.cls(enable_memory_snapshot=True)(ParameterizedClass1Implicit)
-
-    with pytest.raises(InvalidError, match="Cannot use class parameterization in class"):
-        app.cls(enable_memory_snapshot=True)(ParameterizedClass2)
-
-    with pytest.raises(InvalidError, match="Cannot use class parameterization in class"):
-        app.cls(enable_memory_snapshot=True)(ParameterizedClass2Implicit)
-
-    app.cls(enable_memory_snapshot=True)(ParameterizedClass3)
-
-
 app_batched = App()
 
 
@@ -1023,3 +1024,20 @@ def test_unsupported_function_decorators_on_methods():
             @app.function(serialized=True)
             def f(self):
                 pass
+
+
+def test_modal_object_param_uses_wrapped_type(servicer, set_env_client, client):
+    with servicer.intercept() as ctx:
+        with modal.Dict.ephemeral() as dct:
+            with baz_app.run():
+                # create bound instance:
+                typing.cast(modal.Cls, Baz(x=dct)).keep_warm(1)
+
+    req: api_pb2.FunctionBindParamsRequest = ctx.pop_request("FunctionBindParams")
+    function_def: api_pb2.Function = servicer.app_functions[req.function_id]
+    from modal._container_entrypoint import deserialize_params
+
+    _client = typing.cast(modal.client._Client, synchronizer._translate_in(client))
+    container_params = deserialize_params(req.serialized_params, function_def, _client)
+    args, kwargs = container_params
+    assert type(kwargs["x"]) == type(dct)

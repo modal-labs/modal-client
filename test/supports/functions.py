@@ -2,7 +2,6 @@
 import asyncio
 import contextlib
 import time
-from typing import List, Tuple
 
 from modal import (
     App,
@@ -19,7 +18,7 @@ from modal import (
     web_endpoint,
     wsgi_app,
 )
-from modal.exception import deprecation_warning
+from modal._utils.deprecation import deprecation_warning
 from modal.experimental import get_local_input_concurrency, set_local_input_concurrency
 
 SLEEP_DELAY = 0.1
@@ -28,7 +27,7 @@ app = App()
 
 
 @app.function()
-def square(x):
+def square(x: int):
     return x * x
 
 
@@ -47,6 +46,14 @@ def delay(t):
 async def delay_async(t):
     await asyncio.sleep(t)
     return t
+
+
+@app.function()
+async def async_cancel_doesnt_reraise(t):
+    try:
+        await asyncio.sleep(t)
+    except asyncio.CancelledError:
+        pass
 
 
 @app.function()
@@ -151,7 +158,7 @@ def fastapi_app():
     return web_app
 
 
-lifespan_global_asgi_app_func: List[str] = []
+lifespan_global_asgi_app_func: list[str] = []
 
 
 @app.function()
@@ -221,7 +228,7 @@ def fastapi_app_with_lifespan_failing_shutdown():
     return web_app
 
 
-lifespan_global_asgi_app_cls: List[str] = []
+lifespan_global_asgi_app_cls: list[str] = []
 
 
 @app.cls(container_idle_timeout=300, concurrency_limit=1, allow_concurrent_inputs=100)
@@ -272,7 +279,7 @@ class fastapi_class_multiple_asgi_apps_lifespans:
         lifespan_global_asgi_app_cls.append("exit")
 
 
-lifespan_global_asgi_app_cls_fail: List[str] = []
+lifespan_global_asgi_app_cls_fail: list[str] = []
 
 
 @app.cls(container_idle_timeout=300, concurrency_limit=1, allow_concurrent_inputs=100)
@@ -407,7 +414,7 @@ class LifecycleCls:
         sync_exit_duration=0,
         async_exit_duration=0,
     ):
-        self.events: List[str] = []
+        self.events: list[str] = []
         self.sync_enter_duration = sync_enter_duration
         self.async_enter_duration = async_enter_duration
         self.sync_exit_duration = sync_exit_duration
@@ -513,7 +520,7 @@ async def sleep_700_async(x):
 
 @app.function()
 @batched(max_batch_size=4, wait_ms=500)
-def batch_function_sync(x: Tuple[int], y: Tuple[int]):
+def batch_function_sync(x: tuple[int], y: tuple[int]):
     outputs = []
     for x_i, y_i in zip(x, y):
         outputs.append(x_i / y_i)
@@ -522,19 +529,19 @@ def batch_function_sync(x: Tuple[int], y: Tuple[int]):
 
 @app.function()
 @batched(max_batch_size=4, wait_ms=500)
-def batch_function_outputs_not_list(x: Tuple[int], y: Tuple[int]):
+def batch_function_outputs_not_list(x: tuple[int], y: tuple[int]):
     return str(x)
 
 
 @app.function()
 @batched(max_batch_size=4, wait_ms=500)
-def batch_function_outputs_wrong_len(x: Tuple[int], y: Tuple[int]):
+def batch_function_outputs_wrong_len(x: tuple[int], y: tuple[int]):
     return list(x) + [0]
 
 
 @app.function()
 @batched(max_batch_size=4, wait_ms=500)
-async def batch_function_async(x: Tuple[int], y: Tuple[int]):
+async def batch_function_async(x: tuple[int], y: tuple[int]):
     outputs = []
     for x_i, y_i in zip(x, y):
         outputs.append(x_i / y_i)
@@ -671,3 +678,9 @@ def set_input_concurrency(start: float):
     set_local_input_concurrency(3)
     time.sleep(1)
     return time.time() - start
+
+
+@app.function()
+def check_container_app():
+    # The container app should be associated with the app object
+    assert App._get_container_app() == app

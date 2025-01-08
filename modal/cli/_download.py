@@ -3,8 +3,9 @@ import asyncio
 import os
 import shutil
 import sys
+from collections.abc import AsyncIterator
 from pathlib import Path, PurePosixPath
-from typing import AsyncIterator, Callable, Optional, Tuple, Union
+from typing import Callable, Optional, Union
 
 from click import UsageError
 
@@ -25,7 +26,7 @@ async def _volume_download(
 ):
     is_pipe = local_destination == PIPE_PATH
 
-    q: asyncio.Queue[Tuple[Optional[Path], Optional[FileEntry]]] = asyncio.Queue()
+    q: asyncio.Queue[tuple[Optional[Path], Optional[FileEntry]]] = asyncio.Queue()
     num_consumers = 1 if is_pipe else 10  # concurrency limit for downloading files
 
     async def producer():

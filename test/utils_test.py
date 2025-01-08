@@ -4,7 +4,7 @@ import hashlib
 import io
 import pytest
 
-from modal._utils.blob_utils import BytesIOSegmentPayload
+from modal._utils.bytes_io_segment_payload import BytesIOSegmentPayload
 from modal._utils.name_utils import (
     check_object_name,
     is_valid_environment_name,
@@ -118,7 +118,7 @@ async def test_file_segment_payloads_concurrency():
 
 
 def test_parse_major_minor_version():
-    assert parse_major_minor_version("3.8") == (3, 8)
+    assert parse_major_minor_version("3.11") == (3, 11)
     assert parse_major_minor_version("3.9.1") == (3, 9)
     assert parse_major_minor_version("3.10.1rc0") == (3, 10)
     with pytest.raises(ValueError, match="at least an 'X.Y' format"):

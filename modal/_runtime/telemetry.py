@@ -7,12 +7,11 @@ import socket
 import sys
 import threading
 import time
-import typing
 import uuid
 from importlib.util import find_spec, module_from_spec
 from struct import pack
 
-from .config import logger
+from modal.config import logger
 
 MODULE_LOAD_START = "module_load_start"
 MODULE_LOAD_END = "module_load_end"
@@ -65,7 +64,7 @@ class InterceptedModuleLoader(importlib.abc.Loader):
 
 
 class ImportInterceptor(importlib.abc.MetaPathFinder):
-    loading: typing.Dict[str, typing.Tuple[str, float]]
+    loading: dict[str, tuple[str, float]]
     tracing_socket: socket.socket
     events: queue.Queue
 
@@ -102,7 +101,7 @@ class ImportInterceptor(importlib.abc.MetaPathFinder):
         self.loading[name] = (span_id, t0)
 
     def load_end(self, name):
-        span_id, t0 = self.loading.pop(name, None)
+        span_id, t0 = self.loading.pop(name, (None, None))
         if t0 is None:
             return
         latency = time.monotonic() - t0

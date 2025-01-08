@@ -80,14 +80,15 @@ import os
 import typing
 import warnings
 from textwrap import dedent
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from google.protobuf.empty_pb2 import Empty
 
 from modal_proto import api_pb2
 
+from ._utils.deprecation import deprecation_error
 from ._utils.logger import configure_logger
-from .exception import InvalidError, deprecation_error
+from .exception import InvalidError
 
 # Locate config file and read it
 
@@ -203,7 +204,6 @@ _SETTINGS = {
     "token_id": _Setting(),
     "token_secret": _Setting(),
     "task_id": _Setting(),
-    "task_secret": _Setting(),
     "serve_timeout": _Setting(transform=float),
     "sync_entrypoint": _Setting(),
     "logs_timeout": _Setting(10, float),
@@ -212,6 +212,7 @@ _SETTINGS = {
     "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),
     "function_runtime_debug": _Setting(False, transform=_to_boolean),  # For internal debugging use.
+    "runtime_perf_record": _Setting(False, transform=_to_boolean),  # For internal debugging use.
     "environment": _Setting(),
     "default_cloud": _Setting(None, transform=lambda x: x if x else None),
     "worker_id": _Setting(),  # For internal debugging use.
@@ -220,8 +221,8 @@ _SETTINGS = {
     "traceback": _Setting(False, transform=_to_boolean),
     "image_builder_version": _Setting(),
     "strict_parameters": _Setting(False, transform=_to_boolean),  # For internal/experimental use
-    "i6pn_enabled": _Setting(False, transform=_to_boolean),  # For internal/experimental use
-    "spawn_extended": _Setting(False, transform=_to_boolean),
+    "snapshot_debug": _Setting(False, transform=_to_boolean),
+    "client_retries": _Setting(False, transform=_to_boolean),  # For internal testing.
 }
 
 
@@ -269,7 +270,7 @@ class Config:
         return repr(self.to_dict())
 
     def to_dict(self):
-        return {key: self.get(key) for key in _SETTINGS.keys()}
+        return {key: self.get(key) for key in sorted(_SETTINGS)}
 
 
 config = Config()
@@ -283,7 +284,7 @@ configure_logger(logger, config["loglevel"], config["log_format"])
 
 
 def _store_user_config(
-    new_settings: Dict[str, Any], profile: Optional[str] = None, active_profile: Optional[str] = None
+    new_settings: dict[str, Any], profile: Optional[str] = None, active_profile: Optional[str] = None
 ):
     """Internal method, used by the CLI to set tokens."""
     if profile is None:

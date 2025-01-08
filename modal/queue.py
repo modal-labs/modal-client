@@ -2,7 +2,8 @@
 import queue  # The system library
 import time
 import warnings
-from typing import Any, AsyncGenerator, AsyncIterator, List, Optional, Type
+from collections.abc import AsyncGenerator, AsyncIterator
+from typing import Any, Optional
 
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
@@ -12,10 +13,11 @@ from modal_proto import api_pb2
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_is_not_consumed
+from ._utils.deprecation import renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
-from .exception import InvalidError, RequestSizeError, deprecation_error
+from .exception import InvalidError, RequestSizeError
 from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
 
@@ -25,6 +27,44 @@ class _Queue(_Object, type_prefix="qu"):
     The queue can contain any object serializable by `cloudpickle`, including Modal objects.
 
     By default, the `Queue` object acts as a single FIFO queue which supports puts and gets (blocking and non-blocking).
+
+    **Usage**
+
+    ```python
+    from modal import Queue
+
+    # Create an ephemeral queue which is anonymous and garbage collected
+    with Queue.ephemeral() as my_queue:
+        # Putting values
+        my_queue.put("some value")
+        my_queue.put(123)
+
+        # Getting values
+        assert my_queue.get() == "some value"
+        assert my_queue.get() == 123
+
+        # Using partitions
+        my_queue.put(0)
+        my_queue.put(1, partition="foo")
+        my_queue.put(2, partition="bar")
+
+        # Default and "foo" partition are ignored by the get operation.
+        assert my_queue.get(partition="bar") == 2
+
+        # Set custom 10s expiration time on "foo" partition.
+        my_queue.put(3, partition="foo", partition_ttl=10)
+
+        # (beta feature) Iterate through items in place (read immutably)
+        my_queue.put(1)
+        assert [v for v in my_queue.iterate()] == [0, 1]
+
+    # You can also create persistent queues that can be used across apps
+    queue = Queue.from_name("my-persisted-queue", create_if_missing=True)
+    queue.put(42)
+    assert queue.get() == 42
+    ```
+
+    For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-queues).
 
     **Queue partitions (beta)**
 
@@ -52,47 +92,7 @@ class _Queue(_Object, type_prefix="qu"):
     A single `Queue` can contain up to 100,000 partitions, each with up to 5,000 items. Each item can be up to 256 KiB.
 
     Partition keys must be non-empty and must not exceed 64 bytes.
-
-    **Usage**
-
-    ```python
-    from modal import Queue
-
-    with Queue.ephemeral() as my_queue:
-        # Putting values
-        my_queue.put("some value")
-        my_queue.put(123)
-
-        # Getting values
-        assert my_queue.get() == "some value"
-        assert my_queue.get() == 123
-
-        # Using partitions
-        my_queue.put(0)
-        my_queue.put(1, partition="foo")
-        my_queue.put(2, partition="bar")
-
-        # Default and "foo" partition are ignored by the get operation.
-        assert my_queue.get(partition="bar") == 2
-
-        # Set custom 10s expiration time on "foo" partition.
-        my_queue.put(3, partition="foo", partition_ttl=10)
-
-        # (beta feature) Iterate through items in place (read immutably)
-        my_queue.put(1)
-        assert [v for v in my_queue.iterate()] == [0, 1]
-    ```
-
-    For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-queues).
     """
-
-    @staticmethod
-    def new():
-        """`Queue.new` is deprecated.
-
-        Please use `Queue.from_name` (for persisted) or `Queue.ephemeral` (for ephemeral) queues.
-        """
-        deprecation_error((2024, 3, 19), Queue.new.__doc__)
 
     def __init__(self):
         """mdmd:hidden"""
@@ -112,7 +112,7 @@ class _Queue(_Object, type_prefix="qu"):
     @classmethod
     @asynccontextmanager
     async def ephemeral(
-        cls: Type["_Queue"],
+        cls: type["_Queue"],
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
@@ -125,7 +125,9 @@ class _Queue(_Object, type_prefix="qu"):
 
         with Queue.ephemeral() as q:
             q.put(123)
+        ```
 
+        ```python notest
         async with Queue.ephemeral() as q:
             await q.put.aio(123)
         ```
@@ -143,28 +145,29 @@ class _Queue(_Object, type_prefix="qu"):
             yield cls._new_hydrated(response.queue_id, client, None, is_another_app=True)
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
-        label: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Queue":
-        """Create a reference to a persisted Queue
+        """Reference a named Queue, creating if necessary.
 
-        **Examples**
+        In contrast to `modal.Queue.lookup`, this is a lazy method
+        the defers hydrating the local object with metadata from
+        Modal servers until the first time it is actually used.
 
         ```python
-        from modal import Queue
-
-        queue = Queue.from_name("my-queue", create_if_missing=True)
-        queue.put(123)
+        q = modal.Queue.from_name("my-queue", create_if_missing=True)
+        q.put(123)
         ```
         """
-        check_object_name(label, "Queue")
+        check_object_name(name, "Queue")
 
         async def _load(self: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.QueueGetOrCreateRequest(
-                deployment_name=label,
+                deployment_name=name,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
@@ -175,29 +178,26 @@ class _Queue(_Object, type_prefix="qu"):
         return _Queue._from_loader(_load, "Queue()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
-    def persisted(label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None):
-        """Deprecated! Use `Queue.from_name(name, create_if_missing=True)`."""
-        deprecation_error((2024, 3, 1), _Queue.persisted.__doc__)
-
-    @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
-        label: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Queue":
-        """Lookup a queue with a given name and tag.
+        """Lookup a named Queue.
+
+        In contrast to `modal.Queue.from_name`, this is an eager method
+        that will hydrate the local object with metadata from Modal servers.
 
         ```python
-        from modal import Queue
-
         q = modal.Queue.lookup("my-queue")
         q.put(123)
         ```
         """
         obj = _Queue.from_name(
-            label, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
+            name, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
         )
         if client is None:
             client = await _Client.from_env()
@@ -206,12 +206,13 @@ class _Queue(_Object, type_prefix="qu"):
         return obj
 
     @staticmethod
-    async def delete(label: str, *, client: Optional[_Client] = None, environment_name: Optional[str] = None):
-        obj = await _Queue.lookup(label, client=client, environment_name=environment_name)
+    @renamed_parameter((2024, 12, 18), "label", "name")
+    async def delete(name: str, *, client: Optional[_Client] = None, environment_name: Optional[str] = None):
+        obj = await _Queue.lookup(name, client=client, environment_name=environment_name)
         req = api_pb2.QueueDeleteRequest(queue_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.QueueDelete, req)
 
-    async def _get_nonblocking(self, partition: Optional[str], n_values: int) -> List[Any]:
+    async def _get_nonblocking(self, partition: Optional[str], n_values: int) -> list[Any]:
         request = api_pb2.QueueGetRequest(
             queue_id=self.object_id,
             partition_key=self.validate_partition_key(partition),
@@ -225,7 +226,7 @@ class _Queue(_Object, type_prefix="qu"):
         else:
             return []
 
-    async def _get_blocking(self, partition: Optional[str], timeout: Optional[float], n_values: int) -> List[Any]:
+    async def _get_blocking(self, partition: Optional[str], timeout: Optional[float], n_values: int) -> list[Any]:
         if timeout is not None:
             deadline = time.time() + timeout
         else:
@@ -295,7 +296,7 @@ class _Queue(_Object, type_prefix="qu"):
     @live_method
     async def get_many(
         self, n_values: int, block: bool = True, timeout: Optional[float] = None, *, partition: Optional[str] = None
-    ) -> List[Any]:
+    ) -> list[Any]:
         """Remove and return up to `n_values` objects from the queue.
 
         If there are fewer than `n_values` items in the queue, return all of them.
@@ -338,7 +339,7 @@ class _Queue(_Object, type_prefix="qu"):
     @live_method
     async def put_many(
         self,
-        vs: List[Any],
+        vs: list[Any],
         block: bool = True,
         timeout: Optional[float] = None,
         *,
@@ -362,7 +363,7 @@ class _Queue(_Object, type_prefix="qu"):
             await self._put_many_nonblocking(partition, partition_ttl, vs)
 
     async def _put_many_blocking(
-        self, partition: Optional[str], partition_ttl: int, vs: List[Any], timeout: Optional[float] = None
+        self, partition: Optional[str], partition_ttl: int, vs: list[Any], timeout: Optional[float] = None
     ):
         vs_encoded = [serialize(v) for v in vs]
 
@@ -379,6 +380,7 @@ class _Queue(_Object, type_prefix="qu"):
                 # A full queue will return this status.
                 additional_status_codes=[Status.RESOURCE_EXHAUSTED],
                 max_delay=30.0,
+                max_retries=None,
                 total_timeout=timeout,
             )
         except GRPCError as exc:
@@ -390,7 +392,7 @@ class _Queue(_Object, type_prefix="qu"):
             else:
                 raise exc
 
-    async def _put_many_nonblocking(self, partition: Optional[str], partition_ttl: int, vs: List[Any]):
+    async def _put_many_nonblocking(self, partition: Optional[str], partition_ttl: int, vs: list[Any]):
         vs_encoded = [serialize(v) for v in vs]
         request = api_pb2.QueuePutRequest(
             queue_id=self.object_id,

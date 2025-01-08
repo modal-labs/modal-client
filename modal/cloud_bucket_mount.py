@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Optional
 from urllib.parse import urlparse
 
 from modal_proto import api_pb2
@@ -116,9 +116,9 @@ class _CloudBucketMount:
     requester_pays: bool = False
 
 
-def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) -> List[api_pb2.CloudBucketMount]:
+def cloud_bucket_mounts_to_proto(mounts: list[tuple[str, _CloudBucketMount]]) -> list[api_pb2.CloudBucketMount]:
     """Helper function to convert `CloudBucketMount` to a list of protobufs that can be passed to the server."""
-    cloud_bucket_mounts: List[api_pb2.CloudBucketMount] = []
+    cloud_bucket_mounts: list[api_pb2.CloudBucketMount] = []
 
     for path, mount in mounts:
         # crude mapping from mount arguments to type.
@@ -129,7 +129,7 @@ def cloud_bucket_mounts_to_proto(mounts: List[Tuple[str, _CloudBucketMount]]) ->
             elif parse_result.hostname.endswith("storage.googleapis.com"):
                 bucket_type = api_pb2.CloudBucketMount.BucketType.GCP
             else:
-                logger.warn(
+                logger.warning(
                     "CloudBucketMount received unrecognized bucket endpoint URL. "
                     "Assuming AWS S3 configuration as fallback."
                 )

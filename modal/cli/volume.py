@@ -2,7 +2,7 @@
 import os
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import typer
 from click import UsageError
@@ -12,14 +12,13 @@ from rich.syntax import Syntax
 from typer import Argument, Option, Typer
 
 import modal
-from modal._output import ProgressHandler, step_completed
+from modal._output import OutputManager, ProgressHandler
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.cli._download import _volume_download
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
-from modal.exception import deprecation_warning
 from modal.volume import _Volume, _VolumeUploadContextManager
 from modal_proto import api_pb2
 
@@ -100,7 +99,7 @@ async def get(
     progress_handler = ProgressHandler(type="download", console=console)
     with progress_handler.live:
         await _volume_download(volume, remote_path, destination, force, progress_cb=progress_handler.progress)
-    console.print(step_completed("Finished downloading files to local!"))
+    console.print(OutputManager.step_completed("Finished downloading files to local!"))
 
 
 @volume_cli.command(
@@ -109,7 +108,7 @@ async def get(
     rich_help_panel="Management",
 )
 @synchronizer.create_blocking
-async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+async def list_(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
     client = await _Client.from_env()
     response = await retry_transient_errors(client.stub.VolumeList, api_pb2.VolumeListRequest(environment_name=env))
@@ -209,7 +208,7 @@ async def put(
                     batch.put_directory(local_path, remote_path)
             except FileExistsError as exc:
                 raise UsageError(str(exc))
-        console.print(step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
+        console.print(OutputManager.step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
     elif "*" in local_path:
         raise UsageError("Glob uploads are currently not supported")
     else:
@@ -222,7 +221,7 @@ async def put(
 
             except FileExistsError as exc:
                 raise UsageError(str(exc))
-        console.print(step_completed(f"Uploaded file '{local_path}' to '{remote_path}'"))
+        console.print(OutputManager.step_completed(f"Uploaded file '{local_path}' to '{remote_path}'"))
 
 
 @volume_cli.command(
@@ -258,7 +257,7 @@ async def rm(
 @synchronizer.create_blocking
 async def cp(
     volume_name: str,
-    paths: List[str],  # accepts multiple paths, last path is treated as destination path
+    paths: list[str],  # accepts multiple paths, last path is treated as destination path
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
@@ -278,17 +277,8 @@ async def cp(
 async def delete(
     volume_name: str = Argument(help="Name of the modal.Volume to be deleted. Case sensitive"),
     yes: bool = YES_OPTION,
-    confirm: bool = Option(default=False, help="DEPRECATED: See `--yes` option"),
     env: Optional[str] = ENV_OPTION,
 ):
-    if confirm:
-        deprecation_warning(
-            (2024, 4, 24),
-            "The `--confirm` option is deprecated; use `--yes` to delete without prompting.",
-            show_source=False,
-        )
-        yes = True
-
     if not yes:
         typer.confirm(
             f"Are you sure you want to irrevocably delete the modal.Volume '{volume_name}'?",
@@ -296,4 +286,4 @@ async def delete(
             abort=True,
         )
 
-    await _Volume.delete(label=volume_name, environment_name=env)
+    await _Volume.delete(volume_name, environment_name=env)

@@ -17,17 +17,77 @@ env:
   PYTHONIOENCODING: utf-8
 
 jobs:
+
+  client-versioning:
+    if: github.ref == 'refs/heads/main'
+    name: Update changelog and client version
+    concurrency: client-versioning
+    runs-on: ubuntu-20.04
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    outputs:
+      client-version: ${{ steps.version.outputs.client_version }}
+
+    steps:
+      - name: Generate token for Github PR Bot
+        id: generate_token
+        uses: tibdex/github-app-token@v1
+        with:
+          app_id: ${{ secrets.GH_PRBOT_APP_ID }}
+          private_key: ${{ secrets.GH_PRBOT_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v3
+        with:
+          token: ${{ steps.generate_token.outputs.token }}
+
+      - uses: ./.github/actions/setup-cached-python
+        with:
+          version: "3.10"
+
+      - name: Bump the version number
+        run: inv update-build-number
+
+      - name: Update the changelog
+        run: inv update-changelog --sha=$GITHUB_SHA
+
+      - name: Get the current client version
+        id: version
+        run: echo "client_version=`python -m modal_version`" >> "$GITHUB_OUTPUT"
+
+      - uses: EndBug/add-and-commit@v9
+        with:
+          add: modal_version/_version_generated.py CHANGELOG.md
+          tag: v${{ steps.version.outputs.client_version }}
+          message: "[auto-commit] [skip ci] Bump the build number"
+          pull: "--rebase --autostash"
+          default_author: github_actions
+
+      - name: Install the client
+        run: |
+          inv protoc
+          pip install .
+
+      - name: Publish client mount
+        env:
+          MODAL_ENVIRONMENT: main
+          MODAL_LOGLEVEL: DEBUG
+          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+        run: python -m modal_global_objects.mounts.modal_client_package
+
+
   client-test:
     name: Unit tests on ${{ matrix.python-version }} and ${{ matrix.os }} (protobuf=${{ matrix.proto-version }})
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     strategy:
+      fail-fast: false # run all variants across python versions/os to completion
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         os: ["ubuntu-20.04"]
         proto-version: ["latest"]
         include:
-          - os: "macos-12" # x86-64
+          - os: "macos-13" # x86-64
             python-version: "3.10"
             proto-version: "latest"
           - os: "macos-14" # ARM64 (M1)
@@ -37,7 +97,7 @@ jobs:
             python-version: "3.10"
             proto-version: "latest"
           - os: "ubuntu-20.04"
-            python-version: "3.8"
+            python-version: "3.9"
             proto-version: "3.19"
 
     runs-on: ${{ matrix.os }}
@@ -62,7 +122,7 @@ jobs:
         run: pytest -v
 
       - name: Run docstring tests
-        if: github.event.pull_request.head.repo.fork != 'true'
+        if: github.event.pull_request.head.repo.fork == false
         env:
           MODAL_ENVIRONMENT: client-doc-tests
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
@@ -70,37 +130,93 @@ jobs:
         run: pytest -v --markdown-docs -m markdown-docs modal
 
   container-dependencies:
-    name: Check minimal container dependencies for ${{ matrix.python-version }}
+    name: Check minimal container dependencies for ${{ matrix.python-version }} / ${{ matrix.image-builder-version }}
     runs-on: ubuntu-20.04
     timeout-minutes: 4
     strategy:
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+        include:
+          - image-builder-version: "2024.04"
+            python-version: "3.9"
+          - image-builder-version: "2024.04"
+            python-version: "3.12"
+          - image-builder-version: "2024.10"
+            python-version: "3.9"
+          - image-builder-version: "2024.10"
+            python-version: "3.13"
+
     steps:
       - uses: actions/checkout@v3
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
       - name: Install dependencies
         run: |
-          pip install -r modal/requirements/2024.04.txt
+          pip install -r modal/requirements/${{ matrix.image-builder-version }}.txt
           pip install synchronicity
 
       - name: Compile protos
         run: |
           python -m venv venv
           source venv/bin/activate
-          pip install grpcio-tools==1.59.2 grpclib==0.4.7
+          if [ "${{ matrix.python-version }}" == "3.9" ]; then
+            pip install grpcio-tools==1.48.2 grpclib==0.4.7;
+          elif [ "${{ matrix.python-version }}" == "3.12" ]; then
+            pip install grpcio-tools==1.59.2 grpclib==0.4.7;
+          elif [ "${{ matrix.python-version }}" == "3.13" ]; then
+            pip install grpcio-tools==1.66.2 grpclib==0.4.7;
+          fi
           python -m grpc_tools.protoc --python_out=. --grpclib_python_out=. --grpc_python_out=. -I . modal_proto/api.proto modal_proto/options.proto
           python -m grpc_tools.protoc --plugin=protoc-gen-modal-grpclib-python=protoc_plugin/plugin.py --modal-grpclib-python_out=. -I . modal_proto/api.proto modal_proto/options.proto
           deactivate
 
       - name: Check entrypoint import
-        run: python -c 'import modal._container_entrypoint; import fastapi'
+        run: |
+          python -c 'import modal._container_entrypoint'
+          if [ "${{ matrix.image-builder-version }}" == "2024.04" ]; then python -c 'import fastapi'; fi
+
+  publish-client:
+    name: Publish client package
+    if: github.ref == 'refs/heads/main'
+    needs: [client-versioning, client-test]
+    runs-on: ubuntu-20.04
+    concurrency: publish-client
+    timeout-minutes: 5
+    steps:
+
+      - uses: actions/checkout@v3
+        with:
+          ref: v${{ needs.client-versioning.outputs.client-version}}
+
+      - uses: ./.github/actions/setup-cached-python
+        with:
+          version: "3.10"
+
+      - name: Build protobuf
+        run: inv protoc
+
+      - name: Install all dependencies
+        run: pip install -e .
+
+      - name: Build type stubs
+        run: inv type-stubs
+
+      - name: Build wheel
+        run: python setup.py bdist_wheel
+
+      - name: Upload to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: twine upload dist/* --non-interactive
 
   publish-base-images:
     name: |
-      Publish base images for ${{ matrix.image-name }} ${{ matrix.image-builder-version }} on ${{ matrix.python-version }}
+      Publish base images for ${{ matrix.image-name }} ${{ matrix.image-builder-version }}
     if: github.ref == 'refs/heads/main'
-    needs: [client-test]
+    needs: [client-versioning, client-test, publish-client]
     runs-on: ubuntu-20.04
     timeout-minutes: 5
     env:
@@ -109,16 +225,17 @@ jobs:
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
     strategy:
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
-        image-builder-version: ["2023.12", "2024.04"]
+        image-builder-version: ["2023.12", "2024.04", "2024.10"]
         image-name: ["debian_slim", "micromamba"]
 
     steps:
       - uses: actions/checkout@v3
+        with:
+          ref: v${{ needs.client-versioning.outputs.client-version}}
 
       - uses: ./.github/actions/setup-cached-python
         with:
-          version: ${{ matrix.python-version }}
+          version: "3.11"
 
       - name: Build protobuf
         run: inv protoc
@@ -134,90 +251,4 @@ jobs:
           MODAL_IMAGE_BUILDER_VERSION: ${{ matrix.image-builder-version }}
           MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT: "1"
         run: |
-          python -m modal_global_objects.images.${{ matrix.image-name }} ${{ matrix.python-version }}
-
-  publish-client:
-    name: Publish client package
-    if: github.ref == 'refs/heads/main'
-    needs: [client-test]
-    runs-on: ubuntu-20.04
-    concurrency: publish-client
-    timeout-minutes: 5
-    env:
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - name: Generate token for Github PR Bot
-        id: generate_token
-        uses: tibdex/github-app-token@v1
-        with:
-          app_id: ${{ secrets.GH_PRBOT_APP_ID }}
-          private_key: ${{ secrets.GH_PRBOT_APP_PRIVATE_KEY }}
-
-      - uses: actions/checkout@v3
-        with:
-          token: ${{ steps.generate_token.outputs.token }}
-          ref: main
-
-      - uses: ./.github/actions/setup-cached-python
-        with:
-          version: "3.10"
-
-      - name: Bump the version number
-        run: inv update-build-number
-
-      - name: Update the changelog
-        run: inv update-changelog --sha=$GITHUB_SHA
-
-      - name: Get the current client version
-        id: version
-        run: echo "client_version=`python -m modal_version`" >> "$GITHUB_OUTPUT"
-
-      - uses: EndBug/add-and-commit@v9
-        with:
-          add: modal_version/_version_generated.py CHANGELOG.md
-          tag: v${{ steps.version.outputs.client_version }}
-          message: "[auto-commit] [skip ci] Bump the build number"
-          pull: "--rebase --autostash"
-          default_author: github_actions
-
-      - name: Build protobuf
-        run: inv protoc
-
-      - name: Install all dependencies
-        run: pip install -e .
-
-      - name: Build type stubs
-        run: inv type-stubs
-
-      - name: Build wheel
-        run: python setup.py bdist_wheel
-
-      - name: Create alias package
-        run: inv create-alias-package
-
-      - name: Build alias package
-        working-directory: alias-package
-        run: python setup.py bdist_wheel
-
-      - name: Set the Modal environment
-        run: modal config set-environment main
-
-      - name: Publish client mount
-        env:
-          MODAL_LOGLEVEL: DEBUG
-          MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
-          MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
-        run: python -m modal_global_objects.mounts.modal_client_package
-
-      - name: Upload to PyPI
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        run: twine upload dist/* --non-interactive
-
-      - name: Upload alias package to PyPI
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-        working-directory: alias-package
-        run: twine upload dist/* --non-interactive
+          python -m modal_global_objects.images.base_images ${{ matrix.image-name }}

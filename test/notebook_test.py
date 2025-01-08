@@ -3,11 +3,13 @@ import pytest
 import warnings
 from pathlib import Path
 
-import jupytext
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    import jupytext
 
 try:
     from nbclient.exceptions import CellExecutionError
-except ModuleNotFoundError:
+except (ModuleNotFoundError, DeprecationWarning):
     # TODO(erikbern): sometimes my local jupyter packages end up in a bad state,
     # but we don't want that to cause pytest to fail on startup.
     warnings.warn("failed importing nbclient")

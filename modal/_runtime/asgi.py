@@ -1,16 +1,22 @@
 # Copyright Modal Labs 2022
+
+# Note: this module isn't imported unless it's needed.
+# This is because aiohttp is a pretty big dependency that adds significant latency when imported
+
 import asyncio
-from typing import Any, AsyncGenerator, Callable, Dict, NoReturn, Optional, Tuple, cast
+from collections.abc import AsyncGenerator
+from typing import Any, Callable, NoReturn, Optional, cast
 
 import aiohttp
 
-from ._utils.async_utils import TaskContext
-from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
-from ._utils.package_utils import parse_major_minor_version
-from .config import logger
-from .exception import ExecutionError, InvalidError
+from modal._utils.async_utils import TaskContext
+from modal._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
+from modal._utils.package_utils import parse_major_minor_version
+from modal.config import logger
+from modal.exception import ExecutionError, InvalidError
+from modal.experimental import stop_fetching_inputs
+
 from .execution_context import current_function_call_id
-from .experimental import stop_fetching_inputs
 
 FIRST_MESSAGE_TIMEOUT_SECONDS = 5.0
 
@@ -20,6 +26,7 @@ class LifespanManager:
     shutdown: asyncio.Future
     queue: asyncio.Queue
     has_run_init: bool = False
+    lifespan_supported: bool = False
 
     def __init__(self, asgi_app, state):
         self.asgi_app = asgi_app
@@ -40,6 +47,7 @@ class LifespanManager:
         await self.ensure_init()
 
         async def receive():
+            self.lifespan_supported = True
             return await self.queue.get()
 
         async def send(message):
@@ -57,16 +65,21 @@ class LifespanManager:
         try:
             await self.asgi_app({"type": "lifespan", "state": self.state}, receive, send)
         except Exception as e:
+            if not self.lifespan_supported:
+                logger.info(f"ASGI lifespan task exited before receiving any messages with exception:\n{e}")
+                self.startup.set_result(None)
+                self.shutdown.set_result(None)
+                return
+
             logger.error(f"Error in ASGI lifespan task: {e}")
             if not self.startup.done():
                 self.startup.set_exception(ExecutionError("ASGI lifespan task exited startup"))
             if not self.shutdown.done():
                 self.shutdown.set_exception(ExecutionError("ASGI lifespan task exited shutdown"))
         else:
-            if not self.startup.done():
-                self.startup.set_result("ASGI Lifespan protocol is probably not supported by this library")
-            if not self.shutdown.done():
-                self.shutdown.set_result("ASGI Lifespan protocol is probably not supported by this library")
+            logger.info("ASGI Lifespan protocol is probably not supported by this library")
+            self.startup.set_result(None)
+            self.shutdown.set_result(None)
 
     async def lifespan_startup(self):
         await self.ensure_init()
@@ -79,8 +92,8 @@ class LifespanManager:
         await self.shutdown
 
 
-def asgi_app_wrapper(asgi_app, container_io_manager) -> Tuple[Callable[..., AsyncGenerator], LifespanManager]:
-    state: Dict[str, Any] = {}  # used for lifespan state
+def asgi_app_wrapper(asgi_app, container_io_manager) -> tuple[Callable[..., AsyncGenerator], LifespanManager]:
+    state: dict[str, Any] = {}  # used for lifespan state
 
     async def fn(scope):
         if "state" in scope:
@@ -91,8 +104,8 @@ def asgi_app_wrapper(asgi_app, container_io_manager) -> Tuple[Callable[..., Asyn
         function_call_id = current_function_call_id()
         assert function_call_id, "internal error: function_call_id not set in asgi_app() scope"
 
-        messages_from_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
-        messages_to_app: asyncio.Queue[Dict[str, Any]] = asyncio.Queue(1)
+        messages_from_app: asyncio.Queue[dict[str, Any]] = asyncio.Queue(1)
+        messages_to_app: asyncio.Queue[dict[str, Any]] = asyncio.Queue(1)
 
         async def disconnect_app():
             if scope["type"] == "http":
@@ -213,7 +226,7 @@ def asgi_app_wrapper(asgi_app, container_io_manager) -> Tuple[Callable[..., Asyn
 
 
 def wsgi_app_wrapper(wsgi_app, container_io_manager):
-    from ._vendor.a2wsgi_wsgi import WSGIMiddleware
+    from modal._vendor.a2wsgi_wsgi import WSGIMiddleware
 
     asgi_app = WSGIMiddleware(wsgi_app, workers=10000, send_queue_size=1)  # unlimited workers
     return asgi_app_wrapper(asgi_app, container_io_manager)
@@ -221,9 +234,15 @@ def wsgi_app_wrapper(wsgi_app, container_io_manager):
 
 def webhook_asgi_app(fn: Callable[..., Any], method: str, docs: bool):
     """Return a FastAPI app wrapping a function handler."""
-    # Pulls in `fastapi` module, which is slow to import.
-    from fastapi import FastAPI
-    from fastapi.middleware.cors import CORSMiddleware
+    try:
+        from fastapi import FastAPI
+        from fastapi.middleware.cors import CORSMiddleware
+    except ImportError as exc:
+        message = (
+            "Modal web_endpoint functions require FastAPI to be installed in the modal.Image."
+            ' Please update your Image definition code, e.g. with `.pip_install("fastapi[standard]")`.'
+        )
+        raise InvalidError(message) from exc
 
     app = FastAPI(openapi_url="/openapi.json" if docs else None)  # disabling openapi spec disables all docs
     app.add_middleware(
@@ -273,8 +292,47 @@ def wait_for_web_server(host: str, port: int, *, timeout: float) -> None:
                 ) from ex
 
 
+def _add_forwarded_for_header(scope):
+    # we strip X-Forwarded-For headers from the scope
+    # but we can add it back from the ASGI scope
+    # https://asgi.readthedocs.io/en/latest/specs/www.html#http-connection-scope
+
+    # X-Forwarded-For headers is a comma separated list of IP addresses
+    # there may be multiple X-Forwarded-For headers
+    # we want to prepend the client IP to the first one
+    # but only if it doesn't exist in one of the headers already
+
+    first_x_forwarded_for_idx = None
+    if "headers" in scope and "client" in scope:
+        client_host = scope["client"][0]
+
+        for idx, header in enumerate(scope["headers"]):
+            if header[0] == b"X-Forwarded-For":
+                if first_x_forwarded_for_idx is None:
+                    first_x_forwarded_for_idx = idx
+                values = header[1].decode().split(", ")
+
+                if client_host in values:
+                    # we already have the client IP in this header
+                    # return early
+                    return scope
+
+        if first_x_forwarded_for_idx is not None:
+            # we have X-Forwarded-For headers but they don't have the client IP
+            # we need to prepend the client IP to the first one
+            values = [client_host] + scope["headers"][first_x_forwarded_for_idx][1].decode().split(", ")
+            scope["headers"][first_x_forwarded_for_idx] = (b"X-Forwarded-For", ", ".join(values).encode())
+        else:
+            # we don't have X-Forwarded-For headers, we need to add one
+            scope["headers"].append((b"X-Forwarded-For", client_host.encode()))
+
+    return scope
+
+
 async def _proxy_http_request(session: aiohttp.ClientSession, scope, receive, send) -> None:
     proxy_response: aiohttp.ClientResponse
+
+    scope = _add_forwarded_for_header(scope)
 
     async def request_generator() -> AsyncGenerator[bytes, None]:
         while True:
@@ -369,7 +427,7 @@ async def _proxy_websocket_request(session: aiohttp.ClientSession, scope, receiv
                     raise ExecutionError(f"Unexpected message type: {client_message['type']}")
 
         async def upstream_to_client():
-            msg: Dict[str, Any] = {
+            msg: dict[str, Any] = {
                 "type": "websocket.accept",
                 "subprotocol": upstream_ws.protocol,
             }

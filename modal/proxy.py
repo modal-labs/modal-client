@@ -9,28 +9,31 @@ from .object import _get_environment_name, _Object
 
 
 class _Proxy(_Object, type_prefix="pr"):
-    """
-    Proxy objects are used to setup secure tunnel connections to a private remote address, for example
-    a database.
+    """Proxy objects give your Modal containers a static outbound IP address.
 
-    Currently `modal.Proxy` objects must be setup with the assistance of Modal staff. If you require a proxy
-    please contact us.
+    This can be used for connecting to a remote address with network whitelist, for example
+    a database. See [the guide](/docs/guide/proxy-ips) for more information.
     """
 
     @staticmethod
     def from_name(
-        label: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        name: str,
         environment_name: Optional[str] = None,
     ) -> "_Proxy":
+        """Reference a Proxy by its name.
+
+        In contrast to most other Modal objects, new Proxy objects must be
+        provisioned via the Dashboard and cannot be created on the fly from code.
+
+        """
+
         async def _load(self: _Proxy, resolver: Resolver, existing_object_id: Optional[str]):
-            req = api_pb2.ProxyGetOrCreateRequest(
-                deployment_name=label,
-                namespace=namespace,
+            req = api_pb2.ProxyGetRequest(
+                name=name,
                 environment_name=_get_environment_name(environment_name, resolver),
             )
-            response = await resolver.client.stub.ProxyGetOrCreate(req)
-            self._hydrate(response.proxy_id, resolver.client, None)
+            response: api_pb2.ProxyGetResponse = await resolver.client.stub.ProxyGet(req)
+            self._hydrate(response.proxy.proxy_id, resolver.client, None)
 
         return _Proxy._from_loader(_load, "Proxy()", is_another_app=True)
 

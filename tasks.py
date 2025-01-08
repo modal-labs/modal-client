@@ -9,11 +9,12 @@ import pkgutil
 import re
 import subprocess
 import sys
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Generator, List, Optional
+from typing import Optional
 
 import requests
 from invoke import task
@@ -135,7 +136,7 @@ def type_check(ctx):
     # use pyright for checking implementation of those files
     pyright_allowlist = [
         "modal/functions.py",
-        "modal/_asgi.py",
+        "modal/_runtime/asgi.py",
         "modal/_utils/__init__.py",
         "modal/_utils/async_utils.py",
         "modal/_utils/grpc_testing.py",
@@ -148,7 +149,10 @@ def type_check(ctx):
         "modal/_utils/rand_pb_testing.py",
         "modal/_utils/shell_utils.py",
         "test/cls_test.py",  # see mypy bug above - but this works with pyright, so we run that instead
-        "modal/_container_io_manager.py",
+        "modal/_runtime/container_io_manager.py",
+        "modal/io_streams.py",
+        "modal/image.py",
+        "modal/file_io.py",
     ]
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
 
@@ -171,6 +175,9 @@ def check_copyright(ctx, fix=False):
                 and "protoc_plugin" not in root
                 # third-party code (i.e., in a local venv) has a different copyright
                 and "/site-packages/" not in root
+                and "/build/" not in root
+                and "/.venv/" not in root
+                and not re.search(r"/venv[0-9]*/", root)
             )
         ]
         for fn in fns:
@@ -231,49 +238,6 @@ build_number = {new_build_number}  # git: {git_sha}
 
 
 @task
-def create_alias_package(ctx):
-    from modal_version import __version__
-
-    os.makedirs("alias-package", exist_ok=True)
-    with open("alias-package/setup.py", "w") as f:
-        f.write(
-            f"""\
-{copyright_header_full}
-from setuptools import setup
-setup(version="{__version__}")
-"""
-        )
-    with open("alias-package/setup.cfg", "w") as f:
-        f.write(
-            f"""\
-[metadata]
-name = modal-client
-author = Modal Labs
-author_email = support@modal.com
-description = Legacy name for the Modal client
-long_description = This is a legacy compatibility package that just requires the `modal` client library.
-            In versions before 0.51, the official name of the client library was called `modal-client`.
-            We have renamed it to `modal`, but this library is kept updated for compatibility.
-long_description_content_type = text/markdown
-project_urls =
-    Homepage = https://modal.com
-
-[options]
-install_requires =
-    modal=={__version__}
-"""
-        )
-    with open("alias-package/pyproject.toml", "w") as f:
-        f.write(
-            """\
-[build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
-"""
-        )
-
-
-@task
 def type_stubs(ctx):
     # We only generate type stubs for modules that contain synchronicity wrapped types
     from synchronicity.synchronizer import SYNCHRONIZER_ATTR
@@ -298,7 +262,7 @@ def type_stubs(ctx):
                 modules.append(full_name)
         return modules
 
-    def get_wrapped_types(module_name: str) -> List[str]:
+    def get_wrapped_types(module_name: str) -> list[str]:
         module = importlib.import_module(module_name)
         return [
             name
@@ -318,7 +282,12 @@ def type_stubs(ctx):
 @task
 def update_changelog(ctx, sha: str = ""):
     # Parse a commit message for a GitHub PR number, defaulting to most recent commit
-    res = ctx.run(f"git log --pretty=format:%s -n 1 {sha}", hide="stdout")
+    res = ctx.run(f"git log --pretty=format:%s -n 1 {sha}", hide="stdout", warn=True)
+    if res.exited:
+        print("Failed to extract changelog update!")
+        print("Last 5 commits:")
+        res = ctx.run("git log --pretty=oneline -n 5")
+        return
     m = re.search(r"\(#(\d+)\)$", res.stdout)
     if m:
         pull_number = m.group(1)
@@ -351,7 +320,7 @@ def update_changelog(ctx, sha: str = ""):
         return
 
     # Read the existing changelog and split after the header so we can prepend new content
-    with open("CHANGELOG.md", "r") as fid:
+    with open("CHANGELOG.md") as fid:
         content = fid.read()
     token_pattern = "<!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->"
     m = re.search(token_pattern, content)
@@ -416,26 +385,41 @@ def show_deprecations(ctx):
             func_name_to_level = {
                 "deprecation_warning": "[yellow]warning[/yellow]",
                 "deprecation_error": "[red]error[/red]",
+                # We may add a flag to make renamed_parameter error instead of warn
+                # in which case this would get a little bit more complicated.
+                "renamed_parameter": "[yellow]warning[/yellow]",
             }
-            if isinstance(node.func, ast.Name) and node.func.id in func_name_to_level:
-                depr_date = date(*(elt.n for elt in node.args[0].elts))
+            if (
+                isinstance(node.func, ast.Name)
+                and node.func.id in func_name_to_level
+                and isinstance(node.args[0], ast.Tuple)
+            ):
+                depr_date = date(*(getattr(elt, "n") for elt in node.args[0].elts))
                 function = (
                     f"{self.current_class}.{self.current_function}" if self.current_class else self.current_function
                 )
-                message = node.args[1]
-                if isinstance(message, ast.Name):
-                    message = self.assignments.get(message.id, "")
-                if isinstance(message, ast.Attribute):
-                    message = self.assignments.get(message.attr, "")
-                if isinstance(message, ast.Constant):
-                    message = message.s
-                elif isinstance(message, ast.JoinedStr):
-                    message = "".join(v.s for v in message.values if isinstance(v, ast.Constant))
+                if node.func.id == "renamed_parameter":
+                    old_name = getattr(node.args[1], "s")
+                    new_name = getattr(node.args[2], "s")
+                    message = f"Renamed parameter: {old_name} -> {new_name}"
                 else:
-                    message = str(message)
-                message = message.replace("\n", " ")
-                if len(message) > (max_length := 80):
-                    message = message[:max_length] + "..."
+                    message = node.args[1]
+                    # Handle a few different ways that the message can get passed to the deprecation helper
+                    # since it's not always a literal string (e.g. it's often a functions .__doc__ attribute)
+                    if isinstance(message, ast.Name):
+                        message = self.assignments.get(message.id, "")
+                    if isinstance(message, ast.Attribute):
+                        message = self.assignments.get(message.attr, "")
+                    if isinstance(message, ast.Constant):
+                        message = message.s
+                    elif isinstance(message, ast.JoinedStr):
+                        message = "".join(v.s for v in message.values if isinstance(v, ast.Constant))
+                    else:
+                        message = str(message)
+                    message = message.replace("\n", " ")
+                    if len(message) > (max_length := 80):
+                        message = message[:max_length] + "..."
+
                 level = func_name_to_level[node.func.id]
                 self.deprecations.append((str(depr_date), level, f"{self.fname}:{node.lineno}", function, message))
 

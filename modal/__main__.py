@@ -1,7 +1,8 @@
 # Copyright Modal Labs 2022
 import sys
 
-from ._traceback import highlight_modal_deprecation_warnings, reduce_traceback_to_user_code, setup_rich_traceback
+from ._traceback import reduce_traceback_to_user_code
+from .cli._traceback import highlight_modal_deprecation_warnings, setup_rich_traceback
 from .cli.entry_point import entrypoint_cli
 from .cli.import_refs import _CliUserExecutionError
 from .config import config
@@ -11,13 +12,6 @@ def main():
     # Setup rich tracebacks, but only on user's end, when using the Modal CLI.
     setup_rich_traceback()
     highlight_modal_deprecation_warnings()
-
-    if sys.version_info[:2] == (3, 8):
-        from .exception import deprecation_warning
-
-        deprecation_warning(
-            (2024, 5, 2), "Modal will soon drop support for Python 3.8.", show_source=False, pending=True
-        )
 
     try:
         entrypoint_cli()

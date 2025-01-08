@@ -12,13 +12,18 @@ from modal import Mount
 from modal.mount import get_auto_mounts
 
 from . import helpers
-from .supports.skip import skip_old_py, skip_windows
+from .supports.skip import skip_windows
 
 
 @pytest.fixture
 def venv_path(tmp_path, repo_root):
     venv_path = tmp_path
-    subprocess.run([sys.executable, "-m", "venv", venv_path, "--copies", "--system-site-packages"], check=True)
+    args = [sys.executable, "-m", "venv", venv_path, "--system-site-packages"]
+    if sys.platform == "win32":
+        # --copies appears to be broken on Python 3.13.0
+        # but I believe it is a no-op on non-windows platforms anyway?
+        args.append("--copies")
+    subprocess.run(args, check=True)
     # Install Modal and a tiny package in the venv.
     subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "-e", repo_root], check=True)
     subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "--force-reinstall", "six"], check=True)
@@ -53,8 +58,8 @@ async def env_mount_files():
     return filenames
 
 
-def test_mounted_files_script(servicer, supports_dir, env_mount_files, server_url_env):
-    helpers.deploy_app_externally(servicer, script_path, cwd=supports_dir)
+def test_mounted_files_script(servicer, credentials, supports_dir, env_mount_files, server_url_env):
+    helpers.deploy_app_externally(servicer, credentials, script_path, cwd=supports_dir)
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
@@ -72,8 +77,8 @@ def test_mounted_files_script(servicer, supports_dir, env_mount_files, server_ur
 serialized_fn_path = "pkg_a/serialized_fn.py"
 
 
-def test_mounted_files_serialized(servicer, supports_dir, env_mount_files, server_url_env):
-    helpers.deploy_app_externally(servicer, serialized_fn_path, cwd=supports_dir)
+def test_mounted_files_serialized(servicer, credentials, supports_dir, env_mount_files, server_url_env):
+    helpers.deploy_app_externally(servicer, credentials, serialized_fn_path, cwd=supports_dir)
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
@@ -92,7 +97,7 @@ def test_mounted_files_serialized(servicer, supports_dir, env_mount_files, serve
     }
 
 
-def test_mounted_files_package(supports_dir, env_mount_files, servicer, server_url_env):
+def test_mounted_files_package(supports_dir, env_mount_files, servicer, server_url_env, token_env):
     p = subprocess.run(["modal", "run", "pkg_a.package"], cwd=supports_dir)
     assert p.returncode == 0
 
@@ -113,7 +118,7 @@ def test_mounted_files_package(supports_dir, env_mount_files, servicer, server_u
     }
 
 
-def test_mounted_files_package_no_automount(supports_dir, env_mount_files, servicer, server_url_env):
+def test_mounted_files_package_no_automount(supports_dir, env_mount_files, servicer, server_url_env, token_env):
     # when triggered like a module, the target module should be put at the correct package path
     p = subprocess.run(
         ["modal", "run", "pkg_a.package"],
@@ -130,7 +135,7 @@ def test_mounted_files_package_no_automount(supports_dir, env_mount_files, servi
 
 
 @skip_windows("venvs behave differently on Windows.")
-def test_mounted_files_sys_prefix(servicer, supports_dir, venv_path, env_mount_files, server_url_env):
+def test_mounted_files_sys_prefix(servicer, supports_dir, venv_path, env_mount_files, server_url_env, token_env):
     # Run with venv activated, so it's on sys.prefix, and modal is dev-installed in the VM
     subprocess.run(
         [venv_path / "bin" / "modal", "run", script_path],
@@ -183,7 +188,7 @@ def symlinked_python_installation_venv_path(tmp_path, repo_root):
 
 @skip_windows("venvs behave differently on Windows.")
 def test_mounted_files_symlinked_python_install(
-    symlinked_python_installation_venv_path, supports_dir, server_url_env, servicer
+    symlinked_python_installation_venv_path, supports_dir, server_url_env, token_env, servicer
 ):
     subprocess.check_call(
         [symlinked_python_installation_venv_path / "bin" / "modal", "run", supports_dir / "imports_ast.py"]
@@ -191,7 +196,7 @@ def test_mounted_files_symlinked_python_install(
     assert "/root/ast.py" not in servicer.files_name2sha
 
 
-def test_mounted_files_config(servicer, supports_dir, env_mount_files, server_url_env):
+def test_mounted_files_config(servicer, supports_dir, env_mount_files, server_url_env, token_env):
     p = subprocess.run(
         ["modal", "run", "pkg_a/script.py"], cwd=supports_dir, env={**os.environ, "MODAL_AUTOMOUNT": "0"}
     )
@@ -202,8 +207,8 @@ def test_mounted_files_config(servicer, supports_dir, env_mount_files, server_ur
     }
 
 
-def test_e2e_modal_run_py_file_mounts(servicer, supports_dir):
-    helpers.deploy_app_externally(servicer, "hello.py", cwd=supports_dir)
+def test_e2e_modal_run_py_file_mounts(servicer, credentials, supports_dir):
+    helpers.deploy_app_externally(servicer, credentials, "hello.py", cwd=supports_dir)
     # Reactivate the following mount assertions when we remove auto-mounting of dev-installed packages
     # assert len(servicer.files_name2sha) == 1
     # assert servicer.n_mounts == 1  # there should be a single mount
@@ -211,8 +216,8 @@ def test_e2e_modal_run_py_file_mounts(servicer, supports_dir):
     assert "/root/hello.py" in servicer.files_name2sha
 
 
-def test_e2e_modal_run_py_module_mounts(servicer, supports_dir):
-    helpers.deploy_app_externally(servicer, "hello", cwd=supports_dir)
+def test_e2e_modal_run_py_module_mounts(servicer, credentials, supports_dir):
+    helpers.deploy_app_externally(servicer, credentials, "hello", cwd=supports_dir)
     # Reactivate the following mount assertions when we remove auto-mounting of dev-installed packages
     # assert len(servicer.files_name2sha) == 1
     # assert servicer.n_mounts == 1  # there should be a single mount
@@ -249,10 +254,10 @@ def test_mounts_are_not_traversed_on_declaration(test_dir, monkeypatch, client, 
         for fn, _ in r:
             files.add(fn)
     # sanity check - this test file should be included since we mounted the test dir
-    assert __file__ in files  # this test file should have been included
+    assert Path(__file__) in files  # this test file should have been included
 
 
-def test_mount_dedupe(servicer, test_dir, server_url_env):
+def test_mount_dedupe(servicer, credentials, test_dir, server_url_env):
     supports_dir = test_dir / "supports"
     normally_not_included_file = supports_dir / "pkg_a" / "normally_not_included.pyc"
     normally_not_included_file.touch(exist_ok=True)
@@ -260,27 +265,31 @@ def test_mount_dedupe(servicer, test_dir, server_url_env):
         helpers.deploy_app_externally(
             # no explicit mounts, rely on auto-mounting
             servicer,
+            credentials,
             "mount_dedupe.py",
             cwd=test_dir / "supports",
             env={"USE_EXPLICIT": "0"},
         )
     )
     assert servicer.n_mounts == 2
-    assert servicer.mount_contents["mo-1"].keys() == {"/root/mount_dedupe.py"}
-    pkg_a_mount = servicer.mount_contents["mo-2"]
-    for fn in pkg_a_mount.keys():
+    # the order isn't strictly defined here
+    entrypoint_mount, pkg_a_mount = sorted(
+        servicer.mounts_excluding_published_client().items(), key=lambda item: len(item[1])
+    )
+    assert entrypoint_mount[1].keys() == {"/root/mount_dedupe.py"}
+    for fn in pkg_a_mount[1].keys():
         assert fn.startswith("/root/pkg_a")
-    assert "/root/pkg_a/normally_not_included.pyc" not in pkg_a_mount.keys()
+    assert "/root/pkg_a/normally_not_included.pyc" not in pkg_a_mount[1].keys()
 
 
-def test_mount_dedupe_explicit(servicer, test_dir, server_url_env):
-    supports_dir = test_dir / "supports"
+def test_mount_dedupe_explicit(servicer, credentials, supports_dir, server_url_env):
     normally_not_included_file = supports_dir / "pkg_a" / "normally_not_included.pyc"
     normally_not_included_file.touch(exist_ok=True)
     print(
         helpers.deploy_app_externally(
             # two explicit mounts of the same package
             servicer,
+            credentials,
             "mount_dedupe.py",
             cwd=supports_dir,
             env={"USE_EXPLICIT": "1"},
@@ -289,7 +298,7 @@ def test_mount_dedupe_explicit(servicer, test_dir, server_url_env):
     assert servicer.n_mounts == 3
 
     # mounts are loaded in parallel, but there
-    mounted_files_sets = set(frozenset(m.keys()) for m in servicer.mount_contents.values() if m)
+    mounted_files_sets = {frozenset(m.keys()) for m in servicer.mounts_excluding_published_client().values()}
     assert {"/root/mount_dedupe.py"} in mounted_files_sets
     mounted_files_sets.remove(frozenset({"/root/mount_dedupe.py"}))
 
@@ -308,11 +317,32 @@ def test_mount_dedupe_explicit(servicer, test_dir, server_url_env):
         assert fn.startswith("/root/pkg_a")
 
     assert len(mount_with_pyc) == len(remaining_mount) + 1
+    normally_not_included_file.unlink()  # cleanup
 
 
-@skip_windows("pip-installed pdm seems somewhat broken on windows")
-@skip_old_py("some weird issues w/ pdm and Python 3.9", min_version=(3, 10, 0))
-def test_pdm_cache_automount_exclude(tmp_path, monkeypatch, supports_dir, servicer, server_url_env):
+def test_mount_dedupe_relative_path_entrypoint(servicer, credentials, supports_dir, server_url_env, monkeypatch):
+    workdir = supports_dir / "pkg_a"
+    target_app = "../hello.py"  # in parent directory - requiring `..` expansion in path normalization
+
+    helpers.deploy_app_externally(
+        # two explicit mounts of the same package
+        servicer,
+        credentials,
+        target_app,
+        cwd=workdir,
+    )
+    # should be only one unique set of files in mounts
+    mounted_files_sets = {frozenset(m.keys()) for m in servicer.mounts_excluding_published_client().values()}
+    assert len(mounted_files_sets) == 1
+
+    # but there should also be only one actual mount if deduplication works as expected
+    assert len(servicer.mounts_excluding_published_client()) == 1
+
+
+# @skip_windows("pip-installed pdm seems somewhat broken on windows")
+# @skip_old_py("some weird issues w/ pdm and Python 3.9", min_version=(3, 10, 0))
+@pytest.mark.skip(reason="currently broken on ubuntu github actions")
+def test_pdm_cache_automount_exclude(tmp_path, monkeypatch, supports_dir, servicer, server_url_env, token_env):
     # check that `pdm`'s cached packages are not included in automounts
     project_dir = Path(__file__).parent.parent
     monkeypatch.chdir(tmp_path)
@@ -332,10 +362,48 @@ def test_pdm_cache_automount_exclude(tmp_path, monkeypatch, supports_dir, servic
     }
 
 
-def test_mount_directory_with_symlinked_file(path_with_symlinked_files, servicer, server_url_env):
+def test_mount_directory_with_symlinked_file(path_with_symlinked_files, servicer, client):
     path, files = path_with_symlinked_files
     mount = Mount.from_local_dir(path)
-    mount._deploy("mo-1")
+    mount._deploy("mo-1", client=client)
     pkg_a_mount = servicer.mount_contents["mo-1"]
     for src_f in files:
         assert any(mnt_f.endswith(src_f.name) for mnt_f in pkg_a_mount)
+
+
+def test_module_with_dot_prefixed_parent_can_be_mounted(tmp_path, monkeypatch, servicer, client):
+    # the typical usecase would be to have a `.venv` directory with a virualenv
+    # that could possibly contain local site-packages that a user wants to mount
+
+    # set up some dummy packages:
+    # .parent
+    #    |---- foo.py
+    #    |---- bar
+    #    |------|--baz.py
+    #    |------|--.hidden_dir
+    #    |------|------|-----mod.py
+    #    |------|--.hidden_mod.py
+
+    parent_dir = Path(tmp_path) / ".parent"
+    parent_dir.mkdir()
+    foo_py = parent_dir / "foo.py"
+    foo_py.touch()
+    bar_package = parent_dir / "bar"
+    bar_package.mkdir()
+    (bar_package / "__init__.py").touch()
+    (bar_package / "baz.py").touch()
+    (bar_package / ".hidden_dir").mkdir()
+    (bar_package / ".hidden_dir" / "mod.py").touch()  # should be excluded
+    (bar_package / ".hidden_mod.py").touch()  # should be excluded
+
+    monkeypatch.syspath_prepend(parent_dir)
+    foo_mount = Mount.from_local_python_packages("foo")
+    foo_mount._deploy("mo-1", client=client)
+    foo_mount_content = servicer.mount_contents["mo-1"]
+    assert foo_mount_content.keys() == {"/root/foo.py"}
+
+    bar_mount = Mount.from_local_python_packages("bar")
+    bar_mount._deploy("mo-2", client=client)
+
+    bar_mount_content = servicer.mount_contents["mo-2"]
+    assert bar_mount_content.keys() == {"/root/bar/__init__.py", "/root/bar/baz.py"}

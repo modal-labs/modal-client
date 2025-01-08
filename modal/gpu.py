@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Callable, Optional, Union
 
 from modal_proto import api_pb2
 
@@ -137,6 +137,27 @@ class H100(_GPUConfig):
         return f"GPU(H100, count={self.count})"
 
 
+class L40S(_GPUConfig):
+    """
+    [NVIDIA L40S](https://www.nvidia.com/en-us/data-center/l40s/) GPU class.
+
+    The L40S is a data center GPU for the Ada Lovelace architecture. It has 48 GB of on-chip
+    GDDR6 RAM and enhanced support for FP8 precision.
+    """
+
+    def __init__(
+        self,
+        *,
+        # Number of GPUs per container. Defaults to 1.
+        # Useful if you have very large models that don't fit on a single GPU.
+        count: int = 1,
+    ):
+        super().__init__(api_pb2.GPU_TYPE_L40S, count)
+
+    def __repr__(self):
+        return f"GPU(L40S, count={self.count})"
+
+
 class Any(_GPUConfig):
     """Selects any one of the GPU classes available within Modal, according to availability."""
 
@@ -147,24 +168,27 @@ class Any(_GPUConfig):
         return f"GPU(Any, count={self.count})"
 
 
-STRING_TO_GPU_CONFIG = {
+STRING_TO_GPU_CONFIG: dict[str, Callable] = {
     "t4": T4,
     "l4": L4,
     "a100": A100,
+    "a100-80gb": lambda: A100(size="80GB"),
     "h100": H100,
     "a10g": A10G,
+    "l40s": L40S,
     "any": Any,
 }
-display_string_to_config = "\n".join(
-    f'- "{key}" → `{cls()}`' for key, cls in STRING_TO_GPU_CONFIG.items() if key != "inf2"
-)
+display_string_to_config = "\n".join(f'- "{key}" → `{c()}`' for key, c in STRING_TO_GPU_CONFIG.items() if key != "inf2")
 __doc__ = f"""
 **GPU configuration shortcodes**
 
 The following are the valid `str` values for the `gpu` parameter of
-[`@app.function`](/docs/reference/modal.Stub#function).
+[`@app.function`](/docs/reference/modal.App#function).
 
 {display_string_to_config}
+
+The shortcodes also support specifying count by suffixing `:N` to acquire `N` GPUs.
+For example, `a10g:4` will provision 4 A10G GPUs.
 
 Other configurations can be created using the constructors documented below.
 """

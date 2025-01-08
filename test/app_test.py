@@ -4,14 +4,13 @@ import logging
 import pytest
 import time
 
-from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
 from modal import App, Dict, Image, Mount, Secret, Stub, Volume, enable_output, web_endpoint
-from modal._output import OutputManager
+from modal._utils.async_utils import synchronizer
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import _parse_custom_domains
-from modal.runner import deploy_app, deploy_stub
+from modal.runner import deploy_app, deploy_stub, run_app
 from modal_proto import api_pb2
 
 from .supports import module_1, module_2
@@ -62,17 +61,37 @@ def dummy():
 
 # Should exit without waiting for the "logs_timeout" grace period.
 @pytest.mark.timeout(5)
-def test_create_object_exception(servicer, client):
-    servicer.function_create_error = True
+def test_create_object_internal_exception(servicer, client):
+    servicer.function_create_error = GRPCError(Status.INTERNAL, "Function create failed")
 
     app = App()
     app.function()(dummy)
 
-    with pytest.raises(GRPCError) as excinfo:
-        with app.run(client=client):
-            pass
+    with servicer.intercept() as ctx:
+        with pytest.raises(GRPCError) as excinfo:
+            with enable_output():  # this activates the log streaming loop, which could potentially hold up context exit
+                with app.run(client=client):
+                    pass
 
+    assert len(ctx.get_requests("FunctionCreate")) == 4  # some retries are applied to internal errors
     assert excinfo.value.status == Status.INTERNAL
+    assert len(ctx.get_requests("AppClientDisconnect")) == 1
+
+
+@pytest.mark.timeout(5)
+def test_create_object_invalid_exception(servicer, client):
+    servicer.function_create_error = GRPCError(Status.INVALID_ARGUMENT, "something was invalid")
+
+    app = App()
+    app.function()(dummy)
+
+    with servicer.intercept() as ctx:
+        with pytest.raises(InvalidError, match="something was invalid"):  # error should be converted
+            with enable_output():  # this activates the log streaming loop, which could potentially hold up context exit
+                with app.run(client=client):
+                    pass
+    assert len(ctx.get_requests("FunctionCreate")) == 1  # no retries on an invalid request
+    assert len(ctx.get_requests("AppClientDisconnect")) == 1
 
 
 def test_deploy_falls_back_to_app_name(servicer, client):
@@ -147,11 +166,10 @@ async def test_grpc_protocol(client, servicer):
     app = App()
     async with app.run(client=client):
         await asyncio.sleep(0.01)  # wait for heartbeat
-    assert len(servicer.requests) == 4
-    assert isinstance(servicer.requests[0], Empty)  # ClientHello
-    assert isinstance(servicer.requests[1], api_pb2.AppCreateRequest)
-    assert isinstance(servicer.requests[2], api_pb2.AppHeartbeatRequest)
-    assert isinstance(servicer.requests[3], api_pb2.AppClientDisconnectRequest)
+    assert len(servicer.requests) == 3
+    assert isinstance(servicer.requests[0], api_pb2.AppCreateRequest)
+    assert isinstance(servicer.requests[1], api_pb2.AppHeartbeatRequest)
+    assert isinstance(servicer.requests[2], api_pb2.AppClientDisconnectRequest)
 
 
 async def web1(x):
@@ -212,7 +230,7 @@ def test_redeploy_delete_objects(servicer, client):
     res = deploy_app(app, "xyz", client=client)
 
     # Check objects
-    assert set(servicer.app_objects[res.app_id].keys()) == set(["d1", "d2"])
+    assert set(servicer.app_objects[res.app_id].keys()) == {"d1", "d2"}
 
     # Deploy an app with objects d2 and d3
     app = App()
@@ -221,7 +239,7 @@ def test_redeploy_delete_objects(servicer, client):
     res = deploy_app(app, "xyz", client=client)
 
     # Make sure d1 is deleted
-    assert set(servicer.app_objects[res.app_id].keys()) == set(["d2", "d3"])
+    assert set(servicer.app_objects[res.app_id].keys()) == {"d2", "d3"}
 
 
 @pytest.mark.asyncio
@@ -375,7 +393,7 @@ def test_app_interactive(servicer, client, capsys):
     with servicer.intercept() as ctx:
         ctx.set_responder("AppGetLogs", app_logs_pty)
 
-        with OutputManager.enable_output():
+        with enable_output():
             with app.run(client=client):
                 time.sleep(0.1)
 
@@ -384,39 +402,38 @@ def test_app_interactive(servicer, client, capsys):
 
 
 def test_show_progress_deprecations(client, monkeypatch):
-    # Unset env used to disable warning
-    monkeypatch.delenv("MODAL_DISABLE_APP_RUN_OUTPUT_WARNING")
-
     app = App()
 
-    # If show_progress is not provided, and output is not enabled, warn
-    with pytest.warns(DeprecationError, match="enable_output"):
-        with app.run(client=client):
-            assert OutputManager.get() is not None  # Should be auto-enabled
-
-    # If show_progress is not provided, and output is enabled, no warning
-    with enable_output():
-        with app.run(client=client):
+    # If show_progress is set to True, raise that this is deprecated
+    with pytest.raises(DeprecationError, match="enable_output"):
+        with app.run(client=client, show_progress=True):
             pass
 
-    # If show_progress is set to True, and output is not enabled, warn
-    with pytest.warns(DeprecationError, match="enable_output"):
-        with app.run(client=client, show_progress=True):
-            assert OutputManager.get() is not None  # Should be auto-enabled
-
-    # If show_progress is set to True, and output is enabled, warn the flag is superfluous
-    with pytest.warns(DeprecationError, match="`show_progress=True` is deprecated"):
-        with enable_output():
-            with app.run(client=client, show_progress=True):
-                pass
-
-    # If show_progress is set to False, and output is not enabled, no warning
-    # This mode is currently used to suppress deprecation warnings, but will in itself be deprecated later.
-    with app.run(client=client, show_progress=False):
-        assert OutputManager.get() is None
-
-    # If show_progress is set to False, and output is enabled, warn that it has no effect
+    # If show_progress is set to False, warn that this has no effect
     with pytest.warns(DeprecationError, match="no effect"):
-        with enable_output():
-            with app.run(client=client, show_progress=False):
-                pass
+        with app.run(client=client, show_progress=False):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_deploy_from_container(servicer, container_client):
+    app = App(image=Image.debian_slim().pip_install("pandas"))
+    app.function()(square)
+
+    # Deploy app
+    res = await deploy_app.aio(app, "my-app", client=container_client)
+    assert res.app_id == "ap-1"
+    assert servicer.app_objects["ap-1"]["square"] == "fu-1"
+    assert servicer.app_state_history[res.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
+
+
+def test_app_create_bad_environment_name_error(client):
+    environment_name = "this=is@not.allowed"
+    app = App()
+    with pytest.raises(InvalidError, match="Invalid Environment name"):
+        with run_app(
+            app, environment_name=environment_name, client=client
+        ):  # TODO: why isn't environment_name an argument to app.run?
+            pass
+
+    assert len(asyncio.all_tasks(synchronizer._loop)) == 1  # no trailing tasks, except the `loop_inner` ever-task

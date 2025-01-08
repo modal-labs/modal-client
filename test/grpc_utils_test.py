@@ -5,20 +5,28 @@ import time
 from grpclib import GRPCError, Status
 
 from modal._utils.async_utils import synchronize_api
-from modal._utils.grpc_utils import create_channel, retry_transient_errors
+from modal._utils.grpc_utils import connect_channel, create_channel, retry_transient_errors
 from modal_proto import api_grpc, api_pb2
 
 from .supports.skip import skip_windows_unix_socket
 
 
 @pytest.mark.asyncio
-async def test_http_channel(servicer):
+async def test_http_channel(servicer, credentials):
+    token_id, token_secret = credentials
+    metadata = {
+        "x-modal-client-type": str(api_pb2.CLIENT_TYPE_CLIENT),
+        "x-modal-python-version": "3.12.1",
+        "x-modal-client-version": "0.99",
+        "x-modal-token-id": token_id,
+        "x-modal-token-secret": token_secret,
+    }
     assert servicer.client_addr.startswith("http://")
     channel = create_channel(servicer.client_addr)
     client_stub = api_grpc.ModalClientStub(channel)
 
     req = api_pb2.BlobCreateRequest()
-    resp = await client_stub.BlobCreate(req)
+    resp = await client_stub.BlobCreate(req, metadata=metadata)
     assert resp.blob_id
 
     channel.close()
@@ -27,15 +35,27 @@ async def test_http_channel(servicer):
 @skip_windows_unix_socket
 @pytest.mark.asyncio
 async def test_unix_channel(servicer):
+    metadata = {
+        "x-modal-client-type": str(api_pb2.CLIENT_TYPE_CONTAINER),
+        "x-modal-python-version": "3.12.1",
+        "x-modal-client-version": "0.99",
+    }
     assert servicer.container_addr.startswith("unix://")
     channel = create_channel(servicer.container_addr)
     client_stub = api_grpc.ModalClientStub(channel)
 
     req = api_pb2.BlobCreateRequest()
-    resp = await client_stub.BlobCreate(req)
+    resp = await client_stub.BlobCreate(req, metadata=metadata)
     assert resp.blob_id
 
     channel.close()
+
+
+@pytest.mark.asyncio
+async def test_http_broken_channel():
+    ch = create_channel("https://xyz.invalid")
+    with pytest.raises(OSError):
+        await connect_channel(ch)
 
 
 @pytest.mark.asyncio

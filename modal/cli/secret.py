@@ -3,7 +3,7 @@ import os
 import platform
 import subprocess
 from tempfile import NamedTemporaryFile
-from typing import List, Optional
+from typing import Optional
 
 import click
 import typer
@@ -23,7 +23,7 @@ secret_cli = typer.Typer(name="secret", help="Manage secrets.", no_args_is_help=
 
 @secret_cli.command("list", help="List your published secrets.")
 @synchronizer.create_blocking
-async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+async def list_(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
     client = await _Client.from_env()
     response = await retry_transient_errors(client.stub.SecretList, api_pb2.SecretListRequest(environment_name=env))
@@ -47,7 +47,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
 @synchronizer.create_blocking
 async def create(
     secret_name,
-    keyvalues: List[str] = typer.Argument(..., help="Space-separated KEY=VALUE items"),
+    keyvalues: list[str] = typer.Argument(..., help="Space-separated KEY=VALUE items"),
     env: Optional[str] = ENV_OPTION,
     force: bool = typer.Option(False, "--force", help="Overwrite the secret if it already exists."),
 ):

@@ -9,44 +9,39 @@ import signal
 import sys
 import time
 import traceback
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import AsyncExitStack
-from dataclasses import dataclass
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Any,
-    AsyncGenerator,
-    AsyncIterator,
     Callable,
     ClassVar,
-    Dict,
-    List,
     Optional,
-    Tuple,
 )
 
 from google.protobuf.empty_pb2 import Empty
-from google.protobuf.message import Message
 from grpclib import Status
 from synchronicity.async_wrap import asynccontextmanager
 
 import modal_proto.api_pb2
+from modal._serialization import deserialize, serialize, serialize_data_format
+from modal._traceback import extract_traceback, print_exception
+from modal._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
+from modal._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
+from modal._utils.function_utils import _stream_function_call_data
+from modal._utils.grpc_utils import retry_transient_errors
+from modal._utils.package_utils import parse_major_minor_version
+from modal.client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
+from modal.config import config, logger
+from modal.exception import ClientClosed, InputCancellation, InvalidError, SerializationError
+from modal.running_app import RunningApp, running_app_from_layout
 from modal_proto import api_pb2
 
-from ._serialization import deserialize, serialize, serialize_data_format
-from ._traceback import extract_traceback, print_exception
-from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
-from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
-from ._utils.function_utils import _stream_function_call_data
-from ._utils.grpc_utils import get_proto_oneof, retry_transient_errors
-from ._utils.package_utils import parse_major_minor_version
-from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
-from .config import config, logger
-from .exception import ClientClosed, InputCancellation, InvalidError, SerializationError
-from .running_app import RunningApp
-
 if TYPE_CHECKING:
-    import modal._asgi
+    import modal._runtime.asgi
+    import modal._runtime.user_code_imports
+
 
 DYNAMIC_CONCURRENCY_INTERVAL_SECS = 3
 DYNAMIC_CONCURRENCY_TIMEOUT_SECS = 10
@@ -63,46 +58,40 @@ class Sentinel:
     """Used to get type-stubs to work with this object."""
 
 
-@dataclass
-class FinalizedFunction:
-    callable: Callable[..., Any]
-    is_async: bool
-    is_generator: bool
-    data_format: int  # api_pb2.DataFormat
-    lifespan_manager: Optional["modal._asgi.LifespanManager"] = None
-
-
 class IOContext:
     """Context object for managing input, function calls, and function executions
     in a batched or single input context.
     """
 
-    input_ids: List[str]
-    function_call_ids: List[str]
-    finalized_function: FinalizedFunction
+    input_ids: list[str]
+    function_call_ids: list[str]
+    finalized_function: "modal._runtime.user_code_imports.FinalizedFunction"
 
+    _cancel_issued: bool = False
     _cancel_callback: Optional[Callable[[], None]] = None
 
     def __init__(
         self,
-        input_ids: List[str],
-        function_call_ids: List[str],
-        finalized_function: FinalizedFunction,
-        deserialized_args: List[Any],
+        input_ids: list[str],
+        function_call_ids: list[str],
+        finalized_function: "modal._runtime.user_code_imports.FinalizedFunction",
+        function_inputs: list[api_pb2.FunctionInput],
         is_batched: bool,
+        client: _Client,
     ):
         self.input_ids = input_ids
         self.function_call_ids = function_call_ids
         self.finalized_function = finalized_function
-        self._deserialized_args = deserialized_args
+        self._function_inputs = function_inputs
         self._is_batched = is_batched
+        self._client = client
 
     @classmethod
     async def create(
         cls,
         client: _Client,
-        finalized_functions: Dict[str, FinalizedFunction],
-        inputs: List[Tuple[str, str, api_pb2.FunctionInput]],
+        finalized_functions: dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
+        inputs: list[tuple[str, str, api_pb2.FunctionInput]],
         is_batched: bool,
     ) -> "IOContext":
         assert len(inputs) >= 1 if is_batched else len(inputs) == 1
@@ -123,26 +112,34 @@ class IOContext:
         method_name = function_inputs[0].method_name
         assert all(method_name == input.method_name for input in function_inputs)
         finalized_function = finalized_functions[method_name]
-        # TODO(cathy) Performance decrease if we deserialize function_inputs later
-        deserialized_args = [deserialize(input.args, client) if input.args else ((), {}) for input in function_inputs]
-        return cls(input_ids, function_call_ids, finalized_function, deserialized_args, is_batched)
+        return cls(input_ids, function_call_ids, finalized_function, function_inputs, is_batched, client)
 
     def set_cancel_callback(self, cb: Callable[[], None]):
         self._cancel_callback = cb
 
     def cancel(self):
+        # Ensure we only issue the cancellation once.
+        if self._cancel_issued:
+            return
+
         if self._cancel_callback:
-            cb = self._cancel_callback
-            self._cancel_callback = None
-            cb()
+            logger.warning(f"Received a cancellation signal while processing input {self.input_ids}")
+            self._cancel_issued = True
+            self._cancel_callback()
         else:
             # TODO (elias): This should not normally happen but there is a small chance of a race
             #  between creating a new task for an input and attaching the cancellation callback
             logger.warning("Unexpected: Could not cancel input")
 
-    def _args_and_kwargs(self) -> Tuple[Tuple[Any, ...], Dict[str, List[Any]]]:
+    def _args_and_kwargs(self) -> tuple[tuple[Any, ...], dict[str, list[Any]]]:
+        # deserializing here instead of the constructor
+        # to make sure we handle user exceptions properly
+        # and don't retry
+        deserialized_args = [
+            deserialize(input.args, self._client) if input.args else ((), {}) for input in self._function_inputs
+        ]
         if not self._is_batched:
-            return self._deserialized_args[0]
+            return deserialized_args[0]
 
         func_name = self.finalized_function.callable.__name__
 
@@ -151,8 +148,9 @@ class IOContext:
             param_names.append(param.name)
 
         # aggregate args and kwargs of all inputs into a kwarg dict
-        kwargs_by_inputs: List[Dict[str, Any]] = [{} for _ in range(len(self.input_ids))]
-        for i, (args, kwargs) in enumerate(self._deserialized_args):
+        kwargs_by_inputs: list[dict[str, Any]] = [{} for _ in range(len(self.input_ids))]
+
+        for i, (args, kwargs) in enumerate(deserialized_args):
             # check that all batched inputs should have the same number of args and kwargs
             if (num_params := len(args) + len(kwargs)) != len(param_names):
                 raise InvalidError(
@@ -178,13 +176,13 @@ class IOContext:
         return (), formatted_kwargs
 
     def call_finalized_function(self) -> Any:
+        logger.debug(f"Starting input {self.input_ids}")
         args, kwargs = self._args_and_kwargs()
-        logger.debug(f"Starting input {self.input_ids} (async)")
         res = self.finalized_function.callable(*args, **kwargs)
-        logger.debug(f"Finished input {self.input_ids} (async)")
+        logger.debug(f"Finished input {self.input_ids}")
         return res
 
-    def validate_output_data(self, data: Any) -> List[Any]:
+    def validate_output_data(self, data: Any) -> list[Any]:
         if not self._is_batched:
             return [data]
 
@@ -223,7 +221,8 @@ class InputSlots:
 
     def _wake_waiter(self) -> None:
         if self.active < self.value and self.waiter is not None:
-            self.waiter.set_result(None)
+            if not self.waiter.cancelled():  # could have been cancelled during interpreter shutdown
+                self.waiter.set_result(None)
             self.waiter = None
             self.active += 1
 
@@ -259,7 +258,7 @@ class _ContainerIOManager:
     calls_completed: int
     total_user_time: float
     current_input_id: Optional[str]
-    current_inputs: Dict[str, IOContext]  # input_id -> IOContext
+    current_inputs: dict[str, IOContext]  # input_id -> IOContext
     current_input_started_at: Optional[float]
 
     _target_concurrency: int
@@ -335,6 +334,9 @@ class _ContainerIOManager:
         """Only used for tests."""
         cls._singleton = None
 
+    async def hello(self):
+        await self._client.stub.ContainerHello(Empty())
+
     async def _run_heartbeat_loop(self):
         while 1:
             t0 = time.monotonic()
@@ -363,13 +365,6 @@ class _ContainerIOManager:
     async def _heartbeat_handle_cancellations(self) -> bool:
         # Return True if a cancellation event was received, in that case
         # we shouldn't wait too long for another heartbeat
-
-        request = api_pb2.ContainerHeartbeatRequest(supports_graceful_input_cancellation=True)
-        if self.current_input_id is not None:
-            request.current_input_id = self.current_input_id
-        if self.current_input_started_at is not None:
-            request.current_input_started_at = self.current_input_started_at
-
         async with self.heartbeat_condition:
             # Continuously wait until `waiting_for_memory_snapshot` is false.
             # TODO(matt): Verify that a `while` is necessary over an `if`. Spurious
@@ -378,26 +373,21 @@ class _ContainerIOManager:
             while self._waiting_for_memory_snapshot:
                 await self.heartbeat_condition.wait()
 
-            # TODO(erikbern): capture exceptions?
+            request = api_pb2.ContainerHeartbeatRequest(canceled_inputs_return_outputs_v2=True)
             response = await retry_transient_errors(
                 self._client.stub.ContainerHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT
             )
 
         if response.HasField("cancel_input_event"):
-            # Pause processing of the current input by signaling self a SIGUSR1.
+            # response.cancel_input_event.terminate_containers is never set, the server gets the worker to handle it.
             input_ids_to_cancel = response.cancel_input_event.input_ids
-            if response.cancel_input_event.terminate_containers:
-                # This should typically never happen since the task should have been killed
-                logger.warning("Force-terminating container due to input cancellation")
-                os.kill(os.getpid(), signal.SIGINT)
-
             if input_ids_to_cancel:
                 if self._max_concurrency > 1:
                     for input_id in input_ids_to_cancel:
                         if input_id in self.current_inputs:
                             self.current_inputs[input_id].cancel()
 
-                elif self.current_input_id in input_ids_to_cancel:
+                elif self.current_input_id and self.current_input_id in input_ids_to_cancel:
                     # This goes to a registered signal handler for sync Modal functions, or to the
                     # `SignalHandlingEventLoop` for async functions.
                     #
@@ -406,6 +396,7 @@ class _ContainerIOManager:
                     # SIGUSR1 signal should interrupt the main thread where user code is running,
                     # raising an InputCancellation() exception. On async functions, the signal should
                     # reach a handler in SignalHandlingEventLoop, which cancels the task.
+                    logger.warning(f"Received a cancellation signal while processing input {self.current_input_id}")
                     os.kill(os.getpid(), signal.SIGUSR1)
             return True
         return False
@@ -458,28 +449,17 @@ class _ContainerIOManager:
 
             await asyncio.sleep(DYNAMIC_CONCURRENCY_INTERVAL_SECS)
 
-    async def get_app_objects(self) -> RunningApp:
-        req = api_pb2.AppGetObjectsRequest(app_id=self.app_id, include_unindexed=True)
-        resp = await retry_transient_errors(self._client.stub.AppGetObjects, req)
-        logger.debug(f"AppGetObjects received {len(resp.items)} objects for app {self.app_id}")
+    async def get_app_objects(self, app_layout: api_pb2.AppLayout) -> RunningApp:
+        if len(app_layout.objects) == 0:
+            # TODO(erikbern): this should never happen! let's keep it in here for a short second
+            # until we've sanity checked that this is, in fact, dead code.
+            req = api_pb2.AppGetLayoutRequest(app_id=self.app_id)
+            resp = await retry_transient_errors(self._client.stub.AppGetLayout, req)
+            app_layout = resp.app_layout
 
-        tag_to_object_id = {}
-        object_handle_metadata = {}
-        for item in resp.items:
-            handle_metadata: Optional[Message] = get_proto_oneof(item.object, "handle_metadata_oneof")
-            object_handle_metadata[item.object.object_id] = handle_metadata
-            if item.tag:
-                tag_to_object_id[item.tag] = item.object.object_id
+        return running_app_from_layout(self.app_id, app_layout)
 
-        return RunningApp(
-            self.app_id,
-            environment_name=self._environment_name,
-            tag_to_object_id=tag_to_object_id,
-            object_handle_metadata=object_handle_metadata,
-            client=self._client,
-        )
-
-    async def get_serialized_function(self) -> Tuple[Optional[Any], Optional[Callable[..., Any]]]:
+    async def get_serialized_function(self) -> tuple[Optional[Any], Optional[Callable[..., Any]]]:
         # Fetch the serialized function definition
         request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
         response = await self._client.stub.FunctionGetSerialized(request)
@@ -505,7 +485,7 @@ class _ContainerIOManager:
     def serialize_data_format(self, obj: Any, data_format: int) -> bytes:
         return serialize_data_format(obj, data_format)
 
-    async def format_blob_data(self, data: bytes) -> Dict[str, Any]:
+    async def format_blob_data(self, data: bytes) -> dict[str, Any]:
         return (
             {"data_blob_id": await blob_upload(data, self._client.stub)}
             if len(data) > MAX_OBJECT_SIZE_BYTES
@@ -522,7 +502,7 @@ class _ContainerIOManager:
         function_call_id: str,
         start_index: int,
         data_format: int,
-        messages_bytes: List[Any],
+        messages_bytes: list[Any],
     ) -> None:
         """Put data onto the `data_out` stream of a function call.
 
@@ -530,7 +510,7 @@ class _ContainerIOManager:
         was introduced as a performance optimization in client version 0.57, so older clients will
         still use the previous Postgres-backed system based on `FunctionPutOutputs()`.
         """
-        data_chunks: List[api_pb2.DataChunk] = []
+        data_chunks: list[api_pb2.DataChunk] = []
         for i, message_bytes in enumerate(messages_bytes):
             chunk = api_pb2.DataChunk(data_format=data_format, index=start_index + i)  # type: ignore
             if len(message_bytes) > MAX_OBJECT_SIZE_BYTES:
@@ -595,7 +575,7 @@ class _ContainerIOManager:
         self,
         batch_max_size: int,
         batch_wait_ms: int,
-    ) -> AsyncIterator[List[Tuple[str, str, api_pb2.FunctionInput]]]:
+    ) -> AsyncIterator[list[tuple[str, str, api_pb2.FunctionInput]]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         iteration = 0
         while self._fetching_inputs:
@@ -652,7 +632,7 @@ class _ContainerIOManager:
     @synchronizer.no_io_translation
     async def run_inputs_outputs(
         self,
-        finalized_functions: Dict[str, FinalizedFunction],
+        finalized_functions: dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
         batch_max_size: int = 0,
         batch_wait_ms: int = 0,
     ) -> AsyncIterator[IOContext]:
@@ -682,7 +662,7 @@ class _ContainerIOManager:
         io_context: IOContext,
         started_at: float,
         data_format: "modal_proto.api_pb2.DataFormat.ValueType",
-        results: List[api_pb2.GenericResult],
+        results: list[api_pb2.GenericResult],
     ) -> None:
         output_created_at = time.time()
         outputs = [
@@ -711,7 +691,7 @@ class _ContainerIOManager:
             logger.info(err)
             return self.serialize(SerializationError(err))
 
-    def serialize_traceback(self, exc: BaseException) -> Tuple[Optional[bytes], Optional[bytes]]:
+    def serialize_traceback(self, exc: BaseException) -> tuple[Optional[bytes], Optional[bytes]]:
         serialized_tb, tb_line_cache = None, None
 
         try:
@@ -778,11 +758,19 @@ class _ContainerIOManager:
             #    for the yield. Typically on event loop shutdown
             raise
         except (InputCancellation, asyncio.CancelledError):
-            # just skip creating any output for this input and keep going with the next instead
-            # it should have been marked as cancelled already in the backend at this point so it
-            # won't be retried
-            logger.warning(f"Received a cancellation signal while processing input {io_context.input_ids}")
-            await self.exit_context(started_at, io_context.input_ids)
+            # Create terminated outputs for these inputs to signal that the cancellations have been completed.
+            results = [
+                api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
+                for _ in io_context.input_ids
+            ]
+            await self._push_outputs(
+                io_context=io_context,
+                started_at=started_at,
+                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                results=results,
+            )
+            self.exit_context(started_at, io_context.input_ids)
+            logger.warning(f"Successfully canceled input {io_context.input_ids}")
             return
         except BaseException as exc:
             if isinstance(exc, ImportError):
@@ -828,9 +816,9 @@ class _ContainerIOManager:
                 data_format=api_pb2.DATA_FORMAT_PICKLE,
                 results=results,
             )
-            await self.exit_context(started_at, io_context.input_ids)
+            self.exit_context(started_at, io_context.input_ids)
 
-    async def exit_context(self, started_at, input_ids: List[str]):
+    def exit_context(self, started_at, input_ids: list[str]):
         self.total_user_time += time.time() - started_at
         self.calls_completed += 1
 
@@ -864,7 +852,7 @@ class _ContainerIOManager:
             data_format=data_format,
             results=results,
         )
-        await self.exit_context(started_at, io_context.input_ids)
+        self.exit_context(started_at, io_context.input_ids)
 
     async def memory_restore(self) -> None:
         # Busy-wait for restore. `/__modal/restore-state.json` is created
@@ -904,21 +892,6 @@ class _ContainerIOManager:
         self.current_input_id = None
         self.current_inputs = {}
         self.current_input_started_at = None
-
-        # Patch torch to ensure it doesn't return CUDA unavailibility due to
-        # cached queries that executed during snapshot process. ref: MOD-3257
-        #
-        # perf: scanning sys.modules keys before import to avoid slow PYTHONPATH scanning.
-        if "torch" in sys.modules:
-            try:
-                sys.modules["torch"].cuda.device_count = sys.modules["torch"].cuda._device_count_nvml
-            # Wide-open except to catch anything. We don't want to crash here.
-            except Exception as exc:
-                logger.warning(
-                    f"failed to patch 'torch.cuda.device_count' during snapshot restore: {exc}. "
-                    "CUDA device availability may be inaccurate."
-                )
-
         self._client = await _Client.from_env()
 
     async def memory_snapshot(self) -> None:
@@ -926,7 +899,7 @@ class _ContainerIOManager:
         if self.checkpoint_id:
             logger.debug(f"Checkpoint ID: {self.checkpoint_id} (Memory Snapshot ID)")
         else:
-            logger.debug("No checkpoint ID provided (Memory Snapshot ID)")
+            raise ValueError("No checkpoint ID provided for memory snapshot")
 
         # Pause heartbeats since they keep the client connection open which causes the snapshotter to crash
         async with self.heartbeat_condition:
@@ -936,7 +909,7 @@ class _ContainerIOManager:
             self.heartbeat_condition.notify_all()
 
             await self._client.stub.ContainerCheckpoint(
-                api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id or "")
+                api_pb2.ContainerCheckpointRequest(checkpoint_id=self.checkpoint_id)
             )
 
             await self._client._close(prep_for_restore=True)
@@ -948,7 +921,7 @@ class _ContainerIOManager:
             self._waiting_for_memory_snapshot = False
             self.heartbeat_condition.notify_all()
 
-    async def volume_commit(self, volume_ids: List[str]) -> None:
+    async def volume_commit(self, volume_ids: list[str]) -> None:
         """
         Perform volume commit for given `volume_ids`.
         Only used on container exit to persist uncommitted changes on behalf of user.
@@ -989,7 +962,7 @@ class _ContainerIOManager:
         try:
             await self._client.stub.FunctionStartPtyShell(Empty())
         except Exception as e:
-            print("Error: Failed to start PTY shell.")
+            logger.error("Failed to start PTY shell.")
             raise e
 
     @property

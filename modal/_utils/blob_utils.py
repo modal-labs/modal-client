@@ -5,13 +5,12 @@ import hashlib
 import io
 import os
 import platform
+import time
+from collections.abc import AsyncIterator
 from contextlib import AbstractContextManager, contextmanager
 from pathlib import Path, PurePosixPath
-from typing import Any, AsyncIterator, BinaryIO, Callable, List, Optional, Union
+from typing import TYPE_CHECKING, Any, BinaryIO, Callable, Optional, Union
 from urllib.parse import urlparse
-
-from aiohttp import BytesIOPayload
-from aiohttp.abc import AbstractStreamWriter
 
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
@@ -19,9 +18,12 @@ from modal_proto.modal_api_grpc import ModalClientModal
 from ..exception import ExecutionError
 from .async_utils import TaskContext, retry
 from .grpc_utils import retry_transient_errors
-from .hash_utils import UploadHashes, get_sha256_hex, get_upload_hashes
+from .hash_utils import UploadHashes, get_upload_hashes
 from .http_utils import ClientSessionRegistry
 from .logger import logger
+
+if TYPE_CHECKING:
+    from .bytes_io_segment_payload import BytesIOSegmentPayload
 
 # Max size for function inputs and outputs.
 MAX_OBJECT_SIZE_BYTES = 2 * 1024 * 1024  # 2 MiB
@@ -36,93 +38,16 @@ BLOB_MAX_PARALLELISM = 10
 # read ~16MiB chunks by default
 DEFAULT_SEGMENT_CHUNK_SIZE = 2**24
 
-
-class BytesIOSegmentPayload(BytesIOPayload):
-    """Modified bytes payload for concurrent sends of chunks from the same file.
-
-    Adds:
-    * read limit using remaining_bytes, in order to split files across streams
-    * larger read chunk (to prevent excessive read contention between parts)
-    * calculates an md5 for the segment
-
-    Feels like this should be in some standard lib...
-    """
-
-    def __init__(
-        self,
-        bytes_io: BinaryIO,  # should *not* be shared as IO position modification is not locked
-        segment_start: int,
-        segment_length: int,
-        chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
-        progress_report_cb: Optional[Callable] = None,
-    ):
-        # not thread safe constructor!
-        super().__init__(bytes_io)
-        self.initial_seek_pos = bytes_io.tell()
-        self.segment_start = segment_start
-        self.segment_length = segment_length
-        # seek to start of file segment we are interested in, in order to make .size() evaluate correctly
-        self._value.seek(self.initial_seek_pos + segment_start)
-        assert self.segment_length <= super().size
-        self.chunk_size = chunk_size
-        self.progress_report_cb = progress_report_cb or (lambda *_, **__: None)
-        self.reset_state()
-
-    def reset_state(self):
-        self._md5_checksum = hashlib.md5()
-        self.num_bytes_read = 0
-        self._value.seek(self.initial_seek_pos)
-
-    @contextmanager
-    def reset_on_error(self):
-        try:
-            yield
-        except Exception as exc:
-            try:
-                self.progress_report_cb(reset=True)
-            except Exception as cb_exc:
-                raise cb_exc from exc
-            raise exc
-        finally:
-            self.reset_state()
-
-    @property
-    def size(self) -> int:
-        return self.segment_length
-
-    def md5_checksum(self):
-        return self._md5_checksum
-
-    async def write(self, writer: AbstractStreamWriter):
-        loop = asyncio.get_event_loop()
-
-        async def safe_read():
-            read_start = self.initial_seek_pos + self.segment_start + self.num_bytes_read
-            self._value.seek(read_start)
-            num_bytes = min(self.chunk_size, self.remaining_bytes())
-            chunk = await loop.run_in_executor(None, self._value.read, num_bytes)
-
-            await loop.run_in_executor(None, self._md5_checksum.update, chunk)
-            self.num_bytes_read += len(chunk)
-            return chunk
-
-        chunk = await safe_read()
-        while chunk and self.remaining_bytes() > 0:
-            await writer.write(chunk)
-            self.progress_report_cb(advance=len(chunk))
-            chunk = await safe_read()
-        if chunk:
-            await writer.write(chunk)
-            self.progress_report_cb(advance=len(chunk))
-
-    def remaining_bytes(self):
-        return self.segment_length - self.num_bytes_read
+# Files larger than this will be multipart uploaded. The server might request multipart upload for smaller files as
+# well, but the limit will never be raised.
+# TODO(dano): remove this once we stop requiring md5 for blobs
+MULTIPART_UPLOAD_THRESHOLD = 1024**3
 
 
 @retry(n_attempts=5, base_delay=0.5, timeout=None)
 async def _upload_to_s3_url(
     upload_url,
-    payload: BytesIOSegmentPayload,
+    payload: "BytesIOSegmentPayload",
     content_md5_b64: Optional[str] = None,
     content_type: Optional[str] = "application/octet-stream",  # set to None to force omission of ContentType header
 ) -> str:
@@ -173,18 +98,20 @@ async def perform_multipart_upload(
     *,
     content_length: int,
     max_part_size: int,
-    part_urls: List[str],
+    part_urls: list[str],
     completion_url: str,
     upload_chunk_size: int = DEFAULT_SEGMENT_CHUNK_SIZE,
     progress_report_cb: Optional[Callable] = None,
 ) -> None:
+    from .bytes_io_segment_payload import BytesIOSegmentPayload
+
     upload_coros = []
     file_offset = 0
     num_bytes_left = content_length
 
     # Give each part its own IO reader object to avoid needing to
     # lock access to the reader's position pointer.
-    data_file_readers: List[BinaryIO]
+    data_file_readers: list[BinaryIO]
     if isinstance(data_file, io.BytesIO):
         view = data_file.getbuffer()  # does not copy data
         data_file_readers = [io.BytesIO(view) for _ in range(len(part_urls))]
@@ -271,6 +198,8 @@ async def _blob_upload(
             progress_report_cb=progress_report_cb,
         )
     else:
+        from .bytes_io_segment_payload import BytesIOSegmentPayload
+
         payload = BytesIOSegmentPayload(
             data, segment_start=0, segment_length=content_length, progress_report_cb=progress_report_cb
         )
@@ -288,17 +217,28 @@ async def _blob_upload(
 
 
 async def blob_upload(payload: bytes, stub: ModalClientModal) -> str:
+    size_mib = len(payload) / 1024 / 1024
+    logger.debug(f"Uploading large blob of size {size_mib:.2f} MiB")
+    t0 = time.time()
     if isinstance(payload, str):
         logger.warning("Blob uploading string, not bytes - auto-encoding as utf8")
         payload = payload.encode("utf8")
     upload_hashes = get_upload_hashes(payload)
-    return await _blob_upload(upload_hashes, payload, stub)
+    blob_id = await _blob_upload(upload_hashes, payload, stub)
+    dur_s = max(time.time() - t0, 0.001)  # avoid division by zero
+    throughput_mib_s = (size_mib) / dur_s
+    logger.debug(f"Uploaded large blob of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s)." f" {blob_id}")
+    return blob_id
 
 
 async def blob_upload_file(
-    file_obj: BinaryIO, stub: ModalClientModal, progress_report_cb: Optional[Callable] = None
+    file_obj: BinaryIO,
+    stub: ModalClientModal,
+    progress_report_cb: Optional[Callable] = None,
+    sha256_hex: Optional[str] = None,
+    md5_hex: Optional[str] = None,
 ) -> str:
-    upload_hashes = get_upload_hashes(file_obj)
+    upload_hashes = get_upload_hashes(file_obj, sha256_hex=sha256_hex, md5_hex=md5_hex)
     return await _blob_upload(upload_hashes, file_obj, stub, progress_report_cb)
 
 
@@ -317,11 +257,17 @@ async def _download_from_url(download_url: str) -> bytes:
 
 
 async def blob_download(blob_id: str, stub: ModalClientModal) -> bytes:
-    # convenience function reading all of the downloaded file into memory
+    """Convenience function for reading all of the downloaded file into memory."""
+    logger.debug(f"Downloading large blob {blob_id}")
+    t0 = time.time()
     req = api_pb2.BlobGetRequest(blob_id=blob_id)
     resp = await retry_transient_errors(stub.BlobGet, req)
-
-    return await _download_from_url(resp.download_url)
+    data = await _download_from_url(resp.download_url)
+    size_mib = len(data) / 1024 / 1024
+    dur_s = max(time.time() - t0, 0.001)  # avoid division by zero
+    throughput_mib_s = size_mib / dur_s
+    logger.debug(f"Downloaded large blob {blob_id} of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s)")
+    return data
 
 
 async def blob_iter(blob_id: str, stub: ModalClientModal) -> AsyncIterator[bytes]:
@@ -351,6 +297,7 @@ class FileUploadSpec:
     use_blob: bool
     content: Optional[bytes]  # typically None if using blob, required otherwise
     sha256_hex: str
+    md5_hex: str
     mode: int  # file permission bits (last 12 bits of st_mode)
     size: int
 
@@ -368,13 +315,15 @@ def _get_file_upload_spec(
         fp.seek(0)
 
         if size >= LARGE_FILE_LIMIT:
+            # TODO(dano): remove the placeholder md5 once we stop requiring md5 for blobs
+            md5_hex = "baadbaadbaadbaadbaadbaadbaadbaad" if size > MULTIPART_UPLOAD_THRESHOLD else None
             use_blob = True
             content = None
-            sha256_hex = get_sha256_hex(fp)
+            hashes = get_upload_hashes(fp, md5_hex=md5_hex)
         else:
             use_blob = False
             content = fp.read()
-            sha256_hex = get_sha256_hex(content)
+            hashes = get_upload_hashes(content)
 
     return FileUploadSpec(
         source=source,
@@ -382,7 +331,8 @@ def _get_file_upload_spec(
         mount_filename=mount_filename.as_posix(),
         use_blob=use_blob,
         content=content,
-        sha256_hex=sha256_hex,
+        sha256_hex=hashes.sha256_hex(),
+        md5_hex=hashes.md5_hex(),
         mode=mode & 0o7777,
         size=size,
     )

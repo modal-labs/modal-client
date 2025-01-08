@@ -1,18 +1,19 @@
 # Copyright Modal Labs 2022
 import os
-from typing import Dict, List, Optional, Union
+from typing import Optional, Union
 
 from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
 
 from ._resolver import Resolver
+from ._runtime.execution_context import is_local
 from ._utils.async_utils import synchronize_api
+from ._utils.deprecation import renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .exception import InvalidError, NotFoundError
-from .execution_context import is_local
 from .object import _get_environment_name, _Object
 
 ENV_DICT_WRONG_TYPE_ERR = "the env_dict argument to Secret has to be a dict[str, Union[str, None]]"
@@ -30,7 +31,7 @@ class _Secret(_Object, type_prefix="st"):
 
     @staticmethod
     def from_dict(
-        env_dict: Dict[
+        env_dict: dict[
             str, Union[str, None]
         ] = {},  # dict of entries to be inserted as environment variables in functions using the secret
     ):
@@ -46,7 +47,7 @@ class _Secret(_Object, type_prefix="st"):
         if not isinstance(env_dict, dict):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
 
-        env_dict_filtered: Dict[str, str] = {k: v for k, v in env_dict.items() if v is not None}
+        env_dict_filtered: dict[str, str] = {k: v for k, v in env_dict.items() if v is not None}
         if not all(isinstance(k, str) for k in env_dict_filtered.keys()):
             raise InvalidError(ENV_DICT_WRONG_TYPE_ERR)
         if not all(isinstance(v, str) for v in env_dict_filtered.values()):
@@ -75,11 +76,11 @@ class _Secret(_Object, type_prefix="st"):
             self._hydrate(resp.secret_id, resolver.client, None)
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
-        return _Secret._from_loader(_load, rep)
+        return _Secret._from_loader(_load, rep, hydrate_lazily=True)
 
     @staticmethod
     def from_local_environ(
-        env_keys: List[str],  # list of local env vars to be included for remote execution
+        env_keys: list[str],  # list of local env vars to be included for remote execution
     ):
         """Create secrets from local environment variables automatically."""
 
@@ -89,7 +90,7 @@ class _Secret(_Object, type_prefix="st"):
             except KeyError as exc:
                 missing_key = exc.args[0]
                 raise InvalidError(
-                    f"Could not find local environment variable '{missing_key}' for Secret.from_local_env_vars"
+                    f"Could not find local environment variable '{missing_key}' for Secret.from_local_environ"
                 )
 
         return _Secret.from_dict({})
@@ -158,18 +159,23 @@ class _Secret(_Object, type_prefix="st"):
 
             self._hydrate(resp.secret_id, resolver.client, None)
 
-        return _Secret._from_loader(_load, "Secret.from_dotenv()")
+        return _Secret._from_loader(_load, "Secret.from_dotenv()", hydrate_lazily=True)
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
-        label: str,  # Some global identifier, such as "aws-secret"
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
-        required_keys: List[
+        required_keys: list[
             str
         ] = [],  # Optionally, a list of required environment variables (will be asserted server-side)
     ) -> "_Secret":
-        """Create a reference to a persisted Secret
+        """Reference a Secret by its name.
+
+        In contrast to most other Modal objects, named Secrets must be provisioned
+        from the Dashboard. See other methods for alternate ways of creating a new
+        Secret from code.
 
         ```python
         secret = modal.Secret.from_name("my-secret")
@@ -182,7 +188,7 @@ class _Secret(_Object, type_prefix="st"):
 
         async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SecretGetOrCreateRequest(
-                deployment_name=label,
+                deployment_name=name,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
                 required_keys=required_keys,
@@ -196,25 +202,20 @@ class _Secret(_Object, type_prefix="st"):
                     raise
             self._hydrate(response.secret_id, resolver.client, None)
 
-        return _Secret._from_loader(_load, "Secret()")
+        return _Secret._from_loader(_load, "Secret()", hydrate_lazily=True)
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
-        label: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-        required_keys: List[str] = [],
+        required_keys: list[str] = [],
     ) -> "_Secret":
-        """Lookup a secret with a given name
-
-        ```python
-        s = modal.Secret.lookup("my-secret")
-        print(s.object_id)
-        ```
-        """
+        """mdmd:hidden"""
         obj = _Secret.from_name(
-            label, namespace=namespace, environment_name=environment_name, required_keys=required_keys
+            name, namespace=namespace, environment_name=environment_name, required_keys=required_keys
         )
         if client is None:
             client = await _Client.from_env()
@@ -225,7 +226,7 @@ class _Secret(_Object, type_prefix="st"):
     @staticmethod
     async def create_deployed(
         deployment_name: str,
-        env_dict: Dict[str, str],
+        env_dict: dict[str, str],
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,

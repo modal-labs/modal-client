@@ -1,13 +1,14 @@
 # Copyright Modal Labs 2022
 import asyncio
+from collections.abc import Sequence
 from datetime import datetime
-from typing import Optional, Sequence, Union
+from json import dumps
+from typing import Optional, Union
 
 import typer
 from click import UsageError
 from grpclib import GRPCError, Status
 from rich.console import Console
-from rich.json import JSON
 from rich.table import Column, Table
 from rich.text import Text
 
@@ -76,6 +77,10 @@ def _plain(text: Union[Text, str]) -> str:
     return text.plain if isinstance(text, Text) else text
 
 
+def is_tty() -> bool:
+    return Console().is_terminal
+
+
 def display_table(
     columns: Sequence[Union[Column, str]],
     rows: Sequence[Sequence[Union[Text, str]]],
@@ -88,7 +93,7 @@ def display_table(
     console = Console()
     if json:
         json_data = [{col_to_str(col): _plain(row[i]) for i, col in enumerate(columns)} for row in rows]
-        console.print(JSON.from_data(json_data))
+        console.print_json(dumps(json_data))
     else:
         table = Table(*columns, title=title)
         for row in rows:

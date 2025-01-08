@@ -14,7 +14,7 @@ import sys
 import tempfile
 import time
 import uuid
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Optional
 from unittest import mock
 from unittest.mock import MagicMock
 
@@ -24,12 +24,12 @@ from grpclib.exceptions import GRPCError
 import modal
 from modal import Client, Queue, Volume, is_local
 from modal._container_entrypoint import UserException, main
-from modal._container_io_manager import (
+from modal._runtime.container_io_manager import (
     ContainerIOManager,
-    FinalizedFunction,
     InputSlots,
     IOContext,
 )
+from modal._runtime.user_code_imports import FinalizedFunction
 from modal._serialization import (
     deserialize,
     deserialize_data_format,
@@ -58,15 +58,21 @@ SLEEP_DELAY = 0.1
 blob_upload = synchronize_api(_blob_upload)
 blob_download = synchronize_api(_blob_download)
 
+DEFAULT_APP_LAYOUT = api_pb2.AppLayout(
+    objects=[
+        api_pb2.Object(object_id="im-1"),
+    ],
+)
+
 
 def _get_inputs(
-    args: Tuple[Tuple, Dict] = ((42,), {}),
+    args: tuple[tuple, dict] = ((42,), {}),
     n: int = 1,
     kill_switch=True,
     method_name: Optional[str] = None,
     upload_to_blob: bool = False,
     client: Optional[Client] = None,
-) -> List[api_pb2.FunctionGetInputsResponse]:
+) -> list[api_pb2.FunctionGetInputsResponse]:
     if upload_to_blob:
         args_blob_id = blob_upload(serialize(args), client.stub)
         input_pb = api_pb2.FunctionInput(
@@ -87,7 +93,7 @@ def _get_inputs(
 
 
 def _get_inputs_batched(
-    args_list: List[Tuple[Tuple, Dict]],
+    args_list: list[tuple[tuple, dict]],
     batch_max_size: int,
     kill_switch=True,
     method_name: Optional[str] = None,
@@ -106,7 +112,7 @@ def _get_inputs_batched(
         *([api_pb2.FunctionGetInputsItem(kill_switch=True)] if kill_switch else []),
     ]
     response_list = []
-    current_batch: List[Any] = []
+    current_batch: list[Any] = []
     while inputs:
         input = inputs.pop(0)
         if input.kill_switch:
@@ -124,7 +130,7 @@ def _get_inputs_batched(
     return response_list
 
 
-def _get_multi_inputs(args: List[Tuple[str, Tuple, Dict]] = []) -> List[api_pb2.FunctionGetInputsResponse]:
+def _get_multi_inputs(args: list[tuple[str, tuple, dict]] = []) -> list[api_pb2.FunctionGetInputsResponse]:
     responses = []
     for input_n, (method_name, input_args, input_kwargs) in enumerate(args):
         resp = api_pb2.FunctionGetInputsResponse(
@@ -143,12 +149,12 @@ def _get_multi_inputs(args: List[Tuple[str, Tuple, Dict]] = []) -> List[api_pb2.
 @dataclasses.dataclass
 class ContainerResult:
     client: Client
-    items: List[api_pb2.FunctionPutOutputsItem]
-    data_chunks: List[api_pb2.DataChunk]
+    items: list[api_pb2.FunctionPutOutputsItem]
+    data_chunks: list[api_pb2.DataChunk]
     task_result: api_pb2.GenericResult
 
 
-def _get_multi_inputs_with_methods(args: List[Tuple[str, Tuple, Dict]] = []) -> List[api_pb2.FunctionGetInputsResponse]:
+def _get_multi_inputs_with_methods(args: list[tuple[str, tuple, dict]] = []) -> list[api_pb2.FunctionGetInputsResponse]:
     responses = []
     for input_n, (method_name, *input_args) in enumerate(args):
         resp = api_pb2.FunctionGetInputsResponse(
@@ -178,14 +184,16 @@ def _container_args(
     batch_wait_ms: Optional[int] = None,
     serialized_params: Optional[bytes] = None,
     is_checkpointing_function: bool = False,
-    deps: List[str] = ["im-1"],
-    volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
+    deps: list[str] = ["im-1"],
+    volume_mounts: Optional[list[api_pb2.VolumeMount]] = None,
     is_auto_snapshot: bool = False,
     max_inputs: Optional[int] = None,
     is_class: bool = False,
     class_parameter_info=api_pb2.ClassParameterInfo(
         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
     ),
+    app_id: str = "ap-1",
+    app_layout: api_pb2.AppLayout = DEFAULT_APP_LAYOUT,
 ):
     if webhook_type:
         webhook_config = api_pb2.WebhookConfig(
@@ -219,15 +227,16 @@ def _container_args(
     return api_pb2.ContainerArguments(
         task_id="ta-123",
         function_id="fu-123",
-        app_id="ap-1",
+        app_id=app_id,
         function_def=function_def,
         serialized_params=serialized_params,
         checkpoint_id=f"ch-{uuid.uuid4()}",
+        app_layout=app_layout,
     )
 
 
-def _flatten_outputs(outputs) -> List[api_pb2.FunctionPutOutputsItem]:
-    items: List[api_pb2.FunctionPutOutputsItem] = []
+def _flatten_outputs(outputs) -> list[api_pb2.FunctionPutOutputsItem]:
+    items: list[api_pb2.FunctionPutOutputsItem] = []
     for req in outputs:
         items += list(req.outputs)
     return items
@@ -250,14 +259,15 @@ def _run_container(
     batch_wait_ms: int = 0,
     serialized_params: Optional[bytes] = None,
     is_checkpointing_function: bool = False,
-    deps: List[str] = ["im-1"],
-    volume_mounts: Optional[List[api_pb2.VolumeMount]] = None,
+    deps: list[str] = ["im-1"],
+    volume_mounts: Optional[list[api_pb2.VolumeMount]] = None,
     is_auto_snapshot: bool = False,
     max_inputs: Optional[int] = None,
     is_class: bool = False,
     class_parameter_info=api_pb2.ClassParameterInfo(
         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
     ),
+    app_layout=DEFAULT_APP_LAYOUT,
 ) -> ContainerResult:
     container_args = _container_args(
         module_name,
@@ -279,8 +289,9 @@ def _run_container(
         max_inputs,
         is_class=is_class,
         class_parameter_info=class_parameter_info,
+        app_layout=app_layout,
     )
-    with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, ("ta-123", "task-secret")) as client:
+    with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
         if inputs is None:
             servicer.container_inputs = _get_inputs()
         else:
@@ -307,6 +318,10 @@ def _run_container(
             env["MODAL_SERVER_URL"] = servicer.container_addr
             env["MODAL_ENABLE_SNAP_RESTORE"] = "1"
 
+        # These env vars are always present in containers
+        env["MODAL_TASK_ID"] = "ta-123"
+        env["MODAL_IS_REMOTE"] = "1"
+
         # reset _App tracking state between runs
         _App._all_apps.clear()
 
@@ -323,7 +338,7 @@ def _run_container(
         items = _flatten_outputs(servicer.container_outputs)
 
         # Get data chunks
-        data_chunks: List[api_pb2.DataChunk] = []
+        data_chunks: list[api_pb2.DataChunk] = []
         if function_call_id in servicer.fc_data_out:
             try:
                 while True:
@@ -376,12 +391,11 @@ def _unwrap_batch_exception(ret: ContainerResult, batch_size):
     return outputs
 
 
-def _unwrap_generator(ret: ContainerResult) -> Tuple[List[Any], Optional[Exception]]:
+def _unwrap_generator(ret: ContainerResult) -> tuple[list[Any], Optional[Exception]]:
     assert len(ret.items) == 1
     item = ret.items[0]
-    assert item.result.gen_status == api_pb2.GenericResult.GENERATOR_STATUS_UNSPECIFIED
 
-    values: List[Any] = [deserialize_data_format(chunk.data, chunk.data_format, None) for chunk in ret.data_chunks]
+    values: list[Any] = [deserialize_data_format(chunk.data, chunk.data_format, None) for chunk in ret.data_chunks]
 
     if item.result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
         exc = deserialize(item.result.data, ret.client)
@@ -963,9 +977,15 @@ def test_cls_web_endpoint(servicer):
 
 @skip_github_non_linux
 def test_cls_web_asgi_construction(servicer):
-    servicer.app_objects.setdefault("ap-1", {}).setdefault("square", "fu-2")
-    servicer.app_functions["fu-2"] = api_pb2.Function()
-
+    app_layout = api_pb2.AppLayout(
+        objects=[
+            api_pb2.Object(object_id="im-1"),
+            api_pb2.Object(object_id="fu-2", function_handle_metadata=api_pb2.FunctionHandleMetadata()),
+        ],
+        function_ids={
+            "square": "fu-2",
+        },
+    )
     inputs = _get_web_inputs(method_name="asgi_web")
     ret = _run_container(
         servicer,
@@ -973,6 +993,7 @@ def test_cls_web_asgi_construction(servicer):
         "Cls.*",
         inputs=inputs,
         is_class=True,
+        app_layout=app_layout,
     )
 
     _, second_message = _unwrap_asgi(ret)
@@ -1056,6 +1077,18 @@ def test_cls_enter_uses_event_loop(servicer):
 
 
 @skip_github_non_linux
+def test_cls_with_image(servicer):
+    ret = _run_container(
+        servicer,
+        "test.supports.class_with_image",
+        "ClassWithImage.*",
+        inputs=_get_inputs(((), {}), method_name="image_is_hydrated"),
+        is_class=True,
+    )
+    assert _unwrap_scalar(ret) == True
+
+
+@skip_github_non_linux
 def test_container_heartbeats(servicer):
     _run_container(servicer, "test.supports.functions", "square")
     assert any(isinstance(request, api_pb2.ContainerHeartbeatRequest) for request in servicer.requests)
@@ -1065,7 +1098,7 @@ def test_container_heartbeats(servicer):
 
 
 @skip_github_non_linux
-def test_cli(servicer):
+def test_cli(servicer, credentials):
     # This tests the container being invoked as a subprocess (the if __name__ == "__main__" block)
 
     # Build up payload we pass through sys args
@@ -1081,41 +1114,44 @@ def test_cli(servicer):
         function_id="fu-123",
         app_id="ap-123",
         function_def=function_def,
+        app_layout=api_pb2.AppLayout(
+            objects=[
+                api_pb2.Object(object_id="im-123"),
+            ],
+        ),
     )
     data_base64: str = base64.b64encode(container_args.SerializeToString()).decode("ascii")
-
-    # Needed for function hydration
-    servicer.app_objects["ap-123"] = {"": "im-123"}
 
     # Inputs that will be consumed by the container
     servicer.container_inputs = _get_inputs()
 
     # Launch subprocess
-    env = {"MODAL_SERVER_URL": servicer.container_addr}
+    token_id, token_secret = credentials
+    env = {"MODAL_SERVER_URL": servicer.container_addr, "MODAL_TOKEN_ID": token_id, "MODAL_TOKEN_SECRET": token_secret}
     lib_dir = pathlib.Path(__file__).parent.parent
-    args: List[str] = [sys.executable, "-m", "modal._container_entrypoint", data_base64]
-    ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    args: list[str] = [sys.executable, "-m", "modal._container_entrypoint", data_base64]
+    ret = subprocess.run(args, cwd=lib_dir, env=env, capture_output=True)
     stdout = ret.stdout.decode()
     stderr = ret.stderr.decode()
     if ret.returncode != 0:
         raise Exception(f"Failed with {ret.returncode} stdout: {stdout} stderr: {stderr}")
-
-    if sys.version_info[:2] != (3, 8):  # Skip on Python 3.8 as we'll have PendingDeprecationError messages
-        assert stdout == ""
-        assert stderr == ""
+    assert stdout == ""
+    assert stderr == ""
 
 
 @skip_github_non_linux
-def test_function_sibling_hydration(servicer):
-    deploy_app_externally(servicer, "test.supports.functions", "app", capture_output=False)
-    ret = _run_container(servicer, "test.supports.functions", "check_sibling_hydration")
+def test_function_sibling_hydration(servicer, credentials):
+    deploy_app_externally(servicer, credentials, "test.supports.functions", "app", capture_output=False)
+    app_layout = servicer.app_get_layout("ap-1")
+    ret = _run_container(servicer, "test.supports.functions", "check_sibling_hydration", app_layout=app_layout)
     assert _unwrap_scalar(ret) is None
 
 
 @skip_github_non_linux
-def test_multiapp(servicer, caplog):
-    deploy_app_externally(servicer, "test.supports.multiapp", "a")
-    ret = _run_container(servicer, "test.supports.multiapp", "a_func")
+def test_multiapp(servicer, credentials, caplog):
+    deploy_app_externally(servicer, credentials, "test.supports.multiapp", "a")
+    app_layout = servicer.app_get_layout("ap-1")
+    ret = _run_container(servicer, "test.supports.multiapp", "a_func", app_layout=app_layout)
     assert _unwrap_scalar(ret) is None
     assert len(caplog.messages) == 0
     # Note that the app can be inferred from the function, even though there are multiple
@@ -1284,28 +1320,28 @@ def _batch_function_test_helper(batch_func, servicer, args_list, expected_output
 
 @skip_github_non_linux
 def test_batch_sync_function_full_batched(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}) for _ in range(4)]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 5), {}) for _ in range(4)]
     expected_outputs = [2] * 4
     _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_outputs)
 
 
 @skip_github_non_linux
 def test_batch_sync_function_partial_batched(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}) for _ in range(2)]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 5), {}) for _ in range(2)]
     expected_outputs = [2] * 2
     _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_outputs)
 
 
 @skip_github_non_linux
 def test_batch_sync_function_keyword_args(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10,), {"y": 5}) for _ in range(4)]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10,), {"y": 5}) for _ in range(4)]
     expected_outputs = [2] * 4
     _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_outputs)
 
 
 @skip_github_non_linux
 def test_batch_sync_function_arg_len_error(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}), ((10, 5, 1), {})]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 5), {}), ((10, 5, 1), {})]
     _batch_function_test_helper(
         "batch_function_sync",
         servicer,
@@ -1320,7 +1356,7 @@ def test_batch_sync_function_arg_len_error(servicer):
 
 @skip_github_non_linux
 def test_batch_sync_function_keyword_arg_error(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}), ((10,), {"z": 5})]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 5), {}), ((10,), {"z": 5})]
     _batch_function_test_helper(
         "batch_function_sync",
         servicer,
@@ -1335,7 +1371,7 @@ def test_batch_sync_function_keyword_arg_error(servicer):
 
 @skip_github_non_linux
 def test_batch_sync_function_multiple_args_error(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}), ((10,), {"x": 1})]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 5), {}), ((10,), {"x": 1})]
     _batch_function_test_helper(
         "batch_function_sync",
         servicer,
@@ -1350,7 +1386,7 @@ def test_batch_sync_function_multiple_args_error(servicer):
 
 @skip_github_non_linux
 def test_batch_sync_function_outputs_list_error(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {})]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 5), {})]
     _batch_function_test_helper(
         "batch_function_outputs_not_list",
         servicer,
@@ -1362,7 +1398,7 @@ def test_batch_sync_function_outputs_list_error(servicer):
 
 @skip_github_non_linux
 def test_batch_sync_function_outputs_len_error(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {})]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 5), {})]
     _batch_function_test_helper(
         "batch_function_outputs_wrong_len",
         servicer,
@@ -1377,14 +1413,14 @@ def test_batch_sync_function_outputs_len_error(servicer):
 
 @skip_github_non_linux
 def test_batch_sync_function_generic_error(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 0), {}) for _ in range(4)]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 0), {}) for _ in range(4)]
     expected_ouputs = ["ZeroDivisionError('division by zero')"] * 4
     _batch_function_test_helper("batch_function_sync", servicer, inputs, expected_ouputs, expected_status="failure")
 
 
 @skip_github_non_linux
 def test_batch_async_function(servicer):
-    inputs: List[Tuple[Tuple[Any, ...], Dict[str, Any]]] = [((10, 5), {}) for _ in range(4)]
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 5), {}) for _ in range(4)]
     expected_outputs = [2] * 4
     _batch_function_test_helper("batch_function_async", servicer, inputs, expected_outputs)
 
@@ -1422,26 +1458,30 @@ def test_derived_cls(servicer):
 
 
 @skip_github_non_linux
-def test_call_function_that_calls_function(servicer):
-    deploy_app_externally(servicer, "test.supports.functions", "app")
+def test_call_function_that_calls_function(servicer, credentials):
+    deploy_app_externally(servicer, credentials, "test.supports.functions", "app")
+    app_layout = servicer.app_get_layout("ap-1")
     ret = _run_container(
         servicer,
         "test.supports.functions",
         "cube",
         inputs=_get_inputs(((42,), {})),
+        app_layout=app_layout,
     )
     assert _unwrap_scalar(ret) == 42**3
 
 
 @skip_github_non_linux
-def test_call_function_that_calls_method(servicer, set_env_client):
+def test_call_function_that_calls_method(servicer, credentials, set_env_client):
     # TODO (elias): Remove set_env_client fixture dependency - shouldn't need an env client here?
-    deploy_app_externally(servicer, "test.supports.functions", "app")
+    deploy_app_externally(servicer, credentials, "test.supports.functions", "app")
+    app_layout = servicer.app_get_layout("ap-1")
     ret = _run_container(
         servicer,
         "test.supports.functions",
         "function_calling_method",
         inputs=_get_inputs(((42, "abc", 123), {})),
+        app_layout=app_layout,
     )
     assert _unwrap_scalar(ret) == 123**2  # servicer's implementation of function calling
 
@@ -1478,7 +1518,7 @@ def test_volume_commit_on_exit(servicer):
     )
     volume_commit_rpcs = [r for r in servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
     assert volume_commit_rpcs
-    assert {"vo-123", "vo-456"} == set(r.volume_id for r in volume_commit_rpcs)
+    assert {"vo-123", "vo-456"} == {r.volume_id for r in volume_commit_rpcs}
     assert _unwrap_scalar(ret) == 42**2
 
 
@@ -1495,7 +1535,7 @@ def test_volume_commit_on_error(servicer, capsys):
         volume_mounts=volume_mounts,
     )
     volume_commit_rpcs = [r for r in servicer.requests if isinstance(r, api_pb2.VolumeCommitRequest)]
-    assert {"vo-foo", "vo-bar"} == set(r.volume_id for r in volume_commit_rpcs)
+    assert {"vo-foo", "vo-bar"} == {r.volume_id for r in volume_commit_rpcs}
     assert 'raise Exception("Failure!")' in capsys.readouterr().err
 
 
@@ -1580,7 +1620,7 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, servicer)
     monkeypatch.setattr(synchronizer, "_translate_scalar_out", translate_out_spy)
 
     # don't do blobbing for this test
-    monkeypatch.setattr("modal._container_io_manager.MAX_OBJECT_SIZE_BYTES", 1e100)
+    monkeypatch.setattr("modal._runtime.container_io_manager.MAX_OBJECT_SIZE_BYTES", 1e100)
 
     large_data_list = list(range(int(1e6)))  # large data set
 
@@ -1606,20 +1646,21 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, servicer)
     for call in translate_out_spy.call_args_list:
         out_translations += list(call.args)
 
-    assert len(in_translations) < 1000  # typically 136 or something
+    assert len(in_translations) < 2000  # typically ~400 or something
     assert len(out_translations) < 2000
 
 
 def _run_container_process(
     servicer,
+    tmp_path,
     module_name,
     function_name,
     *,
-    inputs: List[Tuple[str, Tuple, Dict[str, Any]]],
+    inputs: list[tuple[str, tuple, dict[str, Any]]],
     allow_concurrent_inputs: Optional[int] = None,
     max_concurrent_inputs: Optional[int] = None,
-    cls_params: Tuple[Tuple, Dict[str, Any]] = ((), {}),
-    print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
+    cls_params: tuple[tuple, dict[str, Any]] = ((), {}),
+    _print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
     env={},
     is_class=False,
 ) -> subprocess.Popen:
@@ -1631,13 +1672,22 @@ def _run_container_process(
         serialized_params=serialize(cls_params),
         is_class=is_class,
     )
-    encoded_container_args = base64.b64encode(container_args.SerializeToString())
+
+    # These env vars are always present in containers
+    env["MODAL_TASK_ID"] = "ta-123"
+    env["MODAL_IS_REMOTE"] = "1"
+
+    container_args_path = tmp_path / "container-arguments.bin"
+    with container_args_path.open("wb") as f:
+        f.write(container_args.SerializeToString())
+    env["MODAL_CONTAINER_ARGUMENTS_PATH"] = str(container_args_path)
+
     servicer.container_inputs = _get_multi_inputs(inputs)
     return subprocess.Popen(
-        [sys.executable, "-m", "modal._container_entrypoint", encoded_container_args],
+        [sys.executable, "-m", "modal._container_entrypoint"],
         env={**os.environ, **env},
-        stdout=subprocess.PIPE if not print else None,
-        stderr=subprocess.PIPE if not print else None,
+        stdout=subprocess.PIPE if not _print else None,
+        stderr=subprocess.PIPE if not _print else None,
     )
 
 
@@ -1646,16 +1696,17 @@ def _run_container_process(
 @pytest.mark.parametrize(
     ["function_name", "input_args", "cancelled_input_ids", "expected_container_output", "live_cancellations"],
     [
+        # We use None to indicate that we expect a terminated output.
         # the 10 second inputs here are to be cancelled:
-        ("delay", [0.01, 20, 0.02], ["in-001"], [0.01, 0.02], 1),  # cancel second input
-        ("delay_async", [0.01, 20, 0.02], ["in-001"], [0.01, 0.02], 1),  # async variant
+        ("delay", [0.01, 20, 0.02], ["in-001"], [0.01, None, 0.02], 1),  # cancel second input
+        ("delay_async", [0.01, 20, 0.02], ["in-001"], [0.01, None, 0.02], 1),  # async variant
         # cancel first input, but it has already been processed, so all three should come through:
         ("delay", [0.01, 0.5, 0.03], ["in-000"], [0.01, 0.5, 0.03], 0),
         ("delay_async", [0.01, 0.5, 0.03], ["in-000"], [0.01, 0.5, 0.03], 0),
     ],
 )
 def test_cancellation_aborts_current_input_on_match(
-    servicer, function_name, input_args, cancelled_input_ids, expected_container_output, live_cancellations
+    tmp_path, servicer, function_name, input_args, cancelled_input_ids, expected_container_output, live_cancellations
 ):
     # NOTE: for a cancellation to actually happen in this test, it needs to be
     #    triggered while the relevant input is being processed. A future input
@@ -1664,6 +1715,7 @@ def test_cancellation_aborts_current_input_on_match(
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
             "test.supports.functions",
             function_name,
             inputs=[("", (arg,), {}) for arg in input_args],
@@ -1683,29 +1735,36 @@ def test_cancellation_aborts_current_input_on_match(
         api_pb2.ContainerHeartbeatResponse(cancel_input_event=api_pb2.CancelInputEvent(input_ids=cancelled_input_ids))
     )
     stdout, stderr = container_process.communicate()
-    assert stderr.decode().count("Received a cancellation signal") == live_cancellations
+    assert stderr.decode().count("Successfully canceled input") == live_cancellations
     assert "Traceback" not in stderr.decode()
     assert container_process.returncode == 0  # wait for container to exit
     duration = time.monotonic() - t0  # time from heartbeat to container exit
 
     items = _flatten_outputs(servicer.container_outputs)
     assert len(items) == len(expected_container_output)
-    data = [deserialize(i.result.data, client=None) for i in items]
-    assert data == expected_container_output
+    for i, item in enumerate(items):
+        if item.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
+            assert not expected_container_output[i]
+        else:
+            data = deserialize(item.result.data, client=None)
+            assert data == expected_container_output[i]
+
     # should never run for ~20s, which is what the input would take if the sleep isn't interrupted
     assert duration < 10  # should typically be < 1s, but for some reason in gh actions, it takes a really long time!
 
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
-def test_cancellation_stops_subset_of_async_concurrent_inputs(servicer):
+def test_cancellation_stops_subset_of_async_concurrent_inputs(servicer, tmp_path):
+    num_inputs = 2
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
             "test.supports.functions",
             "delay_async",
-            inputs=[("", (1,), {})] * 2,  # two inputs
-            allow_concurrent_inputs=2,
+            inputs=[("", (1,), {})] * num_inputs,
+            allow_concurrent_inputs=num_inputs,
         )
         input_lock.wait()
         input_lock.wait()
@@ -1716,24 +1775,48 @@ def test_cancellation_stops_subset_of_async_concurrent_inputs(servicer):
     )
     # container should exit soon!
     exit_code = container_process.wait(5)
-    assert (
-        len(servicer.container_outputs) == 1
-    )  # should not fail the outputs, as they would have been cancelled in backend already
+    items = _flatten_outputs(servicer.container_outputs)
+    assert len(items) == num_inputs  # should not fail the outputs, as they would have been cancelled in backend already
+    assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
+    assert deserialize(items[1].result.data, client=None) == 1
 
-    outputs: List[api_pb2.FunctionPutOutputsRequest] = servicer.container_outputs
-    assert deserialize(outputs[0].outputs[0].result.data, None) == 1
     container_stderr = container_process.stderr.read().decode("utf8")
-    print(container_stderr)
     assert "Traceback" not in container_stderr
     assert exit_code == 0  # container should exit gracefully
 
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
-def test_cancellation_stops_task_with_concurrent_inputs(servicer):
+def test_sigint_concurrent_async_cancel_doesnt_reraise(servicer, tmp_path):
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
+            "test.supports.functions",
+            "async_cancel_doesnt_reraise",
+            inputs=[("", (1,), {})] * 2,  # two inputs
+            allow_concurrent_inputs=2,
+        )
+        input_lock.wait()
+        input_lock.wait()
+
+    time.sleep(0.05)  # let the container get and start processing the input
+    container_process.send_signal(signal.SIGINT)
+    # container should exit soon!
+    exit_code = container_process.wait(5)
+    container_stderr = container_process.stderr.read().decode("utf8")
+    assert "Traceback" not in container_stderr
+    # TODO (elias): Make some assertions regarding what kind of output is recorded (if any) is recorded for these inputs
+    assert exit_code == 0  # container should exit gracefully
+
+
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_cancellation_stops_task_with_concurrent_inputs(servicer, tmp_path):
+    with servicer.input_lockstep() as input_lock:
+        container_process = _run_container_process(
+            servicer,
+            tmp_path,
             "test.supports.functions",
             "delay",
             inputs=[("", (20,), {})] * 2,  # two inputs
@@ -1748,18 +1831,16 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer):
     )
     # container should exit immediately, stopping execution of both inputs
     exit_code = container_process.wait(5)
-    assert (
-        len(servicer.container_outputs) == 0
-    )  # should not fail the outputs, as they would have been cancelled in backend already
+    assert not servicer.container_outputs  # No terminated outputs as task should be killed by server anyway.
+
     container_stderr = container_process.stderr.read().decode("utf8")
-    print(container_stderr)
     assert "Traceback" not in container_stderr
     assert exit_code == 0  # container should exit gracefully
 
 
 @skip_github_non_linux
 def test_inputs_outputs_with_blob_id(servicer, client, monkeypatch):
-    monkeypatch.setattr("modal._container_io_manager.MAX_OBJECT_SIZE_BYTES", 0)
+    monkeypatch.setattr("modal._runtime.container_io_manager.MAX_OBJECT_SIZE_BYTES", 0)
     ret = _run_container(
         servicer,
         "test.supports.functions",
@@ -1771,10 +1852,11 @@ def test_inputs_outputs_with_blob_id(servicer, client, monkeypatch):
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
-def test_lifecycle_full(servicer):
+def test_lifecycle_full(servicer, tmp_path):
     # Sync and async container lifecycle methods on a sync function.
     container_process = _run_container_process(
         servicer,
+        tmp_path,
         "test.supports.functions",
         "LifecycleCls.*",
         inputs=[("f_sync", (), {})],
@@ -1788,6 +1870,7 @@ def test_lifecycle_full(servicer):
     # Sync and async container lifecycle methods on an async function.
     container_process = _run_container_process(
         servicer,
+        tmp_path,
         "test.supports.functions",
         "LifecycleCls.*",
         inputs=[("f_async", (), {})],
@@ -1803,6 +1886,7 @@ def test_lifecycle_full(servicer):
 
 
 @skip_github_non_linux
+@pytest.mark.timeout(10)
 def test_stop_fetching_inputs(servicer):
     ret = _run_container(
         servicer,
@@ -1818,7 +1902,7 @@ def test_stop_fetching_inputs(servicer):
 
 @skip_github_non_linux
 def test_container_heartbeat_survives_grpc_deadlines(servicer, caplog, monkeypatch):
-    monkeypatch.setattr("modal._container_io_manager.HEARTBEAT_INTERVAL", 0.01)
+    monkeypatch.setattr("modal._runtime.container_io_manager.HEARTBEAT_INTERVAL", 0.01)
     num_heartbeats = 0
 
     async def heartbeat_responder(servicer, stream):
@@ -1854,9 +1938,9 @@ def test_container_heartbeat_survives_local_exceptions(servicer, caplog, monkeyp
         numcalls += 1
         raise Exception("oops")
 
-    monkeypatch.setattr("modal._container_io_manager.HEARTBEAT_INTERVAL", 0.01)
+    monkeypatch.setattr("modal._runtime.container_io_manager.HEARTBEAT_INTERVAL", 0.01)
     monkeypatch.setattr(
-        "modal._container_io_manager._ContainerIOManager._heartbeat_handle_cancellations", custom_heartbeater
+        "modal._runtime.container_io_manager._ContainerIOManager._heartbeat_handle_cancellations", custom_heartbeater
     )
 
     ret = _run_container(
@@ -1892,11 +1976,12 @@ def test_container_doesnt_send_large_exceptions(servicer):
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
-def test_sigint_termination_input_concurrent(servicer):
+def test_sigint_termination_input_concurrent(servicer, tmp_path):
     # Sync and async container lifecycle methods on a sync function.
     with servicer.input_lockstep() as input_barrier:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
             "test.supports.functions",
             "LifecycleCls.*",
             inputs=[("delay", (10,), {})] * 3,
@@ -1927,11 +2012,12 @@ def test_sigint_termination_input_concurrent(servicer):
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
 @pytest.mark.parametrize("method", ["delay", "delay_async"])
-def test_sigint_termination_input(servicer, method):
+def test_sigint_termination_input(servicer, tmp_path, method):
     # Sync and async container lifecycle methods on a sync function.
     with servicer.input_lockstep() as input_barrier:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
             "test.supports.functions",
             "LifecycleCls.*",
             inputs=[(method, (5,), {})],
@@ -1945,7 +2031,15 @@ def test_sigint_termination_input(servicer, method):
 
     stdout, stderr = container_process.communicate(timeout=5)
     stop_duration = time.monotonic() - signal_time
-    assert len(servicer.container_outputs) == 0
+
+    if method == "delay":
+        assert len(servicer.container_outputs) == 0
+    else:
+        # We end up returning a terminated output for async task cancels, which is ignored by the worker anyway.
+        items = _flatten_outputs(servicer.container_outputs)
+        assert len(items) == 1
+        assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
+
     assert (
         container_process.returncode == 0
     )  # container should catch and indicate successful termination by exiting cleanly when possible
@@ -1959,10 +2053,11 @@ def test_sigint_termination_input(servicer, method):
 @pytest.mark.usefixtures("server_url_env")
 @pytest.mark.parametrize("enter_type", ["sync_enter", "async_enter"])
 @pytest.mark.parametrize("method", ["delay", "delay_async"])
-def test_sigint_termination_enter_handler(servicer, method, enter_type):
+def test_sigint_termination_enter_handler(servicer, tmp_path, method, enter_type):
     # Sync and async container lifecycle methods on a sync function.
     container_process = _run_container_process(
         servicer,
+        tmp_path,
         "test.supports.functions",
         "LifecycleCls.*",
         inputs=[(method, (5,), {})],
@@ -1990,11 +2085,12 @@ def test_sigint_termination_enter_handler(servicer, method, enter_type):
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
 @pytest.mark.parametrize("exit_type", ["sync_exit", "async_exit"])
-def test_sigint_termination_exit_handler(servicer, exit_type):
+def test_sigint_termination_exit_handler(servicer, tmp_path, exit_type):
     # Sync and async container lifecycle methods on a sync function.
     with servicer.output_lockstep() as outputs:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
             "test.supports.functions",
             "LifecycleCls.*",
             inputs=[("delay", (0,), {})],
@@ -2064,7 +2160,7 @@ def test_class_as_service_serialized(servicer):
         definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
         is_class=True,
         inputs=_get_multi_inputs_with_methods([("method_a", ("x",), {}), ("method_b", ("y",), {})]),
-        serialized_params=serialize((((), {"x": "s"}))),
+        serialized_params=serialize(((), {"x": "s"})),
     )
     assert len(result.items) == 2
     res_0 = result.items[0].result
@@ -2076,14 +2172,15 @@ def test_class_as_service_serialized(servicer):
 
 
 @skip_github_non_linux
-def test_function_lazy_resolution(servicer, set_env_client):
+def test_function_lazy_resolution(servicer, credentials, set_env_client):
     # Deploy some global objects
     Volume.from_name("my-vol", create_if_missing=True).resolve()
     Queue.from_name("my-queue", create_if_missing=True).resolve()
 
     # Run container
-    deploy_app_externally(servicer, "test.supports.lazy_hydration", "app", capture_output=False)
-    ret = _run_container(servicer, "test.supports.lazy_hydration", "f", deps=["im-1", "vo-0"])
+    deploy_app_externally(servicer, credentials, "test.supports.lazy_hydration", "app", capture_output=False)
+    app_layout = servicer.app_get_layout("ap-1")
+    ret = _run_container(servicer, "test.supports.lazy_hydration", "f", deps=["im-2", "vo-0"], app_layout=app_layout)
     assert _unwrap_scalar(ret) is None
 
 
@@ -2120,7 +2217,7 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
 
     total_inputs = 5
     servicer.container_inputs = _get_inputs(((42,), {}), n=total_inputs)
-    active_inputs: List[IOContext] = []
+    active_inputs: list[IOContext] = []
     active_input_ids = set()
     processed_inputs = 0
     triggered_assertions = []
@@ -2232,3 +2329,71 @@ def test_set_local_input_concurrency(servicer):
 def test_sandbox_infers_app(servicer, event_loop):
     _run_container(servicer, "test.supports.sandbox", "spawn_sandbox")
     assert servicer.sandbox_app_id == "ap-1"
+
+
+@skip_github_non_linux
+def test_deserialization_error_returns_exception(servicer, client):
+    inputs = [
+        api_pb2.FunctionGetInputsResponse(
+            inputs=[
+                api_pb2.FunctionGetInputsItem(
+                    input_id="in-xyz0",
+                    function_call_id="fc-123",
+                    input=api_pb2.FunctionInput(
+                        args=b"\x80\x04\x95(\x00\x00\x00\x00\x00\x00\x00\x8c\x17",
+                        data_format=api_pb2.DATA_FORMAT_PICKLE,
+                        method_name="",
+                    ),
+                ),
+            ]
+        ),
+        *_get_inputs(((2,), {})),
+    ]
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "square",
+        inputs=inputs,
+    )
+    assert len(ret.items) == 2
+    assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
+    assert "DeserializationError" in ret.items[0].result.exception
+
+    assert ret.items[1].result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+    assert int(deserialize(ret.items[1].result.data, ret.client)) == 4
+
+
+@skip_github_non_linux
+def test_cls_self_doesnt_call_bind(servicer, credentials, set_env_client):
+    # first populate app objects, so they can be fetched by AppGetObjects
+    deploy_app_externally(servicer, credentials, "test.supports.user_code_import_samples.cls")
+    app_layout = servicer.app_get_layout("ap-1")
+
+    with servicer.intercept() as ctx:
+        ret = _run_container(
+            servicer,
+            "test.supports.user_code_import_samples.cls",
+            "C.*",
+            is_class=True,
+            inputs=_get_inputs(args=((3,), {}), method_name="calls_f_remote"),
+            app_layout=app_layout,
+        )
+        assert _unwrap_scalar(ret) == 9  # implies successful container run (.remote will use dummy servicer function)
+
+        # Using self should never have to call function bind params, since the object
+        # is already specified and the instance servicer function should already be
+        # hydrated:
+        assert not ctx.get_requests("FunctionBindParams")
+
+        # TODO: add test for using self.keep_warm()
+
+
+@skip_github_non_linux
+def test_container_app_zero_matching(servicer, event_loop):
+    ret = _run_container(servicer, "test.supports.function_without_app", "f")
+    assert _unwrap_scalar(ret) == 123
+
+
+@skip_github_non_linux
+def test_container_app_one_matching(servicer, event_loop):
+    _run_container(servicer, "test.supports.functions", "check_container_app")

@@ -2,9 +2,10 @@
 import asyncio
 import inspect
 import os
+from collections.abc import AsyncGenerator
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, AsyncIterator, Callable, Dict, List, Literal, Optional, Tuple, Type
+from typing import Any, Callable, Literal, Optional
 
 from grpclib import GRPCError
 from grpclib.exceptions import StreamTerminatedError
@@ -16,7 +17,14 @@ from modal_proto import api_pb2
 from .._serialization import deserialize, deserialize_data_format, serialize
 from .._traceback import append_modal_tb
 from ..config import config, logger
-from ..exception import ExecutionError, FunctionTimeoutError, InvalidError, RemoteError
+from ..exception import (
+    DeserializationError,
+    ExecutionError,
+    FunctionTimeoutError,
+    InternalFailure,
+    InvalidError,
+    RemoteError,
+)
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
 from .blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
@@ -30,7 +38,7 @@ class FunctionInfoType(Enum):
 
 
 # TODO(elias): Add support for quoted/str annotations
-CLASS_PARAM_TYPE_MAP: Dict[Type, Tuple["api_pb2.ParameterType.ValueType", str]] = {
+CLASS_PARAM_TYPE_MAP: dict[type, tuple["api_pb2.ParameterType.ValueType", str]] = {
     str: (api_pb2.PARAM_TYPE_STRING, "string_default"),
     int: (api_pb2.PARAM_TYPE_INT, "int_default"),
 }
@@ -93,19 +101,35 @@ def is_async(function):
         raise RuntimeError(f"Function {function} is a strange type {type(function)}")
 
 
+def get_function_type(is_generator: Optional[bool]) -> "api_pb2.Function.FunctionType.ValueType":
+    return api_pb2.Function.FUNCTION_TYPE_GENERATOR if is_generator else api_pb2.Function.FUNCTION_TYPE_FUNCTION
+
+
 class FunctionInfo:
-    """Class that helps us extract a bunch of information about a function."""
+    """Utility that determines serialization/deserialization mechanisms for functions
+
+    * Stored as file vs serialized
+    * If serialized: how to serialize the function
+    * If file: which module/function name should be used to retrieve
+
+    Used for populating the definition of a remote function
+    """
 
     raw_f: Optional[Callable[..., Any]]  # if None - this is a "class service function"
     function_name: str
-    user_cls: Optional[Type[Any]]
-    definition_type: "modal_proto.api_pb2.Function.DefinitionType.ValueType"
+    user_cls: Optional[type[Any]]
     module_name: Optional[str]
 
     _type: FunctionInfoType
     _file: Optional[str]
     _base_dir: str
     _remote_dir: Optional[PurePosixPath] = None
+
+    def get_definition_type(self) -> "modal_proto.api_pb2.Function.DefinitionType.ValueType":
+        if self.is_serialized():
+            return modal_proto.api_pb2.Function.DEFINITION_TYPE_SERIALIZED
+        else:
+            return modal_proto.api_pb2.Function.DEFINITION_TYPE_FILE
 
     def is_service_class(self):
         if self.raw_f is None:
@@ -119,7 +143,7 @@ class FunctionInfo:
         f: Optional[Callable[..., Any]],
         serialized=False,
         name_override: Optional[str] = None,
-        user_cls: Optional[Type] = None,
+        user_cls: Optional[type] = None,
     ):
         self.raw_f = f
         self.user_cls = user_cls
@@ -129,6 +153,9 @@ class FunctionInfo:
         elif f is None and user_cls:
             # "service function" for running all methods of a class
             self.function_name = f"{user_cls.__name__}.*"
+        elif f and user_cls:
+            # Method may be defined on superclass of the wrapped class
+            self.function_name = f"{user_cls.__name__}.{f.__name__}"
         else:
             self.function_name = f.__qualname__
 
@@ -143,7 +170,7 @@ class FunctionInfo:
             # Get the package path
             # Note: __import__ always returns the top-level package.
             self._file = os.path.abspath(module.__file__)
-            package_paths = set([os.path.abspath(p) for p in __import__(module.__package__).__path__])
+            package_paths = {os.path.abspath(p) for p in __import__(module.__package__).__path__}
             # There might be multiple package paths in some weird cases
             base_dirs = [
                 base_dir for base_dir in package_paths if os.path.commonpath((base_dir, self._file)) == base_dir
@@ -160,7 +187,7 @@ class FunctionInfo:
             self._base_dir = base_dirs[0]
             self.module_name = module.__spec__.name
             self._remote_dir = ROOT_DIR / PurePosixPath(module.__package__.split(".")[0])
-            self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
+            self._is_serialized = False
             self._type = FunctionInfoType.PACKAGE
         elif hasattr(module, "__file__") and not serialized:
             # This generally covers the case where it's invoked with
@@ -170,18 +197,18 @@ class FunctionInfo:
             self._file = os.path.abspath(inspect.getfile(module))
             self.module_name = inspect.getmodulename(self._file)
             self._base_dir = os.path.dirname(self._file)
-            self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
+            self._is_serialized = False
             self._type = FunctionInfoType.FILE
         else:
             self.module_name = None
             self._base_dir = os.path.abspath("")  # get current dir
-            self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED
-            if serialized:
+            self._is_serialized = True  # either explicitly, or by being in a notebook
+            if serialized:  # if explicit
                 self._type = FunctionInfoType.SERIALIZED
             else:
                 self._type = FunctionInfoType.NOTEBOOK
 
-        if self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
+        if not self.is_serialized():
             # Sanity check that this function is defined in global scope
             # Unfortunately, there's no "clean" way to do this in Python
             qualname = f.__qualname__ if f else user_cls.__qualname__
@@ -191,7 +218,7 @@ class FunctionInfo:
                 )
 
     def is_serialized(self) -> bool:
-        return self.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED
+        return self._is_serialized
 
     def serialized_function(self) -> bytes:
         # Note: this should only be called from .load() and not at function decoration time
@@ -206,7 +233,7 @@ class FunctionInfo:
             logger.debug(f"Serializing function for class service function {self.user_cls.__qualname__} as empty")
             return b""
 
-    def get_cls_vars(self) -> Dict[str, Any]:
+    def get_cls_vars(self) -> dict[str, Any]:
         if self.user_cls is not None:
             cls_vars = {
                 attr: getattr(self.user_cls, attr)
@@ -216,7 +243,7 @@ class FunctionInfo:
             return cls_vars
         return {}
 
-    def get_cls_var_attrs(self) -> Dict[str, Any]:
+    def get_cls_var_attrs(self) -> dict[str, Any]:
         import dis
 
         import opcode
@@ -237,10 +264,16 @@ class FunctionInfo:
         f_attrs = {k: cls_vars[k] for k in cls_vars if k in f_attr_ops}
         return f_attrs
 
-    def get_globals(self) -> Dict[str, Any]:
+    def get_globals(self) -> dict[str, Any]:
         from .._vendor.cloudpickle import _extract_code_globals
 
+        if self.raw_f is None:
+            return {}
+
         func = self.raw_f
+        while hasattr(func, "__wrapped__") and func is not func.__wrapped__:
+            # Unwrap functions decorated using functools.wrapped (potentially multiple times)
+            func = func.__wrapped__
         f_globals_ref = _extract_code_globals(func.__code__)
         f_globals = {k: func.__globals__[k] for k in f_globals_ref if k in func.__globals__}
         return f_globals
@@ -258,7 +291,7 @@ class FunctionInfo:
         # annotation parameters trigger strictly typed parameterization
         # which enables web endpoint for parameterized classes
 
-        modal_parameters: List[api_pb2.ClassParameterSpec] = []
+        modal_parameters: list[api_pb2.ClassParameterSpec] = []
         signature = _get_class_constructor_signature(self.user_cls)
         for param in signature.parameters.values():
             has_default = param.default is not param.empty
@@ -274,7 +307,7 @@ class FunctionInfo:
             format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO, schema=modal_parameters
         )
 
-    def get_entrypoint_mount(self) -> List[_Mount]:
+    def get_entrypoint_mount(self) -> list[_Mount]:
         """
         Includes:
         * Implicit mount of the function itself (the module or package that the function is part of)
@@ -294,7 +327,7 @@ class FunctionInfo:
         if self._type == FunctionInfoType.PACKAGE:
             if config.get("automount"):
                 return [_Mount.from_local_python_packages(self.module_name)]
-            elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
+            elif not self.is_serialized():
                 # mount only relevant file and __init__.py:s
                 return [
                     _Mount.from_local_dir(
@@ -304,7 +337,7 @@ class FunctionInfo:
                         condition=entrypoint_only_package_mount_condition(self._file),
                     )
                 ]
-        elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
+        elif not self.is_serialized():
             remote_path = ROOT_DIR / Path(self._file).name
             if not _is_modal_path(remote_path):
                 return [
@@ -355,7 +388,7 @@ def callable_has_non_self_non_default_params(f: Callable[..., Any]) -> bool:
 
 async def _stream_function_call_data(
     client, function_call_id: str, variant: Literal["data_in", "data_out"]
-) -> AsyncIterator[Any]:
+) -> AsyncGenerator[Any, None]:
     """Read from the `data_in` or `data_out` stream of a function call."""
     last_index = 0
 
@@ -437,18 +470,27 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
 
     if result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
         raise FunctionTimeoutError(result.exception)
+    elif result.status == api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
+        raise InternalFailure(result.exception)
     elif result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
         if data:
             try:
                 exc = deserialize(data, client)
-            except Exception as deser_exc:
+            except DeserializationError as deser_exc:
                 raise ExecutionError(
                     "Could not deserialize remote exception due to local error:\n"
                     + f"{deser_exc}\n"
                     + "This can happen if your local environment does not have the remote exception definitions.\n"
                     + "Here is the remote traceback:\n"
                     + f"{result.traceback}"
-                )
+                ) from deser_exc.__cause__
+            except Exception as deser_exc:
+                raise ExecutionError(
+                    "Could not deserialize remote exception due to local error:\n"
+                    + f"{deser_exc}\n"
+                    + "Here is the remote traceback:\n"
+                    + f"{result.traceback}"
+                ) from deser_exc
             if not isinstance(exc, BaseException):
                 raise ExecutionError(f"Got remote exception of incorrect type {type(exc)}")
 
@@ -470,7 +512,7 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
             "Could not deserialize result due to error:\n"
             f"{deser_exc}\n"
             "This can happen if your local environment does not have a module that was used to construct the result. \n"
-        )
+        ) from deser_exc
 
 
 async def _create_input(
@@ -506,3 +548,77 @@ async def _create_input(
             ),
             idx=idx,
         )
+
+
+def _get_suffix_from_web_url_info(url_info: api_pb2.WebUrlInfo) -> str:
+    if url_info.truncated:
+        suffix = " [grey70](label truncated)[/grey70]"
+    elif url_info.label_stolen:
+        suffix = " [grey70](label stolen)[/grey70]"
+    else:
+        suffix = ""
+    return suffix
+
+
+class FunctionCreationStatus:
+    # TODO(michael) this really belongs with other output-related code
+    # but moving it here so we can use it when loading a function with output disabled
+    tag: str
+    response: Optional[api_pb2.FunctionCreateResponse] = None
+
+    def __init__(self, resolver, tag):
+        self.resolver = resolver
+        self.tag = tag
+
+    def __enter__(self):
+        self.status_row = self.resolver.add_status_row()
+        self.status_row.message(f"Creating function {self.tag}...")
+        return self
+
+    def set_response(self, resp: api_pb2.FunctionCreateResponse):
+        self.response = resp
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if exc_type:
+            raise exc_val
+
+        if not self.response:
+            self.status_row.finish(f"Unknown error when creating function {self.tag}")
+
+        elif self.response.function.web_url:
+            url_info = self.response.function.web_url_info
+            requires_proxy_auth = self.response.function.webhook_config.requires_proxy_auth
+            proxy_auth_suffix = " 🔑" if requires_proxy_auth else ""
+            # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
+            suffix = _get_suffix_from_web_url_info(url_info)
+            # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
+            web_url = self.response.handle_metadata.web_url
+            self.status_row.finish(
+                f"Created web function {self.tag} => [magenta underline]{web_url}[/magenta underline]"
+                f"{proxy_auth_suffix}{suffix}"
+            )
+
+            # Print custom domain in terminal
+            for custom_domain in self.response.function.custom_domain_info:
+                custom_domain_status_row = self.resolver.add_status_row()
+                custom_domain_status_row.finish(
+                    f"Custom domain for {self.tag} => [magenta underline]" f"{custom_domain.url}[/magenta underline]"
+                )
+        else:
+            self.status_row.finish(f"Created function {self.tag}.")
+            if self.response.function.method_definitions_set:
+                for method_definition in self.response.function.method_definitions.values():
+                    if method_definition.web_url:
+                        url_info = method_definition.web_url_info
+                        suffix = _get_suffix_from_web_url_info(url_info)
+                        class_web_endpoint_method_status_row = self.resolver.add_status_row()
+                        class_web_endpoint_method_status_row.finish(
+                            f"Created web endpoint for {method_definition.function_name} => [magenta underline]"
+                            f"{method_definition.web_url}[/magenta underline]{suffix}"
+                        )
+                        for custom_domain in method_definition.custom_domain_info:
+                            custom_domain_status_row = self.resolver.add_status_row()
+                            custom_domain_status_row.finish(
+                                f"Custom domain for {method_definition.function_name} => [magenta underline]"
+                                f"{custom_domain.url}[/magenta underline]"
+                            )
