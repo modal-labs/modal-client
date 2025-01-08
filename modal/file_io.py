@@ -12,9 +12,9 @@ import json
 
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
-from modal._io_streams_helper import consume_stream_with_retries
 from modal._utils.async_utils import TaskContext
 from modal._utils.grpc_utils import retry_transient_errors
+from modal.exception import ClientClosed
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
@@ -57,7 +57,8 @@ async def _delete_bytes(file: "_FileIO", start: Optional[int] = None, end: Optio
     if start is not None and end is not None:
         if start >= end:
             raise ValueError("start must be less than end")
-    resp = await file._make_request(
+    resp = await retry_transient_errors(
+        file._client.stub.ContainerFilesystemExec,
         api_pb2.ContainerFilesystemExecRequest(
             file_delete_bytes_request=api_pb2.ContainerFileDeleteBytesRequest(
                 file_descriptor=file._file_descriptor,
@@ -65,7 +66,7 @@ async def _delete_bytes(file: "_FileIO", start: Optional[int] = None, end: Optio
                 end_exclusive=end,
             ),
             task_id=file._task_id,
-        )
+        ),
     )
     await file._wait(resp.exec_id)
 
@@ -84,7 +85,8 @@ async def _replace_bytes(file: "_FileIO", data: bytes, start: Optional[int] = No
             raise InvalidError("start must be less than end")
     if len(data) > WRITE_CHUNK_SIZE:
         raise InvalidError("Write request payload exceeds 16 MiB limit")
-    resp = await file._make_request(
+    resp = await retry_transient_errors(
+        file._client.stub.ContainerFilesystemExec,
         api_pb2.ContainerFilesystemExecRequest(
             file_write_replace_bytes_request=api_pb2.ContainerFileWriteReplaceBytesRequest(
                 file_descriptor=file._file_descriptor,
@@ -93,7 +95,7 @@ async def _replace_bytes(file: "_FileIO", data: bytes, start: Optional[int] = No
                 end_exclusive=end,
             ),
             task_id=file._task_id,
-        )
+        ),
     )
     await file._wait(resp.exec_id)
 
@@ -141,15 +143,12 @@ class _FileIO(Generic[T]):
 
     _task_id: str = ""
     _file_descriptor: str = ""
-    _client: Optional[_Client] = None
+    _client: _Client
     _watch_output_buffer: list[Optional[bytes]] = []
 
-    @classmethod
-    def _new(cls, client: _Client, task_id: str) -> "_FileIO":
-        self = cls.__new__(cls)
+    def __init__(self, client: _Client, task_id: str) -> None:
         self._client = client
         self._task_id = task_id
-        return self
 
     def _validate_mode(self, mode: str) -> None:
         if not any(char in mode for char in "rwax"):
@@ -183,7 +182,6 @@ class _FileIO(Generic[T]):
             exec_id=exec_id,
             timeout=55,
         )
-        assert self._client is not None
         async for batch in self._client.stub.ContainerFilesystemExecGetOutput.unary_stream(req):
             if batch.eof:
                 yield None
@@ -194,20 +192,30 @@ class _FileIO(Generic[T]):
                 yield message
 
     async def _consume_watch_output(self, exec_id: str) -> None:
-        def stream_constructor():
-            return self._consume_output(exec_id)
+        completed = False
+        retries_remaining = 10
+        while not completed:
+            try:
+                iterator = self._consume_output(exec_id)
+                async for message in iterator:
+                    self._watch_output_buffer.append(message)
+                    if message is None:
+                        completed = True
+                        break
 
-        def item_handler(item: Optional[bytes]):
-            self._watch_output_buffer.append(item)
-
-        def completion_check(item: Optional[bytes]):
-            return item is None
-
-        await consume_stream_with_retries(
-            stream_constructor,
-            item_handler,
-            completion_check,
-        )
+            except (GRPCError, StreamTerminatedError, ClientClosed) as exc:
+                if retries_remaining > 0:
+                    retries_remaining -= 1
+                    if isinstance(exc, GRPCError):
+                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                            await asyncio.sleep(1.0)
+                            continue
+                    elif isinstance(exc, StreamTerminatedError):
+                        continue
+                    elif isinstance(exc, ClientClosed):
+                        # If the client was closed, the user has triggered a cleanup.
+                        break
+                raise exc
 
     async def _parse_watch_output(self, event: bytes) -> Optional[FileWatchEvent]:
         try:
@@ -248,11 +256,12 @@ class _FileIO(Generic[T]):
             raise TypeError("Expected str when in text mode")
 
     async def _open_file(self, path: str, mode: str) -> None:
-        resp = await self._make_request(
+        resp = await retry_transient_errors(
+            self._client.stub.ContainerFilesystemExec,
             api_pb2.ContainerFilesystemExecRequest(
                 file_open_request=api_pb2.ContainerFileOpenRequest(path=path, mode=mode),
                 task_id=self._task_id,
-            )
+            ),
         )
         if not resp.HasField("file_descriptor"):
             raise FilesystemExecutionError("Failed to open file")
@@ -264,24 +273,19 @@ class _FileIO(Generic[T]):
         cls, path: str, mode: Union["_typeshed.OpenTextMode", "_typeshed.OpenBinaryMode"], client: _Client, task_id: str
     ) -> "_FileIO":
         """Create a new FileIO handle."""
-        self = cls._new(client, task_id)
+        self = _FileIO(client, task_id)
         self._validate_mode(mode)
         await self._open_file(path, mode)
         self._closed = False
         return self
 
-    async def _make_request(
-        self, request: api_pb2.ContainerFilesystemExecRequest
-    ) -> api_pb2.ContainerFilesystemExecResponse:
-        assert self._client is not None
-        return await retry_transient_errors(self._client.stub.ContainerFilesystemExec, request)
-
     async def _make_read_request(self, n: Optional[int]) -> bytes:
-        resp = await self._make_request(
+        resp = await retry_transient_errors(
+            self._client.stub.ContainerFilesystemExec,
             api_pb2.ContainerFilesystemExecRequest(
                 file_read_request=api_pb2.ContainerFileReadRequest(file_descriptor=self._file_descriptor, n=n),
                 task_id=self._task_id,
-            )
+            ),
         )
         return await self._wait(resp.exec_id)
 
@@ -300,11 +304,12 @@ class _FileIO(Generic[T]):
         """Read a single line from the current position."""
         self._check_closed()
         self._check_readable()
-        resp = await self._make_request(
+        resp = await retry_transient_errors(
+            self._client.stub.ContainerFilesystemExec,
             api_pb2.ContainerFilesystemExecRequest(
                 file_read_line_request=api_pb2.ContainerFileReadLineRequest(file_descriptor=self._file_descriptor),
                 task_id=self._task_id,
-            )
+            ),
         )
         output = await self._wait(resp.exec_id)
         if self._binary:
@@ -341,14 +346,15 @@ class _FileIO(Generic[T]):
             raise ValueError("Write request payload exceeds 1 GiB limit")
         for i in range(0, len(data), WRITE_CHUNK_SIZE):
             chunk = data[i : i + WRITE_CHUNK_SIZE]
-            resp = await self._make_request(
+            resp = await retry_transient_errors(
+                self._client.stub.ContainerFilesystemExec,
                 api_pb2.ContainerFilesystemExecRequest(
                     file_write_request=api_pb2.ContainerFileWriteRequest(
                         file_descriptor=self._file_descriptor,
                         data=chunk,
                     ),
                     task_id=self._task_id,
-                )
+                ),
             )
             await self._wait(resp.exec_id)
 
@@ -356,11 +362,12 @@ class _FileIO(Generic[T]):
         """Flush the buffer to disk."""
         self._check_closed()
         self._check_writable()
-        resp = await self._make_request(
+        resp = await retry_transient_errors(
+            self._client.stub.ContainerFilesystemExec,
             api_pb2.ContainerFilesystemExecRequest(
                 file_flush_request=api_pb2.ContainerFileFlushRequest(file_descriptor=self._file_descriptor),
                 task_id=self._task_id,
-            )
+            ),
         )
         await self._wait(resp.exec_id)
 
@@ -381,7 +388,8 @@ class _FileIO(Generic[T]):
         (relative to the current position) and 2 (relative to the file's end).
         """
         self._check_closed()
-        resp = await self._make_request(
+        resp = await retry_transient_errors(
+            self._client.stub.ContainerFilesystemExec,
             api_pb2.ContainerFilesystemExecRequest(
                 file_seek_request=api_pb2.ContainerFileSeekRequest(
                     file_descriptor=self._file_descriptor,
@@ -389,19 +397,20 @@ class _FileIO(Generic[T]):
                     whence=self._get_whence(whence),
                 ),
                 task_id=self._task_id,
-            )
+            ),
         )
         await self._wait(resp.exec_id)
 
     @classmethod
     async def ls(cls, path: str, client: _Client, task_id: str) -> list[str]:
         """List the contents of the provided directory."""
-        self = cls._new(client, task_id)
-        resp = await self._make_request(
+        self = _FileIO(client, task_id)
+        resp = await retry_transient_errors(
+            self._client.stub.ContainerFilesystemExec,
             api_pb2.ContainerFilesystemExecRequest(
                 file_ls_request=api_pb2.ContainerFileLsRequest(path=path),
                 task_id=task_id,
-            )
+            ),
         )
         output = await self._wait(resp.exec_id)
         try:
@@ -412,24 +421,26 @@ class _FileIO(Generic[T]):
     @classmethod
     async def mkdir(cls, path: str, client: _Client, task_id: str, parents: bool = False) -> None:
         """Create a new directory."""
-        self = cls._new(client, task_id)
-        resp = await self._make_request(
+        self = _FileIO(client, task_id)
+        resp = await retry_transient_errors(
+            self._client.stub.ContainerFilesystemExec,
             api_pb2.ContainerFilesystemExecRequest(
                 file_mkdir_request=api_pb2.ContainerFileMkdirRequest(path=path, make_parents=parents),
                 task_id=self._task_id,
-            )
+            ),
         )
         await self._wait(resp.exec_id)
 
     @classmethod
     async def rm(cls, path: str, client: _Client, task_id: str, recursive: bool = False) -> None:
         """Remove a file or directory in the Sandbox."""
-        self = cls._new(client, task_id)
-        resp = await self._make_request(
+        self = _FileIO(client, task_id)
+        resp = await retry_transient_errors(
+            self._client.stub.ContainerFilesystemExec,
             api_pb2.ContainerFilesystemExecRequest(
                 file_rm_request=api_pb2.ContainerFileRmRequest(path=path, recursive=recursive),
                 task_id=self._task_id,
-            )
+            ),
         )
         await self._wait(resp.exec_id)
 
@@ -443,8 +454,9 @@ class _FileIO(Generic[T]):
         recursive: bool = False,
         timeout: Optional[int] = None,
     ) -> AsyncIterator[FileWatchEvent]:
-        self = cls._new(client, task_id)
-        resp = await self._make_request(
+        self = _FileIO(client, task_id)
+        resp = await retry_transient_errors(
+            self._client.stub.ContainerFilesystemExec,
             api_pb2.ContainerFilesystemExecRequest(
                 file_watch_request=api_pb2.ContainerFileWatchRequest(
                     path=path,
@@ -452,7 +464,7 @@ class _FileIO(Generic[T]):
                     timeout_secs=timeout,
                 ),
                 task_id=self._task_id,
-            )
+            ),
         )
         async with TaskContext() as tc:
             tc.create_task(self._consume_watch_output(resp.exec_id))
@@ -484,11 +496,12 @@ class _FileIO(Generic[T]):
 
     async def _close(self) -> None:
         # Buffer is flushed by the runner on close
-        resp = await self._make_request(
+        resp = await retry_transient_errors(
+            self._client.stub.ContainerFilesystemExec,
             api_pb2.ContainerFilesystemExecRequest(
                 file_close_request=api_pb2.ContainerFileCloseRequest(file_descriptor=self._file_descriptor),
                 task_id=self._task_id,
-            )
+            ),
         )
         self._closed = True
         await self._wait(resp.exec_id)
