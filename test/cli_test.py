@@ -688,6 +688,14 @@ def test_volume_create_delete(servicer, server_url_env, set_env_client):
     assert vol_name not in _run(["volume", "list"]).stdout
 
 
+def test_volume_rename(servicer, server_url_env, set_env_client):
+    old_name, new_name = "foo-vol", "bar-vol"
+    _run(["volume", "create", old_name])
+    _run(["volume", "rename", "--yes", old_name, new_name])
+    assert new_name in _run(["volume", "list"]).stdout
+    assert old_name not in _run(["volume", "list"]).stdout
+
+
 @pytest.mark.parametrize("command", [["run"], ["deploy"], ["serve", "--timeout=1"], ["shell"]])
 @pytest.mark.usefixtures("set_env_client", "mock_shell_pty")
 @skip_windows("modal shell is not supported on Windows.")

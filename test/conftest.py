@@ -1740,6 +1740,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
         del self.volume_files[req.volume_id][req.path]
         await stream.send_message(Empty())
 
+    async def VolumeRename(self, stream):
+        req = await stream.recv_message()
+        for key, vol_id in self.deployed_volumes.items():
+            if vol_id == req.volume_id:
+                break
+        self.deployed_volumes[(req.name, *key[1:])] = self.deployed_volumes.pop(key)
+        await stream.send_message(Empty())
+
     async def VolumeListFiles(self, stream):
         req = await stream.recv_message()
         path = req.path if req.path else "/"
