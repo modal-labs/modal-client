@@ -411,7 +411,7 @@ def shell(
 
     \b**Examples:**
 
-    \bStart an ren interactive shell inside the default Debian-based image:
+    \bStart an ren ren ren interactive shell inside the default Debian-based image:
 
     \b```
     modal shell
