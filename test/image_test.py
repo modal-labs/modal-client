@@ -245,6 +245,40 @@ def test_wrong_type(builder_version, servicer, client):
             m([["double-nested-package"]])  # type: ignore
 
 
+def assert_metadata(image, expected_metadata):
+    # TODO: change this to use public property workdir when/if we introduce one
+    _image = synchronizer._translate_in(image)
+    assert _image._metadata == expected_metadata
+
+
+def test_image_from_id(builder_version, servicer, client):
+    app = App()
+    image = Image.debian_slim().pip_install("numpy")
+    app.function(image=image)(dummy)
+    dummy_metadata = api_pb2.ImageMetadata(
+        workdir="/proj",
+        python_packages={"fastapi": "0.100.0"},
+        python_version_info="Python 3.11.8 (main, Feb 25 2024, 03:55:37) [Clang 17.0.6 ]",
+    )
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            pass
+
+        ctx.add_response(
+            "ImageFromId",
+            api_pb2.ImageFromIdResponse(
+                image_id=image.object_id,
+                metadata=dummy_metadata,
+            ),
+        )
+
+        with app.run(client=client):
+            image_from_id = Image.from_id(image.object_id, client)
+            hydrate_image(image_from_id, client)
+            assert image_from_id.object_id == image.object_id
+            assert_metadata(image_from_id, dummy_metadata)
+
+
 def test_image_requirements_txt(builder_version, servicer, client):
     requirements_txt = os.path.join(os.path.dirname(__file__), "supports/test-requirements.txt")
 
@@ -945,9 +979,7 @@ def test_hydration_metadata(servicer, client):
         )
 
         with app.run(client=client):
-            # TODO: change this test to use public property workdir when/if we introduce one
-            _image = synchronizer._translate_in(img)
-            assert _image._metadata == dummy_metadata
+            assert_metadata(img, dummy_metadata)
 
 
 cls_app = App()
