@@ -298,6 +298,15 @@ async def delete(
 async def rename(
     old_name: str,
     new_name: str,
+    yes: bool = YES_OPTION,
     env: Optional[str] = ENV_OPTION,
 ):
+    if not yes:
+        typer.confirm(
+            f"Are you sure you want rename the modal.Volume '{old_name}'?"
+            " This may break any Apps currently using it.",
+            default=False,
+            abort=True,
+        )
+
     await _Volume.rename(old_name, new_name, environment_name=env)
