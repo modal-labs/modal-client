@@ -385,26 +385,41 @@ def show_deprecations(ctx):
             func_name_to_level = {
                 "deprecation_warning": "[yellow]warning[/yellow]",
                 "deprecation_error": "[red]error[/red]",
+                # We may add a flag to make renamed_parameter error instead of warn
+                # in which case this would get a little bit more complicated.
+                "renamed_parameter": "[yellow]warning[/yellow]",
             }
-            if isinstance(node.func, ast.Name) and node.func.id in func_name_to_level:
-                depr_date = date(*(elt.n for elt in node.args[0].elts))
+            if (
+                isinstance(node.func, ast.Name)
+                and node.func.id in func_name_to_level
+                and isinstance(node.args[0], ast.Tuple)
+            ):
+                depr_date = date(*(getattr(elt, "n") for elt in node.args[0].elts))
                 function = (
                     f"{self.current_class}.{self.current_function}" if self.current_class else self.current_function
                 )
-                message = node.args[1]
-                if isinstance(message, ast.Name):
-                    message = self.assignments.get(message.id, "")
-                if isinstance(message, ast.Attribute):
-                    message = self.assignments.get(message.attr, "")
-                if isinstance(message, ast.Constant):
-                    message = message.s
-                elif isinstance(message, ast.JoinedStr):
-                    message = "".join(v.s for v in message.values if isinstance(v, ast.Constant))
+                if node.func.id == "renamed_parameter":
+                    old_name = getattr(node.args[1], "s")
+                    new_name = getattr(node.args[2], "s")
+                    message = f"Renamed parameter: {old_name} -> {new_name}"
                 else:
-                    message = str(message)
-                message = message.replace("\n", " ")
-                if len(message) > (max_length := 80):
-                    message = message[:max_length] + "..."
+                    message = node.args[1]
+                    # Handle a few different ways that the message can get passed to the deprecation helper
+                    # since it's not always a literal string (e.g. it's often a functions .__doc__ attribute)
+                    if isinstance(message, ast.Name):
+                        message = self.assignments.get(message.id, "")
+                    if isinstance(message, ast.Attribute):
+                        message = self.assignments.get(message.attr, "")
+                    if isinstance(message, ast.Constant):
+                        message = message.s
+                    elif isinstance(message, ast.JoinedStr):
+                        message = "".join(v.s for v in message.values if isinstance(v, ast.Constant))
+                    else:
+                        message = str(message)
+                    message = message.replace("\n", " ")
+                    if len(message) > (max_length := 80):
+                        message = message[:max_length] + "..."
+
                 level = func_name_to_level[node.func.id]
                 self.deprecations.append((str(depr_date), level, f"{self.fname}:{node.lineno}", function, message))
 

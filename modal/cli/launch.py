@@ -77,6 +77,7 @@ def vscode(
     cpu: int = 8,
     memory: int = 32768,
     gpu: Optional[str] = None,
+    image: str = "debian:12",
     timeout: int = 3600,
     mount: Optional[str] = None,  # Create a `modal.Mount` from a local directory.
     volume: Optional[str] = None,  # Attach a persisted `modal.Volume` by name (creating if missing).
@@ -86,6 +87,7 @@ def vscode(
         "cpu": cpu,
         "memory": memory,
         "gpu": gpu,
+        "image": image,
         "timeout": timeout,
         "mount": mount,
         "volume": volume,

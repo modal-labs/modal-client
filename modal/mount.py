@@ -16,13 +16,14 @@ from typing import Callable, Optional, Sequence, Union
 from google.protobuf.message import Message
 
 import modal.exception
+import modal.file_pattern_matcher
 from modal_proto import api_pb2
 from modal_version import __version__
 
 from ._resolver import Resolver
 from ._utils.async_utils import aclosing, async_map, synchronize_api
 from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
-from ._utils.deprecation import deprecation_warning
+from ._utils.deprecation import deprecation_warning, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from ._utils.package_utils import get_module_mount_info
@@ -110,7 +111,7 @@ class _MountFile(_MountEntry):
         return str(self.local_file)
 
     def get_files_to_upload(self):
-        local_file = self.local_file.expanduser().absolute()
+        local_file = self.local_file.resolve()
         if not local_file.exists():
             raise FileNotFoundError(local_file)
 
@@ -136,6 +137,8 @@ class _MountDir(_MountEntry):
         return str(self.local_dir.expanduser().absolute())
 
     def get_files_to_upload(self):
+        # we can't use .resolve() eagerly here since that could end up "renaming" symlinked files
+        # see test_mount_directory_with_symlinked_file
         local_dir = self.local_dir.expanduser().absolute()
 
         if not local_dir.exists():
@@ -150,10 +153,11 @@ class _MountDir(_MountEntry):
             gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
 
         for local_filename in gen:
-            if not self.ignore(Path(local_filename)):
-                local_relpath = Path(local_filename).expanduser().absolute().relative_to(local_dir)
+            local_path = Path(local_filename)
+            if not self.ignore(local_path):
+                local_relpath = local_path.expanduser().absolute().relative_to(local_dir)
                 mount_path = self.remote_path / local_relpath.as_posix()
-                yield local_filename, mount_path
+                yield local_path.resolve(), mount_path
 
     def watch_entry(self):
         return self.local_dir.resolve().expanduser(), None
@@ -327,12 +331,9 @@ class _Mount(_Object, type_prefix="mo"):
     @staticmethod
     def _add_local_dir(
         local_path: Path,
-        remote_path: Path,
-        ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
+        remote_path: PurePosixPath,
+        ignore: Callable[[Path], bool] = modal.file_pattern_matcher._NOTHING,
     ):
-        if isinstance(ignore, list):
-            ignore = FilePatternMatcher(*ignore)
-
         return _Mount._new()._extend(
             _MountDir(
                 local_dir=local_path,
@@ -670,8 +671,9 @@ class _Mount(_Object, type_prefix="mo"):
         return mount
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
-        label: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
     ) -> "_Mount":
@@ -679,7 +681,7 @@ class _Mount(_Object, type_prefix="mo"):
 
         async def _load(provider: _Mount, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.MountGetOrCreateRequest(
-                deployment_name=label,
+                deployment_name=name,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
             )
@@ -689,15 +691,16 @@ class _Mount(_Object, type_prefix="mo"):
         return _Mount._from_loader(_load, "Mount()")
 
     @classmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
         cls: type["_Mount"],
-        label: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> "_Mount":
         """mdmd:hidden"""
-        obj = _Mount.from_name(label, namespace=namespace, environment_name=environment_name)
+        obj = _Mount.from_name(name, namespace=namespace, environment_name=environment_name)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
