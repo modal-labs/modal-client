@@ -305,7 +305,6 @@ async def test_lifespan_supported():
             while True:
                 message = await receive()
                 if message["type"] == "lifespan.startup":
-                    print("startup complete")
                     nonlocal lifespan_startup_complete
                     lifespan_startup_complete = True
                     await send({"type": "lifespan.startup.complete"})
