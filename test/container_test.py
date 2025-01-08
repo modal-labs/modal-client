@@ -7,6 +7,7 @@ import json
 import os
 import pathlib
 import pickle
+import platform
 import pytest
 import signal
 import subprocess
@@ -682,7 +683,7 @@ def test_asgi(servicer):
     assert json.loads(second_message["body"]) == {"hello": "space"}
 
 
-@skip_github_non_linux
+@pytest.mark.skipif(platform.system() != "Linux", reason="web_server needs Linux interface")
 def test_blocking_web_server(servicer):
     inputs = _get_web_inputs(path="/")
     _put_web_body(servicer, b"")
@@ -695,13 +696,18 @@ def test_blocking_web_server(servicer):
     )
 
     # There should be one message for the header, and one for the body
-    print("\n#########################")
-    print(ret)
-    print("#########################\n")
-    # first_message, second_message = _unwrap_asgi(ret)
+    first_message, second_message = _unwrap_asgi(ret)
+
+    # Check the headers
+    assert first_message["status"] == 200
+    headers = dict(first_message["headers"])
+    assert headers[b"content-type"] == b"application/json"
+
+    # Check body
+    assert json.loads(second_message["body"])
 
 
-@skip_github_non_linux
+@pytest.mark.skipif(platform.system() != "Linux", reason="web_server needs Linux interface")
 def test_non_blocking_web_server(servicer):
     inputs = _get_web_inputs(path="/")
     _put_web_body(servicer, b"")
@@ -714,10 +720,15 @@ def test_non_blocking_web_server(servicer):
     )
 
     # There should be one message for the header, and one for the body
-    print("\n#########################")
-    print(ret)
-    print("#########################\n")
-    # first_message, second_message = _unwrap_asgi(ret)
+    first_message, second_message = _unwrap_asgi(ret)
+
+    # Check the headers
+    assert first_message["status"] == 200
+    headers = dict(first_message["headers"])
+    assert headers[b"content-type"] == b"application/json"
+
+    # Check body
+    assert json.loads(second_message["body"])
 
 
 @skip_github_non_linux
