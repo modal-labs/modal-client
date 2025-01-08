@@ -751,21 +751,21 @@ class _Image(_Object, type_prefix="im"):
             ignore=lambda p: p.is_relative_to(".venv"),
         )
 
-        image = modal.Image.debian_slim().copy_local_dir(
+        image = modal.Image.debian_slim().add_local_dir(
             "~/assets",
             remote_path="/assets",
             ignore=FilePatternMatcher("**/*.txt"),
         )
 
         # When including files is simpler than excluding them, you can use the `~` operator to invert the matcher.
-        image = modal.Image.debian_slim().copy_local_dir(
+        image = modal.Image.debian_slim().add_local_dir(
             "~/assets",
             remote_path="/assets",
             ignore=~FilePatternMatcher("**/*.py"),
         )
 
         # You can also read ignore patterns from a file.
-        image = modal.Image.debian_slim().copy_local_dir(
+        image = modal.Image.debian_slim().add_local_dir(
             "~/assets",
             remote_path="/assets",
             ignore=FilePatternMatcher.from_file(Path("/path/to/ignorefile")),
