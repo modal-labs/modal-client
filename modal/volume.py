@@ -506,6 +506,18 @@ class _Volume(_Object, type_prefix="vo"):
         req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.VolumeDelete, req)
 
+    @staticmethod
+    async def rename(
+        old_name: str,
+        new_name: str,
+        *,
+        client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,
+    ):
+        obj = await _Volume.lookup(old_name, client=client, environment_name=environment_name)
+        req = api_pb2.VolumeRenameRequest(volume_id=obj.object_id, name=new_name)
+        await retry_transient_errors(obj._client.stub.VolumeRename, req)
+
 
 class _VolumeUploadContextManager:
     """Context manager for batch-uploading files to a Volume."""
