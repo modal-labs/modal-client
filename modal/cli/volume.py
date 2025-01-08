@@ -287,3 +287,17 @@ async def delete(
         )
 
     await _Volume.delete(volume_name, environment_name=env)
+
+
+@volume_cli.command(
+    name="rename",
+    help="Rename a modal.Volume.",
+    rich_help_panel="Management",
+)
+@synchronizer.create_blocking
+async def rename(
+    old_name: str,
+    new_name: str,
+    env: Optional[str] = ENV_OPTION,
+):
+    await _Volume.rename(old_name, new_name, environment_name=env)
