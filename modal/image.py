@@ -279,7 +279,7 @@ def _create_context_mount(
 
 
 def _create_context_mount_function(
-    ignore: Union[Sequence[str], Callable[[Path], bool], Path],
+    ignore: Union[Sequence[str], Callable[[Path], bool]],
     dockerfile_cmds: list[str] = [],
     dockerfile_path: Optional[Path] = None,
     context_mount: Optional[_Mount] = None,
@@ -305,16 +305,6 @@ def _create_context_mount_function(
                 if dockerignore_file
                 else _ignore_fn(())
             )
-
-            cmds = dockerfile_path.read_text("utf8").splitlines() if dockerfile_path else dockerfile_cmds
-            return _create_context_mount(cmds, ignore_fn=ignore_fn, context_dir=context_dir)
-
-        return auto_created_context_mount_fn
-    elif isinstance(ignore, Path):
-
-        def auto_created_context_mount_fn() -> Optional[_Mount]:
-            context_dir = Path.cwd()
-            ignore_fn = FilePatternMatcher(*ignore.read_text("utf8").splitlines())
 
             cmds = dockerfile_path.read_text("utf8").splitlines() if dockerfile_path else dockerfile_cmds
             return _create_context_mount(cmds, ignore_fn=ignore_fn, context_dir=context_dir)
@@ -746,6 +736,7 @@ class _Image(_Object, type_prefix="im"):
         **Usage:**
 
         ```python
+        from pathlib import Path
         from modal import FilePatternMatcher
 
         image = modal.Image.debian_slim().add_local_dir(
@@ -771,6 +762,13 @@ class _Image(_Object, type_prefix="im"):
             "~/assets",
             remote_path="/assets",
             ignore=~FilePatternMatcher("**/*.py"),
+        )
+
+        # You can also read ignore patterns from a file.
+        image = modal.Image.debian_slim().copy_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=FilePatternMatcher.from_file(Path("/path/to/ignorefile")),
         )
         ```
         """
@@ -880,6 +878,13 @@ class _Image(_Object, type_prefix="im"):
             "~/assets",
             remote_path="/assets",
             ignore=~FilePatternMatcher("**/*.py"),
+        )
+
+        # You can also read ignore patterns from a file.
+        image = modal.Image.debian_slim().copy_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=FilePatternMatcher.from_file(Path("/path/to/ignorefile")),
         )
         ```
         """
@@ -1250,9 +1255,50 @@ class _Image(_Object, type_prefix="im"):
         # modal.Mount with local files to supply as build context for COPY commands
         context_mount: Optional[_Mount] = None,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        ignore: Union[Sequence[str], Callable[[Path], bool], Path] = AUTO_DOCKERIGNORE,
+        ignore: Union[Sequence[str], Callable[[Path], bool]] = AUTO_DOCKERIGNORE,
     ) -> "_Image":
-        """Extend an image with arbitrary Dockerfile-like commands."""
+        """
+        Extend an image with arbitrary Dockerfile-like commands.
+
+        **Usage:**
+
+        ```python
+        from pathlib import Path
+        from modal import FilePatternMatcher
+
+        # By default a .dockerignore file is used if present in the current working directory
+        image = modal.Image.debian_slim().dockerfile_commands(
+            ["COPY data /data"],
+        )
+
+        image = modal.Image.debian_slim().dockerfile_commands(
+            ["COPY data /data"],
+            ignore=["*.venv"],
+        )
+
+        image = modal.Image.debian_slim().dockerfile_commands(
+            ["COPY data /data"],
+            ignore=lambda p: p.is_relative_to(".venv"),
+        )
+
+        image = modal.Image.debian_slim().dockerfile_commands(
+            ["COPY data /data"],
+            ignore=FilePatternMatcher("**/*.txt"),
+        )
+
+        # When including files is simpler than excluding them, you can use the `~` operator to invert the matcher.
+        image = modal.Image.debian_slim().dockerfile_commands(
+            ["COPY data /data"],
+            ignore=~FilePatternMatcher("**/*.py"),
+        )
+
+        # You can also read ignore patterns from a file.
+        image = modal.Image.debian_slim().dockerfile_commands(
+            ["COPY data /data"],
+            ignore=FilePatternMatcher.from_file(Path("/path/to/dockerignore")),
+        )
+        ```
+        """
         cmds = _flatten_str_args("dockerfile_commands", "dockerfile_commands", dockerfile_commands)
         if not cmds:
             return self
@@ -1632,17 +1678,56 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
         add_python: Optional[str] = None,
-        ignore: Union[Sequence[str], Callable[[Path], bool], Path] = AUTO_DOCKERIGNORE,
+        ignore: Union[Sequence[str], Callable[[Path], bool]] = AUTO_DOCKERIGNORE,
     ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
 
         If your Dockerfile does not have Python installed, you can use the `add_python` parameter
         to specify a version of Python to add to the image.
 
-        **Example**
+        **Usage:**
 
         ```python
-        image = modal.Image.from_dockerfile("./Dockerfile", add_python="3.12")
+        from pathlib import Path
+        from modal import FilePatternMatcher
+
+        # By default a .dockerignore file is used if present in the current working directory
+        image = modal.Image.from_dockerfile(
+            "./Dockerfile",
+            add_python="3.12",
+        )
+
+        image = modal.Image.from_dockerfile(
+            "./Dockerfile",
+            add_python="3.12",
+            ignore=["*.venv"],
+        )
+
+        image = modal.Image.from_dockerfile(
+            "./Dockerfile",
+            add_python="3.12",
+            ignore=lambda p: p.is_relative_to(".venv"),
+        )
+
+        image = modal.Image.from_dockerfile(
+            "./Dockerfile",
+            add_python="3.12",
+            ignore=FilePatternMatcher("**/*.txt"),
+        )
+
+        # When including files is simpler than excluding them, you can use the `~` operator to invert the matcher.
+        image = modal.Image.from_dockerfile(
+            "./Dockerfile",
+            add_python="3.12",
+            ignore=~FilePatternMatcher("**/*.py"),
+        )
+
+        # You can also read ignore patterns from a file.
+        image = modal.Image.from_dockerfile(
+            "./Dockerfile",
+            add_python="3.12",
+            ignore=FilePatternMatcher.from_file(Path("/path/to/dockerignore")),
+        )
         ```
         """
 

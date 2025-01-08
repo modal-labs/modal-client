@@ -175,19 +175,19 @@ def test_clean_patterns_strip_empty_patterns():
 def test_clean_patterns_exception_flag():
     patterns = ["docs", "!docs/README.md"]
     pm = FilePatternMatcher(*patterns)
-    assert pm.exclusions
+    assert any(p.exclusion for p in pm.patterns)
 
 
 def test_clean_patterns_leading_space_trimmed():
     patterns = ["docs", "  !docs/README.md"]
     pm = FilePatternMatcher(*patterns)
-    assert pm.exclusions
+    assert any(p.exclusion for p in pm.patterns)
 
 
 def test_clean_patterns_trailing_space_trimmed():
     patterns = ["docs", "!docs/README.md  "]
     pm = FilePatternMatcher(*patterns)
-    assert pm.exclusions
+    assert any(p.exclusion for p in pm.patterns)
 
 
 def test_clean_patterns_error_single_exception():
