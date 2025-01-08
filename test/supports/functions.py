@@ -173,7 +173,7 @@ def blocking_web_server():
 def non_blocking_web_server():
     import subprocess
 
-    subprocess.Popen(["python", "-m", "http.server", "8765"])
+    subprocess.Popen(["python", "-m", "http.server", "-b", "0.0.0.0", "8765"])
 
 
 lifespan_global_asgi_app_func: list[str] = []
