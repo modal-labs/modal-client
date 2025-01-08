@@ -116,7 +116,7 @@ class UserCodeEventLoop:
 
     def __enter__(self):
         self.loop = asyncio.new_event_loop()
-        self.tasks = []
+        self.tasks = set()
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -130,7 +130,10 @@ class UserCodeEventLoop:
         self.loop.close()
 
     def create_task(self, coro):
-        self.tasks.append(self.loop.create_task(coro))
+        task = self.loop.create_task(coro)
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
+        return task
 
     def run(self, coro):
         task = asyncio.ensure_future(coro, loop=self.loop)
@@ -531,10 +534,13 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         with container_io_manager.handle_user_exception():
             finalized_functions = service.get_finalized_functions(function_def, container_io_manager)
         # Execute the function.
+        lifespan_background_tasks = []
         try:
             for finalized_function in finalized_functions.values():
                 if finalized_function.lifespan_manager:
-                    event_loop.create_task(finalized_function.lifespan_manager.background_task())
+                    lifespan_background_tasks.append(
+                        event_loop.create_task(finalized_function.lifespan_manager.background_task())
+                    )
                     with container_io_manager.handle_user_exception():
                         event_loop.run(finalized_function.lifespan_manager.lifespan_startup())
             call_function(
@@ -559,6 +565,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                             with container_io_manager.handle_user_exception():
                                 event_loop.run(finalized_function.lifespan_manager.lifespan_shutdown())
                 finally:
+                    # no need to keep the lifespan asgi call around - we send it no more messages
+                    for lifespan_background_task in lifespan_background_tasks:
+                        lifespan_background_task.cancel()  # prevent dangling tasks
+
                     # Identify "exit" methods and run them.
                     # want to make sure this is called even if the lifespan manager fails
                     if service.user_cls_instance is not None and not is_auto_snapshot:
