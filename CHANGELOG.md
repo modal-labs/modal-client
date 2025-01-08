@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.71.7 (2025-01-08)
+
+- Adds `Image.from_id`, which returns an `Image` object from an existing image id.
+
+
+
 ### 0.71.1 (2025-01-06)
 
 - Sandboxes now support fsnotify-like file watching:
