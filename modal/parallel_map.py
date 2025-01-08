@@ -3,7 +3,7 @@ import asyncio
 import time
 import typing
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union
 
 from grpclib import GRPCError, Status
 
@@ -581,7 +581,7 @@ class _TimestampPriorityQueue:
     async def put(self, idx: int, timestamp_seconds: int) -> None:
         await self._queue.put((timestamp_seconds, idx))
 
-    async def get(self) -> int | None:
+    async def get(self) -> Union[int, None]:
         while True:
             (timestamp_seconds, idx) = await self._queue.get()
             if timestamp_seconds < int(time.time()):
