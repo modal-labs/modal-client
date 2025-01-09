@@ -26,6 +26,7 @@ from grpclib.exceptions import GRPCError
 import modal
 from modal import Client, Queue, Volume, is_local
 from modal._container_entrypoint import UserException, main
+from modal._runtime import asgi
 from modal._runtime.container_io_manager import (
     ContainerIOManager,
     InputSlots,
@@ -196,12 +197,16 @@ def _container_args(
     ),
     app_id: str = "ap-1",
     app_layout: api_pb2.AppLayout = DEFAULT_APP_LAYOUT,
+    web_server_port: Optional[int] = None,
+    web_server_startup_timeout: Optional[float] = None,
 ):
     if webhook_type:
         webhook_config = api_pb2.WebhookConfig(
             type=webhook_type,
             method="GET",
             async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
+            web_server_port=web_server_port,
+            web_server_startup_timeout=web_server_startup_timeout,
         )
     else:
         webhook_config = None
@@ -270,6 +275,8 @@ def _run_container(
         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
     ),
     app_layout=DEFAULT_APP_LAYOUT,
+    web_server_port: Optional[int] = None,
+    web_server_startup_timeout: Optional[float] = None,
 ) -> ContainerResult:
     container_args = _container_args(
         module_name,
@@ -292,6 +299,8 @@ def _run_container(
         is_class=is_class,
         class_parameter_info=class_parameter_info,
         app_layout=app_layout,
+        web_server_port=web_server_port,
+        web_server_startup_timeout=web_server_startup_timeout,
     )
     with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
         if inputs is None:
@@ -685,6 +694,33 @@ def test_asgi(servicer):
 
 
 @skip_github_non_linux
+def test_non_blocking_web_server(servicer, monkeypatch):
+    get_ip_address = MagicMock(wraps=asgi.get_ip_address)
+    get_ip_address.return_value = "127.0.0.1"
+    monkeypatch.setattr(asgi, "get_ip_address", get_ip_address)
+
+    inputs = _get_web_inputs(path="/")
+    _put_web_body(servicer, b"")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "non_blocking_web_server",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_WEB_SERVER,
+        web_server_port=8765,
+        web_server_startup_timeout=1,
+    )
+    first_message, second_message, _ = _unwrap_asgi(ret)
+
+    # Check the headers
+    assert first_message["status"] == 200
+    headers = dict(first_message["headers"])
+    assert headers[b"Content-Type"] == b"text/html; charset=utf-8"
+
+    assert b"Directory listing" in second_message["body"]
+
+
+@skip_github_non_linux
 def test_asgi_lifespan(servicer):
     inputs = _get_web_inputs(path="/")
 
@@ -844,9 +880,6 @@ def test_non_lifespan_asgi(servicer):
     assert headers[b"content-type"] == b"application/json"
 
     # Check body
-    print("\n#########################")
-    print(f"second_message: {second_message['body']}")
-    print("#########################\n")
     assert json.loads(second_message["body"]) == "foo"
 
 

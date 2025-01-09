@@ -16,6 +16,7 @@ from modal import (
     is_local,
     method,
     web_endpoint,
+    web_server,
     wsgi_app,
 )
 from modal._utils.deprecation import deprecation_warning
@@ -156,6 +157,14 @@ def fastapi_app():
         return {"hello": arg}
 
     return web_app
+
+
+@app.function()
+@web_server(8765, startup_timeout=1)
+def non_blocking_web_server():
+    import subprocess
+
+    subprocess.Popen(["python", "-m", "http.server", "-b", "0.0.0.0", "8765"])
 
 
 lifespan_global_asgi_app_func: list[str] = []
