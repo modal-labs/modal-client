@@ -18,6 +18,7 @@ from modal._serialization import serialize
 from modal._utils.async_utils import synchronizer
 from modal.client import Client
 from modal.exception import DeprecationError, InvalidError, VersionError
+from modal.file_pattern_matcher import FilePatternMatcher
 from modal.image import (
     SUPPORTED_PYTHON_SERIES,
     ImageBuilderVersion,
@@ -826,6 +827,43 @@ def test_image_docker_command_copy(
 
     if maybe_dockerfile:
         Path(maybe_dockerfile.name).unlink()
+
+
+@pytest.mark.parametrize("use_dockerfile", (True, False))
+@pytest.mark.usefixtures("tmp_cwd")
+def test_image_dockerfile_copy_ignore_from_file(builder_version, servicer, client, use_dockerfile):
+    rel_top_dir = Path("top")
+    rel_top_dir.mkdir()
+    (rel_top_dir / "data.txt").write_text("world")
+    (rel_top_dir / "file.py").write_text("world")
+    dockerfile = rel_top_dir / "Dockerfile"
+    dockerfile.write_text(f"COPY {rel_top_dir} /dummy\n")
+
+    # explicitly provide the .dockerignore file
+    dockerignore = rel_top_dir / "something_special.dockerignore"
+    dockerignore.write_text("**/*.py")
+
+    app = App()
+    if use_dockerfile:
+        image = Image.debian_slim().from_dockerfile(dockerfile, ignore=FilePatternMatcher.from_file(dockerignore))
+        layer = 1
+    else:
+        image = Image.debian_slim().dockerfile_commands(
+            [f"COPY {rel_top_dir} /dummy"], ignore=FilePatternMatcher.from_file(dockerignore)
+        )
+        layer = 0
+    app.function(image=image)(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        assert f"COPY {rel_top_dir} /dummy" in layers[layer].dockerfile_commands
+        mount_id = layers[layer].context_mount_id
+        files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
+        assert files == {
+            Path("/") / rel_top_dir / "Dockerfile",
+            Path("/") / rel_top_dir / "data.txt",
+            Path("/") / rel_top_dir / "something_special.dockerignore",
+        }
 
 
 @pytest.mark.parametrize("use_callable", (True, False))
@@ -1679,3 +1717,34 @@ def test_image_add_local_dir_ignore_nothing(servicer, client, tmp_path_with_cont
             assert set(Path(fn) for fn in servicer.mount_contents[mount_id].keys()) == {
                 Path(f"/place{f}") for f in expected
             }
+
+
+@pytest.mark.parametrize("copy", [True, False])
+@pytest.mark.usefixtures("tmp_cwd")
+def test_image_add_local_dir_ignore_from_file(servicer, client, tmp_path_with_content, copy):
+    rel_top_dir = Path("top")
+    rel_top_dir.mkdir()
+    ignore_file = rel_top_dir / "something_special.ignore_file"
+    ignore_file.write_text("**/*.txt")
+
+    expected = {"/data.txt"}
+    app = App()
+
+    img = Image.from_registry("unknown_image").workdir("/proj")
+    if copy:
+        app.image = img.copy_local_dir(
+            tmp_path_with_content, "/place/", ignore=~FilePatternMatcher.from_file(ignore_file)
+        )
+        app.function()(dummy)
+        with app.run(client=client):
+            assert len(img._mount_layers) == 0
+            layers = get_image_layers(app.image.object_id, servicer)
+            mount_id = layers[0].context_mount_id
+            assert set(servicer.mount_contents[mount_id].keys()) == expected
+    else:
+        img = img.add_local_dir(tmp_path_with_content, "/place/", ignore=~FilePatternMatcher.from_file(ignore_file))
+        app.function(image=img)(dummy)
+        with app.run(client=client):
+            assert len(img._mount_layers) == 1
+            mount_id = img._mount_layers[0].object_id
+            assert set(servicer.mount_contents[mount_id].keys()) == {f"/place{f}" for f in expected}
