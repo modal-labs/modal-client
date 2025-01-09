@@ -862,7 +862,7 @@ def test_image_dockerfile_copy_auto_dockerignore(builder_version, servicer, clie
 
 @pytest.mark.parametrize("use_dockerfile", (True, False))
 @pytest.mark.usefixtures("tmp_cwd")
-def test_image_dockerfile_copy_explicit_dockerignore(builder_version, servicer, client, use_dockerfile):
+def test_image_dockerfile_copy_ignore_from_file(builder_version, servicer, client, use_dockerfile):
     rel_top_dir = Path("top")
     rel_top_dir.mkdir()
     (rel_top_dir / "data.txt").write_text("world")
