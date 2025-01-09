@@ -2680,6 +2680,11 @@ message VolumeRemoveFileRequest {
   bool recursive = 3;
 }
 
+message VolumeRenameRequest {
+  string volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string name = 2;
+}
+
 message Warning {
   enum WarningType {
     WARNING_TYPE_UNSPECIFIED = 0;
@@ -2887,6 +2892,7 @@ service ModalClient {
   rpc VolumePutFiles(VolumePutFilesRequest) returns (google.protobuf.Empty);
   rpc VolumeReload(VolumeReloadRequest) returns (google.protobuf.Empty);
   rpc VolumeRemoveFile(VolumeRemoveFileRequest) returns (google.protobuf.Empty);
+  rpc VolumeRename(VolumeRenameRequest) returns (google.protobuf.Empty);
 
   // Workspaces
   rpc WorkspaceNameLookup(google.protobuf.Empty) returns (WorkspaceNameLookupResponse);
