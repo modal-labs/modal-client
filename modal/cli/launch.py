@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
-from typer import Typer
+from typer import Argument, Option, Typer
 
 from ..app import App
 from ..exception import _CliUserExecutionError
@@ -93,3 +93,49 @@ def vscode(
         "volume": volume,
     }
     _launch_program("vscode", "vscode.py", detach, args)
+
+
+@launch_cli.command(name="hf-download")
+def hf_download(
+    repo_id: str = Argument(help="The Hugging Face repository ID"),
+    volume: str = Argument(help="The name of the Modal volume to use for caching"),
+    secret: Optional[str] = Option(None, help="The name of a Modal secret with Hugging Face credentials"),
+    timeout: int = Option(600, help="Maximum time the download is allowed to run (in seconds)"),
+    type: Optional[str] = Option(None, help="The repository type(e.g. 'model' or 'dataset')"),
+    revision: Optional[str] = Option(None, help="A specific revision to download"),
+    ignore: list[str] = Option([], help="Ignore patterns to skip downloading matching files"),
+    allow: list[str] = Option([], help="Allow patterns to selectively download matching files"),
+    detatch: bool = Option(False, "--detach", help="Allow the download to continue if the local client disconnects"),
+):
+    """Download a snapshot from the Hugging Face Hub.
+
+    This command uses Hugging Face's `snapshot_download` function to download a snapshot from a repository
+    on Hugging Face's Hub and cache it in a Modal volume. In your Modal applications, if you mount the
+    Volume at a location corresponding to the `HF_HUB_CACHE` environment variable, Hugging Face will load
+    data from the cache instead of downloading it.
+
+    \b```
+    modal launch hf-download microsoft/Phi-3-mini hf-hub-cache --secret "hf-secret" --timeout 600 --detach
+    ```
+
+    Then in your Modal App:
+
+    \b```
+    volume = modal.Volume.from_name("hf-hub-cache")
+    @app.function(volumes={HF_HUB_CACHE: volume})
+    def f():
+        model = ModelClass.from_pretrained(model_name, cache_dir=HF_HUB_CACHE)
+    ```
+
+    """
+    args = {
+        "volume": volume,
+        "secret": secret,
+        "timeout": timeout,
+        "repo_id": repo_id,
+        "type": type,
+        "revision": revision,
+        "ignore": ignore,
+        "allow": allow,
+    }
+    _launch_program("hf-download", "hf_download.py", detatch, args)
