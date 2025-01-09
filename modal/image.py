@@ -675,6 +675,7 @@ class _Image(_Object, type_prefix="im"):
         deprecation_warning(
             (2025, 1, 9),
             "`copy_mount` is deprecated. Use `add_local_dir` or `add_local_file` instead.",
+            pending=True,
         )
 
         if not isinstance(mount, _Mount):
@@ -1329,6 +1330,7 @@ class _Image(_Object, type_prefix="im"):
                 (2025, 1, 9),
                 "`context_mount` is deprecated."
                 + " Files are now automatically added to the build context based on the commands.",
+                pending=True,
             )
 
         cmds = _flatten_str_args("dockerfile_commands", "dockerfile_commands", dockerfile_commands)
@@ -1767,6 +1769,7 @@ class _Image(_Object, type_prefix="im"):
                 (2025, 1, 9),
                 "`context_mount` is deprecated."
                 + " Files are now automatically added to the build context based on the commands in the Dockerfile.",
+                pending=True,
             )
 
         # --- Build the base dockerfile
@@ -1941,6 +1944,7 @@ class _Image(_Object, type_prefix="im"):
                 (2025, 1, 9),
                 "`mounts` is deprecated."
                 + " Use `add_local_dir(..., copy=True)` or `add_local_file(..., copy=True)` instead.",
+                pending=True,
             )
 
         scheduler_placement = SchedulerPlacement(region=region) if region else None
