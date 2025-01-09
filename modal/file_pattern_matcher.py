@@ -62,6 +62,27 @@ class _CustomPatternMatcher(_AbstractPatternMatcher):
 class FilePatternMatcher(_AbstractPatternMatcher):
     """Allows matching file paths against a list of patterns."""
 
+    patterns: list[Pattern]
+    _delayed_init: Callable[[], None] = None
+
+    def _set_patterns(self, patterns: Sequence[str]) -> None:
+        self.patterns = []
+        for pattern in list(patterns):
+            pattern = pattern.strip()
+            if not pattern:
+                continue
+            pattern = os.path.normpath(pattern)
+            new_pattern = Pattern()
+            if pattern[0] == "!":
+                if len(pattern) == 1:
+                    raise ValueError('Illegal exclusion pattern: "!"')
+                new_pattern.exclusion = True
+                pattern = pattern[1:]
+            # In Python, we can proceed without explicit syntax checking
+            new_pattern.cleaned_pattern = pattern
+            new_pattern.dirs = pattern.split(os.path.sep)
+            self.patterns.append(new_pattern)
+
     def __init__(self, *pattern: str) -> None:
         """Initialize a new FilePatternMatcher instance.
 
@@ -71,24 +92,18 @@ class FilePatternMatcher(_AbstractPatternMatcher):
         Raises:
             ValueError: If an illegal exclusion pattern is provided.
         """
-        self.patterns: list[Pattern] = []
-        self.exclusions = False
-        for p in list(pattern):
-            p = p.strip()
-            if not p:
-                continue
-            p = os.path.normpath(p)
-            new_pattern = Pattern()
-            if p[0] == "!":
-                if len(p) == 1:
-                    raise ValueError('Illegal exclusion pattern: "!"')
-                new_pattern.exclusion = True
-                p = p[1:]
-                self.exclusions = True
-            # In Python, we can proceed without explicit syntax checking
-            new_pattern.cleaned_pattern = p
-            new_pattern.dirs = p.split(os.path.sep)
-            self.patterns.append(new_pattern)
+        self._set_patterns(pattern)
+
+    @classmethod
+    def from_file(cls, file_path: Path) -> "FilePatternMatcher":
+        uninitialized = cls.__new__(cls)
+
+        def _delayed_init():
+            uninitialized._set_patterns(file_path.read_text("utf8").splitlines())
+            uninitialized._delayed_init = None
+
+        uninitialized._delayed_init = _delayed_init
+        return uninitialized
 
     def _matches(self, file_path: str) -> bool:
         """Check if the file path or any of its parent directories match the patterns.
@@ -97,6 +112,9 @@ class FilePatternMatcher(_AbstractPatternMatcher):
         library. The reason is that `Matches()` in the original library is
         deprecated due to buggy behavior.
         """
+        if self._delayed_init:
+            self._delayed_init()
+
         matched = False
         file_path = os.path.normpath(file_path)
         if file_path == ".":
