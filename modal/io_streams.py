@@ -14,8 +14,7 @@ from typing import (
 from grpclib import Status
 from grpclib.exceptions import GRPCError, StreamTerminatedError
 
-from modal.exception import InvalidError
-from modal.io_streams_helper import consume_stream_with_retries
+from modal.exception import ClientClosed, InvalidError
 from modal_proto import api_pb2
 
 from ._utils.async_utils import synchronize_api
@@ -177,21 +176,34 @@ class _StreamReader(Generic[T]):
         if self._stream_type == StreamType.DEVNULL:
             return
 
-        def item_handler(item: Optional[bytes]):
-            if self._stream_type == StreamType.STDOUT and item is not None:
-                print(item.decode("utf-8"), end="")
-            elif self._stream_type == StreamType.PIPE:
-                self._container_process_buffer.append(item)
+        completed = False
+        retries_remaining = 10
+        while not completed:
+            try:
+                iterator = _container_process_logs_iterator(self._object_id, self._file_descriptor, self._client)
 
-        def completion_check(item: Optional[bytes]):
-            return item is None
+                async for message in iterator:
+                    if self._stream_type == StreamType.STDOUT and message:
+                        print(message.decode("utf-8"), end="")
+                    elif self._stream_type == StreamType.PIPE:
+                        self._container_process_buffer.append(message)
+                    if message is None:
+                        completed = True
+                        break
 
-        iterator = _container_process_logs_iterator(self._object_id, self._file_descriptor, self._client)
-        await consume_stream_with_retries(
-            iterator,
-            item_handler,
-            completion_check,
-        )
+            except (GRPCError, StreamTerminatedError, ClientClosed) as exc:
+                if retries_remaining > 0:
+                    retries_remaining -= 1
+                    if isinstance(exc, GRPCError):
+                        if exc.status in RETRYABLE_GRPC_STATUS_CODES:
+                            await asyncio.sleep(1.0)
+                            continue
+                    elif isinstance(exc, StreamTerminatedError):
+                        continue
+                    elif isinstance(exc, ClientClosed):
+                        # If the client was closed, the user has triggered a cleanup.
+                        break
+                raise exc
 
     async def _stream_container_process(self) -> AsyncGenerator[tuple[Optional[bytes], str], None]:
         """Streams the container process buffer to the reader."""
