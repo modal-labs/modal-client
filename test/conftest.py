@@ -44,6 +44,8 @@ from modal._utils.http_utils import run_temporary_http_server
 from modal._vendor import cloudpickle
 from modal.app import _App
 from modal.client import Client
+from modal.cls import _Cls
+from modal.functions import _Function
 from modal.image import ImageBuilderVersion
 from modal.mount import client_mount_name
 from modal_proto import api_grpc, api_pb2
@@ -67,6 +69,22 @@ def ignore_local_config():
     # When running tests locally, we don't want to pick up the local .modal.toml file
     config._user_config = {}
     yield
+
+
+@pytest.fixture
+def tmp_path_with_content(tmp_path):
+    (tmp_path / "data.txt").write_text("hello")
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "sub").write_text("world")
+    (tmp_path / "module").mkdir()
+    (tmp_path / "module" / "__init__.py").write_text("foo")
+    (tmp_path / "module" / "sub.py").write_text("bar")
+    (tmp_path / "module" / "sub").mkdir()
+    (tmp_path / "module" / "sub" / "__init__.py").write_text("baz")
+    (tmp_path / "module" / "sub" / "foo.pyc").write_text("baz")
+    (tmp_path / "module" / "sub" / "sub.py").write_text("qux")
+
+    return tmp_path
 
 
 class FunctionsRegistry:
@@ -117,6 +135,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     container_addr: str
 
     def __init__(self, blob_host, blobs, credentials):
+        self.default_published_client_mount = "mo-123"
         self.use_blob_outputs = False
         self.put_outputs_barrier = threading.Barrier(
             1, timeout=10
@@ -135,6 +154,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.done = False
         self.rate_limit_sleep_duration = None
         self.fail_get_inputs = False
+        self.failure_status = api_pb2.GenericResult.GENERIC_STATUS_FAILURE
         self.slow_put_inputs = False
         self.container_inputs = []
         self.container_outputs = []
@@ -157,9 +177,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             }
         ]
         self.app_objects = {}
-        self.app_unindexed_objects = {
-            "ap-1": ["im-1", "vo-1"],
-        }
+        self.app_unindexed_objects = {}
         self.n_inputs = 0
         self.n_queues = 0
         self.n_dict_heartbeats = 0
@@ -168,7 +186,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_vol_heartbeats = 0
         self.n_mounts = 0
         self.n_mount_files = 0
-        self.mount_contents = {}
+        self.mount_contents = {self.default_published_client_mount: {"/pkg/modal_client.py": "0x1337"}}
         self.files_name2sha = {}
         self.files_sha2data = {}
         self.function_id_for_function_call = {}
@@ -212,9 +230,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.secrets = {}
 
         self.deployed_dicts = {}
+        self.default_published_client_mount = "mo-123"
         self.deployed_mounts = {
-            (client_mount_name(), api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL): "mo-123",
+            (client_mount_name(), api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL): self.default_published_client_mount,
         }
+
         self.deployed_nfss = {}
         self.deployed_queues = {}
         self.deployed_secrets = {}
@@ -380,6 +400,37 @@ class MockClientServicer(api_grpc.ModalClientBase):
         res.object_id = object_id
         return res
 
+    def mounts_excluding_published_client(self):
+        return {
+            mount_id: content
+            for mount_id, content in self.mount_contents.items()
+            if mount_id != self.default_published_client_mount
+        }
+
+    def app_get_layout(self, app_id):
+        # Returns the app layout for any deployed app
+        app_objects = self.app_objects.get(app_id, {})
+        function_ids = {}
+        class_ids = {}
+        object_ids = set(app_objects.values()) | set(self.app_unindexed_objects.get(app_id, []))
+        for tag, object_id in app_objects.items():
+            if _Function._is_id_type(object_id):
+                function_ids[tag] = object_id
+                definition = self.app_functions[object_id]
+                if isinstance(definition, api_pb2.FunctionData):
+                    for ranked_fn in definition.ranked_functions:
+                        object_ids |= {obj.object_id for obj in ranked_fn.function.object_dependencies}
+                else:
+                    object_ids |= {obj.object_id for obj in definition.object_dependencies}
+            elif _Cls._is_id_type(object_id):
+                class_ids[tag] = object_id
+
+        return api_pb2.AppLayout(
+            function_ids=function_ids,
+            class_ids=class_ids,
+            objects=[self.get_object_metadata(object_id) for object_id in object_ids],
+        )
+
     ### App
 
     async def AppCreate(self, stream):
@@ -408,6 +459,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
             state_history.append(api_pb2.APP_STATE_STOPPED)
         await stream.send_message(Empty())
 
+    async def AppGetLayout(self, stream):
+        request: api_pb2.AppGetLayoutRequest = await stream.recv_message()
+        app_layout = self.app_get_layout(request.app_id)
+        await stream.send_message(api_pb2.AppGetLayoutResponse(app_layout=app_layout))
+
     async def AppGetLogs(self, stream):
         request: api_pb2.AppGetLogsRequest = await stream.recv_message()
         if not request.last_entry_id:
@@ -426,31 +482,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if self.done:
                 await stream.send_message(api_pb2.TaskLogsBatch(app_done=True))
                 return
-
-    async def AppGetObjects(self, stream):
-        request: api_pb2.AppGetObjectsRequest = await stream.recv_message()
-        object_ids = self.app_objects.get(request.app_id, {})
-        objects = list(object_ids.items())
-        if request.include_unindexed:
-            unindexed_object_ids = set()
-            for object_id in object_ids.values():
-                if object_id.startswith("fu-"):
-                    definition = self.app_functions[object_id]
-                    if isinstance(definition, api_pb2.FunctionData):
-                        for ranked_fn in definition.ranked_functions:
-                            unindexed_object_ids |= {obj.object_id for obj in ranked_fn.function.object_dependencies}
-                    else:
-                        unindexed_object_ids |= {obj.object_id for obj in definition.object_dependencies}
-            objects += [(None, object_id) for object_id in unindexed_object_ids]
-            # TODO(michael) This perpetuates a hack! The container_test tests rely on hardcoded unindexed_object_ids
-            # but we now look those up dynamically from the indexed objects in (the real) AppGetObjects. But the
-            # container tests never actually set indexed objects on the app. We need a total rewrite here.
-            if (None, "im-1") not in objects:
-                objects.append((None, "im-1"))
-        items = [
-            api_pb2.AppGetObjectsItem(tag=tag, object=self.get_object_metadata(object_id)) for tag, object_id in objects
-        ]
-        await stream.send_message(api_pb2.AppGetObjectsResponse(items=items))
 
     async def AppRollback(self, stream):
         request: api_pb2.AppRollbackRequest = await stream.recv_message()
@@ -473,15 +504,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
 
         self.app_state_history[request.app_id].append(api_pb2.APP_STATE_DEPLOYED)
-        await stream.send_message(Empty())
-
-    async def AppSetObjects(self, stream):
-        request: api_pb2.AppSetObjectsRequest = await stream.recv_message()
-        self.app_objects[request.app_id] = dict(request.indexed_object_ids)
-        self.app_unindexed_objects[request.app_id] = list(request.unindexed_object_ids)
-        self.app_set_objects_count += 1
-        if request.new_app_state:
-            self.app_state_history[request.app_id].append(request.new_app_state)
         await stream.send_message(Empty())
 
     async def AppDeploy(self, stream):
@@ -1097,7 +1119,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             except Exception as exc:
                 serialized_exc = cloudpickle.dumps(exc)
                 result = api_pb2.GenericResult(
-                    status=api_pb2.GenericResult.GENERIC_STATUS_FAILURE,
+                    status=self.failure_status,
                     data=serialized_exc,
                     exception=repr(exc),
                     traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
@@ -1230,6 +1252,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
             if k not in self.deployed_mounts:
                 raise GRPCError(Status.NOT_FOUND, f"Mount {k} not found")
             mount_id = self.deployed_mounts[k]
+            await stream.send_message(
+                api_pb2.MountGetOrCreateResponse(
+                    mount_id=mount_id,
+                    handle_metadata=api_pb2.MountHandleMetadata(content_checksum_sha256_hex="deadbeef"),
+                )
+            )
+            return
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
             self.n_mounts += 1
             mount_id = f"mo-{self.n_mounts}"
@@ -1711,6 +1740,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
         del self.volume_files[req.volume_id][req.path]
         await stream.send_message(Empty())
 
+    async def VolumeRename(self, stream):
+        req = await stream.recv_message()
+        for key, vol_id in self.deployed_volumes.items():
+            if vol_id == req.volume_id:
+                break
+        self.deployed_volumes[(req.name, *key[1:])] = self.deployed_volumes.pop(key)
+        await stream.send_message(Empty())
+
     async def VolumeListFiles(self, stream):
         req = await stream.recv_message()
         path = req.path if req.path else "/"
@@ -1829,6 +1866,11 @@ def blob_server():
                 await loop.run_in_executor(None, stop_server.wait)
 
         loop.run_until_complete(async_main())
+
+        # clean up event loop
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.run_until_complete(loop.shutdown_default_executor())
+        loop.close()
 
     # run server on separate thread to not lock up the server event loop in case of blocking calls in tests
     thread = threading.Thread(target=run_server_other_thread)
@@ -2116,3 +2158,10 @@ def decode_function_call_jwt(function_call_jwt: str) -> tuple[str, str]:
     parts = function_call_jwt.split(":")
     assert len(parts) == 2
     return parts[0], parts[1]
+
+
+@pytest.fixture
+def tmp_cwd(tmp_path, monkeypatch):
+    with monkeypatch.context() as m:
+        m.chdir(tmp_path)
+        yield

@@ -16,9 +16,10 @@ from modal import (
     is_local,
     method,
     web_endpoint,
+    web_server,
     wsgi_app,
 )
-from modal.exception import deprecation_warning
+from modal._utils.deprecation import deprecation_warning
 from modal.experimental import get_local_input_concurrency, set_local_input_concurrency
 
 SLEEP_DELAY = 0.1
@@ -156,6 +157,14 @@ def fastapi_app():
         return {"hello": arg}
 
     return web_app
+
+
+@app.function()
+@web_server(8765, startup_timeout=1)
+def non_blocking_web_server():
+    import subprocess
+
+    subprocess.Popen(["python", "-m", "http.server", "-b", "0.0.0.0", "8765"])
 
 
 lifespan_global_asgi_app_func: list[str] = []
@@ -309,6 +318,26 @@ class fastapi_class_lifespan_shutdown_failure:
     @exit()
     def exit(self):
         lifespan_global_asgi_app_cls_fail.append("lifecycle exit")
+
+
+@app.function()
+@asgi_app()
+def asgi_app_with_slow_lifespan_wind_down():
+    async def _asgi_app(scope, receive, send):
+        if scope["type"] == "lifespan":
+            while True:
+                message = await receive()
+                if message["type"] == "lifespan.startup":
+                    await send({"type": "lifespan.startup.complete"})
+                elif message["type"] == "lifespan.shutdown":
+                    await send({"type": "lifespan.shutdown.complete"})
+                await asyncio.sleep(1)  # take some time to shut down - this should either be cancelled or awaited
+        else:
+            # dummy response to other requests
+            await send({"type": "http.response.start", "status": 200})
+            await send({"type": "http.response.body", "body": b'{"some_result":"foo"}'})
+
+    return _asgi_app
 
 
 @app.function()
@@ -678,3 +707,9 @@ def set_input_concurrency(start: float):
     set_local_input_concurrency(3)
     time.sleep(1)
     return time.time() - start
+
+
+@app.function()
+def check_container_app():
+    # The container app should be associated with the app object
+    assert App._get_container_app() == app

@@ -6,10 +6,11 @@ from typing import Generic, Optional, TypeVar
 from modal_proto import api_pb2
 
 from ._utils.async_utils import TaskContext, synchronize_api
+from ._utils.deprecation import deprecation_error
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.shell_utils import stream_from_stdin, write_to_fd
 from .client import _Client
-from .exception import InteractiveTimeoutError, InvalidError, deprecation_error
+from .exception import InteractiveTimeoutError, InvalidError
 from .io_streams import _StreamReader, _StreamWriter
 from .stream_type import StreamType
 

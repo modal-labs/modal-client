@@ -3,12 +3,12 @@ import hashlib
 import os
 import platform
 import pytest
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-from modal import App
+from modal import App, FilePatternMatcher
 from modal._utils.blob_utils import LARGE_FILE_LIMIT
 from modal.exception import ModuleNotMountable
-from modal.mount import Mount
+from modal.mount import Mount, module_mount_condition, module_mount_ignore_condition
 
 
 @pytest.mark.asyncio
@@ -159,3 +159,42 @@ def test_chained_entries(test_dir):
     m.update(b"A")
     assert files[0].sha256_hex == m.hexdigest()
     assert files[0].use_blob is False
+
+
+def test_module_mount_condition():
+    condition = module_mount_condition(Path("/a/.venv/site-packages/mymod"))
+    ignore_condition = module_mount_ignore_condition(Path("/a/.venv/site-packages/mymod"))
+
+    include_paths = [
+        Path("/a/.venv/site-packages/mymod/foo.py"),
+        Path("/a/my_mod/config/foo.txt"),
+        Path("/a/my_mod/config/foo.py"),
+    ]
+    exclude_paths = [
+        Path("/a/site-packages/mymod/foo.pyc"),
+        Path("/a/site-packages/mymod/__pycache__/foo.py"),
+        Path("/a/my_mod/.config/foo.py"),
+    ]
+    for path in include_paths:
+        assert condition(path)
+        assert not ignore_condition(path)
+    for path in exclude_paths:
+        assert not condition(path)
+        assert ignore_condition(path)
+
+
+def test_mount_from_local_dir_ignore(test_dir, tmp_path_with_content):
+    ignore = FilePatternMatcher("**/*.txt", "**/module", "!**/*.txt", "!**/*.py")
+    expected = {
+        "/foo/module/sub.py",
+        "/foo/module/sub/sub.py",
+        "/foo/data/sub",
+        "/foo/module/__init__.py",
+        "/foo/data.txt",
+        "/foo/module/sub/__init__.py",
+    }
+
+    mount = Mount._add_local_dir(tmp_path_with_content, PurePosixPath("/foo"), ignore=ignore)
+
+    file_names = [file.mount_filename for file in Mount._get_files(entries=mount.entries)]
+    assert set(file_names) == expected

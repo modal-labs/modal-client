@@ -10,6 +10,154 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.71.13 (2025-01-09)
+
+* `FilePatternMatcher` has a new constructor `from_file` which allows you to read file matching patterns from a file instead of having to pass them in directly, this can be used for `Image` methods accepting an `ignore` parameter in order to read ignore patterns from files.
+
+
+
+### 0.71.11 (2025-01-08)
+
+- Modal Volumes can now be renamed via the CLI (`modal volume rename`) or SDK (`modal.Volume.rename`).
+
+
+
+### 0.71.7 (2025-01-08)
+
+- Adds `Image.from_id`, which returns an `Image` object from an existing image id.
+
+
+
+### 0.71.1 (2025-01-06)
+
+- Sandboxes now support fsnotify-like file watching:
+```python
+from modal.file_io import FileWatchEventType
+
+app = modal.App.lookup("file-watch", create_if_missing=True)
+sb = modal.Sandbox.create(app=app)
+events = sb.watch("/foo")
+for event in events:
+    if event.type == FileWatchEventType.Modify:
+        print(event.paths)
+```
+
+
+
+### 0.70.1 (2024-12-27)
+
+- The sandbox filesystem API now accepts write payloads of sizes up to 1 GiB.
+
+
+
+### 0.69.0 (2024-12-21)
+
+* `Image.from_dockerfile()` and `image.dockerfile_commands()` now auto-infer which files need to be uploaded based on COPY commands in the source if `context_mount` is omitted. The `ignore=` argument to these methods can be used to selectively omit files using a set of glob patterns.
+
+
+
+### 0.68.53 (2024-12-20)
+
+- You can now point `modal launch vscode` at an arbitrary Dockerhub base image:
+
+    `modal launch vscode --image=nvidia/cuda:12.4.0-devel-ubuntu22.04`
+
+
+
+### 0.68.44 (2024-12-19)
+
+- You can now run GPU workloads on [Nvidia L40S GPUs](https://www.nvidia.com/en-us/data-center/l40s/):
+
+    ```python
+    @app.function(gpu="L40S")
+    def my_gpu_fn():
+        ...
+    ```
+
+
+
+### 0.68.43 (2024-12-19)
+
+- Fixed a bug introduced in v0.68.39 that changed the exception type raise when the target object for `.from_name`/`.lookup` methods was not found.
+
+
+
+### 0.68.39 (2024-12-18)
+
+- Standardized terminology in `.from_name`/`.lookup`/`.delete` methods to use `name` consistently where `label` and `tag` were used interchangeably before. Code that invokes these methods using `label=` as an explicit keyword argument will issue a deprecation warning and will break in a future release.
+
+
+
+### 0.68.29 (2024-12-17)
+
+- The internal `deprecation_error` and `deprecation_warning` utilities have been moved to a private namespace
+
+
+
+### 0.68.28 (2024-12-17)
+
+- Sandboxes now support additional filesystem commands `mkdir`, `rm`, and `ls`.
+```python
+app = modal.App.lookup("sandbox-fs", create_if_missing=True)
+sb = modal.Sandbox.create(app=app)
+sb.mkdir("/foo")
+with sb.open("/foo/bar.txt", "w") as f:
+    f.write("baz")
+print(sb.ls("/foo"))
+```
+
+
+
+### 0.68.27 (2024-12-17)
+
+- Two previously-introduced deprecations are now enforced and raise an error:
+    - The `App.spawn_sandbox` method has been removed in favor of `Sandbox.create`
+    - `Sandbox.create` now requires an `App` object to be passed
+
+
+
+### 0.68.24 (2024-12-16)
+
+- The `modal run` CLI now has a `--write-result` option. When you pass a filename, Modal will write the return value of the entrypoint function to that location on your local filesystem. The return value of the function must be either `str` or `bytes` to use this option; otherwise, an error will be raised. It can be useful for exercising a remote function that returns text, image data, etc.
+
+
+
+### 0.68.21 (2024-12-13)
+
+Adds an `ignore` parameter to our `Image` `add_local_dir` and `copy_local_dir` methods. It is similar to the `condition` method on `Mount` methods but instead operates on a `Path` object. It takes either a list of string patterns to ignore which follows the `dockerignore` syntax implemented in our `FilePatternMatcher` class, or you can pass in a callable which allows for more flexible selection of files.
+
+Usage:
+
+```python
+img.add_local_dir(
+  "./local-dir", 
+  remote_path="/remote-path", 
+  ignore=FilePatternMatcher("**/*", "!*.txt") # ignore everything except files ending with .txt
+)
+
+img.add_local_dir(
+  ...,
+  ignore=~FilePatternMatcher("**/*.py") # can be inverted for when inclusion filters are simpler to write
+)
+
+img.add_local_dir(
+  ...,
+  ignore=["**/*.py", "!module/*.py"] # ignore all .py files except those in the module directory
+)
+
+img.add_local_dir(
+  ...,
+  ignore=lambda fp: fp.is_relative_to("somewhere") # use a custom callable
+)
+```
+
+
+which will add the `./local-dir` directory to the image but ignore all files except `.txt` files
+
+### 0.68.15 (2024-12-13)
+
+Adds the `requires_proxy_auth` parameter to `web_endpoint`, `asgi_app`, `wsgi_app`, and `web_server` decorators. Requests to the app will respond with 407 Proxy Authorization Required if a webhook token is not supplied in the HTTP headers. Protects against DoS attacks that will unnecessarily charge users.
+
 ### 0.68.11 (2024-12-13)
 
 * `Cls.from_name(...)` now works as a lazy alternative to `Cls.lookup()` that doesn't perform any IO until a method on the class is used for a .remote() call or similar

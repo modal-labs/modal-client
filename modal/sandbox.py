@@ -2,7 +2,7 @@
 import asyncio
 import os
 from collections.abc import AsyncGenerator, Sequence
-from typing import TYPE_CHECKING, Literal, Optional, Union, overload
+from typing import TYPE_CHECKING, AsyncIterator, Literal, Optional, Union, overload
 
 if TYPE_CHECKING:
     import _typeshed
@@ -19,20 +19,14 @@ from ._location import parse_cloud_provider
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import synchronize_api
+from ._utils.deprecation import deprecation_error
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
-from .exception import (
-    ExecutionError,
-    InvalidError,
-    SandboxTerminatedError,
-    SandboxTimeoutError,
-    deprecation_error,
-    deprecation_warning,
-)
-from .file_io import _FileIO
+from .exception import ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
+from .file_io import FileWatchEvent, FileWatchEventType, _FileIO
 from .gpu import GPU_T
 from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
@@ -124,6 +118,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             for _, cloud_bucket_mount in cloud_bucket_mounts:
                 if cloud_bucket_mount.secret:
                     deps.append(cloud_bucket_mount.secret)
+            if proxy:
+                deps.append(proxy)
             return deps
 
         async def _load(self: _Sandbox, resolver: Resolver, _existing_object_id: Optional[str]):
@@ -280,17 +276,18 @@ class _Sandbox(_Object, type_prefix="sb"):
 
             app_id = app.app_id
             app_client = app._client
-        elif _App._container_app is not None:
-            app_id = _App._container_app.app_id
-            app_client = _App._container_app.client
+        elif (container_app := _App._get_container_app()) is not None:
+            app_id = container_app.app_id
+            app_client = container_app._client
         else:
-            deprecation_warning(
+            arglist = ", ".join(repr(s) for s in entrypoint_args)
+            deprecation_error(
                 (2024, 9, 14),
-                "Creating a `Sandbox` without an `App` is deprecated.\n"
-                "You may pass in an `App` object, or reference one by name with `App.lookup`:\n"
+                "Creating a `Sandbox` without an `App` is deprecated.\n\n"
+                "You may pass in an `App` object, or reference one by name with `App.lookup`:\n\n"
                 "```\n"
-                "app = modal.App.lookup('my-app', create_if_missing=True)\n"
-                "modal.Sandbox.create('echo', 'hi', app=app)\n"
+                "app = modal.App.lookup('sandbox-app', create_if_missing=True)\n"
+                f"sb = modal.Sandbox.create({arglist}, app=app)\n"
                 "```",
             )
 
@@ -323,7 +320,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         resp = await retry_transient_errors(client.stub.SandboxWait, req)
 
         obj = _Sandbox._new_hydrated(sandbox_id, client, None)
-        obj._result = resp.result
+
+        if resp.result.status:
+            obj._result = resp.result
 
         return obj
 
@@ -566,6 +565,32 @@ class _Sandbox(_Object, type_prefix="sb"):
         """
         task_id = await self._get_task_id()
         return await _FileIO.create(path, mode, self._client, task_id)
+
+    async def ls(self, path: str) -> list[str]:
+        """List the contents of a directory in the Sandbox."""
+        task_id = await self._get_task_id()
+        return await _FileIO.ls(path, self._client, task_id)
+
+    async def mkdir(self, path: str, parents: bool = False) -> None:
+        """Create a new directory in the Sandbox."""
+        task_id = await self._get_task_id()
+        return await _FileIO.mkdir(path, self._client, task_id, parents)
+
+    async def rm(self, path: str, recursive: bool = False) -> None:
+        """Remove a file or directory in the Sandbox."""
+        task_id = await self._get_task_id()
+        return await _FileIO.rm(path, self._client, task_id, recursive)
+
+    async def watch(
+        self,
+        path: str,
+        filter: Optional[list[FileWatchEventType]] = None,
+        recursive: Optional[bool] = None,
+        timeout: Optional[int] = None,
+    ) -> AsyncIterator[FileWatchEvent]:
+        task_id = await self._get_task_id()
+        async for event in _FileIO.watch(path, self._client, task_id, filter, recursive, timeout):
+            yield event
 
     @property
     def stdout(self) -> _StreamReader[str]:

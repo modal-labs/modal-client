@@ -13,10 +13,11 @@ from modal_proto import api_pb2
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_is_not_consumed
+from ._utils.deprecation import renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
-from .exception import InvalidError, RequestSizeError, deprecation_error
+from .exception import InvalidError, RequestSizeError
 from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
 
@@ -93,15 +94,6 @@ class _Queue(_Object, type_prefix="qu"):
     Partition keys must be non-empty and must not exceed 64 bytes.
     """
 
-    @staticmethod
-    def new():
-        """mdmd:hidden"""
-        message = (
-            "`Queue.new` is deprecated."
-            " Please use `Queue.from_name` (for persisted) or `Queue.ephemeral` (for ephemeral) queues instead."
-        )
-        deprecation_error((2024, 3, 19), message)
-
     def __init__(self):
         """mdmd:hidden"""
         raise RuntimeError("Queue() is not allowed. Please use `Queue.from_name(...)` or `Queue.ephemeral()` instead.")
@@ -153,8 +145,9 @@ class _Queue(_Object, type_prefix="qu"):
             yield cls._new_hydrated(response.queue_id, client, None, is_another_app=True)
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
-        label: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -170,11 +163,11 @@ class _Queue(_Object, type_prefix="qu"):
         q.put(123)
         ```
         """
-        check_object_name(label, "Queue")
+        check_object_name(name, "Queue")
 
         async def _load(self: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.QueueGetOrCreateRequest(
-                deployment_name=label,
+                deployment_name=name,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
@@ -185,8 +178,9 @@ class _Queue(_Object, type_prefix="qu"):
         return _Queue._from_loader(_load, "Queue()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
-        label: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
@@ -203,7 +197,7 @@ class _Queue(_Object, type_prefix="qu"):
         ```
         """
         obj = _Queue.from_name(
-            label, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
+            name, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
         )
         if client is None:
             client = await _Client.from_env()
@@ -212,8 +206,9 @@ class _Queue(_Object, type_prefix="qu"):
         return obj
 
     @staticmethod
-    async def delete(label: str, *, client: Optional[_Client] = None, environment_name: Optional[str] = None):
-        obj = await _Queue.lookup(label, client=client, environment_name=environment_name)
+    @renamed_parameter((2024, 12, 18), "label", "name")
+    async def delete(name: str, *, client: Optional[_Client] = None, environment_name: Optional[str] = None):
+        obj = await _Queue.lookup(name, client=client, environment_name=environment_name)
         req = api_pb2.QueueDeleteRequest(queue_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.QueueDelete, req)
 

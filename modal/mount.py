@@ -11,23 +11,26 @@ import time
 import typing
 from collections.abc import AsyncGenerator
 from pathlib import Path, PurePosixPath
-from typing import Callable, Optional, Union
+from typing import Callable, Optional, Sequence, Union
 
 from google.protobuf.message import Message
 
 import modal.exception
+import modal.file_pattern_matcher
 from modal_proto import api_pb2
 from modal_version import __version__
 
 from ._resolver import Resolver
 from ._utils.async_utils import aclosing, async_map, synchronize_api
 from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
+from ._utils.deprecation import renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from ._utils.package_utils import get_module_mount_info
 from .client import _Client
 from .config import config, logger
-from .exception import ModuleNotMountable
+from .exception import InvalidError, ModuleNotMountable
+from .file_pattern_matcher import FilePatternMatcher
 from .object import _get_environment_name, _Object
 
 ROOT_DIR: PurePosixPath = PurePosixPath("/root")
@@ -103,7 +106,7 @@ class _MountFile(_MountEntry):
         return str(self.local_file)
 
     def get_files_to_upload(self):
-        local_file = self.local_file.expanduser().absolute()
+        local_file = self.local_file.resolve()
         if not local_file.exists():
             raise FileNotFoundError(local_file)
 
@@ -122,13 +125,15 @@ class _MountFile(_MountEntry):
 class _MountDir(_MountEntry):
     local_dir: Path
     remote_path: PurePosixPath
-    condition: Callable[[str], bool]
+    ignore: Callable[[Path], bool]
     recursive: bool
 
     def description(self):
         return str(self.local_dir.expanduser().absolute())
 
     def get_files_to_upload(self):
+        # we can't use .resolve() eagerly here since that could end up "renaming" symlinked files
+        # see test_mount_directory_with_symlinked_file
         local_dir = self.local_dir.expanduser().absolute()
 
         if not local_dir.exists():
@@ -143,10 +148,11 @@ class _MountDir(_MountEntry):
             gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
 
         for local_filename in gen:
-            if self.condition(local_filename):
-                local_relpath = Path(local_filename).expanduser().absolute().relative_to(local_dir)
+            local_path = Path(local_filename)
+            if not self.ignore(local_path):
+                local_relpath = local_path.expanduser().absolute().relative_to(local_dir)
                 mount_path = self.remote_path / local_relpath.as_posix()
-                yield local_filename, mount_path
+                yield local_path.resolve(), mount_path
 
     def watch_entry(self):
         return self.local_dir.resolve().expanduser(), None
@@ -182,6 +188,10 @@ def module_mount_condition(module_base: Path):
     return condition
 
 
+def module_mount_ignore_condition(module_base: Path):
+    return lambda f: not module_mount_condition(module_base)(str(f))
+
+
 @dataclasses.dataclass
 class _MountedPythonModule(_MountEntry):
     # the purpose of this is to keep printable information about which Python package
@@ -190,7 +200,7 @@ class _MountedPythonModule(_MountEntry):
 
     module_name: str
     remote_dir: Union[PurePosixPath, str] = ROOT_DIR.as_posix()  # cast needed here for type stub generation...
-    condition: typing.Optional[typing.Callable[[str], bool]] = None
+    ignore: Optional[Callable[[Path], bool]] = None
 
     def description(self) -> str:
         return f"PythonPackage:{self.module_name}"
@@ -206,7 +216,7 @@ class _MountedPythonModule(_MountEntry):
                     _MountDir(
                         base_path,
                         remote_path=remote_dir,
-                        condition=self.condition or module_mount_condition(base_path),
+                        ignore=self.ignore or module_mount_ignore_condition(base_path),
                         recursive=True,
                     )
                 )
@@ -313,6 +323,21 @@ class _Mount(_Object, type_prefix="mo"):
         # we can't rely on it to be set. Let's clean this up later.
         return getattr(self, "_is_local", False)
 
+    @staticmethod
+    def _add_local_dir(
+        local_path: Path,
+        remote_path: PurePosixPath,
+        ignore: Callable[[Path], bool] = modal.file_pattern_matcher._NOTHING,
+    ):
+        return _Mount._new()._extend(
+            _MountDir(
+                local_dir=local_path,
+                ignore=ignore,
+                remote_path=remote_path,
+                recursive=True,
+            ),
+        )
+
     def add_local_dir(
         self,
         local_path: Union[str, Path],
@@ -339,10 +364,13 @@ class _Mount(_Object, type_prefix="mo"):
 
             condition = include_all
 
+        def converted_condition(path: Path) -> bool:
+            return not condition(str(path))
+
         return self._extend(
             _MountDir(
                 local_dir=local_path,
-                condition=condition,
+                ignore=converted_condition,
                 remote_path=remote_path,
                 recursive=recursive,
             ),
@@ -551,6 +579,7 @@ class _Mount(_Object, type_prefix="mo"):
         # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
         # Defaults to including all files.
         condition: Optional[Callable[[str], bool]] = None,
+        ignore: Optional[Union[Sequence[str], Callable[[Path], bool]]] = None,
     ) -> "_Mount":
         """
         Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
@@ -575,18 +604,30 @@ class _Mount(_Object, type_prefix="mo"):
 
         # Don't re-run inside container.
 
+        if condition is not None:
+            if ignore is not None:
+                raise InvalidError("Cannot specify both `ignore` and `condition`")
+
+            def converted_condition(path: Path) -> bool:
+                return not condition(str(path))
+
+            ignore = converted_condition
+        elif isinstance(ignore, list):
+            ignore = FilePatternMatcher(*ignore)
+
         mount = _Mount._new()
         from ._runtime.execution_context import is_local
 
         if not is_local():
             return mount  # empty/non-mountable mount in case it's used from within a container
         for module_name in module_names:
-            mount = mount._extend(_MountedPythonModule(module_name, remote_dir, condition))
+            mount = mount._extend(_MountedPythonModule(module_name, remote_dir, ignore))
         return mount
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
-        label: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
     ) -> "_Mount":
@@ -594,7 +635,7 @@ class _Mount(_Object, type_prefix="mo"):
 
         async def _load(provider: _Mount, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.MountGetOrCreateRequest(
-                deployment_name=label,
+                deployment_name=name,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
             )
@@ -604,15 +645,16 @@ class _Mount(_Object, type_prefix="mo"):
         return _Mount._from_loader(_load, "Mount()")
 
     @classmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
         cls: type["_Mount"],
-        label: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> "_Mount":
         """mdmd:hidden"""
-        obj = _Mount.from_name(label, namespace=namespace, environment_name=environment_name)
+        obj = _Mount.from_name(name, namespace=namespace, environment_name=environment_name)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)

@@ -22,7 +22,6 @@ from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
 from synchronicity.exceptions import UserCodeException
 
-from modal._utils.async_utils import aclosing
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
@@ -35,12 +34,14 @@ from ._serialization import serialize, serialize_proto_params
 from ._traceback import print_server_warnings
 from ._utils.async_utils import (
     TaskContext,
+    aclosing,
     async_merge,
     callable_to_agen,
     synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
+from ._utils.deprecation import deprecation_warning, renamed_parameter
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
@@ -61,10 +62,10 @@ from .config import config
 from .exception import (
     ExecutionError,
     FunctionTimeoutError,
+    InternalFailure,
     InvalidError,
     NotFoundError,
     OutputExpiredError,
-    deprecation_warning,
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
@@ -180,7 +181,7 @@ class _Invocation:
         return _Invocation(client.stub, function_call_id, client, retry_context)
 
     async def pop_function_call_outputs(
-        self, timeout: Optional[float], clear_on_success: bool
+        self, timeout: Optional[float], clear_on_success: bool, input_jwts: Optional[list[str]] = None
     ) -> api_pb2.FunctionGetOutputsResponse:
         t0 = time.time()
         if timeout is None:
@@ -196,6 +197,7 @@ class _Invocation:
                 last_entry_id="0-0",
                 clear_on_success=clear_on_success,
                 requested_at=time.time(),
+                input_jwts=input_jwts,
             )
             response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
@@ -225,10 +227,14 @@ class _Invocation:
             request,
         )
 
-    async def _get_single_output(self) -> Any:
+    async def _get_single_output(self, expected_jwt: Optional[str] = None) -> Any:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
-            await self.pop_function_call_outputs(timeout=None, clear_on_success=True)
+            await self.pop_function_call_outputs(
+                timeout=None,
+                clear_on_success=True,
+                input_jwts=[expected_jwt] if expected_jwt else None,
+            )
         ).outputs[0]
         return await _process_result(item.result, item.data_format, self.stub, self.client)
 
@@ -248,9 +254,12 @@ class _Invocation:
 
         while True:
             try:
-                return await self._get_single_output()
+                return await self._get_single_output(ctx.input_jwt)
             except (UserCodeException, FunctionTimeoutError) as exc:
                 await user_retry_manager.raise_or_sleep(exc)
+            except InternalFailure:
+                # For system failures on the server, we retry immediately.
+                pass
             await self._retry_input()
 
     async def poll_function(self, timeout: Optional[float] = None):
@@ -352,6 +361,7 @@ class _FunctionSpec:
     memory: Optional[Union[int, tuple[int, int]]]
     ephemeral_disk: Optional[int]
     scheduler_placement: Optional[SchedulerPlacement]
+    proxy: Optional[_Proxy]
 
 
 P = typing_extensions.ParamSpec("P")
@@ -561,6 +571,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             memory=memory,
             ephemeral_disk=ephemeral_disk,
             scheduler_placement=scheduler_placement,
+            proxy=proxy,
         )
 
         if info.user_cls and not is_auto_snapshot:
@@ -782,7 +793,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     mount_ids=loaded_mount_ids,
                     secret_ids=[secret.object_id for secret in secrets],
                     image_id=(image.object_id if image else ""),
-                    definition_type=info.definition_type,
+                    definition_type=info.get_definition_type(),
                     function_serialized=function_serialized or b"",
                     class_serialized=class_serialized or b"",
                     function_type=function_type,
@@ -1053,10 +1064,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         await retry_transient_errors(self._client.stub.FunctionUpdateSchedulingParams, request)
 
     @classmethod
+    @renamed_parameter((2024, 12, 18), "tag", "name")
     def from_name(
         cls: type["_Function"],
         app_name: str,
-        tag: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
     ) -> "_Function":
@@ -1075,7 +1087,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             assert resolver.client and resolver.client.stub
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
-                object_tag=tag,
+                object_tag=name,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver) or "",
             )
@@ -1095,9 +1107,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "tag", "name")
     async def lookup(
         app_name: str,
-        tag: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
@@ -1111,7 +1124,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         f = modal.Function.lookup("other-app", "function")
         ```
         """
-        obj = _Function.from_name(app_name, tag, namespace=namespace, environment_name=environment_name)
+        obj = _Function.from_name(app_name, name, namespace=namespace, environment_name=environment_name)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)

@@ -1,6 +1,9 @@
 # Copyright Modal Labs 2024
 import pytest
 
+from grpclib import Status
+from grpclib.exceptions import GRPCError
+
 from modal import enable_output
 from modal._utils.async_utils import aclosing, sync_or_async_iter
 from modal.io_streams import StreamReader
@@ -235,3 +238,47 @@ async def test_stream_reader_async_iter(servicer, client):
                 out += line
 
         assert out == expected
+
+
+@pytest.mark.asyncio
+async def test_stream_reader_container_process_retry(servicer, client):
+    """Test that StreamReader handles container process stream failures and retries."""
+
+    batch_idx = 0
+
+    async def container_exec_get_output(servicer, stream):
+        nonlocal batch_idx
+        await stream.recv_message()
+
+        for _ in range(3):
+            await stream.send_message(
+                api_pb2.RuntimeOutputBatch(
+                    batch_index=batch_idx,
+                    items=[api_pb2.RuntimeOutputMessage(message_bytes=f"msg{batch_idx}\n".encode())],
+                )
+            )
+            batch_idx += 1
+
+        # Simulate failure on the first connection
+        if batch_idx == 3:
+            raise GRPCError(Status.INTERNAL, "internal error")
+
+        await stream.send_message(api_pb2.RuntimeOutputBatch(exit_code=0))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerExecGetOutput", container_exec_get_output)
+
+        with enable_output():
+            stdout: StreamReader[str] = StreamReader(
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                object_id="tp-123",
+                object_type="container_process",
+                client=client,
+                by_line=True,
+            )
+
+            output = []
+            async for line in stdout:
+                output.append(line)
+
+            assert output == [f"msg{i}\n" for i in range(6)]
