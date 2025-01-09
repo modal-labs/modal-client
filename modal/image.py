@@ -426,7 +426,7 @@ class _Image(_Object, type_prefix="im"):
 
     def _add_mount_layer_or_copy(self, mount: _Mount, copy: bool = False):
         if copy:
-            return self.copy_mount(mount, remote_path="/")
+            return self._copy_mount(mount, remote_path="/")
 
         base_image = self
 
@@ -656,6 +656,20 @@ class _Image(_Object, type_prefix="im"):
         obj.force_build = force_build
         return obj
 
+    def _copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
+        if not isinstance(mount, _Mount):
+            raise InvalidError("The mount argument to copy has to be a Modal Mount object")
+
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+            commands = ["FROM base", f"COPY . {remote_path}"]  # copy everything from the supplied mount
+            return DockerfileSpec(commands=commands, context_files={})
+
+        return _Image._from_args(
+            base_images={"base": self},
+            dockerfile_function=build_dockerfile,
+            context_mount_function=lambda: mount,
+        )
+
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy the entire contents of a `modal.Mount` into an image.
         Useful when files only available locally are required during the image
@@ -671,25 +685,12 @@ class _Image(_Object, type_prefix="im"):
         image = modal.Image.debian_slim().copy_mount(mount, remote_path="/static")
         ```
         """
-
         deprecation_warning(
             (2025, 1, 9),
             "`copy_mount` is deprecated. Use `add_local_dir` or `add_local_file` instead.",
             pending=True,
         )
-
-        if not isinstance(mount, _Mount):
-            raise InvalidError("The mount argument to copy has to be a Modal Mount object")
-
-        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            commands = ["FROM base", f"COPY . {remote_path}"]  # copy everything from the supplied mount
-            return DockerfileSpec(commands=commands, context_files={})
-
-        return _Image._from_args(
-            base_images={"base": self},
-            dockerfile_function=build_dockerfile,
-            context_mount_function=lambda: mount,
-        )
+        return self._copy_mount(mount, remote_path)
 
     def add_local_file(self, local_path: Union[str, Path], remote_path: str, *, copy: bool = False) -> "_Image":
         """Adds a local file to the image at `remote_path` within the container
