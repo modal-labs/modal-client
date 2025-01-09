@@ -1740,6 +1740,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
         del self.volume_files[req.volume_id][req.path]
         await stream.send_message(Empty())
 
+    async def VolumeRename(self, stream):
+        req = await stream.recv_message()
+        for key, vol_id in self.deployed_volumes.items():
+            if vol_id == req.volume_id:
+                break
+        self.deployed_volumes[(req.name, *key[1:])] = self.deployed_volumes.pop(key)
+        await stream.send_message(Empty())
+
     async def VolumeListFiles(self, stream):
         req = await stream.recv_message()
         path = req.path if req.path else "/"
@@ -1858,6 +1866,11 @@ def blob_server():
                 await loop.run_in_executor(None, stop_server.wait)
 
         loop.run_until_complete(async_main())
+
+        # clean up event loop
+        loop.run_until_complete(loop.shutdown_asyncgens())
+        loop.run_until_complete(loop.shutdown_default_executor())
+        loop.close()
 
     # run server on separate thread to not lock up the server event loop in case of blocking calls in tests
     thread = threading.Thread(target=run_server_other_thread)
