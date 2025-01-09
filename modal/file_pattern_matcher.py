@@ -96,6 +96,13 @@ class FilePatternMatcher(_AbstractPatternMatcher):
 
     @classmethod
     def from_file(cls, file_path: Path) -> "FilePatternMatcher":
+        """Initialize a new FilePatternMatcher instance from a file.
+
+        The patterns in the file will be read lazily when the matcher is first used.
+
+        Args:
+            file_path (Path): The path to the file containing patterns.
+        """
         uninitialized = cls.__new__(cls)
 
         def _delayed_init():
@@ -112,8 +119,6 @@ class FilePatternMatcher(_AbstractPatternMatcher):
         library. The reason is that `Matches()` in the original library is
         deprecated due to buggy behavior.
         """
-        if self._delayed_init:
-            self._delayed_init()
 
         matched = False
         file_path = os.path.normpath(file_path)
@@ -164,6 +169,8 @@ class FilePatternMatcher(_AbstractPatternMatcher):
         assert matcher(Path("foo.py"))
         ```
         """
+        if self._delayed_init:
+            self._delayed_init()
         return self._matches(str(file_path))
 
 
