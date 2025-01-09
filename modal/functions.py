@@ -515,15 +515,15 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         (2024, 12, 16),
                         (
                             "Automatic mounting of imported python packages will be deprecated in the future.\n"
-                            f"Make sure you have explicitly added the following modules to the image used by "
-                            f"{info.function_name}:\n"
+                            f"Make sure you have explicitly added the source for the following modules to the image "
+                            f"used by `{info.function_name}`:\n"
                         )
                         + ", ".join(sorted(warn_missing_modules))
                         + "\n\n"
                         + (
                             "An easy way to do this is to use:\n\n"
                             f"image.add_local_python_source({python_stringified_modules})\n\n"
-                            "If you have added the packages by this or other means and you want to get rid of this"
+                            "If you have added the packages by this or other means and you want to get rid of this "
                             "warning, you can set\n"
                             "@app.function(..., automount=False)\n"
                             "\n"

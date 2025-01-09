@@ -782,7 +782,9 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
         mount = _Mount.from_local_python_packages(*modules, ignore=ignore)
-        return self._add_mount_layer_or_copy(mount, copy=copy)
+        img = self._add_mount_layer_or_copy(mount, copy=copy)
+        img._added_python_source_set |= set(modules)
+        return img
 
     def copy_local_dir(
         self,
