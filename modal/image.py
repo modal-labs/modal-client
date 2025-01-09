@@ -671,6 +671,12 @@ class _Image(_Object, type_prefix="im"):
         image = modal.Image.debian_slim().copy_mount(mount, remote_path="/static")
         ```
         """
+
+        deprecation_warning(
+            (2025, 1, 9),
+            "`copy_mount` is deprecated. Use `add_local_dir` or `add_local_file` instead.",
+        )
+
         if not isinstance(mount, _Mount):
             raise InvalidError("The mount argument to copy has to be a Modal Mount object")
 
@@ -1318,6 +1324,13 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
+        if context_mount is not None:
+            deprecation_warning(
+                (2025, 1, 9),
+                "`context_mount` is deprecated."
+                + " Files are now automatically added to the build context based on the commands.",
+            )
+
         cmds = _flatten_str_args("dockerfile_commands", "dockerfile_commands", dockerfile_commands)
         if not cmds:
             return self
@@ -1749,6 +1762,12 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
+        if context_mount is not None:
+            deprecation_warning(
+                (2025, 1, 9),
+                "`context_mount` is deprecated."
+                + " Files are now automatically added to the build context based on the commands in the Dockerfile.",
+            )
 
         # --- Build the base dockerfile
 
@@ -1916,6 +1935,13 @@ class _Image(_Object, type_prefix="im"):
         elif raw_f.__name__ == "<lambda>":
             # It may be possible to support lambdas eventually, but for now we don't handle them well, so reject quickly
             raise InvalidError("Image.run_function does not support lambda functions.")
+
+        if len(mounts):
+            deprecation_warning(
+                (2025, 1, 9),
+                "`mounts` is deprecated."
+                + " Use `add_local_dir(..., copy=True)` or `add_local_file(..., copy=True)` instead.",
+            )
 
         scheduler_placement = SchedulerPlacement(region=region) if region else None
 
