@@ -2457,3 +2457,9 @@ def test_container_app_zero_matching(servicer, event_loop):
 @skip_github_non_linux
 def test_container_app_one_matching(servicer, event_loop):
     _run_container(servicer, "test.supports.functions", "check_container_app")
+
+
+@skip_github_non_linux
+def test_no_event_loop(servicer, event_loop):
+    ret = _run_container(servicer, "test.supports.functions", "get_running_loop")
+    assert _unwrap_exception(ret) == "RuntimeError('no running event loop')"
