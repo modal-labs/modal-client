@@ -729,3 +729,11 @@ def is_main_thread_sync(x):
 @app.function()
 async def is_main_thread_async(x):
     return threading.main_thread() == threading.current_thread()
+
+
+_import_thread_is_main_thread = threading.main_thread() == threading.current_thread()
+
+
+@app.function()
+def import_thread_is_main_thread(x):
+    return _import_thread_is_main_thread

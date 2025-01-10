@@ -2467,11 +2467,17 @@ def test_no_event_loop(servicer, event_loop):
 
 @skip_github_non_linux
 def test_is_main_thread_sync(servicer, event_loop):
-    ret = _run_container(servicer, "test.supports.functions", "is_main_thread_async")
+    ret = _run_container(servicer, "test.supports.functions", "is_main_thread_sync")
     assert _unwrap_scalar(ret) is True
 
 
 @skip_github_non_linux
 def test_is_main_thread_async(servicer, event_loop):
-    ret = _run_container(servicer, "test.supports.functions", "is_main_thread_sync")
+    ret = _run_container(servicer, "test.supports.functions", "is_main_thread_async")
+    assert _unwrap_scalar(ret) is True
+
+
+@skip_github_non_linux
+def test_import_thread_is_main_thread(servicer, event_loop):
+    ret = _run_container(servicer, "test.supports.functions", "import_thread_is_main_thread")
     assert _unwrap_scalar(ret) is True
