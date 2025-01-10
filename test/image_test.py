@@ -330,7 +330,7 @@ def test_from_registry_add_python(builder_version, servicer, client):
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
         commands = layers[0].dockerfile_commands
-        print(commands)
+        assert layers[0].context_mount_id == "mo-py39"
         assert any("COPY /python/. /usr/local" in cmd for cmd in commands)
         assert any("ln -s /usr/local/bin/python3" in cmd for cmd in commands)
 
@@ -341,7 +341,7 @@ def test_from_registry_add_python(builder_version, servicer, client):
         with app.run(client=client):
             layers = get_image_layers(app.image.object_id, servicer)
             commands = layers[0].dockerfile_commands
-            print(commands)
+            assert layers[0].context_mount_id == "mo-py313"
             assert any("COPY /python/. /usr/local" in cmd for cmd in commands)
             assert not any("ln -s /usr/local/bin/python3" in cmd for cmd in commands)
 

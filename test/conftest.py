@@ -237,7 +237,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 (
                     python_standalone_mount_name(version),
                     api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
-                ): f"mo-{version.replace('.', '')}"
+                ): f"mo-py{version.replace('.', '')}"
                 for version in PYTHON_STANDALONE_VERSIONS
             },
         }
