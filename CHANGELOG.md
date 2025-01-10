@@ -10,6 +10,46 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.72.0 (2025-01-09)
+
+* The default behavior`Image.from_dockerfile()` and `image.dockerfile_commands()` if no parameter is passed to `ignore` will be to automatically detect if there is a valid dockerignore file in the current working directory or next to the dockerfile following the same rules as `dockerignore` does using `docker` commands. Previously no patterns were ignored.
+
+
+
+### 0.71.13 (2025-01-09)
+
+* `FilePatternMatcher` has a new constructor `from_file` which allows you to read file matching patterns from a file instead of having to pass them in directly, this can be used for `Image` methods accepting an `ignore` parameter in order to read ignore patterns from files.
+
+
+
+### 0.71.11 (2025-01-08)
+
+- Modal Volumes can now be renamed via the CLI (`modal volume rename`) or SDK (`modal.Volume.rename`).
+
+
+
+### 0.71.7 (2025-01-08)
+
+- Adds `Image.from_id`, which returns an `Image` object from an existing image id.
+
+
+
+### 0.71.1 (2025-01-06)
+
+- Sandboxes now support fsnotify-like file watching:
+```python
+from modal.file_io import FileWatchEventType
+
+app = modal.App.lookup("file-watch", create_if_missing=True)
+sb = modal.Sandbox.create(app=app)
+events = sb.watch("/foo")
+for event in events:
+    if event.type == FileWatchEventType.Modify:
+        print(event.paths)
+```
+
+
+
 ### 0.70.1 (2024-12-27)
 
 - The sandbox filesystem API now accepts write payloads of sizes up to 1 GiB.

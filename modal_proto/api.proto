@@ -150,6 +150,7 @@ enum GPUType {
   GPU_TYPE_L4 = 9;
   GPU_TYPE_H100 = 10;
   GPU_TYPE_L40S = 11;
+  GPU_TYPE_H200 = 12;
 }
 
 enum ObjectCreationType {
@@ -298,6 +299,7 @@ message AppDeploymentHistory {
   string client_version = 3;
   double deployed_at = 4;
   string deployed_by = 5;
+  string deployed_by_avatar_url = 9;
   string tag = 6;
   uint32 rollback_version = 7;
   bool rollback_allowed = 8;
@@ -1730,6 +1732,15 @@ message ImageContextFile {
   bytes data = 2;
 }
 
+message ImageFromIdRequest {
+  string image_id = 1;
+}
+
+message ImageFromIdResponse {
+  string image_id = 1;
+  ImageMetadata metadata = 2;
+} 
+
 message ImageGetOrCreateRequest {
   Image image = 2;
   string app_id = 4 [ (modal.options.audit_target_attr) = true ];
@@ -2682,6 +2693,11 @@ message VolumeRemoveFileRequest {
   bool recursive = 3;
 }
 
+message VolumeRenameRequest {
+  string volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string name = 2;
+}
+
 message Warning {
   enum WarningType {
     WARNING_TYPE_UNSPECIFIED = 0;
@@ -2809,6 +2825,7 @@ service ModalClient {
   rpc FunctionUpdateSchedulingParams(FunctionUpdateSchedulingParamsRequest) returns (FunctionUpdateSchedulingParamsResponse);
 
   // Images
+  rpc ImageFromId(ImageFromIdRequest) returns (ImageFromIdResponse);
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
   rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
 
@@ -2890,6 +2907,7 @@ service ModalClient {
   rpc VolumePutFiles(VolumePutFilesRequest) returns (google.protobuf.Empty);
   rpc VolumeReload(VolumeReloadRequest) returns (google.protobuf.Empty);
   rpc VolumeRemoveFile(VolumeRemoveFileRequest) returns (google.protobuf.Empty);
+  rpc VolumeRename(VolumeRenameRequest) returns (google.protobuf.Empty);
 
   // Workspaces
   rpc WorkspaceNameLookup(google.protobuf.Empty) returns (WorkspaceNameLookupResponse);

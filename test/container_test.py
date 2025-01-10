@@ -3,7 +3,9 @@
 import asyncio
 import base64
 import dataclasses
+import gc
 import json
+import logging
 import os
 import pathlib
 import pickle
@@ -24,6 +26,7 @@ from grpclib.exceptions import GRPCError
 import modal
 from modal import Client, Queue, Volume, is_local
 from modal._container_entrypoint import UserException, main
+from modal._runtime import asgi
 from modal._runtime.container_io_manager import (
     ContainerIOManager,
     InputSlots,
@@ -194,12 +197,16 @@ def _container_args(
     ),
     app_id: str = "ap-1",
     app_layout: api_pb2.AppLayout = DEFAULT_APP_LAYOUT,
+    web_server_port: Optional[int] = None,
+    web_server_startup_timeout: Optional[float] = None,
 ):
     if webhook_type:
         webhook_config = api_pb2.WebhookConfig(
             type=webhook_type,
             method="GET",
             async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
+            web_server_port=web_server_port,
+            web_server_startup_timeout=web_server_startup_timeout,
         )
     else:
         webhook_config = None
@@ -268,6 +275,8 @@ def _run_container(
         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
     ),
     app_layout=DEFAULT_APP_LAYOUT,
+    web_server_port: Optional[int] = None,
+    web_server_startup_timeout: Optional[float] = None,
 ) -> ContainerResult:
     container_args = _container_args(
         module_name,
@@ -290,6 +299,8 @@ def _run_container(
         is_class=is_class,
         class_parameter_info=class_parameter_info,
         app_layout=app_layout,
+        web_server_port=web_server_port,
+        web_server_startup_timeout=web_server_startup_timeout,
     )
     with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
         if inputs is None:
@@ -415,8 +426,20 @@ def _unwrap_asgi(ret: ContainerResult):
     return values
 
 
+def _get_web_inputs(path="/", method_name=""):
+    scope = {
+        "method": "GET",
+        "type": "http",
+        "path": path,
+        "headers": {},
+        "query_string": b"arg=space",
+        "http_version": "2",
+    }
+    return _get_inputs(((scope,), {}), method_name=method_name)
+
+
 @skip_github_non_linux
-def test_success(servicer, event_loop):
+def test_success(servicer):
     t0 = time.time()
     ret = _run_container(servicer, "test.supports.functions", "square")
     assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
@@ -537,18 +560,6 @@ def test_from_local_python_packages_inside_container(servicer):
     all the containers."""
     ret = _run_container(servicer, "test.supports.package_mount", "num_mounts")
     assert _unwrap_scalar(ret) == 0
-
-
-def _get_web_inputs(path="/", method_name=""):
-    scope = {
-        "method": "GET",
-        "type": "http",
-        "path": path,
-        "headers": {},
-        "query_string": b"arg=space",
-        "http_version": "2",
-    }
-    return _get_inputs(((scope,), {}), method_name=method_name)
 
 
 # needs to be synchronized so the asyncio.Queue gets used from the same event loop as the servicer
@@ -683,6 +694,33 @@ def test_asgi(servicer):
 
 
 @skip_github_non_linux
+def test_non_blocking_web_server(servicer, monkeypatch):
+    get_ip_address = MagicMock(wraps=asgi.get_ip_address)
+    get_ip_address.return_value = "127.0.0.1"
+    monkeypatch.setattr(asgi, "get_ip_address", get_ip_address)
+
+    inputs = _get_web_inputs(path="/")
+    _put_web_body(servicer, b"")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "non_blocking_web_server",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_WEB_SERVER,
+        web_server_port=8765,
+        web_server_startup_timeout=1,
+    )
+    first_message, second_message, _ = _unwrap_asgi(ret)
+
+    # Check the headers
+    assert first_message["status"] == 200
+    headers = dict(first_message["headers"])
+    assert headers[b"Content-Type"] == b"text/html; charset=utf-8"
+
+    assert b"Directory listing" in second_message["body"]
+
+
+@skip_github_non_linux
 def test_asgi_lifespan(servicer):
     inputs = _get_web_inputs(path="/")
 
@@ -767,7 +805,32 @@ def test_cls_web_asgi_with_lifespan(servicer):
 
     from test.supports import functions
 
-    assert ["enter1", "enter2", "foo1", "exit1", "exit2", "exit"] == functions.lifespan_global_asgi_app_cls
+    assert functions.lifespan_global_asgi_app_cls == ["enter1", "enter2", "foo1", "exit1", "exit2", "exit"]
+
+
+@skip_github_non_linux
+@pytest.mark.filterwarnings("error")
+def test_app_with_slow_lifespan_wind_down(servicer, caplog):
+    inputs = _get_web_inputs()
+    with caplog.at_level(logging.WARNING):
+        ret = _run_container(
+            servicer,
+            "test.supports.functions",
+            "asgi_app_with_slow_lifespan_wind_down",
+            inputs=inputs,
+            webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+        )
+        asyncio.get_event_loop()
+        # There should be one message for the header, and one for the body
+        first_message, second_message = _unwrap_asgi(ret)
+        # Check the headers
+        assert first_message["status"] == 200
+        # Check body
+        assert json.loads(second_message["body"]) == {"some_result": "foo"}
+        gc.collect()  # trigger potential "Task was destroyed but it is pending"
+
+    for m in caplog.messages:
+        assert "Task was destroyed" not in m
 
 
 @skip_github_non_linux
@@ -817,9 +880,6 @@ def test_non_lifespan_asgi(servicer):
     assert headers[b"content-type"] == b"application/json"
 
     # Check body
-    print("\n#########################")
-    print(f"second_message: {second_message['body']}")
-    print("#########################\n")
     assert json.loads(second_message["body"]) == "foo"
 
 
@@ -2397,3 +2457,27 @@ def test_container_app_zero_matching(servicer, event_loop):
 @skip_github_non_linux
 def test_container_app_one_matching(servicer, event_loop):
     _run_container(servicer, "test.supports.functions", "check_container_app")
+
+
+@skip_github_non_linux
+def test_no_event_loop(servicer, event_loop):
+    ret = _run_container(servicer, "test.supports.functions", "get_running_loop")
+    assert _unwrap_exception(ret) == "RuntimeError('no running event loop')"
+
+
+@skip_github_non_linux
+def test_is_main_thread_sync(servicer, event_loop):
+    ret = _run_container(servicer, "test.supports.functions", "is_main_thread_sync")
+    assert _unwrap_scalar(ret) is True
+
+
+@skip_github_non_linux
+def test_is_main_thread_async(servicer, event_loop):
+    ret = _run_container(servicer, "test.supports.functions", "is_main_thread_async")
+    assert _unwrap_scalar(ret) is True
+
+
+@skip_github_non_linux
+def test_import_thread_is_main_thread(servicer, event_loop):
+    ret = _run_container(servicer, "test.supports.functions", "import_thread_is_main_thread")
+    assert _unwrap_scalar(ret) is True

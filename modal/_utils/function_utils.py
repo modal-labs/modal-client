@@ -17,7 +17,14 @@ from modal_proto import api_pb2
 from .._serialization import deserialize, deserialize_data_format, serialize
 from .._traceback import append_modal_tb
 from ..config import config, logger
-from ..exception import DeserializationError, ExecutionError, FunctionTimeoutError, InvalidError, RemoteError
+from ..exception import (
+    DeserializationError,
+    ExecutionError,
+    FunctionTimeoutError,
+    InternalFailure,
+    InvalidError,
+    RemoteError,
+)
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
 from .blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
@@ -319,11 +326,11 @@ class FunctionInfo:
         # make sure the function's own entrypoint is included:
         if self._type == FunctionInfoType.PACKAGE:
             if config.get("automount"):
-                return [_Mount.from_local_python_packages(self.module_name)]
+                return [_Mount._from_local_python_packages(self.module_name)]
             elif not self.is_serialized():
                 # mount only relevant file and __init__.py:s
                 return [
-                    _Mount.from_local_dir(
+                    _Mount._from_local_dir(
                         self._base_dir,
                         remote_path=self._remote_dir,
                         recursive=True,
@@ -334,7 +341,7 @@ class FunctionInfo:
             remote_path = ROOT_DIR / Path(self._file).name
             if not _is_modal_path(remote_path):
                 return [
-                    _Mount.from_local_file(
+                    _Mount._from_local_file(
                         self._file,
                         remote_path=remote_path,
                     )
@@ -463,6 +470,8 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
 
     if result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
         raise FunctionTimeoutError(result.exception)
+    elif result.status == api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
+        raise InternalFailure(result.exception)
     elif result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
         if data:
             try:

@@ -2,7 +2,7 @@
 import asyncio
 import os
 from collections.abc import AsyncGenerator, Sequence
-from typing import TYPE_CHECKING, Literal, Optional, Union, overload
+from typing import TYPE_CHECKING, AsyncIterator, Literal, Optional, Union, overload
 
 if TYPE_CHECKING:
     import _typeshed
@@ -26,7 +26,7 @@ from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
 from .exception import ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
-from .file_io import _FileIO
+from .file_io import FileWatchEvent, FileWatchEventType, _FileIO
 from .gpu import GPU_T
 from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
@@ -320,7 +320,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         resp = await retry_transient_errors(client.stub.SandboxWait, req)
 
         obj = _Sandbox._new_hydrated(sandbox_id, client, None)
-        obj._result = resp.result
+
+        if resp.result.status:
+            obj._result = resp.result
 
         return obj
 
@@ -578,6 +580,17 @@ class _Sandbox(_Object, type_prefix="sb"):
         """Remove a file or directory in the Sandbox."""
         task_id = await self._get_task_id()
         return await _FileIO.rm(path, self._client, task_id, recursive)
+
+    async def watch(
+        self,
+        path: str,
+        filter: Optional[list[FileWatchEventType]] = None,
+        recursive: Optional[bool] = None,
+        timeout: Optional[int] = None,
+    ) -> AsyncIterator[FileWatchEvent]:
+        task_id = await self._get_task_id()
+        async for event in _FileIO.watch(path, self._client, task_id, filter, recursive, timeout):
+            yield event
 
     @property
     def stdout(self) -> _StreamReader[str]:
