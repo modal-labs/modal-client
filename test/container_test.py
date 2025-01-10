@@ -388,7 +388,7 @@ def _unwrap_exception(ret: ContainerResult):
     assert len(ret.items) == 1
     assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
     assert "Traceback" in ret.items[0].result.traceback
-    return ret.items[0].result.exception
+    return deserialize(ret.items[0].result.data, ret.client)
 
 
 def _unwrap_batch_exception(ret: ContainerResult, batch_size):
@@ -488,14 +488,18 @@ def test_async(servicer):
 @skip_github_non_linux
 def test_failure(servicer, capsys):
     ret = _run_container(servicer, "test.supports.functions", "raises")
-    assert _unwrap_exception(ret) == "Exception('Failure!')"
+    exc = _unwrap_exception(ret)
+    assert isinstance(exc, Exception)
+    assert repr(exc) == "Exception('Failure!')"
     assert 'raise Exception("Failure!")' in capsys.readouterr().err  # traceback
 
 
 @skip_github_non_linux
 def test_raises_base_exception(servicer, capsys):
     ret = _run_container(servicer, "test.supports.functions", "raises_sysexit")
-    assert _unwrap_exception(ret) == "SystemExit(1)"
+    exc = _unwrap_exception(ret)
+    assert isinstance(exc, SystemExit)
+    assert repr(exc) == "SystemExit(1)"
     assert "raise SystemExit(1)" in capsys.readouterr().err  # traceback
 
 
@@ -2462,7 +2466,9 @@ def test_container_app_one_matching(servicer, event_loop):
 @skip_github_non_linux
 def test_no_event_loop(servicer, event_loop):
     ret = _run_container(servicer, "test.supports.functions", "get_running_loop")
-    assert _unwrap_exception(ret) == "RuntimeError('no running event loop')"
+    exc = _unwrap_exception(ret)
+    assert isinstance(exc, RuntimeError)
+    assert repr(exc) == "RuntimeError('no running event loop')"
 
 
 @skip_github_non_linux
@@ -2481,3 +2487,11 @@ def test_is_main_thread_async(servicer, event_loop):
 def test_import_thread_is_main_thread(servicer, event_loop):
     ret = _run_container(servicer, "test.supports.functions", "import_thread_is_main_thread")
     assert _unwrap_scalar(ret) is True
+
+
+@skip_github_non_linux
+def test_custom_exception(servicer, capsys):
+    ret = _run_container(servicer, "test.supports.functions", "raises_custom_exception")
+    exc = _unwrap_exception(ret)
+    assert isinstance(exc, Exception)
+    assert repr(exc) == "CustomException('Failure!')"
