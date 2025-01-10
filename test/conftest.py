@@ -47,7 +47,7 @@ from modal.client import Client
 from modal.cls import _Cls
 from modal.functions import _Function
 from modal.image import ImageBuilderVersion
-from modal.mount import client_mount_name
+from modal.mount import PYTHON_STANDALONE_VERSIONS, client_mount_name, python_standalone_mount_name
 from modal_proto import api_grpc, api_pb2
 
 
@@ -233,6 +233,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.default_published_client_mount = "mo-123"
         self.deployed_mounts = {
             (client_mount_name(), api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL): self.default_published_client_mount,
+            **{
+                (
+                    python_standalone_mount_name(version),
+                    api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
+                ): f"mo-{version.replace('.', '')}"
+                for version in PYTHON_STANDALONE_VERSIONS
+            },
         }
 
         self.deployed_nfss = {}

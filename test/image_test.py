@@ -323,6 +323,29 @@ def test_debian_slim_apt_install(builder_version, servicer, client):
         assert any("pip install numpy" in cmd for cmd in layers[2].dockerfile_commands)
 
 
+def test_from_registry_add_python(builder_version, servicer, client):
+    app = App(image=Image.from_registry("ubuntu", add_python="3.9"))
+    app.function()(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(app.image.object_id, servicer)
+        commands = layers[0].dockerfile_commands
+        print(commands)
+        assert any("COPY /python/. /usr/local" in cmd for cmd in commands)
+        assert any("ln -s /usr/local/bin/python3" in cmd for cmd in commands)
+
+    if builder_version >= "2024.10":
+        app = App(image=Image.from_registry("ubuntu", add_python="3.13"))
+        app.function()(dummy)
+
+        with app.run(client=client):
+            layers = get_image_layers(app.image.object_id, servicer)
+            commands = layers[0].dockerfile_commands
+            print(commands)
+            assert any("COPY /python/. /usr/local" in cmd for cmd in commands)
+            assert not any("ln -s /usr/local/bin/python3" in cmd for cmd in commands)
+
+
 def test_image_pip_install_pyproject(builder_version, servicer, client):
     pyproject_toml = os.path.join(os.path.dirname(__file__), "supports/test-pyproject.toml")
 
