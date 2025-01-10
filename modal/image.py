@@ -1520,9 +1520,14 @@ class _Image(_Object, type_prefix="im"):
             _validate_python_version(add_python, builder_version, allow_micro_granularity=False)
             add_python_commands = [
                 "COPY /python/. /usr/local",
-                "RUN ln -s /usr/local/bin/python3 /usr/local/bin/python",
                 "ENV TERMINFO_DIRS=/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo",
             ]
+            if add_python < "3.13":
+                # Previous versions did not include the `python` binary, but later ones do.
+                # (The important factor is not the Python version itself, but the standalone dist version.)
+                # We insert the command in the list at the position it was previously always added
+                # for backwards compatibility with existing images.
+                add_python_commands.insert(1, "RUN ln -s /usr/local/bin/python3 /usr/local/bin/python")
 
         # Note: this change is because we install dependencies with uv in 2024.10+
         requirements_prefix = "python -m " if builder_version < "2024.10" else ""

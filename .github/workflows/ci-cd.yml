@@ -212,6 +212,36 @@ jobs:
           TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: twine upload dist/* --non-interactive
 
+  publish-python-standalone:
+    name: Publish Python standalone mounts
+    if: github.ref == 'refs/heads/main'
+    needs: [client-versioning, client-test, publish-client]
+    runs-on: ubuntu-20.04
+    timeout-minutes: 5
+    env:
+      MODAL_LOGLEVEL: DEBUG
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          ref: v${{ needs.client-versioning.outputs.client-version}}
+
+      - uses: ./.github/actions/setup-cached-python
+        with:
+          version: "3.11"
+
+      - name: Build protobuf
+        run: inv protoc
+
+      - name: Build client package (installs all dependencies)
+        run: pip install -e .
+
+      - name: Publish mounts
+        run: python -m modal_global_objects.mounts.python_standalone
+
+
   publish-base-images:
     name: |
       Publish base images for ${{ matrix.image-name }} ${{ matrix.image-builder-version }}
