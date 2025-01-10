@@ -707,7 +707,7 @@ class _Image(_Object, type_prefix="im"):
         if remote_path.endswith("/"):
             remote_path = remote_path + Path(local_path).name
 
-        mount = _Mount.from_local_file(local_path, remote_path)
+        mount = _Mount._from_local_file(local_path, remote_path)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def add_local_dir(
@@ -795,7 +795,7 @@ class _Image(_Object, type_prefix="im"):
         return _Image._from_args(
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
-            context_mount_function=lambda: _Mount.from_local_file(local_path, remote_path=f"/{basename}"),
+            context_mount_function=lambda: _Mount._from_local_file(local_path, remote_path=f"/{basename}"),
         )
 
     def add_local_python_source(
@@ -833,7 +833,7 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
-        mount = _Mount.from_local_python_packages(*modules, ignore=ignore)
+        mount = _Mount._from_local_python_packages(*modules, ignore=ignore)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_dir(
