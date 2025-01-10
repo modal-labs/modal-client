@@ -1967,6 +1967,18 @@ message ProxyListResponse {
   repeated Proxy proxies = 1;
 }
 
+message ProxyAddNodeRequest {
+  string proxy_id = 1 [ (modal.options.audit_target_attr) = true ];
+}
+
+message ProxyAddNodeResponse {
+  string proxy_node_id = 1;
+}
+
+message ProxyRemoveNodeRequest {
+  string proxy_node_id 1 [ (modal.options.audit_target_attr) = true ];
+}
+
 message QueueClearRequest {
   string queue_id = 1;
   bytes partition_key = 2;
@@ -2810,6 +2822,8 @@ service ModalClient {
   rpc ProxyGet(ProxyGetRequest) returns (ProxyGetResponse);
   rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);
   rpc ProxyList(google.protobuf.Empty) returns (ProxyListResponse);
+  rpc ProxyAddNode(ProxyAddNodeRequest) returns (ProxyAddNodeResponse);
+  rpc ProxyRemoveNode(ProxyRemoveNodeRequest) returns (ProxyRemoveNodeResponse);
 
   // Queues
   rpc QueueClear(QueueClearRequest) returns (google.protobuf.Empty);
