@@ -2463,3 +2463,15 @@ def test_container_app_one_matching(servicer, event_loop):
 def test_no_event_loop(servicer, event_loop):
     ret = _run_container(servicer, "test.supports.functions", "get_running_loop")
     assert _unwrap_exception(ret) == "RuntimeError('no running event loop')"
+
+
+@skip_github_non_linux
+def test_is_main_thread_sync(servicer, event_loop):
+    ret = _run_container(servicer, "test.supports.functions", "is_main_thread_async")
+    assert _unwrap_scalar(ret) is True
+
+
+@skip_github_non_linux
+def test_is_main_thread_async(servicer, event_loop):
+    ret = _run_container(servicer, "test.supports.functions", "is_main_thread_sync")
+    assert _unwrap_scalar(ret) is True
