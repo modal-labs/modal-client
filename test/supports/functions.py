@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import contextlib
+import threading
 import time
 
 from modal import (
@@ -718,3 +719,21 @@ def check_container_app():
 @app.function()
 def get_running_loop(x):
     return asyncio.get_running_loop()
+
+
+@app.function()
+def is_main_thread_sync(x):
+    return threading.main_thread() == threading.current_thread()
+
+
+@app.function()
+async def is_main_thread_async(x):
+    return threading.main_thread() == threading.current_thread()
+
+
+_import_thread_is_main_thread = threading.main_thread() == threading.current_thread()
+
+
+@app.function()
+def import_thread_is_main_thread(x):
+    return _import_thread_is_main_thread
