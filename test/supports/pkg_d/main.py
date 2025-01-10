@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2025
 import os
 
 from pkg_a import a  # noqa  # this would cause an automount warning
