@@ -1,7 +1,8 @@
 # Copyright Modal Labs 2024
 import re
 import shlex
-from typing import Sequence
+from pathlib import Path
+from typing import Optional, Sequence
 
 from ..exception import InvalidError
 
@@ -62,3 +63,36 @@ def extract_copy_command_patterns(dockerfile_lines: Sequence[str]) -> list[str]:
             current_command = ""
 
     return list(copy_source_patterns)
+
+
+def find_dockerignore_file(context_directory: Path, dockerfile_path: Optional[Path] = None) -> Optional[Path]:
+    """
+    Find dockerignore file relative to current context directory
+    and if dockerfile path is provided, check if specific <dockerfile_name>.dockerignore
+    file exists in the same directory as <dockerfile_name>
+    Finds the most specific dockerignore file that exists.
+    """
+
+    def valid_dockerignore_file(fp):
+        # fp has to exist
+        if not fp.exists():
+            return False
+        # fp has to be subpath to current working directory
+        if not fp.is_relative_to(context_directory):
+            return False
+
+        return True
+
+    generic_name = ".dockerignore"
+    possible_locations = []
+    if dockerfile_path:
+        specific_name = f"{dockerfile_path.name}.dockerignore"
+        # 1. check if specific <dockerfile_name>.dockerignore file exists in the same directory as <dockerfile_name>
+        possible_locations.append(dockerfile_path.parent / specific_name)
+        # 2. check if generic .dockerignore file exists in the same directory as <dockerfile_name>
+        possible_locations.append(dockerfile_path.parent / generic_name)
+
+    # 3. check if generic .dockerignore file exists in current working directory
+    possible_locations.append(context_directory / generic_name)
+
+    return next((e for e in possible_locations if valid_dockerignore_file(e)), None)

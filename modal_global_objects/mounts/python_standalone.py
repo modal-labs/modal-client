@@ -34,7 +34,7 @@ def publish_python_standalone_mount(client, version: str) -> None:
             urllib.request.urlretrieve(url, f"{d}/cpython.tar.gz")
             shutil.unpack_archive(f"{d}/cpython.tar.gz", d)
             print(f"🌐 Downloaded and unpacked archive to {d}.")
-            python_mount = Mount.from_local_dir(f"{d}/python")
+            python_mount = Mount._from_local_dir(f"{d}/python")
             python_mount._deploy(
                 mount_name,
                 api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,

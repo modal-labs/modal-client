@@ -330,11 +330,11 @@ class FunctionInfo:
             if config.get("automount"):
                 # with automount, sys.modules will include the top level package an automount it anyways,
                 # so let's include it here for correctness and let it be deduplicated:
-                return {top_level_package: _Mount.from_local_python_packages(top_level_package)}
+                return {top_level_package: _Mount._from_local_python_packages(top_level_package)}
             elif not self.is_serialized():
                 # mount only relevant modal file and __init__.py:s of the package?
                 return {
-                    top_level_package: _Mount.from_local_dir(
+                    top_level_package: _Mount._from_local_dir(
                         self._base_dir,
                         remote_path=self._remote_dir,
                         recursive=True,
@@ -347,7 +347,7 @@ class FunctionInfo:
             remote_path = ROOT_DIR / module_file.name
             if not _is_modal_path(remote_path):
                 return {
-                    container_module_name: _Mount.from_local_file(
+                    container_module_name: _Mount._from_local_file(
                         self._file,
                         remote_path=remote_path,
                     )

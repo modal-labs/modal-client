@@ -55,7 +55,7 @@ def jupyter(
     timeout: int = 3600,
     image: str = "ubuntu:22.04",
     add_python: Optional[str] = "3.11",
-    mount: Optional[str] = None,  # Create a `modal.Mount` from a local directory.
+    mount: Optional[str] = None,  # Adds a local directory to the jupyter container
     volume: Optional[str] = None,  # Attach a persisted `modal.Volume` by name (creating if missing).
     detach: bool = False,  # Run the app in "detached" mode to persist after local client disconnects
 ):
