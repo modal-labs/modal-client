@@ -606,6 +606,15 @@ class _Image(_Object, type_prefix="im"):
         img.force_build = force_build
         return img
 
+    def _extend(self, **kwargs) -> "_Image":
+        """Internal use only - helper method to create a new Image with self as base
+
+        Transfers required static attributes to the new layer as expected.
+        """
+        img = _Image._from_args(base_images={"base": self}, **kwargs)
+        img._added_python_source_set = self._added_python_source_set
+        return img
+
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy the entire contents of a `modal.Mount` into an image.
         Useful when files only available locally are required during the image

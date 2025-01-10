@@ -3,7 +3,9 @@ import hashlib
 import os
 import platform
 import pytest
+import re
 from pathlib import Path, PurePosixPath
+from test.helpers import deploy_app_externally
 
 from modal import App, FilePatternMatcher
 from modal._utils.blob_utils import LARGE_FILE_LIMIT
@@ -198,3 +200,31 @@ def test_mount_from_local_dir_ignore(test_dir, tmp_path_with_content):
 
     file_names = [file.mount_filename for file in Mount._get_files(entries=mount.entries)]
     assert set(file_names) == expected
+
+
+def test_missing_python_source_warning(servicer, credentials, supports_dir):
+    # should warn if function doesn't have an imported non-third-party package attached
+    # either through add OR copy mode, unless automount=False mode is used
+    def has_warning(output: str):
+        return re.match(r".*added the source for the following modules.*:\npkg_d\n.*", output, re.DOTALL)
+
+    output = deploy_app_externally(servicer, credentials, "pkg_d.main", cwd=supports_dir, capture_output=True)
+    assert has_warning(output)
+
+    # adding the source to the image should make the warning disappear
+    output = deploy_app_externally(
+        servicer, credentials, "pkg_d.main", cwd=supports_dir, capture_output=True, env={"ADD_SOURCE": "add"}
+    )
+    assert not has_warning(output)
+
+    # copying the source to the image should make the warning disappear
+    output = deploy_app_externally(
+        servicer, credentials, "pkg_d.main", cwd=supports_dir, capture_output=True, env={"ADD_SOURCE": "copy"}
+    )
+    assert not has_warning(output)
+
+    # disabling auto-mount explicitly should make warning disappear
+    output = deploy_app_externally(
+        servicer, credentials, "pkg_d.main", cwd=supports_dir, capture_output=True, env={"MODAL_AUTOMOUNT": "0"}
+    )
+    assert not has_warning(output)

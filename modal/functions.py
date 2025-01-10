@@ -512,9 +512,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 if warn_missing_modules:
                     python_stringified_modules = ", ".join(f'"{mod}"' for mod in sorted(warn_missing_modules))
                     deprecation_warning(
-                        (2024, 12, 16),
+                        (2024, 1, 10),
                         (
-                            "Automatic mounting of imported python packages will be deprecated in the future.\n"
+                            "Automatic adding of local python source will be deprecated in the future.\n"
                             f"Make sure you have explicitly added the source for the following modules to the image "
                             f"used by `{info.function_name}`:\n"
                         )
@@ -525,7 +525,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                             f"image.add_local_python_source({python_stringified_modules})\n\n"
                             "If you have added the packages by this or other means and you want to get rid of this "
                             "warning, you can set\n"
-                            "@app.function(..., automount=False)\n"
+                            "@app.function(..., autoadd_local_source=False)\n"
                             "\n"
                             "This will become the default in the future."
                         ),
