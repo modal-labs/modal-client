@@ -2483,3 +2483,11 @@ def test_is_main_thread_async(servicer, event_loop):
 def test_import_thread_is_main_thread(servicer, event_loop):
     ret = _run_container(servicer, "test.supports.functions", "import_thread_is_main_thread")
     assert _unwrap_scalar(ret) is True
+
+
+@skip_github_non_linux
+def test_custom_exception(servicer, capsys):
+    ret = _run_container(servicer, "test.supports.functions", "raises_custom_exception")
+    exc = _unwrap_exception(ret)
+    assert isinstance(exc, Exception)
+    assert repr(exc) == "CustomException('Failure!')"
