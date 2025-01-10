@@ -737,3 +737,12 @@ _import_thread_is_main_thread = threading.main_thread() == threading.current_thr
 @app.function()
 def import_thread_is_main_thread(x):
     return _import_thread_is_main_thread
+
+
+class CustomException(Exception):
+    pass
+
+
+@app.function()
+def raises_custom_exception(x):
+    raise CustomException("Failure!")
