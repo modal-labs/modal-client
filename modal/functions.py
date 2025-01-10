@@ -507,13 +507,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
             if config.get("automount"):
                 auto_mounts = get_sys_modules_mounts()
-                print("entrypoints", entrypoint_mounts.keys())
                 # don't need to add entrypoint modules to automounts:
                 for entrypoint_module in entrypoint_mounts:
                     auto_mounts.pop(entrypoint_module, None)
 
                 warn_missing_modules = set(auto_mounts.keys()) - image._added_python_source_set
-                print(warn_missing_modules)
+
                 if warn_missing_modules:
                     python_stringified_modules = ", ".join(f'"{mod}"' for mod in sorted(warn_missing_modules))
                     deprecation_warning(
