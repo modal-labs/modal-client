@@ -69,7 +69,7 @@ from .exception import (
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
-from .mount import _get_client_mount, _Mount, get_auto_mounts
+from .mount import _get_client_mount, _Mount, get_sys_modules_mounts
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .object import _get_environment_name, _Object, live_method, live_method_gen
 from .output import _get_output_manager
@@ -502,11 +502,16 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             all_mounts = [
                 _get_client_mount(),
                 *explicit_mounts,
-                *entrypoint_mounts,
+                *entrypoint_mounts.values(),
             ]
 
             if config.get("automount"):
-                auto_mounts = get_auto_mounts()
+                auto_mounts = get_sys_modules_mounts()
+                print("entrypoints", entrypoint_mounts.keys())
+                # don't need to add entrypoint modules to automounts:
+                for entrypoint_module in entrypoint_mounts:
+                    auto_mounts.pop(entrypoint_module, None)
+
                 warn_missing_modules = set(auto_mounts.keys()) - image._added_python_source_set
                 print(warn_missing_modules)
                 if warn_missing_modules:

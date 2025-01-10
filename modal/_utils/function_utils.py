@@ -307,7 +307,7 @@ class FunctionInfo:
             format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO, schema=modal_parameters
         )
 
-    def get_entrypoint_mount(self) -> list[_Mount]:
+    def get_entrypoint_mount(self) -> dict[str, _Mount]:
         """
         Includes:
         * Implicit mount of the function itself (the module or package that the function is part of)
@@ -321,32 +321,38 @@ class FunctionInfo:
         """
         if self._type == FunctionInfoType.NOTEBOOK:
             # Don't auto-mount anything for notebooks.
-            return []
+            return {}
 
         # make sure the function's own entrypoint is included:
         if self._type == FunctionInfoType.PACKAGE:
+            top_level_package = self.module_name.split(".", 1)[0]
+
             if config.get("automount"):
-                return [_Mount.from_local_python_packages(self.module_name)]
+                # with automount, sys.modules will include the top level package an automount it anyways,
+                # so let's include it here for correctness and let it be deduplicated:
+                return {top_level_package: _Mount.from_local_python_packages(top_level_package)}
             elif not self.is_serialized():
-                # mount only relevant file and __init__.py:s
-                return [
-                    _Mount.from_local_dir(
+                # mount only relevant modal file and __init__.py:s of the package?
+                return {
+                    top_level_package: _Mount.from_local_dir(
                         self._base_dir,
                         remote_path=self._remote_dir,
                         recursive=True,
                         condition=entrypoint_only_package_mount_condition(self._file),
                     )
-                ]
+                }
         elif not self.is_serialized():
-            remote_path = ROOT_DIR / Path(self._file).name
+            module_file = Path(self._file)
+            container_module_name = module_file.stem
+            remote_path = ROOT_DIR / module_file.name
             if not _is_modal_path(remote_path):
-                return [
-                    _Mount.from_local_file(
+                return {
+                    container_module_name: _Mount.from_local_file(
                         self._file,
                         remote_path=remote_path,
                     )
-                ]
-        return []
+                }
+        return {}
 
     def get_tag(self):
         return self.function_name

@@ -3,7 +3,6 @@ import hashlib
 import os
 import platform
 import pytest
-import re
 from pathlib import Path, PurePosixPath
 from test.helpers import deploy_app_externally
 
@@ -206,7 +205,7 @@ def test_missing_python_source_warning(servicer, credentials, supports_dir):
     # should warn if function doesn't have an imported non-third-party package attached
     # either through add OR copy mode, unless automount=False mode is used
     def has_warning(output: str):
-        return re.match(r".*added the source for the following modules.*:\npkg_d\n.*", output, re.DOTALL)
+        return 'image.add_local_python_source("pkg_a")' in output
 
     output = deploy_app_externally(servicer, credentials, "pkg_d.main", cwd=supports_dir, capture_output=True)
     assert has_warning(output)

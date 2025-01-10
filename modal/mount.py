@@ -760,7 +760,7 @@ def _is_modal_path(remote_path: PurePosixPath):
     return False
 
 
-def get_auto_mounts() -> dict[str, _Mount]:
+def get_sys_modules_mounts() -> dict[str, _Mount]:
     """mdmd:hidden
 
     Auto-mount local modules that have been imported in global scope.

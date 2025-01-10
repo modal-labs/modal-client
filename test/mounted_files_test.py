@@ -9,7 +9,7 @@ import pytest_asyncio
 
 import modal
 from modal import Mount
-from modal.mount import get_auto_mounts
+from modal.mount import get_sys_modules_mounts
 
 from . import helpers
 from .supports.skip import skip_windows
@@ -51,7 +51,7 @@ async def env_mount_files():
     # If something is installed using pip -e, it will be bundled up as a part of the environment.
     # Those are env-specific so we ignore those as a part of the test
     filenames = []
-    for mount in get_auto_mounts().values():
+    for mount in get_sys_modules_mounts().values():
         async for file_info in mount._get_files(mount.entries):
             filenames.append(file_info.mount_filename)
 
