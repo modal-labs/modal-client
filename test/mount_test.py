@@ -217,7 +217,7 @@ def test_missing_python_source_warning(servicer, credentials, supports_dir):
     )
     assert not has_warning(output)
 
-    # copying the source to the image should make the warning disappear
+    # *copying* the source to the image should make the warning disappear too
     output = deploy_app_externally(
         servicer, credentials, "pkg_d.main", cwd=supports_dir, capture_output=True, env={"ADD_SOURCE": "copy"}
     )
