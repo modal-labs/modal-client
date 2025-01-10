@@ -200,10 +200,9 @@ class _App:
 
         ```python notest
         image = modal.Image.debian_slim().pip_install(...)
-        mount = modal.Mount.from_local_dir("./config")
         secret = modal.Secret.from_name("my-secret")
         volume = modal.Volume.from_name("my-data")
-        app = modal.App(image=image, mounts=[mount], secrets=[secret], volumes={"/mnt/data": volume})
+        app = modal.App(image=image, secrets=[secret], volumes={"/mnt/data": volume})
         ```
         """
         if name is not None and not isinstance(name, str):
