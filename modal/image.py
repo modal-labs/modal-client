@@ -1146,9 +1146,9 @@ class _Image(_Object, type_prefix="im"):
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             # Defer toml import so we don't need it in the container runtime environment
-            import toml
+            from setuptools.config.pyprojecttoml import read_configuration
 
-            config = toml.load(os.path.expanduser(pyproject_toml))
+            config = read_configuration(os.path.expanduser(pyproject_toml))
 
             dependencies = []
             if "project" not in config or "dependencies" not in config["project"]:
