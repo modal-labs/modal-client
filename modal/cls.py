@@ -16,7 +16,7 @@ from ._resources import convert_fn_config_to_resources_config
 from ._serialization import check_valid_cls_constructor_arg
 from ._traceback import print_server_warnings
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.deprecation import renamed_parameter
+from ._utils.deprecation import deprecation_warning, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
@@ -374,12 +374,14 @@ class _Cls(_Object, type_prefix="cs"):
     _options: Optional[api_pb2.FunctionOptions]
     _callables: dict[str, Callable[..., Any]]
     _app: Optional["modal.app._App"] = None  # not set for lookups
+    _name: Optional[str]
 
     def _initialize_from_empty(self):
         self._user_cls = None
         self._class_service_function = None
         self._options = None
         self._callables = {}
+        self._name = None
 
     def _initialize_from_other(self, other: "_Cls"):
         super()._initialize_from_other(other)
@@ -388,6 +390,7 @@ class _Cls(_Object, type_prefix="cs"):
         self._method_functions = other._method_functions
         self._options = other._options
         self._callables = other._callables
+        self._name = other._name
 
     def _get_partial_functions(self) -> dict[str, _PartialFunction]:
         if not self._user_cls:
@@ -506,6 +509,7 @@ class _Cls(_Object, type_prefix="cs"):
         cls._class_service_function = class_service_function
         cls._method_functions = method_functions
         cls._callables = callables
+        cls._name = user_cls.__name__
         return cls
 
     def _uses_common_service_function(self):
@@ -576,6 +580,7 @@ class _Cls(_Object, type_prefix="cs"):
         rep = f"Ref({app_name})"
         cls = cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
         # TODO: when pre 0.63 is phased out, we can set class_service_function here instead
+        cls._name = name
         return cls
 
     def with_options(
@@ -681,6 +686,13 @@ class _Cls(_Object, type_prefix="cs"):
         # Used by CLI and container entrypoint
         # TODO: remove this method - access to attributes on classes should be discouraged
         if k in self._method_functions:
+            deprecation_warning(
+                (2025, 1, 13),
+                "Usage of methods directly on the class will soon be deprecated, "
+                "instantiate classes before using methods, e.g.:\n"
+                f"{self._name}().{k} instead of {self._name}.{k}",
+                pending=True,
+            )
             return self._method_functions[k]
         return getattr(self._user_cls, k)
 
