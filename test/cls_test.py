@@ -1054,7 +1054,7 @@ def test_using_method_on_uninstantiated_cls(recwarn):
 
     assert len(recwarn) == 0
     with pytest.raises(AttributeError):
-        C.blah  # noqa
+        C.blah  # type: ignore   # noqa
     assert len(recwarn) == 0
 
     assert isinstance(C().method, Function)  # should be fine to access on an instance of the class
