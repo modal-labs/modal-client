@@ -82,6 +82,11 @@ class _AutoDockerIgnoreSentinel:
 
 AUTO_DOCKERIGNORE = _AutoDockerIgnoreSentinel()
 
+COPY_DEPRECATION_MESSAGE_PATTERN = """modal.Image.copy_* methods will soon be deprecated.
+
+Use {replacement} instead, which is functionally and performance-wise equivalent.
+"""
+
 
 def _validate_python_version(
     python_version: Optional[str], builder_version: ImageBuilderVersion, allow_micro_granularity: bool = True
@@ -786,7 +791,9 @@ class _Image(_Object, type_prefix="im"):
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
         """
-        # TODO(elias): add pending deprecation with suggestion to use add_* instead
+        deprecation_warning(
+            (2024, 1, 13), COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"), pending=True
+        )
         basename = str(Path(local_path).name)
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
@@ -889,6 +896,9 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
+        deprecation_warning(
+            (2024, 1, 13), COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"), pending=True
+        )
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base", f"COPY . {remote_path}"], context_files={})
@@ -1318,6 +1328,13 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
+        if context_mount is not None:
+            deprecation_warning(
+                (2025, 1, 13),
+                "`context_mount` is deprecated."
+                + " Files are now automatically added to the build context based on the commands.",
+                pending=True,
+            )
         cmds = _flatten_str_args("dockerfile_commands", "dockerfile_commands", dockerfile_commands)
         if not cmds:
             return self
@@ -1755,6 +1772,13 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
+        if context_mount is not None:
+            deprecation_warning(
+                (2025, 1, 13),
+                "`context_mount` is deprecated."
+                + " Files are now automatically added to the build context based on the commands in the Dockerfile.",
+                pending=True,
+            )
 
         # --- Build the base dockerfile
 
