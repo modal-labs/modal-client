@@ -18,7 +18,7 @@ launch_cli = Typer(
     name="launch",
     no_args_is_help=True,
     help="""
-    [Preview] Open a serverless app instance on Modal.
+    Open a serverless app instance on Modal.
 
     This command is in preview and may change in the future.
     """,
