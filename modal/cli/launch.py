@@ -19,6 +19,8 @@ launch_cli = Typer(
     no_args_is_help=True,
     help="""
     Open a serverless app instance on Modal.
+
+    This command is in preview and may change in the future.
     """,
 )
 
