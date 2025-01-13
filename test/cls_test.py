@@ -1041,3 +1041,29 @@ def test_modal_object_param_uses_wrapped_type(servicer, set_env_client, client):
     container_params = deserialize_params(req.serialized_params, function_def, _client)
     args, kwargs = container_params
     assert type(kwargs["x"]) == type(dct)
+
+
+def test_using_method_on_uninstantiated_cls(recwarn):
+    app = App()
+
+    @app.cls(serialized=True)
+    class C:
+        @method()
+        def method(self):
+            pass
+
+    assert len(recwarn) == 0
+    with pytest.raises(AttributeError):
+        C.blah  # noqa
+    assert len(recwarn) == 0
+
+    assert isinstance(C().method, Function)  # should be fine to access on an instance of the class
+    assert len(recwarn) == 0
+
+    # The following should warn since it's accessed on the class directly
+    C.method  # noqa  # triggers a deprecation warning
+    # TODO: this will be an AttributeError or return a non-modal unbound function in the future:
+    assert len(recwarn) == 1
+    warning_string = str(recwarn[0].message)
+    assert "instantiate classes before using methods" in warning_string
+    assert "C().method instead of C.method" in warning_string
