@@ -407,7 +407,7 @@ def shell(
     ),
     pty: Optional[bool] = typer.Option(default=None, help="Run the command using a PTY."),
 ):
-    """Run a command or interactive shell inside a Modal container.
+    """Run a SPOT ME command or interactive shell inside a Modal container.
 
     \b**Examples:**
 
