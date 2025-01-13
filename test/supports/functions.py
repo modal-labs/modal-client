@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import contextlib
+import threading
 import time
 
 from modal import (
@@ -713,3 +714,35 @@ def set_input_concurrency(start: float):
 def check_container_app():
     # The container app should be associated with the app object
     assert App._get_container_app() == app
+
+
+@app.function()
+def get_running_loop(x):
+    return asyncio.get_running_loop()
+
+
+@app.function()
+def is_main_thread_sync(x):
+    return threading.main_thread() == threading.current_thread()
+
+
+@app.function()
+async def is_main_thread_async(x):
+    return threading.main_thread() == threading.current_thread()
+
+
+_import_thread_is_main_thread = threading.main_thread() == threading.current_thread()
+
+
+@app.function()
+def import_thread_is_main_thread(x):
+    return _import_thread_is_main_thread
+
+
+class CustomException(Exception):
+    pass
+
+
+@app.function()
+def raises_custom_exception(x):
+    raise CustomException("Failure!")
