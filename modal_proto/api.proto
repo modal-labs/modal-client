@@ -2129,14 +2129,6 @@ message S3Mount {
   bool read_only = 4;
 }
 
-// TODO (colin) this can move to the backend
-message SandboxSnapshotInfo {
-  string checksum = 1;
-  string snapshot_id = 2; // TODO (colin) i don't think this field needs to exist
-  string runtime_version = 3;
-  string original_task_id = 4;
-}
-
 message Sandbox {
   repeated string entrypoint_args = 1;
   repeated string mount_ids = 2;
