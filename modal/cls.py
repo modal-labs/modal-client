@@ -397,6 +397,18 @@ class _Cls(_Object, type_prefix="cs"):
             raise AttributeError("You can only get the partial functions of a local Cls instance")
         return _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.all())
 
+    def _get_app(self) -> "modal.app._App":
+        return self._app
+
+    def _get_user_cls(self) -> type:
+        return self._user_cls
+
+    def _get_name(self) -> str:
+        return self._name
+
+    def _get_class_service_function(self) -> "modal.functions._Function":
+        return self._class_service_function
+
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
         if (
