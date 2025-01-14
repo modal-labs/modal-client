@@ -60,6 +60,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     _stdin: _StreamWriter
     _task_id: Optional[str] = None
     _tunnels: Optional[dict[int, Tunnel]] = None
+    _enable_memory_snapshot: bool = False
 
     @staticmethod
     def _new(
@@ -83,6 +84,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         unencrypted_ports: Sequence[int] = [],
         proxy: Optional[_Proxy] = None,
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
+        enable_memory_snapshot: bool = False,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -178,6 +180,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 open_ports=api_pb2.PortSpecs(ports=open_ports),
                 network_access=network_access,
                 proxy_id=(proxy.object_id if proxy else None),
+                enable_memory_snapshot=enable_memory_snapshot,
             )
 
             # Note - `resolver.app_id` will be `None` for app-less sandboxes
@@ -225,6 +228,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         unencrypted_ports: Sequence[int] = [],
         # Reference to a Modal Proxy to use in front of this Sandbox.
         proxy: Optional[_Proxy] = None,
+        # Enable memory snapshots.
+        enable_memory_snapshot: bool = False,
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
@@ -262,7 +267,9 @@ class _Sandbox(_Object, type_prefix="sb"):
             unencrypted_ports=unencrypted_ports,
             proxy=proxy,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
+            enable_memory_snapshot=enable_memory_snapshot,
         )
+        obj._enable_memory_snapshot = enable_memory_snapshot
 
         app_id: Optional[str] = None
         app_client: Optional[_Client] = None
@@ -531,8 +538,13 @@ class _Sandbox(_Object, type_prefix="sb"):
         resp = await retry_transient_errors(self._client.stub.ContainerExec, req)
         by_line = bufsize == 1
         return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr, text=text, by_line=by_line)
-    
+
     async def snapshot(self) -> str:
+        if not self._enable_memory_snapshot:
+            raise ValueError(
+                "Memory snapshots are not supported for this sandbox. To enable memory snapshots, "
+                "set `enable_memory_snapshot=True` when creating the sandbox."
+            )
         req = api_pb2.SandboxSnapshotRequest(sandbox_id=self.object_id)
         resp = await retry_transient_errors(self._client.stub.SandboxSnapshot, req)
         return resp.snapshot_id
@@ -541,6 +553,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def from_snapshot(snapshot_id: str, app: Optional["modal.app._App"] = None):
         app_client: Optional[_Client] = None
 
+        # TODO: I think we should do this without passing in an app. It should be more similar to `Sandbox.from_id`.
         if app is not None:
             if app.app_id is None:
                 raise ValueError(

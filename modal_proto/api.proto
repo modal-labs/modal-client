@@ -2180,6 +2180,9 @@ message Sandbox {
   NetworkAccess network_access = 22;
 
   optional string proxy_id = 23;
+
+  // Enable memory snapshots.
+  bool enable_memory_snapshot = 24;
 }
 
 message SandboxCreateRequest {
