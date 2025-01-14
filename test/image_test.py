@@ -3,12 +3,13 @@ import asyncio
 import os
 import pytest
 import re
+import shutil
 import sys
 import threading
 from hashlib import sha256
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Literal, get_args
+from typing import Callable, Literal, Sequence, Union, get_args
 from unittest import mock
 
 import modal
@@ -17,6 +18,7 @@ from modal._serialization import serialize
 from modal._utils.async_utils import synchronizer
 from modal.client import Client
 from modal.exception import DeprecationError, InvalidError, VersionError
+from modal.file_pattern_matcher import FilePatternMatcher
 from modal.image import (
     SUPPORTED_PYTHON_SERIES,
     ImageBuilderVersion,
@@ -244,6 +246,40 @@ def test_wrong_type(builder_version, servicer, client):
             m([["double-nested-package"]])  # type: ignore
 
 
+def assert_metadata(image, expected_metadata):
+    # TODO: change this to use public property workdir when/if we introduce one
+    _image = synchronizer._translate_in(image)
+    assert _image._metadata == expected_metadata
+
+
+def test_image_from_id(builder_version, servicer, client):
+    app = App()
+    image = Image.debian_slim().pip_install("numpy")
+    app.function(image=image)(dummy)
+    dummy_metadata = api_pb2.ImageMetadata(
+        workdir="/proj",
+        python_packages={"fastapi": "0.100.0"},
+        python_version_info="Python 3.11.8 (main, Feb 25 2024, 03:55:37) [Clang 17.0.6 ]",
+    )
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            pass
+
+        ctx.add_response(
+            "ImageFromId",
+            api_pb2.ImageFromIdResponse(
+                image_id=image.object_id,
+                metadata=dummy_metadata,
+            ),
+        )
+
+        with app.run(client=client):
+            image_from_id = Image.from_id(image.object_id, client)
+            hydrate_image(image_from_id, client)
+            assert image_from_id.object_id == image.object_id
+            assert_metadata(image_from_id, dummy_metadata)
+
+
 def test_image_requirements_txt(builder_version, servicer, client):
     requirements_txt = os.path.join(os.path.dirname(__file__), "supports/test-requirements.txt")
 
@@ -285,6 +321,29 @@ def test_debian_slim_apt_install(builder_version, servicer, client):
         assert any("pip install scikit-learn" in cmd for cmd in layers[0].dockerfile_commands)
         assert any("apt-get install -y git ssh" in cmd for cmd in layers[1].dockerfile_commands)
         assert any("pip install numpy" in cmd for cmd in layers[2].dockerfile_commands)
+
+
+def test_from_registry_add_python(builder_version, servicer, client):
+    app = App(image=Image.from_registry("ubuntu", add_python="3.9"))
+    app.function()(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(app.image.object_id, servicer)
+        commands = layers[0].dockerfile_commands
+        assert layers[0].context_mount_id == "mo-py39"
+        assert any("COPY /python/. /usr/local" in cmd for cmd in commands)
+        assert any("ln -s /usr/local/bin/python3" in cmd for cmd in commands)
+
+    if builder_version >= "2024.10":
+        app = App(image=Image.from_registry("ubuntu", add_python="3.13"))
+        app.function()(dummy)
+
+        with app.run(client=client):
+            layers = get_image_layers(app.image.object_id, servicer)
+            commands = layers[0].dockerfile_commands
+            assert layers[0].context_mount_id == "mo-py313"
+            assert any("COPY /python/. /usr/local" in cmd for cmd in commands)
+            assert not any("ln -s /usr/local/bin/python3" in cmd for cmd in commands)
 
 
 def test_image_pip_install_pyproject(builder_version, servicer, client):
@@ -362,11 +421,12 @@ def test_image_pip_install_private_repos(builder_version, servicer, client):
 def test_dockerfile_image(builder_version, servicer, client):
     path = os.path.join(os.path.dirname(__file__), "supports/test-dockerfile")
 
-    app = App(image=Image.from_dockerfile(path))
-    app.function()(dummy)
+    app = App()
+    image = Image.from_dockerfile(path)
+    app.function(image=image)(dummy)
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
+        layers = get_image_layers(image.object_id, servicer)
 
         assert any("RUN pip install numpy" in cmd for cmd in layers[1].dockerfile_commands)
 
@@ -710,34 +770,188 @@ def test_image_copy_local_dir(builder_version, servicer, client, tmp_path_with_c
         assert set(servicer.mount_contents[mount_id].keys()) == {"/data.txt", "/data/sub"}
 
 
-def test_image_docker_command_copy(builder_version, servicer, client, tmp_path_with_content):
+@pytest.mark.usefixtures("tmp_cwd")
+def test_image_docker_command_no_copy_commands(builder_version, servicer, client, disable_auto_mount):
+    # make sure that no mount is created if there are no copy commands
+    Path("data.txt").write_text("hello")
     app = App()
-    data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/", condition=lambda p: "module" not in p)
-    app.image = Image.debian_slim().dockerfile_commands(["COPY . /dummy"], context_mount=data_mount)
-    app.function()(dummy)
+    image = Image.debian_slim().dockerfile_commands(["RUN something"])
+    app.function(image=image, serialized=True)(dummy)
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
-        assert "COPY . /dummy" in layers[0].dockerfile_commands
-        files = {f.mount_filename: f.content for f in Mount._get_files(data_mount.entries)}
-        assert files == {"/data.txt": b"hello", "/data/sub": b"world"}
+        layers = get_image_layers(image.object_id, servicer)
+        assert "RUN something" in layers[0].dockerfile_commands
+        context_mount_id = layers[0].context_mount_id
+        assert not context_mount_id  # there should be no mount
+        assert not servicer.mounts_excluding_published_client()
 
 
-def test_image_dockerfile_copy(builder_version, servicer, client, tmp_path_with_content):
-    dockerfile = NamedTemporaryFile("w", delete=False)
-    dockerfile.write("COPY . /dummy\n")
-    dockerfile.close()
+@pytest.fixture()
+def dummy_context_dir(tmp_cwd):
+    # create dummy data in current working directory
+    rel_top_dir = Path("top")
+    rel_top_dir.mkdir()
+    (rel_top_dir / "data").mkdir()
+    (rel_top_dir / "data" / "sub").write_text("world")
+    (rel_top_dir / "module").mkdir()
+    (rel_top_dir / "module" / "__init__.py").write_text("foo")
+    (rel_top_dir / "module" / "sub.py").write_text("bar")
+    (rel_top_dir / "module" / "sub").mkdir()
+    (rel_top_dir / "module" / "sub" / "__init__.py").write_text("baz")
+    yield
+    shutil.rmtree(rel_top_dir)
 
+
+ALL_DUMMY_FILES = {"/top/data/sub", "/top/module/__init__.py", "/top/module/sub.py", "/top/module/sub/__init__.py"}
+
+
+@pytest.mark.usefixtures("tmp_cwd", "dummy_context_dir")
+@pytest.mark.parametrize(
+    ("docker_commands", "expected_mount_files"),
+    [
+        (["COPY . /"], ALL_DUMMY_FILES),  # common
+        (["COPY top /"], ALL_DUMMY_FILES),  # single dir
+        (["COPY top/ /"], ALL_DUMMY_FILES),  # trailing slash
+        # changing the destination directory shouldn't matter for how the *context mount* looks:
+        (["COPY top /dummy"], ALL_DUMMY_FILES),
+        (["COPY top/data /"], {"/top/data/sub"}),  # from subdir
+        (["COPY top/data/sub /"], {"/top/data/sub"}),  # individual file
+        (["COPY ./** /"], ALL_DUMMY_FILES),  # glob
+        (
+            ["COPY top/data/sub /", "COPY top/module/sub.py /"],
+            {"/top/data/sub", "/top/module/sub.py"},
+        ),  # multiple copy statements
+    ],
+)
+@pytest.mark.parametrize("use_dockerfile", [False, True])
+def test_image_docker_command_copy(
+    builder_version, servicer, client, docker_commands, expected_mount_files, use_dockerfile
+):
     app = App()
-    data_mount = Mount.from_local_dir(tmp_path_with_content, remote_path="/", condition=lambda p: "module" not in p)
-    app.image = Image.debian_slim().from_dockerfile(dockerfile.name, context_mount=data_mount)
-    app.function()(dummy)
+    maybe_dockerfile = None
+    if use_dockerfile:
+        # auto deleting files appears to break windows ci
+        maybe_dockerfile = NamedTemporaryFile("w", delete=False)
+        maybe_dockerfile.write("\n".join(docker_commands))
+        maybe_dockerfile.close()
+        image = Image.from_dockerfile(maybe_dockerfile.name)
+        copy_layer_index = 1  # layer 0 is the base image
+    else:
+        image = Image.debian_slim().dockerfile_commands(*docker_commands)
+        copy_layer_index = 0
+
+    app.function(image=image)(dummy)
 
     with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
-        assert "COPY . /dummy" in layers[1].dockerfile_commands
-        files = {f.mount_filename: f.content for f in Mount._get_files(data_mount.entries)}
-        assert files == {"/data.txt": b"hello", "/data/sub": b"world"}
+        layers = get_image_layers(image.object_id, servicer)
+        mount_id = layers[copy_layer_index].context_mount_id
+        files = set(servicer.mount_contents[mount_id].keys())
+        assert files == expected_mount_files
+
+    if maybe_dockerfile:
+        Path(maybe_dockerfile.name).unlink()
+
+
+@pytest.mark.parametrize("use_dockerfile", (True, False))
+@pytest.mark.usefixtures("tmp_cwd")
+def test_image_dockerfile_copy_auto_dockerignore(builder_version, servicer, client, use_dockerfile):
+    rel_top_dir = Path("top")
+    rel_top_dir.mkdir()
+    (rel_top_dir / "data.txt").write_text("world")
+    (rel_top_dir / "file.py").write_text("world")
+    dockerfile = rel_top_dir / "Dockerfile"
+    dockerfile.write_text(f"COPY {rel_top_dir} /dummy\n")
+
+    # automatically find the .dockerignore file
+    dockerignore = Path(".") / ".dockerignore"
+    dockerignore.write_text("**/*.txt")
+
+    app = App()
+    if use_dockerfile:
+        image = Image.debian_slim().from_dockerfile(dockerfile)
+        layer = 1
+    else:
+        image = Image.debian_slim().dockerfile_commands([f"COPY {rel_top_dir} /dummy"])
+        layer = 0
+    app.function(image=image)(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        assert f"COPY {rel_top_dir} /dummy" in layers[layer].dockerfile_commands
+        mount_id = layers[layer].context_mount_id
+        files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
+        assert files == {Path("/") / rel_top_dir / "Dockerfile", Path("/") / rel_top_dir / "file.py"}
+
+
+@pytest.mark.parametrize("use_dockerfile", (True, False))
+@pytest.mark.usefixtures("tmp_cwd")
+def test_image_dockerfile_copy_ignore_from_file(builder_version, servicer, client, use_dockerfile):
+    rel_top_dir = Path("top")
+    rel_top_dir.mkdir()
+    (rel_top_dir / "data.txt").write_text("world")
+    (rel_top_dir / "file.py").write_text("world")
+    dockerfile = rel_top_dir / "Dockerfile"
+    dockerfile.write_text(f"COPY {rel_top_dir} /dummy\n")
+
+    # explicitly provide the .dockerignore file
+    dockerignore = rel_top_dir / "something_special.dockerignore"
+    dockerignore.write_text("**/*.py")
+
+    app = App()
+    if use_dockerfile:
+        image = Image.debian_slim().from_dockerfile(dockerfile, ignore=FilePatternMatcher.from_file(dockerignore))
+        layer = 1
+    else:
+        image = Image.debian_slim().dockerfile_commands(
+            [f"COPY {rel_top_dir} /dummy"], ignore=FilePatternMatcher.from_file(dockerignore)
+        )
+        layer = 0
+    app.function(image=image)(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        assert f"COPY {rel_top_dir} /dummy" in layers[layer].dockerfile_commands
+        mount_id = layers[layer].context_mount_id
+        files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
+        assert files == {
+            Path("/") / rel_top_dir / "Dockerfile",
+            Path("/") / rel_top_dir / "data.txt",
+            Path("/") / rel_top_dir / "something_special.dockerignore",
+        }
+
+
+@pytest.mark.parametrize("use_callable", (True, False))
+@pytest.mark.parametrize("use_dockerfile", (True, False))
+@pytest.mark.usefixtures("tmp_cwd")
+def test_image_dockerfile_copy_ignore(builder_version, servicer, client, use_callable, use_dockerfile):
+    # TODO: combine with test_image_docker_command_copy?
+    def cb(x: Path):
+        return x.suffix == ".txt"
+
+    ignore: Union[Sequence[str], Callable[[Path], bool]] = cb if use_callable else ["**/*.txt"]
+
+    rel_top_dir = Path("top")
+    rel_top_dir.mkdir()
+    (rel_top_dir / "data.txt").write_text("world")
+    (rel_top_dir / "file.py").write_text("world")
+    dockerfile = rel_top_dir / "Dockerfile"
+    dockerfile.write_text(f"COPY {rel_top_dir} /dummy\n")
+
+    app = App()
+    if use_dockerfile:
+        image = Image.debian_slim().from_dockerfile(dockerfile, ignore=ignore)
+        layer = 1
+    else:
+        image = Image.debian_slim().dockerfile_commands([f"COPY {rel_top_dir} /dummy"], ignore=ignore)
+        layer = 0
+    app.function(image=image)(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        assert f"COPY {rel_top_dir} /dummy" in layers[layer].dockerfile_commands
+        mount_id = layers[layer].context_mount_id
+        files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
+        assert files == {Path("/") / rel_top_dir / "Dockerfile", Path("/") / rel_top_dir / "file.py"}
 
 
 def test_image_docker_command_entrypoint(builder_version, servicer, client, tmp_path_with_content):
@@ -857,9 +1071,7 @@ def test_hydration_metadata(servicer, client):
         )
 
         with app.run(client=client):
-            # TODO: change this test to use public property workdir when/if we introduce one
-            _image = synchronizer._translate_in(img)
-            assert _image._metadata == dummy_metadata
+            assert_metadata(img, dummy_metadata)
 
 
 cls_app = App()
@@ -1067,9 +1279,10 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
         app = App(image=img)
         app.function()(dummy)
         with app.run(client=client):
-            layers = get_image_layers(app.image.object_id, servicer)
+            layers = get_image_layers(img.object_id, servicer)
             commands = [layer.dockerfile_commands for layer in layers]
             context_files = [[(f.filename, f.data) for f in layer.context_files] for layer in layers]
+
         return sha256(repr(list(zip(commands, context_files))).encode()).hexdigest()
 
     if sys.version_info[:2] == (3, 11):
@@ -1558,3 +1771,34 @@ def test_image_add_local_dir_ignore_nothing(servicer, client, tmp_path_with_cont
             assert set(Path(fn) for fn in servicer.mount_contents[mount_id].keys()) == {
                 Path(f"/place{f}") for f in expected
             }
+
+
+@pytest.mark.parametrize("copy", [True, False])
+@pytest.mark.usefixtures("tmp_cwd")
+def test_image_add_local_dir_ignore_from_file(servicer, client, tmp_path_with_content, copy):
+    rel_top_dir = Path("top")
+    rel_top_dir.mkdir()
+    ignore_file = rel_top_dir / "something_special.ignore_file"
+    ignore_file.write_text("**/*.txt")
+
+    expected = {"/data.txt"}
+    app = App()
+
+    img = Image.from_registry("unknown_image").workdir("/proj")
+    if copy:
+        app.image = img.copy_local_dir(
+            tmp_path_with_content, "/place/", ignore=~FilePatternMatcher.from_file(ignore_file)
+        )
+        app.function()(dummy)
+        with app.run(client=client):
+            assert len(img._mount_layers) == 0
+            layers = get_image_layers(app.image.object_id, servicer)
+            mount_id = layers[0].context_mount_id
+            assert set(servicer.mount_contents[mount_id].keys()) == expected
+    else:
+        img = img.add_local_dir(tmp_path_with_content, "/place/", ignore=~FilePatternMatcher.from_file(ignore_file))
+        app.function(image=img)(dummy)
+        with app.run(client=client):
+            assert len(img._mount_layers) == 1
+            mount_id = img._mount_layers[0].object_id
+            assert set(servicer.mount_contents[mount_id].keys()) == {f"/place{f}" for f in expected}

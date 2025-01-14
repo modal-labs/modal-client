@@ -17,7 +17,14 @@ from modal_proto import api_pb2
 from .._serialization import deserialize, deserialize_data_format, serialize
 from .._traceback import append_modal_tb
 from ..config import config, logger
-from ..exception import DeserializationError, ExecutionError, FunctionTimeoutError, InvalidError, RemoteError
+from ..exception import (
+    DeserializationError,
+    ExecutionError,
+    FunctionTimeoutError,
+    InternalFailure,
+    InvalidError,
+    RemoteError,
+)
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
 from .blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
@@ -99,22 +106,30 @@ def get_function_type(is_generator: Optional[bool]) -> "api_pb2.Function.Functio
 
 
 class FunctionInfo:
-    """Class that helps us extract a bunch of information about a locally defined function.
+    """Utility that determines serialization/deserialization mechanisms for functions
 
-    Used for populating the definition of a remote function, and for making .local() calls
-    on a host with the local definition available.
+    * Stored as file vs serialized
+    * If serialized: how to serialize the function
+    * If file: which module/function name should be used to retrieve
+
+    Used for populating the definition of a remote function
     """
 
     raw_f: Optional[Callable[..., Any]]  # if None - this is a "class service function"
     function_name: str
     user_cls: Optional[type[Any]]
-    definition_type: "modal_proto.api_pb2.Function.DefinitionType.ValueType"
     module_name: Optional[str]
 
     _type: FunctionInfoType
     _file: Optional[str]
     _base_dir: str
     _remote_dir: Optional[PurePosixPath] = None
+
+    def get_definition_type(self) -> "modal_proto.api_pb2.Function.DefinitionType.ValueType":
+        if self.is_serialized():
+            return modal_proto.api_pb2.Function.DEFINITION_TYPE_SERIALIZED
+        else:
+            return modal_proto.api_pb2.Function.DEFINITION_TYPE_FILE
 
     def is_service_class(self):
         if self.raw_f is None:
@@ -172,7 +187,7 @@ class FunctionInfo:
             self._base_dir = base_dirs[0]
             self.module_name = module.__spec__.name
             self._remote_dir = ROOT_DIR / PurePosixPath(module.__package__.split(".")[0])
-            self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
+            self._is_serialized = False
             self._type = FunctionInfoType.PACKAGE
         elif hasattr(module, "__file__") and not serialized:
             # This generally covers the case where it's invoked with
@@ -182,18 +197,18 @@ class FunctionInfo:
             self._file = os.path.abspath(inspect.getfile(module))
             self.module_name = inspect.getmodulename(self._file)
             self._base_dir = os.path.dirname(self._file)
-            self.definition_type = api_pb2.Function.DEFINITION_TYPE_FILE
+            self._is_serialized = False
             self._type = FunctionInfoType.FILE
         else:
             self.module_name = None
             self._base_dir = os.path.abspath("")  # get current dir
-            self.definition_type = api_pb2.Function.DEFINITION_TYPE_SERIALIZED
-            if serialized:
+            self._is_serialized = True  # either explicitly, or by being in a notebook
+            if serialized:  # if explicit
                 self._type = FunctionInfoType.SERIALIZED
             else:
                 self._type = FunctionInfoType.NOTEBOOK
 
-        if self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
+        if not self.is_serialized():
             # Sanity check that this function is defined in global scope
             # Unfortunately, there's no "clean" way to do this in Python
             qualname = f.__qualname__ if f else user_cls.__qualname__
@@ -203,7 +218,7 @@ class FunctionInfo:
                 )
 
     def is_serialized(self) -> bool:
-        return self.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED
+        return self._is_serialized
 
     def serialized_function(self) -> bytes:
         # Note: this should only be called from .load() and not at function decoration time
@@ -311,22 +326,22 @@ class FunctionInfo:
         # make sure the function's own entrypoint is included:
         if self._type == FunctionInfoType.PACKAGE:
             if config.get("automount"):
-                return [_Mount.from_local_python_packages(self.module_name)]
-            elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
+                return [_Mount._from_local_python_packages(self.module_name)]
+            elif not self.is_serialized():
                 # mount only relevant file and __init__.py:s
                 return [
-                    _Mount.from_local_dir(
+                    _Mount._from_local_dir(
                         self._base_dir,
                         remote_path=self._remote_dir,
                         recursive=True,
                         condition=entrypoint_only_package_mount_condition(self._file),
                     )
                 ]
-        elif self.definition_type == api_pb2.Function.DEFINITION_TYPE_FILE:
+        elif not self.is_serialized():
             remote_path = ROOT_DIR / Path(self._file).name
             if not _is_modal_path(remote_path):
                 return [
-                    _Mount.from_local_file(
+                    _Mount._from_local_file(
                         self._file,
                         remote_path=remote_path,
                     )
@@ -455,6 +470,8 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
 
     if result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
         raise FunctionTimeoutError(result.exception)
+    elif result.status == api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
+        raise InternalFailure(result.exception)
     elif result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
         if data:
             try:
@@ -570,12 +587,15 @@ class FunctionCreationStatus:
 
         elif self.response.function.web_url:
             url_info = self.response.function.web_url_info
+            requires_proxy_auth = self.response.function.webhook_config.requires_proxy_auth
+            proxy_auth_suffix = " 🔑" if requires_proxy_auth else ""
             # Ensure terms used here match terms used in modal.com/docs/guide/webhook-urls doc.
             suffix = _get_suffix_from_web_url_info(url_info)
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
             web_url = self.response.handle_metadata.web_url
             self.status_row.finish(
-                f"Created web function {self.tag} => [magenta underline]{web_url}[/magenta underline]{suffix}"
+                f"Created web function {self.tag} => [magenta underline]{web_url}[/magenta underline]"
+                f"{proxy_auth_suffix}{suffix}"
             )
 
             # Print custom domain in terminal

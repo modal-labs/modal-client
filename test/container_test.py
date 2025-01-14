@@ -1,9 +1,10 @@
 # Copyright Modal Labs 2022
 
 import asyncio
-import base64
 import dataclasses
+import gc
 import json
+import logging
 import os
 import pathlib
 import pickle
@@ -24,6 +25,7 @@ from grpclib.exceptions import GRPCError
 import modal
 from modal import Client, Queue, Volume, is_local
 from modal._container_entrypoint import UserException, main
+from modal._runtime import asgi
 from modal._runtime.container_io_manager import (
     ContainerIOManager,
     InputSlots,
@@ -57,6 +59,12 @@ SLEEP_DELAY = 0.1
 
 blob_upload = synchronize_api(_blob_upload)
 blob_download = synchronize_api(_blob_download)
+
+DEFAULT_APP_LAYOUT = api_pb2.AppLayout(
+    objects=[
+        api_pb2.Object(object_id="im-1"),
+    ],
+)
 
 
 def _get_inputs(
@@ -187,12 +195,17 @@ def _container_args(
         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
     ),
     app_id: str = "ap-1",
+    app_layout: api_pb2.AppLayout = DEFAULT_APP_LAYOUT,
+    web_server_port: Optional[int] = None,
+    web_server_startup_timeout: Optional[float] = None,
 ):
     if webhook_type:
         webhook_config = api_pb2.WebhookConfig(
             type=webhook_type,
             method="GET",
             async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
+            web_server_port=web_server_port,
+            web_server_startup_timeout=web_server_startup_timeout,
         )
     else:
         webhook_config = None
@@ -224,6 +237,7 @@ def _container_args(
         function_def=function_def,
         serialized_params=serialized_params,
         checkpoint_id=f"ch-{uuid.uuid4()}",
+        app_layout=app_layout,
     )
 
 
@@ -259,6 +273,9 @@ def _run_container(
     class_parameter_info=api_pb2.ClassParameterInfo(
         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
     ),
+    app_layout=DEFAULT_APP_LAYOUT,
+    web_server_port: Optional[int] = None,
+    web_server_startup_timeout: Optional[float] = None,
 ) -> ContainerResult:
     container_args = _container_args(
         module_name,
@@ -280,6 +297,9 @@ def _run_container(
         max_inputs,
         is_class=is_class,
         class_parameter_info=class_parameter_info,
+        app_layout=app_layout,
+        web_server_port=web_server_port,
+        web_server_startup_timeout=web_server_startup_timeout,
     )
     with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
         if inputs is None:
@@ -367,7 +387,7 @@ def _unwrap_exception(ret: ContainerResult):
     assert len(ret.items) == 1
     assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
     assert "Traceback" in ret.items[0].result.traceback
-    return ret.items[0].result.exception
+    return deserialize(ret.items[0].result.data, ret.client)
 
 
 def _unwrap_batch_exception(ret: ContainerResult, batch_size):
@@ -405,8 +425,20 @@ def _unwrap_asgi(ret: ContainerResult):
     return values
 
 
+def _get_web_inputs(path="/", method_name=""):
+    scope = {
+        "method": "GET",
+        "type": "http",
+        "path": path,
+        "headers": {},
+        "query_string": b"arg=space",
+        "http_version": "2",
+    }
+    return _get_inputs(((scope,), {}), method_name=method_name)
+
+
 @skip_github_non_linux
-def test_success(servicer, event_loop):
+def test_success(servicer):
     t0 = time.time()
     ret = _run_container(servicer, "test.supports.functions", "square")
     assert 0 <= time.time() - t0 < EXTRA_TOLERANCE_DELAY
@@ -455,14 +487,18 @@ def test_async(servicer):
 @skip_github_non_linux
 def test_failure(servicer, capsys):
     ret = _run_container(servicer, "test.supports.functions", "raises")
-    assert _unwrap_exception(ret) == "Exception('Failure!')"
+    exc = _unwrap_exception(ret)
+    assert isinstance(exc, Exception)
+    assert repr(exc) == "Exception('Failure!')"
     assert 'raise Exception("Failure!")' in capsys.readouterr().err  # traceback
 
 
 @skip_github_non_linux
 def test_raises_base_exception(servicer, capsys):
     ret = _run_container(servicer, "test.supports.functions", "raises_sysexit")
-    assert _unwrap_exception(ret) == "SystemExit(1)"
+    exc = _unwrap_exception(ret)
+    assert isinstance(exc, SystemExit)
+    assert repr(exc) == "SystemExit(1)"
     assert "raise SystemExit(1)" in capsys.readouterr().err  # traceback
 
 
@@ -527,18 +563,6 @@ def test_from_local_python_packages_inside_container(servicer):
     all the containers."""
     ret = _run_container(servicer, "test.supports.package_mount", "num_mounts")
     assert _unwrap_scalar(ret) == 0
-
-
-def _get_web_inputs(path="/", method_name=""):
-    scope = {
-        "method": "GET",
-        "type": "http",
-        "path": path,
-        "headers": {},
-        "query_string": b"arg=space",
-        "http_version": "2",
-    }
-    return _get_inputs(((scope,), {}), method_name=method_name)
 
 
 # needs to be synchronized so the asyncio.Queue gets used from the same event loop as the servicer
@@ -673,6 +697,33 @@ def test_asgi(servicer):
 
 
 @skip_github_non_linux
+def test_non_blocking_web_server(servicer, monkeypatch):
+    get_ip_address = MagicMock(wraps=asgi.get_ip_address)
+    get_ip_address.return_value = "127.0.0.1"
+    monkeypatch.setattr(asgi, "get_ip_address", get_ip_address)
+
+    inputs = _get_web_inputs(path="/")
+    _put_web_body(servicer, b"")
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "non_blocking_web_server",
+        inputs=inputs,
+        webhook_type=api_pb2.WEBHOOK_TYPE_WEB_SERVER,
+        web_server_port=8765,
+        web_server_startup_timeout=1,
+    )
+    first_message, second_message, _ = _unwrap_asgi(ret)
+
+    # Check the headers
+    assert first_message["status"] == 200
+    headers = dict(first_message["headers"])
+    assert headers[b"Content-Type"] == b"text/html; charset=utf-8"
+
+    assert b"Directory listing" in second_message["body"]
+
+
+@skip_github_non_linux
 def test_asgi_lifespan(servicer):
     inputs = _get_web_inputs(path="/")
 
@@ -757,7 +808,32 @@ def test_cls_web_asgi_with_lifespan(servicer):
 
     from test.supports import functions
 
-    assert ["enter1", "enter2", "foo1", "exit1", "exit2", "exit"] == functions.lifespan_global_asgi_app_cls
+    assert functions.lifespan_global_asgi_app_cls == ["enter1", "enter2", "foo1", "exit1", "exit2", "exit"]
+
+
+@skip_github_non_linux
+@pytest.mark.filterwarnings("error")
+def test_app_with_slow_lifespan_wind_down(servicer, caplog):
+    inputs = _get_web_inputs()
+    with caplog.at_level(logging.WARNING):
+        ret = _run_container(
+            servicer,
+            "test.supports.functions",
+            "asgi_app_with_slow_lifespan_wind_down",
+            inputs=inputs,
+            webhook_type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
+        )
+        asyncio.get_event_loop()
+        # There should be one message for the header, and one for the body
+        first_message, second_message = _unwrap_asgi(ret)
+        # Check the headers
+        assert first_message["status"] == 200
+        # Check body
+        assert json.loads(second_message["body"]) == {"some_result": "foo"}
+        gc.collect()  # trigger potential "Task was destroyed but it is pending"
+
+    for m in caplog.messages:
+        assert "Task was destroyed" not in m
 
 
 @skip_github_non_linux
@@ -807,9 +883,6 @@ def test_non_lifespan_asgi(servicer):
     assert headers[b"content-type"] == b"application/json"
 
     # Check body
-    print("\n#########################")
-    print(f"second_message: {second_message['body']}")
-    print("#########################\n")
     assert json.loads(second_message["body"]) == "foo"
 
 
@@ -967,9 +1040,15 @@ def test_cls_web_endpoint(servicer):
 
 @skip_github_non_linux
 def test_cls_web_asgi_construction(servicer):
-    servicer.app_objects.setdefault("ap-1", {}).setdefault("square", "fu-2")
-    servicer.app_functions["fu-2"] = api_pb2.Function()
-
+    app_layout = api_pb2.AppLayout(
+        objects=[
+            api_pb2.Object(object_id="im-1"),
+            api_pb2.Object(object_id="fu-2", function_handle_metadata=api_pb2.FunctionHandleMetadata()),
+        ],
+        function_ids={
+            "square": "fu-2",
+        },
+    )
     inputs = _get_web_inputs(method_name="asgi_web")
     ret = _run_container(
         servicer,
@@ -977,6 +1056,7 @@ def test_cls_web_asgi_construction(servicer):
         "Cls.*",
         inputs=inputs,
         is_class=True,
+        app_layout=app_layout,
     )
 
     _, second_message = _unwrap_asgi(ret)
@@ -1081,7 +1161,7 @@ def test_container_heartbeats(servicer):
 
 
 @skip_github_non_linux
-def test_cli(servicer, credentials):
+def test_cli(servicer, tmp_path, credentials):
     # This tests the container being invoked as a subprocess (the if __name__ == "__main__" block)
 
     # Build up payload we pass through sys args
@@ -1097,20 +1177,29 @@ def test_cli(servicer, credentials):
         function_id="fu-123",
         app_id="ap-123",
         function_def=function_def,
+        app_layout=api_pb2.AppLayout(
+            objects=[
+                api_pb2.Object(object_id="im-123"),
+            ],
+        ),
     )
-    data_base64: str = base64.b64encode(container_args.SerializeToString()).decode("ascii")
-
-    # Needed for function hydration
-    servicer.app_objects["ap-123"] = {"": "im-123"}
+    container_args_path = tmp_path / "container-args.bin"
+    with container_args_path.open("wb") as f:
+        f.write(container_args.SerializeToString())
 
     # Inputs that will be consumed by the container
     servicer.container_inputs = _get_inputs()
 
     # Launch subprocess
     token_id, token_secret = credentials
-    env = {"MODAL_SERVER_URL": servicer.container_addr, "MODAL_TOKEN_ID": token_id, "MODAL_TOKEN_SECRET": token_secret}
+    env = {
+        "MODAL_SERVER_URL": servicer.container_addr,
+        "MODAL_TOKEN_ID": token_id,
+        "MODAL_TOKEN_SECRET": token_secret,
+        "MODAL_CONTAINER_ARGUMENTS_PATH": str(container_args_path),
+    }
     lib_dir = pathlib.Path(__file__).parent.parent
-    args: list[str] = [sys.executable, "-m", "modal._container_entrypoint", data_base64]
+    args: list[str] = [sys.executable, "-m", "modal._container_entrypoint"]
     ret = subprocess.run(args, cwd=lib_dir, env=env, capture_output=True)
     stdout = ret.stdout.decode()
     stderr = ret.stderr.decode()
@@ -1123,14 +1212,16 @@ def test_cli(servicer, credentials):
 @skip_github_non_linux
 def test_function_sibling_hydration(servicer, credentials):
     deploy_app_externally(servicer, credentials, "test.supports.functions", "app", capture_output=False)
-    ret = _run_container(servicer, "test.supports.functions", "check_sibling_hydration")
+    app_layout = servicer.app_get_layout("ap-1")
+    ret = _run_container(servicer, "test.supports.functions", "check_sibling_hydration", app_layout=app_layout)
     assert _unwrap_scalar(ret) is None
 
 
 @skip_github_non_linux
 def test_multiapp(servicer, credentials, caplog):
     deploy_app_externally(servicer, credentials, "test.supports.multiapp", "a")
-    ret = _run_container(servicer, "test.supports.multiapp", "a_func")
+    app_layout = servicer.app_get_layout("ap-1")
+    ret = _run_container(servicer, "test.supports.multiapp", "a_func", app_layout=app_layout)
     assert _unwrap_scalar(ret) is None
     assert len(caplog.messages) == 0
     # Note that the app can be inferred from the function, even though there are multiple
@@ -1439,11 +1530,13 @@ def test_derived_cls(servicer):
 @skip_github_non_linux
 def test_call_function_that_calls_function(servicer, credentials):
     deploy_app_externally(servicer, credentials, "test.supports.functions", "app")
+    app_layout = servicer.app_get_layout("ap-1")
     ret = _run_container(
         servicer,
         "test.supports.functions",
         "cube",
         inputs=_get_inputs(((42,), {})),
+        app_layout=app_layout,
     )
     assert _unwrap_scalar(ret) == 42**3
 
@@ -1452,11 +1545,13 @@ def test_call_function_that_calls_function(servicer, credentials):
 def test_call_function_that_calls_method(servicer, credentials, set_env_client):
     # TODO (elias): Remove set_env_client fixture dependency - shouldn't need an env client here?
     deploy_app_externally(servicer, credentials, "test.supports.functions", "app")
+    app_layout = servicer.app_get_layout("ap-1")
     ret = _run_container(
         servicer,
         "test.supports.functions",
         "function_calling_method",
         inputs=_get_inputs(((42, "abc", 123), {})),
+        app_layout=app_layout,
     )
     assert _unwrap_scalar(ret) == 123**2  # servicer's implementation of function calling
 
@@ -1627,6 +1722,7 @@ def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, servicer)
 
 def _run_container_process(
     servicer,
+    tmp_path,
     module_name,
     function_name,
     *,
@@ -1634,7 +1730,7 @@ def _run_container_process(
     allow_concurrent_inputs: Optional[int] = None,
     max_concurrent_inputs: Optional[int] = None,
     cls_params: tuple[tuple, dict[str, Any]] = ((), {}),
-    print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
+    _print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
     env={},
     is_class=False,
 ) -> subprocess.Popen:
@@ -1651,13 +1747,17 @@ def _run_container_process(
     env["MODAL_TASK_ID"] = "ta-123"
     env["MODAL_IS_REMOTE"] = "1"
 
-    encoded_container_args = base64.b64encode(container_args.SerializeToString())
+    container_args_path = tmp_path / "container-arguments.bin"
+    with container_args_path.open("wb") as f:
+        f.write(container_args.SerializeToString())
+    env["MODAL_CONTAINER_ARGUMENTS_PATH"] = str(container_args_path)
+
     servicer.container_inputs = _get_multi_inputs(inputs)
     return subprocess.Popen(
-        [sys.executable, "-m", "modal._container_entrypoint", encoded_container_args],
+        [sys.executable, "-m", "modal._container_entrypoint"],
         env={**os.environ, **env},
-        stdout=subprocess.PIPE if not print else None,
-        stderr=subprocess.PIPE if not print else None,
+        stdout=subprocess.PIPE if not _print else None,
+        stderr=subprocess.PIPE if not _print else None,
     )
 
 
@@ -1676,7 +1776,7 @@ def _run_container_process(
     ],
 )
 def test_cancellation_aborts_current_input_on_match(
-    servicer, function_name, input_args, cancelled_input_ids, expected_container_output, live_cancellations
+    tmp_path, servicer, function_name, input_args, cancelled_input_ids, expected_container_output, live_cancellations
 ):
     # NOTE: for a cancellation to actually happen in this test, it needs to be
     #    triggered while the relevant input is being processed. A future input
@@ -1685,6 +1785,7 @@ def test_cancellation_aborts_current_input_on_match(
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
             "test.supports.functions",
             function_name,
             inputs=[("", (arg,), {}) for arg in input_args],
@@ -1724,11 +1825,12 @@ def test_cancellation_aborts_current_input_on_match(
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
-def test_cancellation_stops_subset_of_async_concurrent_inputs(servicer):
+def test_cancellation_stops_subset_of_async_concurrent_inputs(servicer, tmp_path):
     num_inputs = 2
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
             "test.supports.functions",
             "delay_async",
             inputs=[("", (1,), {})] * num_inputs,
@@ -1755,10 +1857,11 @@ def test_cancellation_stops_subset_of_async_concurrent_inputs(servicer):
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
-def test_sigint_concurrent_async_cancel_doesnt_reraise(servicer):
+def test_sigint_concurrent_async_cancel_doesnt_reraise(servicer, tmp_path):
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
             "test.supports.functions",
             "async_cancel_doesnt_reraise",
             inputs=[("", (1,), {})] * 2,  # two inputs
@@ -1779,10 +1882,11 @@ def test_sigint_concurrent_async_cancel_doesnt_reraise(servicer):
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
-def test_cancellation_stops_task_with_concurrent_inputs(servicer):
+def test_cancellation_stops_task_with_concurrent_inputs(servicer, tmp_path):
     with servicer.input_lockstep() as input_lock:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
             "test.supports.functions",
             "delay",
             inputs=[("", (20,), {})] * 2,  # two inputs
@@ -1818,10 +1922,11 @@ def test_inputs_outputs_with_blob_id(servicer, client, monkeypatch):
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
-def test_lifecycle_full(servicer):
+def test_lifecycle_full(servicer, tmp_path):
     # Sync and async container lifecycle methods on a sync function.
     container_process = _run_container_process(
         servicer,
+        tmp_path,
         "test.supports.functions",
         "LifecycleCls.*",
         inputs=[("f_sync", (), {})],
@@ -1835,6 +1940,7 @@ def test_lifecycle_full(servicer):
     # Sync and async container lifecycle methods on an async function.
     container_process = _run_container_process(
         servicer,
+        tmp_path,
         "test.supports.functions",
         "LifecycleCls.*",
         inputs=[("f_async", (), {})],
@@ -1940,11 +2046,12 @@ def test_container_doesnt_send_large_exceptions(servicer):
 
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
-def test_sigint_termination_input_concurrent(servicer):
+def test_sigint_termination_input_concurrent(servicer, tmp_path):
     # Sync and async container lifecycle methods on a sync function.
     with servicer.input_lockstep() as input_barrier:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
             "test.supports.functions",
             "LifecycleCls.*",
             inputs=[("delay", (10,), {})] * 3,
@@ -1975,11 +2082,12 @@ def test_sigint_termination_input_concurrent(servicer):
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
 @pytest.mark.parametrize("method", ["delay", "delay_async"])
-def test_sigint_termination_input(servicer, method):
+def test_sigint_termination_input(servicer, tmp_path, method):
     # Sync and async container lifecycle methods on a sync function.
     with servicer.input_lockstep() as input_barrier:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
             "test.supports.functions",
             "LifecycleCls.*",
             inputs=[(method, (5,), {})],
@@ -2015,10 +2123,11 @@ def test_sigint_termination_input(servicer, method):
 @pytest.mark.usefixtures("server_url_env")
 @pytest.mark.parametrize("enter_type", ["sync_enter", "async_enter"])
 @pytest.mark.parametrize("method", ["delay", "delay_async"])
-def test_sigint_termination_enter_handler(servicer, method, enter_type):
+def test_sigint_termination_enter_handler(servicer, tmp_path, method, enter_type):
     # Sync and async container lifecycle methods on a sync function.
     container_process = _run_container_process(
         servicer,
+        tmp_path,
         "test.supports.functions",
         "LifecycleCls.*",
         inputs=[(method, (5,), {})],
@@ -2046,11 +2155,12 @@ def test_sigint_termination_enter_handler(servicer, method, enter_type):
 @skip_github_non_linux
 @pytest.mark.usefixtures("server_url_env")
 @pytest.mark.parametrize("exit_type", ["sync_exit", "async_exit"])
-def test_sigint_termination_exit_handler(servicer, exit_type):
+def test_sigint_termination_exit_handler(servicer, tmp_path, exit_type):
     # Sync and async container lifecycle methods on a sync function.
     with servicer.output_lockstep() as outputs:
         container_process = _run_container_process(
             servicer,
+            tmp_path,
             "test.supports.functions",
             "LifecycleCls.*",
             inputs=[("delay", (0,), {})],
@@ -2139,7 +2249,8 @@ def test_function_lazy_resolution(servicer, credentials, set_env_client):
 
     # Run container
     deploy_app_externally(servicer, credentials, "test.supports.lazy_hydration", "app", capture_output=False)
-    ret = _run_container(servicer, "test.supports.lazy_hydration", "f", deps=["im-1", "vo-0"])
+    app_layout = servicer.app_get_layout("ap-1")
+    ret = _run_container(servicer, "test.supports.lazy_hydration", "f", deps=["im-2", "vo-0"], app_layout=app_layout)
     assert _unwrap_scalar(ret) is None
 
 
@@ -2326,6 +2437,7 @@ def test_deserialization_error_returns_exception(servicer, client):
 def test_cls_self_doesnt_call_bind(servicer, credentials, set_env_client):
     # first populate app objects, so they can be fetched by AppGetObjects
     deploy_app_externally(servicer, credentials, "test.supports.user_code_import_samples.cls")
+    app_layout = servicer.app_get_layout("ap-1")
 
     with servicer.intercept() as ctx:
         ret = _run_container(
@@ -2334,6 +2446,7 @@ def test_cls_self_doesnt_call_bind(servicer, credentials, set_env_client):
             "C.*",
             is_class=True,
             inputs=_get_inputs(args=((3,), {}), method_name="calls_f_remote"),
+            app_layout=app_layout,
         )
         assert _unwrap_scalar(ret) == 9  # implies successful container run (.remote will use dummy servicer function)
 
@@ -2343,3 +2456,48 @@ def test_cls_self_doesnt_call_bind(servicer, credentials, set_env_client):
         assert not ctx.get_requests("FunctionBindParams")
 
         # TODO: add test for using self.keep_warm()
+
+
+@skip_github_non_linux
+def test_container_app_zero_matching(servicer, event_loop):
+    ret = _run_container(servicer, "test.supports.function_without_app", "f")
+    assert _unwrap_scalar(ret) == 123
+
+
+@skip_github_non_linux
+def test_container_app_one_matching(servicer, event_loop):
+    _run_container(servicer, "test.supports.functions", "check_container_app")
+
+
+@skip_github_non_linux
+def test_no_event_loop(servicer, event_loop):
+    ret = _run_container(servicer, "test.supports.functions", "get_running_loop")
+    exc = _unwrap_exception(ret)
+    assert isinstance(exc, RuntimeError)
+    assert repr(exc) == "RuntimeError('no running event loop')"
+
+
+@skip_github_non_linux
+def test_is_main_thread_sync(servicer, event_loop):
+    ret = _run_container(servicer, "test.supports.functions", "is_main_thread_sync")
+    assert _unwrap_scalar(ret) is True
+
+
+@skip_github_non_linux
+def test_is_main_thread_async(servicer, event_loop):
+    ret = _run_container(servicer, "test.supports.functions", "is_main_thread_async")
+    assert _unwrap_scalar(ret) is True
+
+
+@skip_github_non_linux
+def test_import_thread_is_main_thread(servicer, event_loop):
+    ret = _run_container(servicer, "test.supports.functions", "import_thread_is_main_thread")
+    assert _unwrap_scalar(ret) is True
+
+
+@skip_github_non_linux
+def test_custom_exception(servicer, capsys):
+    ret = _run_container(servicer, "test.supports.functions", "raises_custom_exception")
+    exc = _unwrap_exception(ret)
+    assert isinstance(exc, Exception)
+    assert repr(exc) == "CustomException('Failure!')"

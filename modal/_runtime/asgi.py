@@ -22,10 +22,11 @@ FIRST_MESSAGE_TIMEOUT_SECONDS = 5.0
 
 
 class LifespanManager:
-    startup: asyncio.Future
-    shutdown: asyncio.Future
-    queue: asyncio.Queue
-    has_run_init: bool = False
+    _startup: asyncio.Future
+    _shutdown: asyncio.Future
+    _queue: asyncio.Queue
+    _has_run_init: bool = False
+    _lifespan_supported: bool = False
 
     def __init__(self, asgi_app, state):
         self.asgi_app = asgi_app
@@ -36,53 +37,63 @@ class LifespanManager:
         # no async code since it has to run inside
         # the event loop to tie the
         # objects to the correct loop in python 3.9
-        if not self.has_run_init:
-            self.queue = asyncio.Queue()
-            self.startup = asyncio.Future()
-            self.shutdown = asyncio.Future()
-            self.has_run_init = True
+        if not self._has_run_init:
+            self._queue = asyncio.Queue()
+            self._startup = asyncio.Future()
+            self._shutdown = asyncio.Future()
+            self._has_run_init = True
 
     async def background_task(self):
         await self.ensure_init()
 
         async def receive():
-            return await self.queue.get()
+            self._lifespan_supported = True
+            return await self._queue.get()
 
         async def send(message):
             if message["type"] == "lifespan.startup.complete":
-                self.startup.set_result(None)
+                self._startup.set_result(None)
             elif message["type"] == "lifespan.startup.failed":
-                self.startup.set_exception(ExecutionError("ASGI lifespan startup failed"))
+                self._startup.set_exception(ExecutionError("ASGI lifespan startup failed"))
             elif message["type"] == "lifespan.shutdown.complete":
-                self.shutdown.set_result(None)
+                self._shutdown.set_result(None)
             elif message["type"] == "lifespan.shutdown.failed":
-                self.shutdown.set_exception(ExecutionError("ASGI lifespan shutdown failed"))
+                self._shutdown.set_exception(ExecutionError("ASGI lifespan shutdown failed"))
             else:
                 raise ExecutionError(f"Unexpected message type: {message['type']}")
 
         try:
             await self.asgi_app({"type": "lifespan", "state": self.state}, receive, send)
         except Exception as e:
+            if not self._lifespan_supported:
+                logger.info(f"ASGI lifespan task exited before receiving any messages with exception:\n{e}")
+                if not self._startup.done():
+                    self._startup.set_result(None)
+                if not self._shutdown.done():
+                    self._shutdown.set_result(None)
+                return
+
             logger.error(f"Error in ASGI lifespan task: {e}")
-            if not self.startup.done():
-                self.startup.set_exception(ExecutionError("ASGI lifespan task exited startup"))
-            if not self.shutdown.done():
-                self.shutdown.set_exception(ExecutionError("ASGI lifespan task exited shutdown"))
+            if not self._startup.done():
+                self._startup.set_exception(ExecutionError("ASGI lifespan task exited startup"))
+            if not self._shutdown.done():
+                self._shutdown.set_exception(ExecutionError("ASGI lifespan task exited shutdown"))
         else:
-            if not self.startup.done():
-                self.startup.set_result("ASGI Lifespan protocol is probably not supported by this library")
-            if not self.shutdown.done():
-                self.shutdown.set_result("ASGI Lifespan protocol is probably not supported by this library")
+            logger.info("ASGI Lifespan protocol is probably not supported by this library")
+            if not self._startup.done():
+                self._startup.set_result(None)
+            if not self._shutdown.done():
+                self._shutdown.set_result(None)
 
     async def lifespan_startup(self):
         await self.ensure_init()
-        self.queue.put_nowait({"type": "lifespan.startup"})
-        await self.startup
+        self._queue.put_nowait({"type": "lifespan.startup"})
+        await self._startup
 
     async def lifespan_shutdown(self):
         await self.ensure_init()
-        self.queue.put_nowait({"type": "lifespan.shutdown"})
-        await self.shutdown
+        self._queue.put_nowait({"type": "lifespan.shutdown"})
+        await self._shutdown
 
 
 def asgi_app_wrapper(asgi_app, container_io_manager) -> tuple[Callable[..., AsyncGenerator], LifespanManager]:

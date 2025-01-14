@@ -30,14 +30,19 @@ from ._resolver import Resolver
 from ._serialization import serialize
 from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
+from ._utils.deprecation import deprecation_error, deprecation_warning
+from ._utils.docker_utils import (
+    extract_copy_command_patterns,
+    find_dockerignore_file,
+)
 from ._utils.function_utils import FunctionInfo
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
 from .environments import _get_environment_cached
-from .exception import InvalidError, NotFoundError, RemoteError, VersionError, deprecation_error, deprecation_warning
-from .file_pattern_matcher import FilePatternMatcher
+from .exception import InvalidError, NotFoundError, RemoteError, VersionError
+from .file_pattern_matcher import NON_PYTHON_FILES, FilePatternMatcher, _ignore_fn
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
@@ -65,6 +70,22 @@ SUPPORTED_PYTHON_SERIES: dict[ImageBuilderVersion, list[str]] = {
 
 LOCAL_REQUIREMENTS_DIR = Path(__file__).parent / "requirements"
 CONTAINER_REQUIREMENTS_PATH = "/modal_requirements.txt"
+
+
+class _AutoDockerIgnoreSentinel:
+    def __repr__(self) -> str:
+        return f"{__name__}.AUTO_DOCKERIGNORE"
+
+    def __call__(self, _: Path) -> bool:
+        raise NotImplementedError("This is only a placeholder. Do not call")
+
+
+AUTO_DOCKERIGNORE = _AutoDockerIgnoreSentinel()
+
+COPY_DEPRECATION_MESSAGE_PATTERN = """modal.Image.copy_* methods will soon be deprecated.
+
+Use {replacement} instead, which is functionally and performance-wise equivalent.
+"""
 
 
 def _validate_python_version(
@@ -235,6 +256,74 @@ def _get_image_builder_version(server_version: ImageBuilderVersion) -> ImageBuil
     return version
 
 
+def _create_context_mount(
+    docker_commands: Sequence[str],
+    ignore_fn: Callable[[Path], bool],
+    context_dir: Path,
+) -> Optional[_Mount]:
+    """
+    Creates a context mount from a list of docker commands.
+
+    1. Paths are evaluated relative to context_dir.
+    2. First selects inclusions based on COPY commands in the list of commands.
+    3. Then ignore any files as per the ignore predicate.
+    """
+    copy_patterns = extract_copy_command_patterns(docker_commands)
+    if not copy_patterns:
+        return None  # no mount needed
+    include_fn = FilePatternMatcher(*copy_patterns)
+
+    def ignore_with_include(source: Path) -> bool:
+        relative_source = source.relative_to(context_dir)
+        if not include_fn(relative_source) or ignore_fn(relative_source):
+            return True
+
+        return False
+
+    return _Mount._add_local_dir(Path("./"), PurePosixPath("/"), ignore=ignore_with_include)
+
+
+def _create_context_mount_function(
+    ignore: Union[Sequence[str], Callable[[Path], bool]],
+    dockerfile_cmds: list[str] = [],
+    dockerfile_path: Optional[Path] = None,
+    context_mount: Optional[_Mount] = None,
+):
+    if dockerfile_path and dockerfile_cmds:
+        raise InvalidError("Cannot provide both dockerfile and docker commands")
+
+    if context_mount:
+        if ignore is not AUTO_DOCKERIGNORE:
+            raise InvalidError("Cannot set both `context_mount` and `ignore`")
+
+        def identity_context_mount_fn() -> Optional[_Mount]:
+            return context_mount
+
+        return identity_context_mount_fn
+    elif ignore is AUTO_DOCKERIGNORE:
+
+        def auto_created_context_mount_fn() -> Optional[_Mount]:
+            context_dir = Path.cwd()
+            dockerignore_file = find_dockerignore_file(context_dir, dockerfile_path)
+            ignore_fn = (
+                FilePatternMatcher(*dockerignore_file.read_text("utf8").splitlines())
+                if dockerignore_file
+                else _ignore_fn(())
+            )
+
+            cmds = dockerfile_path.read_text("utf8").splitlines() if dockerfile_path else dockerfile_cmds
+            return _create_context_mount(cmds, ignore_fn=ignore_fn, context_dir=context_dir)
+
+        return auto_created_context_mount_fn
+
+    def auto_created_context_mount_fn() -> Optional[_Mount]:
+        # use COPY commands and ignore patterns to construct implicit context mount
+        cmds = dockerfile_path.read_text("utf8").splitlines() if dockerfile_path else dockerfile_cmds
+        return _create_context_mount(cmds, ignore_fn=_ignore_fn(ignore), context_dir=Path.cwd())
+
+    return auto_created_context_mount_fn
+
+
 class _ImageRegistryConfig:
     """mdmd:hidden"""
 
@@ -395,7 +484,7 @@ class _Image(_Object, type_prefix="im"):
         build_function: Optional["modal.functions._Function"] = None,
         build_function_input: Optional[api_pb2.FunctionInput] = None,
         image_registry_config: Optional[_ImageRegistryConfig] = None,
-        context_mount: Optional[_Mount] = None,
+        context_mount_function: Optional[Callable[[], Optional[_Mount]]] = None,
         force_build: bool = False,
         # For internal use only.
         _namespace: "api_pb2.DeploymentNamespace.ValueType" = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -422,13 +511,15 @@ class _Image(_Object, type_prefix="im"):
             deps = tuple(base_images.values()) + tuple(secrets)
             if build_function:
                 deps += (build_function,)
-            if context_mount:
-                deps += (context_mount,)
             if image_registry_config and image_registry_config.secret:
                 deps += (image_registry_config.secret,)
             return deps
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+            context_mount = context_mount_function() if context_mount_function else None
+            if context_mount:
+                await resolver.load(context_mount)
+
             if _do_assert_no_mount_layers:
                 for image in base_images.values():
                     # base images can't have
@@ -570,21 +661,6 @@ class _Image(_Object, type_prefix="im"):
         obj.force_build = force_build
         return obj
 
-    def extend(self, **kwargs) -> "_Image":
-        """mdmd:hidden"""
-        deprecation_error(
-            (2024, 3, 7),
-            "`Image.extend` is deprecated; please use a higher-level method, such as `Image.dockerfile_commands`.",
-        )
-
-        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            return DockerfileSpec(
-                commands=kwargs.pop("dockerfile_commands", []),
-                context_files=kwargs.pop("context_files", {}),
-            )
-
-        return _Image._from_args(base_images={"base": self}, dockerfile_function=build_dockerfile, **kwargs)
-
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         """Copy the entire contents of a `modal.Mount` into an image.
         Useful when files only available locally are required during the image
@@ -610,7 +686,7 @@ class _Image(_Object, type_prefix="im"):
         return _Image._from_args(
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
-            context_mount=mount,
+            context_mount_function=lambda: mount,
         )
 
     def add_local_file(self, local_path: Union[str, Path], remote_path: str, *, copy: bool = False) -> "_Image":
@@ -636,7 +712,7 @@ class _Image(_Object, type_prefix="im"):
         if remote_path.endswith("/"):
             remote_path = remote_path + Path(local_path).name
 
-        mount = _Mount.from_local_file(local_path, remote_path)
+        mount = _Mount._from_local_file(local_path, remote_path)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def add_local_dir(
@@ -679,17 +755,24 @@ class _Image(_Object, type_prefix="im"):
             ignore=lambda p: p.is_relative_to(".venv"),
         )
 
-        image = modal.Image.debian_slim().copy_local_dir(
+        image = modal.Image.debian_slim().add_local_dir(
             "~/assets",
             remote_path="/assets",
             ignore=FilePatternMatcher("**/*.txt"),
         )
 
         # When including files is simpler than excluding them, you can use the `~` operator to invert the matcher.
-        image = modal.Image.debian_slim().copy_local_dir(
+        image = modal.Image.debian_slim().add_local_dir(
             "~/assets",
             remote_path="/assets",
             ignore=~FilePatternMatcher("**/*.py"),
+        )
+
+        # You can also read ignore patterns from a file.
+        image = modal.Image.debian_slim().add_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=FilePatternMatcher.from_file("/path/to/ignorefile"),
         )
         ```
         """
@@ -698,7 +781,7 @@ class _Image(_Object, type_prefix="im"):
             #  + make default remote_path="./"
             raise InvalidError("image.add_local_dir() currently only supports absolute remote_path values")
 
-        mount = _Mount._add_local_dir(Path(local_path), Path(remote_path), ignore)
+        mount = _Mount._add_local_dir(Path(local_path), PurePosixPath(remote_path), ignore=_ignore_fn(ignore))
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
@@ -707,9 +790,10 @@ class _Image(_Object, type_prefix="im"):
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
         """
-        # TODO(elias): add pending deprecation with suggestion to use add_* instead
+        deprecation_warning(
+            (2024, 1, 13), COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"), pending=True
+        )
         basename = str(Path(local_path).name)
-        mount = _Mount.from_local_file(local_path, remote_path=f"/{basename}")
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base", f"COPY {basename} {remote_path}"], context_files={})
@@ -717,10 +801,12 @@ class _Image(_Object, type_prefix="im"):
         return _Image._from_args(
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
-            context_mount=mount,
+            context_mount_function=lambda: _Mount._from_local_file(local_path, remote_path=f"/{basename}"),
         )
 
-    def add_local_python_source(self, *modules: str, copy: bool = False) -> "_Image":
+    def add_local_python_source(
+        self, *modules: str, copy: bool = False, ignore: Union[Sequence[str], Callable[[Path], bool]] = NON_PYTHON_FILES
+    ) -> "_Image":
         """Adds locally available Python packages/modules to containers
 
         Adds all files from the specified Python package or module to containers running the Image.
@@ -738,9 +824,22 @@ class _Image(_Object, type_prefix="im"):
         **Note:** This excludes all dot-prefixed subdirectories or files and all `.pyc`/`__pycache__` files.
         To add full directories with finer control, use `.add_local_dir()` instead and specify `/root` as
         the destination directory.
-        """
 
-        mount = _Mount.from_local_python_packages(*modules, ignore=~FilePatternMatcher("**/*.py"))
+        By default only includes `.py`-files in the source modules. Set the `ignore` argument to a list of patterns
+        or a callable to override this behavior, e.g.:
+
+        ```py
+        # includes everything except data.json
+        modal.Image.debian_slim().add_local_python_source("mymodule", ignore=["data.json"])
+
+        # exclude large files
+        modal.Image.debian_slim().add_local_python_source(
+            "mymodule",
+            ignore=lambda p: p.stat().st_size > 1e9
+        )
+        ```
+        """
+        mount = _Mount._from_local_python_packages(*modules, ignore=ignore)
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_dir(
@@ -760,6 +859,7 @@ class _Image(_Object, type_prefix="im"):
         **Usage:**
 
         ```python
+        from pathlib import Path
         from modal import FilePatternMatcher
 
         image = modal.Image.debian_slim().copy_local_dir(
@@ -786,10 +886,18 @@ class _Image(_Object, type_prefix="im"):
             remote_path="/assets",
             ignore=~FilePatternMatcher("**/*.py"),
         )
+
+        # You can also read ignore patterns from a file.
+        image = modal.Image.debian_slim().copy_local_dir(
+            "~/assets",
+            remote_path="/assets",
+            ignore=FilePatternMatcher.from_file("/path/to/ignorefile"),
+        )
         ```
         """
-
-        mount = _Mount._add_local_dir(Path(local_path), Path("/"), ignore)
+        deprecation_warning(
+            (2024, 1, 13), COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"), pending=True
+        )
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base", f"COPY . {remote_path}"], context_files={})
@@ -797,8 +905,28 @@ class _Image(_Object, type_prefix="im"):
         return _Image._from_args(
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
-            context_mount=mount,
+            context_mount_function=lambda: _Mount._add_local_dir(
+                Path(local_path), PurePosixPath("/"), ignore=_ignore_fn(ignore)
+            ),
         )
+
+    @staticmethod
+    async def from_id(image_id: str, client: Optional[_Client] = None) -> "_Image":
+        """Construct an Image from an id and look up the Image result.
+
+        The ID of an Image object can be accessed using `.object_id`.
+        """
+        if client is None:
+            client = await _Client.from_env()
+
+        async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
+            resp = await retry_transient_errors(client.stub.ImageFromId, api_pb2.ImageFromIdRequest(image_id=image_id))
+            self._hydrate(resp.image_id, resolver.client, resp.metadata)
+
+        rep = "Image()"
+        obj = _Image._from_loader(_load, rep)
+
+        return obj
 
     def pip_install(
         self,
@@ -1155,8 +1283,56 @@ class _Image(_Object, type_prefix="im"):
         # modal.Mount with local files to supply as build context for COPY commands
         context_mount: Optional[_Mount] = None,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
+        ignore: Union[Sequence[str], Callable[[Path], bool]] = AUTO_DOCKERIGNORE,
     ) -> "_Image":
-        """Extend an image with arbitrary Dockerfile-like commands."""
+        """
+        Extend an image with arbitrary Dockerfile-like commands.
+
+        **Usage:**
+
+        ```python
+        from modal import FilePatternMatcher
+
+        # By default a .dockerignore file is used if present in the current working directory
+        image = modal.Image.debian_slim().dockerfile_commands(
+            ["COPY data /data"],
+        )
+
+        image = modal.Image.debian_slim().dockerfile_commands(
+            ["COPY data /data"],
+            ignore=["*.venv"],
+        )
+
+        image = modal.Image.debian_slim().dockerfile_commands(
+            ["COPY data /data"],
+            ignore=lambda p: p.is_relative_to(".venv"),
+        )
+
+        image = modal.Image.debian_slim().dockerfile_commands(
+            ["COPY data /data"],
+            ignore=FilePatternMatcher("**/*.txt"),
+        )
+
+        # When including files is simpler than excluding them, you can use the `~` operator to invert the matcher.
+        image = modal.Image.debian_slim().dockerfile_commands(
+            ["COPY data /data"],
+            ignore=~FilePatternMatcher("**/*.py"),
+        )
+
+        # You can also read ignore patterns from a file.
+        image = modal.Image.debian_slim().dockerfile_commands(
+            ["COPY data /data"],
+            ignore=FilePatternMatcher.from_file("/path/to/dockerignore"),
+        )
+        ```
+        """
+        if context_mount is not None:
+            deprecation_warning(
+                (2025, 1, 13),
+                "`context_mount` is deprecated."
+                + " Files are now automatically added to the build context based on the commands.",
+                pending=True,
+            )
         cmds = _flatten_str_args("dockerfile_commands", "dockerfile_commands", dockerfile_commands)
         if not cmds:
             return self
@@ -1169,7 +1345,9 @@ class _Image(_Object, type_prefix="im"):
             dockerfile_function=build_dockerfile,
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu),
-            context_mount=context_mount,
+            context_mount_function=_create_context_mount_function(
+                ignore=ignore, dockerfile_cmds=cmds, context_mount=context_mount
+            ),
             force_build=self.force_build or force_build,
         )
 
@@ -1341,9 +1519,15 @@ class _Image(_Object, type_prefix="im"):
             _validate_python_version(add_python, builder_version, allow_micro_granularity=False)
             add_python_commands = [
                 "COPY /python/. /usr/local",
-                "RUN ln -s /usr/local/bin/python3 /usr/local/bin/python",
                 "ENV TERMINFO_DIRS=/etc/terminfo:/lib/terminfo:/usr/share/terminfo:/usr/lib/terminfo",
             ]
+            python_minor = add_python.split(".")[1]
+            if int(python_minor) < 13:
+                # Previous versions did not include the `python` binary, but later ones do.
+                # (The important factor is not the Python version itself, but the standalone dist version.)
+                # We insert the command in the list at the position it was previously always added
+                # for backwards compatibility with existing images.
+                add_python_commands.insert(1, "RUN ln -s /usr/local/bin/python3 /usr/local/bin/python")
 
         # Note: this change is because we install dependencies with uv in 2024.10+
         requirements_prefix = "python -m " if builder_version < "2024.10" else ""
@@ -1399,11 +1583,15 @@ class _Image(_Object, type_prefix="im"):
         modal.Image.from_registry("nvcr.io/nvidia/pytorch:22.12-py3")
         ```
         """
-        context_mount = None
-        if add_python:
-            context_mount = _Mount.from_name(
-                python_standalone_mount_name(add_python),
-                namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
+
+        def context_mount_function() -> Optional[_Mount]:
+            return (
+                _Mount.from_name(
+                    python_standalone_mount_name(add_python),
+                    namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
+                )
+                if add_python
+                else None
             )
 
         if "image_registry_config" not in kwargs and secret is not None:
@@ -1416,7 +1604,7 @@ class _Image(_Object, type_prefix="im"):
 
         return _Image._from_args(
             dockerfile_function=build_dockerfile,
-            context_mount=context_mount,
+            context_mount_function=context_mount_function,
             force_build=force_build,
             **kwargs,
         )
@@ -1530,33 +1718,64 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
         add_python: Optional[str] = None,
+        ignore: Union[Sequence[str], Callable[[Path], bool]] = AUTO_DOCKERIGNORE,
     ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
 
         If your Dockerfile does not have Python installed, you can use the `add_python` parameter
         to specify a version of Python to add to the image.
 
-        **Example**
+        **Usage:**
 
         ```python
-        image = modal.Image.from_dockerfile("./Dockerfile", add_python="3.12")
-        ```
+        from modal import FilePatternMatcher
 
-        If your Dockerfile uses `COPY` instructions which copy data from the local context of the
-        build into the image, this local data must be uploaded to Modal via a context mount:
-
-        ```python
+        # By default a .dockerignore file is used if present in the current working directory
         image = modal.Image.from_dockerfile(
             "./Dockerfile",
-            context_mount=modal.Mount.from_local_dir(
-                local_path="src",
-                remote_path=".",  # to current WORKDIR
-            ),
+            add_python="3.12",
+        )
+
+        image = modal.Image.from_dockerfile(
+            "./Dockerfile",
+            add_python="3.12",
+            ignore=["*.venv"],
+        )
+
+        image = modal.Image.from_dockerfile(
+            "./Dockerfile",
+            add_python="3.12",
+            ignore=lambda p: p.is_relative_to(".venv"),
+        )
+
+        image = modal.Image.from_dockerfile(
+            "./Dockerfile",
+            add_python="3.12",
+            ignore=FilePatternMatcher("**/*.txt"),
+        )
+
+        # When including files is simpler than excluding them, you can use the `~` operator to invert the matcher.
+        image = modal.Image.from_dockerfile(
+            "./Dockerfile",
+            add_python="3.12",
+            ignore=~FilePatternMatcher("**/*.py"),
+        )
+
+        # You can also read ignore patterns from a file.
+        image = modal.Image.from_dockerfile(
+            "./Dockerfile",
+            add_python="3.12",
+            ignore=FilePatternMatcher.from_file("/path/to/dockerignore"),
         )
         ```
-
-        The context mount will allow a `COPY src/ src/` instruction to succeed in Modal's remote builder.
         """
+        if context_mount is not None:
+            deprecation_warning(
+                (2025, 1, 13),
+                "`context_mount` is deprecated."
+                + " Files are now automatically added to the build context based on the commands in the Dockerfile.",
+                pending=True,
+            )
 
         # --- Build the base dockerfile
 
@@ -1568,7 +1787,9 @@ class _Image(_Object, type_prefix="im"):
         gpu_config = parse_gpu_config(gpu)
         base_image = _Image._from_args(
             dockerfile_function=build_dockerfile_base,
-            context_mount=context_mount,
+            context_mount_function=_create_context_mount_function(
+                ignore=ignore, dockerfile_path=Path(path), context_mount=context_mount
+            ),
             gpu_config=gpu_config,
             secrets=secrets,
         )
@@ -1577,13 +1798,15 @@ class _Image(_Object, type_prefix="im"):
         # This happening in two steps is probably a vestigial consequence of previous limitations,
         # but it will be difficult to merge them without forcing rebuilds of images.
 
-        if add_python:
-            context_mount = _Mount.from_name(
-                python_standalone_mount_name(add_python),
-                namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
+        def add_python_mount():
+            return (
+                _Mount.from_name(
+                    python_standalone_mount_name(add_python),
+                    namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
+                )
+                if add_python
+                else None
             )
-        else:
-            context_mount = None
 
         def build_dockerfile_python(version: ImageBuilderVersion) -> DockerfileSpec:
             commands = _Image._registry_setup_commands("base", version, [], add_python)
@@ -1594,7 +1817,7 @@ class _Image(_Object, type_prefix="im"):
         return _Image._from_args(
             base_images={"base": base_image},
             dockerfile_function=build_dockerfile_python,
-            context_mount=context_mount,
+            context_mount_function=add_python_mount,
             force_build=force_build,
         )
 

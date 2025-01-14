@@ -16,12 +16,14 @@ from typing import Callable, Optional, Sequence, Union
 from google.protobuf.message import Message
 
 import modal.exception
+import modal.file_pattern_matcher
 from modal_proto import api_pb2
 from modal_version import __version__
 
 from ._resolver import Resolver
 from ._utils.async_utils import aclosing, async_map, synchronize_api
 from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
+from ._utils.deprecation import deprecation_warning, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from ._utils.package_utils import get_module_mount_info
@@ -45,6 +47,11 @@ PYTHON_STANDALONE_VERSIONS: dict[str, tuple[str, str]] = {
     "3.12": ("20240107", "3.12.1"),
     "3.13": ("20241008", "3.13.0"),
 }
+
+MOUNT_DEPRECATION_MESSAGE_PATTERN = """modal.Mount usage will soon be deprecated.
+
+Use {replacement} instead, which is functionally and performance-wise equivalent.
+"""
 
 
 def client_mount_name() -> str:
@@ -104,7 +111,7 @@ class _MountFile(_MountEntry):
         return str(self.local_file)
 
     def get_files_to_upload(self):
-        local_file = self.local_file.expanduser().absolute()
+        local_file = self.local_file.resolve()
         if not local_file.exists():
             raise FileNotFoundError(local_file)
 
@@ -130,6 +137,8 @@ class _MountDir(_MountEntry):
         return str(self.local_dir.expanduser().absolute())
 
     def get_files_to_upload(self):
+        # we can't use .resolve() eagerly here since that could end up "renaming" symlinked files
+        # see test_mount_directory_with_symlinked_file
         local_dir = self.local_dir.expanduser().absolute()
 
         if not local_dir.exists():
@@ -144,10 +153,11 @@ class _MountDir(_MountEntry):
             gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
 
         for local_filename in gen:
-            if not self.ignore(Path(local_filename)):
-                local_relpath = Path(local_filename).expanduser().absolute().relative_to(local_dir)
+            local_path = Path(local_filename)
+            if not self.ignore(local_path):
+                local_relpath = local_path.expanduser().absolute().relative_to(local_dir)
                 mount_path = self.remote_path / local_relpath.as_posix()
-                yield local_filename, mount_path
+                yield local_path.resolve(), mount_path
 
     def watch_entry(self):
         return self.local_dir.resolve().expanduser(), None
@@ -321,12 +331,9 @@ class _Mount(_Object, type_prefix="mo"):
     @staticmethod
     def _add_local_dir(
         local_path: Path,
-        remote_path: Path,
-        ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
+        remote_path: PurePosixPath,
+        ignore: Callable[[Path], bool] = modal.file_pattern_matcher._NOTHING,
     ):
-        if isinstance(ignore, list):
-            ignore = FilePatternMatcher(*ignore)
-
         return _Mount._new()._extend(
             _MountDir(
                 local_dir=local_path,
@@ -399,6 +406,23 @@ class _Mount(_Object, type_prefix="mo"):
         )
         ```
         """
+        deprecation_warning(
+            (2024, 1, 8), MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"), pending=True
+        )
+        return _Mount._from_local_dir(local_path, remote_path=remote_path, condition=condition, recursive=recursive)
+
+    @staticmethod
+    def _from_local_dir(
+        local_path: Union[str, Path],
+        *,
+        # Where the directory is placed within in the mount
+        remote_path: Union[str, PurePosixPath, None] = None,
+        # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
+        # Defaults to including all files.
+        condition: Optional[Callable[[str], bool]] = None,
+        # add files from subdirectories as well
+        recursive: bool = True,
+    ) -> "_Mount":
         return _Mount._new().add_local_dir(
             local_path, remote_path=remote_path, condition=condition, recursive=recursive
         )
@@ -437,6 +461,13 @@ class _Mount(_Object, type_prefix="mo"):
         )
         ```
         """
+        deprecation_warning(
+            (2024, 1, 8), MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"), pending=True
+        )
+        return _Mount._from_local_file(local_path, remote_path)
+
+    @staticmethod
+    def _from_local_file(local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None) -> "_Mount":
         return _Mount._new().add_local_file(local_path, remote_path=remote_path)
 
     @staticmethod
@@ -599,7 +630,24 @@ class _Mount(_Object, type_prefix="mo"):
             my_local_module.do_stuff()
         ```
         """
+        deprecation_warning(
+            (2024, 1, 8),
+            MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_python_source"),
+            pending=True,
+        )
+        return _Mount._from_local_python_packages(
+            *module_names, remote_dir=remote_dir, condition=condition, ignore=ignore
+        )
 
+    @staticmethod
+    def _from_local_python_packages(
+        *module_names: str,
+        remote_dir: Union[str, PurePosixPath] = ROOT_DIR.as_posix(),
+        # Predicate filter function for file selection, which should accept a filepath and return `True` for inclusion.
+        # Defaults to including all files.
+        condition: Optional[Callable[[str], bool]] = None,
+        ignore: Optional[Union[Sequence[str], Callable[[Path], bool]]] = None,
+    ) -> "_Mount":
         # Don't re-run inside container.
 
         if condition is not None:
@@ -623,8 +671,9 @@ class _Mount(_Object, type_prefix="mo"):
         return mount
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
-        label: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
     ) -> "_Mount":
@@ -632,7 +681,7 @@ class _Mount(_Object, type_prefix="mo"):
 
         async def _load(provider: _Mount, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.MountGetOrCreateRequest(
-                deployment_name=label,
+                deployment_name=name,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
             )
@@ -642,15 +691,16 @@ class _Mount(_Object, type_prefix="mo"):
         return _Mount._from_loader(_load, "Mount()")
 
     @classmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
         cls: type["_Mount"],
-        label: str,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> "_Mount":
         """mdmd:hidden"""
-        obj = _Mount.from_name(label, namespace=namespace, environment_name=environment_name)
+        obj = _Mount.from_name(name, namespace=namespace, environment_name=environment_name)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
@@ -782,7 +832,7 @@ def get_auto_mounts() -> list[_Mount]:
 
         try:
             # at this point we don't know if the sys.modules module should be mounted or not
-            potential_mount = _Mount.from_local_python_packages(module_name)
+            potential_mount = _Mount._from_local_python_packages(module_name)
             mount_paths = potential_mount._top_level_paths()
         except ModuleNotMountable:
             # this typically happens if the module is a built-in, has binary components or doesn't exist

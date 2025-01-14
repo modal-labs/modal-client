@@ -18,7 +18,7 @@ launch_cli = Typer(
     name="launch",
     no_args_is_help=True,
     help="""
-    [Preview] Open a serverless app instance on Modal.
+    Open a serverless app instance on Modal.
 
     This command is in preview and may change in the future.
     """,
@@ -55,7 +55,7 @@ def jupyter(
     timeout: int = 3600,
     image: str = "ubuntu:22.04",
     add_python: Optional[str] = "3.11",
-    mount: Optional[str] = None,  # Create a `modal.Mount` from a local directory.
+    mount: Optional[str] = None,  # Adds a local directory to the jupyter container
     volume: Optional[str] = None,  # Attach a persisted `modal.Volume` by name (creating if missing).
     detach: bool = False,  # Run the app in "detached" mode to persist after local client disconnects
 ):
@@ -77,6 +77,7 @@ def vscode(
     cpu: int = 8,
     memory: int = 32768,
     gpu: Optional[str] = None,
+    image: str = "debian:12",
     timeout: int = 3600,
     mount: Optional[str] = None,  # Create a `modal.Mount` from a local directory.
     volume: Optional[str] = None,  # Attach a persisted `modal.Volume` by name (creating if missing).
@@ -86,6 +87,7 @@ def vscode(
         "cpu": cpu,
         "memory": memory,
         "gpu": gpu,
+        "image": image,
         "timeout": timeout,
         "mount": mount,
         "volume": volume,

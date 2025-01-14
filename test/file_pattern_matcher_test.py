@@ -175,19 +175,19 @@ def test_clean_patterns_strip_empty_patterns():
 def test_clean_patterns_exception_flag():
     patterns = ["docs", "!docs/README.md"]
     pm = FilePatternMatcher(*patterns)
-    assert pm.exclusions
+    assert any(p.exclusion for p in pm.patterns)
 
 
 def test_clean_patterns_leading_space_trimmed():
     patterns = ["docs", "  !docs/README.md"]
     pm = FilePatternMatcher(*patterns)
-    assert pm.exclusions
+    assert any(p.exclusion for p in pm.patterns)
 
 
 def test_clean_patterns_trailing_space_trimmed():
     patterns = ["docs", "!docs/README.md  "]
     pm = FilePatternMatcher(*patterns)
-    assert pm.exclusions
+    assert any(p.exclusion for p in pm.patterns)
 
 
 def test_clean_patterns_error_single_exception():
@@ -334,3 +334,16 @@ def test_invert_patterns(tmp_path_with_content):
     lff = FilePatternMatcher("!**/*.txt")
     for file_path in file_paths:
         assert not lff(file_path)
+
+
+@pytest.mark.usefixtures("tmp_cwd")
+@pytest.mark.parametrize("as_type", [Path, str])
+def test_from_file(as_type):
+    rel_top_dir = Path("top")
+    rel_top_dir.mkdir()
+    ignore_file = rel_top_dir / "pattern_file"
+    ignore_file.write_text("**/*.txt")
+
+    lff = FilePatternMatcher.from_file(as_type(ignore_file))
+    assert lff(Path("top/data.txt"))
+    assert not lff(Path("top/data.py"))
