@@ -741,7 +741,6 @@ class _Image(_Object, type_prefix="im"):
         **Usage:**
 
         ```python
-        from pathlib import Path
         from modal import FilePatternMatcher
 
         image = modal.Image.debian_slim().add_local_dir(
@@ -773,7 +772,7 @@ class _Image(_Object, type_prefix="im"):
         image = modal.Image.debian_slim().add_local_dir(
             "~/assets",
             remote_path="/assets",
-            ignore=FilePatternMatcher.from_file(Path("/path/to/ignorefile")),
+            ignore=FilePatternMatcher.from_file("/path/to/ignorefile"),
         )
         ```
         """
@@ -892,7 +891,7 @@ class _Image(_Object, type_prefix="im"):
         image = modal.Image.debian_slim().copy_local_dir(
             "~/assets",
             remote_path="/assets",
-            ignore=FilePatternMatcher.from_file(Path("/path/to/ignorefile")),
+            ignore=FilePatternMatcher.from_file("/path/to/ignorefile"),
         )
         ```
         """
@@ -1292,7 +1291,6 @@ class _Image(_Object, type_prefix="im"):
         **Usage:**
 
         ```python
-        from pathlib import Path
         from modal import FilePatternMatcher
 
         # By default a .dockerignore file is used if present in the current working directory
@@ -1324,7 +1322,7 @@ class _Image(_Object, type_prefix="im"):
         # You can also read ignore patterns from a file.
         image = modal.Image.debian_slim().dockerfile_commands(
             ["COPY data /data"],
-            ignore=FilePatternMatcher.from_file(Path("/path/to/dockerignore")),
+            ignore=FilePatternMatcher.from_file("/path/to/dockerignore"),
         )
         ```
         """
@@ -1730,7 +1728,6 @@ class _Image(_Object, type_prefix="im"):
         **Usage:**
 
         ```python
-        from pathlib import Path
         from modal import FilePatternMatcher
 
         # By default a .dockerignore file is used if present in the current working directory
@@ -1768,7 +1765,7 @@ class _Image(_Object, type_prefix="im"):
         image = modal.Image.from_dockerfile(
             "./Dockerfile",
             add_python="3.12",
-            ignore=FilePatternMatcher.from_file(Path("/path/to/dockerignore")),
+            ignore=FilePatternMatcher.from_file("/path/to/dockerignore"),
         )
         ```
         """
