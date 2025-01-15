@@ -17,7 +17,7 @@ from modal import App, Image, Mount, Secret, build, environments, gpu, method
 from modal._serialization import serialize
 from modal._utils.async_utils import synchronizer
 from modal.client import Client
-from modal.exception import DeprecationError, InvalidError, VersionError
+from modal.exception import DeprecationError, InvalidError, ModuleNotMountable, VersionError
 from modal.file_pattern_matcher import FilePatternMatcher
 from modal.image import (
     SUPPORTED_PYTHON_SERIES,
@@ -1600,6 +1600,15 @@ def test_add_locals_are_attached_to_classes(servicer, client, supports_on_path, 
     added_mounts = set(obj_fun_def.mount_ids) - control_func_mounts
     assert len(added_mounts) == 1
     assert added_mounts == {img._mount_layers[0].object_id}
+
+
+def test_from_local_python_packages_missing_module(servicer, client, test_dir, server_url_env):
+    app = App()
+    app.function(image=Image.debian_slim().add_local_python_source("nonexistent_package"))(dummy)
+
+    with pytest.raises(ModuleNotMountable):
+        with app.run(client=client):
+            pass
 
 
 @skip_windows("servicer sandbox implementation not working on windows")

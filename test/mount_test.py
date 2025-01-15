@@ -7,7 +7,6 @@ from pathlib import Path, PurePosixPath
 
 from modal import App, FilePatternMatcher
 from modal._utils.blob_utils import LARGE_FILE_LIMIT
-from modal.exception import ModuleNotMountable
 from modal.mount import Mount, module_mount_condition, module_mount_ignore_condition
 
 
@@ -21,7 +20,7 @@ async def test_get_files(servicer, client, tmpdir):
     tmpdir.join("fluff").write("hello")
 
     files = {}
-    m = Mount.from_local_dir(Path(tmpdir), remote_path="/", condition=lambda fn: fn.endswith(".py"), recursive=True)
+    m = Mount._from_local_dir(Path(tmpdir), remote_path="/", condition=lambda fn: fn.endswith(".py"), recursive=True)
     async for upload_spec in Mount._get_files.aio(m.entries):
         files[upload_spec.mount_filename] = upload_spec
 
@@ -59,7 +58,7 @@ def test_create_mount(servicer, client):
     def condition(fn):
         return fn.endswith(".py")
 
-    m = Mount.from_local_dir(local_dir, remote_path="/foo", condition=condition)
+    m = Mount._from_local_dir(local_dir, remote_path="/foo", condition=condition)
 
     m._deploy("my-mount", client=client)
 
@@ -72,13 +71,13 @@ def test_create_mount(servicer, client):
 
 
 def test_create_mount_file_errors(servicer, tmpdir, client):
-    m = Mount.from_local_dir(Path(tmpdir) / "xyz", remote_path="/xyz")
+    m = Mount._from_local_dir(Path(tmpdir) / "xyz", remote_path="/xyz")
     with pytest.raises(FileNotFoundError):
         m._deploy("my-mount", client=client)
 
     with open(tmpdir / "abc", "w"):
         pass
-    m = Mount.from_local_dir(Path(tmpdir) / "abc", remote_path="/abc")
+    m = Mount._from_local_dir(Path(tmpdir) / "abc", remote_path="/abc")
     with pytest.raises(NotADirectoryError):
         m._deploy("my-mount", client=client)
 
@@ -92,7 +91,7 @@ def test_from_local_python_packages(servicer, client, test_dir, monkeypatch):
 
     monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
 
-    app.function(mounts=[Mount.from_local_python_packages("pkg_a", "pkg_b", "standalone_file")])(dummy)
+    app.function(mounts=[Mount._from_local_python_packages("pkg_a", "pkg_b", "standalone_file")])(dummy)
 
     with app.run(client=client):
         files = set(servicer.files_name2sha.keys())
@@ -109,44 +108,15 @@ def test_from_local_python_packages(servicer, client, test_dir, monkeypatch):
         assert "/root/pkg_c/j/k.py" not in files
 
 
-def test_app_mounts(servicer, client, test_dir, monkeypatch):
-    monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
-
-    app = App(mounts=[Mount.from_local_python_packages("pkg_b")])
-
-    app.function(mounts=[Mount.from_local_python_packages("pkg_a")])(dummy)
-
-    with app.run(client=client):
-        files = set(servicer.files_name2sha.keys())
-        expected_files = {
-            "/root/pkg_a/a.py",
-            "/root/pkg_a/b/c.py",
-            "/root/pkg_b/f.py",
-            "/root/pkg_b/g/h.py",
-        }
-        assert expected_files.issubset(files)
-
-        assert "/root/pkg_c/i.py" not in files
-        assert "/root/pkg_c/j/k.py" not in files
-
-
-def test_from_local_python_packages_missing_module(servicer, client, test_dir, server_url_env):
-    app = App()
-    app.function(mounts=[Mount.from_local_python_packages("nonexistent_package")])(dummy)
-
-    with pytest.raises(ModuleNotMountable):
-        with app.run(client=client):
-            pass
-
-
 def test_chained_entries(test_dir):
+    # TODO: remove when public Mount is deprecated
     a_txt = str(test_dir / "a.txt")
     b_txt = str(test_dir / "b.txt")
     with open(a_txt, "w") as f:
         f.write("A")
     with open(b_txt, "w") as f:
         f.write("B")
-    mount = Mount.from_local_file(a_txt).add_local_file(b_txt)
+    mount = Mount._from_local_file(a_txt).add_local_file(b_txt)
     entries = mount.entries
     assert len(entries) == 2
     files = [file for file in Mount._get_files(entries)]
