@@ -2175,6 +2175,9 @@ message Sandbox {
 
   // Enable memory snapshots.
   bool enable_memory_snapshot = 24;
+
+  // Used to pin gVisor version for memory-snapshottable sandboxes.
+  optional uint32 worker_fingerprint_version = 25;
 }
 
 message SandboxCreateRequest {
