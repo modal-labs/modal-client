@@ -71,11 +71,14 @@ def import_file_or_module(file_or_module: str):
         sys.path.insert(0, str(full_path.parent))
 
         module_name = inspect.getmodulename(file_or_module)
+        assert module_name is not None
         # Import the module - see https://docs.python.org/3/library/importlib.html#importing-a-source-file-directly
         spec = importlib.util.spec_from_file_location(module_name, file_or_module)
+        assert spec is not None
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
         try:
+            assert spec.loader
             spec.loader.exec_module(module)
         except Exception as exc:
             raise _CliUserExecutionError(str(full_path)) from exc
@@ -94,7 +97,7 @@ class MethodReference:
     method_name: str
 
 
-def get_by_object_path(obj: Any, obj_path: str) -> Union[Function, LocalEntrypoint, MethodReference, None]:
+def get_by_object_path(obj: Any, obj_path: str) -> Union[Function, LocalEntrypoint, MethodReference, App, None]:
     # Try to evaluate a `.`-delimited object path in a Modal context
     # With the caveat that some object names can actually have `.` in their name (lifecycled methods' tags)
 
@@ -106,7 +109,7 @@ def get_by_object_path(obj: Any, obj_path: str) -> Union[Function, LocalEntrypoi
         attr = prefix + segment
         if isinstance(obj, App):
             if attr in obj.registered_entrypoints:
-                # local entrypoints are not on stub blueprint
+                # local entrypoints can't be accessed via getattr
                 obj = obj.registered_entrypoints[attr]
                 continue
         if isinstance(obj, Cls):
@@ -116,6 +119,7 @@ def get_by_object_path(obj: Any, obj_path: str) -> Union[Function, LocalEntrypoi
                 raise ValueError(f"{obj._get_name()} is a class, but {remaining_path} is not a method reference")
             # TODO: add method inference here?
             return MethodReference(obj, remaining_path)
+
         try:
             obj = getattr(obj, attr)
         except Exception:
@@ -132,58 +136,62 @@ def get_by_object_path(obj: Any, obj_path: str) -> Union[Function, LocalEntrypoi
 def _infer_function_or_help(
     app: App, module, accept_local_entrypoint: bool, accept_webhook: bool
 ) -> Union[Function, LocalEntrypoint, MethodReference]:
-    # TODO: refactor registered_functions to only contain function services, not class services
-    function_choices = set(f for f in app.registered_functions if not f.endswith(".*"))  # no class services here
-    for cls_name, cls in app.registered_classes:
-        pass
+    """Using only an app - automatically infer a single "runnable" for a `modal run` invocation
 
-    if not accept_webhook:
-        function_choices -= set(app.registered_web_endpoints)
-    if accept_local_entrypoint:
-        function_choices |= set(app.registered_entrypoints.keys())
-
-    sorted_function_choices = sorted(function_choices)
-
+    If a single runnable can't be determined, show CLI help indicating valid choices.
+    """
     filtered_local_entrypoints = [
-        name
-        for name, entrypoint in app.registered_entrypoints.items()
+        entrypoint
+        for entrypoint in app.registered_entrypoints.values()
         if entrypoint.info.module_name == module.__name__
     ]
 
-    if accept_local_entrypoint and len(filtered_local_entrypoints) == 1:
-        # If there is just a single local entrypoint in the target module, use
-        # that regardless of other functions.
-        function_name = list(filtered_local_entrypoints)[0]
-    elif accept_local_entrypoint and len(app.registered_entrypoints) == 1:
-        # Otherwise, if there is just a single local entrypoint in the stub as a whole,
-        # use that one.
-        function_name = list(app.registered_entrypoints.keys())[0]
-    elif len(function_choices) == 1:
-        function_name = sorted_function_choices[0]
-    elif len(function_choices) == 0:
+    if accept_local_entrypoint:
+        if len(filtered_local_entrypoints) == 1:
+            # If there is just a single local entrypoint in the target module, use
+            # that regardless of other functions.
+            return filtered_local_entrypoints[0]
+        elif len(app.registered_entrypoints) == 1:
+            # Otherwise, if there is just a single local entrypoint in the app as a whole,
+            # use that one.
+            return list(app.registered_entrypoints.values())[0]
+
+    # TODO: refactor registered_functions to only contain function services, not class services
+    function_choices: dict[str, Union[Function, LocalEntrypoint, MethodReference]] = {
+        name: f for name, f in app.registered_functions.items() if not name.endswith(".*")
+    }
+    for cls_name, cls in app.registered_classes.items():
+        for method_name in cls._get_method_names():
+            function_choices[f"{cls_name}.{method_name}"] = MethodReference(cls, method_name)
+
+    if not accept_webhook:
+        # TODO: *class method* web endpoints aren't properly registered/removed here
+        for web_endpoint_name in app.registered_web_endpoints:
+            function_choices.pop(web_endpoint_name, None)
+
+    if accept_local_entrypoint:
+        function_choices.update(app.registered_entrypoints)
+
+    if len(function_choices) == 1:
+        return list(function_choices.values())[0]
+
+    if len(function_choices) == 0:
         if app.registered_web_endpoints:
             err_msg = "Modal app has only web endpoints. Use `modal serve` instead of `modal run`."
         else:
             err_msg = "Modal app has no registered functions. Nothing to run."
         raise click.UsageError(err_msg)
-    else:
-        registered_functions_str = "\n".join(sorted_function_choices)
-        help_text = f"""You need to specify a Modal function or local entrypoint to run, e.g.
+
+    # there are multiple choices - we can't determine which one to use:
+    registered_functions_str = "\n".join(sorted(function_choices))
+    help_text = f"""You need to specify a Modal function or local entrypoint to run, e.g.
 
 modal run app.py::my_function [...args]
 
 Registered functions and local entrypoints on the selected app are:
 {registered_functions_str}
 """
-        raise click.UsageError(help_text)
-
-    if function_name in app.registered_entrypoints:
-        # entrypoint is in entrypoint registry, for now
-        return app.registered_entrypoints[function_name]
-
-    function = app.registered_functions[function_name]
-    assert isinstance(function, Function)
-    return function
+    raise click.UsageError(help_text)
 
 
 def _show_no_auto_detectable_app(app_ref: ImportRef) -> None:

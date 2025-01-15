@@ -409,6 +409,10 @@ class _Cls(_Object, type_prefix="cs"):
     def _get_class_service_function(self) -> "modal.functions._Function":
         return self._class_service_function
 
+    def _get_method_names(self) -> Collection[str]:
+        # returns method names for a *local* class only for now (used by cli)
+        return self._method_functions.keys()
+
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
         if (

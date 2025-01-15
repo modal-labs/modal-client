@@ -269,7 +269,9 @@ class RunGroup(click.Group):
         elif isinstance(imported_object, MethodReference):
             app = imported_object.cls._get_app()
         else:
-            raise ValueError(f"{imported_object} is neither function, local entrypoint or class")
+            raise click.UsageError(
+                f"{imported_object} is neither function, local entrypoint or class ({type(imported_object)})"
+            )
 
         if app.description is None:
             app.set_description(_get_clean_app_description(func_ref))
@@ -490,12 +492,12 @@ def shell(
         function_or_method_ref = import_object(
             container_or_function, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell"
         )
-
+        function_spec: _FunctionSpec
         if isinstance(function_or_method_ref, MethodReference):
             class_service_function = function_or_method_ref.cls._get_class_service_function()
             function_spec = class_service_function.spec
         elif isinstance(function_or_method_ref, Function):
-            function_spec: _FunctionSpec = function_or_method_ref.spec
+            function_spec = function_or_method_ref.spec
         else:
             raise ValueError("Referenced entity is neither a function nor a class/method.")
 
