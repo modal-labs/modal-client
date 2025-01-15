@@ -260,18 +260,7 @@ class RunGroup(click.Group):
         ctx.ensure_object(dict)
         ctx.obj["env"] = ensure_env(ctx.params["env"])
 
-        imported_object = import_object(func_ref, accept_local_entrypoint=True, base_cmd="modal run")
-
-        # this is a bit janky, to set the description of ephemeral apps without names:
-        app: App
-        if isinstance(imported_object, (Function, LocalEntrypoint)):
-            app = imported_object.app
-        elif isinstance(imported_object, MethodReference):
-            app = imported_object.cls._get_app()
-        else:
-            raise click.UsageError(
-                f"{imported_object} is neither function, local entrypoint or class ({type(imported_object)})"
-            )
+        app, imported_object = import_object(func_ref, accept_local_entrypoint=True, base_cmd="modal run")
 
         if app.description is None:
             app.set_description(_get_clean_app_description(func_ref))
@@ -489,7 +478,7 @@ def shell(
             exec(container_id=container_or_function, command=shlex.split(cmd), pty=pty)
             return
 
-        function_or_method_ref = import_object(
+        original_app, function_or_method_ref = import_object(
             container_or_function, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell"
         )
         function_spec: _FunctionSpec

@@ -8,7 +8,7 @@ from typing import Any, Optional
 
 from typer import Typer
 
-from ..app import App, LocalEntrypoint
+from ..app import LocalEntrypoint
 from ..exception import _CliUserExecutionError
 from ..output import enable_output
 from ..runner import run_app
@@ -29,11 +29,10 @@ def _launch_program(name: str, filename: str, detach: bool, args: dict[str, Any]
     os.environ["MODAL_LAUNCH_ARGS"] = json.dumps(args)
 
     program_path = str(Path(__file__).parent / "programs" / filename)
-    entrypoint = import_object(program_path, "modal launch")
+    app, entrypoint = import_object(program_path, "modal launch")
     if not isinstance(entrypoint, LocalEntrypoint):
         raise ValueError(f"{program_path} has no single local_entrypoint")
 
-    app: App = entrypoint.app
     app.set_description(f"modal launch {name}")
 
     # `launch/` scripts must have a `local_entrypoint()` with no args, for simplicity here.

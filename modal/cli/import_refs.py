@@ -93,6 +93,8 @@ def import_file_or_module(file_or_module: str):
 
 @dataclass
 class MethodReference:
+    """This helps with deferring method reference until after the class gets instantiated by the CLI"""
+
     cls: Cls
     method_name: str
 
@@ -260,7 +262,7 @@ You would run foo as [bold green]{base_cmd} app.py::foo[/bold green]"""
 
 def import_object(
     func_ref: str, base_cmd: str, accept_local_entrypoint=True, accept_webhook=False
-) -> Union[Function, LocalEntrypoint, MethodReference]:
+) -> tuple[App, Union[Function, LocalEntrypoint, MethodReference]]:
     """Takes a function ref string and returns something "runnable"
 
     The function ref can leave out partial information (apart from the file name) as
@@ -286,14 +288,19 @@ def import_object(
         # infer function or display help for how to select one
         app = app_function_or_method_ref
         function_handle = _infer_function_or_help(app, module, accept_local_entrypoint, accept_webhook)
-        return function_handle
-    elif isinstance(app_function_or_method_ref, (Function, MethodReference)):
-        return app_function_or_method_ref
+        return app, function_handle
+    elif isinstance(app_function_or_method_ref, Function):
+        return app_function_or_method_ref.app, app_function_or_method_ref
+    elif isinstance(app_function_or_method_ref, MethodReference):
+        return app_function_or_method_ref.cls._get_app(), app_function_or_method_ref
     elif isinstance(app_function_or_method_ref, LocalEntrypoint):
         if not accept_local_entrypoint:
             raise click.UsageError(
                 f"{func_ref} is not a Modal Function (a Modal local_entrypoint can't be used in this context)"
             )
-        return app_function_or_method_ref
+        return app_function_or_method_ref.app, app_function_or_method_ref
     else:
-        raise click.UsageError(f"{app_function_or_method_ref} is not a Modal entity (should be an App or Function)")
+        raise click.UsageError(
+            f"{app_function_or_method_ref} is not a Modal entity (should be an App, Local entrypoint, "
+            "Function or Class/Method)"
+        )
