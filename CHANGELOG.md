@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.72.15 (2025-01-15)
+
+- Added an `environment_name` parameter to the `App.run` context manager.
+
+
+
 ### 0.72.8 (2025-01-10)
 
 - Fixes a bug introduced in v0.72.2 when specifying `add_python="3.9"` in `Image.from_registry`.
