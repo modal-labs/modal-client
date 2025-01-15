@@ -132,7 +132,10 @@ def get_by_object_path(obj: Any, obj_path: str) -> Union[Function, LocalEntrypoi
 def _infer_function_or_help(
     app: App, module, accept_local_entrypoint: bool, accept_webhook: bool
 ) -> Union[Function, LocalEntrypoint, MethodReference]:
-    function_choices = set(app.registered_functions)
+    # TODO: refactor registered_functions to only contain function services, not class services
+    function_choices = set(f for f in app.registered_functions if not f.endswith(".*"))  # no class services here
+    for cls_name, cls in app.registered_classes:
+        pass
 
     if not accept_webhook:
         function_choices -= set(app.registered_web_endpoints)
