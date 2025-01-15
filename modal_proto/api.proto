@@ -890,6 +890,7 @@ message SandboxRestoreRequest {
 
 message SandboxRestoreResponse {
   string sandbox_id = 1;
+  GenericResult result = 2;
 }
 
 message ContainerHeartbeatRequest {

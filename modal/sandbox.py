@@ -583,6 +583,8 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         req = api_pb2.SandboxRestoreRequest(snapshot_id=snapshot_id)
         resp: api_pb2.SandboxRestoreResponse = await retry_transient_errors(client.stub.SandboxRestore, req)
+        if resp.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+            raise ExecutionError(resp.result.exception)
         sandbox = await _Sandbox.from_id(resp.sandbox_id, client)
         return sandbox
 
