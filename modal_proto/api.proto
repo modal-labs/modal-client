@@ -1881,16 +1881,6 @@ message NetworkAccess {
   repeated string allowed_cidrs = 2;
 }
 
-message Object {
-  string object_id = 1;
-  oneof handle_metadata_oneof {
-    FunctionHandleMetadata function_handle_metadata = 3;
-    MountHandleMetadata mount_handle_metadata = 4;
-    ClassHandleMetadata class_handle_metadata = 5;
-    SandboxHandleMetadata sandbox_handle_metadata = 6;
-  }
-}
-
 // A single output from a notebook. When you execute a cell, it produces an
 // array of these outputs as the code runs.
 //
@@ -1956,6 +1946,16 @@ message NotebookKernelPublishResultsRequest {
 
   string notebook_id = 1;
   repeated CellResult results = 2;
+}
+
+message Object {
+  string object_id = 1;
+  oneof handle_metadata_oneof {
+    FunctionHandleMetadata function_handle_metadata = 3;
+    MountHandleMetadata mount_handle_metadata = 4;
+    ClassHandleMetadata class_handle_metadata = 5;
+    SandboxHandleMetadata sandbox_handle_metadata = 6;
+  }
 }
 
 message ObjectDependency {
