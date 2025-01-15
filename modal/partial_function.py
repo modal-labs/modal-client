@@ -552,6 +552,14 @@ def _build(
     if _warn_parentheses_missing is not None:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@build()`.")
 
+    deprecation_warning(
+        (2025, 1, 15),
+        "The `@modal.build` decorator is deprecated and will be removed in a future release."
+        "\n\nWe now recommend storing large assets (such as model weights) using a `modal.Volume`"
+        " instead of writing them directly into the `modal.Image` filesystem."
+        "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+    )
+
     def wrapper(f: Union[Callable[[Any], Any], _PartialFunction]) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
             _disallow_wrapping_method(f, "build")
