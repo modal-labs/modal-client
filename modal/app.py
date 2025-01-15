@@ -365,6 +365,7 @@ class _App:
         show_progress: Optional[bool] = None,
         detach: bool = False,
         interactive: bool = False,
+        environment_name: Optional[str] = None,
     ) -> AsyncGenerator["_App", None]:
         """Context manager that runs an app on Modal.
 
@@ -420,7 +421,9 @@ class _App:
         elif show_progress is False:
             deprecation_warning((2024, 11, 20), "`show_progress=False` is deprecated (and has no effect)")
 
-        async with _run_app(self, client=client, detach=detach, interactive=interactive):
+        async with _run_app(
+            self, client=client, detach=detach, interactive=interactive, environment_name=environment_name
+        ):
             yield self
 
     def _get_default_image(self):
