@@ -2242,10 +2242,13 @@ message SandboxGetLogsRequest {
 
 message SandboxGetTaskIdRequest {
   string sandbox_id = 1;
+  float timeout = 2;
+  bool wait_until_ready = 3; // If true, waits until the container's postStart hook has been run before returning. Useful for detecting init failures.
 }
 
 message SandboxGetTaskIdResponse {
-  string task_id = 1;
+  optional string task_id = 1; // This is None if the sandbox was terminated before a task could be scheduled.
+  optional GenericResult task_result = 2; // If the task has already exited, this is the result.
 }
 
 message SandboxGetTunnelsRequest {
