@@ -173,7 +173,7 @@ class _Volume(_Object, type_prefix="vo"):
             response = await resolver.client.stub.VolumeGetOrCreate(req)
             self._hydrate(response.volume_id, resolver.client, None)
 
-        return _Volume._from_loader(_load, "Volume()", hydrate_lazily=True)
+        return _Volume._from_loader(_load, "Volume()")
 
     @classmethod
     @asynccontextmanager

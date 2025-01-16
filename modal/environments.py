@@ -80,7 +80,7 @@ class _Environment(_Object, type_prefix="en"):
             self._hydrate(response.environment_id, resolver.client, response.metadata)
 
         # TODO environment name (and id?) in the repr? (We should make reprs consistently more useful)
-        return _Environment._from_loader(_load, "Environment()", is_another_app=True, hydrate_lazily=True)
+        return _Environment._from_loader(_load, "Environment()", is_another_app=True)
 
     @staticmethod
     @renamed_parameter((2024, 12, 18), "label", "name")

@@ -114,12 +114,7 @@ def _bind_instance_method(service_function: _Function, class_bound_method: _Func
 
     rep = f"Method({method_name})"
 
-    fun = _Function._from_loader(
-        _load,
-        rep,
-        deps=_deps,
-        hydrate_lazily=True,
-    )
+    fun = _Function._from_loader(_load, rep, deps=_deps)
     if service_function.is_hydrated:
         # Eager hydration (skip load) if the instance service function is already loaded
         hydrate_from_instance_service_function(fun)
@@ -350,7 +345,6 @@ class _Obj:
             method_loader,
             repr,
             deps=lambda: [],  # TODO: use cls as dep instead of loading inside method_loader?
-            hydrate_lazily=True,
         )
 
 
@@ -594,7 +588,7 @@ class _Cls(_Object, type_prefix="cs"):
             obj._hydrate(response.class_id, resolver.client, response.handle_metadata)
 
         rep = f"Ref({app_name})"
-        cls = cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
+        cls = cls._from_loader(_load_remote, rep, is_another_app=True)
         # TODO: when pre 0.63 is phased out, we can set class_service_function here instead
         cls._name = name
         return cls

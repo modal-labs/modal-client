@@ -131,7 +131,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                     )
                 raise
 
-        return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()", hydrate_lazily=True)
+        return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()")
 
     @classmethod
     @asynccontextmanager

@@ -995,7 +995,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             response = await retry_transient_errors(parent._client.stub.FunctionBindParams, req)
             param_bound_func._hydrate(response.bound_function_id, parent._client, response.handle_metadata)
 
-        fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
+        fun: _Function = _Function._from_loader(_load, "Function(parametrized)")
 
         if can_use_parent and parent.is_hydrated:
             # skip the resolver altogether:
@@ -1079,7 +1079,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
         rep = f"Ref({app_name})"
-        return cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
+        return cls._from_loader(_load_remote, rep, is_another_app=True)
 
     @staticmethod
     @renamed_parameter((2024, 12, 18), "tag", "name")

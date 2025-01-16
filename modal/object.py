@@ -39,7 +39,6 @@ class _Object:
     _preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]]
     _rep: str
     _is_another_app: bool
-    _hydrate_lazily: bool
     _deps: Optional[Callable[..., list["_Object"]]]
     _deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None
 
@@ -65,7 +64,6 @@ class _Object:
         load: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
         is_another_app: bool = False,
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
-        hydrate_lazily: bool = False,
         deps: Optional[Callable[..., list["_Object"]]] = None,
         deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
     ):
@@ -74,7 +72,6 @@ class _Object:
         self._preload = preload
         self._rep = rep
         self._is_another_app = is_another_app
-        self._hydrate_lazily = hydrate_lazily
         self._deps = deps
         self._deduplication_key = deduplication_key
 
@@ -123,24 +120,10 @@ class _Object:
         # the object_id is already provided by other means
         return
 
-    def _validate_is_hydrated(self: O):
-        if not self._is_hydrated:
-            object_type = self.__class__.__name__.strip("_")
-            if hasattr(self, "_app") and getattr(self._app, "_running_app", "") is None:
-                # The most common cause of this error: e.g., user called a Function without using App.run()
-                reason = ", because the App it is defined on is not running"
-            else:
-                # Technically possible, but with an ambiguous cause.
-                reason = ""
-            raise ExecutionError(
-                f"{object_type} has not been hydrated with the metadata it needs to run on Modal{reason}."
-            )
-
     def clone(self: O) -> O:
         """mdmd:hidden Clone a given hydrated object."""
 
         # Object to clone must already be hydrated, otherwise from_loader is more suitable.
-        self._validate_is_hydrated()
         obj = type(self).__new__(type(self))
         obj._initialize_from_other(self)
         return obj
@@ -152,13 +135,12 @@ class _Object:
         rep: str,
         is_another_app: bool = False,
         preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
-        hydrate_lazily: bool = False,
         deps: Optional[Callable[..., Sequence["_Object"]]] = None,
         deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
     ):
         # TODO(erikbern): flip the order of the two first arguments
         obj = _Object.__new__(cls)
-        obj._init(rep, load, is_another_app, preload, hydrate_lazily, deps, deduplication_key)
+        obj._init(rep, load, is_another_app, preload, deps, deduplication_key)
         return obj
 
     @classmethod
@@ -236,8 +218,6 @@ class _Object:
                 self._is_rehydrated = True
                 logger.debug(f"rehydrated {self} with client {id(c)}")
             return
-        elif not self._hydrate_lazily:
-            self._validate_is_hydrated()
         else:
             # TODO: this client and/or resolver can't be changed by a caller to X.from_name()
             c = client if client is not None else await _Client.from_env()

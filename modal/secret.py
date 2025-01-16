@@ -76,7 +76,7 @@ class _Secret(_Object, type_prefix="st"):
             self._hydrate(resp.secret_id, resolver.client, None)
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
-        return _Secret._from_loader(_load, rep, hydrate_lazily=True)
+        return _Secret._from_loader(_load, rep)
 
     @staticmethod
     def from_local_environ(
@@ -159,7 +159,7 @@ class _Secret(_Object, type_prefix="st"):
 
             self._hydrate(resp.secret_id, resolver.client, None)
 
-        return _Secret._from_loader(_load, "Secret.from_dotenv()", hydrate_lazily=True)
+        return _Secret._from_loader(_load, "Secret.from_dotenv()")
 
     @staticmethod
     @renamed_parameter((2024, 12, 18), "label", "name")
@@ -202,7 +202,7 @@ class _Secret(_Object, type_prefix="st"):
                     raise
             self._hydrate(response.secret_id, resolver.client, None)
 
-        return _Secret._from_loader(_load, "Secret()", hydrate_lazily=True)
+        return _Secret._from_loader(_load, "Secret()")
 
     @staticmethod
     @renamed_parameter((2024, 12, 18), "label", "name")
