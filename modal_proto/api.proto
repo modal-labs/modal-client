@@ -875,6 +875,7 @@ message ContainerFilesystemExecResponse {
 
 message SandboxSnapshotRequest {
   string sandbox_id = 1;
+  float timeout = 2;
 }
 
 message SandboxSnapshotResponse {
@@ -890,7 +891,6 @@ message SandboxRestoreRequest {
 
 message SandboxRestoreResponse {
   string sandbox_id = 1;
-  GenericResult result = 2;
 }
 
 message ContainerHeartbeatRequest {
