@@ -358,7 +358,7 @@ def test_lookup(client, servicer):
         assert obj.bar.local(1, 2)
 
 
-def test_from_name_lazy_method_resolve(client, servicer):
+def test_from_name_lazy_method_hydration(client, servicer):
     deploy_app(app, "my-cls-app", client=client)
     cls: Cls = Cls.from_name("my-cls-app", "Foo")
 
