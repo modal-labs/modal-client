@@ -394,11 +394,13 @@ class _Mount(_Object, type_prefix="mo"):
         recursive: bool = True,
     ) -> "_Mount":
         """
+        **Deprecated:** Use image.add_local_dir() instead
+
         Create a `Mount` from a local directory.
 
         **Usage**
 
-        ```python
+        ```python notest
         assets = modal.Mount.from_local_dir(
             "~/assets",
             condition=lambda pth: not ".venv" in pth,
@@ -449,11 +451,13 @@ class _Mount(_Object, type_prefix="mo"):
     @staticmethod
     def from_local_file(local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None) -> "_Mount":
         """
+        **Deprecated**: Use image.add_local_file() instead
+
         Create a `Mount` mounting a single local file.
 
         **Usage**
 
-        ```python
+        ```python notest
         # Mount the DBT profile in user's home directory into container.
         dbt_profiles = modal.Mount.from_local_file(
             local_path="~/profiles.yml",
@@ -611,6 +615,8 @@ class _Mount(_Object, type_prefix="mo"):
         ignore: Optional[Union[Sequence[str], Callable[[Path], bool]]] = None,
     ) -> "_Mount":
         """
+        **Deprecated**: Use image.add_local_python_source instead
+
         Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
         This works by mounting the local path of each module's package to a directory inside the container
         that's on `PYTHONPATH`.

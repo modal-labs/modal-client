@@ -44,9 +44,21 @@ def test_sandbox(app, servicer):
 
 @skip_non_linux
 def test_sandbox_mount(app, servicer, tmpdir):
+    # TODO: remove once Mounts are fully deprecated (replaced by test_sandbox_mount_layer)
     tmpdir.join("a.py").write(b"foo")
 
-    sb = Sandbox.create("echo", "hi", mounts=[Mount.from_local_dir(Path(tmpdir), remote_path="/m")], app=app)
+    sb = Sandbox.create("echo", "hi", mounts=[Mount._from_local_dir(Path(tmpdir), remote_path="/m")], app=app)
+    sb.wait()
+
+    sha = hashlib.sha256(b"foo").hexdigest()
+    assert servicer.files_sha2data[sha]["data"] == b"foo"
+
+
+@skip_non_linux
+def test_sandbox_mount_layer(app, servicer, tmpdir):
+    tmpdir.join("a.py").write(b"foo")
+
+    sb = Sandbox.create("echo", "hi", image=Image.debian_slim().add_local_dir(Path(tmpdir), remote_path="/m"), app=app)
     sb.wait()
 
     sha = hashlib.sha256(b"foo").hexdigest()
