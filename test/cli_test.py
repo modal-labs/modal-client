@@ -316,8 +316,8 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
 
 def test_run_parse_args_function(servicer, set_env_client, test_dir, recwarn):
     app_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
-    # res = _run(["run", app_file.as_posix()], expected_exit_code=2, expected_stderr=None)
-    # assert "You need to specify a Modal function or local entrypoint to run" in res.stderr
+    res = _run(["run", app_file.as_posix()], expected_exit_code=2, expected_stderr=None)
+    assert "You need to specify a Modal function or local entrypoint to run" in res.stderr
 
     # HACK: all the tests use the same arg, i.
     @servicer.function_body
@@ -325,10 +325,10 @@ def test_run_parse_args_function(servicer, set_env_client, test_dir, recwarn):
         print(repr(i), type(i))
 
     valid_call_args = [
-        # (["run", f"{app_file.as_posix()}::int_arg_fn", "--i=200"], "200 <class 'int'>"),
+        (["run", f"{app_file.as_posix()}::int_arg_fn", "--i=200"], "200 <class 'int'>"),
         (["run", f"{app_file.as_posix()}::ALifecycle.some_method", "--i=hello"], "'hello' <class 'str'>"),
-        # (["run", f"{app_file.as_posix()}::ALifecycle.some_method_int", "--i=42"], "42 <class 'int'>"),
-        # (["run", f"{app_file.as_posix()}::optional_arg_fn"], "None <class 'NoneType'>"),
+        (["run", f"{app_file.as_posix()}::ALifecycle.some_method_int", "--i=42"], "42 <class 'int'>"),
+        (["run", f"{app_file.as_posix()}::optional_arg_fn"], "None <class 'NoneType'>"),
     ]
     for args, expected in valid_call_args:
         res = _run(args)
