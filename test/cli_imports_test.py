@@ -159,6 +159,19 @@ class C2:
         pass
 
 
+app_with_local_entrypoint_and_function = App()
+
+
+@app_with_local_entrypoint_and_function.local_entrypoint()
+def le_1():
+    pass
+
+
+@app_with_local_entrypoint_and_function.function()
+def f3():
+    pass
+
+
 def test_infer_object():
     this_module = sys.modules[__name__]
     with pytest.raises(click.ClickException, match="web endpoint"):
@@ -179,6 +192,12 @@ def test_infer_object():
 
     _, runnable = _infer_runnable(app_with_one_web_method, this_module, accept_webhook=True)
     assert runnable == MethodReference(C1, "web_3")  # type: ignore
+
+    _, runnable = _infer_runnable(app_with_local_entrypoint_and_function, this_module, accept_local_entrypoint=True)
+    assert runnable == le_1
+
+    _, runnable = _infer_runnable(app_with_local_entrypoint_and_function, this_module, accept_local_entrypoint=False)
+    assert runnable == f3
 
 
 def test_import_package_and_module_names(monkeypatch, supports_dir):
