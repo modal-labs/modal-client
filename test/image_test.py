@@ -752,18 +752,6 @@ def test_image_add_local_dir(servicer, client, tmp_path_with_content, copy, remo
         assert set(servicer.mount_contents[mount_id].keys()) == {expected_dest}
 
 
-def test_image_copy_local_dir(builder_version, servicer, client, tmp_path_with_content):
-    app = App()
-    app.image = Image.debian_slim().copy_local_dir(tmp_path_with_content, remote_path="/dummy", ignore=["**/module"])
-    app.function()(dummy)
-
-    with app.run(client=client):
-        layers = get_image_layers(app.image.object_id, servicer)
-        assert "COPY . /dummy" in layers[0].dockerfile_commands
-        mount_id = layers[0].context_mount_id
-        assert set(servicer.mount_contents[mount_id].keys()) == {"/data.txt", "/data/sub"}
-
-
 @pytest.mark.usefixtures("tmp_cwd")
 def test_image_docker_command_no_copy_commands(builder_version, servicer, client, disable_auto_mount):
     # make sure that no mount is created if there are no copy commands
@@ -1702,19 +1690,19 @@ def test_image_local_dir_ignore_patterns(servicer, client, tmp_path_with_content
     }
     app = App()
 
-    img = Image.from_registry("unknown_image").workdir("/proj")
-    if copy:
-        app.image = img.copy_local_dir(tmp_path_with_content, "/place/", ignore=ignore)
-        app.function()(dummy)
-        with app.run(client=client):
+    img = (
+        Image.from_registry("unknown_image")
+        .workdir("/proj")
+        .add_local_dir(tmp_path_with_content, "/place/", ignore=ignore, copy=copy)
+    )
+    app.function(image=img)(dummy)
+    with app.run(client=client):
+        if copy:
             assert len(img._mount_layers) == 0
-            layers = get_image_layers(app.image.object_id, servicer)
+            layers = get_image_layers(img.object_id, servicer)
             mount_id = layers[0].context_mount_id
-            assert set(servicer.mount_contents[mount_id].keys()) == expected
-    else:
-        img = img.add_local_dir(tmp_path_with_content, "/place/", ignore=ignore)
-        app.function(image=img)(dummy)
-        with app.run(client=client):
+            assert set(servicer.mount_contents[mount_id].keys()) == {f"/place{f}" for f in expected}
+        else:
             assert len(img._mount_layers) == 1
             mount_id = img._mount_layers[0].object_id
             assert set(servicer.mount_contents[mount_id].keys()) == {f"/place{f}" for f in expected}
