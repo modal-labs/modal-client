@@ -3,8 +3,8 @@ import pytest
 
 from modal import Secret
 from modal._object import _Object
-from modal.dict import _Dict
-from modal.exception import InvalidError
+from modal.dict import _Dict, Dict
+from modal.exception import DeprecationError, InvalidError
 from modal.queue import _Queue
 
 
@@ -20,6 +20,20 @@ def test_new_hydrated(client):
 
     with pytest.raises(InvalidError):
         _Object._new_hydrated("xy-123", client, None)
+
+
+def test_on_demand_hydration(client):
+    obj = Dict.from_name("test-dict", create_if_missing=True)
+    obj.hydrate(client)
+    assert obj.object_id is not None
+
+
+def test_resolve_deprecation(client):
+    obj = Dict.from_name("test-dict", create_if_missing=True)
+    warning = r"Please use `Dict.hydrate\(\)` or `await Dict.hydrate.aio\(\)`"
+    with pytest.warns(DeprecationError, match=warning):
+        obj.resolve(client)
+    assert obj.object_id is not None
 
 
 def test_constructor():
