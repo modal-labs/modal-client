@@ -23,8 +23,7 @@ def test_new_hydrated(client):
 
 
 def test_on_demand_hydration(client):
-    obj = Dict.from_name("test-dict", create_if_missing=True)
-    obj.hydrate(client)
+    obj = Dict.from_name("test-dict", create_if_missing=True).hydrate(client)
     assert obj.object_id is not None
 
 
