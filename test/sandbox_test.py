@@ -261,22 +261,19 @@ def test_sandbox_exec_stdout_bytes_mode(app, servicer):
 
 @skip_non_linux
 def test_app_sandbox(client, servicer):
-    image = Image.debian_slim().pip_install("xyz")
+    image = Image.debian_slim().pip_install("xyz").add_local_file(__file__, remote_path="/xyz")
     secret = Secret.from_dict({"FOO": "bar"})
-    mount = Mount.from_local_file(__file__, "/xyz")
 
     with pytest.raises(DeprecationError, match="Creating a `Sandbox` without an `App`"):
-        Sandbox.create("bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret], mounts=[mount])
+        Sandbox.create("bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret])
 
     app = App()
     with app.run(client):
         # Create sandbox
         with pytest.raises(DeprecationError, match="`App.spawn_sandbox` is deprecated"):
-            app.spawn_sandbox("bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret], mounts=[mount])
+            app.spawn_sandbox("bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret])
 
-        sb = Sandbox.create(
-            "bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret], mounts=[mount], app=app
-        )
+        sb = Sandbox.create("bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret], app=app)
         sb.wait()
         assert sb.stderr.read() == "bye\n"
         assert sb.stdout.read() == "hi\n"
@@ -330,15 +327,14 @@ def test_sandbox_list_env(app, client, servicer):
 
 @skip_non_linux
 def test_sandbox_list_app(client, servicer):
-    image = Image.debian_slim().pip_install("xyz")
+    image = Image.debian_slim().pip_install("xyz").add_local_file(__file__, "/xyz")
     secret = Secret.from_dict({"FOO": "bar"})
-    mount = Mount.from_local_file(__file__, "/xyz")
 
     app = App()
 
     with app.run(client):
         # Create sandbox
-        sb = Sandbox.create("bash", "-c", "sleep 10000", image=image, secrets=[secret], mounts=[mount], app=app)
+        sb = Sandbox.create("bash", "-c", "sleep 10000", image=image, secrets=[secret], app=app)
         assert len(list(Sandbox.list(app_id=app.app_id, client=client))) == 1
         sb.terminate()
         assert not list(Sandbox.list(app_id=app.app_id, client=client))

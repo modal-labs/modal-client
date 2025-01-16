@@ -13,7 +13,7 @@ from typing import Callable, Literal, Sequence, Union, get_args
 from unittest import mock
 
 import modal
-from modal import App, Image, Mount, Secret, build, environments, gpu, method
+from modal import App, Dict, Image, Secret, build, environments, gpu, method
 from modal._serialization import serialize
 from modal._utils.async_utils import synchronizer
 from modal.client import Client
@@ -209,7 +209,7 @@ def test_image_python_packages(builder_version, servicer, client):
             pass
 
 
-def test_image_kwargs_validation(builder_version, servicer, client):
+def test_run_commands_secrets_type_validation(builder_version, servicer, client):
     app = App()
     image = Image.debian_slim().run_commands(
         "echo hi", secrets=[Secret.from_dict({"xyz": "123"}), Secret.from_name("foo")]
@@ -221,15 +221,9 @@ def test_image_kwargs_validation(builder_version, servicer, client):
             secrets=[
                 Secret.from_dict({"xyz": "123"}),
                 Secret.from_name("foo"),
-                Mount.from_local_dir("/", remote_path="/"),  # type: ignore
+                Dict.from_name("mydict"),  # type: ignore
             ],  # Mount is not a valid Secret
         )
-
-    Image.debian_slim().copy_local_dir("/", remote_path="/dummy")
-    Image.debian_slim().copy_mount(Mount.from_name("foo"), remote_path="/dummy")
-    with pytest.raises(InvalidError):
-        # Secret is not a valid Mount
-        Image.debian_slim().copy_mount(Secret.from_dict({"xyz": "123"}), remote_path="/dummy")  # type: ignore
 
 
 def test_wrong_type(builder_version, servicer, client):

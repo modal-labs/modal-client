@@ -258,12 +258,15 @@ class NonLocalMountError(Exception):
 
 
 class _Mount(_Object, type_prefix="mo"):
-    """Create a mount for a local directory or file that can be attached
+    """
+    **Deprecated**: Mounts should not be used explicitly anymore, use image.add_local_* commands instead
+
+    Create a mount for a local directory or file that can be attached
     to one or more Modal functions.
 
     **Usage**
 
-    ```python
+    ```python notest
     import modal
     import os
     app = modal.App()

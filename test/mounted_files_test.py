@@ -393,7 +393,7 @@ def test_pdm_cache_automount_exclude(tmp_path, monkeypatch, supports_dir, servic
 
 def test_mount_directory_with_symlinked_file(path_with_symlinked_files, servicer, client):
     path, files = path_with_symlinked_files
-    mount = Mount.from_local_dir(path)
+    mount = Mount._from_local_dir(path)
     mount._deploy("mo-1", client=client)
     pkg_a_mount = servicer.mount_contents["mo-1"]
     for src_f in files:
@@ -426,12 +426,12 @@ def test_module_with_dot_prefixed_parent_can_be_mounted(tmp_path, monkeypatch, s
     (bar_package / ".hidden_mod.py").touch()  # should be excluded
 
     monkeypatch.syspath_prepend(parent_dir)
-    foo_mount = Mount.from_local_python_packages("foo")
+    foo_mount = Mount._from_local_python_packages("foo")
     foo_mount._deploy("mo-1", client=client)
     foo_mount_content = servicer.mount_contents["mo-1"]
     assert foo_mount_content.keys() == {"/root/foo.py"}
 
-    bar_mount = Mount.from_local_python_packages("bar")
+    bar_mount = Mount._from_local_python_packages("bar")
     bar_mount._deploy("mo-2", client=client)
 
     bar_mount_content = servicer.mount_contents["mo-2"]
