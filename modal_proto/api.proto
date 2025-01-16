@@ -4,6 +4,7 @@ package modal.client;
 
 import "modal_proto/options.proto";
 import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
 import "google/protobuf/wrappers.proto";
 
 enum AppDeployVisibility {
@@ -1880,6 +1881,73 @@ message NetworkAccess {
   repeated string allowed_cidrs = 2;
 }
 
+message NotebookKernelPublishResultsRequest {
+  // See kernelshim.py for the differences between this and `ExecuteResult`.
+  // https://jupyter-client.readthedocs.io/en/stable/messaging.html#execution-results
+  message ExecuteReply {
+    string status = 1;
+    uint32 execution_count = 2;
+  }
+
+  // IOPub message or reply received from the kernel for a cell.
+  message CellResult {
+    string cell_id = 1;
+
+    oneof result_type {
+      // Persistent output that is saved in the notebook.
+      NotebookOutput output = 2;
+
+      // Clear all previous outputs of the cell.
+      bool clear_outputs = 3;
+
+      // Cell has finished executing, return the kernel's execute_reply.
+      ExecuteReply execute_reply = 4;
+    }
+  }
+
+  string notebook_id = 1;
+  repeated CellResult results = 2;
+}
+
+// A single output from a notebook. When you execute a cell, it produces an
+// array of these outputs as the code runs.
+//
+// https://github.com/jupyter/nbformat/blob/v5.10.4/nbformat/v4/nbformat.v4.schema.json#L301-L309
+message NotebookOutput {
+  // Result of executing a code cell.
+  message ExecuteResult {
+    uint32 execution_count = 1;
+    google.protobuf.Struct data = 2; // mimebundle
+    google.protobuf.Struct metadata = 3;
+  }
+
+  // Data displayed as a result of code cell execution.
+  message DisplayData {
+    google.protobuf.Struct data = 1; // mimebundle
+    google.protobuf.Struct metadata = 2;
+  }
+
+  // Stream output from a code cell (stdout / stderr).
+  message Stream {
+    string name = 1; // stdout | stderr
+    string text = 2; // multiline_string
+  }
+
+  // Output of an error that occurred during code cell execution.
+  message Error {
+    string ename = 1;
+    string evalue = 2;
+    repeated string traceback = 3;
+  }
+
+  oneof output_type {
+    ExecuteResult execute_result = 1;
+    DisplayData display_data = 2;
+    Stream stream = 3;
+    Error error = 4;
+  }
+}
+
 message Object {
   string object_id = 1;
   oneof handle_metadata_oneof {
@@ -2820,6 +2888,9 @@ service ModalClient {
   // Mounts
   rpc MountGetOrCreate(MountGetOrCreateRequest) returns (MountGetOrCreateResponse);
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
+
+  // Notebooks
+  rpc NotebookKernelPublishResults(NotebookKernelPublishResultsRequest) returns (google.protobuf.Empty);
 
   // Proxies
   rpc ProxyCreate(ProxyCreateRequest) returns (ProxyCreateResponse);
