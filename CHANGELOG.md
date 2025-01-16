@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.72.16 (2025-01-16)
+
+* Fixes bug introduced in v0.72.9 where `modal run SomeClass.some_method` would incorrectly print a deprecation warning.
+
+
+
 ### 0.72.15 (2025-01-15)
 
 - Added an `environment_name` parameter to the `App.run` context manager.
