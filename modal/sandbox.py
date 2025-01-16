@@ -350,6 +350,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         Returns an [`Image`](https://modal.com/docs/reference/modal.Image) object which
         can be used to spawn a new Sandbox with the same filesystem.
         """
+        await self._get_task_id()  # Ensure the sandbox has started
         req = api_pb2.SandboxSnapshotFsRequest(sandbox_id=self.object_id, timeout=timeout)
         resp = await retry_transient_errors(self._client.stub.SandboxSnapshotFs, req)
 
