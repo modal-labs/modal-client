@@ -12,6 +12,7 @@ import importlib
 import importlib.util
 import inspect
 import sys
+import types
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional, Union
@@ -167,7 +168,6 @@ def _infer_function_or_help(
             function_choices[f"{cls_name}.{method_name}"] = MethodReference(cls, method_name)
 
     if not accept_webhook:
-        # TODO: *class method* web endpoints aren't properly registered/removed here
         for web_endpoint_name in app.registered_web_endpoints:
             function_choices.pop(web_endpoint_name, None)
 
@@ -260,7 +260,47 @@ You would run foo as [bold green]{base_cmd} app.py::foo[/bold green]"""
     error_console.print(guidance_msg)
 
 
-def import_object(
+def _import_object(func_ref, base_cmd):
+    import_ref = parse_import_ref(func_ref)
+    module = import_file_or_module(import_ref.file_or_module)
+    app_function_or_method_ref = get_by_object_path(module, import_ref.object_path or DEFAULT_APP_NAME)
+
+    if app_function_or_method_ref is None:
+        _show_function_ref_help(import_ref, base_cmd)
+        raise SystemExit(1)
+
+    return app_function_or_method_ref, module
+
+
+def _infer_runnable(
+    partial_obj: Union[App, Function, MethodReference, LocalEntrypoint],
+    module: types.ModuleType,
+    accept_local_entrypoint: bool = True,
+    accept_webhook: bool = False,
+) -> tuple[App, Union[Function, MethodReference, LocalEntrypoint]]:
+    if isinstance(partial_obj, App):
+        # infer function or display help for how to select one
+        app = partial_obj
+        function_handle = _infer_function_or_help(app, module, accept_local_entrypoint, accept_webhook)
+        return app, function_handle
+    elif isinstance(partial_obj, Function):
+        return partial_obj.app, partial_obj
+    elif isinstance(partial_obj, MethodReference):
+        return partial_obj.cls._get_app(), partial_obj
+    elif isinstance(partial_obj, LocalEntrypoint):
+        if not accept_local_entrypoint:
+            raise click.UsageError(
+                f"{partial_obj.info.function_name} is not a Modal Function "
+                f"(a Modal local_entrypoint can't be used in this context)"
+            )
+        return partial_obj.app, partial_obj
+    else:
+        raise click.UsageError(
+            f"{partial_obj} is not a Modal entity (should be an App, Local entrypoint, " "Function or Class/Method)"
+        )
+
+
+def import_and_infer(
     func_ref: str, base_cmd: str, accept_local_entrypoint=True, accept_webhook=False
 ) -> tuple[App, Union[Function, LocalEntrypoint, MethodReference]]:
     """Takes a function ref string and returns something "runnable"
@@ -275,32 +315,5 @@ def import_object(
     2. if there is a single {function, class} that one is used
     3. if there is a single method (within a class) that one is used
     """
-    import_ref = parse_import_ref(func_ref)
-
-    module = import_file_or_module(import_ref.file_or_module)
-    app_function_or_method_ref = get_by_object_path(module, import_ref.object_path or DEFAULT_APP_NAME)
-
-    if app_function_or_method_ref is None:
-        _show_function_ref_help(import_ref, base_cmd)
-        sys.exit(1)
-
-    if isinstance(app_function_or_method_ref, App):
-        # infer function or display help for how to select one
-        app = app_function_or_method_ref
-        function_handle = _infer_function_or_help(app, module, accept_local_entrypoint, accept_webhook)
-        return app, function_handle
-    elif isinstance(app_function_or_method_ref, Function):
-        return app_function_or_method_ref.app, app_function_or_method_ref
-    elif isinstance(app_function_or_method_ref, MethodReference):
-        return app_function_or_method_ref.cls._get_app(), app_function_or_method_ref
-    elif isinstance(app_function_or_method_ref, LocalEntrypoint):
-        if not accept_local_entrypoint:
-            raise click.UsageError(
-                f"{func_ref} is not a Modal Function (a Modal local_entrypoint can't be used in this context)"
-            )
-        return app_function_or_method_ref.app, app_function_or_method_ref
-    else:
-        raise click.UsageError(
-            f"{app_function_or_method_ref} is not a Modal entity (should be an App, Local entrypoint, "
-            "Function or Class/Method)"
-        )
+    app_function_or_method_ref, module = _import_object(func_ref, base_cmd)
+    return _infer_runnable(app_function_or_method_ref, module, accept_local_entrypoint, accept_webhook)

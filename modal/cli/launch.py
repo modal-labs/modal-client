@@ -12,7 +12,7 @@ from ..app import LocalEntrypoint
 from ..exception import _CliUserExecutionError
 from ..output import enable_output
 from ..runner import run_app
-from .import_refs import import_object
+from .import_refs import import_and_infer
 
 launch_cli = Typer(
     name="launch",
@@ -29,7 +29,7 @@ def _launch_program(name: str, filename: str, detach: bool, args: dict[str, Any]
     os.environ["MODAL_LAUNCH_ARGS"] = json.dumps(args)
 
     program_path = str(Path(__file__).parent / "programs" / filename)
-    app, entrypoint = import_object(program_path, "modal launch")
+    app, entrypoint = import_and_infer(program_path, "modal launch")
     if not isinstance(entrypoint, LocalEntrypoint):
         raise ValueError(f"{program_path} has no single local_entrypoint")
 
