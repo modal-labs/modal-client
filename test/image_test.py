@@ -1080,35 +1080,36 @@ VARIABLE_5 = 1
 VARIABLE_6 = 1
 
 
-@cls_app.cls(
-    image=Image.debian_slim().pip_install("pandas"),
-    secrets=[Secret.from_dict({"xyz": "123"})],
-)
-class Foo:
-    @build()
-    def build_func(self):
-        global VARIABLE_5
+with pytest.warns(DeprecationError, match="@modal.build"):
 
-        print("foo!", VARIABLE_5)
+    @cls_app.cls(
+        image=Image.debian_slim().pip_install("pandas"),
+        secrets=[Secret.from_dict({"xyz": "123"})],
+    )
+    class Foo:
+        @build()
+        def build_func(self):
+            global VARIABLE_5
 
-    @method()
-    def f(self):
-        global VARIABLE_6
+            print("foo!", VARIABLE_5)
 
-        print("bar!", VARIABLE_6)
+        @method()
+        def f(self):
+            global VARIABLE_6
 
+            print("bar!", VARIABLE_6)
 
-class FooInstance:
-    not_used_by_build_method: str = "normal"
-    used_by_build_method: str = "normal"
+    class FooInstance:
+        not_used_by_build_method: str = "normal"
+        used_by_build_method: str = "normal"
 
-    @build()
-    def build_func(self):
-        global VARIABLE_5
+        @build()
+        def build_func(self):
+            global VARIABLE_5
 
-        print("global variable", VARIABLE_5)
-        print("static class var", FooInstance.used_by_build_method)
-        FooInstance.used_by_build_method = "normal"
+            print("global variable", VARIABLE_5)
+            print("static class var", FooInstance.used_by_build_method)
+            FooInstance.used_by_build_method = "normal"
 
 
 def test_image_cls_var_rebuild(client, servicer):
