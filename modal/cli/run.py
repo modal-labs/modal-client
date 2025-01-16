@@ -7,7 +7,6 @@ import re
 import shlex
 import sys
 import time
-import typing
 from functools import partial
 from typing import Any, Callable, Optional, get_type_hints
 
@@ -15,7 +14,6 @@ import click
 import typer
 from typing_extensions import TypedDict
 
-from .. import Cls
 from ..app import App, LocalEntrypoint
 from ..config import config
 from ..environments import ensure_env
@@ -26,7 +24,7 @@ from ..output import enable_output
 from ..runner import deploy_app, interactive_shell, run_app
 from ..serving import serve_app
 from ..volume import Volume
-from .import_refs import import_app, import_function
+from .import_refs import MethodReference, import_and_infer, import_app
 from .utils import ENV_OPTION, ENV_OPTION_HELP, is_tty, stream_app_logs
 
 
@@ -145,39 +143,7 @@ def _write_local_result(result_path: str, res: Any):
         fid.write(res)
 
 
-def _get_click_command_for_function(app: App, function_tag):
-    function = app.registered_functions.get(function_tag)
-    if not function or (isinstance(function, Function) and function.info.user_cls is not None):
-        # This is either a function_tag for a class method function (e.g MyClass.foo) or a function tag for a
-        # class service function (MyClass.*)
-        class_name, method_name = function_tag.rsplit(".", 1)
-        if not function:
-            function = app.registered_functions.get(f"{class_name}.*")
-    assert isinstance(function, Function)
-    function = typing.cast(Function, function)
-    if function.is_generator:
-        raise InvalidError("`modal run` is not supported for generator functions")
-
-    signature: dict[str, ParameterMetadata]
-    cls: Optional[Cls] = None
-    if function.info.user_cls is not None:
-        cls = typing.cast(Cls, app.registered_classes[class_name])
-        cls_signature = _get_signature(function.info.user_cls)
-        if method_name == "*":
-            method_names = list(cls._get_partial_functions().keys())
-            if len(method_names) == 1:
-                method_name = method_names[0]
-            else:
-                class_name = function.info.user_cls.__name__
-                raise click.UsageError(
-                    f"Please specify a specific method of {class_name} to run, e.g. `modal run foo.py::MyClass.bar`"  # noqa: E501
-                )
-        fun_signature = _get_signature(getattr(cls, method_name).info.raw_f, is_method=True)
-        signature = dict(**cls_signature, **fun_signature)  # Pool all arguments
-        # TODO(erikbern): assert there's no overlap?
-    else:
-        signature = _get_signature(function.info.raw_f)
-
+def _make_click_function(app, inner: Callable[[dict[str, Any]], Any]):
     @click.pass_context
     def f(ctx, **kwargs):
         show_progress: bool = ctx.obj["show_progress"]
@@ -188,21 +154,65 @@ def _get_click_command_for_function(app: App, function_tag):
                 environment_name=ctx.obj["env"],
                 interactive=ctx.obj["interactive"],
             ):
-                if cls is None:
-                    res = function.remote(**kwargs)
-                else:
-                    # unpool class and method arguments
-                    # TODO(erikbern): this code is a bit hacky
-                    cls_kwargs = {k: kwargs[k] for k in cls_signature}
-                    fun_kwargs = {k: kwargs[k] for k in fun_signature}
-
-                    instance = cls(**cls_kwargs)
-                    method: Function = getattr(instance, method_name)
-                    res = method.remote(**fun_kwargs)
+                res = inner(kwargs)
 
             if result_path := ctx.obj["result_path"]:
                 _write_local_result(result_path, res)
 
+    return f
+
+
+def _get_click_command_for_function(app: App, function: Function):
+    if function.is_generator:
+        raise InvalidError("`modal run` is not supported for generator functions")
+
+    signature: dict[str, ParameterMetadata] = _get_signature(function.info.raw_f)
+
+    def _inner(click_kwargs):
+        return function.remote(**click_kwargs)
+
+    f = _make_click_function(app, _inner)
+
+    with_click_options = _add_click_options(f, signature)
+    return click.command(with_click_options)
+
+
+def _get_click_command_for_cls(app: App, method_ref: MethodReference):
+    signature: dict[str, ParameterMetadata]
+    cls = method_ref.cls
+    method_name = method_ref.method_name
+
+    cls_signature = _get_signature(cls._get_user_cls())
+    partial_functions = cls._get_partial_functions()
+
+    if method_name in ("*", ""):
+        # auto infer method name - not sure if we have to support this...
+        method_names = list(partial_functions.keys())
+        if len(method_names) == 1:
+            method_name = method_names[0]
+        else:
+            raise click.UsageError(
+                f"Please specify a specific method of {cls._get_name()} to run, "
+                f"e.g. `modal run foo.py::MyClass.bar`"  # noqa: E501
+            )
+
+    partial_function = partial_functions[method_name]
+    fun_signature = _get_signature(partial_function._get_raw_f(), is_method=True)
+
+    # TODO(erikbern): assert there's no overlap?
+    signature = dict(**cls_signature, **fun_signature)  # Pool all arguments
+
+    def _inner(click_kwargs):
+        # unpool class and method arguments
+        # TODO(erikbern): this code is a bit hacky
+        cls_kwargs = {k: click_kwargs[k] for k in cls_signature}
+        fun_kwargs = {k: click_kwargs[k] for k in fun_signature}
+
+        instance = cls(**cls_kwargs)
+        method: Function = getattr(instance, method_name)
+        return method.remote(**fun_kwargs)
+
+    f = _make_click_function(app, _inner)
     with_click_options = _add_click_options(f, signature)
     return click.command(with_click_options)
 
@@ -249,16 +259,20 @@ class RunGroup(click.Group):
         # needs to be handled here, and not in the `run` logic below
         ctx.ensure_object(dict)
         ctx.obj["env"] = ensure_env(ctx.params["env"])
-        function_or_entrypoint = import_function(func_ref, accept_local_entrypoint=True, base_cmd="modal run")
-        app: App = function_or_entrypoint.app
+
+        app, imported_object = import_and_infer(func_ref, accept_local_entrypoint=True, base_cmd="modal run")
+
         if app.description is None:
             app.set_description(_get_clean_app_description(func_ref))
-        if isinstance(function_or_entrypoint, LocalEntrypoint):
-            click_command = _get_click_command_for_local_entrypoint(app, function_or_entrypoint)
-        else:
-            tag = function_or_entrypoint.info.get_tag()
-            click_command = _get_click_command_for_function(app, tag)
 
+        if isinstance(imported_object, LocalEntrypoint):
+            click_command = _get_click_command_for_local_entrypoint(app, imported_object)
+        elif isinstance(imported_object, Function):
+            click_command = _get_click_command_for_function(app, imported_object)
+        elif isinstance(imported_object, MethodReference):
+            click_command = _get_click_command_for_cls(app, imported_object)
+        else:
+            raise ValueError(f"{imported_object} is neither function, local entrypoint or class/method")
         return click_command
 
 
@@ -464,11 +478,18 @@ def shell(
             exec(container_id=container_or_function, command=shlex.split(cmd), pty=pty)
             return
 
-        function = import_function(
+        original_app, function_or_method_ref = import_and_infer(
             container_or_function, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell"
         )
-        assert isinstance(function, Function)
-        function_spec: _FunctionSpec = function.spec
+        function_spec: _FunctionSpec
+        if isinstance(function_or_method_ref, MethodReference):
+            class_service_function = function_or_method_ref.cls._get_class_service_function()
+            function_spec = class_service_function.spec
+        elif isinstance(function_or_method_ref, Function):
+            function_spec = function_or_method_ref.spec
+        else:
+            raise ValueError("Referenced entity is neither a function nor a class/method.")
+
         start_shell = partial(
             interactive_shell,
             image=function_spec.image,

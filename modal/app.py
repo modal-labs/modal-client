@@ -507,7 +507,7 @@ class _App:
         return self._functions
 
     @property
-    def registered_classes(self) -> dict[str, _Function]:
+    def registered_classes(self) -> dict[str, _Cls]:
         """All modal.Cls objects registered on the app."""
         return self._classes
 
