@@ -854,14 +854,17 @@ class _Image(_Object, type_prefix="im"):
         # Which follows dockerignore syntax.
         ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
     ) -> "_Image":
-        """Copy a directory into the image as a part of building the image.
+        """
+        **Deprecated**: Use image.add_local_dir instead
+
+        Copy a directory into the image as a part of building the image.
 
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
 
         **Usage:**
 
-        ```python
+        ```python notest
         from pathlib import Path
         from modal import FilePatternMatcher
 

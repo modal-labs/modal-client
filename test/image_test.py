@@ -1713,25 +1713,22 @@ def test_image_add_local_dir_ignore_callable(servicer, client, tmp_path_with_con
     def ignore(x):
         return x != tmp_path_with_content / "data.txt"
 
-    expected = {"/data.txt"}
+    expected = {"/place/data.txt"}
     app = App()
 
     img = Image.from_registry("unknown_image").workdir("/proj")
-    if copy:
-        app.image = img.copy_local_dir(tmp_path_with_content, "/place/", ignore=ignore)
-        app.function()(dummy)
-        with app.run(client=client):
+    img = img.add_local_dir(tmp_path_with_content, "/place/", ignore=ignore, copy=copy)
+    app.function(image=img)(dummy)
+    with app.run(client=client):
+        if copy:
             assert len(img._mount_layers) == 0
-            layers = get_image_layers(app.image.object_id, servicer)
+            layers = get_image_layers(img.object_id, servicer)
             mount_id = layers[0].context_mount_id
             assert set(servicer.mount_contents[mount_id].keys()) == expected
-    else:
-        img = img.add_local_dir(tmp_path_with_content, "/place/", ignore=ignore)
-        app.function(image=img)(dummy)
-        with app.run(client=client):
+        else:
             assert len(img._mount_layers) == 1
             mount_id = img._mount_layers[0].object_id
-            assert set(servicer.mount_contents[mount_id].keys()) == {f"/place{f}" for f in expected}
+            assert set(servicer.mount_contents[mount_id].keys()) == expected
 
 
 @pytest.mark.parametrize("copy", [True, False])
@@ -1741,27 +1738,22 @@ def test_image_add_local_dir_ignore_nothing(servicer, client, tmp_path_with_cont
         for file in files:
             file_paths.add(os.path.join(root, file))
 
-    expected = {f"/{Path(fn).relative_to(tmp_path_with_content)}" for fn in file_paths}
+    expected = {f"/place/{Path(fn).relative_to(tmp_path_with_content)}" for fn in file_paths}
     app = App()
 
     img = Image.from_registry("unknown_image").workdir("/proj")
-    if copy:
-        app.image = img.copy_local_dir(tmp_path_with_content, "/place/")
-        app.function()(dummy)
-        with app.run(client=client):
+    img = img.add_local_dir(tmp_path_with_content, "/place/", copy=copy)
+    app.function(image=img)(dummy)
+    with app.run(client=client):
+        if copy:
             assert len(img._mount_layers) == 0
-            layers = get_image_layers(app.image.object_id, servicer)
+            layers = get_image_layers(img.object_id, servicer)
             mount_id = layers[0].context_mount_id
-            assert set(Path(fn) for fn in servicer.mount_contents[mount_id].keys()) == {Path(fn) for fn in expected}
-    else:
-        img = img.add_local_dir(tmp_path_with_content, "/place/")
-        app.function(image=img)(dummy)
-        with app.run(client=client):
+            assert servicer.mount_contents[mount_id].keys() == expected
+        else:
             assert len(img._mount_layers) == 1
             mount_id = img._mount_layers[0].object_id
-            assert set(Path(fn) for fn in servicer.mount_contents[mount_id].keys()) == {
-                Path(f"/place{f}") for f in expected
-            }
+            assert servicer.mount_contents[mount_id].keys() == expected
 
 
 @pytest.mark.parametrize("copy", [True, False])
@@ -1772,24 +1764,22 @@ def test_image_add_local_dir_ignore_from_file(servicer, client, tmp_path_with_co
     ignore_file = rel_top_dir / "something_special.ignore_file"
     ignore_file.write_text("**/*.txt")
 
-    expected = {"/data.txt"}
+    expected = {"/place/data.txt"}
     app = App()
 
     img = Image.from_registry("unknown_image").workdir("/proj")
-    if copy:
-        app.image = img.copy_local_dir(
-            tmp_path_with_content, "/place/", ignore=~FilePatternMatcher.from_file(ignore_file)
-        )
-        app.function()(dummy)
-        with app.run(client=client):
+
+    img = img.add_local_dir(
+        tmp_path_with_content, "/place/", ignore=~FilePatternMatcher.from_file(ignore_file), copy=copy
+    )
+    app.function(image=img)(dummy)
+    with app.run(client=client):
+        if copy:
             assert len(img._mount_layers) == 0
-            layers = get_image_layers(app.image.object_id, servicer)
+            layers = get_image_layers(img.object_id, servicer)
             mount_id = layers[0].context_mount_id
-            assert set(servicer.mount_contents[mount_id].keys()) == expected
-    else:
-        img = img.add_local_dir(tmp_path_with_content, "/place/", ignore=~FilePatternMatcher.from_file(ignore_file))
-        app.function(image=img)(dummy)
-        with app.run(client=client):
+            assert servicer.mount_contents[mount_id].keys() == expected
+        else:
             assert len(img._mount_layers) == 1
             mount_id = img._mount_layers[0].object_id
-            assert set(servicer.mount_contents[mount_id].keys()) == {f"/place{f}" for f in expected}
+            assert servicer.mount_contents[mount_id].keys() == expected
