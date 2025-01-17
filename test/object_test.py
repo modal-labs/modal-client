@@ -3,7 +3,7 @@ import pytest
 
 from modal import Secret
 from modal._object import _Object
-from modal.dict import _Dict, Dict
+from modal.dict import Dict, _Dict
 from modal.exception import DeprecationError, InvalidError
 from modal.queue import _Queue
 
