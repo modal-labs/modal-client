@@ -2230,23 +2230,6 @@ message Sandbox {
   optional uint32 snapshot_version = 25;
 }
 
-message SandboxSnapshotRequest {
-  string sandbox_id = 1;
-}
-
-message SandboxSnapshotResponse {
-  string snapshot_id = 1;
-}
-
-message SandboxSnapshotWaitRequest {
-  string snapshot_id = 1;
-  float timeout = 2;
-}
-
-message SandboxSnapshotWaitResponse {
-  GenericResult result = 1;
-}
-
 message SandboxCreateRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
   Sandbox definition = 2;
@@ -2254,16 +2237,6 @@ message SandboxCreateRequest {
 }
 
 message SandboxCreateResponse {
-  string sandbox_id = 1;
-}
-
-message SandboxRestoreRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
-  string snapshot_id = 2;
-  string environment_name = 3;
-}
-
-message SandboxRestoreResponse {
   string sandbox_id = 1;
 }
 
@@ -2319,6 +2292,16 @@ message SandboxListResponse {
   repeated SandboxInfo sandboxes = 1;
 }
 
+message SandboxRestoreRequest {
+  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string snapshot_id = 2;
+  string environment_name = 3;
+}
+
+message SandboxRestoreResponse {
+  string sandbox_id = 1;
+}
+
 message SandboxSnapshotFsRequest {
   string sandbox_id = 1;
   float timeout = 2;
@@ -2329,6 +2312,23 @@ message SandboxSnapshotFsResponse {
   GenericResult result = 2;
   // Metadata may be empty since we may skip it for performance reasons.
   ImageMetadata image_metadata = 3;
+}
+
+message SandboxSnapshotRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxSnapshotResponse {
+  string snapshot_id = 1;
+}
+
+message SandboxSnapshotWaitRequest {
+  string snapshot_id = 1;
+  float timeout = 2;
+}
+
+message SandboxSnapshotWaitResponse {
+  GenericResult result = 1;
 }
 
 message SandboxStdinWriteRequest {
