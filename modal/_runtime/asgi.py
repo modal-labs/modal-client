@@ -11,6 +11,7 @@ import aiohttp
 
 from modal._utils.async_utils import TaskContext
 from modal._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
+from modal._utils.function_utils import _stream_function_call_data
 from modal._utils.package_utils import parse_major_minor_version
 from modal.config import logger
 from modal.exception import ExecutionError, InvalidError
@@ -142,7 +143,16 @@ def asgi_app_wrapper(asgi_app, container_io_manager) -> tuple[Callable[..., Asyn
             # This initial message, "http.request" or "websocket.connect", should be sent
             # immediately after starting the ASGI app's function call. If it is not received, that
             # indicates a request cancellation or other abnormal circumstance.
+            async def messages():
+                import time
+
+                async for data in _stream_function_call_data(container_io_manager._client, function_call_id, "data_in"):
+                    tyield = time.time()
+                    yield data
+                    print(f"yield time was {(time.time() - tyield) * 1000:.2f}ms")
+
             message_gen = container_io_manager.get_data_in.aio(function_call_id)
+            # message_gen = messages()
             first_message_task = asyncio.create_task(message_gen.__anext__())
 
             try:
@@ -167,9 +177,11 @@ def asgi_app_wrapper(asgi_app, container_io_manager) -> tuple[Callable[..., Asyn
                 await disconnect_app()
                 return
 
-            await messages_to_app.put(first_message)
+            for m in first_message:
+                await messages_to_app.put(m)
             async for message in message_gen:
-                await messages_to_app.put(message)
+                for m in message:
+                    await messages_to_app.put(m)
 
         async def send(msg):
             # Automatically split body chunks that are greater than the output size limit, to
