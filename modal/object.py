@@ -210,6 +210,8 @@ class _Object:
     @property
     def object_id(self) -> str:
         """mdmd:hidden"""
+        if self._object_id is None:
+            raise
         return self._object_id
 
     @property

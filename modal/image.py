@@ -2047,11 +2047,11 @@ class _Image(_Object, type_prefix="im"):
         try:
             yield
         except Exception as exc:
-            if self.object_id is None:
-                # Might be initialized later
+            if not self.is_hydrated:
+                # Might be hydrated later (if it's the container's used image)
                 self.inside_exceptions.append(exc)
             elif env_image_id == self.object_id:
-                # Image is already initialized (we can remove this case later
+                # Image is already hydrated (we can remove this case later
                 # when we don't hydrate objects so early)
                 raise
             if not isinstance(exc, ImportError):

@@ -60,3 +60,6 @@ known-first-party = [
     "modal_version",
 ]
 extra-standard-library = ["pytest"]
+
+[tool.pyright]
+reportUnnecessaryComparison = true

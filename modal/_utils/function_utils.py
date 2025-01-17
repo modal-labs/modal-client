@@ -16,7 +16,7 @@ from modal_proto import api_pb2
 
 from .._serialization import deserialize, deserialize_data_format, serialize
 from .._traceback import append_modal_tb
-from ..config import config, logger
+from ..config import logger
 from ..exception import (
     DeserializationError,
     ExecutionError,
@@ -25,6 +25,7 @@ from ..exception import (
     InvalidError,
     RemoteError,
 )
+from ..file_pattern_matcher import NON_PYTHON_FILES
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
 from .blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
@@ -319,25 +320,14 @@ class FunctionInfo:
             These are typically local modules which are imported but not part of the running package
 
         """
-        if self._type == FunctionInfoType.NOTEBOOK:
-            # Don't auto-mount anything for notebooks.
+        if self.is_serialized():
+            # Don't auto-mount anything for serialized functions (including notebooks)
             return []
 
         # make sure the function's own entrypoint is included:
         if self._type == FunctionInfoType.PACKAGE:
-            if config.get("automount"):
-                return [_Mount._from_local_python_packages(self.module_name)]
-            elif not self.is_serialized():
-                # mount only relevant file and __init__.py:s
-                return [
-                    _Mount._from_local_dir(
-                        self._base_dir,
-                        remote_path=self._remote_dir,
-                        recursive=True,
-                        condition=entrypoint_only_package_mount_condition(self._file),
-                    )
-                ]
-        elif not self.is_serialized():
+            return [_Mount._from_local_python_packages(self.module_name, ignore=NON_PYTHON_FILES)]
+        elif self._type == FunctionInfoType.FILE:
             remote_path = ROOT_DIR / Path(self._file).name
             if not _is_modal_path(remote_path):
                 return [
@@ -346,7 +336,7 @@ class FunctionInfo:
                         remote_path=remote_path,
                     )
                 ]
-        return []
+        return []  # this should never be reached...
 
     def get_tag(self):
         return self.function_name

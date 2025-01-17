@@ -8,13 +8,7 @@ import warnings
 from collections.abc import AsyncGenerator, Collection, Sequence, Sized
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Optional,
-    Union,
-)
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Union
 
 import typing_extensions
 from google.protobuf.message import Message
@@ -371,6 +365,35 @@ OriginalReturnType = typing.TypeVar(
 )  # differs from return type if ReturnType is coroutine
 
 
+INCLUDE_SOURCE_MODES = Literal["none", "main-package", "first-party-packages"]
+
+
+def get_include_source_mode(function_or_app_specific: Optional[INCLUDE_SOURCE_MODES]) -> INCLUDE_SOURCE_MODES:
+    if function_or_app_specific is not None:
+        return function_or_app_specific
+
+    # default - fall back to configuration value - which itself has a default value "first-party" at the moment
+    # in the future this default value will be changed to "main"
+    if include_source_setting := config.get("include_source"):
+        return include_source_setting
+
+    if (automount_setting := config.get("automount")) is not None:
+        # this means automount config/env var is explicitly set according to legacy definition
+        deprecation_warning(
+            (2025, 1, 16),
+            "The MODAL_AUTOMOUNT configuration is being deprecated.\n"
+            "Use App(include_source=...) or app.function(include_source=...) instead.",
+            pending=True,
+        )
+        if automount_setting is True:
+            return "first-party-packages"
+        else:
+            return "main-package"
+
+    # no option set - use *old* default
+    return "first-party-packages"
+
+
 class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type_prefix="fu"):
     """Functions are the basic units of serverless execution on Modal.
 
@@ -471,6 +494,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         cluster_size: Optional[int] = None,  # Experimental: Clustered functions
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
+        include_source: Optional[INCLUDE_SOURCE_MODES] = None,
         _experimental_buffer_containers: Optional[int] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
@@ -497,7 +521,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         explicit_mounts = mounts
 
         if is_local():
-            entrypoint_mounts = info.get_entrypoint_mount()
+            include_source_mode = get_include_source_mode(include_source)
+            if include_source_mode != "none":
+                entrypoint_mounts = info.get_entrypoint_mount()
+            else:
+                entrypoint_mounts = []
 
             all_mounts = [
                 _get_client_mount(),
@@ -505,7 +533,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 *entrypoint_mounts,
             ]
 
-            if config.get("automount"):
+            if include_source_mode == "first-party-packages":
                 all_mounts += get_auto_mounts()
         else:
             # skip any mount introspection/logic inside containers, since the function
@@ -946,8 +974,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         parent = self
 
         async def _load(param_bound_func: _Function, resolver: Resolver, existing_object_id: Optional[str]):
-            if parent is None:
-                raise ExecutionError("Can't find the parent class' service function")
             try:
                 identity = f"{parent.info.function_name} class service function"
             except Exception:

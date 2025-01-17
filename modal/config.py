@@ -192,6 +192,28 @@ def _to_boolean(x: object) -> bool:
     return str(x).lower() not in {"", "0", "false"}
 
 
+def _to_nullable_boolean(x: object) -> Optional[bool]:
+    if x is None:
+        return None
+    return _to_boolean(x)
+
+
+VALID_SOURCE_MODES = ["none", "main-package", "first-party-packages"]
+
+
+def _to_include_source_mode(
+    x: Optional[str],
+) -> typing.Optional[typing.Literal["none", "main-package", "first-party-packages"]]:
+    if x is None:
+        return None
+    if x.lower() not in VALID_SOURCE_MODES:
+        raise ValueError(
+            'automount mode can only be set to one of these values: "none", "main-package", "first-party-packages"'
+        )
+
+    return typing.cast(typing.Literal["none", "main-package", "first-party-packages"], x.lower())
+
+
 class _Setting(typing.NamedTuple):
     default: typing.Any = None
     transform: typing.Callable[[str], typing.Any] = lambda x: x  # noqa: E731
@@ -208,7 +230,8 @@ _SETTINGS = {
     "sync_entrypoint": _Setting(),
     "logs_timeout": _Setting(10, float),
     "image_id": _Setting(),
-    "automount": _Setting(True, transform=_to_boolean),
+    "automount": _Setting(None, transform=_to_nullable_boolean),
+    "include_source": _Setting(None, transform=_to_include_source_mode),
     "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),
     "function_runtime_debug": _Setting(False, transform=_to_boolean),  # For internal debugging use.
