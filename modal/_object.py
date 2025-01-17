@@ -246,6 +246,7 @@ class _Object:
             "\n\nNote that it is rarely necessary to explicitly hydrate objects, as most methods"
             " will lazily hydrate when needed.",
             show_source=False,  # synchronicity interferes with attributing source correctly
+            pending=True,
         )
         await self.hydrate(client)
 
