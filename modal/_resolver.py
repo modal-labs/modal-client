@@ -15,7 +15,7 @@ from .exception import NotFoundError
 if TYPE_CHECKING:
     from rich.tree import Tree
 
-    from modal.object import _Object
+    import modal._object
 
 
 class StatusRow:
@@ -33,7 +33,7 @@ class StatusRow:
             self._spinner.update(text=message)
 
     def finish(self, message):
-        if self._step_node is not None:
+        if self._step_node is not None and self._spinner is not None:
             from ._output import OutputManager
 
             self._spinner.update(text=message)
@@ -89,7 +89,7 @@ class Resolver:
         if obj._preload is not None:
             await obj._preload(obj, self, existing_object_id)
 
-    async def load(self, obj: "_Object", existing_object_id: Optional[str] = None):
+    async def load(self, obj: "modal._object._Object", existing_object_id: Optional[str] = None):
         if obj._is_hydrated and obj._is_another_app:
             # No need to reload this, it won't typically change
             if obj.local_uuid not in self._local_uuid_to_future:
@@ -124,6 +124,8 @@ class Resolver:
                 await TaskContext.gather(*[self.load(dep) for dep in obj.deps()])
 
                 # Load the object itself
+                if not obj._load:
+                    raise Exception(f"Object {obj} has no loader function")
                 try:
                     await obj._load(obj, self, existing_object_id)
                 except GRPCError as exc:
@@ -154,8 +156,8 @@ class Resolver:
         # TODO(elias): print original exception/trace rather than the Resolver-internal trace
         return await cached_future
 
-    def objects(self) -> list["_Object"]:
-        unique_objects: dict[str, "_Object"] = {}
+    def objects(self) -> list["modal._object._Object"]:
+        unique_objects: dict[str, "modal._object._Object"] = {}
         for fut in self._local_uuid_to_future.values():
             if not fut.done():
                 # this will raise an exception if not all loads have been awaited, but that *should* never happen

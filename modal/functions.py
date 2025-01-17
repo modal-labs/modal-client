@@ -26,6 +26,7 @@ from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
 from ._location import parse_cloud_provider
+from ._object import _get_environment_name, _Object, live_method, live_method_gen
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
@@ -71,7 +72,6 @@ from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount, get_auto_mounts
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
-from .object import _get_environment_name, _Object, live_method, live_method_gen
 from .output import _get_output_manager
 from .parallel_map import (
     _for_each_async,
@@ -388,7 +388,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _is_method: bool
     _spec: Optional[_FunctionSpec] = None
     _tag: str
-    _raw_f: Callable[..., Any]
+    _raw_f: Optional[Callable[..., Any]]  # this is set to None for a "class service [function]"
     _build_args: dict
 
     _is_generator: Optional[bool] = None
@@ -474,7 +474,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         _experimental_buffer_containers: Optional[int] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
-    ) -> None:
+    ) -> "_Function":
         """mdmd:hidden"""
         # Needed to avoid circular imports
         from .partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
@@ -573,7 +573,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 )
                 image = _Image._from_args(
                     base_images={"base": image},
-                    build_function=snapshot_function,
+                    build_function=snapshot_function,  # type: ignore   # TODO: separate functions.py and _functions.py
                     force_build=image.force_build or pf.force_build,
                 )
 
@@ -962,7 +962,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     f"The {identity} has not been hydrated with the metadata it needs to run on Modal{reason}."
                 )
 
-            assert parent._client.stub
+            assert parent._client and parent._client.stub
 
             if can_use_parent:
                 # We can end up here if parent wasn't hydrated when class was instantiated, but has been since.
@@ -983,9 +983,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             else:
                 serialized_params = serialize((args, kwargs))
             environment_name = _get_environment_name(None, resolver)
-            assert parent is not None
+            assert parent is not None and parent.is_hydrated
             req = api_pb2.FunctionBindParamsRequest(
-                function_id=parent._object_id,
+                function_id=parent.object_id,
                 serialized_params=serialized_params,
                 function_options=options,
                 environment_name=environment_name
@@ -1032,11 +1032,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             """
                 )
             )
-        assert self._client and self._client.stub
         request = api_pb2.FunctionUpdateSchedulingParamsRequest(
-            function_id=self._object_id, warm_pool_size_override=warm_pool_size
+            function_id=self.object_id, warm_pool_size_override=warm_pool_size
         )
-        await retry_transient_errors(self._client.stub.FunctionUpdateSchedulingParams, request)
+        await retry_transient_errors(self.client.stub.FunctionUpdateSchedulingParams, request)
 
     @classmethod
     @renamed_parameter((2024, 12, 18), "tag", "name")
@@ -1142,7 +1141,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         """mdmd:hidden"""
         # Plaintext source and arg definition for the function, so it's part of the image
         # hash. We can't use the cloudpickle hash because it's not very stable.
-        assert hasattr(self, "_raw_f") and hasattr(self, "_build_args")
+        assert hasattr(self, "_raw_f") and hasattr(self, "_build_args") and self._raw_f is not None
         return f"{inspect.getsource(self._raw_f)}\n{repr(self._build_args)}"
 
     # Live handle methods
@@ -1248,7 +1247,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             _map_invocation(
                 self,  # type: ignore
                 input_queue,
-                self._client,
+                self.client,
                 order_outputs,
                 return_exceptions,
                 count_update_callback,
@@ -1266,7 +1265,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             self,
             args,
             kwargs,
-            client=self._client,
+            client=self.client,
             function_call_invocation_type=function_call_invocation_type,
         )
 
@@ -1276,7 +1275,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self, args, kwargs, function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType"
     ) -> _Invocation:
         return await _Invocation.create(
-            self, args, kwargs, client=self._client, function_call_invocation_type=function_call_invocation_type
+            self, args, kwargs, client=self.client, function_call_invocation_type=function_call_invocation_type
         )
 
     @warn_if_generator_is_not_consumed()
@@ -1287,7 +1286,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             self,
             args,
             kwargs,
-            client=self._client,
+            client=self.client,
             function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY,
         )
         async for res in invocation.run_generator():
@@ -1303,7 +1302,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             self,
             args,
             kwargs,
-            client=self._client,
+            client=self.client,
             function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY,
         )
 
@@ -1452,14 +1451,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     def get_raw_f(self) -> Callable[..., Any]:
         """Return the inner Python object wrapped by this Modal Function."""
+        assert self._raw_f is not None
         return self._raw_f
 
     @live_method
     async def get_current_stats(self) -> FunctionStats:
         """Return a `FunctionStats` object describing the current function's queue and runner counts."""
-        assert self._client.stub
         resp = await retry_transient_errors(
-            self._client.stub.FunctionGetCurrentStats,
+            self.client.stub.FunctionGetCurrentStats,
             api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id),
             total_timeout=10.0,
         )
@@ -1491,8 +1490,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
     _is_generator: bool = False
 
     def _invocation(self):
-        assert self._client.stub
-        return _Invocation(self._client.stub, self.object_id, self._client)
+        return _Invocation(self.client.stub, self.object_id, self.client)
 
     async def get(self, timeout: Optional[float] = None) -> ReturnType:
         """Get the result of the function call.

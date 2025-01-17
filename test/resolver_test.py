@@ -4,8 +4,8 @@ import pytest
 import time
 from typing import Optional
 
+from modal._object import _Object
 from modal._resolver import Resolver
-from modal.object import _Object
 
 
 @pytest.mark.flaky(max_runs=2)

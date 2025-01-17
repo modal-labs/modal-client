@@ -3,11 +3,11 @@ import importlib
 import typing
 from abc import ABCMeta, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Sequence
 
+import modal._object
 import modal._runtime.container_io_manager
 import modal.cls
-import modal.object
 from modal import Function
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_object
@@ -41,7 +41,7 @@ class Service(metaclass=ABCMeta):
 
     user_cls_instance: Any
     app: Optional["modal.app._App"]
-    code_deps: Optional[list["modal.object._Object"]]
+    code_deps: Optional[Sequence["modal._object._Object"]]
 
     @abstractmethod
     def get_finalized_functions(
@@ -94,7 +94,7 @@ def construct_webhook_callable(
 class ImportedFunction(Service):
     user_cls_instance: Any
     app: Optional["modal.app._App"]
-    code_deps: Optional[list["modal.object._Object"]]
+    code_deps: Optional[Sequence["modal._object._Object"]]
 
     _user_defined_callable: Callable[..., Any]
 
@@ -137,7 +137,7 @@ class ImportedFunction(Service):
 class ImportedClass(Service):
     user_cls_instance: Any
     app: Optional["modal.app._App"]
-    code_deps: Optional[list["modal.object._Object"]]
+    code_deps: Optional[Sequence["modal._object._Object"]]
 
     _partial_functions: dict[str, "modal.partial_function._PartialFunction"]
 
@@ -229,7 +229,7 @@ def import_single_function_service(
     """
     user_defined_callable: Callable
     function: Optional[_Function] = None
-    code_deps: Optional[list["modal.object._Object"]] = None
+    code_deps: Optional[Sequence["modal._object._Object"]] = None
     active_app: Optional[modal.app._App] = None
 
     if ser_fun is not None:
@@ -306,7 +306,7 @@ def import_class_service(
     See import_function.
     """
     active_app: Optional["modal.app._App"]
-    code_deps: Optional[list["modal.object._Object"]]
+    code_deps: Optional[Sequence["modal._object._Object"]]
     cls: typing.Union[type, modal.cls.Cls]
 
     if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
