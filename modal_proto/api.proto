@@ -2329,6 +2329,14 @@ message SandboxSnapshotResponse {
   string snapshot_id = 1;
 }
 
+message SandboxSnapshotFromIdRequest {
+  string sandbox_snapshot_id = 1;
+}
+
+message SandboxSnapshotFromIdResponse {
+  string sandbox_snapshot_id = 1;
+}
+
 message SandboxSnapshotWaitRequest {
   string snapshot_id = 1;
   float timeout = 2;
@@ -2962,6 +2970,7 @@ service ModalClient {
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
   rpc SandboxRestore(SandboxRestoreRequest) returns (SandboxRestoreResponse);
   rpc SandboxSnapshot(SandboxSnapshotRequest) returns (SandboxSnapshotResponse);
+  rpc SandboxSnapshotFromId(SandboxSnapshotFromIdRequest) returns (SandboxSnapshotFromIdResponse);
   rpc SandboxSnapshotFs(SandboxSnapshotFsRequest) returns (SandboxSnapshotFsResponse);
   rpc SandboxSnapshotWait(SandboxSnapshotWaitRequest) returns (SandboxSnapshotWaitResponse);
   rpc SandboxStdinWrite(SandboxStdinWriteRequest) returns (SandboxStdinWriteResponse);

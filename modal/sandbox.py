@@ -34,6 +34,7 @@ from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .proxy import _Proxy
+from .sandboxsnapshot import _SandboxSnapshot
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
 from .stream_type import StreamType
@@ -367,6 +368,28 @@ class _Sandbox(_Object, type_prefix="sb"):
         image = _Image._from_loader(_load, rep)
 
         return image
+
+    async def snapshot(self) -> _SandboxSnapshot:
+        """Create a snapshot of the Sandbox's filesystem and memory state.
+
+        Returns a [`SandboxSnapshot`](/docs/reference/modal.SandboxSnapshot#modal-sandboxsnapshot) object
+        which can be used to spawn a new Sandbox with the same filesystem and memory state.
+        """
+        req = api_pb2.SandboxSnapshotRequest(sandbox_id=self.object_id)
+        resp = await retry_transient_errors(self._client.stub.SandboxSnapshot, req)
+        return await _SandboxSnapshot.from_id(resp.sandbox_snapshot_id, self._client)
+
+    @staticmethod
+    async def from_snapshot(sandbox_snapshot: _SandboxSnapshot, client: Optional[_Client] = None) -> "_Sandbox":
+        """Create a new Sandbox from a snapshot.
+
+        Returns a [`Sandbox`](/docs/reference/modal.Sandbox#modal-sandbox) object
+        which can be used to spawn a new Sandbox with the same filesystem and memory state.
+        """
+        if client is None:
+            client = await _Client.from_env()
+
+        return await _Sandbox.from_id(sandbox_snapshot_id, client)
 
     # Live handle methods
 
