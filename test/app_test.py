@@ -437,3 +437,36 @@ def test_app_create_bad_environment_name_error(client):
             pass
 
     assert len(asyncio.all_tasks(synchronizer._loop)) == 1  # no trailing tasks, except the `loop_inner` ever-task
+
+
+def test_overriding_function_warning(caplog):
+    app = App()
+
+    @app.function(serialized=True)
+    def func():  # type: ignore
+        return 1
+
+    assert len(caplog.messages) == 0
+
+    app_2 = App()
+    app_2.include(app)
+
+    assert len(caplog.messages) == 0
+
+    app_3 = App()
+
+    app_3.include(app)
+    app_3.include(app_2)
+
+    assert len(caplog.messages) == 0
+
+    app_4 = App()
+
+    @app_4.function(serialized=True)  # type: ignore
+    def func():  # noqa: F811
+        return 2
+
+    assert len(caplog.messages) == 0
+
+    app_3.include(app_4)
+    assert "Overriding existing function" in caplog.messages[0]
