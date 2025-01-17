@@ -2221,6 +2221,30 @@ message Sandbox {
   NetworkAccess network_access = 22;
 
   optional string proxy_id = 23;
+
+  // Enable memory snapshots.
+  bool enable_memory_snapshot = 24;
+
+  // Used to pin gVisor version for memory-snapshottable sandboxes.
+  // This field is set by the server, not the client.
+  optional uint32 snapshot_version = 25;
+}
+
+message SandboxSnapshotRequest {
+  string sandbox_id = 1;
+  float timeout = 2;
+}
+
+message SandboxSnapshotResponse {
+  string snapshot_id = 1;
+}
+
+message SandboxSnapshotWaitRequest {
+  string snapshot_id = 1;
+}
+
+message SandboxSnapshotWaitResponse {
+  GenericResult result = 1;
 }
 
 message SandboxCreateRequest {
@@ -2230,6 +2254,16 @@ message SandboxCreateRequest {
 }
 
 message SandboxCreateResponse {
+  string sandbox_id = 1;
+}
+
+message SandboxRestoreRequest {
+  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string snapshot_id = 2;
+  string environment_name = 3;
+}
+
+message SandboxRestoreResponse {
   string sandbox_id = 1;
 }
 
@@ -2924,6 +2958,9 @@ service ModalClient {
   rpc SandboxTagsSet(SandboxTagsSetRequest) returns (google.protobuf.Empty);
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
+  rpc SandboxSnapshot(SandboxSnapshotRequest) returns (SandboxSnapshotResponse);
+  rpc SandboxSnapshotWait(SandboxSnapshotWaitRequest) returns (SandboxSnapshotWaitResponse);
+  rpc SandboxRestore(SandboxRestoreRequest) returns (SandboxRestoreResponse);
 
   // Secrets
   rpc SecretDelete(SecretDeleteRequest) returns (google.protobuf.Empty);
