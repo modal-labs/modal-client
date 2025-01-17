@@ -756,7 +756,7 @@ def test_serialize_deserialize_function_handle(servicer, client):
     def my_handle():
         pass
 
-    with pytest.raises(InvalidError, match="hasn't been created"):
+    with pytest.raises(InvalidError, match="hasn't been hydrated"):
         serialize(my_handle)  # handle is not "live" yet! should not be serializable yet
 
     with app.run(client=client):

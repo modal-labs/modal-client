@@ -17,9 +17,9 @@ from modal.mount import _get_client_mount, _Mount
 async def test__watch_args_from_mounts(monkeypatch, test_dir):
     paths, watch_filter = _watch_args_from_mounts(
         mounts=[
-            _Mount.from_local_file("/x/foo.py", remote_path="/foo.py"),
-            _Mount.from_local_dir("/one/two/bucklemyshoe", remote_path="/"),
-            _Mount.from_local_dir("/x/z", remote_path="/z"),
+            _Mount._from_local_file("/x/foo.py", remote_path="/foo.py"),
+            _Mount._from_local_dir("/one/two/bucklemyshoe", remote_path="/"),
+            _Mount._from_local_dir("/x/z", remote_path="/z"),
         ]
     )
 
@@ -51,9 +51,10 @@ def test_watch_mounts_requires_running_app():
 
 
 def test_watch_mounts_includes_function_mounts(client, supports_dir, monkeypatch, disable_auto_mount):
+    # TODO: remove this test once public Mount constructions are fully deprecated
     monkeypatch.syspath_prepend(supports_dir)
     app = modal.App()
-    pkg_a_mount = modal.Mount.from_local_python_packages("pkg_a")
+    pkg_a_mount = modal.Mount._from_local_python_packages("pkg_a")
 
     @app.function(mounts=[pkg_a_mount], serialized=True)
     def f():
@@ -65,9 +66,10 @@ def test_watch_mounts_includes_function_mounts(client, supports_dir, monkeypatch
 
 
 def test_watch_mounts_includes_cls_mounts(client, supports_dir, monkeypatch, disable_auto_mount):
+    # TODO: remove this test once public Mount constructions are fully deprecated
     monkeypatch.syspath_prepend(supports_dir)
     app = modal.App()
-    pkg_a_mount = modal.Mount.from_local_python_packages("pkg_a")
+    pkg_a_mount = modal.Mount._from_local_python_packages("pkg_a")
 
     @app.cls(mounts=[pkg_a_mount], serialized=True)
     class A:
@@ -81,9 +83,10 @@ def test_watch_mounts_includes_cls_mounts(client, supports_dir, monkeypatch, dis
 
 
 def test_watch_mounts_includes_image_mounts(client, supports_dir, monkeypatch, disable_auto_mount):
+    # TODO: remove this test once public Mount constructions are fully deprecated
     monkeypatch.syspath_prepend(supports_dir)
     app = modal.App()
-    pkg_a_mount = modal.Mount.from_local_python_packages("pkg_a")
+    pkg_a_mount = modal.Mount._from_local_python_packages("pkg_a")
     image = modal.Image.debian_slim().copy_mount(pkg_a_mount)
 
     @app.function(image=image, serialized=True)

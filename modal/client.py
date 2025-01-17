@@ -73,6 +73,7 @@ class _Client:
     _cancellation_context: TaskContext
     _cancellation_context_event_loop: asyncio.AbstractEventLoop = None
     _stub: Optional[api_grpc.ModalClientStub]
+    _snapshotted: bool
 
     def __init__(
         self,

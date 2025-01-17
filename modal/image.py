@@ -26,6 +26,7 @@ from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal_proto import api_pb2
 
+from ._object import _Object, live_method_gen
 from ._resolver import Resolver
 from ._serialization import serialize
 from ._utils.async_utils import synchronize_api
@@ -46,7 +47,6 @@ from .file_pattern_matcher import NON_PYTHON_FILES, FilePatternMatcher, _ignore_
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
-from .object import _Object, live_method_gen
 from .output import _get_output_manager
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
@@ -81,6 +81,11 @@ class _AutoDockerIgnoreSentinel:
 
 
 AUTO_DOCKERIGNORE = _AutoDockerIgnoreSentinel()
+
+COPY_DEPRECATION_MESSAGE_PATTERN = """modal.Image.copy_* methods will soon be deprecated.
+
+Use {replacement} instead, which is functionally and performance-wise equivalent.
+"""
 
 
 def _validate_python_version(
@@ -657,13 +662,16 @@ class _Image(_Object, type_prefix="im"):
         return obj
 
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
-        """Copy the entire contents of a `modal.Mount` into an image.
+        """
+        **Deprecated**: Use image.add_local_dir(..., copy=True) or similar instead.
+
+        Copy the entire contents of a `modal.Mount` into an image.
         Useful when files only available locally are required during the image
         build process.
 
         **Example**
 
-        ```python
+        ```python notest
         static_images_dir = "./static"
         # place all static images in root of mount
         mount = modal.Mount.from_local_dir(static_images_dir, remote_path="/")
@@ -736,7 +744,6 @@ class _Image(_Object, type_prefix="im"):
         **Usage:**
 
         ```python
-        from pathlib import Path
         from modal import FilePatternMatcher
 
         image = modal.Image.debian_slim().add_local_dir(
@@ -768,7 +775,7 @@ class _Image(_Object, type_prefix="im"):
         image = modal.Image.debian_slim().add_local_dir(
             "~/assets",
             remote_path="/assets",
-            ignore=FilePatternMatcher.from_file(Path("/path/to/ignorefile")),
+            ignore=FilePatternMatcher.from_file("/path/to/ignorefile"),
         )
         ```
         """
@@ -786,7 +793,9 @@ class _Image(_Object, type_prefix="im"):
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
         """
-        # TODO(elias): add pending deprecation with suggestion to use add_* instead
+        deprecation_warning(
+            (2024, 1, 13), COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"), pending=True
+        )
         basename = str(Path(local_path).name)
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
@@ -845,14 +854,17 @@ class _Image(_Object, type_prefix="im"):
         # Which follows dockerignore syntax.
         ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
     ) -> "_Image":
-        """Copy a directory into the image as a part of building the image.
+        """
+        **Deprecated**: Use image.add_local_dir instead
+
+        Copy a directory into the image as a part of building the image.
 
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
 
         **Usage:**
 
-        ```python
+        ```python notest
         from pathlib import Path
         from modal import FilePatternMatcher
 
@@ -885,10 +897,13 @@ class _Image(_Object, type_prefix="im"):
         image = modal.Image.debian_slim().copy_local_dir(
             "~/assets",
             remote_path="/assets",
-            ignore=FilePatternMatcher.from_file(Path("/path/to/ignorefile")),
+            ignore=FilePatternMatcher.from_file("/path/to/ignorefile"),
         )
         ```
         """
+        deprecation_warning(
+            (2024, 1, 13), COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"), pending=True
+        )
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base", f"COPY . {remote_path}"], context_files={})
@@ -1282,7 +1297,6 @@ class _Image(_Object, type_prefix="im"):
         **Usage:**
 
         ```python
-        from pathlib import Path
         from modal import FilePatternMatcher
 
         # By default a .dockerignore file is used if present in the current working directory
@@ -1314,10 +1328,17 @@ class _Image(_Object, type_prefix="im"):
         # You can also read ignore patterns from a file.
         image = modal.Image.debian_slim().dockerfile_commands(
             ["COPY data /data"],
-            ignore=FilePatternMatcher.from_file(Path("/path/to/dockerignore")),
+            ignore=FilePatternMatcher.from_file("/path/to/dockerignore"),
         )
         ```
         """
+        if context_mount is not None:
+            deprecation_warning(
+                (2025, 1, 13),
+                "`context_mount` is deprecated."
+                + " Files are now automatically added to the build context based on the commands.",
+                pending=True,
+            )
         cmds = _flatten_str_args("dockerfile_commands", "dockerfile_commands", dockerfile_commands)
         if not cmds:
             return self
@@ -1713,7 +1734,6 @@ class _Image(_Object, type_prefix="im"):
         **Usage:**
 
         ```python
-        from pathlib import Path
         from modal import FilePatternMatcher
 
         # By default a .dockerignore file is used if present in the current working directory
@@ -1751,10 +1771,17 @@ class _Image(_Object, type_prefix="im"):
         image = modal.Image.from_dockerfile(
             "./Dockerfile",
             add_python="3.12",
-            ignore=FilePatternMatcher.from_file(Path("/path/to/dockerignore")),
+            ignore=FilePatternMatcher.from_file("/path/to/dockerignore"),
         )
         ```
         """
+        if context_mount is not None:
+            deprecation_warning(
+                (2025, 1, 13),
+                "`context_mount` is deprecated."
+                + " Files are now automatically added to the build context based on the commands in the Dockerfile.",
+                pending=True,
+            )
 
         # --- Build the base dockerfile
 
@@ -2026,11 +2053,11 @@ class _Image(_Object, type_prefix="im"):
         try:
             yield
         except Exception as exc:
-            if self.object_id is None:
-                # Might be initialized later
+            if not self.is_hydrated:
+                # Might be hydrated later
                 self.inside_exceptions.append(exc)
             elif env_image_id == self.object_id:
-                # Image is already initialized (we can remove this case later
+                # Image is already hydrated (we can remove this case later
                 # when we don't hydrate objects so early)
                 raise
             if not isinstance(exc, ImportError):
@@ -2045,9 +2072,9 @@ class _Image(_Object, type_prefix="im"):
         last_entry_id: str = ""
 
         request = api_pb2.ImageJoinStreamingRequest(
-            image_id=self._object_id, timeout=55, last_entry_id=last_entry_id, include_logs_for_finished=True
+            image_id=self.object_id, timeout=55, last_entry_id=last_entry_id, include_logs_for_finished=True
         )
-        async for response in self._client.stub.ImageJoinStreaming.unary_stream(request):
+        async for response in self.client.stub.ImageJoinStreaming.unary_stream(request):
             if response.result.status:
                 return
             if response.entry_id:

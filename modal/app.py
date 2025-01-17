@@ -21,6 +21,7 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal_proto import api_pb2
 
 from ._ipython import is_notebook
+from ._object import _get_environment_name, _Object
 from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import deprecation_error, deprecation_warning, renamed_parameter
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
@@ -36,7 +37,6 @@ from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
-from .object import _get_environment_name, _Object
 from .partial_function import (
     PartialFunction,
     _find_partial_methods_for_user_cls,
@@ -365,6 +365,7 @@ class _App:
         show_progress: Optional[bool] = None,
         detach: bool = False,
         interactive: bool = False,
+        environment_name: Optional[str] = None,
     ) -> AsyncGenerator["_App", None]:
         """Context manager that runs an app on Modal.
 
@@ -420,7 +421,9 @@ class _App:
         elif show_progress is False:
             deprecation_warning((2024, 11, 20), "`show_progress=False` is deprecated (and has no effect)")
 
-        async with _run_app(self, client=client, detach=detach, interactive=interactive):
+        async with _run_app(
+            self, client=client, detach=detach, interactive=interactive, environment_name=environment_name
+        ):
             yield self
 
     def _get_default_image(self):
@@ -504,7 +507,7 @@ class _App:
         return self._functions
 
     @property
-    def registered_classes(self) -> dict[str, _Function]:
+    def registered_classes(self) -> dict[str, _Cls]:
         """All modal.Cls objects registered on the app."""
         return self._classes
 

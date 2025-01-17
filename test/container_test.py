@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 
 import asyncio
-import base64
 import dataclasses
 import gc
 import json
@@ -562,7 +561,7 @@ def test_from_local_python_packages_inside_container(servicer):
     """`from_local_python_packages` shouldn't actually collect modules inside the container, because it's possible
     that there are modules that were present locally for the user that didn't get mounted into
     all the containers."""
-    ret = _run_container(servicer, "test.supports.package_mount", "num_mounts")
+    ret = _run_container(servicer, "test.supports.package_mount", "dummy")
     assert _unwrap_scalar(ret) == 0
 
 
@@ -1162,7 +1161,7 @@ def test_container_heartbeats(servicer):
 
 
 @skip_github_non_linux
-def test_cli(servicer, credentials):
+def test_cli(servicer, tmp_path, credentials):
     # This tests the container being invoked as a subprocess (the if __name__ == "__main__" block)
 
     # Build up payload we pass through sys args
@@ -1184,16 +1183,23 @@ def test_cli(servicer, credentials):
             ],
         ),
     )
-    data_base64: str = base64.b64encode(container_args.SerializeToString()).decode("ascii")
+    container_args_path = tmp_path / "container-args.bin"
+    with container_args_path.open("wb") as f:
+        f.write(container_args.SerializeToString())
 
     # Inputs that will be consumed by the container
     servicer.container_inputs = _get_inputs()
 
     # Launch subprocess
     token_id, token_secret = credentials
-    env = {"MODAL_SERVER_URL": servicer.container_addr, "MODAL_TOKEN_ID": token_id, "MODAL_TOKEN_SECRET": token_secret}
+    env = {
+        "MODAL_SERVER_URL": servicer.container_addr,
+        "MODAL_TOKEN_ID": token_id,
+        "MODAL_TOKEN_SECRET": token_secret,
+        "MODAL_CONTAINER_ARGUMENTS_PATH": str(container_args_path),
+    }
     lib_dir = pathlib.Path(__file__).parent.parent
-    args: list[str] = [sys.executable, "-m", "modal._container_entrypoint", data_base64]
+    args: list[str] = [sys.executable, "-m", "modal._container_entrypoint"]
     ret = subprocess.run(args, cwd=lib_dir, env=env, capture_output=True)
     stdout = ret.stdout.decode()
     stderr = ret.stderr.decode()

@@ -10,6 +10,30 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.72.22 (2025-01-17)
+
+* Internal refactor of the `modal.object` module. All entities except `Object` from that module have now been moved to the `modal._object` "private" module.
+
+
+
+### 0.72.17 (2025-01-16)
+
+- The `@modal.build` decorator is now deprecated. For storing large assets (e.g. model weights), we now recommend using a `modal.Volume` over writing data to the `modal.Image` filesystem directly.
+
+
+
+### 0.72.16 (2025-01-16)
+
+* Fixes bug introduced in v0.72.9 where `modal run SomeClass.some_method` would incorrectly print a deprecation warning.
+
+
+
+### 0.72.15 (2025-01-15)
+
+- Added an `environment_name` parameter to the `App.run` context manager.
+
+
+
 ### 0.72.8 (2025-01-10)
 
 - Fixes a bug introduced in v0.72.2 when specifying `add_python="3.9"` in `Image.from_registry`.

@@ -16,6 +16,7 @@ from modal.volume import _Volume
 from modal_proto import api_pb2
 
 from ._location import parse_cloud_provider
+from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import synchronize_api
@@ -32,7 +33,6 @@ from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
-from .object import _get_environment_name, _Object
 from .proxy import _Proxy
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
@@ -350,6 +350,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         Returns an [`Image`](https://modal.com/docs/reference/modal.Image) object which
         can be used to spawn a new Sandbox with the same filesystem.
         """
+        await self._get_task_id()  # Ensure the sandbox has started
         req = api_pb2.SandboxSnapshotFsRequest(sandbox_id=self.object_id, timeout=timeout)
         resp = await retry_transient_errors(self._client.stub.SandboxSnapshotFs, req)
 

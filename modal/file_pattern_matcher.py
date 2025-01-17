@@ -112,7 +112,7 @@ class FilePatternMatcher(_AbstractPatternMatcher):
         self._set_patterns(pattern)
 
     @classmethod
-    def from_file(cls, file_path: Path) -> "FilePatternMatcher":
+    def from_file(cls, file_path: Union[str, Path]) -> "FilePatternMatcher":
         """Initialize a new FilePatternMatcher instance from a file.
 
         The patterns in the file will be read lazily when the matcher is first used.
@@ -122,17 +122,16 @@ class FilePatternMatcher(_AbstractPatternMatcher):
 
         **Usage:**
         ```python
-        from pathlib import Path
         from modal import FilePatternMatcher
 
-        matcher = FilePatternMatcher.from_file(Path("/path/to/ignorefile"))
+        matcher = FilePatternMatcher.from_file("/path/to/ignorefile")
         ```
 
         """
         uninitialized = cls.__new__(cls)
 
         def _delayed_init():
-            uninitialized._set_patterns(file_path.read_text("utf8").splitlines())
+            uninitialized._set_patterns(Path(file_path).read_text("utf8").splitlines())
             uninitialized._delayed_init = None
 
         uninitialized._delayed_init = _delayed_init
