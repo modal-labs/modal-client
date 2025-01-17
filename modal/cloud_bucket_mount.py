@@ -112,6 +112,9 @@ class _CloudBucketMount:
     # If the bucket is publicly accessible, the secret is unnecessary and can be omitted.
     secret: Optional[_Secret] = None
 
+    # Role ARN used for using OIDC authentication to access a cloud bucket.
+    oidc_auth_role_arn: Optional[str] = None
+
     read_only: bool = False
     requester_pays: bool = False
 
@@ -155,6 +158,7 @@ def cloud_bucket_mounts_to_proto(mounts: list[tuple[str, _CloudBucketMount]]) ->
             bucket_type=bucket_type,
             requester_pays=mount.requester_pays,
             key_prefix=key_prefix,
+            oidc_auth_role_arn=mount.oidc_auth_role_arn,
         )
         cloud_bucket_mounts.append(cloud_bucket_mount)
 
