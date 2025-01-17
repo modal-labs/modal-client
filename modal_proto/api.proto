@@ -82,6 +82,7 @@ enum ClientType {
   CLIENT_TYPE_WORKER = 2;
   CLIENT_TYPE_CONTAINER = 3;
   CLIENT_TYPE_WEB_SERVER = 5;
+  CLIENT_TYPE_NOTEBOOK_KERNEL = 6;
 }
 
 enum CloudProvider {
