@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.72.24 (2025-01-17)
+
+* No longer prints a warning if `app.include` re-includes an already included function (warning is still printed if *another* function with the same name is included)
+
+
+
 ### 0.72.22 (2025-01-17)
 
 * Internal refactor of the `modal.object` module. All entities except `Object` from that module have now been moved to the `modal._object` "private" module.
