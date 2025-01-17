@@ -2242,7 +2242,7 @@ message SandboxGetLogsRequest {
 
 message SandboxGetTaskIdRequest {
   string sandbox_id = 1;
-  float timeout = 2;
+  optional float timeout = 2; // Legacy clients do not provide a timeout. New clients must always provide a timeout.
   bool wait_until_ready = 3; // If true, waits until the container's postStart hook has been run before returning. Useful for detecting init failures.
 }
 
