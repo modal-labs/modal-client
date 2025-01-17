@@ -1926,12 +1926,12 @@ message Proxy {
   repeated ProxyIp proxy_ips = 4;
 }
 
-message ProxyAddNodeRequest {
+message ProxyAddIpRequest {
   string proxy_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
 
-message ProxyAddNodeResponse {
-  string proxy_node_id = 1;
+message ProxyAddIpResponse {
+  ProxyIp proxy_ip = 1;
 }
 
 message ProxyCreateRequest {
@@ -1986,8 +1986,8 @@ message ProxyListResponse {
   repeated Proxy proxies = 1;
 }
 
-message ProxyRemoveNodeRequest {
-  string proxy_node_id 1 [ (modal.options.audit_target_attr) = true ];
+message ProxyRemoveIpRequest {
+  string proxy_ip = 1 [ (modal.options.audit_target_attr) = true ];
 }
 
 message QueueClearRequest {
@@ -2834,13 +2834,13 @@ service ModalClient {
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
 
   // Proxies
-  rpc ProxyAddNode(ProxyAddNodeRequest) returns (ProxyAddNodeResponse);
+  rpc ProxyAddIp(ProxyAddIpRequest) returns (ProxyAddIpResponse);
   rpc ProxyCreate(ProxyCreateRequest) returns (ProxyCreateResponse);
   rpc ProxyDelete(ProxyDeleteRequest) returns (google.protobuf.Empty);
   rpc ProxyGet(ProxyGetRequest) returns (ProxyGetResponse);
   rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);
   rpc ProxyList(google.protobuf.Empty) returns (ProxyListResponse);
-  rpc ProxyRemoveNode(ProxyRemoveNodeRequest) returns (ProxyRemoveNodeResponse);
+  rpc ProxyRemoveIp(ProxyRemoveIpRequest) returns (google.protobuf.Empty);
 
   // Queues
   rpc QueueClear(QueueClearRequest) returns (google.protobuf.Empty);
