@@ -26,6 +26,7 @@ from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal_proto import api_pb2
 
+from ._object import _Object, live_method_gen
 from ._resolver import Resolver
 from ._serialization import serialize
 from ._utils.async_utils import synchronize_api
@@ -46,7 +47,6 @@ from .file_pattern_matcher import NON_PYTHON_FILES, FilePatternMatcher, _ignore_
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
-from .object import _Object, live_method_gen
 from .output import _get_output_manager
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
@@ -2053,11 +2053,11 @@ class _Image(_Object, type_prefix="im"):
         try:
             yield
         except Exception as exc:
-            if self.object_id is None:
-                # Might be initialized later
+            if not self.is_hydrated:
+                # Might be hydrated later
                 self.inside_exceptions.append(exc)
             elif env_image_id == self.object_id:
-                # Image is already initialized (we can remove this case later
+                # Image is already hydrated (we can remove this case later
                 # when we don't hydrate objects so early)
                 raise
             if not isinstance(exc, ImportError):
@@ -2072,9 +2072,9 @@ class _Image(_Object, type_prefix="im"):
         last_entry_id: str = ""
 
         request = api_pb2.ImageJoinStreamingRequest(
-            image_id=self._object_id, timeout=55, last_entry_id=last_entry_id, include_logs_for_finished=True
+            image_id=self.object_id, timeout=55, last_entry_id=last_entry_id, include_logs_for_finished=True
         )
-        async for response in self._client.stub.ImageJoinStreaming.unary_stream(request):
+        async for response in self.client.stub.ImageJoinStreaming.unary_stream(request):
             if response.result.status:
                 return
             if response.entry_id:

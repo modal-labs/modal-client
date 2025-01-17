@@ -20,6 +20,7 @@ import modal.file_pattern_matcher
 from modal_proto import api_pb2
 from modal_version import __version__
 
+from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._utils.async_utils import aclosing, async_map, synchronize_api
 from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
@@ -31,7 +32,6 @@ from .client import _Client
 from .config import config, logger
 from .exception import InvalidError, ModuleNotMountable
 from .file_pattern_matcher import FilePatternMatcher
-from .object import _get_environment_name, _Object
 
 ROOT_DIR: PurePosixPath = PurePosixPath("/root")
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
