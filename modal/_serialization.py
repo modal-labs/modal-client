@@ -8,10 +8,11 @@ from typing import Any
 from modal._utils.async_utils import synchronizer
 from modal_proto import api_pb2
 
+from ._object import _Object
 from ._vendor import cloudpickle
 from .config import logger
 from .exception import DeserializationError, ExecutionError, InvalidError
-from .object import Object, _Object
+from .object import Object
 
 PICKLE_PROTOCOL = 4  # Support older Python versions.
 
@@ -48,8 +49,8 @@ class Pickler(cloudpickle.Pickler):
             return ("sync", (impl_object.__class__, attributes))
         else:
             return
-        if not obj.object_id:
-            raise InvalidError(f"Can't serialize object {obj} which hasn't been created.")
+        if not obj.is_hydrated:
+            raise InvalidError(f"Can't serialize object {obj} which hasn't been hydrated.")
         return (obj.object_id, flag, obj._get_metadata())
 
 

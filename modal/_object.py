@@ -1,22 +1,19 @@
 # Copyright Modal Labs 2022
+import typing
 import uuid
 from collections.abc import Awaitable, Hashable, Sequence
 from functools import wraps
-from typing import Callable, ClassVar, Optional, TypeVar
+from typing import Callable, ClassVar, Optional
 
 from google.protobuf.message import Message
+from typing_extensions import Self
 
 from modal._utils.async_utils import aclosing
 
 from ._resolver import Resolver
-from ._utils.async_utils import synchronize_api
 from .client import _Client
 from .config import config, logger
 from .exception import ExecutionError, InvalidError
-
-O = TypeVar("O", bound="_Object")
-
-_BLOCKING_O = synchronize_api(O)
 
 EPHEMERAL_OBJECT_HEARTBEAT_SLEEP: int = 300
 
@@ -35,17 +32,17 @@ class _Object:
     _prefix_to_type: ClassVar[dict[str, type]] = {}
 
     # For constructors
-    _load: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]]
-    _preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]]
+    _load: Optional[Callable[[Self, Resolver, Optional[str]], Awaitable[None]]]
+    _preload: Optional[Callable[[Self, Resolver, Optional[str]], Awaitable[None]]]
     _rep: str
     _is_another_app: bool
     _hydrate_lazily: bool
-    _deps: Optional[Callable[..., list["_Object"]]]
+    _deps: Optional[Callable[..., Sequence["_Object"]]]
     _deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None
 
     # For hydrated objects
-    _object_id: str
-    _client: _Client
+    _object_id: Optional[str]
+    _client: Optional[_Client]
     _is_hydrated: bool
     _is_rehydrated: bool
 
@@ -62,11 +59,11 @@ class _Object:
     def _init(
         self,
         rep: str,
-        load: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
+        load: Optional[Callable[[Self, Resolver, Optional[str]], Awaitable[None]]] = None,
         is_another_app: bool = False,
-        preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
+        preload: Optional[Callable[[Self, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
-        deps: Optional[Callable[..., list["_Object"]]] = None,
+        deps: Optional[Callable[..., Sequence["_Object"]]] = None,
         deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
@@ -101,7 +98,7 @@ class _Object:
         self._client = other._client
 
     def _hydrate(self, object_id: str, client: _Client, metadata: Optional[Message]):
-        assert isinstance(object_id, str)
+        assert isinstance(object_id, str) and self._type_prefix is not None
         if not object_id.startswith(self._type_prefix):
             raise ExecutionError(
                 f"Can not hydrate {type(self)}:"
@@ -121,12 +118,12 @@ class _Object:
         # return the necessary metadata from this handle to be able to re-hydrate in another context if one is needed
         # used to provide a handle's handle_metadata for serializing/pickling a live handle
         # the object_id is already provided by other means
-        return
+        return None
 
-    def _validate_is_hydrated(self: O):
+    def _validate_is_hydrated(self):
         if not self._is_hydrated:
             object_type = self.__class__.__name__.strip("_")
-            if hasattr(self, "_app") and getattr(self._app, "_running_app", "") is None:
+            if hasattr(self, "_app") and getattr(self._app, "_running_app", "") is None:  # type: ignore
                 # The most common cause of this error: e.g., user called a Function without using App.run()
                 reason = ", because the App it is defined on is not running"
             else:
@@ -136,7 +133,7 @@ class _Object:
                 f"{object_type} has not been hydrated with the metadata it needs to run on Modal{reason}."
             )
 
-    def clone(self: O) -> O:
+    def clone(self) -> Self:
         """mdmd:hidden Clone a given hydrated object."""
 
         # Object to clone must already be hydrated, otherwise from_loader is more suitable.
@@ -148,10 +145,10 @@ class _Object:
     @classmethod
     def _from_loader(
         cls,
-        load: Callable[[O, Resolver, Optional[str]], Awaitable[None]],
+        load: Callable[[Self, Resolver, Optional[str]], Awaitable[None]],
         rep: str,
         is_another_app: bool = False,
-        preload: Optional[Callable[[O, Resolver, Optional[str]], Awaitable[None]]] = None,
+        preload: Optional[Callable[[Self, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
         deps: Optional[Callable[..., Sequence["_Object"]]] = None,
         deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
@@ -161,32 +158,36 @@ class _Object:
         obj._init(rep, load, is_another_app, preload, hydrate_lazily, deps, deduplication_key)
         return obj
 
-    @classmethod
-    def _get_type_from_id(cls: type[O], object_id: str) -> type[O]:
+    @staticmethod
+    def _get_type_from_id(object_id: str) -> type["_Object"]:
         parts = object_id.split("-")
         if len(parts) != 2:
             raise InvalidError(f"Object id {object_id} has no dash in it")
         prefix = parts[0]
-        if prefix not in cls._prefix_to_type:
+        if prefix not in _Object._prefix_to_type:
             raise InvalidError(f"Object prefix {prefix} does not correspond to a type")
-        return cls._prefix_to_type[prefix]
+        return _Object._prefix_to_type[prefix]
 
     @classmethod
-    def _is_id_type(cls: type[O], object_id) -> bool:
+    def _is_id_type(cls, object_id) -> bool:
         return cls._get_type_from_id(object_id) == cls
 
     @classmethod
     def _new_hydrated(
-        cls: type[O], object_id: str, client: _Client, handle_metadata: Optional[Message], is_another_app: bool = False
-    ) -> O:
+        cls, object_id: str, client: _Client, handle_metadata: Optional[Message], is_another_app: bool = False
+    ) -> Self:
+        obj_cls: type[Self]
         if cls._type_prefix is not None:
             # This is called directly on a subclass, e.g. Secret.from_id
+            # validate the id matching the expected id type of the Object subclass
             if not object_id.startswith(cls._type_prefix + "-"):
                 raise InvalidError(f"Object {object_id} does not start with {cls._type_prefix}")
+
             obj_cls = cls
         else:
-            # This is called on the base class, e.g. Handle.from_id
-            obj_cls = cls._get_type_from_id(object_id)
+            # this means the method is used directly on _Object
+            # typically during deserialization of objects
+            obj_cls = typing.cast(type[Self], cls._get_type_from_id(object_id))
 
         # Instantiate provider
         obj = _Object.__new__(obj_cls)
@@ -196,8 +197,8 @@ class _Object:
 
         return obj
 
-    def _hydrate_from_other(self, other: O):
-        self._hydrate(other._object_id, other._client, other._get_metadata())
+    def _hydrate_from_other(self, other: Self):
+        self._hydrate(other.object_id, other.client, other._get_metadata())
 
     def __repr__(self):
         return self._rep
@@ -210,7 +211,16 @@ class _Object:
     @property
     def object_id(self) -> str:
         """mdmd:hidden"""
+        if self._object_id is None:
+            raise AttributeError(f"Attempting to get object_id of unhydrated {self}")
         return self._object_id
+
+    @property
+    def client(self) -> _Client:
+        """mdmd:hidden"""
+        if self._client is None:
+            raise AttributeError(f"Attempting to get client of unhydrated {self}")
+        return self._client
 
     @property
     def is_hydrated(self) -> bool:
@@ -218,21 +228,25 @@ class _Object:
         return self._is_hydrated
 
     @property
-    def deps(self) -> Callable[..., list["_Object"]]:
+    def deps(self) -> Callable[..., Sequence["_Object"]]:
         """mdmd:hidden"""
-        return self._deps if self._deps is not None else lambda: []
+
+        def default_deps(*args, **kwargs) -> Sequence["_Object"]:
+            return []
+
+        return self._deps if self._deps is not None else default_deps
 
     async def resolve(self, client: Optional[_Client] = None):
         """mdmd:hidden"""
         if self._is_hydrated:
             # memory snapshots capture references which must be rehydrated
             # on restore to handle staleness.
-            if self._client._snapshotted and not self._is_rehydrated:
+            if self.client._snapshotted and not self._is_rehydrated:
                 logger.debug(f"rehydrating {self} after snapshot")
                 self._is_hydrated = False  # un-hydrate and re-resolve
                 c = client if client is not None else await _Client.from_env()
                 resolver = Resolver(c)
-                await resolver.load(self)
+                await resolver.load(typing.cast(_Object, self))
                 self._is_rehydrated = True
                 logger.debug(f"rehydrated {self} with client {id(c)}")
             return
@@ -243,9 +257,6 @@ class _Object:
             c = client if client is not None else await _Client.from_env()
             resolver = Resolver(c)
             await resolver.load(self)
-
-
-Object = synchronize_api(_Object, target_module=__name__)
 
 
 def live_method(method):

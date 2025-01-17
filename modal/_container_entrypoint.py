@@ -50,8 +50,8 @@ from ._runtime.container_io_manager import (
 from ._runtime.execution_context import _set_current_context_ids
 
 if TYPE_CHECKING:
+    import modal._object
     import modal._runtime.container_io_manager
-    import modal.object
 
 
 class DaemonizedThreadPool:

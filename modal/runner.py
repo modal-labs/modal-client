@@ -14,6 +14,7 @@ from synchronicity.async_wrap import asynccontextmanager
 import modal_proto.api_pb2
 from modal_proto import api_pb2
 
+from ._object import _get_environment_name, _Object
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._runtime.execution_context import is_local
@@ -28,7 +29,6 @@ from .config import config, logger
 from .environments import _get_environment_cached
 from .exception import InteractiveTimeoutError, InvalidError, RemoteError, _CliUserExecutionError
 from .functions import _Function
-from .object import _get_environment_name, _Object
 from .output import _get_output_manager, enable_output
 from .running_app import RunningApp, running_app_from_layout
 from .sandbox import _Sandbox
@@ -155,7 +155,7 @@ async def _create_all_objects(
             # this is to ensure that directly referenced functions from the global scope has
             # ids associated with them when they are serialized into other functions
             await resolver.preload(obj, existing_object_id)
-            if obj.object_id is not None:
+            if obj.is_hydrated:
                 tag_to_object_id[tag] = obj.object_id
 
         await TaskContext.gather(*(_preload(tag, obj) for tag, obj in indexed_objects.items()))
