@@ -462,7 +462,7 @@ def test_overriding_function_warning(caplog):
 
     app_4 = App()
 
-    @app_4.function(serialized=True)
+    @app_4.function(serialized=True)  # type: ignore
     def func():  # noqa: F811
         return 2
 
