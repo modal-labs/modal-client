@@ -222,7 +222,7 @@ def test_run_commands_secrets_type_validation(builder_version, servicer, client)
                 Secret.from_dict({"xyz": "123"}),
                 Secret.from_name("foo"),
                 Dict.from_name("mydict"),  # type: ignore
-            ],  # Mount is not a valid Secret
+            ],  # Dict is not a valid Secret
         )
 
 
@@ -1738,7 +1738,7 @@ def test_image_add_local_dir_ignore_nothing(servicer, client, tmp_path_with_cont
         for file in files:
             file_paths.add(os.path.join(root, file))
 
-    expected = {f"/place/{Path(fn).relative_to(tmp_path_with_content)}" for fn in file_paths}
+    expected = {f"/place/{Path(fn).relative_to(tmp_path_with_content).as_posix()}" for fn in file_paths}
     app = App()
 
     img = Image.from_registry("unknown_image").workdir("/proj")
