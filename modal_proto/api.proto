@@ -2232,7 +2232,6 @@ message Sandbox {
 
 message SandboxSnapshotRequest {
   string sandbox_id = 1;
-  float timeout = 2;
 }
 
 message SandboxSnapshotResponse {
@@ -2241,6 +2240,7 @@ message SandboxSnapshotResponse {
 
 message SandboxSnapshotWaitRequest {
   string snapshot_id = 1;
+  float timeout = 2;
 }
 
 message SandboxSnapshotWaitResponse {
