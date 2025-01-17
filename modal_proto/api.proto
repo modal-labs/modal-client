@@ -1900,7 +1900,7 @@ message NotebookKernelPublishResultsRequest {
       NotebookOutput output = 2;
 
       // Clear all previous outputs of the cell.
-      bool clear_outputs = 3;
+      bool clear_output = 3;
 
       // Cell has finished executing, return the kernel's execute_reply.
       ExecuteReply execute_reply = 4;
@@ -1927,6 +1927,9 @@ message NotebookOutput {
   message DisplayData {
     google.protobuf.Struct data = 1; // mimebundle
     google.protobuf.Struct metadata = 2;
+
+    // This should not be included in saved notebook.
+    optional string transient_display_id = 3;
   }
 
   // Stream output from a code cell (stdout / stderr).
