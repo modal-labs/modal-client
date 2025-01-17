@@ -662,13 +662,16 @@ class _Image(_Object, type_prefix="im"):
         return obj
 
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
-        """Copy the entire contents of a `modal.Mount` into an image.
+        """
+        **Deprecated**: Use image.add_local_dir(..., copy=True) or similar instead.
+
+        Copy the entire contents of a `modal.Mount` into an image.
         Useful when files only available locally are required during the image
         build process.
 
         **Example**
 
-        ```python
+        ```python notest
         static_images_dir = "./static"
         # place all static images in root of mount
         mount = modal.Mount.from_local_dir(static_images_dir, remote_path="/")
@@ -851,14 +854,17 @@ class _Image(_Object, type_prefix="im"):
         # Which follows dockerignore syntax.
         ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
     ) -> "_Image":
-        """Copy a directory into the image as a part of building the image.
+        """
+        **Deprecated**: Use image.add_local_dir instead
+
+        Copy a directory into the image as a part of building the image.
 
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
 
         **Usage:**
 
-        ```python
+        ```python notest
         from pathlib import Path
         from modal import FilePatternMatcher
 

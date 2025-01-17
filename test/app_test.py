@@ -209,7 +209,7 @@ def test_init_types():
     App(
         image=Image.debian_slim().pip_install("pandas"),
         secrets=[Secret.from_dict()],
-        mounts=[Mount.from_local_file(__file__)],
+        mounts=[Mount._from_local_file(__file__)],  # TODO: remove
     )
 
 
