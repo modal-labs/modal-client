@@ -445,11 +445,13 @@ class _App:
         return [m for m in all_mounts if m.is_local()]
 
     def _add_function(self, function: _Function, is_web_endpoint: bool):
-        if function.tag in self._functions:
+        if old_function := self._functions.get(function.tag, None):
+            if old_function is function:
+                return  # already added the same exact instance, ignore
+
             if not is_notebook():
-                old_function: _Function = self._functions[function.tag]
                 logger.warning(
-                    f"Warning: Tag '{function.tag}' collision!"
+                    f"Warning: function name '{function.tag}' collision!"
                     " Overriding existing function "
                     f"[{old_function._info.module_name}].{old_function._info.function_name}"
                     f" with new function [{function._info.module_name}].{function._info.function_name}"
@@ -998,13 +1000,6 @@ class _App:
         ```
         """
         for tag, function in other_app._functions.items():
-            existing_function = self._functions.get(tag)
-            if existing_function and existing_function != function:
-                logger.warning(
-                    f"Named app function {tag} with existing value {existing_function} is being "
-                    f"overwritten by a different function {function}"
-                )
-
             self._add_function(function, False)  # TODO(erikbern): webhook config?
 
         for tag, cls in other_app._classes.items():
