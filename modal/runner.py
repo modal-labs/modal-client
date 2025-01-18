@@ -29,7 +29,7 @@ from .config import config, logger
 from .environments import _get_environment_cached
 from .exception import InteractiveTimeoutError, InvalidError, RemoteError, _CliUserExecutionError
 from .functions import _Function
-from .output import _get_output_manager, enable_output
+from .output import OUTPUT_ENABLED, _get_output_manager, enable_output
 from .running_app import RunningApp, running_app_from_layout
 from .sandbox import _Sandbox
 from .secret import _Secret
@@ -294,6 +294,14 @@ async def _run_app(
         app_state=app_state,
         interactive=interactive,
     )
+
+    if interactive and not OUTPUT_ENABLED:
+        import warnings
+        warnings.warn(
+            "Interactive mode is enabled, but no output manager is active. "
+            "Use 'with modal.enable_output():' to see logs and interactive output.",
+            stacklevel=2
+        )
 
     logs_timeout = config["logs_timeout"]
     async with app._set_local_app(client, running_app), TaskContext(grace=logs_timeout) as tc:
