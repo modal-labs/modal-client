@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.72.30 (2025-01-18)
+
+* Adds a new `oidc_auth_role_arn` field to `CloudBucketMount` for using OIDC authentication to create the mountpoint.
+
+
+
 ### 0.72.24 (2025-01-17)
 
 * No longer prints a warning if `app.include` re-includes an already included function (warning is still printed if *another* function with the same name is included)
