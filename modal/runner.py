@@ -298,10 +298,11 @@ async def _run_app(
     if interactive and not OUTPUT_ENABLED:
         import warnings
         warnings.warn(
-            "Interactive mode is enabled, but no output manager is active. "
-            "Use 'with modal.enable_output():' to see logs and interactive output.",
+            "Interactive mode is disabled because no output manager is active. "
+            "Use 'with modal.enable_output():' to enable interactive mode and see logs.",
             stacklevel=2
         )
+        interactive = False
 
     logs_timeout = config["logs_timeout"]
     async with app._set_local_app(client, running_app), TaskContext(grace=logs_timeout) as tc:
