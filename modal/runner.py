@@ -306,7 +306,7 @@ async def _run_app(
         app_state=app_state,
         interactive=interactive,
     )
-    
+
     # Ensure RunningApp's interactive flag matches our setting
     running_app.interactive = interactive
 
