@@ -717,6 +717,7 @@ message CloudBucketMount {
   bool requester_pays = 6;
   optional string bucket_endpoint_url = 7;
   optional string key_prefix = 8;
+  optional string oidc_auth_role_arn = 9;
 }
 
 message ContainerArguments {  // This is used to pass data from the worker to the container
