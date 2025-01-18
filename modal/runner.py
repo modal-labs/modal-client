@@ -287,13 +287,6 @@ async def _run_app(
         client = await _Client.from_env()
 
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
-    running_app: RunningApp = await _init_local_app_new(
-        client,
-        app.description or "",
-        environment_name=environment_name or "",
-        app_state=app_state,
-        interactive=interactive,
-    )
 
     if interactive and not OUTPUT_ENABLED:
         import warnings
@@ -303,6 +296,14 @@ async def _run_app(
             stacklevel=2
         )
         interactive = False
+
+    running_app: RunningApp = await _init_local_app_new(
+        client,
+        app.description or "",
+        environment_name=environment_name or "",
+        app_state=app_state,
+        interactive=interactive,
+    )
 
     logs_timeout = config["logs_timeout"]
     async with app._set_local_app(client, running_app), TaskContext(grace=logs_timeout) as tc:
