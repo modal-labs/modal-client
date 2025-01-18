@@ -4,6 +4,7 @@ import dataclasses
 import os
 import time
 import typing
+import warnings
 from collections.abc import AsyncGenerator
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, Any, Optional, TypeVar
@@ -288,9 +289,7 @@ async def _run_app(
 
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
 
-    # Check and potentially disable interactive mode before creating RunningApp
     if interactive and not OUTPUT_ENABLED:
-        import warnings
         warnings.warn(
             "Interactive mode is disabled because no output manager is active. "
             "Use 'with modal.enable_output():' to enable interactive mode and see logs.",
@@ -298,7 +297,6 @@ async def _run_app(
         )
         interactive = False
 
-    # Create RunningApp with the potentially modified interactive flag
     running_app: RunningApp = await _init_local_app_new(
         client,
         app.description or "",
@@ -306,9 +304,6 @@ async def _run_app(
         app_state=app_state,
         interactive=interactive,
     )
-
-    # Ensure RunningApp's interactive flag matches our setting
-    running_app.interactive = interactive
 
     logs_timeout = config["logs_timeout"]
     async with app._set_local_app(client, running_app), TaskContext(grace=logs_timeout) as tc:
