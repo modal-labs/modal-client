@@ -4,6 +4,7 @@ import dataclasses
 import os
 import time
 import typing
+import warnings
 from collections.abc import AsyncGenerator
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, Any, Optional, TypeVar
@@ -287,6 +288,16 @@ async def _run_app(
         client = await _Client.from_env()
 
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
+
+    output_mgr = _get_output_manager()
+    if interactive and output_mgr is None:
+        warnings.warn(
+            "Interactive mode is disabled because no output manager is active. "
+            "Use 'with modal.enable_output():' to enable interactive mode and see logs.",
+            stacklevel=2,
+        )
+        interactive = False
+
     running_app: RunningApp = await _init_local_app_new(
         client,
         app.description or "",
@@ -306,7 +317,7 @@ async def _run_app(
         tc.infinite_loop(heartbeat, sleep=HEARTBEAT_INTERVAL, log_exception=not detach)
         logs_loop: Optional[asyncio.Task] = None
 
-        if output_mgr := _get_output_manager():
+        if output_mgr is not None:
             # Defer import so this module is rich-safe
             # TODO(michael): The get_app_logs_loop function is itself rich-safe aside from accepting an OutputManager
             # as an argument, so with some refactoring we could avoid the need for this deferred import.
