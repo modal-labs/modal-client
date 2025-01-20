@@ -15,7 +15,7 @@ import sys
 import types
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, cast
 
 import click
 from rich.console import Console
@@ -92,12 +92,57 @@ def import_file_or_module(file_or_module: str):
     return module
 
 
-@dataclass
+@dataclass(frozen=True)
 class MethodReference:
     """This helps with deferring method reference until after the class gets instantiated by the CLI"""
 
     cls: Cls
     method_name: str
+
+
+def list_runnables(
+    module: types.ModuleType,
+) -> list[tuple[list[str], Union[Function, MethodReference, LocalEntrypoint]]]:
+    """
+    Extracts all runnables found either directly in the input module, or in any of the Apps listed in that module
+
+    Runnables includes all Functions, (class) Methods and Local Entrypoints, including web endpoints.
+
+    The returned list consists of tuples:
+    ([name1, name2...], Runnable)
+
+    Where the first name is always the module level name if such a name exists
+    """
+    apps = cast(list[tuple[str, App]], inspect.getmembers(module, lambda x: isinstance(x, App)))
+
+    all_runnables = {}
+    for app_name, app in apps:
+        for name, local_entrypoint in app.registered_entrypoints.items():
+            all_runnables.setdefault(local_entrypoint, []).append(f"{app_name}.{name}")
+        for name, function in app.registered_functions.items():
+            if name.endswith(".*"):
+                continue
+            all_runnables.setdefault(function, []).append(f"{app_name}.{name}")
+        for cls_name, cls in app.registered_classes.items():
+            for method_name in cls._get_method_names():
+                method_ref = MethodReference(cls, method_name)
+                all_runnables.setdefault(method_ref, []).append(f"{app_name}.{cls_name}.{method_name}")
+
+    # If any class or function is exported as a module level object, use that
+    # as the preferred name by putting it first in the list
+    module_level_entities = cast(
+        list[tuple[str, Union[Function, Cls, LocalEntrypoint]]],
+        inspect.getmembers(module, lambda x: isinstance(x, (Function, Cls, LocalEntrypoint))),
+    )
+    for name, entity in module_level_entities:
+        if isinstance(entity, Cls):
+            for method_name in entity._get_method_names():
+                method_ref = MethodReference(entity, method_name)
+                all_runnables.setdefault(method_ref, []).insert(0, f"{name}.{method_name}")
+        else:
+            all_runnables.setdefault(entity, []).insert(0, name)
+
+    return [(names, runnable) for runnable, names in all_runnables.items()]
 
 
 def get_by_object_path(obj: Any, obj_path: str) -> Union[Function, LocalEntrypoint, MethodReference, App, None]:

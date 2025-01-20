@@ -12,6 +12,7 @@ from modal.cli.import_refs import (
     _infer_runnable,
     get_by_object_path,
     import_file_or_module,
+    list_runnables,
 )
 from modal.exception import InvalidError
 from modal.partial_function import asgi_app, method
@@ -243,3 +244,35 @@ def test_get_by_object_path():
 def test_invalid_source_file_exception():
     with pytest.raises(InvalidError, match="Invalid Modal source filename: 'foo.bar.py'"):
         import_file_or_module("path/to/foo.bar.py")
+
+
+def test_list_runnables():
+    class FakeModule:
+        pass
+
+    FakeModule.app = App()
+    FakeModule.other_app = App()
+
+    @FakeModule.app.function(serialized=True, name="foo")
+    def foo():
+        pass
+
+    @FakeModule.app.cls(serialized=True)
+    class Cls:
+        @method()
+        def method_1(self):
+            pass
+
+    def non_modal_func():
+        pass
+
+    FakeModule.non_modal_func = non_modal_func
+    FakeModule.foo = foo
+    FakeModule.Cls = Cls
+
+    res = list_runnables(FakeModule)  # noqa
+
+    assert res == [
+        (["foo", "app.foo"], foo),
+        (["Cls.method_1", "app.Cls.method_1"], MethodReference(Cls, "method_1")),  # type: ignore
+    ]
