@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.72.33 (2025-01-20)
+
+* The Image returned by `Sandbox.snapshot_filesystem` now has `object_id` and other metadata pre-assigned rather than require loading by subsequent calls to sandboxes or similar to set this data.
+
+
+
 ### 0.72.30 (2025-01-18)
 
 * Adds a new `oidc_auth_role_arn` field to `CloudBucketMount` for using OIDC authentication to create the mountpoint.
