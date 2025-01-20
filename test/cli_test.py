@@ -1125,7 +1125,7 @@ def test_can_run_all_listed_functions_with_includes(supports_dir, monkeypatch, s
 
     res = _run(["run", "main"], expected_exit_code=2)
     # there are no runnables directly in the target module, so references need to go via the app
-    for runnable in ["app.a_func", "app.b_func", "app.c_func", "main_function"]:
+    for runnable in ["app.a_func", "app.b_func", "app.c_func", "main_function", "other_app.other_function"]:
         assert runnable in res.stderr
 
         _run(["run", f"main::{runnable}"], expected_exit_code=0)
