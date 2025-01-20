@@ -151,7 +151,7 @@ async def _map_invocation(
                     if err.status != Status.RESOURCE_EXHAUSTED:
                         raise err
                     logger.warning(
-                        "Warning: map progress is limited. Common bottlenecks "
+                        f"Warning: {function.tag} map progress is limited. Common bottlenecks "
                         "include slow iteration over results, or function backlogs."
                     )
 
