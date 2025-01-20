@@ -153,7 +153,6 @@ def list_cli_commands(
             all_runnables.setdefault(entity, []).insert(0, name)
 
     def _is_web_endpoint(runnable: Runnable) -> bool:
-        print("checking", runnable)
         if isinstance(runnable, Function) and runnable._is_web_endpoint():
             return True
         elif isinstance(runnable, MethodReference):
@@ -203,66 +202,6 @@ def filter_cli_commands(
         prefix_matches = [x for x in cli_command.names if x.startswith(f"{name_prefix}.")]
         if prefix_matches:
             yield (prefix_matches, cli_command)
-
-
-def _infer_function_or_help(
-    app: App, module: types.ModuleType, accept_local_entrypoint: bool, accept_webhook: bool
-) -> Union[Function, LocalEntrypoint, MethodReference]:
-    """Using only an app - automatically infer a single "runnable" for a `modal run` invocation
-
-    If a single runnable can't be determined, show CLI help indicating valid choices.
-    """
-    filtered_local_entrypoints = [
-        entrypoint
-        for entrypoint in app.registered_entrypoints.values()
-        if entrypoint.info.module_name == module.__name__
-    ]
-
-    if accept_local_entrypoint:
-        if len(filtered_local_entrypoints) == 1:
-            # If there is just a single local entrypoint in the target module, use
-            # that regardless of other functions.
-            return filtered_local_entrypoints[0]
-        elif len(app.registered_entrypoints) == 1:
-            # Otherwise, if there is just a single local entrypoint in the app as a whole,
-            # use that one.
-            return list(app.registered_entrypoints.values())[0]
-
-    # TODO: refactor registered_functions to only contain function services, not class services
-    function_choices: dict[str, Union[Function, LocalEntrypoint, MethodReference]] = {
-        name: f for name, f in app.registered_functions.items() if not name.endswith(".*")
-    }
-    for cls_name, cls in app.registered_classes.items():
-        for method_name in cls._get_method_names():
-            function_choices[f"{cls_name}.{method_name}"] = MethodReference(cls, method_name)
-
-    if not accept_webhook:
-        for web_endpoint_name in app.registered_web_endpoints:
-            function_choices.pop(web_endpoint_name, None)
-
-    if accept_local_entrypoint:
-        function_choices.update(app.registered_entrypoints)
-
-    if len(function_choices) == 1:
-        return list(function_choices.values())[0]
-
-    if len(function_choices) == 0:
-        if app.registered_web_endpoints:
-            err_msg = "Modal app has only web endpoints. Use `modal serve` instead of `modal run`."
-        else:
-            err_msg = "Modal app has no registered functions. Nothing to run."
-        raise click.UsageError(err_msg)
-
-    # there are multiple choices - we can't determine which one to use:
-    registered_functions_str = "\n".join(sorted(function_choices))
-    help_text = f"""You need to specify a Modal function or local entrypoint to run, e.g.
-
-modal run app.py::my_function [...args]
-
-Registered functions and local entrypoints on the selected app are:
-{registered_functions_str}
-"""
-    raise click.UsageError(help_text)
 
 
 def _show_no_auto_detectable_app(app_ref: ImportRef) -> None:
@@ -331,9 +270,6 @@ You would run foo as [bold green]{base_cmd} app.py::foo[/bold green]"""
     error_console.print(guidance_msg)
 
 
-# class Runnable:
-
-
 def _import_cli_commands(file_or_module: str) -> list[CLICommand]:
     module = import_file_or_module(file_or_module)
     return list_cli_commands(module)
@@ -371,14 +307,15 @@ def import_and_filter(
     filtered_commands = list(
         filter_cli_commands(cli_commands, import_ref.object_path, accept_local_entrypoint, accept_webhook)
     )
+    all_usable_commands = list(filter_cli_commands(cli_commands, "", accept_local_entrypoint, accept_webhook))
 
     if len(filtered_commands) == 1:
         _, cli_command = filtered_commands[0]
         return cli_command.runnable
 
     if len(filtered_commands) == 0:
-        all_types = list(filter_cli_commands(cli_commands, import_ref.object_path))
-        if len(all_types):
+        all_cmds_matching_names = list(filter_cli_commands(cli_commands, import_ref.object_path))
+        if len(all_cmds_matching_names):
             required_types = []
             if not accept_local_entrypoint:
                 required_types.append("non-local_entrypoint")
@@ -386,15 +323,36 @@ def import_and_filter(
                 required_types.append("non-web function")
             required_types_str = ", ".join(required_types)
             raise click.UsageError(
-                f"The `{import_ref.object_path}` function can't be used by `{base_cmd}` "
-                f"(needs to be a {required_types_str})"
+                f"`{import_ref.object_path}` can't be used by `{base_cmd}` " f"(needs to be a {required_types_str})"
             )
 
     # we are here if there is more than one matching function
     if accept_local_entrypoint:
-        local_entrypoint_cmds = [cmd for cmd in filtered_commands if isinstance(cmd.runnable, LocalEntrypoint)]
+        local_entrypoint_cmds = [cmd for _, cmd in filtered_commands if isinstance(cmd.runnable, LocalEntrypoint)]
         if len(local_entrypoint_cmds) == 1:
             return local_entrypoint_cmds[0].runnable
 
-    _show_function_ref_help(import_ref, base_cmd)
-    raise SystemExit(1)
+    # some special case errors in case there are no applicable functions to run:
+    # if len(function_choices) == 0:
+    #     if app.registered_web_endpoints:
+    #         err_msg = "Modal app has only web endpoints. Use `modal serve` instead of `modal run`."
+    #     else:
+    #         err_msg = "Modal app has no registered functions. Nothing to run."
+    #     raise click.UsageError(err_msg)
+
+    # there are multiple choices - we can't determine which one to use:
+
+    usable_command_lines = []
+    for _, cmd in all_usable_commands:
+        cmd_names = " / ".join(cmd.names)
+        usable_command_lines.append(cmd_names)
+
+    registered_functions_str = "\n".join(usable_command_lines)
+    help_text = f"""You need to specify a Modal function or local entrypoint to run, e.g.
+
+modal run app[.py]::[app_var.]my_function [...args]
+
+Registered functions and local entrypoints on the selected app are:
+{registered_functions_str}
+"""
+    raise click.UsageError(help_text)

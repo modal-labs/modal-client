@@ -24,7 +24,7 @@ from ..output import enable_output
 from ..runner import deploy_app, interactive_shell, run_app
 from ..serving import serve_app
 from ..volume import Volume
-from .import_refs import MethodReference, import_and_filter, import_app
+from .import_refs import MethodReference, _get_runnable_app, import_and_filter, import_app
 from .utils import ENV_OPTION, ENV_OPTION_HELP, is_tty, stream_app_logs
 
 
@@ -260,19 +260,21 @@ class RunGroup(click.Group):
         ctx.ensure_object(dict)
         ctx.obj["env"] = ensure_env(ctx.params["env"])
 
-        app, imported_object = import_and_filter(func_ref, accept_local_entrypoint=True, base_cmd="modal run")
+        runnable = import_and_filter(func_ref, accept_local_entrypoint=True, base_cmd="modal run")
+        app = _get_runnable_app(runnable)
 
         if app.description is None:
             app.set_description(_get_clean_app_description(func_ref))
 
-        if isinstance(imported_object, LocalEntrypoint):
-            click_command = _get_click_command_for_local_entrypoint(app, imported_object)
-        elif isinstance(imported_object, Function):
-            click_command = _get_click_command_for_function(app, imported_object)
-        elif isinstance(imported_object, MethodReference):
-            click_command = _get_click_command_for_cls(app, imported_object)
+        if isinstance(runnable, LocalEntrypoint):
+            click_command = _get_click_command_for_local_entrypoint(app, runnable)
+        elif isinstance(runnable, Function):
+            click_command = _get_click_command_for_function(app, runnable)
+        elif isinstance(runnable, MethodReference):
+            click_command = _get_click_command_for_cls(app, runnable)
         else:
-            raise ValueError(f"{imported_object} is neither function, local entrypoint or class/method")
+            # This should be unreachable...
+            raise ValueError(f"{runnable} is neither function, local entrypoint or class/method")
         return click_command
 
 
