@@ -1118,3 +1118,14 @@ def test_container_exec(servicer, set_env_client, mock_shell_pty, app):
     captured_out.clear()
 
     sb.terminate()
+
+
+def test_can_run_all_listed_functions_with_includes(supports_dir, monkeypatch, set_env_client):
+    monkeypatch.chdir(supports_dir / "multifile_project")
+
+    res = _run(["run", "main"], expected_exit_code=2)
+    # there are no runnables directly in the target module, so references need to go via the app
+    for runnable in ["app.a_func", "app.b_func", "app.c_func"]:
+        assert runnable in res.stderr
+
+        _run(["run", f"main::{runnable}"], expected_exit_code=0)
