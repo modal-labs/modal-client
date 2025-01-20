@@ -361,10 +361,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         metadata = resp.image_metadata
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
-            self._hydrate(image_id, resolver.client, metadata)
+            # no need to hydrate again since we do it eagerly below
+            pass
 
         rep = "Image()"
-        image = _Image._from_loader(_load, rep)
+        image = _Image._from_loader(_load, rep, hydrate_lazily=True)
+        image._hydrate(image_id, self._client, metadata)  # hydrating eagerly since we have all of the data
 
         return image
 
