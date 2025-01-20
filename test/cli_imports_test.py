@@ -8,9 +8,7 @@ from modal import web_endpoint
 from modal.app import App, LocalEntrypoint
 from modal.cli.import_refs import (
     MethodReference,
-    _import_object,
-    _infer_runnable,
-    get_by_object_path,
+    _import_runnables,
     import_file_or_module,
     list_runnables,
 )
@@ -109,7 +107,7 @@ dir_containing_python_package = {
 )
 def test_import_object(dir_structure, ref, expected_object_type, mock_dir):
     with mock_dir(dir_structure):
-        obj, _ = _import_object(ref, base_cmd="modal some_command")
+        obj, _ = _import_runnables(ref, base_cmd="modal some_command")
         assert isinstance(obj, expected_object_type)
 
 
@@ -222,23 +220,6 @@ def test_import_package_and_module_names(monkeypatch, supports_dir):
     mod3 = import_file_or_module("supports/assert_package.py")
     assert mod3.__package__ == ""
     assert mod3.__name__ == "assert_package"
-
-
-def test_get_by_object_path():
-    class NS(dict):
-        def __getattr__(self, n):
-            return dict.__getitem__(self, n)
-
-    # simple
-    assert get_by_object_path(NS(foo="bar"), "foo") == "bar"
-    assert get_by_object_path(NS(foo="bar"), "bar") is None
-
-    # nested simple
-    assert get_by_object_path(NS(foo=NS(bar="baz")), "foo.bar") == "baz"
-
-    # try to find item keys with periods in them (ugh).
-    # this helps resolving lifecycled functions
-    assert get_by_object_path(NS({"foo.bar": "baz"}), "foo.bar") == "baz"
 
 
 def test_invalid_source_file_exception():

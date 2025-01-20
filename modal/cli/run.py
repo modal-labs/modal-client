@@ -24,7 +24,7 @@ from ..output import enable_output
 from ..runner import deploy_app, interactive_shell, run_app
 from ..serving import serve_app
 from ..volume import Volume
-from .import_refs import MethodReference, import_and_infer, import_app
+from .import_refs import MethodReference, import_and_filter, import_app
 from .utils import ENV_OPTION, ENV_OPTION_HELP, is_tty, stream_app_logs
 
 
@@ -260,7 +260,7 @@ class RunGroup(click.Group):
         ctx.ensure_object(dict)
         ctx.obj["env"] = ensure_env(ctx.params["env"])
 
-        app, imported_object = import_and_infer(func_ref, accept_local_entrypoint=True, base_cmd="modal run")
+        app, imported_object = import_and_filter(func_ref, accept_local_entrypoint=True, base_cmd="modal run")
 
         if app.description is None:
             app.set_description(_get_clean_app_description(func_ref))
@@ -478,7 +478,7 @@ def shell(
             exec(container_id=container_or_function, command=shlex.split(cmd), pty=pty)
             return
 
-        original_app, function_or_method_ref = import_and_infer(
+        original_app, function_or_method_ref = import_and_filter(
             container_or_function, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell"
         )
         function_spec: _FunctionSpec

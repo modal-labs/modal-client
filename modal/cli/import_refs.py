@@ -15,7 +15,7 @@ import sys
 import types
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, Union, cast
+from typing import Generator, Union, cast
 
 import click
 from rich.console import Console
@@ -36,7 +36,7 @@ class ImportRef:
     # function or local_entrypoint in module scope
     # app in module scope [+ method name]
     # app [+ function/entrypoint on that app]
-    object_path: Optional[str]
+    object_path: str
 
 
 def parse_import_ref(object_ref: str) -> ImportRef:
@@ -45,7 +45,7 @@ def parse_import_ref(object_ref: str) -> ImportRef:
     elif object_ref.find(":") > 1:
         raise InvalidError(f"Invalid object reference: {object_ref}. Did you mean '::' instead of ':'?")
     else:
-        file_or_module, object_path = object_ref, None
+        file_or_module, object_path = object_ref, ""
 
     return ImportRef(file_or_module, object_path)
 
@@ -100,9 +100,19 @@ class MethodReference:
     method_name: str
 
 
-def list_runnables(
+Runnable = Union[Function, MethodReference, LocalEntrypoint]
+
+
+@dataclass(frozen=True)
+class CLICommand:
+    names: list[str]
+    runnable: Runnable
+    is_web_endpoint: bool
+
+
+def list_cli_commands(
     module: types.ModuleType,
-) -> list[tuple[list[str], Union[Function, MethodReference, LocalEntrypoint]]]:
+) -> list[CLICommand]:
     """
     Extracts all runnables found either directly in the input module, or in any of the Apps listed in that module
 
@@ -131,7 +141,7 @@ def list_runnables(
     # If any class or function is exported as a module level object, use that
     # as the preferred name by putting it first in the list
     module_level_entities = cast(
-        list[tuple[str, Union[Function, Cls, LocalEntrypoint]]],
+        list[tuple[str, Runnable]],
         inspect.getmembers(module, lambda x: isinstance(x, (Function, Cls, LocalEntrypoint))),
     )
     for name, entity in module_level_entities:
@@ -142,47 +152,61 @@ def list_runnables(
         else:
             all_runnables.setdefault(entity, []).insert(0, name)
 
-    return [(names, runnable) for runnable, names in all_runnables.items()]
+    def _is_web_endpoint(runnable: Runnable) -> bool:
+        print("checking", runnable)
+        if isinstance(runnable, Function) and runnable._is_web_endpoint():
+            return True
+        elif isinstance(runnable, MethodReference):
+            # this is a bit yucky but can hopefully get cleaned up with Cls cleanup:
+            method_partial = runnable.cls._get_partial_functions()[runnable.method_name]
+            if method_partial._is_web_endpoint():
+                return True
+
+        return False
+
+    return [CLICommand(names, runnable, _is_web_endpoint(runnable)) for runnable, names in all_runnables.items()]
 
 
-def get_by_object_path(obj: Any, obj_path: str) -> Union[Function, LocalEntrypoint, MethodReference, App, None]:
-    # Try to evaluate a `.`-delimited object path in a Modal context
-    # With the caveat that some object names can actually have `.` in their name (lifecycled methods' tags)
+def filter_cli_commands(
+    cli_commands: list[CLICommand],
+    name_prefix: str,
+    accept_local_entrypoints: bool = True,
+    accept_web_endpoints: bool = True,
+) -> Generator[CLICommand, None, None]:
+    """Filters by name and type of runnable
 
-    # Note: this is eager, so no backtracking is performed in case an
-    # earlier match fails at some later point in the path expansion
-    prefix = ""
-    obj_path_segments = obj_path.split(".")
-    for i, segment in enumerate(obj_path_segments):
-        attr = prefix + segment
-        if isinstance(obj, App):
-            if attr in obj.registered_entrypoints:
-                # local entrypoints can't be accessed via getattr
-                obj = obj.registered_entrypoints[attr]
-                continue
-        if isinstance(obj, Cls):
-            remaining_segments = obj_path_segments[i:]
-            remaining_path = ".".join(remaining_segments)
-            if len(remaining_segments) > 1:
-                raise ValueError(f"{obj._get_name()} is a class, but {remaining_path} is not a method reference")
-            # TODO: add method inference here?
-            return MethodReference(obj, remaining_path)
+    Returns generator of (matching names list, CLICommand)
+    """
 
-        try:
-            obj = getattr(obj, attr)
-        except Exception:
-            prefix = f"{prefix}{segment}."
-        else:
-            prefix = ""
+    def _is_accepted_type(cli_command: CLICommand) -> bool:
+        if not accept_local_entrypoints and isinstance(cli_command.runnable, LocalEntrypoint):
+            return False
+        if not accept_web_endpoints and cli_command.is_web_endpoint:
+            return False
+        return True
 
-    if prefix:
-        return None
+    for cli_command in cli_commands:
+        if not _is_accepted_type(cli_command):
+            continue
 
-    return obj
+        if name_prefix in cli_command.names:
+            # exact name match
+            yield ([name_prefix], cli_command)
+            continue
+
+        if not name_prefix:
+            # no name specified, return all reachable runnables
+            yield (cli_command.names, cli_command)
+            continue
+
+        # partial matches e.g. app or class name - should we even allow this?
+        prefix_matches = [x for x in cli_command.names if x.startswith(f"{name_prefix}.")]
+        if prefix_matches:
+            yield (prefix_matches, cli_command)
 
 
 def _infer_function_or_help(
-    app: App, module, accept_local_entrypoint: bool, accept_webhook: bool
+    app: App, module: types.ModuleType, accept_local_entrypoint: bool, accept_webhook: bool
 ) -> Union[Function, LocalEntrypoint, MethodReference]:
     """Using only an app - automatically infer a single "runnable" for a `modal run` invocation
 
@@ -263,7 +287,9 @@ def import_app(app_ref: str) -> App:
     import_ref = parse_import_ref(app_ref)
 
     module = import_file_or_module(import_ref.file_or_module)
-    app = get_by_object_path(module, import_ref.object_path or DEFAULT_APP_NAME)
+    # TODO: default could be to just pick up any app regardless if it's called DEFAULT_APP_NAME
+    #  as long as there is a single app in the module?
+    app = getattr(module, import_ref.object_path or DEFAULT_APP_NAME)
 
     if app is None:
         _show_no_auto_detectable_app(import_ref)
@@ -305,53 +331,32 @@ You would run foo as [bold green]{base_cmd} app.py::foo[/bold green]"""
     error_console.print(guidance_msg)
 
 
-def _import_object(func_ref, base_cmd):
-    import_ref = parse_import_ref(func_ref)
-    module = import_file_or_module(import_ref.file_or_module)
-    app_function_or_method_ref = get_by_object_path(module, import_ref.object_path or DEFAULT_APP_NAME)
-
-    if app_function_or_method_ref is None:
-        _show_function_ref_help(import_ref, base_cmd)
-        raise SystemExit(1)
-
-    return app_function_or_method_ref, module
+# class Runnable:
 
 
-def _infer_runnable(
-    partial_obj: Union[App, Function, MethodReference, LocalEntrypoint],
-    module: types.ModuleType,
-    accept_local_entrypoint: bool = True,
-    accept_webhook: bool = False,
-) -> tuple[App, Union[Function, MethodReference, LocalEntrypoint]]:
-    if isinstance(partial_obj, App):
-        # infer function or display help for how to select one
-        app = partial_obj
-        function_handle = _infer_function_or_help(app, module, accept_local_entrypoint, accept_webhook)
-        return app, function_handle
-    elif isinstance(partial_obj, Function):
-        return partial_obj.app, partial_obj
-    elif isinstance(partial_obj, MethodReference):
-        return partial_obj.cls._get_app(), partial_obj
-    elif isinstance(partial_obj, LocalEntrypoint):
-        if not accept_local_entrypoint:
-            raise click.UsageError(
-                f"{partial_obj.info.function_name} is not a Modal Function "
-                f"(a Modal local_entrypoint can't be used in this context)"
-            )
-        return partial_obj.app, partial_obj
+def _import_cli_commands(file_or_module: str) -> list[CLICommand]:
+    module = import_file_or_module(file_or_module)
+    return list_cli_commands(module)
+
+
+def _get_runnable_app(runnable: Runnable) -> App:
+    if isinstance(runnable, Function):
+        return runnable.app
+    elif isinstance(runnable, MethodReference):
+        return runnable.cls._get_app()
     else:
-        raise click.UsageError(
-            f"{partial_obj} is not a Modal entity (should be an App, Local entrypoint, " "Function or Class/Method)"
-        )
+        print("runnable", runnable)
+        assert isinstance(runnable, LocalEntrypoint)
+        return runnable.app
 
 
-def import_and_infer(
+def import_and_filter(
     func_ref: str, base_cmd: str, accept_local_entrypoint=True, accept_webhook=False
-) -> tuple[App, Union[Function, LocalEntrypoint, MethodReference]]:
-    """Takes a function ref string and returns something "runnable"
+) -> Union[Function, LocalEntrypoint, MethodReference]:
+    """Takes a function ref string and returns something "runnable", or prints help text
 
-    The function ref can leave out partial information (apart from the file name) as
-    long as the runnable is uniquely identifiable by the provided information.
+    The function ref can leave out partial information (apart from the file name/module)
+    as long as the runnable is uniquely identifiable by the provided information.
 
     When there are multiple runnables within the provided ref, the following rules should
     be followed:
@@ -360,5 +365,36 @@ def import_and_infer(
     2. if there is a single {function, class} that one is used
     3. if there is a single method (within a class) that one is used
     """
-    app_function_or_method_ref, module = _import_object(func_ref, base_cmd)
-    return _infer_runnable(app_function_or_method_ref, module, accept_local_entrypoint, accept_webhook)
+
+    import_ref = parse_import_ref(func_ref)
+    cli_commands = _import_cli_commands(import_ref.file_or_module)
+    filtered_commands = list(
+        filter_cli_commands(cli_commands, import_ref.object_path, accept_local_entrypoint, accept_webhook)
+    )
+
+    if len(filtered_commands) == 1:
+        _, cli_command = filtered_commands[0]
+        return cli_command.runnable
+
+    if len(filtered_commands) == 0:
+        all_types = list(filter_cli_commands(cli_commands, import_ref.object_path))
+        if len(all_types):
+            required_types = []
+            if not accept_local_entrypoint:
+                required_types.append("non-local_entrypoint")
+            elif not accept_webhook:
+                required_types.append("non-web function")
+            required_types_str = ", ".join(required_types)
+            raise click.UsageError(
+                f"The `{import_ref.object_path}` function can't be used by `{base_cmd}` "
+                f"(needs to be a {required_types_str})"
+            )
+
+    # we are here if there is more than one matching function
+    if accept_local_entrypoint:
+        local_entrypoint_cmds = [cmd for cmd in filtered_commands if isinstance(cmd.runnable, LocalEntrypoint)]
+        if len(local_entrypoint_cmds) == 1:
+            return local_entrypoint_cmds[0].runnable
+
+    _show_function_ref_help(import_ref, base_cmd)
+    raise SystemExit(1)
