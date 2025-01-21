@@ -1163,7 +1163,7 @@ message Function {
 
   uint32 task_idle_timeout_secs = 25;
 
-  optional CloudProvider cloud_provider = 26;
+  optional CloudProvider cloud_provider = 26;  // Deprecated at some point
 
   uint32 warm_pool_size = 27;
 
@@ -1257,6 +1257,8 @@ message Function {
   bool method_definitions_set = 75;
 
   bool _experimental_custom_scaling = 76;
+
+  string cloud_provider_str = 77;  // Supersedes cloud_provider
 }
 
 message FunctionAsyncInvokeRequest {
@@ -2193,7 +2195,7 @@ message Sandbox {
   repeated string secret_ids = 4;
 
   Resources resources = 5;
-  CloudProvider cloud_provider = 6;
+  CloudProvider cloud_provider = 6;  // Deprecated at some point
 
   uint32 timeout_secs = 7;
 
@@ -2237,6 +2239,8 @@ message Sandbox {
   // Used to pin gVisor version for memory-snapshottable sandboxes.
   // This field is set by the server, not the client.
   optional uint32 snapshot_version = 25;
+
+  string cloud_provider_str = 26;  // Supersedes cloud_provider
 }
 
 message SandboxCreateRequest {
