@@ -1,19 +1,18 @@
 # Copyright Modal Labs 2023
 import pytest
-import sys
 
-import click
-
-from modal import web_endpoint
 from modal.app import App, LocalEntrypoint
 from modal.cli.import_refs import (
+    CLICommand,
     MethodReference,
-    _import_runnables,
+    NonConclusiveImportRef,
+    import_and_filter,
     import_file_or_module,
-    list_runnables,
+    list_cli_commands,
 )
 from modal.exception import InvalidError
-from modal.partial_function import asgi_app, method
+from modal.functions import Function
+from modal.partial_function import method, web_server
 
 # Some helper vars for import_stub tests:
 local_entrypoint_src = """
@@ -87,116 +86,61 @@ dir_containing_python_package = {
 
 
 @pytest.mark.parametrize(
-    ["dir_structure", "ref", "expected_object_type"],
+    ["dir_structure", "ref", "returned_runnable_type", "num_error_choices"],
     [
         # # file syntax
-        (empty_dir_with_python_file, "mod.py", App),
-        (empty_dir_with_python_file, "mod.py::app", App),
-        (empty_dir_with_python_file, "mod.py::other_app", App),
-        (dir_containing_python_package, "pack/file.py", App),
-        (dir_containing_python_package, "pack/sub/subfile.py", App),
-        (dir_containing_python_package, "dir/sub/subfile.py", App),
+        (empty_dir_with_python_file, "mod.py", None, 2),
+        (empty_dir_with_python_file, "mod.py::app", MethodReference, None),
+        (empty_dir_with_python_file, "mod.py::other_app", Function, None),
+        (dir_containing_python_package, "pack/file.py", Function, None),
+        (dir_containing_python_package, "pack/sub/subfile.py", Function, None),
+        (dir_containing_python_package, "dir/sub/subfile.py", Function, None),
         # # python module syntax
-        (empty_dir_with_python_file, "mod", App),
-        (empty_dir_with_python_file, "mod::app", App),
-        (empty_dir_with_python_file, "mod::other_app", App),
-        (dir_containing_python_package, "pack.mod", App),
-        (dir_containing_python_package, "pack.mod::other_app", App),
-        (dir_containing_python_package, "pack/local.py::app.main", LocalEntrypoint),
+        (empty_dir_with_python_file, "mod", Function, 2),
+        (empty_dir_with_python_file, "mod::app", MethodReference, None),
+        (empty_dir_with_python_file, "mod::other_app", Function, 2),
+        (dir_containing_python_package, "pack.mod", Function, 2),
+        (dir_containing_python_package, "pack.mod::other_app", Function, 2),
+        (dir_containing_python_package, "pack/local.py::app.main", LocalEntrypoint, None),
     ],
 )
-def test_import_object(dir_structure, ref, expected_object_type, mock_dir):
+def test_import_and_filter(dir_structure, ref, mock_dir, returned_runnable_type, num_error_choices):
     with mock_dir(dir_structure):
-        obj, _ = _import_runnables(ref, base_cmd="modal some_command")
-        assert isinstance(obj, expected_object_type)
+        try:
+            runnable = import_and_filter(ref, "dummy", accept_local_entrypoint=True, accept_webhook=False)
+            assert isinstance(runnable, returned_runnable_type)
+        except NonConclusiveImportRef as exc:
+            assert len(exc.all_usable_commands) == num_error_choices
 
 
-app_with_one_web_function = App()
+def test_import_and_filter_2(monkeypatch, supports_on_path):
+    def import_runnable(name_prefix, accept_local_entrypoint=False, accept_webhook=False):
+        return import_and_filter(
+            f"import_and_filter_source::{name_prefix}", "dummy command", accept_local_entrypoint, accept_webhook
+        )
 
+    with pytest.raises(NonConclusiveImportRef, match="non-web") as exc:
+        import_runnable("app_with_one_web_function", accept_webhook=False, accept_local_entrypoint=True)
+    assert len(exc.value.all_usable_commands) == 4
 
-@app_with_one_web_function.function()
-@web_endpoint()
-def web1():
-    pass
+    import_runnable("app_with_one_web_function", accept_webhook=True)
+    import_runnable("app_with_one_function_one_web_endpoint", accept_webhook=False)
 
+    with pytest.raises(NonConclusiveImportRef, match=r"(?s)You need to specify.*(\b)f1(\b).*(\b)web2(\b)") as exc:
+        import_runnable("app_with_one_function_one_web_endpoint", accept_webhook=True)
+    assert len(exc.value.all_usable_commands) == 7
 
-app_with_one_function_one_web_endpoint = App()
+    with pytest.raises(NonConclusiveImportRef, match="non-web"):
+        import_runnable("app_with_one_web_method", accept_webhook=False)
 
+    import_runnable("app_with_one_web_method", accept_webhook=True)
 
-@app_with_one_function_one_web_endpoint.function()
-def f1():
-    pass
-
-
-@app_with_one_function_one_web_endpoint.function()
-@web_endpoint()
-def web2():
-    pass
-
-
-app_with_one_web_method = App()
-
-
-@app_with_one_web_method.cls()
-class C1:
-    @asgi_app()
-    def web_3(self):
-        pass
-
-
-app_with_one_web_method_one_method = App()
-
-
-@app_with_one_web_method_one_method.cls()
-class C2:
-    @asgi_app()
-    def web_4(self):
-        pass
-
-    @method()
-    def f2(self):
-        pass
-
-
-app_with_local_entrypoint_and_function = App()
-
-
-@app_with_local_entrypoint_and_function.local_entrypoint()
-def le_1():
-    pass
-
-
-@app_with_local_entrypoint_and_function.function()
-def f3():
-    pass
-
-
-def test_infer_object():
-    this_module = sys.modules[__name__]
-    with pytest.raises(click.ClickException, match="web endpoint"):
-        _infer_runnable(app_with_one_web_function, this_module, accept_webhook=False)
-
-    _, runnable = _infer_runnable(app_with_one_web_function, this_module, accept_webhook=True)
-    assert runnable == web1
-
-    _, runnable = _infer_runnable(app_with_one_function_one_web_endpoint, this_module, accept_webhook=False)
-    assert runnable == f1
-
-    with pytest.raises(click.UsageError, match="(?s)You need to specify.*\nf1\nweb2\n"):
-        _, runnable = _infer_runnable(app_with_one_function_one_web_endpoint, this_module, accept_webhook=True)
-    assert runnable == f1
-
-    with pytest.raises(click.UsageError, match="web endpoint"):
-        _, runnable = _infer_runnable(app_with_one_web_method, this_module, accept_webhook=False)
-
-    _, runnable = _infer_runnable(app_with_one_web_method, this_module, accept_webhook=True)
-    assert runnable == MethodReference(C1, "web_3")  # type: ignore
-
-    _, runnable = _infer_runnable(app_with_local_entrypoint_and_function, this_module, accept_local_entrypoint=True)
-    assert runnable == le_1
-
-    _, runnable = _infer_runnable(app_with_local_entrypoint_and_function, this_module, accept_local_entrypoint=False)
-    assert runnable == f3
+    assert isinstance(
+        import_runnable("app_with_local_entrypoint_and_function", accept_local_entrypoint=True), LocalEntrypoint
+    )
+    assert isinstance(
+        import_runnable("app_with_local_entrypoint_and_function", accept_local_entrypoint=False), Function
+    )
 
 
 def test_import_package_and_module_names(monkeypatch, supports_dir):
@@ -227,7 +171,7 @@ def test_invalid_source_file_exception():
         import_file_or_module("path/to/foo.bar.py")
 
 
-def test_list_runnables():
+def test_list_cli_commands():
     class FakeModule:
         pass
 
@@ -244,6 +188,10 @@ def test_list_runnables():
         def method_1(self):
             pass
 
+        @web_server(8000)
+        def web_method(self):
+            pass
+
     def non_modal_func():
         pass
 
@@ -251,9 +199,10 @@ def test_list_runnables():
     FakeModule.foo = foo
     FakeModule.Cls = Cls
 
-    res = list_runnables(FakeModule)  # noqa
+    res = list_cli_commands(FakeModule)  # noqa
 
     assert res == [
-        (["foo", "app.foo"], foo),
-        (["Cls.method_1", "app.Cls.method_1"], MethodReference(Cls, "method_1")),  # type: ignore
+        CLICommand(["foo", "app.foo"], foo, False),  # type: ignore
+        CLICommand(["Cls.method_1", "app.Cls.method_1"], MethodReference(Cls, "method_1"), False),  # type: ignore
+        CLICommand(["Cls.web_method", "app.Cls.web_method"], MethodReference(Cls, "web_method"), True),  # type: ignore
     ]
