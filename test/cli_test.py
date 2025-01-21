@@ -1134,8 +1134,8 @@ def test_can_run_all_listed_functions_with_includes(supports_dir, monkeypatch, s
         "app.c_func",
         "app.main_function",
         "main_function",
-        "other_app.other_function",
-        "other_function",
+        "Cls.method_on_other_app_class",
+        "other_app.Cls.method_on_other_app_class",
     }
     assert listed_runnables == expected_runnables
 

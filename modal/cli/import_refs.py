@@ -317,15 +317,16 @@ def import_and_filter(
         _, cli_command = filtered_commands[0]
         return cli_command.runnable
 
+    required_types = []
+    if not accept_local_entrypoint:
+        required_types.append("non-local_entrypoint")
+    elif not accept_webhook:
+        required_types.append("non-web function")
+    required_types_str = ", ".join(required_types)
+
     if len(filtered_commands) == 0:
         all_cmds_matching_names = list(filter_cli_commands(cli_commands, import_ref.object_path))
         if len(all_cmds_matching_names):
-            required_types = []
-            if not accept_local_entrypoint:
-                required_types.append("non-local_entrypoint")
-            elif not accept_webhook:
-                required_types.append("non-web function")
-            required_types_str = ", ".join(required_types)
             raise click.UsageError(
                 f"`{import_ref.object_path}` can't be used by `{base_cmd}` " f"(needs to be a {required_types_str})"
             )
@@ -334,7 +335,14 @@ def import_and_filter(
     if accept_local_entrypoint:
         local_entrypoint_cmds = [cmd for _, cmd in filtered_commands if isinstance(cmd.runnable, LocalEntrypoint)]
         if len(local_entrypoint_cmds) == 1:
+            # if there is a single local entrypoint - use that
             return local_entrypoint_cmds[0].runnable
+
+    # Distinguish
+    # 1. specified path doesn't exist
+    # 2. specified path exists but is not a modal type
+    # 3. specified path exists but is not *the right kind* of modal type
+    # 4. specifeid path exists but is not specific enough
 
     # some special case errors in case there are no applicable functions to run:
     # if len(function_choices) == 0:
