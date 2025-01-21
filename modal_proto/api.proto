@@ -878,26 +878,6 @@ message ContainerFilesystemExecResponse {
   optional string file_descriptor = 2;
 }
 
-message SandboxSnapshotRequest {
-  string sandbox_id = 1;
-  float timeout = 2;
-}
-
-message SandboxSnapshotResponse {
-  string snapshot_id = 1;
-  GenericResult result = 2;
-}
-
-message SandboxRestoreRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
-  string snapshot_id = 2;
-  string environment_name = 3;
-}
-
-message SandboxRestoreResponse {
-  string sandbox_id = 1;
-}
-
 message ContainerHeartbeatRequest {
   bool canceled_inputs_return_outputs = 4; // Bad client version.
   bool canceled_inputs_return_outputs_v2 = 5;
@@ -2338,9 +2318,7 @@ message SandboxListResponse {
 }
 
 message SandboxRestoreRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
-  string snapshot_id = 2;
-  string environment_name = 3;
+  string snapshot_id = 1;
 }
 
 message SandboxRestoreResponse {
@@ -3008,8 +2986,6 @@ service ModalClient {
   rpc SandboxTagsSet(SandboxTagsSetRequest) returns (google.protobuf.Empty);
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);
   rpc SandboxWait(SandboxWaitRequest) returns (SandboxWaitResponse);
-  rpc SandboxSnapshot(SandboxSnapshotRequest) returns (SandboxSnapshotResponse);
-  rpc SandboxRestore(SandboxRestoreRequest) returns (SandboxRestoreResponse); // TODO (colin) what is the overlap between this and SandboxCreate?
 
   // Secrets
   rpc SecretDelete(SecretDeleteRequest) returns (google.protobuf.Empty);
