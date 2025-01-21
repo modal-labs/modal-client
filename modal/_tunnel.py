@@ -145,7 +145,7 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
         modal.Image.debian_slim()
         .apt_install("openssh-server")
         .run_commands("mkdir /run/sshd")
-        .copy_local_file("~/.ssh/id_rsa.pub", "/root/.ssh/authorized_keys")
+        .add_local_file("~/.ssh/id_rsa.pub", "/root/.ssh/authorized_keys", copy=True)
     )
 
 

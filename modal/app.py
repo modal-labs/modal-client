@@ -21,6 +21,7 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal_proto import api_pb2
 
 from ._ipython import is_notebook
+from ._object import _get_environment_name, _Object
 from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import deprecation_error, deprecation_warning, renamed_parameter
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
@@ -36,7 +37,6 @@ from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
-from .object import _get_environment_name, _Object
 from .partial_function import (
     PartialFunction,
     _find_partial_methods_for_user_cls,
@@ -365,6 +365,7 @@ class _App:
         show_progress: Optional[bool] = None,
         detach: bool = False,
         interactive: bool = False,
+        environment_name: Optional[str] = None,
     ) -> AsyncGenerator["_App", None]:
         """Context manager that runs an app on Modal.
 
@@ -420,7 +421,9 @@ class _App:
         elif show_progress is False:
             deprecation_warning((2024, 11, 20), "`show_progress=False` is deprecated (and has no effect)")
 
-        async with _run_app(self, client=client, detach=detach, interactive=interactive):
+        async with _run_app(
+            self, client=client, detach=detach, interactive=interactive, environment_name=environment_name
+        ):
             yield self
 
     def _get_default_image(self):
@@ -442,11 +445,13 @@ class _App:
         return [m for m in all_mounts if m.is_local()]
 
     def _add_function(self, function: _Function, is_web_endpoint: bool):
-        if function.tag in self._functions:
+        if old_function := self._functions.get(function.tag, None):
+            if old_function is function:
+                return  # already added the same exact instance, ignore
+
             if not is_notebook():
-                old_function: _Function = self._functions[function.tag]
                 logger.warning(
-                    f"Warning: Tag '{function.tag}' collision!"
+                    f"Warning: function name '{function.tag}' collision!"
                     " Overriding existing function "
                     f"[{old_function._info.module_name}].{old_function._info.function_name}"
                     f" with new function [{function._info.module_name}].{function._info.function_name}"
@@ -504,7 +509,7 @@ class _App:
         return self._functions
 
     @property
-    def registered_classes(self) -> dict[str, _Function]:
+    def registered_classes(self) -> dict[str, _Cls]:
         """All modal.Cls objects registered on the app."""
         return self._classes
 
@@ -995,13 +1000,6 @@ class _App:
         ```
         """
         for tag, function in other_app._functions.items():
-            existing_function = self._functions.get(tag)
-            if existing_function and existing_function != function:
-                logger.warning(
-                    f"Named app function {tag} with existing value {existing_function} is being "
-                    f"overwritten by a different function {function}"
-                )
-
             self._add_function(function, False)  # TODO(erikbern): webhook config?
 
         for tag, cls in other_app._classes.items():

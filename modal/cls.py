@@ -11,6 +11,7 @@ from grpclib import GRPCError, Status
 from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP
 from modal_proto import api_pb2
 
+from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._serialization import check_valid_cls_constructor_arg
@@ -23,7 +24,6 @@ from .client import _Client
 from .exception import ExecutionError, InvalidError, NotFoundError, VersionError
 from .functions import _Function, _parse_retries
 from .gpu import GPU_T
-from .object import _get_environment_name, _Object
 from .partial_function import (
     _find_callables_for_obj,
     _find_partial_methods_for_user_cls,
@@ -396,6 +396,22 @@ class _Cls(_Object, type_prefix="cs"):
         if not self._user_cls:
             raise AttributeError("You can only get the partial functions of a local Cls instance")
         return _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.all())
+
+    def _get_app(self) -> "modal.app._App":
+        return self._app
+
+    def _get_user_cls(self) -> type:
+        return self._user_cls
+
+    def _get_name(self) -> str:
+        return self._name
+
+    def _get_class_service_function(self) -> "modal.functions._Function":
+        return self._class_service_function
+
+    def _get_method_names(self) -> Collection[str]:
+        # returns method names for a *local* class only for now (used by cli)
+        return self._method_functions.keys()
 
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)

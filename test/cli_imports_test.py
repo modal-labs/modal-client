@@ -1,15 +1,20 @@
 # Copyright Modal Labs 2023
 import pytest
+import sys
 
-from modal._utils.async_utils import synchronizer
-from modal.app import _App, _LocalEntrypoint
+import click
+
+from modal import web_endpoint
+from modal.app import App, LocalEntrypoint
 from modal.cli.import_refs import (
-    DEFAULT_APP_NAME,
+    MethodReference,
+    _import_object,
+    _infer_runnable,
     get_by_object_path,
     import_file_or_module,
-    parse_import_ref,
 )
 from modal.exception import InvalidError
+from modal.partial_function import asgi_app, method
 
 # Some helper vars for import_stub tests:
 local_entrypoint_src = """
@@ -86,28 +91,113 @@ dir_containing_python_package = {
     ["dir_structure", "ref", "expected_object_type"],
     [
         # # file syntax
-        (empty_dir_with_python_file, "mod.py", _App),
-        (empty_dir_with_python_file, "mod.py::app", _App),
-        (empty_dir_with_python_file, "mod.py::other_app", _App),
-        (dir_containing_python_package, "pack/file.py", _App),
-        (dir_containing_python_package, "pack/sub/subfile.py", _App),
-        (dir_containing_python_package, "dir/sub/subfile.py", _App),
+        (empty_dir_with_python_file, "mod.py", App),
+        (empty_dir_with_python_file, "mod.py::app", App),
+        (empty_dir_with_python_file, "mod.py::other_app", App),
+        (dir_containing_python_package, "pack/file.py", App),
+        (dir_containing_python_package, "pack/sub/subfile.py", App),
+        (dir_containing_python_package, "dir/sub/subfile.py", App),
         # # python module syntax
-        (empty_dir_with_python_file, "mod", _App),
-        (empty_dir_with_python_file, "mod::app", _App),
-        (empty_dir_with_python_file, "mod::other_app", _App),
-        (dir_containing_python_package, "pack.mod", _App),
-        (dir_containing_python_package, "pack.mod::other_app", _App),
-        (dir_containing_python_package, "pack/local.py::app.main", _LocalEntrypoint),
+        (empty_dir_with_python_file, "mod", App),
+        (empty_dir_with_python_file, "mod::app", App),
+        (empty_dir_with_python_file, "mod::other_app", App),
+        (dir_containing_python_package, "pack.mod", App),
+        (dir_containing_python_package, "pack.mod::other_app", App),
+        (dir_containing_python_package, "pack/local.py::app.main", LocalEntrypoint),
     ],
 )
 def test_import_object(dir_structure, ref, expected_object_type, mock_dir):
     with mock_dir(dir_structure):
-        import_ref = parse_import_ref(ref)
-        module = import_file_or_module(import_ref.file_or_module)
-        imported_object = get_by_object_path(module, import_ref.object_path or DEFAULT_APP_NAME)
-        _translated_obj = synchronizer._translate_in(imported_object)
-        assert isinstance(_translated_obj, expected_object_type)
+        obj, _ = _import_object(ref, base_cmd="modal some_command")
+        assert isinstance(obj, expected_object_type)
+
+
+app_with_one_web_function = App()
+
+
+@app_with_one_web_function.function()
+@web_endpoint()
+def web1():
+    pass
+
+
+app_with_one_function_one_web_endpoint = App()
+
+
+@app_with_one_function_one_web_endpoint.function()
+def f1():
+    pass
+
+
+@app_with_one_function_one_web_endpoint.function()
+@web_endpoint()
+def web2():
+    pass
+
+
+app_with_one_web_method = App()
+
+
+@app_with_one_web_method.cls()
+class C1:
+    @asgi_app()
+    def web_3(self):
+        pass
+
+
+app_with_one_web_method_one_method = App()
+
+
+@app_with_one_web_method_one_method.cls()
+class C2:
+    @asgi_app()
+    def web_4(self):
+        pass
+
+    @method()
+    def f2(self):
+        pass
+
+
+app_with_local_entrypoint_and_function = App()
+
+
+@app_with_local_entrypoint_and_function.local_entrypoint()
+def le_1():
+    pass
+
+
+@app_with_local_entrypoint_and_function.function()
+def f3():
+    pass
+
+
+def test_infer_object():
+    this_module = sys.modules[__name__]
+    with pytest.raises(click.ClickException, match="web endpoint"):
+        _infer_runnable(app_with_one_web_function, this_module, accept_webhook=False)
+
+    _, runnable = _infer_runnable(app_with_one_web_function, this_module, accept_webhook=True)
+    assert runnable == web1
+
+    _, runnable = _infer_runnable(app_with_one_function_one_web_endpoint, this_module, accept_webhook=False)
+    assert runnable == f1
+
+    with pytest.raises(click.UsageError, match="(?s)You need to specify.*\nf1\nweb2\n"):
+        _, runnable = _infer_runnable(app_with_one_function_one_web_endpoint, this_module, accept_webhook=True)
+    assert runnable == f1
+
+    with pytest.raises(click.UsageError, match="web endpoint"):
+        _, runnable = _infer_runnable(app_with_one_web_method, this_module, accept_webhook=False)
+
+    _, runnable = _infer_runnable(app_with_one_web_method, this_module, accept_webhook=True)
+    assert runnable == MethodReference(C1, "web_3")  # type: ignore
+
+    _, runnable = _infer_runnable(app_with_local_entrypoint_and_function, this_module, accept_local_entrypoint=True)
+    assert runnable == le_1
+
+    _, runnable = _infer_runnable(app_with_local_entrypoint_and_function, this_module, accept_local_entrypoint=False)
+    assert runnable == f3
 
 
 def test_import_package_and_module_names(monkeypatch, supports_dir):

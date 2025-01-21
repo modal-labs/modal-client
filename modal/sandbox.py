@@ -18,6 +18,7 @@ from modal.volume import _Volume
 from modal_proto import api_pb2
 
 from ._location import parse_cloud_provider
+from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import synchronize_api
@@ -34,7 +35,6 @@ from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
-from .object import _get_environment_name, _Object
 from .proxy import _Proxy
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
@@ -169,7 +169,8 @@ class _Sandbox(_Object, type_prefix="sb"):
                 resources=convert_fn_config_to_resources_config(
                     cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
                 ),
-                cloud_provider=parse_cloud_provider(cloud) if cloud else None,
+                cloud_provider=parse_cloud_provider(cloud) if cloud else None,  # Deprecated at some point
+                cloud_provider_str=cloud.upper() if cloud else None,  # Supersedes cloud_provider
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
                 runtime_debug=config.get("function_runtime_debug"),
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
@@ -359,6 +360,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         Returns an [`Image`](https://modal.com/docs/reference/modal.Image) object which
         can be used to spawn a new Sandbox with the same filesystem.
         """
+        await self._get_task_id()  # Ensure the sandbox has started
         req = api_pb2.SandboxSnapshotFsRequest(sandbox_id=self.object_id, timeout=timeout)
         resp = await retry_transient_errors(self._client.stub.SandboxSnapshotFs, req)
 
@@ -369,10 +371,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         metadata = resp.image_metadata
 
         async def _load(self: _Image, resolver: Resolver, existing_object_id: Optional[str]):
-            self._hydrate(image_id, resolver.client, metadata)
+            # no need to hydrate again since we do it eagerly below
+            pass
 
         rep = "Image()"
-        image = _Image._from_loader(_load, rep)
+        image = _Image._from_loader(_load, rep, hydrate_lazily=True)
+        image._hydrate(image_id, self._client, metadata)  # hydrating eagerly since we have all of the data
 
         return image
 
