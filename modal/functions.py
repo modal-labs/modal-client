@@ -786,7 +786,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     concurrency_limit=concurrency_limit or 0,
                     pty_info=pty_info,
                     cloud_provider=cloud_provider,  # Deprecated at some point
-                    cloud_provider_str=cloud.upper() if cloud else None,  # Supersedes cloud_provider
+                    cloud_provider_str=cloud.upper() if cloud else "",  # Supersedes cloud_provider
                     warm_pool_size=keep_warm or 0,
                     runtime=config.get("function_runtime"),
                     runtime_debug=config.get("function_runtime_debug"),
