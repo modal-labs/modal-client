@@ -303,10 +303,14 @@ def import_and_filter(
     """
 
     import_ref = parse_import_ref(func_ref)
+    # all commands:
     cli_commands = _import_cli_commands(import_ref.file_or_module)
+
+    # all commands that satisfy local entrypoint/accept webhook limitations AND object path prefix
     filtered_commands = list(
         filter_cli_commands(cli_commands, import_ref.object_path, accept_local_entrypoint, accept_webhook)
     )
+    # all commands that satisfy local entrypoint/accept webhook limitations:
     all_usable_commands = list(filter_cli_commands(cli_commands, "", accept_local_entrypoint, accept_webhook))
 
     if len(filtered_commands) == 1:

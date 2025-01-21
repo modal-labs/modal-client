@@ -309,21 +309,8 @@ class _App:
     def __setitem__(self, tag: str, obj: _Object):
         deprecation_error((2024, 3, 25), _app_attr_error)
 
-    def __getattr__(self, tag: str):
-        # TODO(erikbern): remove this method later
-        assert isinstance(tag, str)
-        if tag.startswith("__"):
-            # Hacky way to avoid certain issues, e.g. pickle will try to look this up
-            raise AttributeError(f"App has no member {tag}")
-        if tag not in self._functions or tag not in self._classes:
-            # Primarily to make hasattr work
-            raise AttributeError(f"App has no member {tag}")
-        deprecation_error((2024, 3, 25), _app_attr_error)
-
     def __setattr__(self, tag: str, obj: _Object):
         # TODO(erikbern): remove this method later
-        # Note that only attributes defined in __annotations__ are set on the object itself,
-        # everything else is registered on the indexed_objects
         if tag in self.__annotations__:
             object.__setattr__(self, tag, obj)
         elif tag == "image":

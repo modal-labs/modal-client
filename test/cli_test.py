@@ -131,7 +131,7 @@ def test_run(servicer, set_env_client, test_dir):
     _run(["run", app_file.as_posix()])
     _run(["run", app_file.as_posix() + "::app"])
     _run(["run", app_file.as_posix() + "::foo"])
-    _run(["run", app_file.as_posix() + "::bar"], expected_exit_code=1, expected_stderr=None)
+    _run(["run", app_file.as_posix() + "::bar"], expected_exit_code=2, expected_stderr=None)
     file_with_entrypoint = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
     _run(["run", file_with_entrypoint.as_posix()])
     _run(["run", file_with_entrypoint.as_posix() + "::main"])
@@ -234,9 +234,9 @@ def test_deploy(servicer, set_env_client, test_dir):
 
 def test_run_custom_app(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "custom_app.py"
-    res = _run(["run", app_file.as_posix() + "::app"], expected_exit_code=1, expected_stderr=None)
+    res = _run(["run", app_file.as_posix() + "::app"], expected_exit_code=2, expected_stderr=None)
     assert "Could not find" in res.stderr
-    res = _run(["run", app_file.as_posix() + "::app.foo"], expected_exit_code=1, expected_stderr=None)
+    res = _run(["run", app_file.as_posix() + "::app.foo"], expected_exit_code=2, expected_stderr=None)
     assert "Could not find" in res.stderr
 
     _run(["run", app_file.as_posix() + "::foo"])
