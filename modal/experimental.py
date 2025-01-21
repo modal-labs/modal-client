@@ -1,16 +1,16 @@
 # Copyright Modal Labs 2022
-from typing import (
-    Any,
-    Callable,
-)
+from dataclasses import dataclass
+from typing import Any, Callable, Optional
 
-import modal._clustered_functions
-from modal.functions import _Function
+from modal_proto import api_pb2
 
+from ._clustered_functions import ClusterInfo, get_cluster_info as _get_cluster_info
+from ._object import _get_environment_name
 from ._runtime.container_io_manager import _ContainerIOManager
-from .exception import (
-    InvalidError,
-)
+from ._utils.async_utils import synchronizer
+from .client import _Client
+from .exception import InvalidError
+from .functions import _Function
 from .partial_function import _PartialFunction, _PartialFunctionFlags
 
 
@@ -65,5 +65,41 @@ def clustered(size: int, broadcast: bool = True):
     return wrapper
 
 
-def get_cluster_info() -> modal._clustered_functions.ClusterInfo:
-    return modal._clustered_functions.get_cluster_info()
+def get_cluster_info() -> ClusterInfo:
+    return _get_cluster_info()
+
+
+@dataclass
+class AppInfo:
+    app_id: str
+    name: str
+    containers: int
+
+
+@synchronizer.create_blocking
+async def list_deployed_apps(environment_name: str = "", client: Optional[_Client] = None) -> list[AppInfo]:
+    """List deployed Apps along with the number of containers currently running."""
+    # This function exists to provide backwards compatibility for some users who had been
+    # calling into the private function that previously backed the `modal app list` CLI command.
+    # We plan to add more Python API for exposing this sort of information, but we haven't
+    # settled on a design we're happy with yet. In the meantime, this function will continue
+    # to support existing codebases. It's likely that the final API will be different
+    # (e.g. more oriented around the App object). This function should be gracefully deprecated
+    # one the new API is released.
+    client = client or await _Client.from_env()
+
+    resp: api_pb2.AppListResponse = await client.stub.AppList(
+        api_pb2.AppListRequest(environment_name=_get_environment_name(environment_name))
+    )
+
+    app_infos = []
+    for app_stats in resp.apps:
+        if app_stats.state == api_pb2.APP_STATE_DEPLOYED:
+            app_infos.append(
+                AppInfo(
+                    app_id=app_stats.app_id,
+                    name=app_stats.description,
+                    containers=app_stats.n_running_tasks,
+                )
+            )
+    return app_infos
