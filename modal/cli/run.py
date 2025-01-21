@@ -480,7 +480,7 @@ def shell(
             exec(container_id=container_or_function, command=shlex.split(cmd), pty=pty)
             return
 
-        original_app, function_or_method_ref = import_and_filter(
+        function_or_method_ref = import_and_filter(
             container_or_function, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell"
         )
         function_spec: _FunctionSpec

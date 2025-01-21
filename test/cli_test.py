@@ -235,9 +235,11 @@ def test_deploy(servicer, set_env_client, test_dir):
 def test_run_custom_app(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "custom_app.py"
     res = _run(["run", app_file.as_posix() + "::app"], expected_exit_code=2, expected_stderr=None)
-    assert "Could not find" in res.stderr
+    assert "You need to specify" in res.stderr
+    assert "foo / my_app.foo" in res.stderr
     res = _run(["run", app_file.as_posix() + "::app.foo"], expected_exit_code=2, expected_stderr=None)
-    assert "Could not find" in res.stderr
+    assert "You need to specify" in res.stderr
+    assert "foo / my_app.foo" in res.stderr
 
     _run(["run", app_file.as_posix() + "::foo"])
 
@@ -1125,7 +1127,7 @@ def test_can_run_all_listed_functions_with_includes(supports_dir, monkeypatch, s
 
     res = _run(["run", "main"], expected_exit_code=2)
     # there are no runnables directly in the target module, so references need to go via the app
-    func_listing = res.stderr.split("on the selected app are:")[1]
+    func_listing = res.stderr.split("has the following registered functions and local entrypoints:")[1]
     listed_runnables = set(re.findall(r"\b[\w.]+\b", func_listing))
 
     expected_runnables = {

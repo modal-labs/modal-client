@@ -204,34 +204,35 @@ def filter_cli_commands(
             yield (prefix_matches, cli_command)
 
 
-def _show_no_auto_detectable_app(app_ref: ImportRef) -> None:
-    object_path = app_ref.object_path
-    import_path = app_ref.file_or_module
-    error_console = Console(stderr=True)
-    error_console.print(f"[bold red]Could not find Modal app '{object_path}' in {import_path}.[/bold red]")
-
-    if object_path is None:
-        guidance_msg = (
-            f"Expected to find an app variable named **`{DEFAULT_APP_NAME}`** (the default app name). "
-            "If your `modal.App` is named differently, "
-            "you must specify it in the app ref argument. "
-            f"For example an App variable `app_2 = modal.App()` in `{import_path}` would "
-            f"be specified as `{import_path}::app_2`."
-        )
-        md = Markdown(guidance_msg)
-        error_console.print(md)
-
-
 def import_app(app_ref: str) -> App:
     import_ref = parse_import_ref(app_ref)
 
-    module = import_file_or_module(import_ref.file_or_module)
     # TODO: default could be to just pick up any app regardless if it's called DEFAULT_APP_NAME
     #  as long as there is a single app in the module?
-    app = getattr(module, import_ref.object_path or DEFAULT_APP_NAME)
+    import_path = import_ref.file_or_module
+    object_path = import_ref.object_path or DEFAULT_APP_NAME
+
+    module = import_file_or_module(import_ref.file_or_module)
+
+    if "." in object_path:
+        raise click.UsageError(f"{object_path} is not a Modal App")
+
+    app = getattr(module, object_path)
 
     if app is None:
-        _show_no_auto_detectable_app(import_ref)
+        error_console = Console(stderr=True)
+        error_console.print(f"[bold red]Could not find Modal app '{object_path}' in {import_path}.[/bold red]")
+
+        if object_path is None:
+            guidance_msg = Markdown(
+                f"Expected to find an app variable named **`{DEFAULT_APP_NAME}`** (the default app name). "
+                "If your `modal.App` is named differently, "
+                "you must specify it in the app ref argument. "
+                f"For example an App variable `app_2 = modal.App()` in `{import_path}` would "
+                f"be specified as `{import_path}::app_2`."
+            )
+            error_console.print(guidance_msg)
+
         sys.exit(1)
 
     if not isinstance(app, App):
@@ -281,7 +282,6 @@ def _get_runnable_app(runnable: Runnable) -> App:
     elif isinstance(runnable, MethodReference):
         return runnable.cls._get_app()
     else:
-        print("runnable", runnable)
         assert isinstance(runnable, LocalEntrypoint)
         return runnable.app
 
@@ -342,7 +342,7 @@ def import_and_filter(
     # 1. specified path doesn't exist
     # 2. specified path exists but is not a modal type
     # 3. specified path exists but is not *the right kind* of modal type
-    # 4. specifeid path exists but is not specific enough
+    # 4. specified path exists but is not specific enough
 
     # some special case errors in case there are no applicable functions to run:
     # if len(function_choices) == 0:
@@ -362,9 +362,9 @@ def import_and_filter(
     registered_functions_str = "\n".join(usable_command_lines)
     help_text = f"""You need to specify a Modal function or local entrypoint to run, e.g.
 
-modal run app[.py]::[app_var.]my_function [...args]
+{base_cmd} {import_ref.file_or_module}::[app_variable.]my_function [...args]
 
-Registered functions and local entrypoints on the selected app are:
+{import_ref.file_or_module} has the following registered functions and local entrypoints:
 {registered_functions_str}
 """
     raise click.UsageError(help_text)
