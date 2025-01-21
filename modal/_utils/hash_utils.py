@@ -8,6 +8,7 @@ from typing import BinaryIO, Callable, Optional, Sequence, Union
 from modal.config import logger
 
 HASH_CHUNK_SIZE = 65536
+DUMMY_HASH_HEX = "baadbaadbaadbaadbaadbaadbaadbaad"
 
 
 def _update(hashers: Sequence[Callable[[bytes], None]], data: Union[bytes, BinaryIO]) -> None:
