@@ -1667,9 +1667,10 @@ message FunctionUpdateSchedulingParamsRequest {
 message FunctionUpdateSchedulingParamsResponse {}
 
 message GPUConfig {
-  GPUType type = 1;
+  GPUType type = 1;  // Deprecated, at some point
   uint32 count = 2;
   uint32 memory = 3;
+  string gpu_type = 4;
 }
 
 message GeneratorDone {  // Sent as the output when a generator finishes running.
