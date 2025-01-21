@@ -778,6 +778,7 @@ def test_default_cloud_provider(client, servicer, monkeypatch):
         f = servicer.app_functions[object_id]
 
     assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_OCI
+    assert f.cloud_provider_str == "OCI"
 
 
 def test_not_hydrated():
