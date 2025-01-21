@@ -86,6 +86,7 @@ def test_cloud_provider_selection(client, servicer):
     assert len(servicer.app_functions) == 1
     func_def = next(iter(servicer.app_functions.values()))
     assert func_def.cloud_provider == api_pb2.CLOUD_PROVIDER_GCP
+    assert func_def.cloud_provider_str == "GCP"
 
     assert func_def.resources.gpu_config.count == 1
     assert func_def.resources.gpu_config.type == api_pb2.GPU_TYPE_A100

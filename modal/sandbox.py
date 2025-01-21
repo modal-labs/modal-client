@@ -165,7 +165,8 @@ class _Sandbox(_Object, type_prefix="sb"):
                 resources=convert_fn_config_to_resources_config(
                     cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
                 ),
-                cloud_provider=parse_cloud_provider(cloud) if cloud else None,
+                cloud_provider=parse_cloud_provider(cloud) if cloud else None,  # Deprecated at some point
+                cloud_provider_str=cloud.upper() if cloud else None,  # Supersedes cloud_provider
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
                 runtime_debug=config.get("function_runtime_debug"),
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
