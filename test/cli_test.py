@@ -131,7 +131,7 @@ def test_run(servicer, set_env_client, test_dir):
     _run(["run", app_file.as_posix()])
     _run(["run", app_file.as_posix() + "::app"])
     _run(["run", app_file.as_posix() + "::foo"])
-    _run(["run", app_file.as_posix() + "::bar"], expected_exit_code=2, expected_stderr=None)
+    _run(["run", app_file.as_posix() + "::bar"], expected_exit_code=1, expected_stderr=None)
     file_with_entrypoint = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
     _run(["run", file_with_entrypoint.as_posix()])
     _run(["run", file_with_entrypoint.as_posix() + "::main"])
@@ -162,14 +162,14 @@ def test_run_generator(servicer, set_env_client, test_dir):
 
 def test_help_message_unspecified_function(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "app_with_multiple_functions.py"
-    result = _run(["run", app_file.as_posix()], expected_exit_code=2, expected_stderr=None)
+    result = _run(["run", app_file.as_posix()], expected_exit_code=1, expected_stderr=None)
 
     # should suggest available functions on the app:
     assert "foo" in result.stderr
     assert "bar" in result.stderr
 
     result = _run(
-        ["run", app_file.as_posix(), "--help"], expected_exit_code=2, expected_stderr=None
+        ["run", app_file.as_posix(), "--help"], expected_exit_code=1, expected_stderr=None
     )  # TODO: help should not return non-zero
     # help should also available functions on the app:
     assert "foo" in result.stderr
@@ -234,10 +234,10 @@ def test_deploy(servicer, set_env_client, test_dir):
 
 def test_run_custom_app(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "custom_app.py"
-    res = _run(["run", app_file.as_posix() + "::app"], expected_exit_code=2, expected_stderr=None)
+    res = _run(["run", app_file.as_posix() + "::app"], expected_exit_code=1, expected_stderr=None)
     assert "You need to specify" in res.stderr
     assert "foo / my_app.foo" in res.stderr
-    res = _run(["run", app_file.as_posix() + "::app.foo"], expected_exit_code=2, expected_stderr=None)
+    res = _run(["run", app_file.as_posix() + "::app.foo"], expected_exit_code=1, expected_stderr=None)
     assert "You need to specify" in res.stderr
     assert "foo / my_app.foo" in res.stderr
 
@@ -273,7 +273,7 @@ def test_run_local_entrypoint_invalid_with_app_run(servicer, set_env_client, tes
 
 def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
-    res = _run(["run", app_file.as_posix()], expected_exit_code=2, expected_stderr=None)
+    res = _run(["run", app_file.as_posix()], expected_exit_code=1, expected_stderr=None)
     assert "You need to specify a Modal function or local entrypoint to run" in res.stderr
 
     valid_call_args = [
@@ -318,7 +318,7 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
 
 def test_run_parse_args_function(servicer, set_env_client, test_dir, recwarn):
     app_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
-    res = _run(["run", app_file.as_posix()], expected_exit_code=2, expected_stderr=None)
+    res = _run(["run", app_file.as_posix()], expected_exit_code=1, expected_stderr=None)
     assert "You need to specify a Modal function or local entrypoint to run" in res.stderr
 
     # HACK: all the tests use the same arg, i.
@@ -1125,7 +1125,7 @@ def test_container_exec(servicer, set_env_client, mock_shell_pty, app):
 def test_can_run_all_listed_functions_with_includes(supports_dir, monkeypatch, set_env_client):
     monkeypatch.chdir(supports_dir / "multifile_project")
 
-    res = _run(["run", "main"], expected_exit_code=2)
+    res = _run(["run", "main"], expected_exit_code=1)
     # there are no runnables directly in the target module, so references need to go via the app
     func_listing = res.stderr.split("has the following registered functions and local entrypoints:")[1]
     listed_runnables = set(re.findall(r"\b[\w.]+\b", func_listing))
