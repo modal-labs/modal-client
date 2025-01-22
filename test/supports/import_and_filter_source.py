@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2025
 from modal import App, asgi_app, method, web_endpoint
 
 app_with_one_web_function = App()

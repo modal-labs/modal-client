@@ -1,9 +1,8 @@
 # Copyright Modal Labs 2024
-import a
-import b
-
 import modal
 from modal import method, web_endpoint
+
+from . import a, b
 
 app = modal.App()
 app.include(a.app)

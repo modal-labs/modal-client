@@ -1122,12 +1122,14 @@ def test_container_exec(servicer, set_env_client, mock_shell_pty, app):
     sb.terminate()
 
 
-def test_can_run_all_listed_functions_with_includes(supports_dir, monkeypatch, set_env_client):
-    monkeypatch.chdir(supports_dir / "multifile_project")
+def test_can_run_all_listed_functions_with_includes(supports_on_path, monkeypatch, set_env_client):
+    monkeypatch.setenv("TERM", "dumb")  # prevents looking at ansi escape sequences
 
-    res = _run(["run", "main"], expected_exit_code=1)
+    res = _run(["run", "multifile_project.main"], expected_exit_code=1)
+    print("err", res.stderr)
     # there are no runnables directly in the target module, so references need to go via the app
-    func_listing = res.stderr.split("has the following registered functions and local entrypoints:")[1]
+    func_listing = res.stderr.split("entrypoints:")[1]
+
     listed_runnables = set(re.findall(r"\b[\w.]+\b", func_listing))
 
     expected_runnables = {
@@ -1143,4 +1145,4 @@ def test_can_run_all_listed_functions_with_includes(supports_dir, monkeypatch, s
 
     for runnable in expected_runnables:
         assert runnable in res.stderr
-        _run(["run", f"main::{runnable}"], expected_exit_code=0)
+        _run(["run", f"multifile_project.main::{runnable}"], expected_exit_code=0)
