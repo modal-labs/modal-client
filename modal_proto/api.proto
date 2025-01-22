@@ -340,6 +340,7 @@ message AppGetLogsRequest {
   string function_id = 5;
   string input_id = 6;
   string task_id = 7;
+  string function_call_id = 9;
   FileDescriptor file_descriptor = 8;
 }
 
