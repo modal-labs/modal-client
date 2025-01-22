@@ -13,6 +13,7 @@ import importlib.util
 import inspect
 import sys
 import types
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Union, cast
@@ -126,18 +127,18 @@ def list_cli_commands(
     """
     apps = cast(list[tuple[str, App]], inspect.getmembers(module, lambda x: isinstance(x, App)))
 
-    all_runnables: dict[Runnable, list[str]] = {}
+    all_runnables: dict[Runnable, list[str]] = defaultdict(list)
     for app_name, app in apps:
         for name, local_entrypoint in app.registered_entrypoints.items():
-            all_runnables.setdefault(local_entrypoint, []).append(f"{app_name}.{name}")
+            all_runnables[local_entrypoint].append(f"{app_name}.{name}")
         for name, function in app.registered_functions.items():
             if name.endswith(".*"):
                 continue
-            all_runnables.setdefault(function, []).append(f"{app_name}.{name}")
+            all_runnables[function].append(f"{app_name}.{name}")
         for cls_name, cls in app.registered_classes.items():
             for method_name in cls._get_method_names():
                 method_ref = MethodReference(cls, method_name)
-                all_runnables.setdefault(method_ref, []).append(f"{app_name}.{cls_name}.{method_name}")
+                all_runnables[method_ref].append(f"{app_name}.{cls_name}.{method_name}")
 
     # If any class or function is exported as a module level object, use that
     # as the preferred name by putting it first in the list
@@ -303,13 +304,18 @@ class NonConclusiveImportRef(ClickException):
 
         registered_functions_str = "\n".join(usable_command_lines)
         prefix = f"{self.error_clarification}\n\n" if self.error_clarification else ""
-        help_text = f"""{prefix}You need to specify a Modal function or local entrypoint to run, e.g.
 
-{self.base_cmd} {self.import_ref.file_or_module}::[app_variable.]my_function [...args]
+        if self.all_usable_commands:
+            listing = f"""{self.import_ref.file_or_module}' has the following usable functions:
+{registered_functions_str}"""
+        else:
+            listing = f"'{self.import_ref.file_or_module}' has no functions that `{self.base_cmd}` can use."
 
-'{self.import_ref.file_or_module}' has the following registered functions and local entrypoints:
-{registered_functions_str}
-"""
+        help_text = f"""{prefix}Specify a Modal function or local entrypoint to run, e.g.
+
+{self.base_cmd} {self.import_ref.file_or_module}::my_function [...args]
+
+{listing}"""
         return help_text
 
 
@@ -359,9 +365,7 @@ def import_and_filter(
     required_types_str = ", ".join(required_types)
 
     error_clarification = ""
-    if len(all_usable_commands) == 0:
-        error_clarification = f"{import_ref.file_or_module} has no runnable {required_types_str}."
-    elif len(filtered_commands) == 0:
+    if len(all_usable_commands) > 0 and len(filtered_commands) == 0:
         # nothing matching the type and name
         all_cmds_matching_names = filter_cli_commands(cli_commands, import_ref.object_path)
         if len(all_cmds_matching_names):

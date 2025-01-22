@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2024
 import modal
-from modal import method, web_endpoint
+from modal import enter, method, web_endpoint
 
 from . import a, b
 
@@ -25,6 +25,10 @@ other_app = modal.App()
 
 @other_app.cls()
 class Cls:
+    @enter()
+    def startup(self):
+        pass
+
     @method()
     def method_on_other_app_class(self):
         pass

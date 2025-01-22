@@ -1128,7 +1128,7 @@ def test_can_run_all_listed_functions_with_includes(supports_on_path, monkeypatc
     res = _run(["run", "multifile_project.main"], expected_exit_code=1)
     print("err", res.stderr)
     # there are no runnables directly in the target module, so references need to go via the app
-    func_listing = res.stderr.split("entrypoints:")[1]
+    func_listing = res.stderr.split("functions:")[1]
 
     listed_runnables = set(re.findall(r"\b[\w.]+\b", func_listing))
 
