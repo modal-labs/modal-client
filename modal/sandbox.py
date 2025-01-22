@@ -517,8 +517,9 @@ class _Sandbox(_Object, type_prefix="sb"):
             raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
 
         # Force secret resolution so we can pass the secret IDs to the backend.
+        # TODO should we parallelize this?
         for secret in secrets:
-            await secret.resolve(client=self._client)
+            await secret.hydrate(client=self._client)
 
         task_id = await self._get_task_id()
         req = api_pb2.ContainerExecRequest(
