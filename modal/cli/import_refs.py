@@ -126,7 +126,7 @@ def list_cli_commands(
     """
     apps = cast(list[tuple[str, App]], inspect.getmembers(module, lambda x: isinstance(x, App)))
 
-    all_runnables = {}
+    all_runnables: dict[Runnable, list[str]] = {}
     for app_name, app in apps:
         for name, local_entrypoint in app.registered_entrypoints.items():
             all_runnables.setdefault(local_entrypoint, []).append(f"{app_name}.{name}")

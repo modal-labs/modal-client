@@ -1143,7 +1143,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     def _is_web_endpoint(self) -> bool:
         # only defined in definition scope/locally, and not for class methods at the moment
-        return self._webhook_config and self._webhook_config.type != api_pb2.WEBHOOK_TYPE_UNSPECIFIED
+        return bool(self._webhook_config and self._webhook_config.type != api_pb2.WEBHOOK_TYPE_UNSPECIFIED)
 
     def get_build_def(self) -> str:
         """mdmd:hidden"""
