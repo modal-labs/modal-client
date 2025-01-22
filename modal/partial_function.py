@@ -560,6 +560,7 @@ def _build(
         "The `@modal.build` decorator is deprecated and will be removed in a future release."
         "\n\nWe now recommend storing large assets (such as model weights) using a `modal.Volume`"
         " instead of writing them directly into the `modal.Image` filesystem."
+        " For other use cases we recommend using `Image.run_function` instead."
         "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
     )
 
