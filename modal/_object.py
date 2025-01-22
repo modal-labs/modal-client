@@ -252,6 +252,7 @@ class _Object:
 
     async def hydrate(self, client: Optional[_Client] = None) -> Self:
         """Synchronize the local object with its identity on the Modal server.
+
         It is rarely necessary to call this method explicitly, as most operations
         will lazily hydrate when needed. The main use case is when you need to
         access object metadata, such as its ID.
@@ -271,7 +272,6 @@ class _Object:
             # TODO(michael) can remove _hydrate lazily? I think all objects support it now?
             self._validate_is_hydrated()
         else:
-            # TODO: this client and/or resolver can't be changed by a caller to X.from_name()
             c = client if client is not None else await _Client.from_env()
             resolver = Resolver(c)
             await resolver.load(self)
