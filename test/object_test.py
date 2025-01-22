@@ -4,7 +4,7 @@ import pytest
 from modal import Secret
 from modal._object import _Object
 from modal.dict import Dict, _Dict
-from modal.exception import InvalidError, PendingDeprecationError
+from modal.exception import DeprecationError, InvalidError
 from modal.queue import _Queue
 
 
@@ -30,7 +30,7 @@ def test_on_demand_hydration(client):
 def test_resolve_deprecation(client):
     obj = Dict.from_name("test-dict", create_if_missing=True)
     warning = r"Please use `Dict.hydrate\(\)` or `await Dict.hydrate.aio\(\)`"
-    with pytest.warns(PendingDeprecationError, match=warning):
+    with pytest.warns(DeprecationError, match=warning):
         obj.resolve(client)
     assert obj.object_id is not None
 
