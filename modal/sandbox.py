@@ -59,7 +59,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     _stdin: _StreamWriter
     _task_id: Optional[str] = None
     _tunnels: Optional[dict[int, Tunnel]] = None
-    _experimental_enable_snapshot: bool = False
+    _enable_snapshot: bool = False
 
     @staticmethod
     def _new(
@@ -269,7 +269,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             _experimental_scheduler_placement=_experimental_scheduler_placement,
             enable_snapshot=_experimental_enable_snapshot,
         )
-        obj._experimental_enable_snapshot = _experimental_enable_snapshot
+        obj._enable_snapshot = _experimental_enable_snapshot
 
         app_id: Optional[str] = None
         app_client: Optional[_Client] = None
@@ -543,7 +543,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr, text=text, by_line=by_line)
 
     async def _experimental_snapshot(self) -> _SandboxSnapshot:
-        if not self._experimental_enable_snapshot:
+        if not self._enable_snapshot:
             raise ValueError(
                 "Memory snapshots are not supported for this sandbox. To enable memory snapshots, "
                 "set `_experimental_enable_snapshot=True` when creating the sandbox."
