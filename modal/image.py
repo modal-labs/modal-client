@@ -26,6 +26,7 @@ from grpclib.exceptions import GRPCError, StreamTerminatedError
 
 from modal_proto import api_pb2
 
+from ._object import _Object, live_method_gen
 from ._resolver import Resolver
 from ._serialization import serialize
 from ._utils.async_utils import synchronize_api
@@ -46,7 +47,6 @@ from .file_pattern_matcher import NON_PYTHON_FILES, FilePatternMatcher, _ignore_
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
 from .network_file_system import _NetworkFileSystem
-from .object import _Object, live_method_gen
 from .output import _get_output_manager
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
@@ -662,13 +662,16 @@ class _Image(_Object, type_prefix="im"):
         return obj
 
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
-        """Copy the entire contents of a `modal.Mount` into an image.
+        """
+        **Deprecated**: Use image.add_local_dir(..., copy=True) or similar instead.
+
+        Copy the entire contents of a `modal.Mount` into an image.
         Useful when files only available locally are required during the image
         build process.
 
         **Example**
 
-        ```python
+        ```python notest
         static_images_dir = "./static"
         # place all static images in root of mount
         mount = modal.Mount.from_local_dir(static_images_dir, remote_path="/")
@@ -851,14 +854,17 @@ class _Image(_Object, type_prefix="im"):
         # Which follows dockerignore syntax.
         ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
     ) -> "_Image":
-        """Copy a directory into the image as a part of building the image.
+        """
+        **Deprecated**: Use image.add_local_dir instead
+
+        Copy a directory into the image as a part of building the image.
 
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
 
         **Usage:**
 
-        ```python
+        ```python notest
         from pathlib import Path
         from modal import FilePatternMatcher
 
@@ -2066,9 +2072,9 @@ class _Image(_Object, type_prefix="im"):
         last_entry_id: str = ""
 
         request = api_pb2.ImageJoinStreamingRequest(
-            image_id=self._object_id, timeout=55, last_entry_id=last_entry_id, include_logs_for_finished=True
+            image_id=self.object_id, timeout=55, last_entry_id=last_entry_id, include_logs_for_finished=True
         )
-        async for response in self._client.stub.ImageJoinStreaming.unary_stream(request):
+        async for response in self.client.stub.ImageJoinStreaming.unary_stream(request):
             if response.result.status:
                 return
             if response.entry_id:

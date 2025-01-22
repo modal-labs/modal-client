@@ -756,7 +756,7 @@ def test_serialize_deserialize_function_handle(servicer, client):
     def my_handle():
         pass
 
-    with pytest.raises(InvalidError, match="hasn't been created"):
+    with pytest.raises(InvalidError, match="hasn't been hydrated"):
         serialize(my_handle)  # handle is not "live" yet! should not be serializable yet
 
     with app.run(client=client):
@@ -778,6 +778,7 @@ def test_default_cloud_provider(client, servicer, monkeypatch):
         f = servicer.app_functions[object_id]
 
     assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_OCI
+    assert f.cloud_provider_str == "OCI"
 
 
 def test_not_hydrated():

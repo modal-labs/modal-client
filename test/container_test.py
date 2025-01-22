@@ -561,7 +561,7 @@ def test_from_local_python_packages_inside_container(servicer):
     """`from_local_python_packages` shouldn't actually collect modules inside the container, because it's possible
     that there are modules that were present locally for the user that didn't get mounted into
     all the containers."""
-    ret = _run_container(servicer, "test.supports.package_mount", "num_mounts")
+    ret = _run_container(servicer, "test.supports.package_mount", "dummy")
     assert _unwrap_scalar(ret) == 0
 
 

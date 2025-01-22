@@ -9,11 +9,11 @@ from rich.table import Column
 from rich.text import Text
 from typer import Argument
 
+from modal._object import _get_environment_name
 from modal._utils.async_utils import synchronizer
 from modal._utils.deprecation import deprecation_warning
 from modal.client import _Client
 from modal.environments import ensure_env
-from modal.object import _get_environment_name
 from modal_proto import api_pb2
 
 from .utils import ENV_OPTION, display_table, get_app_id_from_name, stream_app_logs, timestamp_to_local

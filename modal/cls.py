@@ -11,6 +11,7 @@ from grpclib import GRPCError, Status
 from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP
 from modal_proto import api_pb2
 
+from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._serialization import check_valid_cls_constructor_arg
@@ -23,7 +24,6 @@ from .client import _Client
 from .exception import ExecutionError, InvalidError, NotFoundError, VersionError
 from .functions import _Function, _parse_retries
 from .gpu import GPU_T
-from .object import _get_environment_name, _Object
 from .partial_function import (
     _find_callables_for_obj,
     _find_partial_methods_for_user_cls,

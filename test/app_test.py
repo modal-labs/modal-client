@@ -209,7 +209,7 @@ def test_init_types():
     App(
         image=Image.debian_slim().pip_install("pandas"),
         secrets=[Secret.from_dict()],
-        mounts=[Mount.from_local_file(__file__)],
+        mounts=[Mount._from_local_file(__file__)],  # TODO: remove
     )
 
 
@@ -401,6 +401,15 @@ def test_app_interactive(servicer, client, capsys):
     assert captured.out.endswith("\nsome data\n\r")
 
 
+def test_app_interactive_no_output(servicer, client):
+    app = App()
+
+    with pytest.warns(match="Interactive mode is disabled because no output manager is active"):
+        with app.run(client=client, interactive=True):
+            # Verify that interactive mode was disabled
+            assert not app.is_interactive
+
+
 def test_show_progress_deprecations(client, monkeypatch):
     app = App()
 
@@ -437,3 +446,36 @@ def test_app_create_bad_environment_name_error(client):
             pass
 
     assert len(asyncio.all_tasks(synchronizer._loop)) == 1  # no trailing tasks, except the `loop_inner` ever-task
+
+
+def test_overriding_function_warning(caplog):
+    app = App()
+
+    @app.function(serialized=True)
+    def func():  # type: ignore
+        return 1
+
+    assert len(caplog.messages) == 0
+
+    app_2 = App()
+    app_2.include(app)
+
+    assert len(caplog.messages) == 0
+
+    app_3 = App()
+
+    app_3.include(app)
+    app_3.include(app_2)
+
+    assert len(caplog.messages) == 0
+
+    app_4 = App()
+
+    @app_4.function(serialized=True)  # type: ignore
+    def func():  # noqa: F811
+        return 2
+
+    assert len(caplog.messages) == 0
+
+    app_3.include(app_4)
+    assert "Overriding existing function" in caplog.messages[0]

@@ -20,6 +20,7 @@ import modal.file_pattern_matcher
 from modal_proto import api_pb2
 from modal_version import __version__
 
+from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._utils.async_utils import aclosing, async_map, synchronize_api
 from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
@@ -31,7 +32,6 @@ from .client import _Client
 from .config import config, logger
 from .exception import InvalidError, ModuleNotMountable
 from .file_pattern_matcher import FilePatternMatcher
-from .object import _get_environment_name, _Object
 
 ROOT_DIR: PurePosixPath = PurePosixPath("/root")
 MOUNT_PUT_FILE_CLIENT_TIMEOUT = 10 * 60  # 10 min max for transferring files
@@ -258,12 +258,15 @@ class NonLocalMountError(Exception):
 
 
 class _Mount(_Object, type_prefix="mo"):
-    """Create a mount for a local directory or file that can be attached
+    """
+    **Deprecated**: Mounts should not be used explicitly anymore, use image.add_local_* commands instead
+
+    Create a mount for a local directory or file that can be attached
     to one or more Modal functions.
 
     **Usage**
 
-    ```python
+    ```python notest
     import modal
     import os
     app = modal.App()
@@ -394,11 +397,13 @@ class _Mount(_Object, type_prefix="mo"):
         recursive: bool = True,
     ) -> "_Mount":
         """
+        **Deprecated:** Use image.add_local_dir() instead
+
         Create a `Mount` from a local directory.
 
         **Usage**
 
-        ```python
+        ```python notest
         assets = modal.Mount.from_local_dir(
             "~/assets",
             condition=lambda pth: not ".venv" in pth,
@@ -449,11 +454,13 @@ class _Mount(_Object, type_prefix="mo"):
     @staticmethod
     def from_local_file(local_path: Union[str, Path], remote_path: Union[str, PurePosixPath, None] = None) -> "_Mount":
         """
+        **Deprecated**: Use image.add_local_file() instead
+
         Create a `Mount` mounting a single local file.
 
         **Usage**
 
-        ```python
+        ```python notest
         # Mount the DBT profile in user's home directory into container.
         dbt_profiles = modal.Mount.from_local_file(
             local_path="~/profiles.yml",
@@ -611,6 +618,8 @@ class _Mount(_Object, type_prefix="mo"):
         ignore: Optional[Union[Sequence[str], Callable[[Path], bool]]] = None,
     ) -> "_Mount":
         """
+        **Deprecated**: Use image.add_local_python_source instead
+
         Returns a `modal.Mount` that makes local modules listed in `module_names` available inside the container.
         This works by mounting the local path of each module's package to a directory inside the container
         that's on `PYTHONPATH`.

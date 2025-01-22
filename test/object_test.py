@@ -2,9 +2,9 @@
 import pytest
 
 from modal import Secret
+from modal._object import _Object
 from modal.dict import _Dict
 from modal.exception import InvalidError
-from modal.object import _Object
 from modal.queue import _Queue
 
 

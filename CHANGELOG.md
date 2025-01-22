@@ -10,6 +10,36 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.72.33 (2025-01-20)
+
+* The Image returned by `Sandbox.snapshot_filesystem` now has `object_id` and other metadata pre-assigned rather than require loading by subsequent calls to sandboxes or similar to set this data.
+
+
+
+### 0.72.30 (2025-01-18)
+
+* Adds a new `oidc_auth_role_arn` field to `CloudBucketMount` for using OIDC authentication to create the mountpoint.
+
+
+
+### 0.72.24 (2025-01-17)
+
+* No longer prints a warning if `app.include` re-includes an already included function (warning is still printed if *another* function with the same name is included)
+
+
+
+### 0.72.22 (2025-01-17)
+
+* Internal refactor of the `modal.object` module. All entities except `Object` from that module have now been moved to the `modal._object` "private" module.
+
+
+
+### 0.72.17 (2025-01-16)
+
+- The `@modal.build` decorator is now deprecated. For storing large assets (e.g. model weights), we now recommend using a `modal.Volume` over writing data to the `modal.Image` filesystem directly.
+
+
+
 ### 0.72.16 (2025-01-16)
 
 * Fixes bug introduced in v0.72.9 where `modal run SomeClass.some_method` would incorrectly print a deprecation warning.
