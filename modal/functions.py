@@ -1207,12 +1207,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     async def is_generator(self) -> bool:
         """mdmd:hidden"""
         # hacky: kind of like @live_method, but not hydrating if we have the value already from local source
+        # TODO(michael) use a common / lightweight method for handling unhydrated metadata properties
         if self._is_generator is not None:
             # this is set if the function or class is local
             return self._is_generator
 
         # not set - this is a from_name lookup - hydrate
-        await self.resolve()
+        await self.hydrate()
         assert self._is_generator is not None  # should be set now
         return self._is_generator
 

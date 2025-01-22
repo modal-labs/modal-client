@@ -8,9 +8,9 @@ from typing import Callable, ClassVar, Optional
 from google.protobuf.message import Message
 from typing_extensions import Self
 
-from modal._utils.async_utils import aclosing
-
 from ._resolver import Resolver
+from ._utils.async_utils import aclosing
+from ._utils.deprecation import deprecation_warning
 from .client import _Client
 from .config import config, logger
 from .exception import ExecutionError, InvalidError
@@ -238,10 +238,29 @@ class _Object:
 
     async def resolve(self, client: Optional[_Client] = None):
         """mdmd:hidden"""
+        obj = self.__class__.__name__.strip("_")
+        deprecation_warning(
+            (2025, 1, 16),
+            f"The `{obj}.resolve` method is deprecated and will be removed in a future release."
+            f" Please use `{obj}.hydrate()` or `await {obj}.hydrate.aio()` instead."
+            "\n\nNote that it is rarely necessary to explicitly hydrate objects, as most methods"
+            " will lazily hydrate when needed.",
+            show_source=False,  # synchronicity interferes with attributing source correctly
+            pending=True,
+        )
+        await self.hydrate(client)
+
+    async def hydrate(self, client: Optional[_Client] = None) -> Self:
+        """Synchronize the local object with its identity on the Modal server.
+
+        It is rarely necessary to call this method explicitly, as most operations
+        will lazily hydrate when needed. The main use case is when you need to
+        access object metadata, such as its ID.
+        """
         if self._is_hydrated:
-            # memory snapshots capture references which must be rehydrated
-            # on restore to handle staleness.
             if self.client._snapshotted and not self._is_rehydrated:
+                # memory snapshots capture references which must be rehydrated
+                # on restore to handle staleness.
                 logger.debug(f"rehydrating {self} after snapshot")
                 self._is_hydrated = False  # un-hydrate and re-resolve
                 c = client if client is not None else await _Client.from_env()
@@ -249,20 +268,20 @@ class _Object:
                 await resolver.load(typing.cast(_Object, self))
                 self._is_rehydrated = True
                 logger.debug(f"rehydrated {self} with client {id(c)}")
-            return
         elif not self._hydrate_lazily:
+            # TODO(michael) can remove _hydrate lazily? I think all objects support it now?
             self._validate_is_hydrated()
         else:
-            # TODO: this client and/or resolver can't be changed by a caller to X.from_name()
             c = client if client is not None else await _Client.from_env()
             resolver = Resolver(c)
             await resolver.load(self)
+        return self
 
 
 def live_method(method):
     @wraps(method)
     async def wrapped(self, *args, **kwargs):
-        await self.resolve()
+        await self.hydrate()
         return await method(self, *args, **kwargs)
 
     return wrapped
@@ -271,7 +290,7 @@ def live_method(method):
 def live_method_gen(method):
     @wraps(method)
     async def wrapped(self, *args, **kwargs):
-        await self.resolve()
+        await self.hydrate()
         async with aclosing(method(self, *args, **kwargs)) as stream:
             async for item in stream:
                 yield item
