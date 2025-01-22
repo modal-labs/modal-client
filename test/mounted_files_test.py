@@ -59,7 +59,7 @@ async def env_mount_files():
 
 
 def test_mounted_files_script(servicer, credentials, supports_dir, env_mount_files, server_url_env):
-    helpers.deploy_app_externally(servicer, credentials, script_path, cwd=supports_dir)
+    print(helpers.deploy_app_externally(servicer, credentials, script_path, cwd=supports_dir))
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:

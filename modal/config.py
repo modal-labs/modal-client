@@ -74,7 +74,7 @@ Some "meta-options" are set using environment variables only:
 * `MODAL_PROFILE` lets you use multiple sections in the .toml file
   and switch between them. It defaults to "default".
 """
-
+import enum
 import logging
 import os
 import typing
@@ -192,26 +192,18 @@ def _to_boolean(x: object) -> bool:
     return str(x).lower() not in {"", "0", "false"}
 
 
-def _to_nullable_boolean(x: object) -> Optional[bool]:
-    if x is None:
-        return None
-    return _to_boolean(x)
+class IncludeSourceMode(enum.StrEnum):
+    NONE = "none"  # can only be set in source, can't be set in config
+    MAIN_PACKAGE_ONLY = "main-package-only"  # also represented by AUTOMOUNT=0 in config
+    FIRST_PARTY = "first-party"  # can only be set in source, can't be set in config
+
+    # LEGACY_FIRST_PARTY_NON_INSTALLED has the same effect as FIRST_PARTY_NON_INSTALLED but warns if modules
+    # are de facto automounted, so users can migrate to explicit
+    CONFIG_BASED_FIRST_PARTY = "legacy-first-party"
 
 
-VALID_SOURCE_MODES = ["none", "main-package", "first-party-packages"]
-
-
-def _to_include_source_mode(
-    x: Optional[str],
-) -> typing.Optional[typing.Literal["none", "main-package", "first-party-packages"]]:
-    if x is None:
-        return None
-    if x.lower() not in VALID_SOURCE_MODES:
-        raise ValueError(
-            'automount mode can only be set to one of these values: "none", "main-package", "first-party-packages"'
-        )
-
-    return typing.cast(typing.Literal["none", "main-package", "first-party-packages"], x.lower())
+def _to_automount_value(x: object) -> IncludeSourceMode:
+    return IncludeSourceMode.CONFIG_BASED_FIRST_PARTY if _to_boolean(x) else IncludeSourceMode.MAIN_PACKAGE_ONLY
 
 
 class _Setting(typing.NamedTuple):
@@ -230,8 +222,9 @@ _SETTINGS = {
     "sync_entrypoint": _Setting(),
     "logs_timeout": _Setting(10, float),
     "image_id": _Setting(),
-    "automount": _Setting(None, transform=_to_nullable_boolean),
-    "include_source": _Setting(None, transform=_to_include_source_mode),
+    "automount": _Setting(
+        IncludeSourceMode.CONFIG_BASED_FIRST_PARTY, transform=_to_automount_value
+    ),  # To be deprecated, set include_source in code instead
     "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),
     "function_runtime_debug": _Setting(False, transform=_to_boolean),  # For internal debugging use.

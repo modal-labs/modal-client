@@ -53,7 +53,7 @@ from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
-from .config import config
+from .config import IncludeSourceMode, config
 from .exception import (
     ExecutionError,
     FunctionTimeoutError,
@@ -88,6 +88,10 @@ if TYPE_CHECKING:
     import modal.app
     import modal.cls
     import modal.partial_function
+
+
+# type for in-code user-provided automount values
+IncludeSourceValue = Literal["none", "main-package-only", "first-party"]
 
 
 @dataclasses.dataclass
@@ -365,33 +369,12 @@ OriginalReturnType = typing.TypeVar(
 )  # differs from return type if ReturnType is coroutine
 
 
-INCLUDE_SOURCE_MODES = Literal["none", "main-package", "first-party-packages"]
-
-
-def get_include_source_mode(function_or_app_specific: Optional[INCLUDE_SOURCE_MODES]) -> INCLUDE_SOURCE_MODES:
+def get_include_source_mode(function_or_app_specific: Optional[IncludeSourceValue]) -> IncludeSourceMode:
     if function_or_app_specific is not None:
-        return function_or_app_specific
+        # explicitly set in app/function
+        return IncludeSourceMode(function_or_app_specific)
 
-    # default - fall back to configuration value - which itself has a default value "first-party" at the moment
-    # in the future this default value will be changed to "main"
-    if include_source_setting := config.get("include_source"):
-        return include_source_setting
-
-    if (automount_setting := config.get("automount")) is not None:
-        # this means automount config/env var is explicitly set according to legacy definition
-        deprecation_warning(
-            (2025, 1, 16),
-            "The MODAL_AUTOMOUNT configuration is being deprecated.\n"
-            "Use App(include_source=...) or app.function(include_source=...) instead.",
-            pending=True,
-        )
-        if automount_setting is True:
-            return "first-party-packages"
-        else:
-            return "main-package"
-
-    # no option set - use *old* default
-    return "first-party-packages"
+    return config.get("automount")
 
 
 class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type_prefix="fu"):
@@ -494,7 +477,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         cluster_size: Optional[int] = None,  # Experimental: Clustered functions
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
-        include_source: Optional[INCLUDE_SOURCE_MODES] = None,
+        # current default: first-party, future default: main-package
+        include_source: Optional[IncludeSourceValue] = None,
         _experimental_buffer_containers: Optional[int] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
@@ -522,7 +506,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         if is_local():
             include_source_mode = get_include_source_mode(include_source)
-            if include_source_mode != "none":
+            if include_source_mode != IncludeSourceMode.NONE:
                 entrypoint_mounts = info.get_entrypoint_mount()
             else:
                 entrypoint_mounts = []
@@ -533,7 +517,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 *entrypoint_mounts,
             ]
 
-            if include_source_mode == "first-party-packages":
+            if include_source_mode in (IncludeSourceMode.FIRST_PARTY, IncludeSourceMode.CONFIG_BASED_FIRST_PARTY):
+                # TODO(elias): if using CONFIG_BASED_FIRST_PARTY *and* mounts are added that haven't already been
+                #  added to the image via add_local_python_source
                 all_mounts += get_auto_mounts()
         else:
             # skip any mount introspection/logic inside containers, since the function

@@ -32,7 +32,7 @@ from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, parameter
 from .config import logger
 from .exception import ExecutionError, InvalidError
-from .functions import Function, _Function
+from .functions import Function, IncludeSourceValue, _Function
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
@@ -195,6 +195,7 @@ class _App:
         mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
         volumes: dict[Union[str, PurePosixPath], _Volume] = {},  # default volumes for all functions
+        include_source: Optional[IncludeSourceValue] = None,
     ) -> None:
         """Construct a new app, optionally with default image, mounts, secrets, or volumes.
 
@@ -648,6 +649,7 @@ class _App:
         # With `max_inputs = 1`, containers will be single-use.
         max_inputs: Optional[int] = None,
         i6pn: Optional[bool] = None,  # Whether to enable IPv6 container networking within the region.
+        include_source: Optional[IncludeSourceValue] = None,
         # Parameters below here are experimental. Use with caution!
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
@@ -796,6 +798,7 @@ class _App:
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,  # Experimental: Clustered functions
+                include_source=include_source,
             )
 
             self._add_function(function, webhook_config is not None)
@@ -845,6 +848,7 @@ class _App:
         # Limits the number of inputs a container handles before shutting down.
         # Use `max_inputs = 1` for single-use containers.
         max_inputs: Optional[int] = None,
+        include_source: Optional[IncludeSourceValue] = None,
         # Parameters below here are experimental. Use with caution!
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
@@ -922,6 +926,7 @@ class _App:
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
+                include_source=include_source,
                 _experimental_buffer_containers=_experimental_buffer_containers,
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,

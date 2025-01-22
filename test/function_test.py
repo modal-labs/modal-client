@@ -1042,3 +1042,17 @@ def test_from_name_web_url(servicer, set_env_client):
             ),
         )
         assert f.web_url == "test.internal"
+
+
+@pytest.mark.parametrize(
+    ["app_constructor_value", "function_decorator_value", "config_value", "expected_value"],
+    [
+        (None, None, None, "legacy-first-party"),
+    ],
+)
+def test_include_source_mode(app_constructor_value, function_decorator_value, config_value, expected_value):
+    app = App(include_source=app_constructor_value)
+
+    @app.function(include_source=function_decorator_value)
+    def f():
+        pass
