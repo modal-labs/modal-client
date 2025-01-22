@@ -259,7 +259,7 @@ class NonLocalMountError(Exception):
 
 class _Mount(_Object, type_prefix="mo"):
     """
-    **Deprecated**: Mounts should not be used explicitly anymore, use image.add_local_* commands instead
+    **Deprecated**: Mounts should not be used explicitly anymore, use `Image.add_local_*` commands instead.
 
     Create a mount for a local directory or file that can be attached
     to one or more Modal functions.

@@ -533,10 +533,12 @@ def _build(
     _warn_parentheses_missing=None, *, force: bool = False, timeout: int = 86400
 ) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
     """
-    Decorator for methods that should execute at _build time_ to create a new layer
-    in a `modal.Image`.
+    Decorator for methods that execute at _build time_ to create a new Image layer.
 
-    See the [lifeycle function guide](https://modal.com/docs/guide/lifecycle-functions#build) for more information.
+    **Deprecated**: This function is deprecated. We recommend using `modal.Volume`
+    to store large assets (such as model weights) instead of writing them to the
+    Image during the build process. For other use cases, you can replace this
+    decorator with the `Image.run_function` method.
 
     **Usage**
 
