@@ -211,12 +211,12 @@ class _App:
         self._name = name
         self._description = name
 
-        check_sequence(mounts, _Mount, "`mounts=` has to be a list or tuple of Mount objects")
-        check_sequence(secrets, _Secret, "`secrets=` has to be a list or tuple of Secret objects")
+        check_sequence(mounts, _Mount, "`mounts=` has to be a list or tuple of `modal.Mount` objects")
+        check_sequence(secrets, _Secret, "`secrets=` has to be a list or tuple of `modal.Secret` objects")
         validate_volumes(volumes)
 
         if image is not None and not isinstance(image, _Image):
-            raise InvalidError("image has to be a modal Image or AioImage object")
+            raise InvalidError("`image=` has to be a `modal.Image` object")
 
         self._functions = {}
         self._classes = {}
