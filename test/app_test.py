@@ -479,3 +479,23 @@ def test_overriding_function_warning(caplog):
 
     app_3.include(app_4)
     assert "Overriding existing function" in caplog.messages[0]
+
+
+def test_from_name(servicer, client):
+    app = App.from_name(name := "lazy-app")
+    assert app.app_id is None
+    assert app.name == name
+    app.hydrate(client)
+    assert app.app_id
+
+
+def test_lookup(servicer, client):
+    app = App.lookup(name := "eager-app", client=client)
+    assert app.app_id
+    assert app.name == name
+
+
+def test_lazy_hydration(servicer, client):
+    app = App("unhydratable-app")
+    with pytest.raises(InvalidError, match=r"Apps must be constructed with .from_name\(\) to be lazily hydrated"):
+        app.hydrate(client)
