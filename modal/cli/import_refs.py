@@ -229,7 +229,7 @@ def import_app(app_ref: str) -> App:
         if object_path is None:
             guidance_msg = Markdown(
                 f"Expected to find an app variable named **`{DEFAULT_APP_NAME}`** (the default app name). "
-                "If your `modal.App` is named differently, "
+                "If your `modal.App` is assigned to a different variable name, "
                 "you must specify it in the app ref argument. "
                 f"For example an App variable `app_2 = modal.App()` in `{import_path}` would "
                 f"be specified as `{import_path}::app_2`."
