@@ -513,7 +513,7 @@ def shell(
         )
         if not runnable:
             help_header = (
-                "Specify a Modal function or class to start a shell session for. E.g.\n"
+                "Specify a Modal function to start a shell session for. E.g.\n"
                 f"> modal shell {import_ref.file_or_module}::my_function"
             )
 
