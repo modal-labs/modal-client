@@ -1740,6 +1740,8 @@ message Image {
   bool runtime_debug = 20;
 
   BuildFunction build_function = 21;
+
+  string cmd = 22;
 }
 
 message ImageContextFile {
@@ -1754,7 +1756,7 @@ message ImageFromIdRequest {
 message ImageFromIdResponse {
   string image_id = 1;
   ImageMetadata metadata = 2;
-} 
+}
 
 message ImageGetOrCreateRequest {
   Image image = 2;

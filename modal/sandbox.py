@@ -87,9 +87,6 @@ class _Sandbox(_Object, type_prefix="sb"):
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
-        if len(entrypoint_args) == 0:
-            raise InvalidError("entrypoint_args must not be empty")
-
         validated_network_file_systems = validate_network_file_systems(network_file_systems)
 
         scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
@@ -230,6 +227,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         proxy: Optional[_Proxy] = None,
         # Enable memory snapshots.
         _experimental_enable_snapshot: bool = False,
+        run_image_cmd: bool = False,  # Run the image's CMD instead of the entrypoint
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
@@ -239,9 +237,11 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         environment_name = _get_environment_name(environment_name)
 
+        if len(entrypoint_args) > 0 and run_image_cmd:
+            raise InvalidError("`run_image_cmd` cannot be used with `entrypoint_args`")
         # If there are no entrypoint args, we'll sleep forever so that the sandbox will stay
         # alive long enough for the user to interact with it.
-        if len(entrypoint_args) == 0:
+        elif len(entrypoint_args) == 0 and not run_image_cmd:
             max_sleep_time = 60 * 60 * 24 * 2  # 2 days is plenty since workers roll every 24h
             entrypoint_args = ("sleep", str(max_sleep_time))
 

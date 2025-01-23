@@ -1560,6 +1560,7 @@ class _Image(_Object, type_prefix="im"):
         setup_dockerfile_commands: list[str] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         add_python: Optional[str] = None,
+        skip_modal_runtime=False,
         **kwargs,
     ) -> "_Image":
         """Build a Modal image from a public or private image registry, such as Docker Hub.
@@ -1605,6 +1606,9 @@ class _Image(_Object, type_prefix="im"):
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             commands = _Image._registry_setup_commands(tag, version, setup_dockerfile_commands, add_python)
+            if skip_modal_runtime:
+                # first command will be the FROM, which is all we need
+                commands = commands[:1]
             context_files = {CONTAINER_REQUIREMENTS_PATH: _get_modal_requirements_path(version, add_python)}
             return DockerfileSpec(commands=commands, context_files=context_files)
 
