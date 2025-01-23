@@ -12,6 +12,7 @@ from typing import Any, Callable, Optional, get_type_hints
 
 import click
 import typer
+from click import ClickException
 from typing_extensions import TypedDict
 
 from ..app import App, LocalEntrypoint
@@ -24,7 +25,7 @@ from ..output import enable_output
 from ..runner import deploy_app, interactive_shell, run_app
 from ..serving import serve_app
 from ..volume import Volume
-from .import_refs import MethodReference, _get_runnable_app, import_and_filter, import_app
+from .import_refs import CLICommand, MethodReference, _get_runnable_app, import_and_filter, import_app, parse_import_ref
 from .utils import ENV_OPTION, ENV_OPTION_HELP, is_tty, stream_app_logs
 
 
@@ -252,6 +253,15 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
     return click.command(with_click_options)
 
 
+def _get_runnable_list(all_usable_commands: list[CLICommand]) -> str:
+    usable_command_lines = []
+    for cmd in all_usable_commands:
+        cmd_names = " / ".join(cmd.names)
+        usable_command_lines.append(cmd_names)
+
+    return "\n".join(usable_command_lines)
+
+
 class RunGroup(click.Group):
     def get_command(self, ctx, func_ref):
         # note: get_command here is run before the "group logic" in the `run` logic below
@@ -260,7 +270,21 @@ class RunGroup(click.Group):
         ctx.ensure_object(dict)
         ctx.obj["env"] = ensure_env(ctx.params["env"])
 
-        runnable = import_and_filter(func_ref, accept_local_entrypoint=True, base_cmd="modal run")
+        import_ref = parse_import_ref(func_ref)
+        runnable, all_usable_commands = import_and_filter(
+            import_ref, accept_local_entrypoint=True, accept_webhook=False
+        )
+        if not runnable:
+            help_header = "Specify a Modal Function or local entrypoint to run."
+
+            if all_usable_commands:
+                help_footer = f"'{import_ref.file_or_module}' has the following functions and local entrypoints:\n\n"
+                help_footer += _get_runnable_list(all_usable_commands)
+            else:
+                help_footer = f"'{import_ref.file_or_module}' has no functions or local entrypoints."
+
+            raise ClickException(f"{help_header}\n\n{help_footer}")
+
         app = _get_runnable_app(runnable)
 
         if app.description is None:
@@ -480,17 +504,30 @@ def shell(
             exec(container_id=container_or_function, command=shlex.split(cmd), pty=pty)
             return
 
-        function_or_method_ref = import_and_filter(
-            container_or_function, accept_local_entrypoint=False, accept_webhook=True, base_cmd="modal shell"
+        import_ref = parse_import_ref(container_or_function)
+        runnable, all_usable_commands = import_and_filter(
+            import_ref, accept_local_entrypoint=False, accept_webhook=True
         )
+        if not runnable:
+            help_header = "Specify a Modal function or class to start a shell session for"
+
+            if all_usable_commands:
+                help_footer = f"'{import_ref.file_or_module}' has the following choices:\n\n"
+                help_footer += _get_runnable_list(all_usable_commands)
+            else:
+                help_footer = f"'{import_ref.file_or_module}' has no Modal functions or classes."
+
+            raise ClickException(f"{help_header}\n\n{help_footer}")
+
         function_spec: _FunctionSpec
-        if isinstance(function_or_method_ref, MethodReference):
-            class_service_function = function_or_method_ref.cls._get_class_service_function()
+        if isinstance(runnable, MethodReference):
+            # TODO: let users specify a class instead of a method, since they use the same environment
+            class_service_function = runnable.cls._get_class_service_function()
             function_spec = class_service_function.spec
-        elif isinstance(function_or_method_ref, Function):
-            function_spec = function_or_method_ref.spec
+        elif isinstance(runnable, Function):
+            function_spec = runnable.spec
         else:
-            raise ValueError("Referenced entity is neither a function nor a class/method.")
+            raise ValueError("Referenced entity is not a Modal function or class")
 
         start_shell = partial(
             interactive_shell,

@@ -6,11 +6,12 @@ from typing import cast
 from modal.app import App, LocalEntrypoint
 from modal.cli.import_refs import (
     CLICommand,
+    ImportRef,
     MethodReference,
-    NonConclusiveImportRef,
     import_and_filter,
     import_file_or_module,
     list_cli_commands,
+    parse_import_ref,
 )
 from modal.exception import InvalidError
 from modal.functions import Function
@@ -48,7 +49,7 @@ other_app = modal.App("BAR")
 @other_app.function()
 def func():
     pass
-assert __package__ == "pack"
+assert __package__ == "pack005"
 """
 
 python_subpackage_src = """
@@ -58,7 +59,7 @@ other_app = modal.App("BAR")
 @other_app.function()
 def func():
     pass
-assert __package__ == "pack.sub"
+assert __package__ == "pack007.sub009"
 """
 
 python_file_src = """
@@ -72,17 +73,17 @@ def func():
 assert __package__ == ""
 """
 
-empty_dir_with_python_file = {"mod.py": python_module_src}
+empty_dir_with_python_file = {"mod000.py": python_module_src}
 
 
 dir_containing_python_package = {
-    "dir": {"sub": {"mod.py": python_module_src, "subfile.py": python_file_src}},
-    "pack": {
-        "file.py": python_file_src,
-        "mod.py": python_package_src,
-        "local.py": local_entrypoint_src,
+    "dir001": {"sub002": {"mod003.py": python_module_src, "subfile004.py": python_file_src}},
+    "pack005": {
+        "file006.py": python_file_src,
+        "mod007.py": python_package_src,
+        "local008.py": local_entrypoint_src,
         "__init__.py": "",
-        "sub": {"mod.py": python_subpackage_src, "__init__.py": "", "subfile.py": python_file_src},
+        "sub009": {"mod010.py": python_subpackage_src, "__init__.py": "", "subfile011.py": python_file_src},
     },
 }
 
@@ -91,57 +92,64 @@ dir_containing_python_package = {
     ["dir_structure", "ref", "returned_runnable_type", "num_error_choices"],
     [
         # # file syntax
-        (empty_dir_with_python_file, "mod.py", None, 2),
-        (empty_dir_with_python_file, "mod.py::app", MethodReference, None),
-        (empty_dir_with_python_file, "mod.py::other_app", Function, None),
-        (dir_containing_python_package, "pack/file.py", Function, None),
-        (dir_containing_python_package, "pack/sub/subfile.py", Function, None),
-        (dir_containing_python_package, "dir/sub/subfile.py", Function, None),
+        (empty_dir_with_python_file, "mod000.py", type(None), 2),
+        (empty_dir_with_python_file, "mod000.py::app", MethodReference, 2),
+        (empty_dir_with_python_file, "mod000.py::other_app", Function, 2),
+        (dir_containing_python_package, "pack005/file006.py", Function, 1),
+        (dir_containing_python_package, "pack005/sub009/subfile011.py", Function, 1),
+        (dir_containing_python_package, "dir001/sub002/subfile004.py", Function, 1),
         # # python module syntax
-        (empty_dir_with_python_file, "mod", Function, 2),
-        (empty_dir_with_python_file, "mod::app", MethodReference, None),
-        (empty_dir_with_python_file, "mod::other_app", Function, 2),
-        (dir_containing_python_package, "pack.mod", Function, 2),
-        (dir_containing_python_package, "pack.mod::other_app", Function, 2),
-        (dir_containing_python_package, "pack/local.py::app.main", LocalEntrypoint, None),
+        (empty_dir_with_python_file, "mod000::func", Function, 2),
+        (empty_dir_with_python_file, "mod000::other_app.func", Function, 2),
+        (empty_dir_with_python_file, "mod000::app.func", type(None), 2),
+        (empty_dir_with_python_file, "mod000::Parent.meth", MethodReference, 2),
+        (empty_dir_with_python_file, "mod000::other_app", Function, 2),
+        (dir_containing_python_package, "pack005.mod007", Function, 1),
+        (dir_containing_python_package, "pack005.mod007::other_app", Function, 1),
+        (dir_containing_python_package, "pack005/local008.py::app.main", LocalEntrypoint, 1),
     ],
 )
 def test_import_and_filter(dir_structure, ref, mock_dir, returned_runnable_type, num_error_choices):
     with mock_dir(dir_structure):
-        try:
-            runnable = import_and_filter(ref, "dummy", accept_local_entrypoint=True, accept_webhook=False)
-            assert isinstance(runnable, returned_runnable_type)
-        except NonConclusiveImportRef as exc:
-            assert len(exc.all_usable_commands) == num_error_choices
+        import_ref = parse_import_ref(ref)
+        runnable, all_usable_commands = import_and_filter(
+            import_ref, accept_local_entrypoint=True, accept_webhook=False
+        )
+        print(all_usable_commands)
+        assert isinstance(runnable, returned_runnable_type)
+        assert len(all_usable_commands) == num_error_choices
 
 
 def test_import_and_filter_2(monkeypatch, supports_on_path):
     def import_runnable(name_prefix, accept_local_entrypoint=False, accept_webhook=False):
         return import_and_filter(
-            f"import_and_filter_source::{name_prefix}", "dummy command", accept_local_entrypoint, accept_webhook
+            ImportRef("import_and_filter_source", name_prefix), accept_local_entrypoint, accept_webhook
         )
 
-    with pytest.raises(NonConclusiveImportRef, match="non-web") as exc:
-        import_runnable("app_with_one_web_function", accept_webhook=False, accept_local_entrypoint=True)
-    assert len(exc.value.all_usable_commands) == 4
+    runnable, all_usable_commands = import_runnable(
+        "app_with_one_web_function", accept_webhook=False, accept_local_entrypoint=True
+    )
+    assert runnable is None
+    assert len(all_usable_commands) == 4
 
-    import_runnable("app_with_one_web_function", accept_webhook=True)
-    import_runnable("app_with_one_function_one_web_endpoint", accept_webhook=False)
+    assert import_runnable("app_with_one_web_function", accept_webhook=True)[0]
+    assert import_runnable("app_with_one_function_one_web_endpoint", accept_webhook=False)[0]
 
-    with pytest.raises(NonConclusiveImportRef, match=r"(?s)You need to specify.*(\b)f1(\b).*(\b)web2(\b)") as exc:
-        import_runnable("app_with_one_function_one_web_endpoint", accept_webhook=True)
-    assert len(exc.value.all_usable_commands) == 7
+    runnable, all_usable_commands = import_runnable("app_with_one_function_one_web_endpoint", accept_webhook=True)
+    assert runnable is None
+    assert len(all_usable_commands) == 7
 
-    with pytest.raises(NonConclusiveImportRef, match="non-web"):
-        import_runnable("app_with_one_web_method", accept_webhook=False)
+    runnable, all_usable_commands = import_runnable("app_with_one_web_method", accept_webhook=False)
+    assert runnable is None
+    assert len(all_usable_commands) == 3
 
-    import_runnable("app_with_one_web_method", accept_webhook=True)
+    assert import_runnable("app_with_one_web_method", accept_webhook=True)[0]
 
     assert isinstance(
-        import_runnable("app_with_local_entrypoint_and_function", accept_local_entrypoint=True), LocalEntrypoint
+        import_runnable("app_with_local_entrypoint_and_function", accept_local_entrypoint=True)[0], LocalEntrypoint
     )
     assert isinstance(
-        import_runnable("app_with_local_entrypoint_and_function", accept_local_entrypoint=False), Function
+        import_runnable("app_with_local_entrypoint_and_function", accept_local_entrypoint=False)[0], Function
     )
 
 

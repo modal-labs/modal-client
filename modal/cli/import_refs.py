@@ -16,10 +16,9 @@ import types
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Union, cast
+from typing import Optional, Union, cast
 
 import click
-from click import ClickException
 from rich.console import Console
 from rich.markdown import Markdown
 
@@ -285,44 +284,11 @@ def _get_runnable_app(runnable: Runnable) -> App:
         return runnable.app
 
 
-class NonConclusiveImportRef(ClickException):
-    def __init__(
-        self, error_clarification: str, all_usable_commands: list[CLICommand], base_cmd: str, import_ref: ImportRef
-    ) -> None:
-        self.error_clarification = error_clarification
-        self.all_usable_commands = all_usable_commands
-        self.base_cmd = base_cmd
-        self.import_ref = import_ref
-        self.message = self.format_message()
-
-    def format_message(self):
-        # all commands that satisfy local entrypoint/accept webhook limitations:
-        usable_command_lines = []
-        for cmd in self.all_usable_commands:
-            cmd_names = " / ".join(cmd.names)
-            usable_command_lines.append(cmd_names)
-
-        registered_functions_str = "\n".join(usable_command_lines)
-        prefix = f"{self.error_clarification}\n\n" if self.error_clarification else ""
-
-        if self.all_usable_commands:
-            listing = f"""{self.import_ref.file_or_module}' has the following usable functions:
-{registered_functions_str}"""
-        else:
-            listing = f"'{self.import_ref.file_or_module}' has no functions that `{self.base_cmd}` can use."
-
-        help_text = f"""{prefix}Specify a Modal function or local entrypoint to run, e.g.
-
-{self.base_cmd} {self.import_ref.file_or_module}::my_function [...args]
-
-{listing}"""
-        return help_text
-
-
 def import_and_filter(
-    func_ref: str, base_cmd: str, accept_local_entrypoint=True, accept_webhook=False
-) -> Union[Function, LocalEntrypoint, MethodReference]:
-    """Takes a function ref string and returns something "runnable", or prints help text
+    import_ref: ImportRef, accept_local_entrypoint=True, accept_webhook=False
+) -> tuple[Optional[Runnable], list[CLICommand]]:
+    """Takes a function ref string and returns a single determined "runnable" to use, and a list of all available
+    runnables.
 
     The function ref can leave out partial information (apart from the file name/module)
     as long as the runnable is uniquely identifiable by the provided information.
@@ -334,8 +300,6 @@ def import_and_filter(
     2. if there is a single {function, class} that one is used
     3. if there is a single method (within a class) that one is used
     """
-
-    import_ref = parse_import_ref(func_ref)
     # all commands:
     module = import_file_or_module(import_ref.file_or_module)
     cli_commands = list_cli_commands(module)
@@ -344,32 +308,17 @@ def import_and_filter(
     filtered_commands = filter_cli_commands(
         cli_commands, import_ref.object_path, accept_local_entrypoint, accept_webhook
     )
+    all_usable_commands = filter_cli_commands(cli_commands, "", accept_local_entrypoint, accept_webhook)
 
     if len(filtered_commands) == 1:
         cli_command = filtered_commands[0]
-        return cli_command.runnable
+        return cli_command.runnable, all_usable_commands
 
     # we are here if there is more than one matching function
     if accept_local_entrypoint:
         local_entrypoint_cmds = [cmd for cmd in filtered_commands if isinstance(cmd.runnable, LocalEntrypoint)]
         if len(local_entrypoint_cmds) == 1:
             # if there is a single local entrypoint - use that
-            return local_entrypoint_cmds[0].runnable
+            return local_entrypoint_cmds[0].runnable, all_usable_commands
 
-    all_usable_commands = filter_cli_commands(cli_commands, "", accept_local_entrypoint, accept_webhook)
-    required_types = []
-    if not accept_local_entrypoint:
-        required_types.append("non-local_entrypoint")
-    if not accept_webhook:
-        required_types.append("non-web function")
-    required_types_str = ", ".join(required_types)
-
-    error_clarification = ""
-    if len(all_usable_commands) > 0 and len(filtered_commands) == 0:
-        # nothing matching the type and name
-        all_cmds_matching_names = filter_cli_commands(cli_commands, import_ref.object_path)
-        if len(all_cmds_matching_names):
-            # there are commands matching the name, but not the type:
-            error_clarification = f"`{base_cmd}` requires a {required_types_str}."
-
-    raise NonConclusiveImportRef(error_clarification, all_usable_commands, base_cmd, import_ref)
+    return None, all_usable_commands

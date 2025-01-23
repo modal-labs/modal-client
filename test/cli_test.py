@@ -13,12 +13,14 @@ import threading
 import traceback
 from pickle import dumps
 from unittest import mock
+from unittest.mock import MagicMock
 
 import click
 import click.testing
 import toml
 
 from modal import App, Sandbox
+from modal._serialization import serialize
 from modal._utils.grpc_testing import InterceptionContext
 from modal.cli.entry_point import entrypoint_cli
 from modal.exception import InvalidError
@@ -235,10 +237,10 @@ def test_deploy(servicer, set_env_client, test_dir):
 def test_run_custom_app(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "custom_app.py"
     res = _run(["run", app_file.as_posix() + "::app"], expected_exit_code=1, expected_stderr=None)
-    assert "You need to specify" in res.stderr
+    assert "Specify a Modal Function or local entrypoint to run" in res.stderr
     assert "foo / my_app.foo" in res.stderr
     res = _run(["run", app_file.as_posix() + "::app.foo"], expected_exit_code=1, expected_stderr=None)
-    assert "You need to specify" in res.stderr
+    assert "Specify a Modal Function or local entrypoint" in res.stderr
     assert "foo / my_app.foo" in res.stderr
 
     _run(["run", app_file.as_posix() + "::foo"])
@@ -274,7 +276,7 @@ def test_run_local_entrypoint_invalid_with_app_run(servicer, set_env_client, tes
 def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
     res = _run(["run", app_file.as_posix()], expected_exit_code=1, expected_stderr=None)
-    assert "You need to specify a Modal function or local entrypoint to run" in res.stderr
+    assert "Specify a Modal Function or local entrypoint to run" in res.stderr
 
     valid_call_args = [
         (
@@ -319,7 +321,7 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
 def test_run_parse_args_function(servicer, set_env_client, test_dir, recwarn):
     app_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
     res = _run(["run", app_file.as_posix()], expected_exit_code=1, expected_stderr=None)
-    assert "You need to specify a Modal function or local entrypoint to run" in res.stderr
+    assert "Specify a Modal Function or local entrypoint to run" in res.stderr
 
     # HACK: all the tests use the same arg, i.
     @servicer.function_body
@@ -1128,7 +1130,7 @@ def test_can_run_all_listed_functions_with_includes(supports_on_path, monkeypatc
     res = _run(["run", "multifile_project.main"], expected_exit_code=1)
     print("err", res.stderr)
     # there are no runnables directly in the target module, so references need to go via the app
-    func_listing = res.stderr.split("functions:")[1]
+    func_listing = res.stderr.split("functions and local entrypoints:")[1]
 
     listed_runnables = set(re.findall(r"\b[\w.]+\b", func_listing))
 
@@ -1146,3 +1148,14 @@ def test_can_run_all_listed_functions_with_includes(supports_on_path, monkeypatc
     for runnable in expected_runnables:
         assert runnable in res.stderr
         _run(["run", f"multifile_project.main::{runnable}"], expected_exit_code=0)
+
+
+def test_modal_launch_vscode(monkeypatch, set_env_client, servicer):
+    mock_open = MagicMock()
+    monkeypatch.setattr("webbrowser.open", mock_open)
+    with servicer.intercept() as ctx:
+        ctx.add_response("QueueGet", api_pb2.QueueGetResponse(values=[serialize(("http://dummy", "tok"))]))
+        ctx.add_response("QueueGet", api_pb2.QueueGetResponse(values=[serialize("done")]))
+        _run(["launch", "vscode"])
+
+    assert mock_open.call_count == 1
