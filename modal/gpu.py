@@ -28,7 +28,7 @@ class T4(_GPUConfig):
     """
     [NVIDIA T4 Tensor Core](https://www.nvidia.com/en-us/data-center/tesla-t4/) GPU class.
 
-    A low-cost data center GPU based on the Turing architecture, providing 16GiB of GPU memory.
+    A low-cost data center GPU based on the Turing architecture, providing 16GB of GPU memory.
     """
 
     def __init__(
@@ -45,7 +45,7 @@ class L4(_GPUConfig):
     """
     [NVIDIA L4 Tensor Core](https://www.nvidia.com/en-us/data-center/l4/) GPU class.
 
-    A mid-tier data center GPU based on the Ada Lovelace architecture, providing 24GiB of GPU memory.
+    A mid-tier data center GPU based on the Ada Lovelace architecture, providing 24GB of GPU memory.
     Includes RTX (ray tracing) support.
     """
 
@@ -63,23 +63,21 @@ class A100(_GPUConfig):
     """
     [NVIDIA A100 Tensor Core](https://www.nvidia.com/en-us/data-center/a100/) GPU class.
 
-    The flagship data center GPU of the Ampere architecture. Available in 40GiB and 80GiB GPU memory configurations.
+    The flagship data center GPU of the Ampere architecture. Available in 40GB and 80GB GPU memory configurations.
     """
 
     def __init__(
         self,
         *,
         count: int = 1,  # Number of GPUs per container. Defaults to 1.
-        size: Union[str, None] = None,  # Select GiB configuration of GPU device: "40GB" or "80GB". Defaults to "40GB".
+        size: Union[str, None] = None,  # Select GB configuration of GPU device: "40GB" or "80GB". Defaults to "40GB".
     ):
         if size == "40GB" or not size:
             super().__init__(api_pb2.GPU_TYPE_A100, count, "A100-40GB", 40)
         elif size == "80GB":
             super().__init__(api_pb2.GPU_TYPE_A100_80GB, count, "A100-80GB", 80)
         else:
-            raise ValueError(
-                f"size='{size}' is invalid. A100s can only have memory values of 40GB or 80GB."
-            )
+            raise ValueError(f"size='{size}' is invalid. A100s can only have memory values of 40GB or 80GB.")
 
     def __repr__(self):
         if self.memory == 80:
@@ -92,7 +90,7 @@ class A10G(_GPUConfig):
     """
     [NVIDIA A10G Tensor Core](https://www.nvidia.com/en-us/data-center/products/a10-gpu/) GPU class.
 
-    A mid-tier data center GPU based on the Ampere architecture, providing 24 GiB of memory.
+    A mid-tier data center GPU based on the Ampere architecture, providing 24 GB of memory.
     A10G GPUs deliver up to 3.3x better ML training performance, 3x better ML inference performance,
     and 3x better graphics performance, in comparison to NVIDIA T4 GPUs.
     """
