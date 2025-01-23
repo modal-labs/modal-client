@@ -776,7 +776,7 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
 def test_cls(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "cls.py"
 
-    _run(["run", app_file.as_posix(), "--x", "42", "--y", "1000"])
+    print(_run(["run", app_file.as_posix(), "--x", "42", "--y", "1000"]))
     _run(["run", f"{app_file.as_posix()}::AParametrized.some_method", "--x", "42", "--y", "1000"])
 
 

@@ -13,6 +13,6 @@ class AParametrized:
     def some_method(self, y: int):
         ...
 
-    @modal.method()
-    def other_method(self, z: int):
+    @modal.asgi_app()
+    def other_method(self):
         ...
