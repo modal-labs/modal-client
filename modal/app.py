@@ -263,10 +263,26 @@ class _App:
         return self._description
 
     @staticmethod
-    def from_name(name: str, environment_name: Optional[str] = None, create_if_missing: bool = False) -> "_App":
-        """TK"""
+    def from_name(name: str, environment_name: str = "", create_if_missing: bool = False) -> "_App":
+        """Look up an App with a given name, creating a new App if necessary.
 
-        # TODO what are the rules on App names? Can we use check_object_name?
+        Note that Apps created through this method will be in a deployed state,
+        but they will not have any associated Functions or Classes.
+
+        This method is mainly useful for creating an App to associate with a Sandbox:
+
+        ```python
+        app = modal.App.from_name("my-app", create_if_missing=True)
+        app.hydrate()  # Pre-hydrate to accelerate Sandbox creation
+        modal.Sandbox.create("echo", "hi", app=app)
+        ```
+
+        When building an App that will be populated with Functions and Classes, you should
+        call the main `App()` constructor directly.
+        """
+
+        # TODO We need to enforce rules about App names, but we previously weren't in App.lookup
+        # So we probably need to add that gradually (i.e. as a warning first) to avoid breaking people?
         async def _load(self: _App, client: _Client):
             request = api_pb2.AppGetOrCreateRequest(
                 app_name=name,
