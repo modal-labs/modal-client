@@ -275,10 +275,13 @@ class RunGroup(click.Group):
             import_ref, accept_local_entrypoint=True, accept_webhook=False
         )
         if not runnable:
-            help_header = "Specify a Modal Function or local entrypoint to run."
+            help_header = (
+                "Specify a Modal Function or local entrypoint to run. E.g.\n"
+                f"> modal run {import_ref.file_or_module}::my_function [..args]"
+            )
 
             if all_usable_commands:
-                help_footer = f"'{import_ref.file_or_module}' has the following functions and local entrypoints:\n\n"
+                help_footer = f"'{import_ref.file_or_module}' has the following functions and local entrypoints:\n"
                 help_footer += _get_runnable_list(all_usable_commands)
             else:
                 help_footer = f"'{import_ref.file_or_module}' has no functions or local entrypoints."
@@ -509,13 +512,16 @@ def shell(
             import_ref, accept_local_entrypoint=False, accept_webhook=True
         )
         if not runnable:
-            help_header = "Specify a Modal function or class to start a shell session for"
+            help_header = (
+                "Specify a Modal function or class to start a shell session for. E.g.\n"
+                f"> modal shell {import_ref.file_or_module}::my_function"
+            )
 
             if all_usable_commands:
-                help_footer = f"'{import_ref.file_or_module}' has the following choices:\n\n"
+                help_footer = f"The selected module '{import_ref.file_or_module}' has the following choices:\n\n"
                 help_footer += _get_runnable_list(all_usable_commands)
             else:
-                help_footer = f"'{import_ref.file_or_module}' has no Modal functions or classes."
+                help_footer = f"The selected module '{import_ref.file_or_module}' has no Modal functions or classes."
 
             raise ClickException(f"{help_header}\n\n{help_footer}")
 

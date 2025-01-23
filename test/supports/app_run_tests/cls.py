@@ -12,3 +12,7 @@ class AParametrized:
     @modal.method()
     def some_method(self, y: int):
         ...
+
+    @modal.method()
+    def other_method(self, z: int):
+        ...

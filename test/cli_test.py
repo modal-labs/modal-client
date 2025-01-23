@@ -11,6 +11,7 @@ import sys
 import tempfile
 import threading
 import traceback
+from pathlib import Path
 from pickle import dumps
 from unittest import mock
 from unittest.mock import MagicMock
@@ -426,11 +427,25 @@ def mock_shell_pty(servicer):
         yield fake_stdin, captured_out
 
 
+app_file = Path("app_run_tests") / "default_app.py"
+webhook_app_file = Path("app_run_tests") / "webhook.py"
+cls_app_file = Path("app_run_tests") / "cls.py"
+
+
 @skip_windows("modal shell is not supported on Windows.")
-def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
-    app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
-    webhook_app_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
-    cls_app_file = test_dir / "supports" / "app_run_tests" / "cls.py"
+@pytest.mark.parametrize(
+    ["rel_file", "suffix"],
+    [
+        (app_file, "::foo"),  # Function is explicitly specified
+        (webhook_app_file, "::foo"),  # Function is explicitly specified
+        (webhook_app_file, ""),  # Function must be inferred
+        # TODO: fix modal shell auto-detection of a single class, even if it has multiple methods
+        # (cls_app_file, ""),  # Class must be inferred
+        # (cls_app_file, "AParametrized"),  # class name
+        (cls_app_file, "::AParametrized.some_method"),  # method name
+    ],
+)
+def test_shell(servicer, set_env_client, supports_dir, mock_shell_pty, rel_file, suffix):
     fake_stdin, captured_out = mock_shell_pty
 
     fake_stdin.clear()
@@ -438,24 +453,11 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
 
     shell_prompt = servicer.shell_prompt
 
-    # Function is explicitly specified
-    _run(["shell", app_file.as_posix() + "::foo"])
+    fn = (supports_dir / rel_file).as_posix()
+
+    _run(["shell", fn + suffix])
 
     # first captured message is the empty message the mock server sends
-    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
-    captured_out.clear()
-
-    # Function is explicitly specified
-    _run(["shell", webhook_app_file.as_posix() + "::foo"])
-    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
-    captured_out.clear()
-
-    # Function must be inferred
-    _run(["shell", webhook_app_file.as_posix()])
-    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
-    captured_out.clear()
-
-    _run(["shell", cls_app_file.as_posix()])
     assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
     captured_out.clear()
 
