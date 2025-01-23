@@ -2242,10 +2242,10 @@ def test_class_as_service_serialized(servicer):
 
 
 @skip_github_non_linux
-def test_function_lazy_resolution(servicer, credentials, set_env_client):
+def test_function_lazy_hydration(servicer, credentials, set_env_client):
     # Deploy some global objects
-    Volume.from_name("my-vol", create_if_missing=True).resolve()
-    Queue.from_name("my-queue", create_if_missing=True).resolve()
+    Volume.from_name("my-vol", create_if_missing=True).hydrate()
+    Queue.from_name("my-queue", create_if_missing=True).hydrate()
 
     # Run container
     deploy_app_externally(servicer, credentials, "test.supports.lazy_hydration", "app", capture_output=False)
