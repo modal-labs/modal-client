@@ -92,6 +92,11 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     def _get_raw_f(self) -> Callable[P, ReturnType]:
         return self.raw_f
 
+    def _is_web_endpoint(self) -> bool:
+        if self.webhook_config is None:
+            return False
+        return self.webhook_config.type != api_pb2.WEBHOOK_TYPE_UNSPECIFIED
+
     def __get__(self, obj, objtype=None) -> _Function[P, ReturnType, OriginalReturnType]:
         k = self.raw_f.__name__
         if obj:  # accessing the method on an instance of a class, e.g. `MyClass().fun``
@@ -533,10 +538,12 @@ def _build(
     _warn_parentheses_missing=None, *, force: bool = False, timeout: int = 86400
 ) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
     """
-    Decorator for methods that should execute at _build time_ to create a new layer
-    in a `modal.Image`.
+    Decorator for methods that execute at _build time_ to create a new Image layer.
 
-    See the [lifeycle function guide](https://modal.com/docs/guide/lifecycle-functions#build) for more information.
+    **Deprecated**: This function is deprecated. We recommend using `modal.Volume`
+    to store large assets (such as model weights) instead of writing them to the
+    Image during the build process. For other use cases, you can replace this
+    decorator with the `Image.run_function` method.
 
     **Usage**
 
@@ -560,6 +567,7 @@ def _build(
         "The `@modal.build` decorator is deprecated and will be removed in a future release."
         "\n\nWe now recommend storing large assets (such as model weights) using a `modal.Volume`"
         " instead of writing them directly into the `modal.Image` filesystem."
+        " For other use cases we recommend using `Image.run_function` instead."
         "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
     )
 

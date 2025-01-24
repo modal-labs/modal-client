@@ -19,7 +19,7 @@ from ._location import parse_cloud_provider
 from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
-from ._utils.async_utils import synchronize_api
+from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.deprecation import deprecation_error
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
@@ -525,8 +525,8 @@ class _Sandbox(_Object, type_prefix="sb"):
             raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
 
         # Force secret resolution so we can pass the secret IDs to the backend.
-        for secret in secrets:
-            await secret.resolve(client=self._client)
+        secret_coros = [secret.hydrate(client=self._client) for secret in secrets]
+        await TaskContext.gather(*secret_coros)
 
         task_id = await self._get_task_id()
         req = api_pb2.ContainerExecRequest(

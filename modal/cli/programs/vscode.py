@@ -89,6 +89,9 @@ def run_vscode(q: Queue):
     token = secrets.token_urlsafe(13)
     with forward(8080) as tunnel:
         url = tunnel.url
+        print("\nVS Code on Modal, opening in browser...")
+        print(f"   -> {url}")
+        print(f"   -> password: {token}\n")
         threading.Thread(target=wait_for_port, args=((url, token), q)).start()
         subprocess.run(
             ["/code-server.sh", "--bind-addr", "0.0.0.0:8080", "."],
@@ -103,8 +106,5 @@ def main():
         run_vscode.spawn(q)
         url, token = q.get()
         time.sleep(1)  # Give VS Code a chance to start up
-        print("\nVS Code on Modal, opening in browser...")
-        print(f"   -> {url}")
-        print(f"   -> password: {token}\n")
         webbrowser.open(url)
         assert q.get() == "done"

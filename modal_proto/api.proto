@@ -168,6 +168,7 @@ enum ParameterType {
   PARAM_TYPE_UNSPECIFIED = 0;
   PARAM_TYPE_STRING = 1;
   PARAM_TYPE_INT = 2;
+  PARAM_TYPE_PICKLE = 3;
 }
 
 enum ProgressType {
@@ -340,6 +341,7 @@ message AppGetLogsRequest {
   string function_id = 5;
   string input_id = 6;
   string task_id = 7;
+  string function_call_id = 9;
   FileDescriptor file_descriptor = 8;
 }
 
@@ -680,6 +682,7 @@ message ClassParameterSpec {
   oneof default_oneof {
     string string_default = 4;
     int64 int_default = 5;
+    bytes pickle_default = 6;
   }
 }
 
@@ -692,6 +695,7 @@ message ClassParameterValue {
   oneof value_oneof {
     string string_value = 3;
     int64 int_value = 4;
+    bytes pickle_value = 5;
   }
 }
 
@@ -2318,13 +2322,19 @@ message SandboxListResponse {
 }
 
 message SandboxRestoreRequest {
-  string app_id = 1 [ (modal.options.audit_target_attr) = true ];
-  string snapshot_id = 2;
-  string environment_name = 3;
+  string snapshot_id = 1;
 }
 
 message SandboxRestoreResponse {
   string sandbox_id = 1;
+}
+
+message SandboxSnapshotFromIdRequest {
+  string snapshot_id = 1;
+}
+
+message SandboxSnapshotFromIdResponse {
+  string snapshot_id = 1;
 }
 
 message SandboxSnapshotFsRequest {
@@ -2982,6 +2992,7 @@ service ModalClient {
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
   rpc SandboxRestore(SandboxRestoreRequest) returns (SandboxRestoreResponse);
   rpc SandboxSnapshot(SandboxSnapshotRequest) returns (SandboxSnapshotResponse);
+  rpc SandboxSnapshotFromId(SandboxSnapshotFromIdRequest) returns (SandboxSnapshotFromIdResponse);
   rpc SandboxSnapshotFs(SandboxSnapshotFsRequest) returns (SandboxSnapshotFsResponse);
   rpc SandboxSnapshotWait(SandboxSnapshotWaitRequest) returns (SandboxSnapshotWaitResponse);
   rpc SandboxStdinWrite(SandboxStdinWriteRequest) returns (SandboxStdinWriteResponse);
