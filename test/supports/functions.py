@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import contextlib
+import pytest
 import threading
 import time
 
@@ -21,6 +22,7 @@ from modal import (
     wsgi_app,
 )
 from modal._utils.deprecation import deprecation_warning
+from modal.exception import DeprecationError
 from modal.experimental import get_local_input_concurrency, set_local_input_concurrency
 
 SLEEP_DELAY = 0.1
@@ -613,32 +615,34 @@ def function_calling_method(x, y, z):
     return obj.f.remote(z)
 
 
-@app.cls()
-class BuildCls:
-    def __init__(self):
-        self._k = 1
+with pytest.warns(DeprecationError, match="@modal.build"):
 
-    @enter()
-    def enter1(self):
-        self._k += 10
+    @app.cls()
+    class BuildCls:
+        def __init__(self):
+            self._k = 1
 
-    @build()
-    def build1(self):
-        self._k += 100
-        return self._k
+        @enter()
+        def enter1(self):
+            self._k += 10
 
-    @build()
-    def build2(self):
-        self._k += 1000
-        return self._k
+        @build()
+        def build1(self):
+            self._k += 100
+            return self._k
 
-    @exit()
-    def exit1(self):
-        raise Exception("exit called!")
+        @build()
+        def build2(self):
+            self._k += 1000
+            return self._k
 
-    @method()
-    def f(self, x):
-        return self._k * x
+        @exit()
+        def exit1(self):
+            raise Exception("exit called!")
+
+        @method()
+        def f(self, x):
+            return self._k * x
 
 
 @app.cls(enable_memory_snapshot=True)
@@ -737,3 +741,12 @@ _import_thread_is_main_thread = threading.main_thread() == threading.current_thr
 @app.function()
 def import_thread_is_main_thread(x):
     return _import_thread_is_main_thread
+
+
+class CustomException(Exception):
+    pass
+
+
+@app.function()
+def raises_custom_exception(x):
+    raise CustomException("Failure!")

@@ -65,6 +65,8 @@ def run_jupyter(q: Queue):
     with forward(8888) as tunnel:
         url = tunnel.url + "/?token=" + token
         threading.Thread(target=wait_for_port, args=(url, q)).start()
+        print("\nJupyter on Modal, opening in browser...")
+        print(f"   -> {url}\n")
         subprocess.run(
             [
                 "jupyter",
@@ -89,7 +91,5 @@ def main():
         run_jupyter.spawn(q)
         url = q.get()
         time.sleep(1)  # Give Jupyter a chance to start up
-        print("\nJupyter on Modal, opening in browser...")
-        print(f"   -> {url}\n")
         webbrowser.open(url)
         assert q.get() == "done"

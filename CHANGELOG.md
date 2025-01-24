@@ -10,6 +10,68 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.72.48 (2025-01-24)
+
+* Fixes a CLI bug where you couldn't reference functions via a qualified app, e.g. `mymodule::{app_variable}.{function_name}`.
+* The `modal run`, `modal serve` and `modal shell` commands get more consistent error messages in cases where the passed app or function reference isn't resolvable to something that the current command expects.
+* Removes the deprecated `__getattr__`, `__setattr__`, `__getitem__` and `__setitem__` methods from `modal.App`
+
+
+
+### 0.72.39 (2025-01-22)
+
+- Introduced a new public method, `.hydrate`, for on-demand hydration of Modal objects. This method replaces the existing semi-public `.resolve` method, which is now deprecated.
+
+
+
+### 0.72.33 (2025-01-20)
+
+* The Image returned by `Sandbox.snapshot_filesystem` now has `object_id` and other metadata pre-assigned rather than require loading by subsequent calls to sandboxes or similar to set this data.
+
+
+
+### 0.72.30 (2025-01-18)
+
+* Adds a new `oidc_auth_role_arn` field to `CloudBucketMount` for using OIDC authentication to create the mountpoint.
+
+
+
+### 0.72.24 (2025-01-17)
+
+* No longer prints a warning if `app.include` re-includes an already included function (warning is still printed if *another* function with the same name is included)
+
+
+
+### 0.72.22 (2025-01-17)
+
+* Internal refactor of the `modal.object` module. All entities except `Object` from that module have now been moved to the `modal._object` "private" module.
+
+
+
+### 0.72.17 (2025-01-16)
+
+- The `@modal.build` decorator is now deprecated. For storing large assets (e.g. model weights), we now recommend using a `modal.Volume` over writing data to the `modal.Image` filesystem directly.
+
+
+
+### 0.72.16 (2025-01-16)
+
+* Fixes bug introduced in v0.72.9 where `modal run SomeClass.some_method` would incorrectly print a deprecation warning.
+
+
+
+### 0.72.15 (2025-01-15)
+
+- Added an `environment_name` parameter to the `App.run` context manager.
+
+
+
+### 0.72.8 (2025-01-10)
+
+- Fixes a bug introduced in v0.72.2 when specifying `add_python="3.9"` in `Image.from_registry`.
+
+
+
 ### 0.72.0 (2025-01-09)
 
 * The default behavior`Image.from_dockerfile()` and `image.dockerfile_commands()` if no parameter is passed to `ignore` will be to automatically detect if there is a valid dockerignore file in the current working directory or next to the dockerfile following the same rules as `dockerignore` does using `docker` commands. Previously no patterns were ignored.

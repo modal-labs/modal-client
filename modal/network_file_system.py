@@ -12,6 +12,13 @@ from synchronicity.async_wrap import asynccontextmanager
 import modal
 from modal_proto import api_pb2
 
+from ._object import (
+    EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
+    _get_environment_name,
+    _Object,
+    live_method,
+    live_method_gen,
+)
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, aclosing, async_map, sync_or_async_iter, synchronize_api
 from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
@@ -21,13 +28,6 @@ from ._utils.hash_utils import get_sha256_hex
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .exception import InvalidError
-from .object import (
-    EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
-    _get_environment_name,
-    _Object,
-    live_method,
-    live_method_gen,
-)
 from .volume import FileEntry
 
 NETWORK_FILE_SYSTEM_PUT_FILE_CLIENT_TIMEOUT = (

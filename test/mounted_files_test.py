@@ -59,7 +59,7 @@ async def env_mount_files():
 
 
 def test_mounted_files_script(servicer, credentials, supports_dir, env_mount_files, server_url_env):
-    helpers.deploy_app_externally(servicer, credentials, script_path, cwd=supports_dir)
+    print(helpers.deploy_app_externally(servicer, credentials, script_path, cwd=supports_dir))
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
@@ -123,14 +123,19 @@ def test_mounted_files_package_no_automount(supports_dir, env_mount_files, servi
     p = subprocess.run(
         ["modal", "run", "pkg_a.package"],
         cwd=supports_dir,
-        capture_output=True,
         env={**os.environ, "MODAL_AUTOMOUNT": "0"},
     )
     assert p.returncode == 0
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
     assert files == {
         "/root/pkg_a/__init__.py",
+        "/root/pkg_a/a.py",
+        "/root/pkg_a/b/c.py",
+        "/root/pkg_a/b/e.py",
+        "/root/pkg_a/d.py",
         "/root/pkg_a/package.py",
+        "/root/pkg_a/script.py",
+        "/root/pkg_a/serialized_fn.py",
     }
 
 
@@ -229,7 +234,8 @@ def foo():
     pass
 
 
-def test_mounts_are_not_traversed_on_declaration(test_dir, monkeypatch, client, server_url_env):
+def test_mounts_are_not_traversed_on_declaration(supports_dir, monkeypatch, client, server_url_env):
+    # TODO: remove once Mount is fully deprecated (replaced by test_image_mounts_are_not_traversed_on_declaration)
     return_values = []
     original = modal.mount._MountDir.get_files_to_upload
 
@@ -240,8 +246,36 @@ def test_mounts_are_not_traversed_on_declaration(test_dir, monkeypatch, client, 
 
     monkeypatch.setattr("modal.mount._MountDir.get_files_to_upload", mock_get_files_to_upload)
     app = modal.App()
-    mount_with_many_files = Mount.from_local_dir(test_dir, remote_path="/test")
+    mount_with_many_files = Mount._from_local_dir(supports_dir / "pkg_a", remote_path="/test")
     app.function(mounts=[mount_with_many_files])(foo)
+    assert len(return_values) == 0  # ensure we don't look at the files yet
+
+    with app.run(client=client):
+        pass
+
+    assert return_values  # at this point we should have gotten all the mount files
+    # flatten inspected files
+    files = set()
+    for r in return_values:
+        for fn, _ in r:
+            files.add(fn)
+    # sanity check - this test file should be included since we mounted the test dir
+    assert Path(__file__) in files  # this test file should have been included
+
+
+def test_image_mounts_are_not_traversed_on_declaration(supports_dir, monkeypatch, client, server_url_env):
+    return_values = []
+    original = modal.mount._MountDir.get_files_to_upload
+
+    def mock_get_files_to_upload(self):
+        r = list(original(self))
+        return_values.append(r)
+        return r
+
+    monkeypatch.setattr("modal.mount._MountDir.get_files_to_upload", mock_get_files_to_upload)
+    app = modal.App()
+    image_mount_with_many_files = modal.Image.debian_slim().add_local_dir(supports_dir / "pkg_a", remote_path="/test")
+    app.function(image=image_mount_with_many_files)(foo)
     assert len(return_values) == 0  # ensure we don't look at the files yet
 
     with app.run(client=client):
@@ -364,7 +398,7 @@ def test_pdm_cache_automount_exclude(tmp_path, monkeypatch, supports_dir, servic
 
 def test_mount_directory_with_symlinked_file(path_with_symlinked_files, servicer, client):
     path, files = path_with_symlinked_files
-    mount = Mount.from_local_dir(path)
+    mount = Mount._from_local_dir(path)
     mount._deploy("mo-1", client=client)
     pkg_a_mount = servicer.mount_contents["mo-1"]
     for src_f in files:
@@ -397,12 +431,12 @@ def test_module_with_dot_prefixed_parent_can_be_mounted(tmp_path, monkeypatch, s
     (bar_package / ".hidden_mod.py").touch()  # should be excluded
 
     monkeypatch.syspath_prepend(parent_dir)
-    foo_mount = Mount.from_local_python_packages("foo")
+    foo_mount = Mount._from_local_python_packages("foo")
     foo_mount._deploy("mo-1", client=client)
     foo_mount_content = servicer.mount_contents["mo-1"]
     assert foo_mount_content.keys() == {"/root/foo.py"}
 
-    bar_mount = Mount.from_local_python_packages("bar")
+    bar_mount = Mount._from_local_python_packages("bar")
     bar_mount._deploy("mo-2", client=client)
 
     bar_mount_content = servicer.mount_contents["mo-2"]

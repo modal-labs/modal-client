@@ -3,9 +3,9 @@ from typing import Optional
 
 from modal_proto import api_pb2
 
+from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api
-from .object import _get_environment_name, _Object
 
 
 class _Proxy(_Object, type_prefix="pr"):

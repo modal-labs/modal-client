@@ -2,6 +2,7 @@
 import asyncio
 import inspect
 import os
+import typing
 from collections.abc import AsyncGenerator
 from enum import Enum
 from pathlib import Path, PurePosixPath
@@ -16,7 +17,7 @@ from modal_proto import api_pb2
 
 from .._serialization import deserialize, deserialize_data_format, serialize
 from .._traceback import append_modal_tb
-from ..config import config, logger
+from ..config import IncludeSourceMode, config, logger
 from ..exception import (
     DeserializationError,
     ExecutionError,
@@ -25,6 +26,7 @@ from ..exception import (
     InvalidError,
     RemoteError,
 )
+from ..file_pattern_matcher import NON_PYTHON_FILES
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
 from .blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
@@ -319,29 +321,15 @@ class FunctionInfo:
             These are typically local modules which are imported but not part of the running package
 
         """
-        if self._type == FunctionInfoType.NOTEBOOK:
-            # Don't auto-mount anything for notebooks.
+        if self.is_serialized():
+            # Don't auto-mount anything for serialized functions (including notebooks)
             return {}
 
         # make sure the function's own entrypoint is included:
         if self._type == FunctionInfoType.PACKAGE:
-            top_level_package = self.module_name.split(".", 1)[0]
-
-            if config.get("automount"):
-                # with automount, sys.modules will include the top level package an automount it anyways,
-                # so let's include it here for correctness and let it be deduplicated:
-                return {top_level_package: _Mount._from_local_python_packages(top_level_package)}
-            elif not self.is_serialized():
-                # mount only relevant modal file and __init__.py:s of the package?
-                return {
-                    top_level_package: _Mount._from_local_dir(
-                        self._base_dir,
-                        remote_path=self._remote_dir,
-                        recursive=True,
-                        condition=entrypoint_only_package_mount_condition(self._file),
-                    )
-                }
-        elif not self.is_serialized():
+            top_level_package = self.module_name.split(".")[0]
+            return {top_level_package: _Mount._from_local_python_packages(top_level_package, ignore=NON_PYTHON_FILES)}
+        elif self._type == FunctionInfoType.FILE:
             module_file = Path(self._file)
             container_module_name = module_file.stem
             remote_path = ROOT_DIR / module_file.name
@@ -352,7 +340,7 @@ class FunctionInfo:
                         remote_path=remote_path,
                     )
                 }
-        return {}
+        return {}  # this should never be reached...
 
     def get_tag(self):
         return self.function_name
@@ -628,3 +616,27 @@ class FunctionCreationStatus:
                                 f"Custom domain for {method_definition.function_name} => [magenta underline]"
                                 f"{custom_domain.url}[/magenta underline]"
                             )
+
+
+def get_include_source_mode(function_or_app_specific: Optional[str]) -> IncludeSourceMode:
+    """Which "automount" behavior should a function use
+
+    function_or_app_specific: explicit value given in the @function or @cls decorator, in an App constructor, or None
+
+    If function_or_app_specific is specified, validate and return the IncludeSourceMode
+    If function_or_app_specific is None, infer it from config
+    """
+    if function_or_app_specific is not None:
+        from ..functions import IncludeSourceValue
+
+        valid_str_values = typing.get_args(IncludeSourceValue)
+        lower_case_input = function_or_app_specific.lower()
+        if lower_case_input not in valid_str_values:
+            valid_values_str = ", ".join(valid_str_values)
+            raise ValueError(
+                f"Invalid `include_source` value: {function_or_app_specific}. Use one of: {valid_values_str}"
+            )
+            # explicitly set in app/function
+        return IncludeSourceMode(lower_case_input)
+
+    return IncludeSourceMode(config.get("automount"))

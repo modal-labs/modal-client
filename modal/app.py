@@ -21,6 +21,7 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal_proto import api_pb2
 
 from ._ipython import is_notebook
+from ._object import _get_environment_name, _Object
 from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import deprecation_error, deprecation_warning, renamed_parameter
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
@@ -31,12 +32,11 @@ from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, parameter
 from .config import logger
 from .exception import ExecutionError, InvalidError
-from .functions import Function, _Function
+from .functions import Function, IncludeSourceValue, _Function
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
-from .object import _get_environment_name, _Object
 from .partial_function import (
     PartialFunction,
     _find_partial_methods_for_user_cls,
@@ -118,23 +118,6 @@ class _FunctionDecoratorType:
         ...
 
 
-_app_attr_error = """\
-App assignments of the form `app.x` or `app["x"]` are deprecated!
-
-The only use cases for these assignments is in conjunction with `.new()`, which is now
-in itself deprecated. If you are constructing objects with `.from_name(...)`, there is no
-need to assign those objects to the app. Example:
-
-```python
-d = modal.Dict.from_name("my-dict", create_if_missing=True)
-
-@app.function()
-def f(x, y):
-    d[x] = y  # Refer to d in global scope
-```
-"""
-
-
 class _App:
     """A Modal App is a group of functions and classes that are deployed together.
 
@@ -187,6 +170,8 @@ class _App:
     _running_app: Optional[RunningApp]  # Various app info
     _client: Optional[_Client]
 
+    _include_source_default: Optional[IncludeSourceValue] = None
+
     def __init__(
         self,
         name: Optional[str] = None,
@@ -195,6 +180,7 @@ class _App:
         mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
         volumes: dict[Union[str, PurePosixPath], _Volume] = {},  # default volumes for all functions
+        include_source: Optional[IncludeSourceValue] = None,
     ) -> None:
         """Construct a new app, optionally with default image, mounts, secrets, or volumes.
 
@@ -210,13 +196,14 @@ class _App:
 
         self._name = name
         self._description = name
+        self._include_source_default = include_source
 
-        check_sequence(mounts, _Mount, "`mounts=` has to be a list or tuple of Mount objects")
-        check_sequence(secrets, _Secret, "`secrets=` has to be a list or tuple of Secret objects")
+        check_sequence(mounts, _Mount, "`mounts=` has to be a list or tuple of `modal.Mount` objects")
+        check_sequence(secrets, _Secret, "`secrets=` has to be a list or tuple of `modal.Secret` objects")
         validate_volumes(volumes)
 
         if image is not None and not isinstance(image, _Image):
-            raise InvalidError("image has to be a modal Image or AioImage object")
+            raise InvalidError("`image=` has to be a `modal.Image` object")
 
         self._functions = {}
         self._classes = {}
@@ -303,34 +290,6 @@ class _App:
         if not isinstance(value, _Object):
             raise InvalidError(f"App attribute `{key}` with value {value!r} is not a valid Modal object")
 
-    def __getitem__(self, tag: str):
-        deprecation_error((2024, 3, 25), _app_attr_error)
-
-    def __setitem__(self, tag: str, obj: _Object):
-        deprecation_error((2024, 3, 25), _app_attr_error)
-
-    def __getattr__(self, tag: str):
-        # TODO(erikbern): remove this method later
-        assert isinstance(tag, str)
-        if tag.startswith("__"):
-            # Hacky way to avoid certain issues, e.g. pickle will try to look this up
-            raise AttributeError(f"App has no member {tag}")
-        if tag not in self._functions or tag not in self._classes:
-            # Primarily to make hasattr work
-            raise AttributeError(f"App has no member {tag}")
-        deprecation_error((2024, 3, 25), _app_attr_error)
-
-    def __setattr__(self, tag: str, obj: _Object):
-        # TODO(erikbern): remove this method later
-        # Note that only attributes defined in __annotations__ are set on the object itself,
-        # everything else is registered on the indexed_objects
-        if tag in self.__annotations__:
-            object.__setattr__(self, tag, obj)
-        elif tag == "image":
-            self._image = obj
-        else:
-            deprecation_error((2024, 3, 25), _app_attr_error)
-
     @property
     def image(self) -> _Image:
         return self._image
@@ -365,6 +324,7 @@ class _App:
         show_progress: Optional[bool] = None,
         detach: bool = False,
         interactive: bool = False,
+        environment_name: Optional[str] = None,
     ) -> AsyncGenerator["_App", None]:
         """Context manager that runs an app on Modal.
 
@@ -420,7 +380,9 @@ class _App:
         elif show_progress is False:
             deprecation_warning((2024, 11, 20), "`show_progress=False` is deprecated (and has no effect)")
 
-        async with _run_app(self, client=client, detach=detach, interactive=interactive):
+        async with _run_app(
+            self, client=client, detach=detach, interactive=interactive, environment_name=environment_name
+        ):
             yield self
 
     def _get_default_image(self):
@@ -442,11 +404,13 @@ class _App:
         return [m for m in all_mounts if m.is_local()]
 
     def _add_function(self, function: _Function, is_web_endpoint: bool):
-        if function.tag in self._functions:
+        if old_function := self._functions.get(function.tag, None):
+            if old_function is function:
+                return  # already added the same exact instance, ignore
+
             if not is_notebook():
-                old_function: _Function = self._functions[function.tag]
                 logger.warning(
-                    f"Warning: Tag '{function.tag}' collision!"
+                    f"Warning: function name '{function.tag}' collision!"
                     " Overriding existing function "
                     f"[{old_function._info.module_name}].{old_function._info.function_name}"
                     f" with new function [{function._info.module_name}].{function._info.function_name}"
@@ -504,7 +468,7 @@ class _App:
         return self._functions
 
     @property
-    def registered_classes(self) -> dict[str, _Function]:
+    def registered_classes(self) -> dict[str, _Cls]:
         """All modal.Cls objects registered on the app."""
         return self._classes
 
@@ -643,6 +607,7 @@ class _App:
         # With `max_inputs = 1`, containers will be single-use.
         max_inputs: Optional[int] = None,
         i6pn: Optional[bool] = None,  # Whether to enable IPv6 container networking within the region.
+        include_source: Optional[IncludeSourceValue] = None,
         # Parameters below here are experimental. Use with caution!
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
@@ -791,6 +756,7 @@ class _App:
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,  # Experimental: Clustered functions
+                include_source=include_source or self._include_source_default,
             )
 
             self._add_function(function, webhook_config is not None)
@@ -840,6 +806,7 @@ class _App:
         # Limits the number of inputs a container handles before shutting down.
         # Use `max_inputs = 1` for single-use containers.
         max_inputs: Optional[int] = None,
+        include_source: Optional[IncludeSourceValue] = None,
         # Parameters below here are experimental. Use with caution!
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
@@ -917,6 +884,7 @@ class _App:
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
+                include_source=include_source or self._include_source_default,
                 _experimental_buffer_containers=_experimental_buffer_containers,
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
@@ -995,13 +963,6 @@ class _App:
         ```
         """
         for tag, function in other_app._functions.items():
-            existing_function = self._functions.get(tag)
-            if existing_function and existing_function != function:
-                logger.warning(
-                    f"Named app function {tag} with existing value {existing_function} is being "
-                    f"overwritten by a different function {function}"
-                )
-
             self._add_function(function, False)  # TODO(erikbern): webhook config?
 
         for tag, cls in other_app._classes.items():

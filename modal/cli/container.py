@@ -4,6 +4,7 @@ from typing import Optional, Union
 import typer
 from rich.text import Text
 
+from modal._object import _get_environment_name
 from modal._pty import get_pty_info
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
@@ -12,7 +13,6 @@ from modal.client import _Client
 from modal.config import config
 from modal.container_process import _ContainerProcess
 from modal.environments import ensure_env
-from modal.object import _get_environment_name
 from modal.stream_type import StreamType
 from modal_proto import api_pb2
 

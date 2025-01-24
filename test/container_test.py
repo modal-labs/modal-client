@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 
 import asyncio
-import base64
 import dataclasses
 import gc
 import json
@@ -388,7 +387,7 @@ def _unwrap_exception(ret: ContainerResult):
     assert len(ret.items) == 1
     assert ret.items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
     assert "Traceback" in ret.items[0].result.traceback
-    return ret.items[0].result.exception
+    return deserialize(ret.items[0].result.data, ret.client)
 
 
 def _unwrap_batch_exception(ret: ContainerResult, batch_size):
@@ -488,14 +487,18 @@ def test_async(servicer):
 @skip_github_non_linux
 def test_failure(servicer, capsys):
     ret = _run_container(servicer, "test.supports.functions", "raises")
-    assert _unwrap_exception(ret) == "Exception('Failure!')"
+    exc = _unwrap_exception(ret)
+    assert isinstance(exc, Exception)
+    assert repr(exc) == "Exception('Failure!')"
     assert 'raise Exception("Failure!")' in capsys.readouterr().err  # traceback
 
 
 @skip_github_non_linux
 def test_raises_base_exception(servicer, capsys):
     ret = _run_container(servicer, "test.supports.functions", "raises_sysexit")
-    assert _unwrap_exception(ret) == "SystemExit(1)"
+    exc = _unwrap_exception(ret)
+    assert isinstance(exc, SystemExit)
+    assert repr(exc) == "SystemExit(1)"
     assert "raise SystemExit(1)" in capsys.readouterr().err  # traceback
 
 
@@ -558,7 +561,7 @@ def test_from_local_python_packages_inside_container(servicer):
     """`from_local_python_packages` shouldn't actually collect modules inside the container, because it's possible
     that there are modules that were present locally for the user that didn't get mounted into
     all the containers."""
-    ret = _run_container(servicer, "test.supports.package_mount", "num_mounts")
+    ret = _run_container(servicer, "test.supports.package_mount", "dummy")
     assert _unwrap_scalar(ret) == 0
 
 
@@ -1158,7 +1161,7 @@ def test_container_heartbeats(servicer):
 
 
 @skip_github_non_linux
-def test_cli(servicer, credentials):
+def test_cli(servicer, tmp_path, credentials):
     # This tests the container being invoked as a subprocess (the if __name__ == "__main__" block)
 
     # Build up payload we pass through sys args
@@ -1180,16 +1183,23 @@ def test_cli(servicer, credentials):
             ],
         ),
     )
-    data_base64: str = base64.b64encode(container_args.SerializeToString()).decode("ascii")
+    container_args_path = tmp_path / "container-args.bin"
+    with container_args_path.open("wb") as f:
+        f.write(container_args.SerializeToString())
 
     # Inputs that will be consumed by the container
     servicer.container_inputs = _get_inputs()
 
     # Launch subprocess
     token_id, token_secret = credentials
-    env = {"MODAL_SERVER_URL": servicer.container_addr, "MODAL_TOKEN_ID": token_id, "MODAL_TOKEN_SECRET": token_secret}
+    env = {
+        "MODAL_SERVER_URL": servicer.container_addr,
+        "MODAL_TOKEN_ID": token_id,
+        "MODAL_TOKEN_SECRET": token_secret,
+        "MODAL_CONTAINER_ARGUMENTS_PATH": str(container_args_path),
+    }
     lib_dir = pathlib.Path(__file__).parent.parent
-    args: list[str] = [sys.executable, "-m", "modal._container_entrypoint", data_base64]
+    args: list[str] = [sys.executable, "-m", "modal._container_entrypoint"]
     ret = subprocess.run(args, cwd=lib_dir, env=env, capture_output=True)
     stdout = ret.stdout.decode()
     stderr = ret.stderr.decode()
@@ -2232,10 +2242,10 @@ def test_class_as_service_serialized(servicer):
 
 
 @skip_github_non_linux
-def test_function_lazy_resolution(servicer, credentials, set_env_client):
+def test_function_lazy_hydration(servicer, credentials, set_env_client):
     # Deploy some global objects
-    Volume.from_name("my-vol", create_if_missing=True).resolve()
-    Queue.from_name("my-queue", create_if_missing=True).resolve()
+    Volume.from_name("my-vol", create_if_missing=True).hydrate()
+    Queue.from_name("my-queue", create_if_missing=True).hydrate()
 
     # Run container
     deploy_app_externally(servicer, credentials, "test.supports.lazy_hydration", "app", capture_output=False)
@@ -2462,7 +2472,9 @@ def test_container_app_one_matching(servicer, event_loop):
 @skip_github_non_linux
 def test_no_event_loop(servicer, event_loop):
     ret = _run_container(servicer, "test.supports.functions", "get_running_loop")
-    assert _unwrap_exception(ret) == "RuntimeError('no running event loop')"
+    exc = _unwrap_exception(ret)
+    assert isinstance(exc, RuntimeError)
+    assert repr(exc) == "RuntimeError('no running event loop')"
 
 
 @skip_github_non_linux
@@ -2481,3 +2493,11 @@ def test_is_main_thread_async(servicer, event_loop):
 def test_import_thread_is_main_thread(servicer, event_loop):
     ret = _run_container(servicer, "test.supports.functions", "import_thread_is_main_thread")
     assert _unwrap_scalar(ret) is True
+
+
+@skip_github_non_linux
+def test_custom_exception(servicer, capsys):
+    ret = _run_container(servicer, "test.supports.functions", "raises_custom_exception")
+    exc = _unwrap_exception(ret)
+    assert isinstance(exc, Exception)
+    assert repr(exc) == "CustomException('Failure!')"

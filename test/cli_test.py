@@ -11,14 +11,17 @@ import sys
 import tempfile
 import threading
 import traceback
+from pathlib import Path
 from pickle import dumps
 from unittest import mock
+from unittest.mock import MagicMock
 
 import click
 import click.testing
 import toml
 
 from modal import App, Sandbox
+from modal._serialization import serialize
 from modal._utils.grpc_testing import InterceptionContext
 from modal.cli.entry_point import entrypoint_cli
 from modal.exception import InvalidError
@@ -162,14 +165,14 @@ def test_run_generator(servicer, set_env_client, test_dir):
 
 def test_help_message_unspecified_function(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "app_with_multiple_functions.py"
-    result = _run(["run", app_file.as_posix()], expected_exit_code=2, expected_stderr=None)
+    result = _run(["run", app_file.as_posix()], expected_exit_code=1, expected_stderr=None)
 
     # should suggest available functions on the app:
     assert "foo" in result.stderr
     assert "bar" in result.stderr
 
     result = _run(
-        ["run", app_file.as_posix(), "--help"], expected_exit_code=2, expected_stderr=None
+        ["run", app_file.as_posix(), "--help"], expected_exit_code=1, expected_stderr=None
     )  # TODO: help should not return non-zero
     # help should also available functions on the app:
     assert "foo" in result.stderr
@@ -235,9 +238,11 @@ def test_deploy(servicer, set_env_client, test_dir):
 def test_run_custom_app(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "custom_app.py"
     res = _run(["run", app_file.as_posix() + "::app"], expected_exit_code=1, expected_stderr=None)
-    assert "Could not find" in res.stderr
+    assert "Specify a Modal Function or local entrypoint to run" in res.stderr
+    assert "foo / my_app.foo" in res.stderr
     res = _run(["run", app_file.as_posix() + "::app.foo"], expected_exit_code=1, expected_stderr=None)
-    assert "Could not find" in res.stderr
+    assert "Specify a Modal Function or local entrypoint" in res.stderr
+    assert "foo / my_app.foo" in res.stderr
 
     _run(["run", app_file.as_posix() + "::foo"])
 
@@ -271,8 +276,8 @@ def test_run_local_entrypoint_invalid_with_app_run(servicer, set_env_client, tes
 
 def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
-    res = _run(["run", app_file.as_posix()], expected_exit_code=2, expected_stderr=None)
-    assert "You need to specify a Modal function or local entrypoint to run" in res.stderr
+    res = _run(["run", app_file.as_posix()], expected_exit_code=1, expected_stderr=None)
+    assert "Specify a Modal Function or local entrypoint to run" in res.stderr
 
     valid_call_args = [
         (
@@ -314,10 +319,10 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
         assert "Unable to generate command line interface for app entrypoint." in str(res.exception)
 
 
-def test_run_parse_args_function(servicer, set_env_client, test_dir):
+def test_run_parse_args_function(servicer, set_env_client, test_dir, recwarn):
     app_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
-    res = _run(["run", app_file.as_posix()], expected_exit_code=2, expected_stderr=None)
-    assert "You need to specify a Modal function or local entrypoint to run" in res.stderr
+    res = _run(["run", app_file.as_posix()], expected_exit_code=1, expected_stderr=None)
+    assert "Specify a Modal Function or local entrypoint to run" in res.stderr
 
     # HACK: all the tests use the same arg, i.
     @servicer.function_body
@@ -333,6 +338,10 @@ def test_run_parse_args_function(servicer, set_env_client, test_dir):
     for args, expected in valid_call_args:
         res = _run(args)
         assert expected in res.stdout
+
+    if len(recwarn):
+        print("Unexpected warnings:", [str(w) for w in recwarn])
+    assert len(recwarn) == 0
 
 
 def test_run_user_script_exception(servicer, set_env_client, test_dir):
@@ -418,11 +427,25 @@ def mock_shell_pty(servicer):
         yield fake_stdin, captured_out
 
 
+app_file = Path("app_run_tests") / "default_app.py"
+webhook_app_file = Path("app_run_tests") / "webhook.py"
+cls_app_file = Path("app_run_tests") / "cls.py"
+
+
 @skip_windows("modal shell is not supported on Windows.")
-def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
-    app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
-    webhook_app_file = test_dir / "supports" / "app_run_tests" / "webhook.py"
-    cls_app_file = test_dir / "supports" / "app_run_tests" / "cls.py"
+@pytest.mark.parametrize(
+    ["rel_file", "suffix"],
+    [
+        (app_file, "::foo"),  # Function is explicitly specified
+        (webhook_app_file, "::foo"),  # Function is explicitly specified
+        (webhook_app_file, ""),  # Function must be inferred
+        # TODO: fix modal shell auto-detection of a single class, even if it has multiple methods
+        # (cls_app_file, ""),  # Class must be inferred
+        # (cls_app_file, "AParametrized"),  # class name
+        (cls_app_file, "::AParametrized.some_method"),  # method name
+    ],
+)
+def test_shell(servicer, set_env_client, supports_dir, mock_shell_pty, rel_file, suffix):
     fake_stdin, captured_out = mock_shell_pty
 
     fake_stdin.clear()
@@ -430,24 +453,11 @@ def test_shell(servicer, set_env_client, test_dir, mock_shell_pty):
 
     shell_prompt = servicer.shell_prompt
 
-    # Function is explicitly specified
-    _run(["shell", app_file.as_posix() + "::foo"])
+    fn = (supports_dir / rel_file).as_posix()
+
+    _run(["shell", fn + suffix])
 
     # first captured message is the empty message the mock server sends
-    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
-    captured_out.clear()
-
-    # Function is explicitly specified
-    _run(["shell", webhook_app_file.as_posix() + "::foo"])
-    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
-    captured_out.clear()
-
-    # Function must be inferred
-    _run(["shell", webhook_app_file.as_posix()])
-    assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
-    captured_out.clear()
-
-    _run(["shell", cls_app_file.as_posix()])
     assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
     captured_out.clear()
 
@@ -766,7 +776,7 @@ def test_environment_noflag(test_dir, servicer, command, monkeypatch):
 def test_cls(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "cls.py"
 
-    _run(["run", app_file.as_posix(), "--x", "42", "--y", "1000"])
+    print(_run(["run", app_file.as_posix(), "--x", "42", "--y", "1000"]))
     _run(["run", f"{app_file.as_posix()}::AParametrized.some_method", "--x", "42", "--y", "1000"])
 
 
@@ -1114,3 +1124,40 @@ def test_container_exec(servicer, set_env_client, mock_shell_pty, app):
     captured_out.clear()
 
     sb.terminate()
+
+
+def test_can_run_all_listed_functions_with_includes(supports_on_path, monkeypatch, set_env_client):
+    monkeypatch.setenv("TERM", "dumb")  # prevents looking at ansi escape sequences
+
+    res = _run(["run", "multifile_project.main"], expected_exit_code=1)
+    print("err", res.stderr)
+    # there are no runnables directly in the target module, so references need to go via the app
+    func_listing = res.stderr.split("functions and local entrypoints:")[1]
+
+    listed_runnables = set(re.findall(r"\b[\w.]+\b", func_listing))
+
+    expected_runnables = {
+        "app.a_func",
+        "app.b_func",
+        "app.c_func",
+        "app.main_function",
+        "main_function",
+        "Cls.method_on_other_app_class",
+        "other_app.Cls.method_on_other_app_class",
+    }
+    assert listed_runnables == expected_runnables
+
+    for runnable in expected_runnables:
+        assert runnable in res.stderr
+        _run(["run", f"multifile_project.main::{runnable}"], expected_exit_code=0)
+
+
+def test_modal_launch_vscode(monkeypatch, set_env_client, servicer):
+    mock_open = MagicMock()
+    monkeypatch.setattr("webbrowser.open", mock_open)
+    with servicer.intercept() as ctx:
+        ctx.add_response("QueueGet", api_pb2.QueueGetResponse(values=[serialize(("http://dummy", "tok"))]))
+        ctx.add_response("QueueGet", api_pb2.QueueGetResponse(values=[serialize("done")]))
+        _run(["launch", "vscode"])
+
+    assert mock_open.call_count == 1

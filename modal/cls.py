@@ -11,19 +11,19 @@ from grpclib import GRPCError, Status
 from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP
 from modal_proto import api_pb2
 
+from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._serialization import check_valid_cls_constructor_arg
 from ._traceback import print_server_warnings
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.deprecation import renamed_parameter
+from ._utils.deprecation import deprecation_warning, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .exception import ExecutionError, InvalidError, NotFoundError, VersionError
 from .functions import _Function, _parse_retries
 from .gpu import GPU_T
-from .object import _get_environment_name, _Object
 from .partial_function import (
     _find_callables_for_obj,
     _find_partial_methods_for_user_cls,
@@ -72,9 +72,7 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
 
 
 def _bind_instance_method(service_function: _Function, class_bound_method: _Function):
-    """mdmd:hidden
-
-    Binds an "instance service function" to a specific method name.
+    """Binds an "instance service function" to a specific method name.
     This "dummy" _Function gets no unique object_id and isn't backend-backed at the moment, since all
     it does it forward invocations to the underlying instance_service_function with the specified method,
     and we don't support web_config for parameterized methods at the moment.
@@ -129,6 +127,7 @@ def _bind_instance_method(service_function: _Function, class_bound_method: _Func
     fun._is_method = True
     fun._app = class_bound_method._app
     fun._spec = class_bound_method._spec
+    fun._is_web_endpoint = class_bound_method._is_web_endpoint
     return fun
 
 
@@ -374,12 +373,14 @@ class _Cls(_Object, type_prefix="cs"):
     _options: Optional[api_pb2.FunctionOptions]
     _callables: dict[str, Callable[..., Any]]
     _app: Optional["modal.app._App"] = None  # not set for lookups
+    _name: Optional[str]
 
     def _initialize_from_empty(self):
         self._user_cls = None
         self._class_service_function = None
         self._options = None
         self._callables = {}
+        self._name = None
 
     def _initialize_from_other(self, other: "_Cls"):
         super()._initialize_from_other(other)
@@ -388,11 +389,28 @@ class _Cls(_Object, type_prefix="cs"):
         self._method_functions = other._method_functions
         self._options = other._options
         self._callables = other._callables
+        self._name = other._name
 
     def _get_partial_functions(self) -> dict[str, _PartialFunction]:
         if not self._user_cls:
             raise AttributeError("You can only get the partial functions of a local Cls instance")
         return _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.all())
+
+    def _get_app(self) -> "modal.app._App":
+        return self._app
+
+    def _get_user_cls(self) -> type:
+        return self._user_cls
+
+    def _get_name(self) -> str:
+        return self._name
+
+    def _get_class_service_function(self) -> "modal.functions._Function":
+        return self._class_service_function
+
+    def _get_method_names(self) -> Collection[str]:
+        # returns method names for a *local* class only for now (used by cli)
+        return self._method_functions.keys()
 
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
@@ -412,6 +430,7 @@ class _Cls(_Object, type_prefix="cs"):
                     self._method_functions[method_name]._hydrate(
                         self._class_service_function.object_id, self._client, method_handle_metadata
                     )
+
             else:
                 # We're here when the function is loaded remotely (e.g. _Cls.from_name)
                 self._method_functions = {}
@@ -506,6 +525,7 @@ class _Cls(_Object, type_prefix="cs"):
         cls._class_service_function = class_service_function
         cls._method_functions = method_functions
         cls._callables = callables
+        cls._name = user_cls.__name__
         return cls
 
     def _uses_common_service_function(self):
@@ -576,6 +596,7 @@ class _Cls(_Object, type_prefix="cs"):
         rep = f"Ref({app_name})"
         cls = cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
         # TODO: when pre 0.63 is phased out, we can set class_service_function here instead
+        cls._name = name
         return cls
 
     def with_options(
@@ -681,6 +702,13 @@ class _Cls(_Object, type_prefix="cs"):
         # Used by CLI and container entrypoint
         # TODO: remove this method - access to attributes on classes should be discouraged
         if k in self._method_functions:
+            deprecation_warning(
+                (2025, 1, 13),
+                "Usage of methods directly on the class will soon be deprecated, "
+                "instantiate classes before using methods, e.g.:\n"
+                f"{self._name}().{k} instead of {self._name}.{k}",
+                pending=True,
+            )
             return self._method_functions[k]
         return getattr(self._user_cls, k)
 

@@ -3,7 +3,7 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.11"
 exclude = "build"
 ignore_missing_imports = true
 check_untyped_defs = true
@@ -60,3 +60,6 @@ known-first-party = [
     "modal_version",
 ]
 extra-standard-library = ["pytest"]
+
+[tool.pyright]
+reportUnnecessaryComparison = true

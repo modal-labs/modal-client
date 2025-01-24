@@ -27,6 +27,7 @@ import modal_proto.api_pb2
 from modal.exception import VolumeUploadTimeoutError
 from modal_proto import api_pb2
 
+from ._object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, aclosing, async_map, asyncnullcontext, synchronize_api
 from ._utils.blob_utils import (
@@ -41,7 +42,6 @@ from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import logger
-from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 
 # Max duration for uploading to volumes files
 # As a guide, files >40GiB will take >10 minutes to upload.

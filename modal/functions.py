@@ -8,13 +8,7 @@ import warnings
 from collections.abc import AsyncGenerator, Collection, Sequence, Sized
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Optional,
-    Union,
-)
+from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Union
 
 import typing_extensions
 from google.protobuf.message import Message
@@ -26,6 +20,7 @@ from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
 from ._location import parse_cloud_provider
+from ._object import _get_environment_name, _Object, live_method, live_method_gen
 from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
@@ -51,6 +46,7 @@ from ._utils.function_utils import (
     _process_result,
     _stream_function_call_data,
     get_function_type,
+    get_include_source_mode,
     is_async,
 )
 from ._utils.grpc_utils import retry_transient_errors
@@ -58,7 +54,7 @@ from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
-from .config import config
+from .config import IncludeSourceMode, config
 from .exception import (
     ExecutionError,
     FunctionTimeoutError,
@@ -71,7 +67,6 @@ from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
 from .mount import _get_client_mount, _Mount, get_sys_modules_mounts
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
-from .object import _get_environment_name, _Object, live_method, live_method_gen
 from .output import _get_output_manager
 from .parallel_map import (
     _for_each_async,
@@ -94,6 +89,10 @@ if TYPE_CHECKING:
     import modal.app
     import modal.cls
     import modal.partial_function
+
+
+# type for in-code user-provided automount values
+IncludeSourceValue = Literal["none", "main-package", "first-party"]
 
 
 @dataclasses.dataclass
@@ -383,12 +382,15 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _serve_mounts: frozenset[_Mount]  # set at load time, only by loader
     _app: Optional["modal.app._App"] = None
     _obj: Optional["modal.cls._Obj"] = None  # only set for InstanceServiceFunctions and bound instance methods
-    _web_url: Optional[str]
+
+    _webhook_config: Optional[api_pb2.WebhookConfig] = None  # this is set in definition scope, only locally
+    _web_url: Optional[str]  # this is set on hydration
+
     _function_name: Optional[str]
     _is_method: bool
     _spec: Optional[_FunctionSpec] = None
     _tag: str
-    _raw_f: Callable[..., Any]
+    _raw_f: Optional[Callable[..., Any]]  # this is set to None for a "class service [function]"
     _build_args: dict
 
     _is_generator: Optional[bool] = None
@@ -471,10 +473,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         cluster_size: Optional[int] = None,  # Experimental: Clustered functions
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
+        # current default: first-party, future default: main-package
+        include_source: Optional[IncludeSourceValue] = None,
         _experimental_buffer_containers: Optional[int] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
-    ) -> None:
+    ) -> "_Function":
         """mdmd:hidden"""
         # Needed to avoid circular imports
         from .partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
@@ -497,7 +501,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         explicit_mounts = mounts
 
         if is_local():
-            entrypoint_mounts = info.get_entrypoint_mount()
+            include_source_mode = get_include_source_mode(include_source)
+            if include_source_mode != IncludeSourceMode.NONE:
+                entrypoint_mounts = info.get_entrypoint_mount()
+            else:
+                entrypoint_mounts = []
 
             all_mounts = [
                 _get_client_mount(),
@@ -505,7 +513,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 *entrypoint_mounts.values(),
             ]
 
-            if config.get("automount"):
+            if include_source_mode in (IncludeSourceMode.FIRST_PARTY, IncludeSourceMode.CONFIG_BASED_FIRST_PARTY):
+                # TODO(elias): if using CONFIG_BASED_FIRST_PARTY *and* mounts are added that haven't already been
+                #  added to the image via add_local_python_source
                 auto_mounts = get_sys_modules_mounts()
                 # don't need to add entrypoint modules to automounts:
                 for entrypoint_module in entrypoint_mounts:
@@ -539,7 +549,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         else:
             # skip any mount introspection/logic inside containers, since the function
             # should already be hydrated
-            # TODO: maybe the entire constructor should be exited early if not local?
+            # TODO: maybe the entire from_args loader should be exited early if not local?
+            #  since it will be hydrated
             all_mounts = []
 
         retry_policy = _parse_retries(
@@ -602,7 +613,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 )
                 image = _Image._from_args(
                     base_images={"base": image},
-                    build_function=snapshot_function,
+                    build_function=snapshot_function,  # type: ignore   # TODO: separate functions.py and _functions.py
                     force_build=image.force_build or pf.force_build,
                 )
 
@@ -814,7 +825,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     task_idle_timeout_secs=container_idle_timeout or 0,
                     concurrency_limit=concurrency_limit or 0,
                     pty_info=pty_info,
-                    cloud_provider=cloud_provider,
+                    cloud_provider=cloud_provider,  # Deprecated at some point
+                    cloud_provider_str=cloud.upper() if cloud else "",  # Supersedes cloud_provider
                     warm_pool_size=keep_warm or 0,
                     runtime=config.get("function_runtime"),
                     runtime_debug=config.get("function_runtime_debug"),
@@ -940,6 +952,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._cluster_size = cluster_size
         obj._is_method = False
         obj._spec = function_spec  # needed for modal shell
+        obj._webhook_config = webhook_config  # only set locally
 
         # Used to check whether we should rebuild a modal.Image which uses `run_function`.
         gpus: list[GPU_T] = gpu if isinstance(gpu, list) else [gpu]
@@ -975,8 +988,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         parent = self
 
         async def _load(param_bound_func: _Function, resolver: Resolver, existing_object_id: Optional[str]):
-            if parent is None:
-                raise ExecutionError("Can't find the parent class' service function")
             try:
                 identity = f"{parent.info.function_name} class service function"
             except Exception:
@@ -991,7 +1002,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     f"The {identity} has not been hydrated with the metadata it needs to run on Modal{reason}."
                 )
 
-            assert parent._client.stub
+            assert parent._client and parent._client.stub
 
             if can_use_parent:
                 # We can end up here if parent wasn't hydrated when class was instantiated, but has been since.
@@ -1012,9 +1023,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             else:
                 serialized_params = serialize((args, kwargs))
             environment_name = _get_environment_name(None, resolver)
-            assert parent is not None
+            assert parent is not None and parent.is_hydrated
             req = api_pb2.FunctionBindParamsRequest(
-                function_id=parent._object_id,
+                function_id=parent.object_id,
                 serialized_params=serialized_params,
                 function_options=options,
                 environment_name=environment_name
@@ -1061,11 +1072,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             """
                 )
             )
-        assert self._client and self._client.stub
         request = api_pb2.FunctionUpdateSchedulingParamsRequest(
-            function_id=self._object_id, warm_pool_size_override=warm_pool_size
+            function_id=self.object_id, warm_pool_size_override=warm_pool_size
         )
-        await retry_transient_errors(self._client.stub.FunctionUpdateSchedulingParams, request)
+        await retry_transient_errors(self.client.stub.FunctionUpdateSchedulingParams, request)
 
     @classmethod
     @renamed_parameter((2024, 12, 18), "tag", "name")
@@ -1167,11 +1177,15 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         assert self._spec
         return self._spec
 
+    def _is_web_endpoint(self) -> bool:
+        # only defined in definition scope/locally, and not for class methods at the moment
+        return bool(self._webhook_config and self._webhook_config.type != api_pb2.WEBHOOK_TYPE_UNSPECIFIED)
+
     def get_build_def(self) -> str:
         """mdmd:hidden"""
         # Plaintext source and arg definition for the function, so it's part of the image
         # hash. We can't use the cloudpickle hash because it's not very stable.
-        assert hasattr(self, "_raw_f") and hasattr(self, "_build_args")
+        assert hasattr(self, "_raw_f") and hasattr(self, "_build_args") and self._raw_f is not None
         return f"{inspect.getsource(self._raw_f)}\n{repr(self._build_args)}"
 
     # Live handle methods
@@ -1236,12 +1250,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     async def is_generator(self) -> bool:
         """mdmd:hidden"""
         # hacky: kind of like @live_method, but not hydrating if we have the value already from local source
+        # TODO(michael) use a common / lightweight method for handling unhydrated metadata properties
         if self._is_generator is not None:
             # this is set if the function or class is local
             return self._is_generator
 
         # not set - this is a from_name lookup - hydrate
-        await self.resolve()
+        await self.hydrate()
         assert self._is_generator is not None  # should be set now
         return self._is_generator
 
@@ -1277,7 +1292,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             _map_invocation(
                 self,  # type: ignore
                 input_queue,
-                self._client,
+                self.client,
                 order_outputs,
                 return_exceptions,
                 count_update_callback,
@@ -1295,7 +1310,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             self,
             args,
             kwargs,
-            client=self._client,
+            client=self.client,
             function_call_invocation_type=function_call_invocation_type,
         )
 
@@ -1305,7 +1320,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self, args, kwargs, function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType"
     ) -> _Invocation:
         return await _Invocation.create(
-            self, args, kwargs, client=self._client, function_call_invocation_type=function_call_invocation_type
+            self, args, kwargs, client=self.client, function_call_invocation_type=function_call_invocation_type
         )
 
     @warn_if_generator_is_not_consumed()
@@ -1316,7 +1331,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             self,
             args,
             kwargs,
-            client=self._client,
+            client=self.client,
             function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY,
         )
         async for res in invocation.run_generator():
@@ -1332,7 +1347,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             self,
             args,
             kwargs,
-            client=self._client,
+            client=self.client,
             function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY,
         )
 
@@ -1481,14 +1496,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     def get_raw_f(self) -> Callable[..., Any]:
         """Return the inner Python object wrapped by this Modal Function."""
+        assert self._raw_f is not None
         return self._raw_f
 
     @live_method
     async def get_current_stats(self) -> FunctionStats:
         """Return a `FunctionStats` object describing the current function's queue and runner counts."""
-        assert self._client.stub
         resp = await retry_transient_errors(
-            self._client.stub.FunctionGetCurrentStats,
+            self.client.stub.FunctionGetCurrentStats,
             api_pb2.FunctionGetCurrentStatsRequest(function_id=self.object_id),
             total_timeout=10.0,
         )
@@ -1520,8 +1535,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
     _is_generator: bool = False
 
     def _invocation(self):
-        assert self._client.stub
-        return _Invocation(self._client.stub, self.object_id, self._client)
+        return _Invocation(self.client.stub, self.object_id, self.client)
 
     async def get(self, timeout: Optional[float] = None) -> ReturnType:
         """Get the result of the function call.

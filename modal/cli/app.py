@@ -9,11 +9,11 @@ from rich.table import Column
 from rich.text import Text
 from typer import Argument
 
+from modal._object import _get_environment_name
 from modal._utils.async_utils import synchronizer
 from modal._utils.deprecation import deprecation_warning
 from modal.client import _Client
 from modal.environments import ensure_env
-from modal.object import _get_environment_name
 from modal_proto import api_pb2
 
 from .utils import ENV_OPTION, display_table, get_app_id_from_name, stream_app_logs, timestamp_to_local
@@ -26,9 +26,10 @@ app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_a
 APP_STATE_TO_MESSAGE = {
     api_pb2.APP_STATE_DEPLOYED: Text("deployed", style="green"),
     api_pb2.APP_STATE_DETACHED: Text("ephemeral (detached)", style="green"),
+    api_pb2.APP_STATE_DETACHED_DISCONNECTED: Text("ephemeral (detached)", style="green"),
     api_pb2.APP_STATE_DISABLED: Text("disabled", style="dim"),
     api_pb2.APP_STATE_EPHEMERAL: Text("ephemeral", style="green"),
-    api_pb2.APP_STATE_INITIALIZING: Text("initializing...", style="green"),
+    api_pb2.APP_STATE_INITIALIZING: Text("initializing...", style="yellow"),
     api_pb2.APP_STATE_STOPPED: Text("stopped", style="blue"),
     api_pb2.APP_STATE_STOPPING: Text("stopping...", style="blue"),
 }

@@ -38,7 +38,7 @@ from modal.partial_function import (
     _find_callables_for_obj,
     _PartialFunctionFlags,
 )
-from modal.running_app import RunningApp
+from modal.running_app import RunningApp, running_app_from_layout
 from modal_proto import api_pb2
 
 from ._runtime.container_io_manager import (
@@ -50,8 +50,8 @@ from ._runtime.container_io_manager import (
 from ._runtime.execution_context import _set_current_context_ids
 
 if TYPE_CHECKING:
+    import modal._object
     import modal._runtime.container_io_manager
-    import modal.object
 
 
 class DaemonizedThreadPool:
@@ -468,7 +468,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 batch_wait_ms = function_def.batch_linger_ms or 0
 
         # Get ids and metadata for objects (primarily functions and classes) on the app
-        container_app: RunningApp = container_io_manager.get_app_objects(container_args.app_layout)
+        container_app: RunningApp = running_app_from_layout(container_args.app_id, container_args.app_layout)
 
         # Initialize objects on the app.
         # This is basically only functions and classes - anything else is deprecated and will be unsupported soon
@@ -591,15 +591,10 @@ if __name__ == "__main__":
     logger.debug("Container: starting")
 
     container_args = api_pb2.ContainerArguments()
-
     container_arguments_path: Optional[str] = os.environ.get("MODAL_CONTAINER_ARGUMENTS_PATH")
     if container_arguments_path is None:
-        # TODO(erikbern): this fallback is for old workers and we can remove it very soon (days)
-        import base64
-
-        container_args.ParseFromString(base64.b64decode(sys.argv[1]))
-    else:
-        container_args.ParseFromString(open(container_arguments_path, "rb").read())
+        raise RuntimeError("No path to the container arguments file provided!")
+    container_args.ParseFromString(open(container_arguments_path, "rb").read())
 
     # Note that we're creating the client in a synchronous context, but it will be running in a separate thread.
     # This is good because if the function is long running then we the client can still send heartbeats

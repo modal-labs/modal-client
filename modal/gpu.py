@@ -9,8 +9,9 @@ from .exception import InvalidError
 
 @dataclass(frozen=True)
 class _GPUConfig:
-    type: "api_pb2.GPUType.V"
+    type: "api_pb2.GPUType.V"  # Deprecated, at some point
     count: int
+    gpu_type: str
     memory: int = 0
 
     def _to_proto(self) -> api_pb2.GPUConfig:
@@ -19,6 +20,7 @@ class _GPUConfig:
             type=self.type,
             count=self.count,
             memory=self.memory,
+            gpu_type=self.gpu_type,
         )
 
 
@@ -26,14 +28,14 @@ class T4(_GPUConfig):
     """
     [NVIDIA T4 Tensor Core](https://www.nvidia.com/en-us/data-center/tesla-t4/) GPU class.
 
-    A low-cost data center GPU based on the Turing architecture, providing 16GiB of GPU memory.
+    A low-cost data center GPU based on the Turing architecture, providing 16GB of GPU memory.
     """
 
     def __init__(
         self,
         count: int = 1,  # Number of GPUs per container. Defaults to 1.
     ):
-        super().__init__(api_pb2.GPU_TYPE_T4, count, 0)
+        super().__init__(api_pb2.GPU_TYPE_T4, count, "T4")
 
     def __repr__(self):
         return f"GPU(T4, count={self.count})"
@@ -43,7 +45,7 @@ class L4(_GPUConfig):
     """
     [NVIDIA L4 Tensor Core](https://www.nvidia.com/en-us/data-center/l4/) GPU class.
 
-    A mid-tier data center GPU based on the Ada Lovelace architecture, providing 24GiB of GPU memory.
+    A mid-tier data center GPU based on the Ada Lovelace architecture, providing 24GB of GPU memory.
     Includes RTX (ray tracing) support.
     """
 
@@ -51,7 +53,7 @@ class L4(_GPUConfig):
         self,
         count: int = 1,  # Number of GPUs per container. Defaults to 1.
     ):
-        super().__init__(api_pb2.GPU_TYPE_L4, count, 0)
+        super().__init__(api_pb2.GPU_TYPE_L4, count, "L4")
 
     def __repr__(self):
         return f"GPU(L4, count={self.count})"
@@ -61,30 +63,21 @@ class A100(_GPUConfig):
     """
     [NVIDIA A100 Tensor Core](https://www.nvidia.com/en-us/data-center/a100/) GPU class.
 
-    The flagship data center GPU of the Ampere architecture. Available in 40GiB and 80GiB GPU memory configurations.
+    The flagship data center GPU of the Ampere architecture. Available in 40GB and 80GB GPU memory configurations.
     """
 
     def __init__(
         self,
         *,
         count: int = 1,  # Number of GPUs per container. Defaults to 1.
-        size: Union[str, None] = None,  # Select GiB configuration of GPU device: "40GB" or "80GB". Defaults to "40GB".
+        size: Union[str, None] = None,  # Select GB configuration of GPU device: "40GB" or "80GB". Defaults to "40GB".
     ):
-        allowed_size_values = {"40GB", "80GB"}
-
-        if size:
-            if size not in allowed_size_values:
-                raise ValueError(
-                    f"size='{size}' is invalid. A100s can only have memory values of {allowed_size_values}."
-                )
-            memory = int(size.replace("GB", ""))
+        if size == "40GB" or not size:
+            super().__init__(api_pb2.GPU_TYPE_A100, count, "A100-40GB", 40)
+        elif size == "80GB":
+            super().__init__(api_pb2.GPU_TYPE_A100_80GB, count, "A100-80GB", 80)
         else:
-            memory = 40
-
-        if memory == 80:
-            super().__init__(api_pb2.GPU_TYPE_A100_80GB, count, memory)
-        else:
-            super().__init__(api_pb2.GPU_TYPE_A100, count, memory)
+            raise ValueError(f"size='{size}' is invalid. A100s can only have memory values of 40GB or 80GB.")
 
     def __repr__(self):
         if self.memory == 80:
@@ -97,7 +90,7 @@ class A10G(_GPUConfig):
     """
     [NVIDIA A10G Tensor Core](https://www.nvidia.com/en-us/data-center/products/a10-gpu/) GPU class.
 
-    A mid-tier data center GPU based on the Ampere architecture, providing 24 GiB of memory.
+    A mid-tier data center GPU based on the Ampere architecture, providing 24 GB of memory.
     A10G GPUs deliver up to 3.3x better ML training performance, 3x better ML inference performance,
     and 3x better graphics performance, in comparison to NVIDIA T4 GPUs.
     """
@@ -109,7 +102,7 @@ class A10G(_GPUConfig):
         # Useful if you have very large models that don't fit on a single GPU.
         count: int = 1,
     ):
-        super().__init__(api_pb2.GPU_TYPE_A10G, count)
+        super().__init__(api_pb2.GPU_TYPE_A10G, count, "A10G")
 
     def __repr__(self):
         return f"GPU(A10G, count={self.count})"
@@ -131,7 +124,7 @@ class H100(_GPUConfig):
         # Useful if you have very large models that don't fit on a single GPU.
         count: int = 1,
     ):
-        super().__init__(api_pb2.GPU_TYPE_H100, count)
+        super().__init__(api_pb2.GPU_TYPE_H100, count, "H100")
 
     def __repr__(self):
         return f"GPU(H100, count={self.count})"
@@ -152,7 +145,7 @@ class L40S(_GPUConfig):
         # Useful if you have very large models that don't fit on a single GPU.
         count: int = 1,
     ):
-        super().__init__(api_pb2.GPU_TYPE_L40S, count)
+        super().__init__(api_pb2.GPU_TYPE_L40S, count, "L40S")
 
     def __repr__(self):
         return f"GPU(L40S, count={self.count})"
@@ -162,7 +155,7 @@ class Any(_GPUConfig):
     """Selects any one of the GPU classes available within Modal, according to availability."""
 
     def __init__(self, *, count: int = 1):
-        super().__init__(api_pb2.GPU_TYPE_ANY, count)
+        super().__init__(api_pb2.GPU_TYPE_ANY, count, "ANY")
 
     def __repr__(self):
         return f"GPU(Any, count={self.count})"

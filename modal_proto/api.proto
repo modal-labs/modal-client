@@ -4,6 +4,7 @@ package modal.client;
 
 import "modal_proto/options.proto";
 import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
 import "google/protobuf/wrappers.proto";
 
 enum AppDeployVisibility {
@@ -81,6 +82,7 @@ enum ClientType {
   CLIENT_TYPE_WORKER = 2;
   CLIENT_TYPE_CONTAINER = 3;
   CLIENT_TYPE_WEB_SERVER = 5;
+  CLIENT_TYPE_NOTEBOOK_KERNEL = 6;
 }
 
 enum CloudProvider {
@@ -150,6 +152,7 @@ enum GPUType {
   GPU_TYPE_L4 = 9;
   GPU_TYPE_H100 = 10;
   GPU_TYPE_L40S = 11;
+  GPU_TYPE_H200 = 12;
 }
 
 enum ObjectCreationType {
@@ -337,6 +340,7 @@ message AppGetLogsRequest {
   string function_id = 5;
   string input_id = 6;
   string task_id = 7;
+  string function_call_id = 9;
   FileDescriptor file_descriptor = 8;
 }
 
@@ -605,6 +609,8 @@ message CheckpointInfo {
   int64 size = 5;
   bool checksum_is_file_index = 6;
   string original_task_id = 7;
+  // snapshot version used to take the checkpoint
+  uint32 snapshot_version = 8;
 }
 
 message ClassCreateRequest {
@@ -712,6 +718,7 @@ message CloudBucketMount {
   bool requester_pays = 6;
   optional string bucket_endpoint_url = 7;
   optional string key_prefix = 8;
+  optional string oidc_auth_role_arn = 9;
 }
 
 message ContainerArguments {  // This is used to pass data from the worker to the container
@@ -1157,7 +1164,7 @@ message Function {
 
   uint32 task_idle_timeout_secs = 25;
 
-  optional CloudProvider cloud_provider = 26;
+  optional CloudProvider cloud_provider = 26;  // Deprecated at some point
 
   uint32 warm_pool_size = 27;
 
@@ -1251,6 +1258,8 @@ message Function {
   bool method_definitions_set = 75;
 
   bool _experimental_custom_scaling = 76;
+
+  string cloud_provider_str = 77;  // Supersedes cloud_provider
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1661,9 +1670,10 @@ message FunctionUpdateSchedulingParamsRequest {
 message FunctionUpdateSchedulingParamsResponse {}
 
 message GPUConfig {
-  GPUType type = 1;
+  GPUType type = 1;  // Deprecated, at some point
   uint32 count = 2;
   uint32 memory = 3;
+  string gpu_type = 4;
 }
 
 message GeneratorDone {  // Sent as the output when a generator finishes running.
@@ -1879,6 +1889,76 @@ message NetworkAccess {
   repeated string allowed_cidrs = 2;
 }
 
+message NotebookKernelPublishResultsRequest {
+  // See kernelshim.py for the differences between this and `ExecuteResult`.
+  // https://jupyter-client.readthedocs.io/en/stable/messaging.html#execution-results
+  message ExecuteReply {
+    string status = 1;
+    uint32 execution_count = 2;
+  }
+
+  // IOPub message or reply received from the kernel for a cell.
+  message CellResult {
+    string cell_id = 1;
+
+    oneof result_type {
+      // Persistent output that is saved in the notebook.
+      NotebookOutput output = 2;
+
+      // Clear all previous outputs of the cell.
+      bool clear_output = 3;
+
+      // Cell has finished executing, return the kernel's execute_reply.
+      ExecuteReply execute_reply = 4;
+    }
+  }
+
+  string notebook_id = 1;
+  repeated CellResult results = 2;
+}
+
+// A single output from a notebook. When you execute a cell, it produces an
+// array of these outputs as the code runs.
+//
+// https://github.com/jupyter/nbformat/blob/v5.10.4/nbformat/v4/nbformat.v4.schema.json#L301-L309
+message NotebookOutput {
+  // Result of executing a code cell.
+  message ExecuteResult {
+    uint32 execution_count = 1;
+    google.protobuf.Struct data = 2; // mimebundle
+    google.protobuf.Struct metadata = 3;
+  }
+
+  // Data displayed as a result of code cell execution.
+  message DisplayData {
+    google.protobuf.Struct data = 1; // mimebundle
+    google.protobuf.Struct metadata = 2;
+
+    // This should not be included in saved notebook.
+    optional string transient_display_id = 3;
+  }
+
+  // Stream output from a code cell (stdout / stderr).
+  message Stream {
+    string name = 1; // stdout | stderr
+    string text = 2; // multiline_string
+  }
+
+  // Output of an error that occurred during code cell execution.
+  message Error {
+    string ename = 1;
+    string evalue = 2;
+    repeated string traceback = 3;
+  }
+
+  oneof output_type {
+    ExecuteResult execute_result = 1;
+    DisplayData display_data = 2;
+    Stream stream = 3;
+    Error error = 4;
+  }
+}
+
 message Object {
   string object_id = 1;
   oneof handle_metadata_oneof {
@@ -1923,6 +2003,14 @@ message Proxy {
   string environment_name = 3;
   string proxy_id = 5;
   repeated ProxyIp proxy_ips = 4;
+}
+
+message ProxyAddIpRequest {
+  string proxy_id = 1 [ (modal.options.audit_target_attr) = true ];
+}
+
+message ProxyAddIpResponse {
+  ProxyIp proxy_ip = 1;
 }
 
 message ProxyCreateRequest {
@@ -1975,6 +2063,10 @@ message ProxyIp {
 
 message ProxyListResponse {
   repeated Proxy proxies = 1;
+}
+
+message ProxyRemoveIpRequest {
+  string proxy_ip = 1 [ (modal.options.audit_target_attr) = true ];
 }
 
 message QueueClearRequest {
@@ -2116,7 +2208,7 @@ message Sandbox {
   repeated string secret_ids = 4;
 
   Resources resources = 5;
-  CloudProvider cloud_provider = 6;
+  CloudProvider cloud_provider = 6;  // Deprecated at some point
 
   uint32 timeout_secs = 7;
 
@@ -2152,6 +2244,16 @@ message Sandbox {
   NetworkAccess network_access = 22;
 
   optional string proxy_id = 23;
+
+  // Enable snapshotting the sandbox (both memory and filesystem).
+  // This doesn't need to be enabled to save the filesystem as an image (i.e. a filesystem-only snapshot).
+  bool enable_snapshot = 24;
+
+  // Used to pin gVisor version for memory-snapshottable sandboxes.
+  // This field is set by the server, not the client.
+  optional uint32 snapshot_version = 25;
+
+  string cloud_provider_str = 26;  // Supersedes cloud_provider
 }
 
 message SandboxCreateRequest {
@@ -2173,10 +2275,13 @@ message SandboxGetLogsRequest {
 
 message SandboxGetTaskIdRequest {
   string sandbox_id = 1;
+  optional float timeout = 2; // Legacy clients do not provide a timeout. New clients must always provide a timeout.
+  bool wait_until_ready = 3; // If true, waits until the container's postStart hook has been run before returning. Useful for detecting init failures.
 }
 
 message SandboxGetTaskIdResponse {
-  string task_id = 1;
+  optional string task_id = 1; // This is None if the sandbox was terminated before a task could be scheduled.
+  optional GenericResult task_result = 2; // If the task has already exited, this is the result.
 }
 
 message SandboxGetTunnelsRequest {
@@ -2213,6 +2318,22 @@ message SandboxListResponse {
   repeated SandboxInfo sandboxes = 1;
 }
 
+message SandboxRestoreRequest {
+  string snapshot_id = 1;
+}
+
+message SandboxRestoreResponse {
+  string sandbox_id = 1;
+}
+
+message SandboxSnapshotFromIdRequest {
+  string snapshot_id = 1;
+}
+
+message SandboxSnapshotFromIdResponse {
+  string snapshot_id = 1;
+}
+
 message SandboxSnapshotFsRequest {
   string sandbox_id = 1;
   float timeout = 2;
@@ -2223,6 +2344,23 @@ message SandboxSnapshotFsResponse {
   GenericResult result = 2;
   // Metadata may be empty since we may skip it for performance reasons.
   ImageMetadata image_metadata = 3;
+}
+
+message SandboxSnapshotRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxSnapshotResponse {
+  string snapshot_id = 1;
+}
+
+message SandboxSnapshotWaitRequest {
+  string snapshot_id = 1;
+  float timeout = 2;
+}
+
+message SandboxSnapshotWaitResponse {
+  GenericResult result = 1;
 }
 
 message SandboxStdinWriteRequest {
@@ -2820,12 +2958,17 @@ service ModalClient {
   rpc MountGetOrCreate(MountGetOrCreateRequest) returns (MountGetOrCreateResponse);
   rpc MountPutFile(MountPutFileRequest) returns (MountPutFileResponse);
 
+  // Notebooks
+  rpc NotebookKernelPublishResults(NotebookKernelPublishResultsRequest) returns (google.protobuf.Empty);
+
   // Proxies
+  rpc ProxyAddIp(ProxyAddIpRequest) returns (ProxyAddIpResponse);
   rpc ProxyCreate(ProxyCreateRequest) returns (ProxyCreateResponse);
   rpc ProxyDelete(ProxyDeleteRequest) returns (google.protobuf.Empty);
   rpc ProxyGet(ProxyGetRequest) returns (ProxyGetResponse);
   rpc ProxyGetOrCreate(ProxyGetOrCreateRequest) returns (ProxyGetOrCreateResponse);
   rpc ProxyList(google.protobuf.Empty) returns (ProxyListResponse);
+  rpc ProxyRemoveIp(ProxyRemoveIpRequest) returns (google.protobuf.Empty);
 
   // Queues
   rpc QueueClear(QueueClearRequest) returns (google.protobuf.Empty);
@@ -2844,7 +2987,11 @@ service ModalClient {
   rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse); // needed for modal container exec
   rpc SandboxGetTunnels(SandboxGetTunnelsRequest) returns (SandboxGetTunnelsResponse);
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
+  rpc SandboxRestore(SandboxRestoreRequest) returns (SandboxRestoreResponse);
+  rpc SandboxSnapshot(SandboxSnapshotRequest) returns (SandboxSnapshotResponse);
+  rpc SandboxSnapshotFromId(SandboxSnapshotFromIdRequest) returns (SandboxSnapshotFromIdResponse);
   rpc SandboxSnapshotFs(SandboxSnapshotFsRequest) returns (SandboxSnapshotFsResponse);
+  rpc SandboxSnapshotWait(SandboxSnapshotWaitRequest) returns (SandboxSnapshotWaitResponse);
   rpc SandboxStdinWrite(SandboxStdinWriteRequest) returns (SandboxStdinWriteResponse);
   rpc SandboxTagsSet(SandboxTagsSetRequest) returns (google.protobuf.Empty);
   rpc SandboxTerminate(SandboxTerminateRequest) returns (SandboxTerminateResponse);

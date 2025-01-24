@@ -35,7 +35,6 @@ from modal._utils.package_utils import parse_major_minor_version
 from modal.client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from modal.config import config, logger
 from modal.exception import ClientClosed, InputCancellation, InvalidError, SerializationError
-from modal.running_app import RunningApp, running_app_from_layout
 from modal_proto import api_pb2
 
 if TYPE_CHECKING:
@@ -448,16 +447,6 @@ class _ContainerIOManager:
                 logger.debug(f"Failed to get dynamic concurrency for task {self.task_id}, {exc}")
 
             await asyncio.sleep(DYNAMIC_CONCURRENCY_INTERVAL_SECS)
-
-    async def get_app_objects(self, app_layout: api_pb2.AppLayout) -> RunningApp:
-        if len(app_layout.objects) == 0:
-            # TODO(erikbern): this should never happen! let's keep it in here for a short second
-            # until we've sanity checked that this is, in fact, dead code.
-            req = api_pb2.AppGetLayoutRequest(app_id=self.app_id)
-            resp = await retry_transient_errors(self._client.stub.AppGetLayout, req)
-            app_layout = resp.app_layout
-
-        return running_app_from_layout(self.app_id, app_layout)
 
     async def get_serialized_function(self) -> tuple[Optional[Any], Optional[Callable[..., Any]]]:
         # Fetch the serialized function definition
@@ -1028,7 +1017,7 @@ def check_fastapi_pydantic_compatibility(exc: ImportError) -> None:
             if pydantic_version >= (2, 0) and fastapi_version < (0, 100):
                 if sys.version_info < (3, 11):
                     # https://peps.python.org/pep-0678/
-                    exc.__notes__ = [note]
+                    exc.__notes__ = [note]  # type: ignore
                 else:
                     exc.add_note(note)
         except Exception:

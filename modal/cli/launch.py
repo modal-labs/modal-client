@@ -8,17 +8,17 @@ from typing import Any, Optional
 
 from typer import Typer
 
-from ..app import App
+from ..app import LocalEntrypoint
 from ..exception import _CliUserExecutionError
 from ..output import enable_output
 from ..runner import run_app
-from .import_refs import import_function
+from .import_refs import _get_runnable_app, import_and_filter, parse_import_ref
 
 launch_cli = Typer(
     name="launch",
     no_args_is_help=True,
     help="""
-    [Preview] Open a serverless app instance on Modal.
+    Open a serverless app instance on Modal.
 
     This command is in preview and may change in the future.
     """,
@@ -29,8 +29,13 @@ def _launch_program(name: str, filename: str, detach: bool, args: dict[str, Any]
     os.environ["MODAL_LAUNCH_ARGS"] = json.dumps(args)
 
     program_path = str(Path(__file__).parent / "programs" / filename)
-    entrypoint = import_function(program_path, "modal launch")
-    app: App = entrypoint.app
+    entrypoint, _ = import_and_filter(
+        parse_import_ref(program_path), accept_local_entrypoint=True, accept_webhook=False
+    )
+    if not isinstance(entrypoint, LocalEntrypoint):
+        raise ValueError(f"{program_path} has no single local_entrypoint")
+
+    app = _get_runnable_app(entrypoint)
     app.set_description(f"modal launch {name}")
 
     # `launch/` scripts must have a `local_entrypoint()` with no args, for simplicity here.

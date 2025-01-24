@@ -153,6 +153,9 @@ def type_check(ctx):
         "modal/io_streams.py",
         "modal/image.py",
         "modal/file_io.py",
+        "modal/cli/import_refs.py",
+        "modal/config.py",
+        "modal/object.py",
     ]
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
 

@@ -14,7 +14,7 @@ from modal import App, Cls, Function, Image, Queue, build, enter, exit, method
 from modal._serialization import deserialize, serialize
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import FunctionInfo
-from modal.exception import ExecutionError, InvalidError, NotFoundError, PendingDeprecationError
+from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError, PendingDeprecationError
 from modal.partial_function import (
     PartialFunction,
     _find_partial_methods_for_user_cls,
@@ -358,7 +358,7 @@ def test_lookup(client, servicer):
         assert obj.bar.local(1, 2)
 
 
-def test_from_name_lazy_method_resolve(client, servicer):
+def test_from_name_lazy_method_hydration(client, servicer):
     deploy_app(app, "my-cls-app", client=client)
     cls: Cls = Cls.from_name("my-cls-app", "Foo")
 
@@ -646,27 +646,29 @@ def test_cls_keep_warm(client, servicer):
         assert instance_service_function.warm_pool_size == 5
 
 
-class ClsWithHandlers:
-    @build()
-    def my_build(self):
-        pass
+with pytest.warns(DeprecationError, match="@modal.build"):
 
-    @enter(snap=True)
-    def my_memory_snapshot(self):
-        pass
+    class ClsWithHandlers:
+        @build()
+        def my_build(self):
+            pass
 
-    @enter()
-    def my_enter(self):
-        pass
+        @enter(snap=True)
+        def my_memory_snapshot(self):
+            pass
 
-    @build()
-    @enter()
-    def my_build_and_enter(self):
-        pass
+        @enter()
+        def my_enter(self):
+            pass
 
-    @exit()
-    def my_exit(self):
-        pass
+        @build()
+        @enter()
+        def my_build_and_enter(self):
+            pass
+
+        @exit()
+        def my_exit(self):
+            pass
 
 
 def test_handlers():
@@ -712,15 +714,17 @@ handler_app = App("handler-app")
 image = Image.debian_slim().pip_install("xyz")
 
 
-@handler_app.cls(image=image)
-class ClsWithBuild:
-    @build()
-    def build(self):
-        pass
+with pytest.warns(DeprecationError, match="@modal.build"):
 
-    @method()
-    def method(self):
-        pass
+    @handler_app.cls(image=image)
+    class ClsWithBuild:
+        @build()
+        def build(self):
+            pass
+
+        @method()
+        def method(self):
+            pass
 
 
 def test_build_image(client, servicer):
@@ -735,15 +739,17 @@ def test_build_image(client, servicer):
 other_handler_app = App("other-handler-app")
 
 
-@other_handler_app.cls(image=image)
-class ClsWithForceBuild:
-    @build(force=True)
-    def build(self):
-        pass
+with pytest.warns(DeprecationError, match="@modal.build"):
 
-    @method()
-    def method(self):
-        pass
+    @other_handler_app.cls(image=image)
+    class ClsWithForceBuild:
+        @build(force=True)
+        def build(self):
+            pass
+
+        @method()
+        def method(self):
+            pass
 
 
 def test_force_build_image(client, servicer):
@@ -758,19 +764,21 @@ def test_force_build_image(client, servicer):
 build_timeout_handler_app = App("build-timeout-handler-app")
 
 
-@build_timeout_handler_app.cls(image=image)
-class ClsWithBuildTimeout:
-    @build(timeout=123)
-    def timeout_build(self):
-        pass
+with pytest.warns(DeprecationError, match="@modal.build"):
 
-    @build()
-    def default_timeout_build(self):
-        pass
+    @build_timeout_handler_app.cls(image=image)
+    class ClsWithBuildTimeout:
+        @build(timeout=123)
+        def timeout_build(self):
+            pass
 
-    @method()
-    def method(self):
-        pass
+        @build()
+        def default_timeout_build(self):
+            pass
+
+        @method()
+        def method(self):
+            pass
 
 
 def test_build_timeout_image(client, servicer):
@@ -782,7 +790,7 @@ def test_build_timeout_image(client, servicer):
         assert service_function.timeout_secs == 86400
 
 
-@pytest.mark.parametrize("decorator", [build, enter, exit])
+@pytest.mark.parametrize("decorator", [enter, exit])
 def test_disallow_lifecycle_decorators_with_method(decorator):
     name = decorator.__name__.split("_")[-1]  # remove synchronicity prefix
     with pytest.raises(InvalidError, match=f"Cannot use `@{name}` decorator with `@method`."):
@@ -1041,3 +1049,29 @@ def test_modal_object_param_uses_wrapped_type(servicer, set_env_client, client):
     container_params = deserialize_params(req.serialized_params, function_def, _client)
     args, kwargs = container_params
     assert type(kwargs["x"]) == type(dct)
+
+
+def test_using_method_on_uninstantiated_cls(recwarn):
+    app = App()
+
+    @app.cls(serialized=True)
+    class C:
+        @method()
+        def method(self):
+            pass
+
+    assert len(recwarn) == 0
+    with pytest.raises(AttributeError):
+        C.blah  # type: ignore   # noqa
+    assert len(recwarn) == 0
+
+    assert isinstance(C().method, Function)  # should be fine to access on an instance of the class
+    assert len(recwarn) == 0
+
+    # The following should warn since it's accessed on the class directly
+    C.method  # noqa  # triggers a deprecation warning
+    # TODO: this will be an AttributeError or return a non-modal unbound function in the future:
+    assert len(recwarn) == 1
+    warning_string = str(recwarn[0].message)
+    assert "instantiate classes before using methods" in warning_string
+    assert "C().method instead of C.method" in warning_string

@@ -74,7 +74,7 @@ Some "meta-options" are set using environment variables only:
 * `MODAL_PROFILE` lets you use multiple sections in the .toml file
   and switch between them. It defaults to "default".
 """
-
+import enum
 import logging
 import os
 import typing
@@ -192,6 +192,24 @@ def _to_boolean(x: object) -> bool:
     return str(x).lower() not in {"", "0", "false"}
 
 
+class IncludeSourceMode(enum.Enum):
+    NONE = "none"  # can only be set in source, can't be set in config
+    MAIN_PACKAGE_ONLY = "main-package"  # also represented by AUTOMOUNT=0 in config
+    FIRST_PARTY = "first-party"  # can only be set in source, can't be set in config
+
+    # LEGACY_FIRST_PARTY_NON_INSTALLED has the same effect as FIRST_PARTY_NON_INSTALLED but warns if modules
+    # are de facto automounted, so users can migrate to explicit
+    CONFIG_BASED_FIRST_PARTY = "legacy-first-party"
+
+
+def _to_automount_value(x: object) -> str:
+    return (
+        IncludeSourceMode.CONFIG_BASED_FIRST_PARTY.value
+        if _to_boolean(x)
+        else IncludeSourceMode.MAIN_PACKAGE_ONLY.value
+    )
+
+
 class _Setting(typing.NamedTuple):
     default: typing.Any = None
     transform: typing.Callable[[str], typing.Any] = lambda x: x  # noqa: E731
@@ -208,7 +226,9 @@ _SETTINGS = {
     "sync_entrypoint": _Setting(),
     "logs_timeout": _Setting(10, float),
     "image_id": _Setting(),
-    "automount": _Setting(True, transform=_to_boolean),
+    "automount": _Setting(
+        IncludeSourceMode.CONFIG_BASED_FIRST_PARTY.value, transform=_to_automount_value
+    ),  # To be deprecated, set include_source in code instead
     "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),
     "function_runtime_debug": _Setting(False, transform=_to_boolean),  # For internal debugging use.

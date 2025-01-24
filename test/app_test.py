@@ -6,7 +6,7 @@ import time
 
 from grpclib import GRPCError, Status
 
-from modal import App, Dict, Image, Mount, Secret, Stub, Volume, enable_output, web_endpoint
+from modal import App, Image, Mount, Secret, Stub, Volume, enable_output, web_endpoint
 from modal._utils.async_utils import synchronizer
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import _parse_custom_domains
@@ -14,13 +14,6 @@ from modal.runner import deploy_app, deploy_stub, run_app
 from modal_proto import api_pb2
 
 from .supports import module_1, module_2
-
-
-@pytest.mark.asyncio
-async def test_attrs(servicer, client):
-    app = App()
-    with pytest.raises(DeprecationError):
-        app.d = Dict.from_name("xyz")
 
 
 def square(x):
@@ -209,7 +202,7 @@ def test_init_types():
     App(
         image=Image.debian_slim().pip_install("pandas"),
         secrets=[Secret.from_dict()],
-        mounts=[Mount.from_local_file(__file__)],
+        mounts=[Mount._from_local_file(__file__)],  # TODO: remove
     )
 
 
@@ -401,6 +394,15 @@ def test_app_interactive(servicer, client, capsys):
     assert captured.out.endswith("\nsome data\n\r")
 
 
+def test_app_interactive_no_output(servicer, client):
+    app = App()
+
+    with pytest.warns(match="Interactive mode is disabled because no output manager is active"):
+        with app.run(client=client, interactive=True):
+            # Verify that interactive mode was disabled
+            assert not app.is_interactive
+
+
 def test_show_progress_deprecations(client, monkeypatch):
     app = App()
 
@@ -437,3 +439,36 @@ def test_app_create_bad_environment_name_error(client):
             pass
 
     assert len(asyncio.all_tasks(synchronizer._loop)) == 1  # no trailing tasks, except the `loop_inner` ever-task
+
+
+def test_overriding_function_warning(caplog):
+    app = App()
+
+    @app.function(serialized=True)
+    def func():  # type: ignore
+        return 1
+
+    assert len(caplog.messages) == 0
+
+    app_2 = App()
+    app_2.include(app)
+
+    assert len(caplog.messages) == 0
+
+    app_3 = App()
+
+    app_3.include(app)
+    app_3.include(app_2)
+
+    assert len(caplog.messages) == 0
+
+    app_4 = App()
+
+    @app_4.function(serialized=True)  # type: ignore
+    def func():  # noqa: F811
+        return 2
+
+    assert len(caplog.messages) == 0
+
+    app_3.include(app_4)
+    assert "Overriding existing function" in caplog.messages[0]
