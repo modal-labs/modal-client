@@ -326,7 +326,8 @@ class FunctionInfo:
 
         # make sure the function's own entrypoint is included:
         if self._type == FunctionInfoType.PACKAGE:
-            return [_Mount._from_local_python_packages(self.module_name, ignore=NON_PYTHON_FILES)]
+            top_level_package = self.module_name.split(".")[0]
+            return [_Mount._from_local_python_packages(top_level_package, ignore=NON_PYTHON_FILES)]
         elif self._type == FunctionInfoType.FILE:
             remote_path = ROOT_DIR / Path(self._file).name
             if not _is_modal_path(remote_path):
