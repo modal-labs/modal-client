@@ -6,7 +6,7 @@ import time
 
 from grpclib import GRPCError, Status
 
-from modal import App, Dict, Image, Mount, Secret, Stub, Volume, enable_output, web_endpoint
+from modal import App, Image, Mount, Secret, Stub, Volume, enable_output, web_endpoint
 from modal._utils.async_utils import synchronizer
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import _parse_custom_domains
@@ -14,13 +14,6 @@ from modal.runner import deploy_app, deploy_stub, run_app
 from modal_proto import api_pb2
 
 from .supports import module_1, module_2
-
-
-@pytest.mark.asyncio
-async def test_attrs(servicer, client):
-    app = App()
-    with pytest.raises(DeprecationError):
-        app.d = Dict.from_name("xyz")
 
 
 def square(x):

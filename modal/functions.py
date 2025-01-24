@@ -382,7 +382,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _serve_mounts: frozenset[_Mount]  # set at load time, only by loader
     _app: Optional["modal.app._App"] = None
     _obj: Optional["modal.cls._Obj"] = None  # only set for InstanceServiceFunctions and bound instance methods
-    _web_url: Optional[str]
+
+    _webhook_config: Optional[api_pb2.WebhookConfig] = None  # this is set in definition scope, only locally
+    _web_url: Optional[str]  # this is set on hydration
+
     _function_name: Optional[str]
     _is_method: bool
     _spec: Optional[_FunctionSpec] = None
@@ -920,6 +923,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._cluster_size = cluster_size
         obj._is_method = False
         obj._spec = function_spec  # needed for modal shell
+        obj._webhook_config = webhook_config  # only set locally
 
         # Used to check whether we should rebuild a modal.Image which uses `run_function`.
         gpus: list[GPU_T] = gpu if isinstance(gpu, list) else [gpu]
@@ -1143,6 +1147,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         """mdmd:hidden"""
         assert self._spec
         return self._spec
+
+    def _is_web_endpoint(self) -> bool:
+        # only defined in definition scope/locally, and not for class methods at the moment
+        return bool(self._webhook_config and self._webhook_config.type != api_pb2.WEBHOOK_TYPE_UNSPECIFIED)
 
     def get_build_def(self) -> str:
         """mdmd:hidden"""

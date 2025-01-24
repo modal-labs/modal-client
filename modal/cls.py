@@ -72,9 +72,7 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
 
 
 def _bind_instance_method(service_function: _Function, class_bound_method: _Function):
-    """mdmd:hidden
-
-    Binds an "instance service function" to a specific method name.
+    """Binds an "instance service function" to a specific method name.
     This "dummy" _Function gets no unique object_id and isn't backend-backed at the moment, since all
     it does it forward invocations to the underlying instance_service_function with the specified method,
     and we don't support web_config for parameterized methods at the moment.
@@ -129,6 +127,7 @@ def _bind_instance_method(service_function: _Function, class_bound_method: _Func
     fun._is_method = True
     fun._app = class_bound_method._app
     fun._spec = class_bound_method._spec
+    fun._is_web_endpoint = class_bound_method._is_web_endpoint
     return fun
 
 
@@ -431,6 +430,7 @@ class _Cls(_Object, type_prefix="cs"):
                     self._method_functions[method_name]._hydrate(
                         self._class_service_function.object_id, self._client, method_handle_metadata
                     )
+
             else:
                 # We're here when the function is loaded remotely (e.g. _Cls.from_name)
                 self._method_functions = {}
