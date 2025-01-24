@@ -24,6 +24,7 @@ from ._utils.async_utils import TaskContext, gather_cancel_on_exc, synchronize_a
 from ._utils.deprecation import deprecation_error
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name, is_valid_tag
+from ._utils.shell_utils import WindowSizeHandler
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .cls import _Cls
 from .config import config, logger
@@ -563,7 +564,12 @@ async def _deploy_app(
 
 
 async def _interactive_shell(
-    _app: _App, cmds: list[str], environment_name: str = "", pty: bool = True, **kwargs: Any
+    _app: _App,
+    cmds: list[str],
+    environment_name: str = "",
+    pty: bool = True,
+    window_size_handler: Optional[WindowSizeHandler] = None,
+    **kwargs: Any,
 ) -> None:
     """Run an interactive shell (like `bash`) within the image for this app.
 
@@ -611,7 +617,8 @@ async def _interactive_shell(
                 container_process = await sandbox.exec(
                     *sandbox_cmds, pty_info=get_pty_info(shell=True) if pty else None
                 )
-                await container_process.attach()
+                assert window_size_handler is not None, "window_size_handler must be provided when pty is True"
+                await container_process.attach(window_size_handler=window_size_handler)
             else:
                 container_process = await sandbox.exec(
                     *sandbox_cmds, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT

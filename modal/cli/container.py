@@ -8,6 +8,7 @@ from modal._object import _get_environment_name
 from modal._pty import get_pty_info
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
+from modal._utils.shell_utils import WindowSizeHandler
 from modal.cli.utils import ENV_OPTION, display_table, is_tty, stream_app_logs, timestamp_to_local
 from modal.client import _Client
 from modal.config import config
@@ -79,7 +80,8 @@ async def exec(
     res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(req)
 
     if pty:
-        await _ContainerProcess(res.exec_id, client).attach()
+        window_size_handler = WindowSizeHandler()
+        await _ContainerProcess(res.exec_id, client).attach(window_size_handler=window_size_handler)
     else:
         # TODO: redirect stderr to its own stream?
         await _ContainerProcess(res.exec_id, client, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT).wait()

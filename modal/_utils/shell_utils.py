@@ -3,10 +3,17 @@
 import asyncio
 import contextlib
 import errno
+import fcntl
 import os
 import select
+import signal
+import struct
 import sys
+import termios
+import threading
 from collections.abc import Coroutine
+from queue import Empty, Queue
+from types import FrameType
 from typing import Callable, Optional
 
 from modal._pty import raw_terminal, set_nonblocking
@@ -77,3 +84,54 @@ async def stream_from_stdin(handle_input: Callable[[bytes, int], Coroutine], use
         yield
     os.write(quit_pipe_write, b"\n")
     write_task.cancel()
+
+
+class WindowSizeHandler:
+    """Handles terminal window resize events."""
+
+    def __init__(self):
+        """Initialize window size handler. Must be called from the main thread to set signals properly.
+        In case this is invoked from a thread that is not the main thread, e.g. in tests, the context manager
+        becomes a no-op."""
+        self._is_main_thread = threading.current_thread() is threading.main_thread()
+        self._event_queue: Queue[tuple[int, int]] = Queue()
+
+        if self._is_main_thread and hasattr(signal, "SIGWINCH"):
+            signal.signal(signal.SIGWINCH, self._queue_resize_event)
+
+    def _queue_resize_event(self, signum: Optional[int] = None, frame: Optional[FrameType] = None) -> None:
+        """Signal handler for SIGWINCH that queues events."""
+        try:
+            hw = struct.unpack("hh", fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b"1234"))
+            rows, cols = hw
+            self._event_queue.put((rows, cols))
+        except Exception:
+            # ignore failed window size reads
+            pass
+
+    @contextlib.asynccontextmanager
+    async def watch_window_size(self, handler: Callable[[int, int], Coroutine]):
+        """Context manager that processes window resize events from the queue.
+        Can be run from any thread. If the window manager was initialized from a thread that is not the main thread,
+        e.g. in tests, this context manager is a no-op.
+
+        Args:
+            handler: Callback function to handle window resize events
+        """
+        if not self._is_main_thread:
+            yield
+            return
+
+        async def process_events():
+            while True:
+                try:
+                    rows, cols = self._event_queue.get_nowait()
+                    await handler(rows, cols)
+                except Empty:
+                    await asyncio.sleep(0.1)
+
+        event_task = asyncio.create_task(process_events())
+        try:
+            yield
+        finally:
+            event_task.cancel()
