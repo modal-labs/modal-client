@@ -192,7 +192,7 @@ def _to_boolean(x: object) -> bool:
     return str(x).lower() not in {"", "0", "false"}
 
 
-class IncludeSourceMode(enum.StrEnum):
+class IncludeSourceMode(enum.Enum):
     NONE = "none"  # can only be set in source, can't be set in config
     MAIN_PACKAGE_ONLY = "main-package"  # also represented by AUTOMOUNT=0 in config
     FIRST_PARTY = "first-party"  # can only be set in source, can't be set in config
