@@ -9,7 +9,7 @@ import toml
 
 import modal
 from modal._utils.async_utils import synchronize_api
-from modal.config import Config, _lookup_workspace, config
+from modal.config import Config, IncludeSourceMode, _lookup_workspace, config
 from modal.exception import InvalidError
 
 
@@ -165,28 +165,21 @@ def test_config_boolean(modal_config, traceback_value):
 @pytest.mark.parametrize(
     ["config_value", "expected_result"],
     [
-        ("'none'", "none"),
-        ("'None'", "none"),
-        ("'NONE'", "none"),
-        ("'first-party-packages'", "first-party-packages"),
-        ("'err'", ValueError),
+        ('automount = "0"', IncludeSourceMode.MAIN_PACKAGE_ONLY.value),
+        ("automount = 'first-party'", IncludeSourceMode.CONFIG_BASED_FIRST_PARTY.value),
+        ("automount = '1'", IncludeSourceMode.CONFIG_BASED_FIRST_PARTY.value),
+        ("", IncludeSourceMode.CONFIG_BASED_FIRST_PARTY.value),
     ],
 )
-def test_config_include_source_value(modal_config, config_value, expected_result):
+def test_config_automount_value(modal_config, config_value, expected_result):
     modal_toml = f"""
     [prof-1]
     token_id = 'ak-abc'
     token_secret = 'as_xyz'
-    include_source = {config_value}
+    {config_value}
     """
     with modal_config(modal_toml):
-        try:
-            val = Config().get("include_source", "prof-1")
-        except Exception as exc:
-            if issubclass(expected_result, Exception):
-                val = type(exc)
-            else:
-                raise
+        val = Config().get("automount", "prof-1")
         assert val == expected_result
 
 

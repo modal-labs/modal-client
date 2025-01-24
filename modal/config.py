@@ -202,8 +202,12 @@ class IncludeSourceMode(enum.Enum):
     CONFIG_BASED_FIRST_PARTY = "legacy-first-party"
 
 
-def _to_automount_value(x: object) -> IncludeSourceMode:
-    return IncludeSourceMode.CONFIG_BASED_FIRST_PARTY if _to_boolean(x) else IncludeSourceMode.MAIN_PACKAGE_ONLY
+def _to_automount_value(x: object) -> str:
+    return (
+        IncludeSourceMode.CONFIG_BASED_FIRST_PARTY.value
+        if _to_boolean(x)
+        else IncludeSourceMode.MAIN_PACKAGE_ONLY.value
+    )
 
 
 class _Setting(typing.NamedTuple):
@@ -223,7 +227,7 @@ _SETTINGS = {
     "logs_timeout": _Setting(10, float),
     "image_id": _Setting(),
     "automount": _Setting(
-        IncludeSourceMode.CONFIG_BASED_FIRST_PARTY, transform=_to_automount_value
+        IncludeSourceMode.CONFIG_BASED_FIRST_PARTY.value, transform=_to_automount_value
     ),  # To be deprecated, set include_source in code instead
     "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),

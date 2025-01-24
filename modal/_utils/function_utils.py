@@ -637,4 +637,4 @@ def get_include_source_mode(function_or_app_specific: Optional[str]) -> IncludeS
             # explicitly set in app/function
         return IncludeSourceMode(lower_case_input)
 
-    return config.get("automount")
+    return IncludeSourceMode(config.get("automount"))
