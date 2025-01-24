@@ -2,6 +2,7 @@
 import asyncio
 import inspect
 import os
+import typing
 from collections.abc import AsyncGenerator
 from enum import Enum
 from pathlib import Path, PurePosixPath
@@ -16,7 +17,7 @@ from modal_proto import api_pb2
 
 from .._serialization import deserialize, deserialize_data_format, serialize
 from .._traceback import append_modal_tb
-from ..config import logger
+from ..config import IncludeSourceMode, config, logger
 from ..exception import (
     DeserializationError,
     ExecutionError,
@@ -613,3 +614,27 @@ class FunctionCreationStatus:
                                 f"Custom domain for {method_definition.function_name} => [magenta underline]"
                                 f"{custom_domain.url}[/magenta underline]"
                             )
+
+
+def get_include_source_mode(function_or_app_specific: Optional[str]) -> IncludeSourceMode:
+    """Which "automount" behavior should a function use
+
+    function_or_app_specific: explicit value given in the @function or @cls decorator, in an App constructor, or None
+
+    If function_or_app_specific is specified, validate and return the IncludeSourceMode
+    If function_or_app_specific is None, infer it from config
+    """
+    if function_or_app_specific is not None:
+        from ..functions import IncludeSourceValue
+
+        valid_str_values = typing.get_args(IncludeSourceValue)
+        lower_case_input = function_or_app_specific.lower()
+        if lower_case_input not in valid_str_values:
+            valid_values_str = ", ".join(valid_str_values)
+            raise ValueError(
+                f"Invalid `include_source` value: {function_or_app_specific}. Use one of: {valid_values_str}"
+            )
+            # explicitly set in app/function
+        return IncludeSourceMode(lower_case_input)
+
+    return config.get("automount")
