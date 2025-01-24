@@ -11,6 +11,7 @@ from modal_version import __version__
 try:
     from ._runtime.execution_context import current_function_call_id, current_input_id, interact, is_local
     from ._tunnel import Tunnel, forward
+    from ._utils.function_utils import PickleSerialization
     from .app import App, Stub
     from .client import Client
     from .cloud_bucket_mount import CloudBucketMount
@@ -78,6 +79,7 @@ __all__ = [
     "interact",
     "method",
     "parameter",
+    "PickleSerialization",
     "web_endpoint",
     "web_server",
     "wsgi_app",

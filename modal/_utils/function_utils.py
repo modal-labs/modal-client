@@ -5,7 +5,7 @@ import os
 from collections.abc import AsyncGenerator
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Any, Callable, Literal, Optional
+from typing import Annotated, Any, Callable, Literal, Optional, get_args, get_origin
 
 from grpclib import GRPCError
 from grpclib.exceptions import StreamTerminatedError
@@ -14,7 +14,7 @@ from synchronicity.exceptions import UserCodeException
 import modal_proto
 from modal_proto import api_pb2
 
-from .._serialization import deserialize, deserialize_data_format, serialize
+from .._serialization import PARAM_TYPE_MAPPING, deserialize, deserialize_data_format, serialize
 from .._traceback import append_modal_tb
 from ..config import config, logger
 from ..exception import (
@@ -37,10 +37,15 @@ class FunctionInfoType(Enum):
     NOTEBOOK = "notebook"
 
 
+class PickleSerialization:
+    pass
+
+
 # TODO(elias): Add support for quoted/str annotations
 CLASS_PARAM_TYPE_MAP: dict[type, tuple["api_pb2.ParameterType.ValueType", str]] = {
     str: (api_pb2.PARAM_TYPE_STRING, "string_default"),
     int: (api_pb2.PARAM_TYPE_INT, "int_default"),
+    PickleSerialization: (api_pb2.PARAM_TYPE_PICKLE, "pickle_default"),
 }
 
 
@@ -295,12 +300,23 @@ class FunctionInfo:
         signature = _get_class_constructor_signature(self.user_cls)
         for param in signature.parameters.values():
             has_default = param.default is not param.empty
-            if param.annotation not in CLASS_PARAM_TYPE_MAP:
-                raise InvalidError("modal.parameter() currently only support str or int types")
-            param_type, default_field = CLASS_PARAM_TYPE_MAP[param.annotation]
+            pickle_annotated = (
+                get_origin(param.annotation) == Annotated and PickleSerialization in get_args(param.annotation)[1:]
+            )
+            param_annotation = PickleSerialization if pickle_annotated else param.annotation
+            if param_annotation not in CLASS_PARAM_TYPE_MAP:
+                raise InvalidError(
+                    "To use custom types you must use typing.Annotated[<type>, modal.PickleSerialization],"
+                    + f" got {param_annotation}."
+                )
+            param_type, default_field = CLASS_PARAM_TYPE_MAP[param_annotation]
             class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=param_type)
             if has_default:
-                setattr(class_param_spec, default_field, param.default)
+                type_info = PARAM_TYPE_MAPPING.get(param_type)
+                if not type_info:
+                    raise ValueError(f"Unsupported parameter type: {param_type}")
+                converted_value = type_info.converter(param.default)
+                setattr(class_param_spec, default_field, converted_value)
             modal_parameters.append(class_param_spec)
 
         return api_pb2.ClassParameterInfo(

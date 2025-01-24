@@ -878,6 +878,7 @@ class UsingAnnotationParameters:
     a: int = modal.parameter()
     b: str = modal.parameter(default="hello")
     c: float = modal.parameter(init=False)
+    d: typing.Annotated[dict, modal.PickleSerialization] = modal.parameter(default={"foo": "bar"})
 
     @method()
     def get_value(self):
@@ -907,10 +908,10 @@ def test_implicit_constructor():
     assert c.a == 10
     assert c.get_value.local() == 10
     assert c.b == "hello"
-
-    d = UsingAnnotationParameters(a=11, b="goodbye")
+    assert c.d == {"foo": "bar"}
+    d = UsingAnnotationParameters(a=11, b="goodbye", d=[1, 2, 3])
     assert d.b == "goodbye"
-
+    assert d.d == [1, 2, 3]
     # TODO(elias): fix "eager" constructor call validation by looking at signature
     # with pytest.raises(TypeError, match="missing a required argument: 'a'"):
     #     UsingAnnotationParameters()

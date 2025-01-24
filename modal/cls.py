@@ -3,12 +3,12 @@ import inspect
 import os
 import typing
 from collections.abc import Collection
-from typing import Any, Callable, Optional, TypeVar, Union
+from typing import Annotated, Any, Callable, Optional, TypeVar, Union, get_args, get_origin
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
-from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP
+from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP, PickleSerialization
 from modal_proto import api_pb2
 
 from ._object import _get_environment_name, _Object
@@ -227,7 +227,7 @@ class _Obj:
         of containers and the warm_pool_size affects that common container pool.
 
         ```python notest
-        # Usage on a parametrized function.
+        # Usage on a parameterized function.
         Model = modal.Cls.lookup("my-app", "Model")
         Model("fine-tuned-model").keep_warm(2)
         ```
@@ -474,12 +474,18 @@ class _Cls(_Object, type_prefix="cs"):
 
         annotated_params = {k: t for k, t in annotations.items() if k in params}
         for k, t in annotated_params.items():
-            if t not in CLASS_PARAM_TYPE_MAP:
+            pickle_annotated = get_origin(t) == Annotated and PickleSerialization in get_args(t)[1:]
+            param_annotation = PickleSerialization if pickle_annotated else t
+
+            if param_annotation not in CLASS_PARAM_TYPE_MAP:
                 t_name = getattr(t, "__name__", repr(t))
                 supported = ", ".join(t.__name__ for t in CLASS_PARAM_TYPE_MAP.keys())
                 raise InvalidError(
                     f"{user_cls.__name__}.{k}: {t_name} is not a supported parameter type. Use one of: {supported}"
                 )
+                # TODO:
+                # raise if cls has webhooks
+                # and no default value for pickle parameter
 
     @staticmethod
     def from_local(user_cls, app: "modal.app._App", class_service_function: _Function) -> "_Cls":

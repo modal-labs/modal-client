@@ -5,7 +5,7 @@ app = modal.App()
 
 
 @app.cls()
-class AParametrized:
+class AParameterized:
     def __init__(self, x: int):
         self._x = x
 
