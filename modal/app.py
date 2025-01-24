@@ -118,23 +118,6 @@ class _FunctionDecoratorType:
         ...
 
 
-_app_attr_error = """\
-App assignments of the form `app.x` or `app["x"]` are deprecated!
-
-The only use cases for these assignments is in conjunction with `.new()`, which is now
-in itself deprecated. If you are constructing objects with `.from_name(...)`, there is no
-need to assign those objects to the app. Example:
-
-```python
-d = modal.Dict.from_name("my-dict", create_if_missing=True)
-
-@app.function()
-def f(x, y):
-    d[x] = y  # Refer to d in global scope
-```
-"""
-
-
 class _App:
     """A Modal App is a group of functions and classes that are deployed together.
 
@@ -302,34 +285,6 @@ class _App:
     def _validate_blueprint_value(self, key: str, value: Any):
         if not isinstance(value, _Object):
             raise InvalidError(f"App attribute `{key}` with value {value!r} is not a valid Modal object")
-
-    def __getitem__(self, tag: str):
-        deprecation_error((2024, 3, 25), _app_attr_error)
-
-    def __setitem__(self, tag: str, obj: _Object):
-        deprecation_error((2024, 3, 25), _app_attr_error)
-
-    def __getattr__(self, tag: str):
-        # TODO(erikbern): remove this method later
-        assert isinstance(tag, str)
-        if tag.startswith("__"):
-            # Hacky way to avoid certain issues, e.g. pickle will try to look this up
-            raise AttributeError(f"App has no member {tag}")
-        if tag not in self._functions or tag not in self._classes:
-            # Primarily to make hasattr work
-            raise AttributeError(f"App has no member {tag}")
-        deprecation_error((2024, 3, 25), _app_attr_error)
-
-    def __setattr__(self, tag: str, obj: _Object):
-        # TODO(erikbern): remove this method later
-        # Note that only attributes defined in __annotations__ are set on the object itself,
-        # everything else is registered on the indexed_objects
-        if tag in self.__annotations__:
-            object.__setattr__(self, tag, obj)
-        elif tag == "image":
-            self._image = obj
-        else:
-            deprecation_error((2024, 3, 25), _app_attr_error)
 
     @property
     def image(self) -> _Image:

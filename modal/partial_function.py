@@ -92,6 +92,11 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     def _get_raw_f(self) -> Callable[P, ReturnType]:
         return self.raw_f
 
+    def _is_web_endpoint(self) -> bool:
+        if self.webhook_config is None:
+            return False
+        return self.webhook_config.type != api_pb2.WEBHOOK_TYPE_UNSPECIFIED
+
     def __get__(self, obj, objtype=None) -> _Function[P, ReturnType, OriginalReturnType]:
         k = self.raw_f.__name__
         if obj:  # accessing the method on an instance of a class, e.g. `MyClass().fun``
