@@ -6,6 +6,7 @@ import pytest
 import time
 import typing
 from contextlib import contextmanager
+from test.helpers import deploy_app_externally
 
 from synchronicity.exceptions import UserCodeException
 
@@ -1045,14 +1046,45 @@ def test_from_name_web_url(servicer, set_env_client):
 
 
 @pytest.mark.parametrize(
-    ["app_constructor_value", "function_decorator_value", "config_value", "expected_value"],
+    ["config_automount", "app_constructor_value", "function_decorator_value", "expected_mounts"],
     [
-        (None, None, None, "legacy-first-party"),
+        (None, None, None, 2),  # default with no options: entrypoint + first party (automount)
+        ("0", None, None, 1),  # automount=0 in config - entrypoint only. Warn about config being deprecated
+        ("1", None, None, 2),  # automount=1 explicit in config. Warn about config based automount=1 going away
+        ("1", "none", None, 0),  # automount=1 explicit in config. Warn about config based automount=1 going away
+        ("0", "none", None, 0),
+        (None, "none", None, 0),
+        (None, "none", "main-package", 1),
+        (None, "none", "first-party", 2),
+        (None, "main-package", "first-party", 2),
     ],
 )
-def test_include_source_mode(app_constructor_value, function_decorator_value, config_value, expected_value):
-    app = App(include_source=app_constructor_value)
+def test_include_source_mode(
+    app_constructor_value, function_decorator_value, config_automount, expected_mounts, servicer, credentials, tmp_path
+):
+    # a little messy since it tests the "end to end" mounting behavior for the app
+    app_constructor_value = "None" if app_constructor_value is None else f'"{app_constructor_value}"'
+    function_decorator_value = "None" if function_decorator_value is None else f'"{function_decorator_value}"'
+    src = f"""
+import modal
+import mod  # mod.py needs to be added for this file to load, so it needs to be included as source
 
-    @app.function(include_source=function_decorator_value)
-    def f():
-        pass
+app = modal.App(include_source={app_constructor_value})
+
+@app.function(include_source={function_decorator_value})
+def f():
+    pass
+"""
+    entrypoint_file = tmp_path / "main.py"
+    (tmp_path / "mod.py").touch()  # some file
+    entrypoint_file.write_text(src)
+
+    if config_automount is not None:
+        env = {"MODAL_AUTOMOUNT": config_automount}
+    else:
+        env = {}
+    output = deploy_app_externally(servicer, credentials, str(entrypoint_file), env=env)
+    print(output)
+    mounts = servicer.mounts_excluding_published_client()
+
+    assert len(mounts) == expected_mounts

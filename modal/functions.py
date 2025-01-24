@@ -91,7 +91,7 @@ if TYPE_CHECKING:
 
 
 # type for in-code user-provided automount values
-IncludeSourceValue = Literal["none", "main-package-only", "first-party"]
+IncludeSourceValue = Literal["none", "main-package", "first-party"]
 
 
 @dataclasses.dataclass
@@ -369,10 +369,17 @@ OriginalReturnType = typing.TypeVar(
 )  # differs from return type if ReturnType is coroutine
 
 
-def get_include_source_mode(function_or_app_specific: Optional[IncludeSourceValue]) -> IncludeSourceMode:
+def get_include_source_mode(function_or_app_specific: Optional[str]) -> IncludeSourceMode:
     if function_or_app_specific is not None:
-        # explicitly set in app/function
-        return IncludeSourceMode(function_or_app_specific)
+        valid_str_values = IncludeSourceValue.__args__
+        lower_case_input = function_or_app_specific.lower()
+        if lower_case_input not in valid_str_values:
+            valid_values_str = ", ".join(valid_str_values)
+            raise ValueError(
+                f"Invalid `include_source` value: {function_or_app_specific}. Use one of: {valid_values_str}"
+            )
+            # explicitly set in app/function
+        return IncludeSourceMode(lower_case_input)
 
     return config.get("automount")
 

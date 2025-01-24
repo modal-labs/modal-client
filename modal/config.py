@@ -194,7 +194,7 @@ def _to_boolean(x: object) -> bool:
 
 class IncludeSourceMode(enum.StrEnum):
     NONE = "none"  # can only be set in source, can't be set in config
-    MAIN_PACKAGE_ONLY = "main-package-only"  # also represented by AUTOMOUNT=0 in config
+    MAIN_PACKAGE_ONLY = "main-package"  # also represented by AUTOMOUNT=0 in config
     FIRST_PARTY = "first-party"  # can only be set in source, can't be set in config
 
     # LEGACY_FIRST_PARTY_NON_INSTALLED has the same effect as FIRST_PARTY_NON_INSTALLED but warns if modules

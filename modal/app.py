@@ -187,6 +187,8 @@ class _App:
     _running_app: Optional[RunningApp]  # Various app info
     _client: Optional[_Client]
 
+    _include_source_default: Optional[IncludeSourceValue] = None
+
     def __init__(
         self,
         name: Optional[str] = None,
@@ -211,6 +213,7 @@ class _App:
 
         self._name = name
         self._description = name
+        self._include_source_default = include_source
 
         check_sequence(mounts, _Mount, "`mounts=` has to be a list or tuple of Mount objects")
         check_sequence(secrets, _Secret, "`secrets=` has to be a list or tuple of Secret objects")
@@ -798,7 +801,7 @@ class _App:
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,  # Experimental: Clustered functions
-                include_source=include_source,
+                include_source=include_source or self._include_source_default,
             )
 
             self._add_function(function, webhook_config is not None)
@@ -926,7 +929,7 @@ class _App:
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
-                include_source=include_source,
+                include_source=include_source or self._include_source_default,
                 _experimental_buffer_containers=_experimental_buffer_containers,
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
