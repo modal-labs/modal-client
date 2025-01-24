@@ -168,6 +168,7 @@ enum ParameterType {
   PARAM_TYPE_UNSPECIFIED = 0;
   PARAM_TYPE_STRING = 1;
   PARAM_TYPE_INT = 2;
+  PARAM_TYPE_PICKLE = 3;
 }
 
 enum ProgressType {
@@ -681,6 +682,7 @@ message ClassParameterSpec {
   oneof default_oneof {
     string string_default = 4;
     int64 int_default = 5;
+    bytes pickle_default = 6;
   }
 }
 
@@ -693,6 +695,7 @@ message ClassParameterValue {
   oneof value_oneof {
     string string_value = 3;
     int64 int_value = 4;
+    bytes pickle_value = 5;
   }
 }
 
