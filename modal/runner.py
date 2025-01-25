@@ -145,12 +145,11 @@ async def _create_all_objects(
     client: _Client,
     running_app: RunningApp,
     run_result: RunResult,
-    functions: dict[str, _Function],
-    classes: dict[str, _Cls],
+    app: _App,
     environment_name: str,
 ) -> None:
     """Create objects that have been defined but not created on the server."""
-    indexed_objects: dict[str, _Object] = {**functions, **classes}
+    indexed_objects: dict[str, _Object] = {**app._functions, **app._classes}
     resolver = Resolver(
         client,
         environment_name=environment_name,
@@ -365,7 +364,7 @@ async def _run_app(
 
         try:
             # Create all members
-            await _create_all_objects(client, running_app, run_result, app._functions, app._classes, environment_name)
+            await _create_all_objects(client, running_app, run_result, app, environment_name)
 
             # Publish the app
             await _publish_app(client, running_app, run_result, app_state, app._functions, app._classes)
@@ -468,8 +467,7 @@ async def _serve_update(
             client,
             running_app,
             run_result,
-            app._functions,
-            app._classes,
+            app,
             environment_name,
         )
 
@@ -560,8 +558,7 @@ async def _deploy_app(
                 client,
                 running_app,
                 run_result,
-                app._functions,
-                app._classes,
+                app,
                 environment_name=environment_name,
             )
 
