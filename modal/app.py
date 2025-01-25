@@ -302,8 +302,8 @@ class _App:
             obj._unhydrate()
 
     @asynccontextmanager
-    async def _set_local_app(self, client: _Client, running_app: RunningApp) -> AsyncGenerator[None, None]:
-        self._app_id = running_app.app_id
+    async def _set_local_app(self, client: _Client, running_app: RunningApp, run_result: "RunResult") -> AsyncGenerator[None, None]:
+        self._app_id = run_result.app_id
         self._running_app = running_app
         self._client = client
         try:
@@ -437,8 +437,8 @@ class _App:
 
         self._classes[tag] = cls
 
-    def _init_container(self, client: _Client, running_app: RunningApp):
-        self._app_id = running_app.app_id
+    def _init_container(self, client: _Client, app_id: str, running_app: RunningApp):
+        self._app_id = app_id
         self._running_app = running_app
         self._client = client
 

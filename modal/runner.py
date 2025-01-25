@@ -45,6 +45,27 @@ else:
 V = TypeVar("V")
 
 
+@dataclasses.dataclass(frozen=True)
+class DeployResult:
+    """Dataclass representing the result of deploying an app."""
+
+    app_id: str
+    app_page_url: str
+    app_logs_url: str
+    warnings: list[str]
+
+
+@dataclasses.dataclass(frozen=True)
+class RunResult:
+    """Dataclass representing the result of running an app."""
+    # TODO(erikbern): merge with DeployResult?
+
+    app_id: str
+    app_page_url: str
+    app_logs_url: Optional[str] = None
+    # warnings: list[str]
+
+
 async def _heartbeat(client: _Client, app_id: str) -> None:
     request = api_pb2.AppHeartbeatRequest(app_id=app_id)
     # TODO(erikbern): we should capture exceptions here
@@ -53,7 +74,7 @@ async def _heartbeat(client: _Client, app_id: str) -> None:
     await retry_transient_errors(client.stub.AppHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT)
 
 
-async def _init_local_app_existing(client: _Client, existing_app_id: str, environment_name: str) -> RunningApp:
+async def _init_local_app_existing(client: _Client, existing_app_id: str, environment_name: str) -> tuple[RunningApp, RunResult]:
     # Get all the objects first
     obj_req = api_pb2.AppGetLayoutRequest(app_id=existing_app_id)
     obj_resp, _ = await gather_cancel_on_exc(
@@ -62,11 +83,9 @@ async def _init_local_app_existing(client: _Client, existing_app_id: str, enviro
         _get_environment_cached(environment_name, client),
     )
     app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
-    return running_app_from_layout(
-        existing_app_id,
-        obj_resp.app_layout,
-        app_page_url=app_page_url,
-    )
+    running_app: RunningApp = running_app_from_layout(obj_resp.app_layout)
+    run_result: RunResult = RunResult(existing_app_id, app_page_url=app_page_url)
+    return (running_app, run_result)
 
 
 async def _init_local_app_new(
@@ -75,7 +94,7 @@ async def _init_local_app_new(
     app_state: int,  # ValueType
     environment_name: str = "",
     interactive: bool = False,
-) -> RunningApp:
+) -> tuple[RunningApp, RunResult]:
     app_req = api_pb2.AppCreateRequest(
         description=description,
         environment_name=environment_name,
@@ -87,12 +106,13 @@ async def _init_local_app_new(
         _get_environment_cached(environment_name, client),
     )
     logger.debug(f"Created new app with id {app_resp.app_id}")
-    return RunningApp(
+    running_app: RunningApp = RunningApp(interactive=interactive)
+    run_result: RunResult = RunResult(
         app_resp.app_id,
         app_page_url=app_resp.app_page_url,
         app_logs_url=app_resp.app_logs_url,
-        interactive=interactive,
     )
+    return (running_app, run_result)
 
 
 async def _init_local_app_from_name(
@@ -100,7 +120,7 @@ async def _init_local_app_from_name(
     name: str,
     namespace: Any,
     environment_name: str = "",
-) -> RunningApp:
+) -> tuple[RunningApp, RunResult]:
     # Look up any existing deployment
     app_req = api_pb2.AppGetByDeploymentNameRequest(
         name=name,
@@ -122,6 +142,7 @@ async def _init_local_app_from_name(
 async def _create_all_objects(
     client: _Client,
     running_app: RunningApp,
+    run_result: RunResult,
     functions: dict[str, _Function],
     classes: dict[str, _Cls],
     environment_name: str,
@@ -131,7 +152,7 @@ async def _create_all_objects(
     resolver = Resolver(
         client,
         environment_name=environment_name,
-        app_id=running_app.app_id,
+        app_id=run_result.app_id,
     )
     with resolver.display():
         # Get current objects, and reset all objects
@@ -177,6 +198,7 @@ async def _create_all_objects(
 async def _publish_app(
     client: _Client,
     running_app: RunningApp,
+    run_result: RunResult,
     app_state: int,  # api_pb2.AppState.value
     functions: dict[str, _Function],
     classes: dict[str, _Cls],
@@ -188,7 +210,7 @@ async def _publish_app(
     definition_ids = {obj.object_id: obj._get_metadata().definition_id for obj in functions.values()}  # type: ignore
 
     request = api_pb2.AppPublishRequest(
-        app_id=running_app.app_id,
+        app_id=run_result.app_id,
         name=name,
         deployment_tag=tag,
         app_state=app_state,  # type: ignore  : should be a api_pb2.AppState.value
@@ -298,7 +320,9 @@ async def _run_app(
         )
         interactive = False
 
-    running_app: RunningApp = await _init_local_app_new(
+    running_app: RunningApp
+    run_result: RunResult
+    running_app, run_result = await _init_local_app_new(
         client,
         app.description or "",
         environment_name=environment_name or "",
@@ -307,12 +331,12 @@ async def _run_app(
     )
 
     logs_timeout = config["logs_timeout"]
-    async with app._set_local_app(client, running_app), TaskContext(grace=logs_timeout) as tc:
+    async with app._set_local_app(client, running_app, run_result), TaskContext(grace=logs_timeout) as tc:
         # Start heartbeats loop to keep the client alive
         # we don't log heartbeat exceptions in detached mode
         # as losing the local connection will not affect the running app
         def heartbeat():
-            return _heartbeat(client, running_app.app_id)
+            return _heartbeat(client, run_result.app_id)
 
         tc.infinite_loop(heartbeat, sleep=HEARTBEAT_INTERVAL, log_exception=not detach)
         logs_loop: Optional[asyncio.Task] = None
@@ -325,32 +349,32 @@ async def _run_app(
 
             with output_mgr.make_live(output_mgr.step_progress("Initializing...")):
                 initialized_msg = (
-                    f"Initialized. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
+                    f"Initialized. [grey70]View run at [underline]{run_result.app_page_url}[/underline][/grey70]"
                 )
                 output_mgr.print(output_mgr.step_completed(initialized_msg))
-                output_mgr.update_app_page_url(running_app.app_page_url or "ERROR:NO_APP_PAGE")
+                output_mgr.update_app_page_url(run_result.app_page_url or "ERROR:NO_APP_PAGE")
 
             # Start logs loop
 
             logs_loop = tc.create_task(
-                get_app_logs_loop(client, output_mgr, app_id=running_app.app_id, app_logs_url=running_app.app_logs_url)
+                get_app_logs_loop(client, output_mgr, app_id=run_result.app_id, app_logs_url=run_result.app_logs_url)
             )
 
         try:
             # Create all members
-            await _create_all_objects(client, running_app, app._functions, app._classes, environment_name)
+            await _create_all_objects(client, running_app, run_result, app._functions, app._classes, environment_name)
 
             # Publish the app
-            await _publish_app(client, running_app, app_state, app._functions, app._classes)
+            await _publish_app(client, running_app, run_result, app_state, app._functions, app._classes)
         except asyncio.CancelledError as e:
             # this typically happens on sigint/ctrl-C during setup (the KeyboardInterrupt happens in the main thread)
             if output_mgr := _get_output_manager():
                 output_mgr.print("Aborting app initialization...\n")
 
-            await _status_based_disconnect(client, running_app.app_id, e)
+            await _status_based_disconnect(client, run_result.app_id, e)
             raise
         except BaseException as e:
-            await _status_based_disconnect(client, running_app.app_id, e)
+            await _status_based_disconnect(client, run_result.app_id, e)
             raise
 
         try:
@@ -366,7 +390,7 @@ async def _run_app(
             else:
                 yield app
             # successful completion!
-            await _status_based_disconnect(client, running_app.app_id, exc_info=None)
+            await _status_based_disconnect(client, run_result.app_id, exc_info=None)
         except KeyboardInterrupt as e:
             # this happens only if sigint comes in during the yield block above
             if detach:
@@ -374,18 +398,18 @@ async def _run_app(
                     output_mgr.print(output_mgr.step_completed("Shutting down Modal client."))
                     output_mgr.print(
                         "The detached app keeps running. You can track its progress at: "
-                        f"[magenta]{running_app.app_page_url}[/magenta]"
+                        f"[magenta]{run_result.app_page_url}[/magenta]"
                         ""
                     )
                 if logs_loop:
                     logs_loop.cancel()
-                await _status_based_disconnect(client, running_app.app_id, e)
+                await _status_based_disconnect(client, run_result.app_id, e)
             else:
                 if output_mgr := _get_output_manager():
                     output_mgr.print(
                         "Disconnecting from Modal - This will terminate your Modal app in a few seconds.\n"
                     )
-                await _status_based_disconnect(client, running_app.app_id, e)
+                await _status_based_disconnect(client, run_result.app_id, e)
                 if logs_loop:
                     try:
                         await asyncio.wait_for(logs_loop, timeout=logs_timeout)
@@ -396,13 +420,13 @@ async def _run_app(
                     output_mgr.print(
                         output_mgr.step_completed(
                             "App aborted. "
-                            f"[grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
+                            f"[grey70]View run at [underline]{run_result.app_page_url}[/underline][/grey70]"
                         )
                     )
             return
         except BaseException as e:
             logger.info("Exception during app run")
-            await _status_based_disconnect(client, running_app.app_id, e)
+            await _status_based_disconnect(client, run_result.app_id, e)
             raise
 
         # wait for logs gracefully, even though the task context would do the same
@@ -417,7 +441,7 @@ async def _run_app(
     if output_mgr := _get_output_manager():
         output_mgr.print(
             output_mgr.step_completed(
-                f"App completed. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
+                f"App completed. [grey70]View run at [underline]{run_result.app_page_url}[/underline][/grey70]"
             )
         )
 
@@ -432,35 +456,28 @@ async def _serve_update(
     # Used by child process to reinitialize a served app
     client = await _Client.from_env()
     try:
-        running_app: RunningApp = await _init_local_app_existing(client, existing_app_id, environment_name)
+        running_app: RunningApp
+        run_result: RunResult
+        running_app, run_result = await _init_local_app_existing(client, existing_app_id, environment_name)
 
         # Create objects
         await _create_all_objects(
             client,
             running_app,
+            run_result,
             app._functions,
             app._classes,
             environment_name,
         )
 
         # Publish the updated app
-        await _publish_app(client, running_app, api_pb2.APP_STATE_UNSPECIFIED, app._functions, app._classes)
+        await _publish_app(client, running_app, run_result, api_pb2.APP_STATE_UNSPECIFIED, app._functions, app._classes)
 
         # Communicate to the parent process
         is_ready.set()
     except asyncio.exceptions.CancelledError:
         # Stopped by parent process
         pass
-
-
-@dataclasses.dataclass(frozen=True)
-class DeployResult:
-    """Dataclass representing the result of deploying an app."""
-
-    app_id: str
-    app_page_url: str
-    app_logs_url: str
-    warnings: list[str]
 
 
 async def _deploy_app(
@@ -521,14 +538,16 @@ async def _deploy_app(
 
     t0 = time.time()
 
-    running_app: RunningApp = await _init_local_app_from_name(
+    running_app: RunningApp
+    run_result: RunResult
+    running_app, run_result = await _init_local_app_from_name(
         client, name, namespace, environment_name=environment_name
     )
 
     async with TaskContext(0) as tc:
         # Start heartbeats loop to keep the client alive
         def heartbeat():
-            return _heartbeat(client, running_app.app_id)
+            return _heartbeat(client, run_result.app_id)
 
         tc.infinite_loop(heartbeat, sleep=HEARTBEAT_INTERVAL)
 
@@ -537,17 +556,18 @@ async def _deploy_app(
             await _create_all_objects(
                 client,
                 running_app,
+                run_result,
                 app._functions,
                 app._classes,
                 environment_name=environment_name,
             )
 
             app_url, warnings = await _publish_app(
-                client, running_app, api_pb2.APP_STATE_DEPLOYED, app._functions, app._classes, name, tag
+                client, running_app, run_result, api_pb2.APP_STATE_DEPLOYED, app._functions, app._classes, name, tag
             )
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
-            await _disconnect(client, running_app.app_id, reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
+            await _disconnect(client, run_result.app_id, reason=api_pb2.APP_DISCONNECT_REASON_DEPLOYMENT_EXCEPTION)
             raise e
 
     if output_mgr := _get_output_manager():
@@ -555,9 +575,9 @@ async def _deploy_app(
         output_mgr.print(output_mgr.step_completed(f"App deployed in {t:.3f}s! 🎉"))
         output_mgr.print(f"\nView Deployment: [magenta]{app_url}[/magenta]")
     return DeployResult(
-        app_id=running_app.app_id,
-        app_page_url=running_app.app_page_url,
-        app_logs_url=running_app.app_logs_url,  # type: ignore
+        app_id=run_result.app_id,
+        app_page_url=run_result.app_page_url,
+        app_logs_url=run_result.app_logs_url,  # type: ignore
         warnings=[warning.message for warning in warnings],
     )
 

@@ -46,11 +46,11 @@ async def test_container_function_lazily_imported(container_client):
     object_handle_metadata: dict[str, Message] = {
         "fu-123": api_pb2.FunctionHandleMetadata(),
     }
-    container_app = RunningApp("ap-123", function_ids=function_ids, object_handle_metadata=object_handle_metadata)
+    container_app = RunningApp(function_ids=function_ids, object_handle_metadata=object_handle_metadata)
     app = App()
 
     # This is normally done in _container_entrypoint
-    app._init_container(container_client, container_app)
+    app._init_container(container_client, "ap-123", container_app)
 
     # Now, let's create my_f after the app started running and make sure it works
     my_f_container = app.function()(my_f_1)
