@@ -274,7 +274,7 @@ class _App:
         app = _App(name)
         app._app_id = response.app_id
         app._client = client
-        app._running_app = RunningApp(response.app_id, interactive=False)
+        app._running_app = RunningApp()
         return app
 
     def set_description(self, description: str):
@@ -303,14 +303,16 @@ class _App:
     async def _set_local_app(
         self, client: _Client, running_app: RunningApp, app_id: str, interactive: bool
     ) -> AsyncGenerator[None, None]:
-        self._running_app = running_app
         self._client = client
+        self._running_app = running_app
+        self._app_id = app_id
         self._interactive = interactive
         try:
             yield
         finally:
-            self._running_app = None
             self._client = None
+            self._running_app = None
+            self._app_id = None
             self._interactive = None
             self._uncreate_all_objects()
 
