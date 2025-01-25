@@ -312,7 +312,6 @@ class _App:
         finally:
             self._client = None
             self._running_app = None
-            self._app_id = None
             self._interactive = None
             self._uncreate_all_objects()
 
