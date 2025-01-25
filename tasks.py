@@ -154,7 +154,7 @@ def type_check(ctx):
         "modal/image.py",
         "modal/file_io.py",
         "modal/cli/import_refs.py",
-        "modal/sandbox_snapshot.py",
+        "modal/snapshot.py",
     ]
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
 

@@ -28,10 +28,10 @@ try:
     from .queue import Queue
     from .retries import Retries
     from .sandbox import Sandbox
-    from .sandbox_snapshot import SandboxSnapshot
     from .schedule import Cron, Period
     from .scheduler_placement import SchedulerPlacement
     from .secret import Secret
+    from .snapshot import SandboxSnapshot
     from .volume import Volume
 except Exception:
     print()

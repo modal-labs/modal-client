@@ -34,9 +34,9 @@ from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .proxy import _Proxy
-from .sandbox_snapshot import _SandboxSnapshot
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
+from .snapshot import _SandboxSnapshot
 from .stream_type import StreamType
 
 _default_image: _Image = _Image.debian_slim()
