@@ -300,8 +300,9 @@ class _App:
             obj._unhydrate()
 
     @asynccontextmanager
-    async def _set_local_app(self, client: _Client, running_app: RunningApp, run_result: "RunResult", interactive: bool) -> AsyncGenerator[None, None]:
-        self._app_id = run_result.app_id
+    async def _set_local_app(
+        self, client: _Client, running_app: RunningApp, app_id: str, interactive: bool
+    ) -> AsyncGenerator[None, None]:
         self._running_app = running_app
         self._client = client
         self._interactive = interactive

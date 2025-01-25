@@ -58,6 +58,7 @@ class DeployResult:
 @dataclasses.dataclass(frozen=True)
 class RunResult:
     """Dataclass representing the result of running an app."""
+
     # TODO(erikbern): merge with DeployResult?
 
     app_id: str
@@ -74,7 +75,9 @@ async def _heartbeat(client: _Client, app_id: str) -> None:
     await retry_transient_errors(client.stub.AppHeartbeat, request, attempt_timeout=HEARTBEAT_TIMEOUT)
 
 
-async def _init_local_app_existing(client: _Client, existing_app_id: str, environment_name: str) -> tuple[RunningApp, RunResult]:
+async def _init_local_app_existing(
+    client: _Client, existing_app_id: str, environment_name: str
+) -> tuple[RunningApp, RunResult]:
     # Get all the objects first
     obj_req = api_pb2.AppGetLayoutRequest(app_id=existing_app_id)
     obj_resp, _ = await gather_cancel_on_exc(
@@ -329,7 +332,9 @@ async def _run_app(
     )
 
     logs_timeout = config["logs_timeout"]
-    async with app._set_local_app(client, running_app, run_result, interactive), TaskContext(grace=logs_timeout) as tc:
+    async with app._set_local_app(client, running_app, run_result.app_id, interactive), TaskContext(
+        grace=logs_timeout
+    ) as tc:
         # Start heartbeats loop to keep the client alive
         # we don't log heartbeat exceptions in detached mode
         # as losing the local connection will not affect the running app
