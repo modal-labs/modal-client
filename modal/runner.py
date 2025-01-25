@@ -144,8 +144,8 @@ async def _init_local_app_from_name(
 async def _create_all_objects(
     client: _Client,
     running_app: RunningApp,
-    run_result: RunResult,
     app: _App,
+    app_id: str,
     environment_name: str,
 ) -> None:
     """Create objects that have been defined but not created on the server."""
@@ -153,7 +153,7 @@ async def _create_all_objects(
     resolver = Resolver(
         client,
         environment_name=environment_name,
-        app_id=run_result.app_id,
+        app_id=app_id,
     )
     with resolver.display():
         # Get current objects, and reset all objects
@@ -364,7 +364,7 @@ async def _run_app(
 
         try:
             # Create all members
-            await _create_all_objects(client, running_app, run_result, app, environment_name)
+            await _create_all_objects(client, running_app, app, run_result.app_id, environment_name)
 
             # Publish the app
             await _publish_app(client, running_app, run_result, app_state, app._functions, app._classes)
@@ -466,8 +466,8 @@ async def _serve_update(
         await _create_all_objects(
             client,
             running_app,
-            run_result,
             app,
+            run_result.app_id,
             environment_name,
         )
 
@@ -557,8 +557,8 @@ async def _deploy_app(
             await _create_all_objects(
                 client,
                 running_app,
-                run_result,
                 app,
+                run_result.app_id,
                 environment_name=environment_name,
             )
 
