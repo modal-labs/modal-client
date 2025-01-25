@@ -31,7 +31,7 @@ from .environments import _get_environment_cached
 from .exception import InteractiveTimeoutError, InvalidError, RemoteError, _CliUserExecutionError
 from .functions import _Function
 from .output import _get_output_manager, enable_output
-from .running_app import RunningApp, running_app_from_layout
+from .running_app import RunningApp
 from .sandbox import _Sandbox
 from .secret import _Secret
 from .stream_type import StreamType
@@ -86,7 +86,7 @@ async def _init_local_app_existing(
         _get_environment_cached(environment_name, client),
     )
     app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
-    running_app: RunningApp = running_app_from_layout(obj_resp.app_layout)
+    running_app: RunningApp = RunningApp(obj_resp.app_layout)
     run_result: RunResult = RunResult(existing_app_id, app_page_url=app_page_url)
     return (running_app, run_result)
 

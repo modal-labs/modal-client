@@ -38,7 +38,7 @@ from modal.partial_function import (
     _find_callables_for_obj,
     _PartialFunctionFlags,
 )
-from modal.running_app import RunningApp, running_app_from_layout
+from modal.running_app import RunningApp
 from modal_proto import api_pb2
 
 from ._runtime.container_io_manager import (
@@ -468,7 +468,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 batch_wait_ms = function_def.batch_linger_ms or 0
 
         # Get ids and metadata for objects (primarily functions and classes) on the app
-        container_app: RunningApp = running_app_from_layout(container_args.app_layout)
+        container_app: RunningApp = RunningApp(container_args.app_layout)
 
         # Initialize objects on the app.
         # This is basically only functions and classes - anything else is deprecated and will be unsupported soon

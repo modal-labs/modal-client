@@ -40,13 +40,11 @@ def temp_restore_path(tmpdir):
 
 @pytest.mark.asyncio
 async def test_container_function_lazily_imported(container_client):
-    function_ids: dict[str, str] = {
-        "my_f_1": "fu-123",
-    }
-    object_handle_metadata: dict[str, Message] = {
-        "fu-123": api_pb2.FunctionHandleMetadata(),
-    }
-    container_app = RunningApp(function_ids=function_ids, object_handle_metadata=object_handle_metadata)
+    app_layout: api_pb2.AppLayout = api_pb2.AppLayout(
+        function_ids={"my_f_1": "fu-123"},
+        objects=[api_pb2.Object(object_id="fu-123", function_handle_metadata=api_pb2.FunctionHandleMetadata())],
+    )
+    container_app = RunningApp(app_layout)
     app = App()
 
     # This is normally done in _container_entrypoint
