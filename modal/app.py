@@ -169,6 +169,7 @@ class _App:
     _app_id: Optional[str]  # Kept after app finishes
     _running_app: Optional[RunningApp]  # Various app info
     _client: Optional[_Client]
+    _interactive: Optional[bool]
 
     def __init__(
         self,
@@ -213,6 +214,7 @@ class _App:
         self._app_id = None
         self._running_app = None  # Set inside container, OR during the time an app is running locally
         self._client = None
+        self._interactive = None
 
         # Register this app. This is used to look up the app in the container, when we can't get it from the function
         _App._all_apps.setdefault(self._name, []).append(self)
@@ -223,13 +225,9 @@ class _App:
         return self._name
 
     @property
-    def is_interactive(self) -> bool:
+    def is_interactive(self) -> Optional[bool]:
         """Whether the current app for the app is running in interactive mode."""
-        # return self._name
-        if self._running_app:
-            return self._running_app.interactive
-        else:
-            return False
+        return self._interactive
 
     @property
     def app_id(self) -> Optional[str]:
@@ -302,15 +300,17 @@ class _App:
             obj._unhydrate()
 
     @asynccontextmanager
-    async def _set_local_app(self, client: _Client, running_app: RunningApp, run_result: "RunResult") -> AsyncGenerator[None, None]:
+    async def _set_local_app(self, client: _Client, running_app: RunningApp, run_result: "RunResult", interactive: bool) -> AsyncGenerator[None, None]:
         self._app_id = run_result.app_id
         self._running_app = running_app
         self._client = client
+        self._interactive = interactive
         try:
             yield
         finally:
             self._running_app = None
             self._client = None
+            self._interactive = None
             self._uncreate_all_objects()
 
     @asynccontextmanager

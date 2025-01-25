@@ -13,7 +13,6 @@ class RunningApp:
     function_ids: dict[str, str] = field(default_factory=dict)
     class_ids: dict[str, str] = field(default_factory=dict)
     object_handle_metadata: dict[str, Optional[Message]] = field(default_factory=dict)
-    interactive: bool = False
 
 
 def running_app_from_layout(app_layout: api_pb2.AppLayout) -> RunningApp:

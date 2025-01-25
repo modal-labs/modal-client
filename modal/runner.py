@@ -93,7 +93,6 @@ async def _init_local_app_new(
     description: str,
     app_state: int,  # ValueType
     environment_name: str = "",
-    interactive: bool = False,
 ) -> tuple[RunningApp, RunResult]:
     app_req = api_pb2.AppCreateRequest(
         description=description,
@@ -106,7 +105,7 @@ async def _init_local_app_new(
         _get_environment_cached(environment_name, client),
     )
     logger.debug(f"Created new app with id {app_resp.app_id}")
-    running_app: RunningApp = RunningApp(interactive=interactive)
+    running_app: RunningApp = RunningApp()
     run_result: RunResult = RunResult(
         app_resp.app_id,
         app_page_url=app_resp.app_page_url,
@@ -327,11 +326,10 @@ async def _run_app(
         app.description or "",
         environment_name=environment_name or "",
         app_state=app_state,
-        interactive=interactive,
     )
 
     logs_timeout = config["logs_timeout"]
-    async with app._set_local_app(client, running_app, run_result), TaskContext(grace=logs_timeout) as tc:
+    async with app._set_local_app(client, running_app, run_result, interactive), TaskContext(grace=logs_timeout) as tc:
         # Start heartbeats loop to keep the client alive
         # we don't log heartbeat exceptions in detached mode
         # as losing the local connection will not affect the running app
