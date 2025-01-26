@@ -2329,14 +2329,6 @@ message SandboxRestoreResponse {
   string sandbox_id = 1;
 }
 
-message SandboxSnapshotFromIdRequest {
-  string snapshot_id = 1;
-}
-
-message SandboxSnapshotFromIdResponse {
-  string snapshot_id = 1;
-}
-
 message SandboxSnapshotFsRequest {
   string sandbox_id = 1;
   float timeout = 2;
@@ -2347,6 +2339,14 @@ message SandboxSnapshotFsResponse {
   GenericResult result = 2;
   // Metadata may be empty since we may skip it for performance reasons.
   ImageMetadata image_metadata = 3;
+}
+
+message SandboxSnapshotGetRequest {
+  string snapshot_id = 1;
+}
+
+message SandboxSnapshotGetResponse {
+  string snapshot_id = 1;
 }
 
 message SandboxSnapshotRequest {
@@ -2992,8 +2992,8 @@ service ModalClient {
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
   rpc SandboxRestore(SandboxRestoreRequest) returns (SandboxRestoreResponse);
   rpc SandboxSnapshot(SandboxSnapshotRequest) returns (SandboxSnapshotResponse);
-  rpc SandboxSnapshotFromId(SandboxSnapshotFromIdRequest) returns (SandboxSnapshotFromIdResponse);
   rpc SandboxSnapshotFs(SandboxSnapshotFsRequest) returns (SandboxSnapshotFsResponse);
+  rpc SandboxSnapshotGet(SandboxSnapshotGetRequest) returns (SandboxSnapshotGetResponse);
   rpc SandboxSnapshotWait(SandboxSnapshotWaitRequest) returns (SandboxSnapshotWaitResponse);
   rpc SandboxStdinWrite(SandboxStdinWriteRequest) returns (SandboxStdinWriteResponse);
   rpc SandboxTagsSet(SandboxTagsSetRequest) returns (google.protobuf.Empty);
