@@ -23,7 +23,7 @@ class _SandboxSnapshot(_Object, type_prefix="sn"):
 
         async def _load(self: _SandboxSnapshot, resolver: Resolver, existing_object_id: Optional[str]):
             await retry_transient_errors(
-                client.stub.SandboxSnapshotFromId, api_pb2.SandboxSnapshotFromIdRequest(snapshot_id=sandbox_snapshot_id)
+                client.stub.SandboxSnapshotGet, api_pb2.SandboxSnapshotGetRequest(snapshot_id=sandbox_snapshot_id)
             )
 
         rep = "SandboxSnapshot()"
