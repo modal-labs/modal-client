@@ -307,20 +307,20 @@ async def test_volume_copy_2(client, tmp_path, servicer):
 def test_persisted(servicer, client, delete_as_instance_method):
     # Lookup should fail since it doesn't exist
     with pytest.raises(NotFoundError):
-        modal.Volume.lookup("xyz", client=client)
+        modal.Volume.from_name("xyz").hydrate(client)
 
     # Create it
-    modal.Volume.lookup("xyz", create_if_missing=True, client=client)
+    modal.Volume.from_name("xyz", create_if_missing=True).hydrate(client)
 
     # Lookup should succeed now
-    modal.Volume.lookup("xyz", client=client)
+    modal.Volume.from_name("xyz").hydrate(client)
 
     # Delete it
-    modal.Volume.delete("xyz", client=client)
+    modal.Volume.delete("xyz")
 
     # Lookup should fail again
     with pytest.raises(NotFoundError):
-        modal.Volume.lookup("xyz", client=client)
+        modal.Volume.from_name("xyz")
 
 
 def test_ephemeral(servicer, client):
@@ -378,9 +378,9 @@ async def test_open_files_error_annotation(tmp_path):
 
 
 @pytest.mark.parametrize("name", ["has space", "has/slash", "a" * 65])
-def test_invalid_name(servicer, client, name):
+def test_invalid_name(name):
     with pytest.raises(InvalidError, match="Invalid Volume name"):
-        modal.Volume.lookup(name)
+        modal.Volume.from_name(name)
 
 
 @pytest.fixture()
