@@ -74,7 +74,6 @@ Some "meta-options" are set using environment variables only:
 * `MODAL_PROFILE` lets you use multiple sections in the .toml file
   and switch between them. It defaults to "default".
 """
-import enum
 import logging
 import os
 import typing
@@ -87,6 +86,7 @@ from google.protobuf.empty_pb2 import Empty
 from modal_proto import api_pb2
 
 from ._utils.deprecation import deprecation_error
+from ._utils.function_utils import IncludeSourceMode
 from ._utils.logger import configure_logger
 from .exception import InvalidError
 
@@ -190,12 +190,6 @@ _profile = os.environ.get("MODAL_PROFILE") or _config_active_profile()
 
 def _to_boolean(x: object) -> bool:
     return str(x).lower() not in {"", "0", "false"}
-
-
-class IncludeSourceMode(enum.Enum):
-    INCLUDE_NOTHING = False  # can only be set in source, can't be set in config
-    INCLUDE_MAIN_PACKAGE = True  # also represented by AUTOMOUNT=0 in config
-    INCLUDE_FIRST_PARTY = "legacy"  # mounts all "local" modules in sys.modules - represented by AUTOMOUNT=1 in config
 
 
 def _to_automount_value(x: object) -> typing.Union[str, bool]:

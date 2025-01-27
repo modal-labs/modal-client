@@ -9,7 +9,8 @@ import toml
 
 import modal
 from modal._utils.async_utils import synchronize_api
-from modal.config import Config, IncludeSourceMode, _lookup_workspace, config
+from modal._utils.function_utils import IncludeSourceMode
+from modal.config import Config, _lookup_workspace, config
 from modal.exception import InvalidError
 
 

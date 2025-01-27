@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import enum
 import inspect
 import os
 import typing
@@ -17,7 +18,7 @@ from modal_proto import api_pb2
 
 from .._serialization import deserialize, deserialize_data_format, serialize
 from .._traceback import append_modal_tb
-from ..config import IncludeSourceMode, config, logger
+from ..config import config, logger
 from ..exception import (
     DeserializationError,
     ExecutionError,
@@ -614,6 +615,12 @@ class FunctionCreationStatus:
                                 f"Custom domain for {method_definition.function_name} => [magenta underline]"
                                 f"{custom_domain.url}[/magenta underline]"
                             )
+
+
+class IncludeSourceMode(enum.Enum):
+    INCLUDE_NOTHING = False  # can only be set in source, can't be set in config
+    INCLUDE_MAIN_PACKAGE = True  # also represented by AUTOMOUNT=0 in config
+    INCLUDE_FIRST_PARTY = "legacy"  # mounts all "local" modules in sys.modules - represented by AUTOMOUNT=1 in config
 
 
 def get_include_source_mode(function_or_app_specific) -> IncludeSourceMode:
