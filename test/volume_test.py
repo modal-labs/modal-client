@@ -316,11 +316,11 @@ def test_persisted(servicer, client, delete_as_instance_method):
     modal.Volume.from_name("xyz").hydrate(client)
 
     # Delete it
-    modal.Volume.delete("xyz")
+    modal.Volume.delete("xyz", client=client)
 
     # Lookup should fail again
     with pytest.raises(NotFoundError):
-        modal.Volume.from_name("xyz")
+        modal.Volume.from_name("xyz").hydrate(client)
 
 
 def test_ephemeral(servicer, client):
