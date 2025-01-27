@@ -1661,7 +1661,6 @@ message FunctionRetryPolicy {
 
 message FunctionStats {
   uint32 backlog = 1;
-  uint32 num_active_tasks = 2;
   uint32 num_total_tasks = 3;
 }
 
