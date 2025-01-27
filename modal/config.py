@@ -202,7 +202,7 @@ class IncludeSourceMode(enum.Enum):
     INCLUDE_FIRST_PARTY_DEFAULT = "default-legacy"
 
 
-def _to_automount_value(x: object) -> str:
+def _to_automount_value(x: object) -> typing.Union[str, bool]:
     return (
         IncludeSourceMode.INCLUDE_FIRST_PARTY_DEFAULT.value
         if _to_boolean(x)

@@ -616,7 +616,7 @@ class FunctionCreationStatus:
                             )
 
 
-def get_include_source_mode(function_or_app_specific: Optional[str]) -> IncludeSourceMode:
+def get_include_source_mode(function_or_app_specific) -> IncludeSourceMode:
     """Which "automount" behavior should a function use
 
     function_or_app_specific: explicit value given in the @function or @cls decorator, in an App constructor, or None
