@@ -226,7 +226,7 @@ async def _map_invocation(
                     api_pb2.FunctionRetryInputsItem(
                         input_jwt=item_context.input_jwt,
                         input=item_context.input,
-                        attempt_number=item_context.retry_manager.attempt_count,
+                        retry_count=item_context.retry_manager.attempt_count,
                     )
                 )
 
