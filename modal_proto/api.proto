@@ -1484,7 +1484,6 @@ message FunctionGetOutputsItem {
   string task_id = 6;
   double input_started_at = 7;
   double output_created_at = 8;
-  uint32 attempt_number = 9;
 }
 
 message FunctionGetOutputsRequest {
