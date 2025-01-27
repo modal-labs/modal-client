@@ -2,7 +2,7 @@
 import inspect
 import typing
 import warnings
-from collections.abc import AsyncGenerator, Coroutine, Sequence
+from collections.abc import AsyncGenerator, Awaitable, Coroutine, Sequence
 from pathlib import PurePosixPath
 from textwrap import dedent
 from typing import (
@@ -17,6 +17,7 @@ from typing import (
 import typing_extensions
 from google.protobuf.message import Message
 from synchronicity.async_wrap import asynccontextmanager
+from typing_extensions import Self
 
 from modal_proto import api_pb2
 
@@ -170,6 +171,9 @@ class _App:
     _running_app: Optional[RunningApp]  # Various app info
     _client: Optional[_Client]
 
+    # For when the App is constructed with .from_name
+    _load: Optional[Callable[[Self, _Client], Awaitable[None]]] = None
+
     def __init__(
         self,
         name: Optional[str] = None,
@@ -242,6 +246,44 @@ class _App:
         return self._description
 
     @staticmethod
+    def from_name(name: str, environment_name: str = "", create_if_missing: bool = False) -> "_App":
+        """Look up an App with a given name, creating a new App if necessary.
+
+        Note that Apps created through this method will be in a deployed state,
+        but they will not have any associated Functions or Classes.
+
+        This method is mainly useful for creating an App to associate with a Sandbox:
+
+        ```python
+        app = modal.App.from_name("my-app", create_if_missing=True)
+        app.hydrate()  # Pre-hydrate to accelerate Sandbox creation
+        modal.Sandbox.create("echo", "hi", app=app)
+        ```
+
+        When building an App that will be populated with Functions and Classes, you should
+        call the main `App()` constructor directly.
+        """
+
+        # TODO We need to enforce rules about App names, but we previously weren't in App.lookup
+        # So we probably need to add that gradually (i.e. as a warning first) to avoid breaking people?
+        async def _load(self: _App, client: _Client):
+            request = api_pb2.AppGetOrCreateRequest(
+                app_name=name,
+                environment_name=_get_environment_name(environment_name),
+                object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
+            )
+            response = await retry_transient_errors(client.stub.AppGetOrCreate, request)
+            self._app_id = response.app_id
+            self._client = client
+            # TODO should we also be calling AppGetLayout and populating the running_app with it?
+            self._running_app = RunningApp(response.app_id, interactive=False)
+
+        app = _App(name)
+        app._load = _load
+
+        return app
+
+    @staticmethod
     @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
         name: str,
@@ -263,21 +305,16 @@ class _App:
         if client is None:
             client = await _Client.from_env()
 
-        environment_name = _get_environment_name(environment_name)
-
-        request = api_pb2.AppGetOrCreateRequest(
-            app_name=name,
-            environment_name=environment_name,
-            object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
-        )
-
-        response = await retry_transient_errors(client.stub.AppGetOrCreate, request)
-
-        app = _App(name)
-        app._app_id = response.app_id
-        app._client = client
-        app._running_app = RunningApp(response.app_id, interactive=False)
+        app = _App.from_name(name, environment_name=environment_name, create_if_missing=create_if_missing)
+        assert app._load is not None  # Populated by from_name
+        await app._load(app, client)
         return app
+
+    async def hydrate(self, client: Optional[_Client] = None):
+        if self._load is None:
+            raise InvalidError("Apps must be constructed with .from_name() to be lazily hydrated.")
+        await self._load(self, client if client is not None else await _Client.from_env())
+        return self
 
     def set_description(self, description: str):
         self._description = description
