@@ -1457,6 +1457,7 @@ message FunctionGetInputsItem {
   reserved 4; // previously used
   string function_call_id = 5;
   FunctionCallInvocationType function_call_invocation_type = 6;
+  uint32 retry_count = 7;
 }
 
 message FunctionGetInputsRequest {
@@ -1629,6 +1630,7 @@ message FunctionPutOutputsItem {
   double input_started_at = 3;
   double output_created_at = 4;
   DataFormat data_format = 7; // for result.data_oneof
+  uint32 retry_count = 8;
 }
 
 message FunctionPutOutputsRequest {
@@ -1639,6 +1641,7 @@ message FunctionPutOutputsRequest {
 message FunctionRetryInputsItem {
   string input_jwt = 1;
   FunctionInput input = 2;
+  uint32 retry_count = 3;
 }
 
 message FunctionRetryInputsRequest {
