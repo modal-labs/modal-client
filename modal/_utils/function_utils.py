@@ -648,4 +648,5 @@ def get_include_source_mode(function_or_app_specific) -> IncludeSourceMode:
             # explicitly set in app/function
         return IncludeSourceMode(lower_case_input)
 
-    return IncludeSourceMode(config.get("automount"))
+    legacy_automount_mode: bool = config.get("automount")
+    return IncludeSourceMode.INCLUDE_FIRST_PARTY if legacy_automount_mode else IncludeSourceMode.INCLUDE_MAIN_PACKAGE
