@@ -909,7 +909,7 @@ def test_implicit_constructor():
     assert c.get_value.local() == 10
     assert c.b == "hello"
     assert c.d == {"foo": "bar"}
-    d = UsingAnnotationParameters(a=11, b="goodbye", d=[1, 2, 3])
+    d = UsingAnnotationParameters(a=11, b="goodbye", d=[1, 2, 3])  # type: ignore
     assert d.b == "goodbye"
     assert d.d == [1, 2, 3]
     # TODO(elias): fix "eager" constructor call validation by looking at signature
