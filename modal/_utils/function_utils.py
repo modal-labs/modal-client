@@ -5,7 +5,7 @@ import os
 from collections.abc import AsyncGenerator
 from enum import Enum
 from pathlib import Path, PurePosixPath
-from typing import Annotated, Any, Callable, Literal, Optional, get_args, get_origin
+from typing import Any, Callable, Literal, Optional
 
 from grpclib import GRPCError
 from grpclib.exceptions import StreamTerminatedError
@@ -108,6 +108,12 @@ def is_async(function):
 
 def get_function_type(is_generator: Optional[bool]) -> "api_pb2.Function.FunctionType.ValueType":
     return api_pb2.Function.FUNCTION_TYPE_GENERATOR if is_generator else api_pb2.Function.FUNCTION_TYPE_FUNCTION
+
+
+def get_param_annotation(annotation):
+    if PickleSerialization in getattr(annotation, "__metadata__", []):
+        return PickleSerialization
+    return annotation
 
 
 class FunctionInfo:
@@ -300,10 +306,7 @@ class FunctionInfo:
         signature = _get_class_constructor_signature(self.user_cls)
         for param in signature.parameters.values():
             has_default = param.default is not param.empty
-            pickle_annotated = (
-                get_origin(param.annotation) == Annotated and PickleSerialization in get_args(param.annotation)[1:]
-            )
-            param_annotation = PickleSerialization if pickle_annotated else param.annotation
+            param_annotation = get_param_annotation(param.annotation)
             if param_annotation not in CLASS_PARAM_TYPE_MAP:
                 raise InvalidError(
                     "To use custom types you must use typing.Annotated[<type>, modal.PickleSerialization],"

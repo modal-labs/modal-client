@@ -3,12 +3,12 @@ import inspect
 import os
 import typing
 from collections.abc import Collection
-from typing import Annotated, Any, Callable, Optional, TypeVar, Union, get_args, get_origin
+from typing import Any, Callable, Optional, TypeVar, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
-from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP, PickleSerialization
+from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP, get_param_annotation
 from modal_proto import api_pb2
 
 from ._object import _get_environment_name, _Object
@@ -474,8 +474,7 @@ class _Cls(_Object, type_prefix="cs"):
 
         annotated_params = {k: t for k, t in annotations.items() if k in params}
         for k, t in annotated_params.items():
-            pickle_annotated = get_origin(t) == Annotated and PickleSerialization in get_args(t)[1:]
-            param_annotation = PickleSerialization if pickle_annotated else t
+            param_annotation = get_param_annotation(t)
 
             if param_annotation not in CLASS_PARAM_TYPE_MAP:
                 t_name = getattr(t, "__name__", repr(t))
