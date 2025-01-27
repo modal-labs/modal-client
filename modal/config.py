@@ -74,6 +74,7 @@ Some "meta-options" are set using environment variables only:
 * `MODAL_PROFILE` lets you use multiple sections in the .toml file
   and switch between them. It defaults to "default".
 """
+
 import logging
 import os
 import typing
@@ -86,7 +87,6 @@ from google.protobuf.empty_pb2 import Empty
 from modal_proto import api_pb2
 
 from ._utils.deprecation import deprecation_error
-from ._utils.function_utils import IncludeSourceMode
 from ._utils.logger import configure_logger
 from .exception import InvalidError
 
@@ -192,12 +192,6 @@ def _to_boolean(x: object) -> bool:
     return str(x).lower() not in {"", "0", "false"}
 
 
-def _to_automount_value(x: object) -> typing.Union[str, bool]:
-    return (
-        IncludeSourceMode.INCLUDE_FIRST_PARTY.value if _to_boolean(x) else IncludeSourceMode.INCLUDE_MAIN_PACKAGE.value
-    )
-
-
 class _Setting(typing.NamedTuple):
     default: typing.Any = None
     transform: typing.Callable[[str], typing.Any] = lambda x: x  # noqa: E731
@@ -214,9 +208,7 @@ _SETTINGS = {
     "sync_entrypoint": _Setting(),
     "logs_timeout": _Setting(10, float),
     "image_id": _Setting(),
-    "automount": _Setting(
-        IncludeSourceMode.INCLUDE_FIRST_PARTY.value, transform=_to_automount_value
-    ),  # To be deprecated, set include_source in code instead
+    "automount": _Setting(True, transform=_to_boolean),
     "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),
     "function_runtime_debug": _Setting(False, transform=_to_boolean),  # For internal debugging use.
