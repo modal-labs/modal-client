@@ -158,10 +158,6 @@ def _write_local_result(result_path: str, res: Any):
         fid.write(res)
 
 
-def get_extra_args():
-    return click.get_current_context().args
-
-
 def _make_click_function(app, extra_args_param: Optional[str], inner: Callable[[dict[str, Any]], Any]):
     @click.pass_context
     def f(ctx, **kwargs):
