@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 
 import hashlib
-import platform
 import pytest
 import time
 from pathlib import Path
