@@ -26,14 +26,14 @@ class FunctionCallCountException(Exception):
         self.function_call_count = function_call_count
 
 
-def counting_function(return_success_on_attempt_number: int):
+def counting_function(return_success_on_retry_count: int):
     """
     A function that updates the global function_call_count counter each time it is called.
 
     """
     global function_call_count
     function_call_count += 1
-    if function_call_count < return_success_on_attempt_number:
+    if function_call_count < return_success_on_retry_count:
         raise FunctionCallCountException(function_call_count)
     return function_call_count
 
