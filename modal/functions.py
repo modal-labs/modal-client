@@ -42,6 +42,7 @@ from ._utils.function_utils import (
     OUTPUTS_TIMEOUT,
     FunctionCreationStatus,
     FunctionInfo,
+    IncludeSourceMode,
     _create_input,
     _process_result,
     _stream_function_call_data,
@@ -54,7 +55,7 @@ from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
-from .config import IncludeSourceMode, config
+from .config import config
 from .exception import (
     ExecutionError,
     FunctionTimeoutError,
@@ -513,10 +514,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 *entrypoint_mounts.values(),
             ]
 
-            if include_source_mode in (
-                IncludeSourceMode.INCLUDE_FIRST_PARTY,
-                IncludeSourceMode.INCLUDE_FIRST_PARTY_DEFAULT,
-            ):
+            if include_source_mode is IncludeSourceMode.INCLUDE_FIRST_PARTY:
                 auto_mounts = get_sys_modules_mounts()
                 # don't need to add entrypoint modules to automounts:
                 for entrypoint_module in entrypoint_mounts:

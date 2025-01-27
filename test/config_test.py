@@ -9,7 +9,7 @@ import toml
 
 import modal
 from modal._utils.async_utils import synchronize_api
-from modal.config import Config, IncludeSourceMode, _lookup_workspace, config
+from modal.config import Config, _lookup_workspace, config
 from modal.exception import InvalidError
 
 
@@ -150,37 +150,16 @@ async def test_workspace_lookup(servicer, server_url_env):
     assert resp.username == "test-username"
 
 
-@pytest.mark.parametrize("traceback_value", ["false", "'false'", "'False'", "'0'", 0, "''"])
-def test_config_boolean(modal_config, traceback_value):
+@pytest.mark.parametrize("automount", ["false", "'false'", "'False'", "'0'", 0, "''"])
+def test_config_boolean(modal_config, automount):
     modal_toml = f"""
     [prof-1]
     token_id = 'ak-abc'
     token_secret = 'as_xyz'
-    traceback = {traceback_value}
+    automount = {automount}
     """
     with modal_config(modal_toml):
-        assert not Config().get("traceback", "prof-1")
-
-
-@pytest.mark.parametrize(
-    ["config_value", "expected_result"],
-    [
-        ('automount = "0"', IncludeSourceMode.INCLUDE_MAIN_PACKAGE.value),
-        ("automount = 'first-party'", IncludeSourceMode.INCLUDE_FIRST_PARTY_DEFAULT.value),
-        ("automount = '1'", IncludeSourceMode.INCLUDE_FIRST_PARTY_DEFAULT.value),
-        ("", IncludeSourceMode.INCLUDE_FIRST_PARTY_DEFAULT.value),
-    ],
-)
-def test_config_automount_value(modal_config, config_value, expected_result):
-    modal_toml = f"""
-    [prof-1]
-    token_id = 'ak-abc'
-    token_secret = 'as_xyz'
-    {config_value}
-    """
-    with modal_config(modal_toml):
-        val = Config().get("automount", "prof-1")
-        assert val == expected_result
+        assert not Config().get("automount", "prof-1")
 
 
 def test_malformed_config_better(modal_config):

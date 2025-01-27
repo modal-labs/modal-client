@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import enum
 import inspect
 import os
 import typing
@@ -17,7 +18,7 @@ from modal_proto import api_pb2
 
 from .._serialization import deserialize, deserialize_data_format, serialize
 from .._traceback import append_modal_tb
-from ..config import IncludeSourceMode, config, logger
+from ..config import config, logger
 from ..exception import (
     DeserializationError,
     ExecutionError,
@@ -618,6 +619,12 @@ class FunctionCreationStatus:
                             )
 
 
+class IncludeSourceMode(enum.Enum):
+    INCLUDE_NOTHING = False  # can only be set in source, can't be set in config
+    INCLUDE_MAIN_PACKAGE = True  # also represented by AUTOMOUNT=0 in config
+    INCLUDE_FIRST_PARTY = "legacy"  # mounts all "local" modules in sys.modules - represented by AUTOMOUNT=1 in config
+
+
 def get_include_source_mode(function_or_app_specific) -> IncludeSourceMode:
     """Which "automount" behavior should a function use
 
@@ -636,11 +643,15 @@ def get_include_source_mode(function_or_app_specific) -> IncludeSourceMode:
         )
 
         if lower_case_input not in valid_str_values:
-            valid_values_str = ", ".join(valid_str_values)
             raise ValueError(
-                f"Invalid `include_source` value: {function_or_app_specific}. Use one of: {valid_values_str}"
+                f"Invalid `include_source` value: {function_or_app_specific}. Use one of:\n"
+                f"True - include function's home module\n"
+                f"False - include no extra Python source\n"
+                f'"legacy" - include all globally imported modules that aren\'t installed in site-packages locally\n'
             )
-            # explicitly set in app/function
+
+        # explicitly set in app/function
         return IncludeSourceMode(lower_case_input)
 
-    return IncludeSourceMode(config.get("automount"))
+    legacy_automount_mode: bool = config.get("automount")
+    return IncludeSourceMode.INCLUDE_FIRST_PARTY if legacy_automount_mode else IncludeSourceMode.INCLUDE_MAIN_PACKAGE
