@@ -5,7 +5,7 @@ import pytest
 import time
 from pathlib import Path
 
-from modal import App, Image, Mount, NetworkFileSystem, Proxy, Sandbox, Secret
+from modal import App, Image, Mount, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret
 from modal.exception import DeprecationError, InvalidError
 from modal.stream_type import StreamType
 from modal_proto import api_pb2
@@ -13,6 +13,7 @@ from modal_proto import api_pb2
 from .supports.skip import skip_windows
 
 skip_non_subprocess = skip_windows("Needs subprocess support")
+
 
 @pytest.fixture
 def app(client):
@@ -408,6 +409,26 @@ def test_sandbox_exec_stdout(app, servicer, capsys):
 
     with pytest.raises(InvalidError):
         cp.stdout.read()
+
+
+@skip_non_subprocess
+def test_sandbox_snapshot(app, client, servicer):
+    invalid_sb = Sandbox.create(app=app)
+    with pytest.raises(ValueError):
+        # cannot snapshot a sandbox without memory snapshotting enabled
+        sandbox_snapshot = invalid_sb._experimental_snapshot()
+
+    sb = Sandbox.create(app=app, _experimental_enable_snapshot=True)
+    sandbox_snapshot = sb._experimental_snapshot()
+    snapshot_id = sandbox_snapshot.object_id
+    assert snapshot_id == "sn-123"
+    sb.terminate()
+
+    sandbox_snapshot = SandboxSnapshot.from_id(snapshot_id, client=client)
+    assert sandbox_snapshot.object_id == snapshot_id
+
+    sb = Sandbox._experimental_from_snapshot(sandbox_snapshot, client=client)
+    sb.terminate()
 
 
 @skip_non_subprocess
