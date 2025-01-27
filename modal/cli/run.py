@@ -53,12 +53,16 @@ option_parsers = {
     "Any": AnyParamType(),
 }
 
+EXTRA_ARGS_PARAM_TYPE = "tuple[str, ...]"
+
 
 class NoParserAvailable(InvalidError):
     pass
 
 
-def _get_signature(f: Callable[..., Any], is_method: bool = False) -> dict[str, ParameterMetadata]:
+def _get_signature(
+    f: Callable[..., Any], is_method: bool = False
+) -> tuple[dict[str, ParameterMetadata], Optional[str]]:
     try:
         type_hints = get_type_hints(f)
     except Exception as exc:
@@ -66,18 +70,26 @@ def _get_signature(f: Callable[..., Any], is_method: bool = False) -> dict[str, 
         msg = "Unable to generate command line interface for app entrypoint. See traceback above for details."
         raise ExecutionError(msg) from exc
 
+    extra_args_param = None
     if is_method:
         self = None  # Dummy, doesn't matter
         f = functools.partial(f, self)
     signature: dict[str, ParameterMetadata] = {}
     for param in inspect.signature(f).parameters.values():
-        signature[param.name] = {
-            "name": param.name,
-            "default": param.default,
-            "annotation": param.annotation,
-            "type_hint": type_hints.get(param.name, "Any"),
-        }
-    return signature
+        type_hint = type_hints.get(param.name, "Any")
+
+        if str(type_hint) == EXTRA_ARGS_PARAM_TYPE:
+            extra_args_param = param.name
+        else:
+            signature[param.name] = {
+                "name": param.name,
+                "default": param.default,
+                "annotation": param.annotation,
+                "type_hint": type_hint,
+                "kind": param.kind,
+            }
+
+    return signature, extra_args_param
 
 
 def _get_param_type_as_str(annot: Any) -> str:
@@ -107,6 +119,7 @@ def _add_click_options(func, signature: dict[str, ParameterMetadata]):
         cli_name = "--" + param_name
         if param_type_str == "bool":
             cli_name += "/--no-" + param_name
+
         parser = option_parsers.get(param_type_str)
         if parser is None:
             msg = f"Parameter `{param_name}` has unparseable annotation: {param['annotation']!r}"
@@ -149,9 +162,12 @@ def get_extra_args():
     return click.get_current_context().args
 
 
-def _make_click_function(app, inner: Callable[[dict[str, Any]], Any]):
+def _make_click_function(app, extra_args_param: Optional[str], inner: Callable[[dict[str, Any]], Any]):
     @click.pass_context
     def f(ctx, **kwargs):
+        if extra_args_param is not None:
+            kwargs[extra_args_param] = ctx.args
+
         show_progress: bool = ctx.obj["show_progress"]
         with enable_output(show_progress):
             with run_app(
@@ -172,15 +188,21 @@ def _get_click_command_for_function(app: App, function: Function):
     if function.is_generator:
         raise InvalidError("`modal run` is not supported for generator functions")
 
-    signature: dict[str, ParameterMetadata] = _get_signature(function.info.raw_f)
+    signature, extra_args_param = _get_signature(function.info.raw_f)
 
     def _inner(click_kwargs):
         return function.remote(**click_kwargs)
 
-    f = _make_click_function(app, _inner)
+    f = _make_click_function(app, extra_args_param, _inner)
 
     with_click_options = _add_click_options(f, signature)
-    return click.command(with_click_options)
+
+    if extra_args_param is not None:
+        return click.command(context_settings={"ignore_unknown_options": True, "allow_extra_args": True})(
+            with_click_options
+        )
+    else:
+        return click.command(with_click_options)
 
 
 def _get_click_command_for_cls(app: App, method_ref: MethodReference):
@@ -203,7 +225,7 @@ def _get_click_command_for_cls(app: App, method_ref: MethodReference):
             )
 
     partial_function = partial_functions[method_name]
-    fun_signature = _get_signature(partial_function._get_raw_f(), is_method=True)
+    fun_signature, extra_args_param = _get_signature(partial_function._get_raw_f(), is_method=True)
 
     # TODO(erikbern): assert there's no overlap?
     signature = dict(**cls_signature, **fun_signature)  # Pool all arguments
@@ -218,14 +240,22 @@ def _get_click_command_for_cls(app: App, method_ref: MethodReference):
         method: Function = getattr(instance, method_name)
         return method.remote(**fun_kwargs)
 
-    f = _make_click_function(app, _inner)
+    f = _make_click_function(app, extra_args_param, _inner)
     with_click_options = _add_click_options(f, signature)
-    return click.command(with_click_options)
+
+    if extra_args_param is not None:
+        return click.command(context_settings={"ignore_unknown_options": True, "allow_extra_args": True})(
+            with_click_options
+        )
+    else:
+        return click.command(with_click_options)
 
 
 def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoint):
     func = entrypoint.info.raw_f
     isasync = inspect.iscoroutinefunction(func)
+
+    signature, extra_args_param = _get_signature(func)
 
     @click.pass_context
     def f(ctx, *args, **kwargs):
@@ -234,6 +264,9 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
                 "Note that running a local entrypoint in detached mode only keeps the last "
                 "triggered Modal function alive after the parent process has been killed or disconnected."
             )
+
+        if extra_args_param is not None:
+            kwargs[extra_args_param] = ctx.args
 
         show_progress: bool = ctx.obj["show_progress"]
         with enable_output(show_progress):
@@ -254,10 +287,14 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
             if result_path := ctx.obj["result_path"]:
                 _write_local_result(result_path, res)
 
-    with_click_options = _add_click_options(f, _get_signature(func))
-    return click.command(context_settings={"ignore_unknown_options": True, "allow_extra_args": True})(
-        with_click_options
-    )
+    with_click_options = _add_click_options(f, signature)
+
+    if extra_args_param is not None:
+        return click.command(context_settings={"ignore_unknown_options": True, "allow_extra_args": True})(
+            with_click_options
+        )
+    else:
+        return click.command(with_click_options)
 
 
 def _get_runnable_list(all_usable_commands: list[CLICommand]) -> str:
