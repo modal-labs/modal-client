@@ -193,20 +193,20 @@ def _to_boolean(x: object) -> bool:
 
 
 class IncludeSourceMode(enum.Enum):
-    NONE = "none"  # can only be set in source, can't be set in config
-    MAIN_PACKAGE_ONLY = "main-package"  # also represented by AUTOMOUNT=0 in config
-    FIRST_PARTY = "first-party"  # can only be set in source, can't be set in config
+    INCLUDE_NOTHING = False  # can only be set in source, can't be set in config
+    INCLUDE_MAIN_PACKAGE = True  # also represented by AUTOMOUNT=0 in config
+    INCLUDE_FIRST_PARTY = "legacy"  # mounts all "local" modules in sys.modules, can only be set in source, not config
 
-    # LEGACY_FIRST_PARTY_NON_INSTALLED has the same effect as FIRST_PARTY_NON_INSTALLED but warns if modules
-    # are de facto automounted, so users can migrate to explicit
-    CONFIG_BASED_FIRST_PARTY = "legacy-first-party"
+    # INCLUDE_FIRST_PARTY_DEFAULT has the same effect as INCLUDE_FIRST_PARTY but warns if modules
+    # are de facto automounted with this mode set by default
+    INCLUDE_FIRST_PARTY_DEFAULT = "default-legacy"
 
 
-def _to_automount_value(x: object) -> str:
+def _to_automount_value(x: object) -> typing.Union[str, bool]:
     return (
-        IncludeSourceMode.CONFIG_BASED_FIRST_PARTY.value
+        IncludeSourceMode.INCLUDE_FIRST_PARTY_DEFAULT.value
         if _to_boolean(x)
-        else IncludeSourceMode.MAIN_PACKAGE_ONLY.value
+        else IncludeSourceMode.INCLUDE_MAIN_PACKAGE.value
     )
 
 
@@ -227,7 +227,7 @@ _SETTINGS = {
     "logs_timeout": _Setting(10, float),
     "image_id": _Setting(),
     "automount": _Setting(
-        IncludeSourceMode.CONFIG_BASED_FIRST_PARTY.value, transform=_to_automount_value
+        IncludeSourceMode.INCLUDE_FIRST_PARTY_DEFAULT.value, transform=_to_automount_value
     ),  # To be deprecated, set include_source in code instead
     "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),

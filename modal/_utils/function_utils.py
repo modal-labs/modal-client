@@ -618,7 +618,7 @@ class FunctionCreationStatus:
                             )
 
 
-def get_include_source_mode(function_or_app_specific: Optional[str]) -> IncludeSourceMode:
+def get_include_source_mode(function_or_app_specific) -> IncludeSourceMode:
     """Which "automount" behavior should a function use
 
     function_or_app_specific: explicit value given in the @function or @cls decorator, in an App constructor, or None
@@ -630,7 +630,11 @@ def get_include_source_mode(function_or_app_specific: Optional[str]) -> IncludeS
         from ..functions import IncludeSourceValue
 
         valid_str_values = typing.get_args(IncludeSourceValue)
-        lower_case_input = function_or_app_specific.lower()
+
+        lower_case_input = (
+            function_or_app_specific.lower() if isinstance(function_or_app_specific, str) else function_or_app_specific
+        )
+
         if lower_case_input not in valid_str_values:
             valid_values_str = ", ".join(valid_str_values)
             raise ValueError(
