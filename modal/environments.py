@@ -30,8 +30,7 @@ class _Environment(_Object, type_prefix="en"):
     def __init__(self):
         """mdmd:hidden"""
         raise RuntimeError(
-            "`Environment(...)` constructor is not allowed."
-            " Please use `Environment.from_name` or `Environment.lookup` instead."
+            "`Environment(...)` constructor is not allowed." " Please use `Environment.from_name` instead."
         )
 
     # TODO(michael) Keeping this private for now until we decide what else should be in it
@@ -54,7 +53,7 @@ class _Environment(_Object, type_prefix="en"):
 
     @staticmethod
     @renamed_parameter((2024, 12, 18), "label", "name")
-    async def from_name(
+    def from_name(
         name: str,
         create_if_missing: bool = False,
     ):
@@ -95,7 +94,7 @@ class _Environment(_Object, type_prefix="en"):
             " It can be replaced with `modal.Environment.from_name`."
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
-        obj = await _Environment.from_name(name, create_if_missing=create_if_missing)
+        obj = _Environment.from_name(name, create_if_missing=create_if_missing)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
@@ -113,7 +112,7 @@ ENVIRONMENT_CACHE: dict[str, _Environment] = {}
 async def _get_environment_cached(name: str, client: _Client) -> _Environment:
     if name in ENVIRONMENT_CACHE:
         return ENVIRONMENT_CACHE[name]
-    environment = await _Environment.lookup(name, client)
+    environment = await _Environment.from_name(name).hydrate(client)
     ENVIRONMENT_CACHE[name] = environment
     return environment
 
