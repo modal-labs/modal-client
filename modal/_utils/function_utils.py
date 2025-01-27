@@ -641,11 +641,14 @@ def get_include_source_mode(function_or_app_specific) -> IncludeSourceMode:
         )
 
         if lower_case_input not in valid_str_values:
-            valid_values_str = ", ".join(valid_str_values)
             raise ValueError(
-                f"Invalid `include_source` value: {function_or_app_specific}. Use one of: {valid_values_str}"
+                f"Invalid `include_source` value: {function_or_app_specific}. Use one of:\n"
+                f"True - include function's home module\n"
+                f"False - include no extra Python source\n"
+                f'"legacy" - include all globally imported modules that aren\'t installed in site-packages locally\n'
             )
-            # explicitly set in app/function
+
+        # explicitly set in app/function
         return IncludeSourceMode(lower_case_input)
 
     legacy_automount_mode: bool = config.get("automount")
