@@ -517,8 +517,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 IncludeSourceMode.INCLUDE_FIRST_PARTY,
                 IncludeSourceMode.INCLUDE_FIRST_PARTY_DEFAULT,
             ):
-                # TODO(elias): if using CONFIG_BASED_FIRST_PARTY *and* mounts are added that haven't already been
-                #  added to the image via add_local_python_source
                 auto_mounts = get_sys_modules_mounts()
                 # don't need to add entrypoint modules to automounts:
                 for entrypoint_module in entrypoint_mounts:
