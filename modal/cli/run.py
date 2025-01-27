@@ -145,6 +145,10 @@ def _write_local_result(result_path: str, res: Any):
         fid.write(res)
 
 
+def get_extra_args():
+    return click.get_current_context().args
+
+
 def _make_click_function(app, inner: Callable[[dict[str, Any]], Any]):
     @click.pass_context
     def f(ctx, **kwargs):
@@ -251,7 +255,9 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
                 _write_local_result(result_path, res)
 
     with_click_options = _add_click_options(f, _get_signature(func))
-    return click.command(with_click_options)
+    return click.command(context_settings={"ignore_unknown_options": True, "allow_extra_args": True})(
+        with_click_options
+    )
 
 
 def _get_runnable_list(all_usable_commands: list[CLICommand]) -> str:
