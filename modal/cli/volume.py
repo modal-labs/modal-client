@@ -94,7 +94,7 @@ async def get(
     """
     ensure_env(env)
     destination = Path(local_destination)
-    volume = await _Volume.lookup(volume_name, environment_name=env)
+    volume = _Volume.from_name(volume_name, environment_name=env)
     console = Console()
     progress_handler = ProgressHandler(type="download", console=console)
     with progress_handler.live:
@@ -133,7 +133,7 @@ async def ls(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    vol = await _Volume.lookup(volume_name, environment_name=env)
+    vol = _Volume.from_name(volume_name, environment_name=env)
     if not isinstance(vol, _Volume):
         raise UsageError("The specified app entity is not a modal.Volume")
 
@@ -190,7 +190,7 @@ async def put(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    vol = await _Volume.lookup(volume_name, environment_name=env)
+    vol = _Volume.from_name(volume_name, environment_name=env)
     if not isinstance(vol, _Volume):
         raise UsageError("The specified app entity is not a modal.Volume")
 
@@ -235,7 +235,7 @@ async def rm(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    volume = await _Volume.lookup(volume_name, environment_name=env)
+    volume = _Volume.from_name(volume_name, environment_name=env)
     if not isinstance(volume, _Volume):
         raise UsageError("The specified app entity is not a modal.Volume")
     try:
@@ -261,7 +261,7 @@ async def cp(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    volume = await _Volume.lookup(volume_name, environment_name=env)
+    volume = _Volume.from_name(volume_name, environment_name=env)
     if not isinstance(volume, _Volume):
         raise UsageError("The specified app entity is not a modal.Volume")
     *src_paths, dst_path = paths

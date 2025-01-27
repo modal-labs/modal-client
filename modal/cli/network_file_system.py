@@ -72,7 +72,7 @@ def create(
 
 
 async def _volume_from_name(deployment_name: str) -> _NetworkFileSystem:
-    network_file_system = await _NetworkFileSystem.lookup(
+    network_file_system = _NetworkFileSystem.from_name(
         deployment_name, environment_name=None
     )  # environment None will take value from config
     if not isinstance(network_file_system, _NetworkFileSystem):
