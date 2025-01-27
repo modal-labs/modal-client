@@ -92,7 +92,7 @@ if TYPE_CHECKING:
 
 
 # type for in-code user-provided automount values
-IncludeSourceValue = Literal["none", "main-package", "first-party"]
+IncludeSourceValue = Literal[True, False, "legacy"]
 
 
 @dataclasses.dataclass
@@ -502,7 +502,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         if is_local():
             include_source_mode = get_include_source_mode(include_source)
-            if include_source_mode != IncludeSourceMode.NONE:
+            if include_source_mode != IncludeSourceMode.INCLUDE_NOTHING:
                 entrypoint_mounts = info.get_entrypoint_mount()
             else:
                 entrypoint_mounts = []
@@ -513,7 +513,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 *entrypoint_mounts,
             ]
 
-            if include_source_mode in (IncludeSourceMode.FIRST_PARTY, IncludeSourceMode.CONFIG_BASED_FIRST_PARTY):
+            if include_source_mode in (
+                IncludeSourceMode.INCLUDE_FIRST_PARTY,
+                IncludeSourceMode.INCLUDE_FIRST_PARTY_DEFAULT,
+            ):
                 # TODO(elias): if using CONFIG_BASED_FIRST_PARTY *and* mounts are added that haven't already been
                 #  added to the image via add_local_python_source
                 all_mounts += get_auto_mounts()

@@ -607,6 +607,7 @@ class _App:
         # With `max_inputs = 1`, containers will be single-use.
         max_inputs: Optional[int] = None,
         i6pn: Optional[bool] = None,  # Whether to enable IPv6 container networking within the region.
+        # Whether the function's home package should be included in the image - defaults to True
         include_source: Optional[IncludeSourceValue] = None,
         # Parameters below here are experimental. Use with caution!
         _experimental_scheduler_placement: Optional[

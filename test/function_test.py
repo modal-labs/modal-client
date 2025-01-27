@@ -1051,20 +1051,20 @@ def test_from_name_web_url(servicer, set_env_client):
         (None, None, None, 2),  # default with no options: entrypoint + first party (automount)
         ("0", None, None, 1),  # automount=0 in config - entrypoint only. Warn about config being deprecated
         ("1", None, None, 2),  # automount=1 explicit in config. Warn about config based automount=1 going away
-        ("1", "none", None, 0),  # automount=1 explicit in config. Warn about config based automount=1 going away
-        ("0", "none", None, 0),
-        (None, "none", None, 0),
-        (None, "none", "main-package", 1),
-        (None, "none", "first-party", 2),
-        (None, "main-package", "first-party", 2),
+        ("1", "False", None, 0),  # automount=1 explicit in config. Warn about config based automount=1 going away
+        ("0", "False", None, 0),
+        (None, "False", None, 0),
+        (None, "False", "True", 1),
+        (None, "False", "'legacy'", 2),
+        (None, "True", "'legacy'", 2),
     ],
 )
 def test_include_source_mode(
     app_constructor_value, function_decorator_value, config_automount, expected_mounts, servicer, credentials, tmp_path
 ):
     # a little messy since it tests the "end to end" mounting behavior for the app
-    app_constructor_value = "None" if app_constructor_value is None else f'"{app_constructor_value}"'
-    function_decorator_value = "None" if function_decorator_value is None else f'"{function_decorator_value}"'
+    app_constructor_value = "None" if app_constructor_value is None else app_constructor_value
+    function_decorator_value = "None" if function_decorator_value is None else function_decorator_value
     src = f"""
 import modal
 import mod  # mod.py needs to be added for this file to load, so it needs to be included as source
