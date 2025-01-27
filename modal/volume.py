@@ -229,7 +229,7 @@ class _Volume(_Object, type_prefix="vo"):
         that will hydrate the local object with metadata from Modal servers.
 
         ```python notest
-        vol = modal.Volume.lookup("my-volume")
+        vol = modal.Volume.from_name("my-volume")
         print(vol.listdir("/"))
         ```
         """
@@ -378,7 +378,7 @@ class _Volume(_Object, type_prefix="vo"):
         **Example:**
 
         ```python notest
-        vol = modal.Volume.lookup("my-modal-volume")
+        vol = modal.Volume.from_name("my-modal-volume")
         data = b""
         for chunk in vol.read_file("1mb.csv"):
             data += chunk
@@ -467,7 +467,7 @@ class _Volume(_Object, type_prefix="vo"):
         **Usage**
 
         ```python notest
-        vol = modal.Volume.lookup("my-modal-volume")
+        vol = modal.Volume.from_name("my-modal-volume")
 
         vol.copy_files(["bar/example.txt"], "bar2")  # Copy files to another directory
         vol.copy_files(["bar/example.txt"], "bar/example2.txt")  # Rename a file by copying
@@ -491,7 +491,7 @@ class _Volume(_Object, type_prefix="vo"):
         **Example:**
 
         ```python notest
-        vol = modal.Volume.lookup("my-modal-volume")
+        vol = modal.Volume.from_name("my-modal-volume")
 
         with vol.batch_upload() as batch:
             batch.put_file("local-path.txt", "/remote-path.txt")

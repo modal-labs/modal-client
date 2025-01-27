@@ -169,9 +169,9 @@ async def list_environments(client: Optional[_Client] = None) -> list[api_pb2.En
 def ensure_env(environment_name: Optional[str] = None) -> str:
     """Override config environment with environment from environment_name
 
-    This is necessary since a cli command that runs Modal code, e.g. `modal.lookup()` without
-    explicit environment specification wouldn't pick up the environment specified in a command
-    line flag otherwise, e.g. when doing `modal run --env=foo`
+    This is necessary since a cli command that runs Modal code, without explicit
+    environment specification wouldn't pick up the environment specified in a
+    command line flag otherwise, e.g. when doing `modal run --env=foo`
     """
     if environment_name is not None:
         config.override_locally("environment", environment_name)

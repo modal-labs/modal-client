@@ -84,7 +84,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     A `NetworkFileSystem` can also be useful for some local scripting scenarios, e.g.:
 
     ```python notest
-    nfs = modal.NetworkFileSystem.lookup("my-network-file-system")
+    nfs = modal.NetworkFileSystem.from_name("my-network-file-system")
     for chunk in nfs.read_file("my_db_dump.csv"):
         ...
     ```

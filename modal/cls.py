@@ -228,7 +228,7 @@ class _Obj:
 
         ```python notest
         # Usage on a parametrized function.
-        Model = modal.Cls.lookup("my-app", "Model")
+        Model = modal.Cls.from_name("my-app", "Model")
         Model("fine-tuned-model").keep_warm(2)
         ```
         """
@@ -620,7 +620,7 @@ class _Cls(_Object, type_prefix="cs"):
         **Usage:**
 
         ```python notest
-        Model = modal.Cls.lookup("my_app", "Model")
+        Model = modal.Cls.from_name("my_app", "Model")
         ModelUsingGPU = Model.with_options(gpu="A100")
         ModelUsingGPU().generate.remote(42)  # will run with an A100 GPU
         ```
@@ -675,7 +675,7 @@ class _Cls(_Object, type_prefix="cs"):
         that will hydrate the local object with metadata from Modal servers.
 
         ```python notest
-        Model = modal.Cls.lookup("other-app", "Model")
+        Model = modal.Cls.from_name("other-app", "Model")
         model = Model()
         model.inference(...)
         ```

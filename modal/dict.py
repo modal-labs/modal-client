@@ -157,7 +157,7 @@ class _Dict(_Object, type_prefix="di"):
         that will hydrate the local object with metadata from Modal servers.
 
         ```python
-        d = modal.Dict.lookup("my-dict")
+        d = modal.Dict.from_name("my-dict")
         d["xyz"] = 123
         ```
         """

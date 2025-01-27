@@ -1019,11 +1019,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         ```python notest
         # Usage on a regular function.
-        f = modal.Function.lookup("my-app", "function")
+        f = modal.Function.from_name("my-app", "function")
         f.keep_warm(2)
 
         # Usage on a parametrized function.
-        Model = modal.Cls.lookup("my-app", "Model")
+        Model = modal.Cls.from_name("my-app", "Model")
         Model("fine-tuned-model").keep_warm(2)
         ```
         """
