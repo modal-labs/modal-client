@@ -225,7 +225,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     @staticmethod
     @renamed_parameter((2024, 12, 18), "label", "name")
     async def delete(name: str, client: Optional[_Client] = None, environment_name: Optional[str] = None):
-        obj = await _NetworkFileSystem.lookup(name, client=client, environment_name=environment_name)
+        obj = _NetworkFileSystem.from_name(name, environment_name=environment_name).hydrate(client)
         req = api_pb2.SharedVolumeDeleteRequest(shared_volume_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.SharedVolumeDelete, req)
 

@@ -188,7 +188,7 @@ class _Dict(_Object, type_prefix="di"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ):
-        obj = await _Dict.lookup(name, client=client, environment_name=environment_name)
+        obj = await _Dict.from_name(name, environment_name=environment_name).hydrate(client)
         req = api_pb2.DictDeleteRequest(dict_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.DictDelete, req)
 
