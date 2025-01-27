@@ -226,6 +226,7 @@ async def _map_invocation(
                     api_pb2.FunctionRetryInputsItem(
                         input_jwt=item_context.input_jwt,
                         input=item_context.input,
+                        attempt_number=item_context.retry_manager.attempt_count,
                     )
                 )
 
@@ -249,8 +250,8 @@ async def _map_invocation(
                     if err.status != Status.RESOURCE_EXHAUSTED:
                         raise err
                     logger.warning(
-                        "Warning: map progress is limited. Common bottlenecks "
-                        "include slow iteration over results, or function backlogs."
+                        f"Warning: map progress for function {function._function_name} is limited."
+                        " Common bottlenecks include slow iteration over results, or function backlogs."
                     )
 
             logger.debug(f"Successfully pushed retry for {inputs} to server. ")
@@ -317,7 +318,6 @@ async def _map_invocation(
                 completed_outputs.add(item.input_id)
                 inputs_outstanding.release()
                 num_outputs += 1
-
                 yield item
 
     async def get_all_outputs_and_clean_up():
