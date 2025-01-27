@@ -7,7 +7,7 @@ from modal._utils.grpc_utils import get_proto_oneof
 from modal_proto import api_pb2
 
 
-class RunningApp:
+class AppLayout:
     function_ids: dict[str, str]
     class_ids: dict[str, str]
     object_handle_metadata: dict[str, Optional[Message]]

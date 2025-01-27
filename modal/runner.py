@@ -31,7 +31,7 @@ from .environments import _get_environment_cached
 from .exception import InteractiveTimeoutError, InvalidError, RemoteError, _CliUserExecutionError
 from .functions import _Function
 from .output import _get_output_manager, enable_output
-from .running_app import RunningApp
+from .app_layout import AppLayout
 from .sandbox import _Sandbox
 from .secret import _Secret
 from .stream_type import StreamType
@@ -65,7 +65,7 @@ async def _heartbeat(client: _Client, app_id: str) -> None:
 
 async def _init_local_app_existing(
     client: _Client, existing_app_id: str, environment_name: str
-) -> tuple[RunningApp, AppResult]:
+) -> tuple[AppLayout, AppResult]:
     # Get all the objects first
     obj_req = api_pb2.AppGetLayoutRequest(app_id=existing_app_id)
     obj_resp, _ = await gather_cancel_on_exc(
@@ -74,9 +74,9 @@ async def _init_local_app_existing(
         _get_environment_cached(environment_name, client),
     )
     app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
-    running_app: RunningApp = RunningApp(obj_resp.app_layout)
+    app_layout: AppLayout = AppLayout(obj_resp.app_layout)
     app_result: AppResult = AppResult(existing_app_id, app_page_url=app_page_url)
-    return (running_app, app_result)
+    return (app_layout, app_result)
 
 
 async def _init_local_app_new(
@@ -84,7 +84,7 @@ async def _init_local_app_new(
     description: str,
     app_state: int,  # ValueType
     environment_name: str = "",
-) -> tuple[RunningApp, AppResult]:
+) -> tuple[AppLayout, AppResult]:
     app_req = api_pb2.AppCreateRequest(
         description=description,
         environment_name=environment_name,
@@ -96,13 +96,13 @@ async def _init_local_app_new(
         _get_environment_cached(environment_name, client),
     )
     logger.debug(f"Created new app with id {app_resp.app_id}")
-    running_app: RunningApp = RunningApp()
+    app_layout: AppLayout = AppLayout()
     app_result: AppResult = AppResult(
         app_resp.app_id,
         app_page_url=app_resp.app_page_url,
         app_logs_url=app_resp.app_logs_url,
     )
-    return (running_app, app_result)
+    return (app_layout, app_result)
 
 
 async def _init_local_app_from_name(
@@ -110,7 +110,7 @@ async def _init_local_app_from_name(
     name: str,
     namespace: Any,
     environment_name: str = "",
-) -> tuple[RunningApp, AppResult]:
+) -> tuple[AppLayout, AppResult]:
     # Look up any existing deployment
     app_req = api_pb2.AppGetByDeploymentNameRequest(
         name=name,
@@ -131,7 +131,7 @@ async def _init_local_app_from_name(
 
 async def _create_all_objects(
     client: _Client,
-    running_app: RunningApp,
+    app_layout: AppLayout,
     app: _App,
     app_id: str,
     environment_name: str,
@@ -145,9 +145,9 @@ async def _create_all_objects(
     )
     with resolver.display():
         # Get current objects, and reset all objects
-        tag_to_object_id = {**running_app.function_ids, **running_app.class_ids}
-        running_app.function_ids = {}
-        running_app.class_ids = {}
+        tag_to_object_id = {**app_layout.function_ids, **app_layout.class_ids}
+        app_layout.function_ids = {}
+        app_layout.class_ids = {}
 
         # Assign all objects
         for tag, obj in indexed_objects.items():
@@ -175,9 +175,9 @@ async def _create_all_objects(
             existing_object_id = tag_to_object_id.get(tag)
             await resolver.load(obj, existing_object_id)
             if _Function._is_id_type(obj.object_id):
-                running_app.function_ids[tag] = obj.object_id
+                app_layout.function_ids[tag] = obj.object_id
             elif _Cls._is_id_type(obj.object_id):
-                running_app.class_ids[tag] = obj.object_id
+                app_layout.class_ids[tag] = obj.object_id
             else:
                 raise RuntimeError(f"Unexpected object {obj.object_id}")
 
@@ -186,7 +186,7 @@ async def _create_all_objects(
 
 async def _publish_app(
     client: _Client,
-    running_app: RunningApp,
+    app_layout: AppLayout,
     app_result: AppResult,
     app_state: int,  # api_pb2.AppState.value
     functions: dict[str, _Function],
@@ -203,8 +203,8 @@ async def _publish_app(
         name=name,
         deployment_tag=tag,
         app_state=app_state,  # type: ignore  : should be a api_pb2.AppState.value
-        function_ids=running_app.function_ids,
-        class_ids=running_app.class_ids,
+        function_ids=app_layout.function_ids,
+        class_ids=app_layout.class_ids,
         definition_ids=definition_ids,
     )
     try:
@@ -279,7 +279,7 @@ async def _run_app(
             " Are you calling app.run() directly?"
             " Consider using the `modal run` shell command."
         )
-    if app._running_app:
+    if app._app_layout:
         raise InvalidError(
             "App is already running and can't be started again.\n"
             "You should not use `app.run` or `run_app` within a Modal `local_entrypoint`"
@@ -309,9 +309,9 @@ async def _run_app(
         )
         interactive = False
 
-    running_app: RunningApp
+    app_layout: AppLayout
     app_result: AppResult
-    running_app, app_result = await _init_local_app_new(
+    app_layout, app_result = await _init_local_app_new(
         client,
         app.description or "",
         environment_name=environment_name or "",
@@ -319,7 +319,7 @@ async def _run_app(
     )
 
     logs_timeout = config["logs_timeout"]
-    async with app._set_local_app(client, running_app, app_result.app_id, interactive), TaskContext(
+    async with app._set_local_app(client, app_layout, app_result.app_id, interactive), TaskContext(
         grace=logs_timeout
     ) as tc:
         # Start heartbeats loop to keep the client alive
@@ -352,10 +352,10 @@ async def _run_app(
 
         try:
             # Create all members
-            await _create_all_objects(client, running_app, app, app_result.app_id, environment_name)
+            await _create_all_objects(client, app_layout, app, app_result.app_id, environment_name)
 
             # Publish the app
-            await _publish_app(client, running_app, app_result, app_state, app._functions, app._classes)
+            await _publish_app(client, app_layout, app_result, app_state, app._functions, app._classes)
         except asyncio.CancelledError as e:
             # this typically happens on sigint/ctrl-C during setup (the KeyboardInterrupt happens in the main thread)
             if output_mgr := _get_output_manager():
@@ -446,21 +446,21 @@ async def _serve_update(
     # Used by child process to reinitialize a served app
     client = await _Client.from_env()
     try:
-        running_app: RunningApp
+        app_layout: AppLayout
         app_result: AppResult
-        running_app, app_result = await _init_local_app_existing(client, existing_app_id, environment_name)
+        app_layout, app_result = await _init_local_app_existing(client, existing_app_id, environment_name)
 
         # Create objects
         await _create_all_objects(
             client,
-            running_app,
+            app_layout,
             app,
             app_result.app_id,
             environment_name,
         )
 
         # Publish the updated app
-        await _publish_app(client, running_app, app_result, api_pb2.APP_STATE_UNSPECIFIED, app._functions, app._classes)
+        await _publish_app(client, app_layout, app_result, api_pb2.APP_STATE_UNSPECIFIED, app._functions, app._classes)
 
         # Communicate to the parent process
         is_ready.set()
@@ -527,9 +527,9 @@ async def _deploy_app(
 
     t0 = time.time()
 
-    running_app: RunningApp
+    app_layout: AppLayout
     app_result: AppResult
-    running_app, app_result = await _init_local_app_from_name(
+    app_layout, app_result = await _init_local_app_from_name(
         client, name, namespace, environment_name=environment_name
     )
 
@@ -544,14 +544,14 @@ async def _deploy_app(
             # Create all members
             await _create_all_objects(
                 client,
-                running_app,
+                app_layout,
                 app,
                 app_result.app_id,
                 environment_name=environment_name,
             )
 
             app_url, warnings = await _publish_app(
-                client, running_app, app_result, api_pb2.APP_STATE_DEPLOYED, app._functions, app._classes, name, tag
+                client, app_layout, app_result, api_pb2.APP_STATE_DEPLOYED, app._functions, app._classes, name, tag
             )
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.

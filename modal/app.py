@@ -45,7 +45,7 @@ from .partial_function import (
 )
 from .proxy import _Proxy
 from .retries import Retries
-from .running_app import RunningApp
+from .app_layout import AppLayout
 from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
@@ -167,7 +167,7 @@ class _App:
 
     # Running apps only (container apps or running local)
     _app_id: Optional[str]  # Kept after app finishes
-    _running_app: Optional[RunningApp]  # Various app info
+    _app_layout: Optional[AppLayout]  # Various app info
     _client: Optional[_Client]
     _interactive: Optional[bool]
 
@@ -212,7 +212,7 @@ class _App:
         self._web_endpoints = []
 
         self._app_id = None
-        self._running_app = None  # Set inside container, OR during the time an app is running locally
+        self._app_layout = None  # Set inside container, OR during the time an app is running locally
         self._client = None
         self._interactive = None
 
@@ -274,7 +274,7 @@ class _App:
         app = _App(name)
         app._app_id = response.app_id
         app._client = client
-        app._running_app = RunningApp()
+        app._app_layout = AppLayout()
         return app
 
     def set_description(self, description: str):
@@ -301,17 +301,17 @@ class _App:
 
     @asynccontextmanager
     async def _set_local_app(
-        self, client: _Client, running_app: RunningApp, app_id: str, interactive: bool
+        self, client: _Client, app_layout: AppLayout, app_id: str, interactive: bool
     ) -> AsyncGenerator[None, None]:
         self._client = client
-        self._running_app = running_app
+        self._app_layout = app_layout
         self._app_id = app_id
         self._interactive = interactive
         try:
             yield
         finally:
             self._client = None
-            self._running_app = None
+            self._app_layout = None
             self._interactive = None
             self._uncreate_all_objects()
 
@@ -390,7 +390,7 @@ class _App:
             return _default_image
 
     def _get_watch_mounts(self):
-        if not self._running_app:
+        if not self._app_layout:
             raise ExecutionError("`_get_watch_mounts` requires a running app.")
 
         all_mounts = [
@@ -416,12 +416,12 @@ class _App:
         if function.tag in self._classes:
             logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
 
-        if self._running_app:
+        if self._app_layout:
             # If this is inside a container, then objects can be defined after app initialization.
             # So we may have to initialize objects once they get bound to the app.
-            if function.tag in self._running_app.function_ids:
-                object_id: str = self._running_app.function_ids[function.tag]
-                metadata: Message = self._running_app.object_handle_metadata[object_id]
+            if function.tag in self._app_layout.function_ids:
+                object_id: str = self._app_layout.function_ids[function.tag]
+                metadata: Message = self._app_layout.object_handle_metadata[object_id]
                 function._hydrate(object_id, self._client, metadata)
 
         self._functions[function.tag] = function
@@ -429,35 +429,35 @@ class _App:
             self._web_endpoints.append(function.tag)
 
     def _add_class(self, tag: str, cls: _Cls):
-        if self._running_app:
+        if self._app_layout:
             # If this is inside a container, then objects can be defined after app initialization.
             # So we may have to initialize objects once they get bound to the app.
-            if tag in self._running_app.class_ids:
-                object_id: str = self._running_app.class_ids[tag]
-                metadata: Message = self._running_app.object_handle_metadata[object_id]
+            if tag in self._app_layout.class_ids:
+                object_id: str = self._app_layout.class_ids[tag]
+                metadata: Message = self._app_layout.object_handle_metadata[object_id]
                 cls._hydrate(object_id, self._client, metadata)
 
         self._classes[tag] = cls
 
-    def _init_container(self, client: _Client, app_id: str, running_app: RunningApp):
+    def _init_container(self, client: _Client, app_id: str, app_layout: AppLayout):
         self._app_id = app_id
-        self._running_app = running_app
+        self._app_layout = app_layout
         self._client = client
 
         _App._container_app = self
 
         # Hydrate function objects
-        for tag, object_id in running_app.function_ids.items():
+        for tag, object_id in app_layout.function_ids.items():
             if tag in self._functions:
                 obj = self._functions[tag]
-                handle_metadata = running_app.object_handle_metadata[object_id]
+                handle_metadata = app_layout.object_handle_metadata[object_id]
                 obj._hydrate(object_id, client, handle_metadata)
 
         # Hydrate class objects
-        for tag, object_id in running_app.class_ids.items():
+        for tag, object_id in app_layout.class_ids.items():
             if tag in self._classes:
                 obj = self._classes[tag]
-                handle_metadata = running_app.object_handle_metadata[object_id]
+                handle_metadata = app_layout.object_handle_metadata[object_id]
                 obj._hydrate(object_id, client, handle_metadata)
 
     @property
