@@ -505,7 +505,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             if include_source_mode != IncludeSourceMode.NONE:
                 entrypoint_mounts = info.get_entrypoint_mount()
             else:
-                entrypoint_mounts = []
+                entrypoint_mounts = {}
 
             all_mounts = [
                 _get_client_mount(),
@@ -526,7 +526,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 if warn_missing_modules:
                     python_stringified_modules = ", ".join(f'"{mod}"' for mod in sorted(warn_missing_modules))
                     deprecation_warning(
-                        (2024, 1, 10),
+                        (2024, 1, 28),
                         (
                             "Automatic adding of local python source will be deprecated in the future.\n"
                             f"Make sure you have explicitly added the source for the following modules to the image "
@@ -535,13 +535,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         + ", ".join(sorted(warn_missing_modules))
                         + "\n\n"
                         + (
-                            "An easy way to do this is to use:\n\n"
-                            f"image.add_local_python_source({python_stringified_modules})\n\n"
-                            "If you have added the packages by this or other means and you want to get rid of this "
-                            "warning, you can set\n"
-                            "@app.function(..., autoadd_local_source=False)\n"
-                            "\n"
-                            "This will become the default in the future."
+                            "This can be using `Image.add_local_python_source`, e.g.:\n"
+                            f"image_with_source = Image.debian_slim().add_local_python_source"
+                            f"({python_stringified_modules})"
                         ),
                         pending=True,
                     )
