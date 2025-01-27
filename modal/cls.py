@@ -669,6 +669,8 @@ class _Cls(_Object, type_prefix="cs"):
     ) -> "_Cls":
         """Lookup a Cls from a deployed App by its name.
 
+        DEPRECATED: This method is deprecated in favor of `modal.Cls.from_name`.
+
         In contrast to `modal.Cls.from_name`, this is an eager method
         that will hydrate the local object with metadata from Modal servers.
 
@@ -678,6 +680,12 @@ class _Cls(_Object, type_prefix="cs"):
         model.inference(...)
         ```
         """
+        deprecation_warning(
+            (2025, 1, 27),
+            "`modal.Cls.lookup` is deprecated and will be removed in a future release."
+            " It can be replaced with `modal.Cls.from_name`."
+            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+        )
         obj = _Cls.from_name(
             app_name, name, namespace=namespace, environment_name=environment_name, workspace=workspace
         )

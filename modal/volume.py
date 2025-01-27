@@ -223,6 +223,8 @@ class _Volume(_Object, type_prefix="vo"):
     ) -> "_Volume":
         """Lookup a named Volume.
 
+        DEPRECATED: This method is deprecated in favor of `modal.Volume.from_name`.
+
         In contrast to `modal.Volume.from_name`, this is an eager method
         that will hydrate the local object with metadata from Modal servers.
 
@@ -231,6 +233,12 @@ class _Volume(_Object, type_prefix="vo"):
         print(vol.listdir("/"))
         ```
         """
+        deprecation_warning(
+            (2025, 1, 27),
+            "`modal.Volume.lookup` is deprecated and will be removed in a future release."
+            " It can be replaced with `modal.Volume.from_name`."
+            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+        )
         obj = _Volume.from_name(
             name,
             namespace=namespace,

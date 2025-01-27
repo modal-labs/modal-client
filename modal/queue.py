@@ -14,7 +14,7 @@ from ._object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _O
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_is_not_consumed
-from ._utils.deprecation import renamed_parameter
+from ._utils.deprecation import deprecation_warning, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -188,6 +188,8 @@ class _Queue(_Object, type_prefix="qu"):
     ) -> "_Queue":
         """Lookup a named Queue.
 
+        DEPRECATED: This method is deprecated in favor of `modal.Queue.from_name`.
+
         In contrast to `modal.Queue.from_name`, this is an eager method
         that will hydrate the local object with metadata from Modal servers.
 
@@ -196,6 +198,12 @@ class _Queue(_Object, type_prefix="qu"):
         q.put(123)
         ```
         """
+        deprecation_warning(
+            (2025, 1, 27),
+            "`modal.Queue.lookup` is deprecated and will be removed in a future release."
+            " It can be replaced with `modal.Queue.from_name`."
+            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+        )
         obj = _Queue.from_name(
             name, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
         )

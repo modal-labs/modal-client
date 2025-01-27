@@ -22,7 +22,7 @@ from ._object import (
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, aclosing, async_map, sync_or_async_iter, synchronize_api
 from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
-from ._utils.deprecation import renamed_parameter
+from ._utils.deprecation import deprecation_warning, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.hash_utils import get_sha256_hex
 from ._utils.name_utils import check_object_name
@@ -177,6 +177,8 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     ) -> "_NetworkFileSystem":
         """Lookup a named NetworkFileSystem.
 
+        DEPRECATED: This method is deprecated in favor of `modal.NetworkFileSystem.from_name`.
+
         In contrast to `modal.NetworkFileSystem.from_name`, this is an eager method
         that will hydrate the local object with metadata from Modal servers.
 
@@ -185,6 +187,12 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         print(nfs.listdir("/"))
         ```
         """
+        deprecation_warning(
+            (2025, 1, 27),
+            "`modal.NetworkFileSystem.lookup` is deprecated and will be removed in a future release."
+            " It can be replaced with `modal.NetworkFileSystem.from_name`."
+            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+        )
         obj = _NetworkFileSystem.from_name(
             name, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
         )

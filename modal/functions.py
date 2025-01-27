@@ -1096,6 +1096,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     ) -> "_Function":
         """Lookup a Function from a deployed App by its name.
 
+        DEPRECATED: This method is deprecated in favor of `modal.Function.from_name`.
+
         In contrast to `modal.Function.from_name`, this is an eager method
         that will hydrate the local object with metadata from Modal servers.
 
@@ -1103,6 +1105,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         f = modal.Function.lookup("other-app", "function")
         ```
         """
+        deprecation_warning(
+            (2025, 1, 27),
+            "`modal.Function.lookup` is deprecated and will be removed in a future release."
+            " It can be replaced with `modal.Function.from_name`."
+            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+        )
         obj = _Function.from_name(app_name, name, namespace=namespace, environment_name=environment_name)
         if client is None:
             client = await _Client.from_env()

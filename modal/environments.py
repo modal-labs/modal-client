@@ -11,7 +11,7 @@ from modal_proto import api_pb2
 from ._object import _Object
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.deprecation import renamed_parameter
+from ._utils.deprecation import deprecation_warning, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -89,6 +89,12 @@ class _Environment(_Object, type_prefix="en"):
         client: Optional[_Client] = None,
         create_if_missing: bool = False,
     ):
+        deprecation_warning(
+            (2025, 1, 27),
+            "`modal.Environment.lookup` is deprecated and will be removed in a future release."
+            " It can be replaced with `modal.Environment.from_name`."
+            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+        )
         obj = await _Environment.from_name(name, create_if_missing=create_if_missing)
         if client is None:
             client = await _Client.from_env()
