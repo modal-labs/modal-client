@@ -195,18 +195,12 @@ def _to_boolean(x: object) -> bool:
 class IncludeSourceMode(enum.Enum):
     INCLUDE_NOTHING = False  # can only be set in source, can't be set in config
     INCLUDE_MAIN_PACKAGE = True  # also represented by AUTOMOUNT=0 in config
-    INCLUDE_FIRST_PARTY = "legacy"  # mounts all "local" modules in sys.modules, can only be set in source, not config
-
-    # INCLUDE_FIRST_PARTY_DEFAULT has the same effect as INCLUDE_FIRST_PARTY but warns if modules
-    # are de facto automounted with this mode set by default
-    INCLUDE_FIRST_PARTY_DEFAULT = "default-legacy"
+    INCLUDE_FIRST_PARTY = "legacy"  # mounts all "local" modules in sys.modules - represented by AUTOMOUNT=1 in config
 
 
 def _to_automount_value(x: object) -> typing.Union[str, bool]:
     return (
-        IncludeSourceMode.INCLUDE_FIRST_PARTY_DEFAULT.value
-        if _to_boolean(x)
-        else IncludeSourceMode.INCLUDE_MAIN_PACKAGE.value
+        IncludeSourceMode.INCLUDE_FIRST_PARTY.value if _to_boolean(x) else IncludeSourceMode.INCLUDE_MAIN_PACKAGE.value
     )
 
 
@@ -227,7 +221,7 @@ _SETTINGS = {
     "logs_timeout": _Setting(10, float),
     "image_id": _Setting(),
     "automount": _Setting(
-        IncludeSourceMode.INCLUDE_FIRST_PARTY_DEFAULT.value, transform=_to_automount_value
+        IncludeSourceMode.INCLUDE_FIRST_PARTY.value, transform=_to_automount_value
     ),  # To be deprecated, set include_source in code instead
     "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),

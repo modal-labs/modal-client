@@ -166,9 +166,8 @@ def test_config_boolean(modal_config, traceback_value):
     ["config_value", "expected_result"],
     [
         ('automount = "0"', IncludeSourceMode.INCLUDE_MAIN_PACKAGE.value),
-        ("automount = 'first-party'", IncludeSourceMode.INCLUDE_FIRST_PARTY_DEFAULT.value),
-        ("automount = '1'", IncludeSourceMode.INCLUDE_FIRST_PARTY_DEFAULT.value),
-        ("", IncludeSourceMode.INCLUDE_FIRST_PARTY_DEFAULT.value),
+        ("automount = '1'", IncludeSourceMode.INCLUDE_FIRST_PARTY.value),
+        ("", IncludeSourceMode.INCLUDE_FIRST_PARTY.value),
     ],
 )
 def test_config_automount_value(modal_config, config_value, expected_result):

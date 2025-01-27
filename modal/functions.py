@@ -513,11 +513,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 *entrypoint_mounts,
             ]
 
-            if include_source_mode in (
-                IncludeSourceMode.INCLUDE_FIRST_PARTY,
-                IncludeSourceMode.INCLUDE_FIRST_PARTY_DEFAULT,
-            ):
-                # TODO(elias): if using CONFIG_BASED_FIRST_PARTY *and* mounts are added that haven't already been
+            if include_source_mode is IncludeSourceMode.INCLUDE_FIRST_PARTY:
+                # TODO(elias): if using INCLUDE_FIRST_PARTY *and* mounts are added that haven't already been
                 #  added to the image via add_local_python_source
                 all_mounts += get_auto_mounts()
         else:
