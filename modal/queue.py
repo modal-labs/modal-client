@@ -216,7 +216,7 @@ class _Queue(_Object, type_prefix="qu"):
     @staticmethod
     @renamed_parameter((2024, 12, 18), "label", "name")
     async def delete(name: str, *, client: Optional[_Client] = None, environment_name: Optional[str] = None):
-        obj = _Queue.from_name(name, environment_name=environment_name).hydrate(client)
+        obj = await _Queue.from_name(name, environment_name=environment_name).hydrate(client)
         req = api_pb2.QueueDeleteRequest(queue_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.QueueDelete, req)
 
