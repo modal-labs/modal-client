@@ -146,11 +146,11 @@ def list_cli_commands(
         inspect.getmembers(module, lambda x: isinstance(x, (Function, Cls, LocalEntrypoint))),
     )
     for name, entity in module_level_entities:
-        if isinstance(entity, Cls):
+        if isinstance(entity, Cls) and entity._is_local():
             for method_name in entity._get_method_names():
                 method_ref = MethodReference(entity, method_name)
                 all_runnables.setdefault(method_ref, []).insert(0, f"{name}.{method_name}")
-        else:
+        elif (isinstance(entity, Function) and entity._is_local()) or isinstance(entity, LocalEntrypoint):
             all_runnables.setdefault(entity, []).insert(0, name)
 
     def _is_web_endpoint(runnable: Runnable) -> bool:

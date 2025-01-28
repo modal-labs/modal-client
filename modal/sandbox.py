@@ -36,6 +36,7 @@ from .network_file_system import _NetworkFileSystem, network_file_system_mount_p
 from .proxy import _Proxy
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
+from .snapshot import _SandboxSnapshot
 from .stream_type import StreamType
 
 _default_image: _Image = _Image.debian_slim()
@@ -58,6 +59,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     _stdin: _StreamWriter
     _task_id: Optional[str] = None
     _tunnels: Optional[dict[int, Tunnel]] = None
+    _enable_snapshot: bool = False
 
     @staticmethod
     def _new(
@@ -81,6 +83,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         unencrypted_ports: Sequence[int] = [],
         proxy: Optional[_Proxy] = None,
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
+        enable_snapshot: bool = False,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -177,6 +180,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 open_ports=api_pb2.PortSpecs(ports=open_ports),
                 network_access=network_access,
                 proxy_id=(proxy.object_id if proxy else None),
+                enable_snapshot=enable_snapshot,
             )
 
             # Note - `resolver.app_id` will be `None` for app-less sandboxes
@@ -224,6 +228,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         unencrypted_ports: Sequence[int] = [],
         # Reference to a Modal Proxy to use in front of this Sandbox.
         proxy: Optional[_Proxy] = None,
+        # Enable memory snapshots.
+        _experimental_enable_snapshot: bool = False,
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
@@ -261,7 +267,9 @@ class _Sandbox(_Object, type_prefix="sb"):
             unencrypted_ports=unencrypted_ports,
             proxy=proxy,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
+            enable_snapshot=_experimental_enable_snapshot,
         )
+        obj._enable_snapshot = _experimental_enable_snapshot
 
         app_id: Optional[str] = None
         app_client: Optional[_Client] = None
@@ -533,6 +541,54 @@ class _Sandbox(_Object, type_prefix="sb"):
         resp = await retry_transient_errors(self._client.stub.ContainerExec, req)
         by_line = bufsize == 1
         return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr, text=text, by_line=by_line)
+
+    async def _experimental_snapshot(self) -> _SandboxSnapshot:
+        if not self._enable_snapshot:
+            raise ValueError(
+                "Memory snapshots are not supported for this sandbox. To enable memory snapshots, "
+                "set `_experimental_enable_snapshot=True` when creating the sandbox."
+            )
+        await self._get_task_id()
+        snap_req = api_pb2.SandboxSnapshotRequest(sandbox_id=self.object_id)
+        snap_resp = await retry_transient_errors(self._client.stub.SandboxSnapshot, snap_req)
+
+        snapshot_id = snap_resp.snapshot_id
+
+        # wait for the snapshot to succeed. this is implemented as a second idempotent rpc
+        # because the snapshot itself may take a while to complete.
+        wait_req = api_pb2.SandboxSnapshotWaitRequest(snapshot_id=snapshot_id, timeout=55.0)
+        wait_resp = await retry_transient_errors(self._client.stub.SandboxSnapshotWait, wait_req)
+        if wait_resp.result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+            raise ExecutionError(wait_resp.result.exception)
+
+        async def _load(self: _SandboxSnapshot, resolver: Resolver, existing_object_id: Optional[str]):
+            # we eagerly hydrate the sandbox snapshot below
+            pass
+
+        rep = "SandboxSnapshot()"
+        obj = _SandboxSnapshot._from_loader(_load, rep, hydrate_lazily=True)
+        obj._hydrate(snapshot_id, self._client, None)
+
+        return obj
+
+    @staticmethod
+    async def _experimental_from_snapshot(snapshot: _SandboxSnapshot, client: Optional[_Client] = None):
+        client = client or await _Client.from_env()
+
+        restore_req = api_pb2.SandboxRestoreRequest(snapshot_id=snapshot.object_id)
+        restore_resp: api_pb2.SandboxRestoreResponse = await retry_transient_errors(
+            client.stub.SandboxRestore, restore_req
+        )
+        sandbox = await _Sandbox.from_id(restore_resp.sandbox_id, client)
+
+        task_id_req = api_pb2.SandboxGetTaskIdRequest(sandbox_id=restore_resp.sandbox_id)
+        resp = await retry_transient_errors(client.stub.SandboxGetTaskId, task_id_req)
+        if resp.task_result.status not in [
+            api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED,
+            api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+        ]:
+            raise ExecutionError(resp.task_result.exception)
+        return sandbox
 
     @overload
     async def open(

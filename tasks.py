@@ -154,6 +154,7 @@ def type_check(ctx):
         "modal/image.py",
         "modal/file_io.py",
         "modal/cli/import_refs.py",
+        "modal/snapshot.py",
         "modal/config.py",
         "modal/object.py",
     ]

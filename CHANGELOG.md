@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.72.54 (2025-01-28)
+
+* Fixes bug introduced in v0.72.48 where `modal run` didn't work with files having global `Function.from_name()`/`Function.lookup()`/`Cls.from_name()`/`Cls.lookup()` calls.
+
+
+
 ### 0.72.48 (2025-01-24)
 
 * Fixes a CLI bug where you couldn't reference functions via a qualified app, e.g. `mymodule::{app_variable}.{function_name}`.
