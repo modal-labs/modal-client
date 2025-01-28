@@ -10,7 +10,7 @@ from .supports.skip import skip_macos, skip_windows
 
 
 def test_queue(servicer, client):
-    q = Queue.lookup("some-random-queue", create_if_missing=True, client=client)
+    q = Queue.from_name("some-random-queue", create_if_missing=True).hydrate(client)
     assert isinstance(q, Queue)
     assert q.len() == 0
     q.put(42)
@@ -29,7 +29,7 @@ def test_queue(servicer, client):
 
     Queue.delete("some-random-queue", client=client)
     with pytest.raises(NotFoundError):
-        Queue.lookup("some-random-queue", client=client)
+        Queue.from_name("some-random-queue").hydrate(client)
 
 
 def test_queue_ephemeral(servicer, client):
@@ -105,7 +105,7 @@ def test_queue_nonblocking_put(servicer, client):
 
 
 def test_queue_deploy(servicer, client):
-    d = Queue.lookup("xyz", create_if_missing=True, client=client)
+    d = Queue.from_name("xyz", create_if_missing=True).hydrate(client)
     d.put(123)
 
 
@@ -116,6 +116,6 @@ def test_queue_lazy_hydrate_from_name(set_env_client):
 
 
 @pytest.mark.parametrize("name", ["has space", "has/slash", "a" * 65])
-def test_invalid_name(servicer, client, name):
+def test_invalid_name(name):
     with pytest.raises(InvalidError, match="Invalid Queue name"):
-        Queue.lookup(name)
+        Queue.from_name(name)

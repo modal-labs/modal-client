@@ -11,7 +11,7 @@ from ._object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _O
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.deprecation import renamed_parameter
+from ._utils.deprecation import deprecation_warning, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -151,14 +151,22 @@ class _Dict(_Object, type_prefix="di"):
     ) -> "_Dict":
         """Lookup a named Dict.
 
+        DEPRECATED: This method is deprecated in favor of `modal.Dict.from_name`.
+
         In contrast to `modal.Dict.from_name`, this is an eager method
         that will hydrate the local object with metadata from Modal servers.
 
         ```python
-        d = modal.Dict.lookup("my-dict")
+        d = modal.Dict.from_name("my-dict")
         d["xyz"] = 123
         ```
         """
+        deprecation_warning(
+            (2025, 1, 27),
+            "`modal.Dict.lookup` is deprecated and will be removed in a future release."
+            " It can be replaced with `modal.Dict.from_name`."
+            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+        )
         obj = _Dict.from_name(
             name,
             data=data,
@@ -180,7 +188,7 @@ class _Dict(_Object, type_prefix="di"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ):
-        obj = await _Dict.lookup(name, client=client, environment_name=environment_name)
+        obj = await _Dict.from_name(name, environment_name=environment_name).hydrate(client)
         req = api_pb2.DictDeleteRequest(dict_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.DictDelete, req)
 
