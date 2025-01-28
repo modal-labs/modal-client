@@ -335,6 +335,10 @@ class FunctionInfo:
         elif self._type == FunctionInfoType.FILE:
             remote_path = ROOT_DIR / Path(self._file).name
             if not _is_modal_path(remote_path):
+                # TODO: inspect if this file is already included as part of
+                #  a package mount, and skip it + reference that package
+                #  instead if that's the case. This avoids possible module
+                #  duplication bugs
                 return [
                     _Mount._from_local_file(
                         self._file,
