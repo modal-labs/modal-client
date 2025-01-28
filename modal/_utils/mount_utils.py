@@ -65,7 +65,7 @@ def validate_volumes(
     volume_to_paths: dict[_Volume, list[str]] = {}
     for path, volume in validated_volumes:
         if not isinstance(volume, (_Volume, _CloudBucketMount)):
-            raise InvalidError(f"Object of type {type(volume)} mounted at '{path}' is not useable as a volume.")
+            raise InvalidError(f"Object of type {type(volume)} mounted at '{path}' is not usable as a volume.")
         elif isinstance(volume, (_Volume)):
             volume_to_paths.setdefault(volume, []).append(path)
     for paths in volume_to_paths.values():

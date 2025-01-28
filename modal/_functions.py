@@ -32,7 +32,6 @@ from ._utils.async_utils import (
     aclosing,
     async_merge,
     callable_to_agen,
-    synchronize_api,
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
@@ -637,7 +636,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # Validate volumes
         validated_volumes = validate_volumes(volumes)
         cloud_bucket_mounts = [(k, v) for k, v in validated_volumes if isinstance(v, _CloudBucketMount)]
-        validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
+        validated_volumes_no_cloud_buckets = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
         # Validate NFS
         validated_network_file_systems = validate_network_file_systems(network_file_systems)
@@ -682,7 +681,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 deps.append(image)
             for _, nfs in validated_network_file_systems:
                 deps.append(nfs)
-            for _, vol in validated_volumes:
+            for _, vol in validated_volumes_no_cloud_buckets:
                 deps.append(vol)
             for _, cloud_bucket_mount in cloud_bucket_mounts:
                 if cloud_bucket_mount.secret:
@@ -755,7 +754,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         volume_id=volume.object_id,
                         allow_background_commits=True,
                     )
-                    for path, volume in validated_volumes
+                    for path, volume in validated_volumes_no_cloud_buckets
                 ]
                 loaded_mount_ids = {m.object_id for m in all_mounts} | {m.object_id for m in image._mount_layers}
 
@@ -1445,7 +1444,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 args, kwargs, function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
             )
 
-        fc = _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
+        fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(
+            invocation.function_call_id, invocation.client, None
+        )
         fc._is_generator = self._is_generator if self._is_generator else False
         return fc
 
@@ -1466,7 +1467,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 args, kwargs, api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY
             )
 
-        fc = _FunctionCall._new_hydrated(invocation.function_call_id, invocation.client, None)
+        fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(
+            invocation.function_call_id, invocation.client, None
+        )
         fc._is_generator = self._is_generator if self._is_generator else False
         return fc
 
@@ -1492,9 +1495,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     map = MethodWithAio(_map_sync, _map_async, synchronizer)
     starmap = MethodWithAio(_starmap_sync, _starmap_async, synchronizer)
     for_each = MethodWithAio(_for_each_sync, _for_each_async, synchronizer)
-
-
-Function = synchronize_api(_Function)
 
 
 class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
@@ -1569,16 +1569,13 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
     @staticmethod
     async def from_id(
         function_call_id: str, client: Optional[_Client] = None, is_generator: bool = False
-    ) -> "_FunctionCall":
+    ) -> "_FunctionCall[Any]":
         if client is None:
             client = await _Client.from_env()
 
-        fc = _FunctionCall._new_hydrated(function_call_id, client, None)
+        fc: _FunctionCall[Any] = _FunctionCall._new_hydrated(function_call_id, client, None)
         fc._is_generator = is_generator
         return fc
-
-
-FunctionCall = synchronize_api(_FunctionCall)
 
 
 async def _gather(*function_calls: _FunctionCall[ReturnType]) -> typing.Sequence[ReturnType]:
@@ -1603,6 +1600,3 @@ async def _gather(*function_calls: _FunctionCall[ReturnType]) -> typing.Sequence
     except Exception as exc:
         # TODO: kill all running function calls
         raise exc
-
-
-gather = synchronize_api(_gather)

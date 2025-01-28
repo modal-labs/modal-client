@@ -15,6 +15,7 @@ from synchronicity.async_wrap import asynccontextmanager
 import modal_proto.api_pb2
 from modal_proto import api_pb2
 
+from ._functions import _Function
 from ._object import _get_environment_name, _Object
 from ._pty import get_pty_info
 from ._resolver import Resolver
@@ -29,7 +30,6 @@ from .cls import _Cls
 from .config import config, logger
 from .environments import _get_environment_cached
 from .exception import InteractiveTimeoutError, InvalidError, RemoteError, _CliUserExecutionError
-from .functions import _Function
 from .output import _get_output_manager, enable_output
 from .running_app import RunningApp, running_app_from_layout
 from .sandbox import _Sandbox
