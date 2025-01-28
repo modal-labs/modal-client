@@ -3,7 +3,6 @@ import asyncio
 import enum
 import inspect
 import os
-import typing
 from collections.abc import AsyncGenerator
 from enum import Enum
 from pathlib import Path, PurePosixPath
@@ -27,7 +26,6 @@ from ..exception import (
     InvalidError,
     RemoteError,
 )
-from ..file_pattern_matcher import NON_PYTHON_FILES
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
 from .blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
@@ -329,8 +327,16 @@ class FunctionInfo:
         # make sure the function's own entrypoint is included:
         if self._type == FunctionInfoType.PACKAGE:
             top_level_package = self.module_name.split(".")[0]
-            return {top_level_package: _Mount._from_local_python_packages(top_level_package, ignore=NON_PYTHON_FILES)}
+            # TODO: add deprecation warning if the following entrypoint mount
+            #  includes non-.py files, since we'll want to migrate to .py-only
+            #  soon to get it consistent with the `add_local_python_source()`
+            #  defaults.
+            return {top_level_package: _Mount._from_local_python_packages(top_level_package)}
         elif self._type == FunctionInfoType.FILE:
+            # TODO: inspect if this file is already included as part of
+            #  a package mount, and skip it + reference that package
+            #  instead if that's the case. This avoids possible module
+            #  duplication bugs
             module_file = Path(self._file)
             container_module_name = module_file.stem
             remote_path = ROOT_DIR / module_file.name
@@ -634,24 +640,16 @@ def get_include_source_mode(function_or_app_specific) -> IncludeSourceMode:
     If function_or_app_specific is None, infer it from config
     """
     if function_or_app_specific is not None:
-        from ..functions import IncludeSourceValue
-
-        valid_str_values = typing.get_args(IncludeSourceValue)
-
-        lower_case_input = (
-            function_or_app_specific.lower() if isinstance(function_or_app_specific, str) else function_or_app_specific
-        )
-
-        if lower_case_input not in valid_str_values:
+        if not isinstance(function_or_app_specific, bool):
             raise ValueError(
                 f"Invalid `include_source` value: {function_or_app_specific}. Use one of:\n"
-                f"True - include function's home module\n"
-                f"False - include no extra Python source\n"
-                f'"legacy" - include all globally imported modules that aren\'t installed in site-packages locally\n'
+                f"True - include function's package source\n"
+                f"False - include no Python source (module expected to be present in Image)\n"
             )
 
         # explicitly set in app/function
-        return IncludeSourceMode(lower_case_input)
+        return IncludeSourceMode(function_or_app_specific)
 
+    # note that the automount config boolean isn't a 1-1 mapping with include_source!
     legacy_automount_mode: bool = config.get("automount")
     return IncludeSourceMode.INCLUDE_FIRST_PARTY if legacy_automount_mode else IncludeSourceMode.INCLUDE_MAIN_PACKAGE

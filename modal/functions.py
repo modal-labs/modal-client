@@ -8,7 +8,7 @@ import warnings
 from collections.abc import AsyncGenerator, Collection, Sequence, Sized
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import TYPE_CHECKING, Any, Callable, Literal, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 
 import typing_extensions
 from google.protobuf.message import Message
@@ -90,10 +90,6 @@ if TYPE_CHECKING:
     import modal.app
     import modal.cls
     import modal.partial_function
-
-
-# type for in-code user-provided automount values
-IncludeSourceValue = Literal[True, False, "legacy"]
 
 
 @dataclasses.dataclass
@@ -475,7 +471,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
         # current default: first-party, future default: main-package
-        include_source: Optional[IncludeSourceValue] = None,
+        include_source: Optional[bool] = None,
         _experimental_buffer_containers: Optional[int] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
