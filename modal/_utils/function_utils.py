@@ -26,7 +26,6 @@ from ..exception import (
     InvalidError,
     RemoteError,
 )
-from ..file_pattern_matcher import NON_PYTHON_FILES
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
 from .blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
@@ -328,7 +327,11 @@ class FunctionInfo:
         # make sure the function's own entrypoint is included:
         if self._type == FunctionInfoType.PACKAGE:
             top_level_package = self.module_name.split(".")[0]
-            return [_Mount._from_local_python_packages(top_level_package, ignore=NON_PYTHON_FILES)]
+            # TODO: add deprecation warning if the following entrypoint mount
+            #  includes non-.py files, since we'll want to migrate to .py-only
+            #  soon to get it consistent with the `add_local_python_source()`
+            #  defaults.
+            return [_Mount._from_local_python_packages(top_level_package)]
         elif self._type == FunctionInfoType.FILE:
             remote_path = ROOT_DIR / Path(self._file).name
             if not _is_modal_path(remote_path):
