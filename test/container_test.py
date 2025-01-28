@@ -1039,7 +1039,7 @@ def test_cls_web_endpoint(servicer):
 
 
 @skip_github_non_linux
-def test_cls_web_endpoint_default_parameter(servicer):
+def test_cls_web_endpoint_default_pickle_parameter(servicer):
     inputs = _get_web_inputs(method_name="web")
 
     ret = _run_container(

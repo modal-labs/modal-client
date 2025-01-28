@@ -316,8 +316,6 @@ class FunctionInfo:
             class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=param_type)
             if has_default:
                 type_info = PARAM_TYPE_MAPPING.get(param_type)
-                if not type_info:
-                    raise ValueError(f"Unsupported parameter type: {param_type}")
                 converted_value = type_info.converter(param.default)
                 setattr(class_param_spec, default_field, converted_value)
             modal_parameters.append(class_param_spec)

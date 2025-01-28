@@ -486,6 +486,7 @@ class _Cls(_Object, type_prefix="cs"):
     @staticmethod
     def from_local(user_cls, app: "modal.app._App", class_service_function: _Function) -> "_Cls":
         """mdmd:hidden"""
+        # validate signature
         _Cls.validate_construction_mechanism(user_cls)
 
         pickle_param_no_default = False
