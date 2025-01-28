@@ -75,7 +75,7 @@ def test_volume_commit(client, servicer, skip_reload):
 @pytest.mark.asyncio
 async def test_volume_get(servicer, client, tmp_path):
     await modal.Volume.create_deployed.aio("my-vol", client=client)
-    vol = await modal.Volume.lookup.aio("my-vol", client=client)  # type: ignore
+    vol = await modal.Volume.from_name("my-vol").hydrate.aio(client=client)
 
     file_contents = b"hello world"
     file_path = "foo.txt"
