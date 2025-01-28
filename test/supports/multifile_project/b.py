@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2024
-import c
-
 import modal
+
+from . import c
 
 app = modal.App()
 

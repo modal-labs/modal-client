@@ -72,9 +72,7 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
 
 
 def _bind_instance_method(service_function: _Function, class_bound_method: _Function):
-    """mdmd:hidden
-
-    Binds an "instance service function" to a specific method name.
+    """Binds an "instance service function" to a specific method name.
     This "dummy" _Function gets no unique object_id and isn't backend-backed at the moment, since all
     it does it forward invocations to the underlying instance_service_function with the specified method,
     and we don't support web_config for parameterized methods at the moment.
@@ -129,6 +127,7 @@ def _bind_instance_method(service_function: _Function, class_bound_method: _Func
     fun._is_method = True
     fun._app = class_bound_method._app
     fun._spec = class_bound_method._spec
+    fun._is_web_endpoint = class_bound_method._is_web_endpoint
     return fun
 
 
@@ -229,7 +228,7 @@ class _Obj:
 
         ```python notest
         # Usage on a parametrized function.
-        Model = modal.Cls.lookup("my-app", "Model")
+        Model = modal.Cls.from_name("my-app", "Model")
         Model("fine-tuned-model").keep_warm(2)
         ```
         """
@@ -431,6 +430,7 @@ class _Cls(_Object, type_prefix="cs"):
                     self._method_functions[method_name]._hydrate(
                         self._class_service_function.object_id, self._client, method_handle_metadata
                     )
+
             else:
                 # We're here when the function is loaded remotely (e.g. _Cls.from_name)
                 self._method_functions = {}
@@ -620,7 +620,7 @@ class _Cls(_Object, type_prefix="cs"):
         **Usage:**
 
         ```python notest
-        Model = modal.Cls.lookup("my_app", "Model")
+        Model = modal.Cls.from_name("my_app", "Model")
         ModelUsingGPU = Model.with_options(gpu="A100")
         ModelUsingGPU().generate.remote(42)  # will run with an A100 GPU
         ```
@@ -669,15 +669,23 @@ class _Cls(_Object, type_prefix="cs"):
     ) -> "_Cls":
         """Lookup a Cls from a deployed App by its name.
 
+        DEPRECATED: This method is deprecated in favor of `modal.Cls.from_name`.
+
         In contrast to `modal.Cls.from_name`, this is an eager method
         that will hydrate the local object with metadata from Modal servers.
 
         ```python notest
-        Model = modal.Cls.lookup("other-app", "Model")
+        Model = modal.Cls.from_name("other-app", "Model")
         model = Model()
         model.inference(...)
         ```
         """
+        deprecation_warning(
+            (2025, 1, 27),
+            "`modal.Cls.lookup` is deprecated and will be removed in a future release."
+            " It can be replaced with `modal.Cls.from_name`."
+            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+        )
         obj = _Cls.from_name(
             app_name, name, namespace=namespace, environment_name=environment_name, workspace=workspace
         )
@@ -711,6 +719,9 @@ class _Cls(_Object, type_prefix="cs"):
             )
             return self._method_functions[k]
         return getattr(self._user_cls, k)
+
+    def _is_local(self) -> bool:
+        return self._user_cls is not None
 
 
 Cls = synchronize_api(_Cls)

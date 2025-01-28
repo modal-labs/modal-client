@@ -383,7 +383,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _serve_mounts: frozenset[_Mount]  # set at load time, only by loader
     _app: Optional["modal.app._App"] = None
     _obj: Optional["modal.cls._Obj"] = None  # only set for InstanceServiceFunctions and bound instance methods
-    _web_url: Optional[str]
+
+    _webhook_config: Optional[api_pb2.WebhookConfig] = None  # this is set in definition scope, only locally
+    _web_url: Optional[str]  # this is set on hydration
+
     _function_name: Optional[str]
     _is_method: bool
     _spec: Optional[_FunctionSpec] = None
@@ -912,6 +915,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._cluster_size = cluster_size
         obj._is_method = False
         obj._spec = function_spec  # needed for modal shell
+        obj._webhook_config = webhook_config  # only set locally
 
         # Used to check whether we should rebuild a modal.Image which uses `run_function`.
         gpus: list[GPU_T] = gpu if isinstance(gpu, list) else [gpu]
@@ -1015,11 +1019,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         ```python notest
         # Usage on a regular function.
-        f = modal.Function.lookup("my-app", "function")
+        f = modal.Function.from_name("my-app", "function")
         f.keep_warm(2)
 
         # Usage on a parametrized function.
-        Model = modal.Cls.lookup("my-app", "Model")
+        Model = modal.Cls.from_name("my-app", "Model")
         Model("fine-tuned-model").keep_warm(2)
         ```
         """
@@ -1092,6 +1096,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     ) -> "_Function":
         """Lookup a Function from a deployed App by its name.
 
+        DEPRECATED: This method is deprecated in favor of `modal.Function.from_name`.
+
         In contrast to `modal.Function.from_name`, this is an eager method
         that will hydrate the local object with metadata from Modal servers.
 
@@ -1099,6 +1105,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         f = modal.Function.lookup("other-app", "function")
         ```
         """
+        deprecation_warning(
+            (2025, 1, 27),
+            "`modal.Function.lookup` is deprecated and will be removed in a future release."
+            " It can be replaced with `modal.Function.from_name`."
+            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+        )
         obj = _Function.from_name(app_name, name, namespace=namespace, environment_name=environment_name)
         if client is None:
             client = await _Client.from_env()
@@ -1137,6 +1149,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         """mdmd:hidden"""
         assert self._spec
         return self._spec
+
+    def _is_web_endpoint(self) -> bool:
+        # only defined in definition scope/locally, and not for class methods at the moment
+        return bool(self._webhook_config and self._webhook_config.type != api_pb2.WEBHOOK_TYPE_UNSPECIFIED)
 
     def get_build_def(self) -> str:
         """mdmd:hidden"""
