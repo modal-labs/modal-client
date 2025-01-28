@@ -697,7 +697,7 @@ class _Mount(_Object, type_prefix="mo"):
             response = await resolver.client.stub.MountGetOrCreate(req)
             provider._hydrate(response.mount_id, resolver.client, response.handle_metadata)
 
-        return _Mount._from_loader(_load, "Mount()")
+        return _Mount._from_loader(_load, "Mount()", hydrate_lazily=True)
 
     @classmethod
     @renamed_parameter((2024, 12, 18), "label", "name")
