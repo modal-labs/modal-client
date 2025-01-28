@@ -8,7 +8,7 @@ from typing import Any, Callable, Optional, TypeVar, Union
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
-from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP, PickleSerialization, get_param_annotation
+from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP, get_param_annotation
 from modal_proto import api_pb2
 
 from ._object import _get_environment_name, _Object
@@ -489,18 +489,6 @@ class _Cls(_Object, type_prefix="cs"):
         # validate signature
         _Cls.validate_construction_mechanism(user_cls)
 
-        pickle_param_no_default = False
-        params = {k: v for k, v in user_cls.__dict__.items() if is_parameter(v)}
-        annotations = user_cls.__dict__.get("__annotations__", {})
-        for k, t in annotations.items():
-            if k not in params:
-                continue
-
-            if get_param_annotation(t) == PickleSerialization:
-                if params[k].default == _no_default:
-                    pickle_param_no_default = True
-                    break
-
         method_functions: dict[str, _Function] = {}
         partial_functions: dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
             user_cls, _PartialFunctionFlags.FUNCTION
@@ -509,10 +497,6 @@ class _Cls(_Object, type_prefix="cs"):
         for method_name, partial_function in partial_functions.items():
             method_function = class_service_function._bind_method(user_cls, method_name, partial_function)
             if partial_function.webhook_config is not None:
-                if pickle_param_no_default:
-                    raise InvalidError(
-                        "A class with a PickleSerialization parameter without a default value cannot have webhooks"
-                    )
                 app._web_endpoints.append(method_function.tag)
             partial_function.wrapped = True
             method_functions[method_name] = method_function
