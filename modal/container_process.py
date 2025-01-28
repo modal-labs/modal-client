@@ -153,15 +153,12 @@ class _ContainerProcess(Generic[T]):
             await self.stdin.drain()
 
         async def _send_window_resize(rows: int, cols: int):
-            # create resize sequence:
-            # - magic byte 0xC1 to identify the resize sequence
+            # resize sequence:
             # - 2 bytes for the number of rows (big-endian)
             # - 2 bytes for the number of columns (big-endian)
-            magic = bytes([0xC1])
             dims = struct.pack(">HH", rows, cols)
-            resize_data = magic + dims
-            self.stdin.write(resize_data)
-            await self.stdin.drain()
+            self.stdin.write(dims)
+            await self.stdin.drain(_is_resize=True)
 
         async with TaskContext() as tc:
             stdout_task = tc.create_task(_write_to_fd_loop(self.stdout))

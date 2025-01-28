@@ -114,9 +114,6 @@ class WindowSizeHandler:
         """Context manager that processes window resize events from the queue.
         Can be run from any thread. If the window manager was initialized from a thread that is not the main thread,
         e.g. in tests, this context manager is a no-op.
-
-        Args:
-            handler: Callback function to handle window resize events
         """
         if not self._is_main_thread:
             yield
