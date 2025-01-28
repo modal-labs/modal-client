@@ -134,8 +134,6 @@ async def ls(
 ):
     ensure_env(env)
     vol = _Volume.from_name(volume_name, environment_name=env)
-    if not isinstance(vol, _Volume):
-        raise UsageError("The specified app entity is not a modal.Volume")
 
     try:
         entries = await vol.listdir(path)
@@ -191,8 +189,6 @@ async def put(
 ):
     ensure_env(env)
     vol = await _Volume.from_name(volume_name, environment_name=env).hydrate()
-    if not isinstance(vol, _Volume):
-        raise UsageError("The specified app entity is not a modal.Volume")
 
     if remote_path.endswith("/"):
         remote_path = remote_path + os.path.basename(local_path)
@@ -236,8 +232,6 @@ async def rm(
 ):
     ensure_env(env)
     volume = _Volume.from_name(volume_name, environment_name=env)
-    if not isinstance(volume, _Volume):
-        raise UsageError("The specified app entity is not a modal.Volume")
     try:
         await volume.remove_file(remote_path, recursive=recursive)
     except GRPCError as exc:
@@ -262,8 +256,6 @@ async def cp(
 ):
     ensure_env(env)
     volume = _Volume.from_name(volume_name, environment_name=env)
-    if not isinstance(volume, _Volume):
-        raise UsageError("The specified app entity is not a modal.Volume")
     *src_paths, dst_path = paths
     await volume.copy_files(src_paths, dst_path)
 
