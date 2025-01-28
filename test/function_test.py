@@ -843,7 +843,7 @@ def test_calls_should_not_unwrap_modal_objects(servicer, client):
     servicer.function_body(assert_is_wrapped_dict)
 
     # make sure the serialized object is an actual Dict and not a _Dict in all user code contexts
-    with app.run(client=client), modal.Dict.ephemeral() as some_modal_object:
+    with app.run(client=client), modal.Dict.ephemeral(client=client) as some_modal_object:
         assert type(foo.remote(some_modal_object)) == modal.Dict
         fc = foo.spawn(some_modal_object)
         assert type(fc.get()) == modal.Dict
@@ -867,7 +867,7 @@ def test_calls_should_not_unwrap_modal_objects_gen(servicer, client):
     servicer.function_body(assert_is_wrapped_dict_gen)
 
     # make sure the serialized object is an actual Dict and not a _Dict in all user code contexts
-    with app.run(client=client), modal.Dict.ephemeral() as some_modal_object:
+    with app.run(client=client), modal.Dict.ephemeral(client=client) as some_modal_object:
         assert type(next(foo.remote_gen(some_modal_object))) == modal.Dict
         with pytest.raises(DeprecationError):
             foo.spawn(some_modal_object)
