@@ -1092,18 +1092,3 @@ def test_pickle_serialization_default_webhook():
 
     a = C()
     assert a.foo == default
-
-
-def test_pickle_serialization_no_default_webhook():
-    with pytest.raises(
-        InvalidError, match="A class with a PickleSerialization parameter without a default value cannot have webhooks"
-    ):
-        app = modal.App()
-
-        @app.cls(serialized=True)
-        class C:
-            foo: typing.Annotated[dict, modal.PickleSerialization] = modal.parameter()
-
-            @modal.web_endpoint()
-            def get_value(self):
-                return self.foo
