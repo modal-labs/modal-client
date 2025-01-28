@@ -3,7 +3,6 @@ import asyncio
 import enum
 import inspect
 import os
-import typing
 from collections.abc import AsyncGenerator
 from enum import Enum
 from pathlib import Path, PurePosixPath
@@ -632,24 +631,16 @@ def get_include_source_mode(function_or_app_specific) -> IncludeSourceMode:
     If function_or_app_specific is None, infer it from config
     """
     if function_or_app_specific is not None:
-        from ..functions import IncludeSourceValue
-
-        valid_str_values = typing.get_args(IncludeSourceValue)
-
-        lower_case_input = (
-            function_or_app_specific.lower() if isinstance(function_or_app_specific, str) else function_or_app_specific
-        )
-
-        if lower_case_input not in valid_str_values:
+        if not isinstance(function_or_app_specific, bool):
             raise ValueError(
                 f"Invalid `include_source` value: {function_or_app_specific}. Use one of:\n"
-                f"True - include function's home module\n"
-                f"False - include no extra Python source\n"
-                f'"legacy" - include all globally imported modules that aren\'t installed in site-packages locally\n'
+                f"True - include function's package source\n"
+                f"False - include no Python source (module expected to be present in Image)\n"
             )
 
         # explicitly set in app/function
-        return IncludeSourceMode(lower_case_input)
+        return IncludeSourceMode(function_or_app_specific)
 
+    # note that the automount config boolean isn't a 1-1 mapping with include_source!
     legacy_automount_mode: bool = config.get("automount")
     return IncludeSourceMode.INCLUDE_FIRST_PARTY if legacy_automount_mode else IncludeSourceMode.INCLUDE_MAIN_PACKAGE

@@ -1055,8 +1055,10 @@ def test_from_name_web_url(servicer, set_env_client):
         ("0", "False", None, 0),
         (None, "False", None, 0),
         (None, "False", "True", 1),
-        (None, "False", "'legacy'", 2),
-        (None, "True", "'legacy'", 2),
+        (None, "True", "False", 0),
+        # "legacy" mode is currently not enabled except as the default value
+        # (None, "False", "'legacy'", 2),
+        # (None, "True", "'legacy'", 2),
     ],
 )
 def test_include_source_mode(
