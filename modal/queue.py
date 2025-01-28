@@ -193,7 +193,7 @@ class _Queue(_Object, type_prefix="qu"):
         In contrast to `modal.Queue.from_name`, this is an eager method
         that will hydrate the local object with metadata from Modal servers.
 
-        ```python
+        ```python notest
         q = modal.Queue.lookup("my-queue")
         q.put(123)
         ```
