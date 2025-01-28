@@ -729,6 +729,9 @@ class _Cls(_Object, type_prefix="cs"):
             return self._method_functions[k]
         return getattr(self._user_cls, k)
 
+    def _is_local(self) -> bool:
+        return self._user_cls is not None
+
 
 Cls = synchronize_api(_Cls)
 

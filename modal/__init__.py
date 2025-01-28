@@ -32,6 +32,7 @@ try:
     from .schedule import Cron, Period
     from .scheduler_placement import SchedulerPlacement
     from .secret import Secret
+    from .snapshot import SandboxSnapshot
     from .volume import Volume
 except Exception:
     print()
@@ -61,6 +62,7 @@ __all__ = [
     "Retries",
     "CloudBucketMount",
     "Sandbox",
+    "SandboxSnapshot",
     "SchedulerPlacement",
     "Secret",
     "Stub",
