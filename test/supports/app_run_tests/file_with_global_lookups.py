@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2025
 import modal
 
 remote_func = modal.Function.from_name("app", "some_func")
