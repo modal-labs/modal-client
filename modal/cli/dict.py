@@ -66,7 +66,7 @@ async def clear(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_O
 async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
     """Delete a named Dict and all of its data."""
     # Lookup first to validate the name, even though delete is a staticmethod
-    _Dict.from_name(name, environment_name=env)
+    await _Dict.from_name(name, environment_name=env).hydrate()
     if not yes:
         typer.confirm(
             f"Are you sure you want to irrevocably delete the modal.Dict '{name}'?",

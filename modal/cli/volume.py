@@ -279,6 +279,8 @@ async def delete(
     yes: bool = YES_OPTION,
     env: Optional[str] = ENV_OPTION,
 ):
+    # Lookup first to validate the name, even though delete is a staticmethod
+    await _Volume.from_name(volume_name, environment_name=env).hydrate()
     if not yes:
         typer.confirm(
             f"Are you sure you want to irrevocably delete the modal.Volume '{volume_name}'?",

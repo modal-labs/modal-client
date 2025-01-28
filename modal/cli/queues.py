@@ -46,7 +46,7 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
 async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
     """Delete a named Queue and all of its data."""
     # Lookup first to validate the name, even though delete is a staticmethod
-    _Queue.from_name(name, environment_name=env)
+    await _Queue.from_name(name, environment_name=env).hydrate()
     if not yes:
         typer.confirm(
             f"Are you sure you want to irrevocably delete the modal.Queue '{name}'?",
