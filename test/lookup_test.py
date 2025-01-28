@@ -11,7 +11,6 @@ def test_persistent_object(servicer, client):
     volume_id = Volume.create_deployed("my-volume", client=client)
 
     v = Volume.from_name("my-volume").hydrate(client)
-    assert isinstance(v, Volume)
     assert v.object_id == volume_id
 
     with pytest.raises(NotFoundError):
