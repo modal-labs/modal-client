@@ -190,7 +190,7 @@ async def put(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    vol = _Volume.from_name(volume_name, environment_name=env)
+    vol = await _Volume.from_name(volume_name, environment_name=env).hydrate()
     if not isinstance(vol, _Volume):
         raise UsageError("The specified app entity is not a modal.Volume")
 
