@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2025
 from ._functions import _Function, _FunctionCall, _gather
 from ._utils.async_utils import synchronize_api
 
