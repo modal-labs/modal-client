@@ -4,9 +4,11 @@ import contextlib
 import pytest
 import threading
 import time
+import typing
 
 from modal import (
     App,
+    PickleSerialization,
     Sandbox,
     asgi_app,
     batched,
@@ -17,6 +19,7 @@ from modal import (
     exit,
     is_local,
     method,
+    parameter,
     web_endpoint,
     web_server,
     wsgi_app,
@@ -432,6 +435,15 @@ class Cls:
     @method(is_generator=True)
     def generator(self, x):
         return self._generator(x)
+
+
+@app.cls()
+class ClsWithPickleSerialization:
+    bar: typing.Annotated[dict, PickleSerialization] = parameter(default={"foo": "bar"})
+
+    @web_endpoint()
+    def web(self, arg):
+        return {"arg": arg, "bar": self.bar}
 
 
 @app.cls()

@@ -1039,6 +1039,22 @@ def test_cls_web_endpoint(servicer):
 
 
 @skip_github_non_linux
+def test_cls_web_endpoint_default_parameter(servicer):
+    inputs = _get_web_inputs(method_name="web")
+
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "ClsWithPickleSerialization.*",
+        inputs=inputs,
+        is_class=True,
+    )
+
+    _, second_message = _unwrap_asgi(ret)
+    assert json.loads(second_message["body"]) == {"arg": "space", "bar": {"foo": "bar"}}
+
+
+@skip_github_non_linux
 def test_cls_web_asgi_construction(servicer):
     app_layout = api_pb2.AppLayout(
         objects=[
