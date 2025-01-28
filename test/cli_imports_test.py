@@ -214,14 +214,14 @@ def test_list_cli_commands():
         CLICommand(["foo", "app.foo"], foo, False, priority=AutoRunPriority.MODULE_FUNCTION),  # type: ignore
         CLICommand(
             ["Cls.method_1", "app.Cls.method_1"],
-            MethodReference(Cls, "method_1"),
+            MethodReference(Cls, "method_1"),  # type: ignore
             False,
             priority=AutoRunPriority.MODULE_FUNCTION,
-        ),  # type: ignore
+        ),
         CLICommand(
             ["Cls.web_method", "app.Cls.web_method"],
-            MethodReference(Cls, "web_method"),
+            MethodReference(Cls, "web_method"),  # type: ignore
             True,
             priority=AutoRunPriority.MODULE_FUNCTION,
-        ),  # type: ignore
+        ),
     ]
