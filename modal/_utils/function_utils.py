@@ -288,8 +288,8 @@ class FunctionInfo:
         if not _use_annotation_parameters(self.user_cls):
             return api_pb2.ClassParameterInfo(format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE)
 
-        # annotation parameters trigger strictly typed parameterization
-        # which enables web endpoint for parameterized classes
+        # annotation parameters trigger strictly typed parametrization
+        # which enables web endpoint for parametrized classes
 
         modal_parameters: list[api_pb2.ClassParameterSpec] = []
         signature = _get_class_constructor_signature(self.user_cls)
