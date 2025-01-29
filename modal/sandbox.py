@@ -581,7 +581,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
         sandbox = await _Sandbox.from_id(restore_resp.sandbox_id, client)
 
-        task_id_req = api_pb2.SandboxGetTaskIdRequest(sandbox_id=restore_resp.sandbox_id, wait_until_ready=True)
+        task_id_req = api_pb2.SandboxGetTaskIdRequest(
+            sandbox_id=restore_resp.sandbox_id, wait_until_ready=True, timeout=55.0
+        )
         resp = await retry_transient_errors(client.stub.SandboxGetTaskId, task_id_req)
         if resp.task_result.status not in [
             api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED,
