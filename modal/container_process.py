@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2024
 import asyncio
 import platform
-import struct
 from typing import Generic, Optional, TypeVar
 
 from modal_proto import api_pb2
@@ -153,11 +152,6 @@ class _ContainerProcess(Generic[T]):
             await self.stdin.drain()
 
         async def _send_window_resize(rows: int, cols: int):
-            # resize sequence:
-            # - 2 bytes for the number of rows (big-endian)
-            # - 2 bytes for the number of columns (big-endian)
-            dims = struct.pack(">HH", rows, cols)
-            self.stdin.write(dims)
             await self.stdin.drain(_terminal_size=(rows, cols))
 
         async with TaskContext() as tc:

@@ -386,7 +386,8 @@ class _StreamWriter:
 
     async def drain(
         self,
-        _terminal_size: Optional[tuple[int, int]] = None,  # internal option to send terminal window resize events
+        # internal option to send terminal resize events to container exec
+        _terminal_size: Optional[tuple[int, int]] = None,
     ) -> None:
         """Flush the write buffer and send data to the running process.
 

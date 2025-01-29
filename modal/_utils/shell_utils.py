@@ -3,16 +3,13 @@
 import asyncio
 import contextlib
 import errno
-import fcntl
 import os
 import select
+import shutil
 import signal
-import struct
 import sys
-import termios
 import threading
 from collections.abc import Coroutine
-from queue import Empty, Queue
 from types import FrameType
 from typing import Callable, Optional
 
@@ -90,21 +87,28 @@ class WindowSizeHandler:
     """Handles terminal window resize events."""
 
     def __init__(self):
-        """Initialize window size handler. Must be called from the main thread to set signals properly.
+        """Initialize window size handler. It is a system limitation that we can only set signals from the main thread.
+
         In case this is invoked from a thread that is not the main thread, e.g. in tests, the context manager
-        becomes a no-op."""
+        becomes a no-op.
+        """
         self._is_main_thread = threading.current_thread() is threading.main_thread()
-        self._event_queue: Queue[tuple[int, int]] = Queue()
+
+        self._current_size: tuple[int, int] = self._get_terminal_size()
+        self._size_changed = asyncio.Event()
 
         if self._is_main_thread and hasattr(signal, "SIGWINCH"):
-            signal.signal(signal.SIGWINCH, self._queue_resize_event)
+            signal.signal(signal.SIGWINCH, self._signal_resize_event)
 
-    def _queue_resize_event(self, signum: Optional[int] = None, frame: Optional[FrameType] = None) -> None:
-        """Signal handler for SIGWINCH that queues events."""
+    def _get_terminal_size(self) -> tuple[int, int]:
+        c, r = shutil.get_terminal_size()
+        return r, c
+
+    def _signal_resize_event(self, signum: Optional[int] = None, frame: Optional[FrameType] = None) -> None:
+        """Custom signal handler for SIGWINCH."""
         try:
-            hw = struct.unpack("hh", fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b"1234"))
-            rows, cols = hw
-            self._event_queue.put((rows, cols))
+            self._current_size = self._get_terminal_size()
+            self._size_changed.set()
         except Exception:
             # ignore failed window size reads
             pass
@@ -112,6 +116,7 @@ class WindowSizeHandler:
     @contextlib.asynccontextmanager
     async def watch_window_size(self, handler: Callable[[int, int], Coroutine]):
         """Context manager that processes window resize events from the queue.
+
         Can be run from any thread. If the window manager was initialized from a thread that is not the main thread,
         e.g. in tests, this context manager is a no-op.
         """
@@ -121,11 +126,9 @@ class WindowSizeHandler:
 
         async def process_events():
             while True:
-                try:
-                    rows, cols = self._event_queue.get_nowait()
-                    await handler(rows, cols)
-                except Empty:
-                    await asyncio.sleep(0.1)
+                await self._size_changed.wait()
+                await handler(*self._current_size)
+                self._size_changed.clear()
 
         event_task = asyncio.create_task(process_events())
         try:
