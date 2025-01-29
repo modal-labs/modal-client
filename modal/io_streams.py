@@ -386,7 +386,7 @@ class _StreamWriter:
 
     async def drain(
         self,
-        _is_resize: bool = False,  # internal option to send terminal window resize events
+        _terminal_size: Optional[tuple[int, int]] = None,  # internal option to send terminal window resize events
     ) -> None:
         """Flush the write buffer and send data to the running process.
 
@@ -407,9 +407,6 @@ class _StreamWriter:
         ```
         """
         data = bytes(self._buffer)
-        if _is_resize:
-            assert len(data) == 4, "unexpected buffer size for resize event"  # rrww
-            assert self._object_type == "container_process", "resize event can only be sent for container processes"
 
         self._buffer.clear()
         index = self._get_next_index()
@@ -431,7 +428,8 @@ class _StreamWriter:
                             message=data,
                             message_index=index,
                             eof=self._is_closed,
-                            is_resize=_is_resize,
+                            window_rows=_terminal_size[0] if _terminal_size else None,
+                            window_cols=_terminal_size[1] if _terminal_size else None,
                         ),
                     ),
                 )

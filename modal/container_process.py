@@ -158,7 +158,7 @@ class _ContainerProcess(Generic[T]):
             # - 2 bytes for the number of columns (big-endian)
             dims = struct.pack(">HH", rows, cols)
             self.stdin.write(dims)
-            await self.stdin.drain(_is_resize=True)
+            await self.stdin.drain(_terminal_size=(rows, cols))
 
         async with TaskContext() as tc:
             stdout_task = tc.create_task(_write_to_fd_loop(self.stdout))
