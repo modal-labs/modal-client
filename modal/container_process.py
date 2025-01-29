@@ -151,7 +151,7 @@ class _ContainerProcess(Generic[T]):
             self.stdin.write(data)
             await self.stdin.drain()
 
-        async def _send_window_resize(rows: int, cols: int):
+        async def _send_window_resize(cols: int, rows: int):
             await self.stdin.drain(_terminal_size=(rows, cols))
 
         async with TaskContext() as tc:

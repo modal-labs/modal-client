@@ -15,7 +15,7 @@ from typing import Callable, Optional
 
 from modal._pty import raw_terminal, set_nonblocking
 
-from .async_utils import asyncify
+from .async_utils import TaskContext, asyncify
 
 
 def write_to_fd(fd: int, data: bytes):
@@ -94,20 +94,16 @@ class WindowSizeHandler:
         """
         self._is_main_thread = threading.current_thread() is threading.main_thread()
 
-        self._current_size: tuple[int, int] = self._get_terminal_size()
+        self._current_size: tuple[int, int] = shutil.get_terminal_size()
         self._size_changed = asyncio.Event()
 
         if self._is_main_thread and hasattr(signal, "SIGWINCH"):
             signal.signal(signal.SIGWINCH, self._signal_resize_event)
 
-    def _get_terminal_size(self) -> tuple[int, int]:
-        c, r = shutil.get_terminal_size()
-        return r, c
-
     def _signal_resize_event(self, signum: Optional[int] = None, frame: Optional[FrameType] = None) -> None:
         """Custom signal handler for SIGWINCH."""
         try:
-            self._current_size = self._get_terminal_size()
+            self._current_size = shutil.get_terminal_size()
             self._size_changed.set()
         except Exception:
             # ignore failed window size reads
@@ -127,11 +123,9 @@ class WindowSizeHandler:
         async def process_events():
             while True:
                 await self._size_changed.wait()
-                await handler(*self._current_size)
                 self._size_changed.clear()
+                await handler(*self._current_size)
 
-        event_task = asyncio.create_task(process_events())
-        try:
+        async with TaskContext() as tc:
+            tc.create_task(process_events())
             yield
-        finally:
-            event_task.cancel()
