@@ -10,7 +10,7 @@ from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._runtime.execution_context import is_local
 from ._utils.async_utils import synchronize_api
-from ._utils.deprecation import renamed_parameter
+from ._utils.deprecation import deprecation_warning, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -214,6 +214,12 @@ class _Secret(_Object, type_prefix="st"):
         required_keys: list[str] = [],
     ) -> "_Secret":
         """mdmd:hidden"""
+        deprecation_warning(
+            (2025, 1, 27),
+            "`modal.Secret.lookup` is deprecated and will be removed in a future release."
+            " It can be replaced with `modal.Secret.from_name`."
+            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+        )
         obj = _Secret.from_name(
             name, namespace=namespace, environment_name=environment_name, required_keys=required_keys
         )

@@ -40,7 +40,7 @@ when running a command that requires an environment.
 @config_cli.command(help=SET_DEFAULT_ENV_HELP)
 def set_environment(environment_name: str):
     # Confirm that the environment exists by looking it up
-    Environment.lookup(environment_name)
+    Environment.from_name(environment_name).hydrate()
     _store_user_config({"environment": environment_name})
     typer.echo(f"New default environment for profile {_profile}: {environment_name}")
 

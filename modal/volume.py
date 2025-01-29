@@ -223,14 +223,22 @@ class _Volume(_Object, type_prefix="vo"):
     ) -> "_Volume":
         """Lookup a named Volume.
 
+        DEPRECATED: This method is deprecated in favor of `modal.Volume.from_name`.
+
         In contrast to `modal.Volume.from_name`, this is an eager method
         that will hydrate the local object with metadata from Modal servers.
 
         ```python notest
-        vol = modal.Volume.lookup("my-volume")
+        vol = modal.Volume.from_name("my-volume")
         print(vol.listdir("/"))
         ```
         """
+        deprecation_warning(
+            (2025, 1, 27),
+            "`modal.Volume.lookup` is deprecated and will be removed in a future release."
+            " It can be replaced with `modal.Volume.from_name`."
+            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+        )
         obj = _Volume.from_name(
             name,
             namespace=namespace,
@@ -370,7 +378,7 @@ class _Volume(_Object, type_prefix="vo"):
         **Example:**
 
         ```python notest
-        vol = modal.Volume.lookup("my-modal-volume")
+        vol = modal.Volume.from_name("my-modal-volume")
         data = b""
         for chunk in vol.read_file("1mb.csv"):
             data += chunk
@@ -459,7 +467,7 @@ class _Volume(_Object, type_prefix="vo"):
         **Usage**
 
         ```python notest
-        vol = modal.Volume.lookup("my-modal-volume")
+        vol = modal.Volume.from_name("my-modal-volume")
 
         vol.copy_files(["bar/example.txt"], "bar2")  # Copy files to another directory
         vol.copy_files(["bar/example.txt"], "bar/example2.txt")  # Rename a file by copying
@@ -483,7 +491,7 @@ class _Volume(_Object, type_prefix="vo"):
         **Example:**
 
         ```python notest
-        vol = modal.Volume.lookup("my-modal-volume")
+        vol = modal.Volume.from_name("my-modal-volume")
 
         with vol.batch_upload() as batch:
             batch.put_file("local-path.txt", "/remote-path.txt")
@@ -502,7 +510,7 @@ class _Volume(_Object, type_prefix="vo"):
     @staticmethod
     @renamed_parameter((2024, 12, 18), "label", "name")
     async def delete(name: str, client: Optional[_Client] = None, environment_name: Optional[str] = None):
-        obj = await _Volume.lookup(name, client=client, environment_name=environment_name)
+        obj = await _Volume.from_name(name, environment_name=environment_name).hydrate(client)
         req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.VolumeDelete, req)
 
@@ -514,7 +522,7 @@ class _Volume(_Object, type_prefix="vo"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ):
-        obj = await _Volume.lookup(old_name, client=client, environment_name=environment_name)
+        obj = await _Volume.from_name(old_name, environment_name=environment_name).hydrate(client)
         req = api_pb2.VolumeRenameRequest(volume_id=obj.object_id, name=new_name)
         await retry_transient_errors(obj._client.stub.VolumeRename, req)
 

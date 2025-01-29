@@ -327,7 +327,8 @@ def test_lookup(client, servicer):
     # basically same test as test_from_name_lazy_method_resolve, but assumes everything is hydrated
     deploy_app(app, "my-cls-app", client=client)
 
-    cls: Cls = Cls.lookup("my-cls-app", "Foo", client=client)
+    with pytest.warns(DeprecationError, match="Cls.lookup"):
+        cls: Cls = Cls.lookup("my-cls-app", "Foo", client=client)
 
     # objects are resolved
     assert cls.object_id.startswith("cs-")
@@ -395,7 +396,7 @@ def test_from_name_lazy_method_hydration(client, servicer):
 def test_lookup_lazy_remote(client, servicer):
     # See #972 (PR) and #985 (revert PR): adding unit test to catch regression
     deploy_app(app, "my-cls-app", client=client)
-    cls: Cls = Cls.lookup("my-cls-app", "Foo", client=client)
+    cls: Cls = Cls.from_name("my-cls-app", "Foo").hydrate(client=client)
     obj = cls("foo", 234)
     assert obj.bar.remote(42, 77) == 7693
 
@@ -403,7 +404,7 @@ def test_lookup_lazy_remote(client, servicer):
 def test_lookup_lazy_spawn(client, servicer):
     # See #1071
     deploy_app(app, "my-cls-app", client=client)
-    cls: Cls = Cls.lookup("my-cls-app", "Foo", client=client)
+    cls: Cls = Cls.from_name("my-cls-app", "Foo").hydrate(client=client)
     obj = cls("foo", 234)
     function_call = obj.bar.spawn(42, 77)
     assert function_call.get() == 7693
