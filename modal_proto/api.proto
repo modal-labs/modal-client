@@ -2180,6 +2180,9 @@ message RuntimeInputMessage {
   bytes message = 1;
   uint64 message_index = 2;
   bool eof = 3;
+  // only used to handle `container exec` terminal resize events
+  optional uint32 window_rows = 4;
+  optional uint32 window_cols = 5;
 }
 
 message RuntimeOutputBatch {
