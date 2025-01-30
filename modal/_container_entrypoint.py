@@ -373,7 +373,7 @@ def call_lifecycle_functions(
     """Call function(s), can be sync or async, but any return values are ignored."""
     with container_io_manager.handle_user_exception():
         for func in funcs:
-            # We are deprecating parameterized exit methods but want to gracefully handle old code.
+            # We are deprecating parametrized exit methods but want to gracefully handle old code.
             # We can remove this once the deprecation in the actual @exit decorator is enforced.
             args = (None, None, None) if callable_has_non_self_params(func) else ()
             # in case func is non-async, it's executed here and sigint will by default
