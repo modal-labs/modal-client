@@ -398,7 +398,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _use_method_name: str = ""
 
     _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
-    _method_handle_metadata: Optional[dict[str, "api_pb2.FunctionHandleMetadata"]] = None
+    _method_handle_metadata: Optional[
+        dict[str, "api_pb2.FunctionHandleMetadata"]
+    ] = None  # set for 0.67+ class service functions
 
     def _bind_method(
         self,
@@ -1027,16 +1029,17 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         # Usage on a parametrized function.
         Model = modal.Cls.from_name("my-app", "Model")
-        Model("fine-tuned-model").keep_warm(2)
+        Model("fine-tuned-model").keep_warm(2)  # note that this applies to the class instance, not a method
         ```
         """
         if self._is_method:
             raise InvalidError(
                 textwrap.dedent(
                     """
-                The `.keep_warm()` method can not be used on Modal class *methods* deployed using Modal >v0.63.
+                The `.keep_warm()` method can not be used on Modal class *methods*.
 
-                Call `.keep_warm()` on the class *instance* instead.
+                Call `.keep_warm()` on the class *instance* instead. All methods of a class are run by the same
+                container pool, and this method applies to the size of that container pool.
             """
                 )
             )
@@ -1056,7 +1059,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     ) -> "_Function":
         """Reference a Function from a deployed App by its name.
 
-        In contast to `modal.Function.lookup`, this is a lazy method
+        In contrast to `modal.Function.lookup`, this is a lazy method
         that defers hydrating the local object with metadata from
         Modal servers until the first time it is actually used.
 
@@ -1085,7 +1088,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
-        rep = f"Ref({app_name})"
+        rep = f"Function.from_name({app_name}, {name})"
         return cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
