@@ -7,7 +7,7 @@ Modal, with random seeds, and it supports oneofs, and Protobuf v4.
 
 import string
 from random import Random
-from typing import Any, Callable, Optional, TypeVar
+from typing import Any, Callable, Optional, TypeVar, Union
 
 from google.protobuf.descriptor import Descriptor, FieldDescriptor
 
@@ -38,9 +38,9 @@ def _fill(msg, desc: Descriptor, rand: Random) -> None:
     field: FieldDescriptor
     oneof_fields: set[str] = set()
     for oneof in desc.oneofs:
-        field = rand.choice(list(oneof.fields) + [None])
-        if field is not None:
-            oneof_fields.add(field.name)
+        oneof_field: Union[FieldDescriptor, None] = rand.choice(list(oneof.fields) + [None])
+        if oneof_field is not None:
+            oneof_fields.add(oneof_field.name)
     for field in desc.fields:
         if field.containing_oneof is not None and field.name not in oneof_fields:
             continue

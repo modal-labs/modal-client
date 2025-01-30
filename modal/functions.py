@@ -8,13 +8,7 @@ import warnings
 from collections.abc import AsyncGenerator, Collection, Sequence, Sized
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Optional,
-    Union,
-)
+from typing import TYPE_CHECKING, Any, Callable, Optional, Union
 
 import typing_extensions
 from google.protobuf.message import Message
@@ -48,10 +42,12 @@ from ._utils.function_utils import (
     OUTPUTS_TIMEOUT,
     FunctionCreationStatus,
     FunctionInfo,
+    IncludeSourceMode,
     _create_input,
     _process_result,
     _stream_function_call_data,
     get_function_type,
+    get_include_source_mode,
     is_async,
 )
 from ._utils.grpc_utils import retry_transient_errors
@@ -474,6 +470,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         cluster_size: Optional[int] = None,  # Experimental: Clustered functions
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
+        # current default: first-party, future default: main-package
+        include_source: Optional[bool] = None,
         _experimental_buffer_containers: Optional[int] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
@@ -500,7 +498,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         explicit_mounts = mounts
 
         if is_local():
-            entrypoint_mounts = info.get_entrypoint_mount()
+            include_source_mode = get_include_source_mode(include_source)
+            if include_source_mode != IncludeSourceMode.INCLUDE_NOTHING:
+                entrypoint_mounts = info.get_entrypoint_mount()
+            else:
+                entrypoint_mounts = []
 
             all_mounts = [
                 _get_client_mount(),
@@ -508,12 +510,15 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 *entrypoint_mounts,
             ]
 
-            if config.get("automount"):
+            if include_source_mode is IncludeSourceMode.INCLUDE_FIRST_PARTY:
+                # TODO(elias): if using INCLUDE_FIRST_PARTY *and* mounts are added that haven't already been
+                #  added to the image via add_local_python_source
                 all_mounts += get_auto_mounts()
         else:
             # skip any mount introspection/logic inside containers, since the function
             # should already be hydrated
-            # TODO: maybe the entire constructor should be exited early if not local?
+            # TODO: maybe the entire from_args loader should be exited early if not local?
+            #  since it will be hydrated
             all_mounts = []
 
         retry_policy = _parse_retries(
@@ -951,8 +956,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         parent = self
 
         async def _load(param_bound_func: _Function, resolver: Resolver, existing_object_id: Optional[str]):
-            if parent is None:
-                raise ExecutionError("Can't find the parent class' service function")
             try:
                 identity = f"{parent.info.function_name} class service function"
             except Exception:
