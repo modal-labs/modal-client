@@ -1052,7 +1052,7 @@ def test_modal_object_param_uses_wrapped_type(servicer, set_env_client, client):
     assert type(kwargs["x"]) == type(dct)
 
 
-def test_using_method_on_uninstantiated_cls(recwarn):
+def test_using_method_on_uninstantiated_cls(recwarn, disable_auto_mount):
     app = App()
 
     @app.cls(serialized=True)
