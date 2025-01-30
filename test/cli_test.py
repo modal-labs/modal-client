@@ -1173,3 +1173,9 @@ def test_run_file_with_global_lookups(servicer, set_env_client, supports_dir):
     assert req.function.function_name == "local_f"
     assert len(ctx.get_requests("FunctionMap")) == 1
     assert len(ctx.get_requests("FunctionGet")) == 0
+
+
+def test_run_auto_infer_prefer_target_module(servicer, supports_dir, set_env_client, monkeypatch):
+    monkeypatch.syspath_prepend(supports_dir / "app_run_tests")
+    res = _run(["run", "multifile.util"])
+    assert "ran util\nmain func" in res.stdout

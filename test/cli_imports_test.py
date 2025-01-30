@@ -5,6 +5,7 @@ from typing import cast
 
 from modal.app import App, LocalEntrypoint
 from modal.cli.import_refs import (
+    AutoRunPriority,
     CLICommand,
     ImportRef,
     MethodReference,
@@ -210,7 +211,17 @@ def test_list_cli_commands():
     res = list_cli_commands(cast(types.ModuleType, FakeModule))
 
     assert res == [
-        CLICommand(["foo", "app.foo"], foo, False),  # type: ignore
-        CLICommand(["Cls.method_1", "app.Cls.method_1"], MethodReference(Cls, "method_1"), False),  # type: ignore
-        CLICommand(["Cls.web_method", "app.Cls.web_method"], MethodReference(Cls, "web_method"), True),  # type: ignore
+        CLICommand(["foo", "app.foo"], foo, False, priority=AutoRunPriority.MODULE_FUNCTION),  # type: ignore
+        CLICommand(
+            ["Cls.method_1", "app.Cls.method_1"],
+            MethodReference(Cls, "method_1"),  # type: ignore
+            False,
+            priority=AutoRunPriority.MODULE_FUNCTION,
+        ),
+        CLICommand(
+            ["Cls.web_method", "app.Cls.web_method"],
+            MethodReference(Cls, "web_method"),  # type: ignore
+            True,
+            priority=AutoRunPriority.MODULE_FUNCTION,
+        ),
     ]
