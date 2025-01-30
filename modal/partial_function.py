@@ -614,7 +614,7 @@ ExitHandlerType = Union[
     #       synchronicity type stubs would strip Awaitable so we use Any for now
     # Original, __exit__ style method signature (now deprecated)
     Callable[[Any, Optional[type[BaseException]], Optional[BaseException], Any], Any],
-    # Forward-looking unparameterized method
+    # Forward-looking unparametrized method
     Callable[[Any], Any],
 ]
 

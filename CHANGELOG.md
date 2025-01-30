@@ -487,7 +487,7 @@ New minor client version `0.67.x` comes with an internal data model change for h
 
 ### 0.64.185 (2024-10-15)
 
-- Memory snapshotting can now be used with parameterized functions.
+- Memory snapshotting can now be used with parametrized functions.
 
 
 
@@ -631,7 +631,7 @@ Introduce an experimental API to allow users to set the input concurrency for a 
 
 ### 0.64.48 (2024-08-21)
 
-- Introduces new dataclass-style syntax for class parameterization (see updated [docs](https://modal.com/docs/guide/parameterized-functions))
+- Introduces new dataclass-style syntax for class parametrization (see updated [docs](https://modal.com/docs/guide/parametrized-functions))
 
     ```python
     @app.cls()
@@ -643,9 +643,9 @@ Introduce an experimental API to allow users to set the input concurrency for a 
     
 - The new syntax enforces types (`str` or `int` for now) on all parameters
 
-- *When the new syntax is used*, any web endpoints (`web_endpoint`, `asgi_app`, `wsgi_app` or `web_server`) on the app will now also support parameterization through the use of query parameters matching the parameter names, e.g. `https://myfunc.modal.run/?param_a="hello` in the above example.
+- *When the new syntax is used*, any web endpoints (`web_endpoint`, `asgi_app`, `wsgi_app` or `web_server`) on the app will now also support parametrization through the use of query parameters matching the parameter names, e.g. `https://myfunc.modal.run/?param_a="hello` in the above example.
 
-- The old explicit `__init__` constructor syntax is still allowed, but could be deprecated in the future and doesn't work with web endpoint parameterization
+- The old explicit `__init__` constructor syntax is still allowed, but could be deprecated in the future and doesn't work with web endpoint parametrization
 
 ### 0.64.38 (2024-08-16)
 

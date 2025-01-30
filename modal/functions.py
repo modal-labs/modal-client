@@ -960,7 +960,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 identity = f"{parent.info.function_name} class service function"
             except Exception:
                 # Can't always look up the function name that way, so fall back to generic message
-                identity = "class service function for a parameterized class"
+                identity = "class service function for a parametrized class"
             if not parent.is_hydrated:
                 if parent.app._running_app is None:
                     reason = ", because the App it is defined on is not running"
