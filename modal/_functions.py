@@ -877,7 +877,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     function_definition.resources.CopyFrom(
                         convert_fn_config_to_resources_config(
                             cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
-                        ),  # type: ignore
+                        ),
                     )
 
                 assert resolver.app_id
