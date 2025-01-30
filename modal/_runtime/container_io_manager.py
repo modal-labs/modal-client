@@ -1017,7 +1017,7 @@ def check_fastapi_pydantic_compatibility(exc: ImportError) -> None:
             if pydantic_version >= (2, 0) and fastapi_version < (0, 100):
                 if sys.version_info < (3, 11):
                     # https://peps.python.org/pep-0678/
-                    exc.__notes__ = [note]
+                    exc.__notes__ = [note]  # type: ignore
                 else:
                     exc.add_note(note)
         except Exception:

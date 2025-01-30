@@ -59,7 +59,7 @@ async def env_mount_files():
 
 
 def test_mounted_files_script(servicer, credentials, supports_dir, env_mount_files, server_url_env):
-    helpers.deploy_app_externally(servicer, credentials, script_path, cwd=supports_dir)
+    print(helpers.deploy_app_externally(servicer, credentials, script_path, cwd=supports_dir))
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
@@ -123,14 +123,19 @@ def test_mounted_files_package_no_automount(supports_dir, env_mount_files, servi
     p = subprocess.run(
         ["modal", "run", "pkg_a.package"],
         cwd=supports_dir,
-        capture_output=True,
         env={**os.environ, "MODAL_AUTOMOUNT": "0"},
     )
     assert p.returncode == 0
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
     assert files == {
         "/root/pkg_a/__init__.py",
+        "/root/pkg_a/a.py",
+        "/root/pkg_a/b/c.py",
+        "/root/pkg_a/b/e.py",
+        "/root/pkg_a/d.py",
         "/root/pkg_a/package.py",
+        "/root/pkg_a/script.py",
+        "/root/pkg_a/serialized_fn.py",
     }
 
 

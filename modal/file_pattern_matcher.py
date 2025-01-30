@@ -144,7 +144,6 @@ class FilePatternMatcher(_AbstractPatternMatcher):
         library. The reason is that `Matches()` in the original library is
         deprecated due to buggy behavior.
         """
-
         matched = False
         file_path = os.path.normpath(file_path)
         if file_path == ".":
