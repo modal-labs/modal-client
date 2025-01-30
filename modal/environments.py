@@ -11,7 +11,7 @@ from modal_proto import api_pb2
 from ._object import _Object
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.deprecation import renamed_parameter
+from ._utils.deprecation import deprecation_warning, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -30,8 +30,7 @@ class _Environment(_Object, type_prefix="en"):
     def __init__(self):
         """mdmd:hidden"""
         raise RuntimeError(
-            "`Environment(...)` constructor is not allowed."
-            " Please use `Environment.from_name` or `Environment.lookup` instead."
+            "`Environment(...)` constructor is not allowed." " Please use `Environment.from_name` instead."
         )
 
     # TODO(michael) Keeping this private for now until we decide what else should be in it
@@ -54,7 +53,7 @@ class _Environment(_Object, type_prefix="en"):
 
     @staticmethod
     @renamed_parameter((2024, 12, 18), "label", "name")
-    async def from_name(
+    def from_name(
         name: str,
         create_if_missing: bool = False,
     ):
@@ -89,7 +88,13 @@ class _Environment(_Object, type_prefix="en"):
         client: Optional[_Client] = None,
         create_if_missing: bool = False,
     ):
-        obj = await _Environment.from_name(name, create_if_missing=create_if_missing)
+        deprecation_warning(
+            (2025, 1, 27),
+            "`modal.Environment.lookup` is deprecated and will be removed in a future release."
+            " It can be replaced with `modal.Environment.from_name`."
+            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+        )
+        obj = _Environment.from_name(name, create_if_missing=create_if_missing)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
@@ -107,7 +112,7 @@ ENVIRONMENT_CACHE: dict[str, _Environment] = {}
 async def _get_environment_cached(name: str, client: _Client) -> _Environment:
     if name in ENVIRONMENT_CACHE:
         return ENVIRONMENT_CACHE[name]
-    environment = await _Environment.lookup(name, client)
+    environment = await _Environment.from_name(name).hydrate(client)
     ENVIRONMENT_CACHE[name] = environment
     return environment
 
@@ -164,9 +169,9 @@ async def list_environments(client: Optional[_Client] = None) -> list[api_pb2.En
 def ensure_env(environment_name: Optional[str] = None) -> str:
     """Override config environment with environment from environment_name
 
-    This is necessary since a cli command that runs Modal code, e.g. `modal.lookup()` without
-    explicit environment specification wouldn't pick up the environment specified in a command
-    line flag otherwise, e.g. when doing `modal run --env=foo`
+    This is necessary since a cli command that runs Modal code, without explicit
+    environment specification wouldn't pick up the environment specified in a
+    command line flag otherwise, e.g. when doing `modal run --env=foo`
     """
     if environment_name is not None:
         config.override_locally("environment", environment_name)

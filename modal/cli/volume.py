@@ -94,7 +94,7 @@ async def get(
     """
     ensure_env(env)
     destination = Path(local_destination)
-    volume = await _Volume.lookup(volume_name, environment_name=env)
+    volume = _Volume.from_name(volume_name, environment_name=env)
     console = Console()
     progress_handler = ProgressHandler(type="download", console=console)
     with progress_handler.live:
@@ -133,9 +133,7 @@ async def ls(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    vol = await _Volume.lookup(volume_name, environment_name=env)
-    if not isinstance(vol, _Volume):
-        raise UsageError("The specified app entity is not a modal.Volume")
+    vol = _Volume.from_name(volume_name, environment_name=env)
 
     try:
         entries = await vol.listdir(path)
@@ -190,9 +188,7 @@ async def put(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    vol = await _Volume.lookup(volume_name, environment_name=env)
-    if not isinstance(vol, _Volume):
-        raise UsageError("The specified app entity is not a modal.Volume")
+    vol = await _Volume.from_name(volume_name, environment_name=env).hydrate()
 
     if remote_path.endswith("/"):
         remote_path = remote_path + os.path.basename(local_path)
@@ -235,9 +231,7 @@ async def rm(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    volume = await _Volume.lookup(volume_name, environment_name=env)
-    if not isinstance(volume, _Volume):
-        raise UsageError("The specified app entity is not a modal.Volume")
+    volume = _Volume.from_name(volume_name, environment_name=env)
     try:
         await volume.remove_file(remote_path, recursive=recursive)
     except GRPCError as exc:
@@ -261,9 +255,7 @@ async def cp(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    volume = await _Volume.lookup(volume_name, environment_name=env)
-    if not isinstance(volume, _Volume):
-        raise UsageError("The specified app entity is not a modal.Volume")
+    volume = _Volume.from_name(volume_name, environment_name=env)
     *src_paths, dst_path = paths
     await volume.copy_files(src_paths, dst_path)
 
@@ -279,6 +271,8 @@ async def delete(
     yes: bool = YES_OPTION,
     env: Optional[str] = ENV_OPTION,
 ):
+    # Lookup first to validate the name, even though delete is a staticmethod
+    await _Volume.from_name(volume_name, environment_name=env).hydrate()
     if not yes:
         typer.confirm(
             f"Are you sure you want to irrevocably delete the modal.Volume '{volume_name}'?",
