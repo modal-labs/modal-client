@@ -839,14 +839,12 @@ def assert_is_wrapped_dict(some_arg):
 
 
 def test_calls_should_not_unwrap_modal_objects(servicer, client):
-    some_modal_object = modal.Dict.lookup("blah", create_if_missing=True, client=client)
-
     app = App()
     foo = app.function()(assert_is_wrapped_dict)
     servicer.function_body(assert_is_wrapped_dict)
 
     # make sure the serialized object is an actual Dict and not a _Dict in all user code contexts
-    with app.run(client=client):
+    with app.run(client=client), modal.Dict.ephemeral(client=client) as some_modal_object:
         assert type(foo.remote(some_modal_object)) == modal.Dict
         fc = foo.spawn(some_modal_object)
         assert type(fc.get()) == modal.Dict
@@ -865,14 +863,12 @@ def assert_is_wrapped_dict_gen(some_arg):
 
 
 def test_calls_should_not_unwrap_modal_objects_gen(servicer, client):
-    some_modal_object = modal.Dict.lookup("blah", create_if_missing=True, client=client)
-
     app = App()
     foo = app.function()(assert_is_wrapped_dict_gen)
     servicer.function_body(assert_is_wrapped_dict_gen)
 
     # make sure the serialized object is an actual Dict and not a _Dict in all user code contexts
-    with app.run(client=client):
+    with app.run(client=client), modal.Dict.ephemeral(client=client) as some_modal_object:
         assert type(next(foo.remote_gen(some_modal_object))) == modal.Dict
         with pytest.raises(DeprecationError):
             foo.spawn(some_modal_object)

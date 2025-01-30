@@ -697,7 +697,7 @@ class _Mount(_Object, type_prefix="mo"):
             response = await resolver.client.stub.MountGetOrCreate(req)
             provider._hydrate(response.mount_id, resolver.client, response.handle_metadata)
 
-        return _Mount._from_loader(_load, "Mount()")
+        return _Mount._from_loader(_load, "Mount()", hydrate_lazily=True)
 
     @classmethod
     @renamed_parameter((2024, 12, 18), "label", "name")
@@ -709,6 +709,12 @@ class _Mount(_Object, type_prefix="mo"):
         environment_name: Optional[str] = None,
     ) -> "_Mount":
         """mdmd:hidden"""
+        deprecation_warning(
+            (2025, 1, 27),
+            "`modal.Mount.lookup` is deprecated and will be removed in a future release."
+            " It can be replaced with `modal.Mount.from_name`."
+            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+        )
         obj = _Mount.from_name(name, namespace=namespace, environment_name=environment_name)
         if client is None:
             client = await _Client.from_env()

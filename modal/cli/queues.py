@@ -46,7 +46,7 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
 async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
     """Delete a named Queue and all of its data."""
     # Lookup first to validate the name, even though delete is a staticmethod
-    await _Queue.lookup(name, environment_name=env)
+    await _Queue.from_name(name, environment_name=env).hydrate()
     if not yes:
         typer.confirm(
             f"Are you sure you want to irrevocably delete the modal.Queue '{name}'?",
@@ -90,7 +90,7 @@ async def clear(
     env: Optional[str] = ENV_OPTION,
 ):
     """Clear the contents of a queue by removing all of its data."""
-    q = await _Queue.lookup(name, environment_name=env)
+    q = _Queue.from_name(name, environment_name=env)
     if not yes:
         typer.confirm(
             f"Are you sure you want to irrevocably delete the contents of modal.Queue '{name}'?",
@@ -106,7 +106,7 @@ async def peek(
     name: str, n: int = Argument(1), partition: Optional[str] = PARTITION_OPTION, *, env: Optional[str] = ENV_OPTION
 ):
     """Print the next N items in the queue or queue partition (without removal)."""
-    q = await _Queue.lookup(name, environment_name=env)
+    q = _Queue.from_name(name, environment_name=env)
     console = Console()
     i = 0
     async for item in q.iterate(partition=partition):
@@ -126,6 +126,6 @@ async def len(
     env: Optional[str] = ENV_OPTION,
 ):
     """Print the length of a queue partition or the total length of all partitions."""
-    q = await _Queue.lookup(name, environment_name=env)
+    q = _Queue.from_name(name, environment_name=env)
     console = Console()
     console.print(await q.len(partition=partition, total=total))
