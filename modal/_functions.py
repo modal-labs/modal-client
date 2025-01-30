@@ -1265,7 +1265,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         async with aclosing(
             _map_invocation(
-                self,  # type: ignore
+                self,
                 input_queue,
                 self.client,
                 order_outputs,
@@ -1354,7 +1354,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             raise InvalidError(
                 "A non-generator function cannot be called with `.remote_gen(...)`. Use `.remote(...)` instead."
             )
-        async for item in self._call_generator(args, kwargs):  # type: ignore
+        async for item in self._call_generator(args, kwargs):
             yield item
 
     def _is_local(self):
