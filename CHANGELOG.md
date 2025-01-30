@@ -10,6 +10,19 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.0 (2025-01-30)
+
+* Introduces an `include_source` argument in the `App.function` and `App.cls` decorators that let users configure which class of python packages are automatically included as source mounts in created modal functions/classes (what we used to call "automount" behavior). This will supersede the MODAL_AUTOMOUNT configuration value which will eventually be deprecated. As a convenience, the `modal.App` constructor will also accept an `include_source` argument which serves as the default for all the app's functions and classes.
+  
+  The `include_source` argument accepts the following values:
+  * `True` (default in a future version of Modal) Automatically includes the Python files of the source package of the function's own home module, but not any other local packages. Roughly equivalent ot `MODAL_AUTOMOUNT=0` in previous versions of Modal.
+  * `False` - don't include *any* local source. Assumes the function's home module is importable in the container environment through some other means (typically added to the provided `modal.Image`'s Python environment).
+  * `None` (the default) - use current soon-to-be-deprecated automounting behavior, including source of all first party packages that are not installed into site-packages locally.
+  
+* Minor change to `MODAL_AUTOMOUNT=0`:  When running/deploying using a module path (e.g. `modal run mypak.mymod`), **all non .pyc files** of the source package (`mypak` in this case) are now included in the function's container. Previously, only the function's home `.py` module file + any `__init__.py` files in its package structure were included. Note that this is only for MODAL_AUTOMOUNT=0. To get full control over which source files are included with your functions, you can set `include_source=False` on your function (see above) and manually specify the files to include using the `ignore` argument to `Image.add_local_python_source`.
+
+
+
 ### 0.72.56 (2025-01-28)
 
 - Deprecated `.lookup` methods on Modal objects. Users are encouraged to use `.from_name` instead. In most cases this will be a simple name substitution. See [the 1.0 migration guide](https://modal.com/docs/guide/modal-1-0-migration#deprecating-the-lookup-method-on-modal-objects) for more information.
