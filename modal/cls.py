@@ -227,7 +227,7 @@ class _Obj:
         of containers and the warm_pool_size affects that common container pool.
 
         ```python notest
-        # Usage on a parameterized function.
+        # Usage on a parametrized function.
         Model = modal.Cls.from_name("my-app", "Model")
         Model("fine-tuned-model").keep_warm(2)
         ```

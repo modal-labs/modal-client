@@ -441,8 +441,8 @@ cls_app_file = Path("app_run_tests") / "cls.py"
         (webhook_app_file, ""),  # Function must be inferred
         # TODO: fix modal shell auto-detection of a single class, even if it has multiple methods
         # (cls_app_file, ""),  # Class must be inferred
-        # (cls_app_file, "AParameterized"),  # class name
-        (cls_app_file, "::AParameterized.some_method"),  # method name
+        # (cls_app_file, "AParametrized"),  # class name
+        (cls_app_file, "::AParametrized.some_method"),  # method name
     ],
 )
 def test_shell(servicer, set_env_client, supports_dir, mock_shell_pty, rel_file, suffix):
@@ -777,7 +777,7 @@ def test_cls(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "cls.py"
 
     print(_run(["run", app_file.as_posix(), "--x", "42", "--y", "1000"]))
-    _run(["run", f"{app_file.as_posix()}::AParameterized.some_method", "--x", "42", "--y", "1000"])
+    _run(["run", f"{app_file.as_posix()}::AParametrized.some_method", "--x", "42", "--y", "1000"])
 
 
 def test_profile_list(servicer, server_url_env, modal_config):

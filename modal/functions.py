@@ -1003,7 +1003,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             response = await retry_transient_errors(parent._client.stub.FunctionBindParams, req)
             param_bound_func._hydrate(response.bound_function_id, parent._client, response.handle_metadata)
 
-        fun: _Function = _Function._from_loader(_load, "Function(parameterized)", hydrate_lazily=True)
+        fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
 
         if can_use_parent and parent.is_hydrated:
             # skip the resolver altogether:
@@ -1025,7 +1025,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         f = modal.Function.from_name("my-app", "function")
         f.keep_warm(2)
 
-        # Usage on a parameterized function.
+        # Usage on a parametrized function.
         Model = modal.Cls.from_name("my-app", "Model")
         Model("fine-tuned-model").keep_warm(2)
         ```
