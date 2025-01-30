@@ -36,7 +36,7 @@ app = App("app")
 def auto_use_set_env_client(set_env_client):
     # TODO(elias): remove set_env_client fixture here if/when possible - this is required only since
     #  Client.from_env happens to inject an unused client when loading the
-    #  parameterized function
+    #  parametrized function
     return
 
 
@@ -917,7 +917,7 @@ def test_implicit_constructor():
     # with pytest.raises(TypeError, match="missing a required argument: 'a'"):
     #     UsingAnnotationParameters()
 
-    # check that implicit constructors trigger strict parameterization
+    # check that implicit constructors trigger strict parametrization
     function_info: FunctionInfo = synchronizer._translate_in(UsingAnnotationParameters)._class_service_function._info  # type: ignore
     assert function_info.class_parameter_info().format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO
 
@@ -931,30 +931,30 @@ def test_custom_constructor():
 
     d2 = UsingCustomConstructor(11)
     assert d2.get_value.local() == 11  # run constructor before running locally
-    # check that explicit constructors trigger pickle parameterization
+    # check that explicit constructors trigger pickle parametrization
     function_info: FunctionInfo = synchronizer._translate_in(UsingCustomConstructor)._class_service_function._info  # type: ignore
     assert function_info.class_parameter_info().format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE
 
 
-class ParameterizedClass1:
+class ParametrizedClass1:
     def __init__(self, a):
         pass
 
 
-class ParameterizedClass1Implicit:
+class ParametrizedClass1Implicit:
     a: int = modal.parameter()
 
 
-class ParameterizedClass2:
+class ParametrizedClass2:
     def __init__(self, a: int = 1):
         pass
 
 
-class ParameterizedClass2Implicit:
+class ParametrizedClass2Implicit:
     a: int = modal.parameter(default=1)
 
 
-class ParameterizedClass3:
+class ParametrizedClass3:
     def __init__(self):
         pass
 

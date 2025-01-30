@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import enum
 import inspect
 import os
 from collections.abc import AsyncGenerator
@@ -299,8 +300,8 @@ class FunctionInfo:
         if not _use_annotation_parameters(self.user_cls):
             return api_pb2.ClassParameterInfo(format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE)
 
-        # annotation parameters trigger strictly typed parameterization
-        # which enables web endpoint for parameterized classes
+        # annotation parameters trigger strictly typed parametrization
+        # which enables web endpoint for parametrized classes
 
         modal_parameters: list[api_pb2.ClassParameterSpec] = []
         signature = _get_class_constructor_signature(self.user_cls)
@@ -338,34 +339,32 @@ class FunctionInfo:
             These are typically local modules which are imported but not part of the running package
 
         """
-        if self._type == FunctionInfoType.NOTEBOOK:
-            # Don't auto-mount anything for notebooks.
+        if self.is_serialized():
+            # Don't auto-mount anything for serialized functions (including notebooks)
             return []
 
         # make sure the function's own entrypoint is included:
         if self._type == FunctionInfoType.PACKAGE:
-            if config.get("automount"):
-                return [_Mount._from_local_python_packages(self.module_name)]
-            elif not self.is_serialized():
-                # mount only relevant file and __init__.py:s
-                return [
-                    _Mount._from_local_dir(
-                        self._base_dir,
-                        remote_path=self._remote_dir,
-                        recursive=True,
-                        condition=entrypoint_only_package_mount_condition(self._file),
-                    )
-                ]
-        elif not self.is_serialized():
+            top_level_package = self.module_name.split(".")[0]
+            # TODO: add deprecation warning if the following entrypoint mount
+            #  includes non-.py files, since we'll want to migrate to .py-only
+            #  soon to get it consistent with the `add_local_python_source()`
+            #  defaults.
+            return [_Mount._from_local_python_packages(top_level_package)]
+        elif self._type == FunctionInfoType.FILE:
             remote_path = ROOT_DIR / Path(self._file).name
             if not _is_modal_path(remote_path):
+                # TODO: inspect if this file is already included as part of
+                #  a package mount, and skip it + reference that package
+                #  instead if that's the case. This avoids possible module
+                #  duplication bugs
                 return [
                     _Mount._from_local_file(
                         self._file,
                         remote_path=remote_path,
                     )
                 ]
-        return []
+        return []  # this should never be reached...
 
     def get_tag(self):
         return self.function_name
@@ -641,3 +640,33 @@ class FunctionCreationStatus:
                                 f"Custom domain for {method_definition.function_name} => [magenta underline]"
                                 f"{custom_domain.url}[/magenta underline]"
                             )
+
+
+class IncludeSourceMode(enum.Enum):
+    INCLUDE_NOTHING = False  # can only be set in source, can't be set in config
+    INCLUDE_MAIN_PACKAGE = True  # also represented by AUTOMOUNT=0 in config
+    INCLUDE_FIRST_PARTY = "legacy"  # mounts all "local" modules in sys.modules - represented by AUTOMOUNT=1 in config
+
+
+def get_include_source_mode(function_or_app_specific) -> IncludeSourceMode:
+    """Which "automount" behavior should a function use
+
+    function_or_app_specific: explicit value given in the @function or @cls decorator, in an App constructor, or None
+
+    If function_or_app_specific is specified, validate and return the IncludeSourceMode
+    If function_or_app_specific is None, infer it from config
+    """
+    if function_or_app_specific is not None:
+        if not isinstance(function_or_app_specific, bool):
+            raise ValueError(
+                f"Invalid `include_source` value: {function_or_app_specific}. Use one of:\n"
+                f"True - include function's package source\n"
+                f"False - include no Python source (module expected to be present in Image)\n"
+            )
+
+        # explicitly set in app/function
+        return IncludeSourceMode(function_or_app_specific)
+
+    # note that the automount config boolean isn't a 1-1 mapping with include_source!
+    legacy_automount_mode: bool = config.get("automount")
+    return IncludeSourceMode.INCLUDE_FIRST_PARTY if legacy_automount_mode else IncludeSourceMode.INCLUDE_MAIN_PACKAGE

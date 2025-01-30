@@ -110,7 +110,7 @@ def test_memory_selection_gpu_variant(client, servicer, memory_arg, gpu_type, me
     if isinstance(memory_arg, str):
         app.function(gpu=modal.gpu.A100(size=memory_arg))(dummy)
     else:
-        raise RuntimeError(f"Unexpected test parameterization arg type {type(memory_arg)}")
+        raise RuntimeError(f"Unexpected test parametrization arg type {type(memory_arg)}")
 
     with app.run(client=client):
         pass
