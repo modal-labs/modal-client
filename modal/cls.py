@@ -11,6 +11,7 @@ from grpclib import GRPCError, Status
 from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP
 from modal_proto import api_pb2
 
+from ._functions import _Function, _parse_retries
 from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
@@ -22,7 +23,6 @@ from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .exception import ExecutionError, InvalidError, NotFoundError, VersionError
-from .functions import _Function, _parse_retries
 from .gpu import GPU_T
 from .partial_function import (
     _find_callables_for_obj,

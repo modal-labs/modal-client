@@ -20,6 +20,7 @@ from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
+from ._functions import _Function
 from ._ipython import is_notebook
 from ._object import _get_environment_name, _Object
 from ._utils.async_utils import synchronize_api
@@ -32,7 +33,7 @@ from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, parameter
 from .config import logger
 from .exception import ExecutionError, InvalidError
-from .functions import Function, _Function
+from .functions import Function
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
