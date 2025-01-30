@@ -168,6 +168,7 @@ enum ParameterType {
   PARAM_TYPE_UNSPECIFIED = 0;
   PARAM_TYPE_STRING = 1;
   PARAM_TYPE_INT = 2;
+  PARAM_TYPE_PICKLE = 3;
 }
 
 enum ProgressType {
@@ -681,6 +682,7 @@ message ClassParameterSpec {
   oneof default_oneof {
     string string_default = 4;
     int64 int_default = 5;
+    bytes pickle_default = 6;
   }
 }
 
@@ -693,6 +695,7 @@ message ClassParameterValue {
   oneof value_oneof {
     string string_value = 3;
     int64 int_value = 4;
+    bytes pickle_value = 5;
   }
 }
 
@@ -1454,6 +1457,7 @@ message FunctionGetInputsItem {
   reserved 4; // previously used
   string function_call_id = 5;
   FunctionCallInvocationType function_call_invocation_type = 6;
+  uint32 retry_count = 7;
 }
 
 message FunctionGetInputsRequest {
@@ -1626,6 +1630,7 @@ message FunctionPutOutputsItem {
   double input_started_at = 3;
   double output_created_at = 4;
   DataFormat data_format = 7; // for result.data_oneof
+  uint32 retry_count = 8;
 }
 
 message FunctionPutOutputsRequest {
@@ -1636,6 +1641,7 @@ message FunctionPutOutputsRequest {
 message FunctionRetryInputsItem {
   string input_jwt = 1;
   FunctionInput input = 2;
+  uint32 retry_count = 3;
 }
 
 message FunctionRetryInputsRequest {
@@ -2326,14 +2332,6 @@ message SandboxRestoreResponse {
   string sandbox_id = 1;
 }
 
-message SandboxSnapshotFromIdRequest {
-  string snapshot_id = 1;
-}
-
-message SandboxSnapshotFromIdResponse {
-  string snapshot_id = 1;
-}
-
 message SandboxSnapshotFsRequest {
   string sandbox_id = 1;
   float timeout = 2;
@@ -2344,6 +2342,14 @@ message SandboxSnapshotFsResponse {
   GenericResult result = 2;
   // Metadata may be empty since we may skip it for performance reasons.
   ImageMetadata image_metadata = 3;
+}
+
+message SandboxSnapshotGetRequest {
+  string snapshot_id = 1;
+}
+
+message SandboxSnapshotGetResponse {
+  string snapshot_id = 1;
 }
 
 message SandboxSnapshotRequest {
@@ -2989,8 +2995,8 @@ service ModalClient {
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
   rpc SandboxRestore(SandboxRestoreRequest) returns (SandboxRestoreResponse);
   rpc SandboxSnapshot(SandboxSnapshotRequest) returns (SandboxSnapshotResponse);
-  rpc SandboxSnapshotFromId(SandboxSnapshotFromIdRequest) returns (SandboxSnapshotFromIdResponse);
   rpc SandboxSnapshotFs(SandboxSnapshotFsRequest) returns (SandboxSnapshotFsResponse);
+  rpc SandboxSnapshotGet(SandboxSnapshotGetRequest) returns (SandboxSnapshotGetResponse);
   rpc SandboxSnapshotWait(SandboxSnapshotWaitRequest) returns (SandboxSnapshotWaitResponse);
   rpc SandboxStdinWrite(SandboxStdinWriteRequest) returns (SandboxStdinWriteResponse);
   rpc SandboxTagsSet(SandboxTagsSetRequest) returns (google.protobuf.Empty);

@@ -1478,6 +1478,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
             pass
         await stream.send_message(api_pb2.SandboxTerminateResponse())
 
+    async def SandboxSnapshot(self, stream):
+        _request: api_pb2.SandboxSnapshotRequest = await stream.recv_message()
+        await stream.send_message(api_pb2.SandboxSnapshotResponse(snapshot_id="sn-123"))
+
     async def SandboxSnapshotFs(self, stream):
         _request: api_pb2.SandboxSnapshotFsRequest = await stream.recv_message()
         await stream.send_message(
@@ -1486,6 +1490,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
             )
         )
+
+    async def SandboxSnapshotWait(self, stream):
+        _request: api_pb2.SandboxSnapshotWaitRequest = await stream.recv_message()
+        await stream.send_message(
+            api_pb2.SandboxSnapshotWaitResponse(
+                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
+            )
+        )
+
+    async def SandboxRestore(self, stream):
+        _request: api_pb2.SandboxRestoreRequest = await stream.recv_message()
+        await stream.send_message(api_pb2.SandboxRestoreResponse(sandbox_id="sb-123"))
 
     async def SandboxGetTaskId(self, stream):
         # only used for `modal shell` / `modal container exec`
@@ -1540,6 +1556,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.recv_message()
         items = [api_pb2.SecretListItem(label=f"dummy-secret-{i}") for i, _ in enumerate(self.secrets)]
         await stream.send_message(api_pb2.SecretListResponse(items=items))
+
+    ### Snapshot
+
+    async def SandboxSnapshotGet(self, stream):
+        _request: api_pb2.SandboxSnapshotGetRequest = await stream.recv_message()
+        await stream.send_message(api_pb2.SandboxSnapshotGetResponse(snapshot_id="sn-123"))
 
     ### Network File System (née Shared volume)
 

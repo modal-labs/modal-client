@@ -109,6 +109,14 @@ class CLICommand:
     names: list[str]
     runnable: Runnable
     is_web_endpoint: bool
+    priority: int
+
+
+class AutoRunPriority:
+    MODULE_LOCAL_ENTRYPOINT = 0
+    MODULE_FUNCTION = 1
+    APP_LOCAL_ENTRYPOINT = 2
+    APP_FUNCTION = 3
 
 
 def list_cli_commands(
@@ -127,17 +135,21 @@ def list_cli_commands(
     apps = cast(list[tuple[str, App]], inspect.getmembers(module, lambda x: isinstance(x, App)))
 
     all_runnables: dict[Runnable, list[str]] = defaultdict(list)
+    priorities: dict[Runnable, int] = defaultdict(lambda: AutoRunPriority.APP_FUNCTION)
     for app_name, app in apps:
         for name, local_entrypoint in app.registered_entrypoints.items():
             all_runnables[local_entrypoint].append(f"{app_name}.{name}")
+            priorities[local_entrypoint] = AutoRunPriority.APP_LOCAL_ENTRYPOINT
         for name, function in app.registered_functions.items():
             if name.endswith(".*"):
                 continue
             all_runnables[function].append(f"{app_name}.{name}")
+            priorities[function] = AutoRunPriority.APP_FUNCTION
         for cls_name, cls in app.registered_classes.items():
             for method_name in cls._get_method_names():
                 method_ref = MethodReference(cls, method_name)
                 all_runnables[method_ref].append(f"{app_name}.{cls_name}.{method_name}")
+                priorities[method_ref] = AutoRunPriority.APP_FUNCTION
 
     # If any class or function is exported as a module level object, use that
     # as the preferred name by putting it first in the list
@@ -146,12 +158,17 @@ def list_cli_commands(
         inspect.getmembers(module, lambda x: isinstance(x, (Function, Cls, LocalEntrypoint))),
     )
     for name, entity in module_level_entities:
-        if isinstance(entity, Cls):
+        if isinstance(entity, Cls) and entity._is_local():
             for method_name in entity._get_method_names():
                 method_ref = MethodReference(entity, method_name)
                 all_runnables.setdefault(method_ref, []).insert(0, f"{name}.{method_name}")
-        else:
+                priorities[method_ref] = AutoRunPriority.MODULE_FUNCTION
+        elif isinstance(entity, Function) and entity._is_local():
             all_runnables.setdefault(entity, []).insert(0, name)
+            priorities[entity] = AutoRunPriority.MODULE_FUNCTION
+        elif isinstance(entity, LocalEntrypoint):
+            all_runnables.setdefault(entity, []).insert(0, name)
+            priorities[entity] = AutoRunPriority.MODULE_LOCAL_ENTRYPOINT
 
     def _is_web_endpoint(runnable: Runnable) -> bool:
         if isinstance(runnable, Function) and runnable._is_web_endpoint():
@@ -164,7 +181,10 @@ def list_cli_commands(
 
         return False
 
-    return [CLICommand(names, runnable, _is_web_endpoint(runnable)) for runnable, names in all_runnables.items()]
+    return [
+        CLICommand(names, runnable, _is_web_endpoint(runnable), priority=priorities[runnable])
+        for runnable, names in all_runnables.items()
+    ]
 
 
 def filter_cli_commands(
@@ -308,17 +328,19 @@ def import_and_filter(
     filtered_commands = filter_cli_commands(
         cli_commands, import_ref.object_path, accept_local_entrypoint, accept_webhook
     )
+
     all_usable_commands = filter_cli_commands(cli_commands, "", accept_local_entrypoint, accept_webhook)
 
-    if len(filtered_commands) == 1:
-        cli_command = filtered_commands[0]
-        return cli_command.runnable, all_usable_commands
+    if filtered_commands:
+        # if there is a single command with "highest run prio" - use that
+        filtered_commands_by_prio = defaultdict(list)
+        for cmd in filtered_commands:
+            filtered_commands_by_prio[cmd.priority].append(cmd)
 
-    # we are here if there is more than one matching function
-    if accept_local_entrypoint:
-        local_entrypoint_cmds = [cmd for cmd in filtered_commands if isinstance(cmd.runnable, LocalEntrypoint)]
-        if len(local_entrypoint_cmds) == 1:
-            # if there is a single local entrypoint - use that
-            return local_entrypoint_cmds[0].runnable, all_usable_commands
+        _, highest_prio_commands = min(filtered_commands_by_prio.items())
+        if len(highest_prio_commands) == 1:
+            cli_command = highest_prio_commands[0]
+            return cli_command.runnable, all_usable_commands
 
+    # otherwise, just return the list of all commands
     return None, all_usable_commands

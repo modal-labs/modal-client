@@ -90,7 +90,7 @@ async def test_container_snapshot_reference_capture(container_client, tmpdir, se
     app.function()(square)
     app_name = "my-app"
     app_id = deploy_app(app, app_name, client=container_client).app_id
-    f = Function.lookup(app_name, "square", client=container_client)
+    f = Function.from_name(app_name, "square").hydrate(container_client)
     assert f.object_id == "fu-1"
     await f.remote.aio()
     assert f.object_id == "fu-1"
@@ -157,7 +157,7 @@ async def test_rpc_wrapping_restores(container_client, servicer, tmpdir):
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(checkpoint_id="ch-123"), container_client)
     restore_path = temp_restore_path(tmpdir)
 
-    d = modal.Dict.lookup("my-amazing-dict", {"xyz": 123}, create_if_missing=True, client=container_client)
+    d = modal.Dict.from_name("my-amazing-dict", {"xyz": 123}, create_if_missing=True).hydrate(container_client)
     d["abc"] = 42
 
     with set_env_vars(restore_path, servicer.container_addr):

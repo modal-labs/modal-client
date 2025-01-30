@@ -1161,3 +1161,21 @@ def test_modal_launch_vscode(monkeypatch, set_env_client, servicer):
         _run(["launch", "vscode"])
 
     assert mock_open.call_count == 1
+
+
+def test_run_file_with_global_lookups(servicer, set_env_client, supports_dir):
+    # having module-global Function/Cls objects from .from_name constructors shouldn't
+    # cause issues, and they shouldn't be runnable via CLI (for now)
+    with servicer.intercept() as ctx:
+        _run(["run", str(supports_dir / "app_run_tests" / "file_with_global_lookups.py")])
+
+    (req,) = ctx.get_requests("FunctionCreate")
+    assert req.function.function_name == "local_f"
+    assert len(ctx.get_requests("FunctionMap")) == 1
+    assert len(ctx.get_requests("FunctionGet")) == 0
+
+
+def test_run_auto_infer_prefer_target_module(servicer, supports_dir, set_env_client, monkeypatch):
+    monkeypatch.syspath_prepend(supports_dir / "app_run_tests")
+    res = _run(["run", "multifile.util"])
+    assert "ran util\nmain func" in res.stdout

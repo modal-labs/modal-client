@@ -7,7 +7,7 @@ from modal.exception import InvalidError, NotFoundError
 
 
 def test_dict_app(servicer, client):
-    d = Dict.lookup("my-amazing-dict", {"xyz": 123}, create_if_missing=True, client=client)
+    d = Dict.from_name("my-amazing-dict", {"xyz": 123}, create_if_missing=True).hydrate(client)
     d["foo"] = 42
     d["foo"] += 5
     assert d["foo"] == 47
@@ -28,7 +28,7 @@ def test_dict_app(servicer, client):
 
     Dict.delete("my-amazing-dict", client=client)
     with pytest.raises(NotFoundError):
-        Dict.lookup("my-amazing-dict", client=client)
+        Dict.from_name("my-amazing-dict").hydrate(client)
 
 
 def test_dict_ephemeral(servicer, client):
@@ -54,4 +54,4 @@ def test_dict_lazy_hydrate_named(set_env_client, servicer):
 @pytest.mark.parametrize("name", ["has space", "has/slash", "a" * 65])
 def test_invalid_name(servicer, client, name):
     with pytest.raises(InvalidError, match="Invalid Dict name"):
-        Dict.lookup(name)
+        Dict.from_name(name).hydrate(client)
