@@ -10,6 +10,13 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.1 (2025-01-30)
+
+* `modal run` now runs a single local entrypoints/function in the selected module. If exactly one local entrypoint or function exists in the selected module, the user doesn't have to qualify the runnable
+in the modal run command, even if some of the module's referenced apps have additional local entrypoints or functions. This partially restores "auto-inferred function" functionality that was changed in v0.72.48.
+
+
+
 ### 0.73.0 (2025-01-30)
 
 * Introduces an `include_source` argument in the `App.function` and `App.cls` decorators that let users configure which class of python packages are automatically included as source mounts in created modal functions/classes (what we used to call "automount" behavior). This will supersede the MODAL_AUTOMOUNT configuration value which will eventually be deprecated. As a convenience, the `modal.App` constructor will also accept an `include_source` argument which serves as the default for all the app's functions and classes.
