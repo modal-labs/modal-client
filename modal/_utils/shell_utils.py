@@ -5,13 +5,17 @@ import contextlib
 import errno
 import os
 import select
+import shutil
+import signal
 import sys
+import threading
 from collections.abc import Coroutine
+from types import FrameType
 from typing import Callable, Optional
 
 from modal._pty import raw_terminal, set_nonblocking
 
-from .async_utils import asyncify
+from .async_utils import TaskContext, asyncify
 
 
 def write_to_fd(fd: int, data: bytes):
@@ -77,3 +81,51 @@ async def stream_from_stdin(handle_input: Callable[[bytes, int], Coroutine], use
         yield
     os.write(quit_pipe_write, b"\n")
     write_task.cancel()
+
+
+class WindowSizeHandler:
+    """Handles terminal window resize events."""
+
+    def __init__(self):
+        """Initialize window size handler. It is a system limitation that we can only set signals from the main thread.
+
+        In case this is invoked from a thread that is not the main thread, e.g. in tests, the context manager
+        becomes a no-op.
+        """
+        self._is_main_thread = threading.current_thread() is threading.main_thread()
+
+        self._current_size: tuple[int, int] = shutil.get_terminal_size()
+        self._size_changed = asyncio.Event()
+
+        if self._is_main_thread and hasattr(signal, "SIGWINCH"):
+            signal.signal(signal.SIGWINCH, self._signal_resize_event)
+
+    def _signal_resize_event(self, signum: Optional[int] = None, frame: Optional[FrameType] = None) -> None:
+        """Custom signal handler for SIGWINCH."""
+        try:
+            self._current_size = shutil.get_terminal_size()
+            self._size_changed.set()
+        except Exception:
+            # ignore failed window size reads
+            pass
+
+    @contextlib.asynccontextmanager
+    async def watch_window_size(self, handler: Callable[[int, int], Coroutine]):
+        """Context manager that processes window resize events from the queue.
+
+        Can be run from any thread. If the window manager was initialized from a thread that is not the main thread,
+        e.g. in tests, this context manager is a no-op.
+        """
+        if not self._is_main_thread:
+            yield
+            return
+
+        async def process_events():
+            while True:
+                await self._size_changed.wait()
+                self._size_changed.clear()
+                await handler(*self._current_size)
+
+        async with TaskContext() as tc:
+            tc.create_task(process_events())
+            yield

@@ -15,6 +15,7 @@ import typer
 from click import ClickException
 from typing_extensions import TypedDict
 
+from .._utils.shell_utils import WindowSizeHandler
 from ..app import App, LocalEntrypoint
 from ..config import config
 from ..environments import ensure_env
@@ -490,6 +491,8 @@ def shell(
     if pty is None:
         pty = is_tty()
 
+    window_size_handler = WindowSizeHandler()
+
     if platform.system() == "Windows":
         raise InvalidError("`modal shell` is currently not supported on Windows")
 
@@ -548,6 +551,7 @@ def shell(
             volumes=function_spec.volumes,
             region=function_spec.scheduler_placement.proto.regions if function_spec.scheduler_placement else None,
             pty=pty,
+            window_size_handler=window_size_handler,
             proxy=function_spec.proxy,
         )
     else:
@@ -563,6 +567,7 @@ def shell(
             volumes=volumes,
             region=region.split(",") if region else [],
             pty=pty,
+            window_size_handler=window_size_handler,
         )
 
     # NB: invoking under bash makes --cmd a lot more flexible.

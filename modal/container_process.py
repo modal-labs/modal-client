@@ -8,7 +8,7 @@ from modal_proto import api_pb2
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.deprecation import deprecation_error
 from ._utils.grpc_utils import retry_transient_errors
-from ._utils.shell_utils import stream_from_stdin, write_to_fd
+from ._utils.shell_utils import WindowSizeHandler, stream_from_stdin, write_to_fd
 from .client import _Client
 from .exception import InteractiveTimeoutError, InvalidError
 from .io_streams import _StreamReader, _StreamWriter
@@ -115,7 +115,7 @@ class _ContainerProcess(Generic[T]):
                 self._returncode = resp.exit_code
                 return self._returncode
 
-    async def attach(self, *, pty: Optional[bool] = None):
+    async def attach(self, *, window_size_handler: WindowSizeHandler, pty: Optional[bool] = None):
         if platform.system() == "Windows":
             print("interactive exec is not currently supported on Windows.")
             return
@@ -151,6 +151,9 @@ class _ContainerProcess(Generic[T]):
             self.stdin.write(data)
             await self.stdin.drain()
 
+        async def _send_window_resize(cols: int, rows: int):
+            await self.stdin.drain(_terminal_size=(rows, cols))
+
         async with TaskContext() as tc:
             stdout_task = tc.create_task(_write_to_fd_loop(self.stdout))
             stderr_task = tc.create_task(_write_to_fd_loop(self.stderr))
@@ -159,9 +162,10 @@ class _ContainerProcess(Generic[T]):
                 # time out if we can't connect to the server fast enough
                 await asyncio.wait_for(on_connect.wait(), timeout=60)
 
-                async with stream_from_stdin(_handle_input, use_raw_terminal=True):
-                    await stdout_task
-                    await stderr_task
+                async with window_size_handler.watch_window_size(_send_window_resize):
+                    async with stream_from_stdin(_handle_input, use_raw_terminal=True):
+                        await stdout_task
+                        await stderr_task
 
                 # TODO: this doesn't work right now.
                 # if exit_status != 0:

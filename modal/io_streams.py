@@ -384,7 +384,11 @@ class _StreamWriter:
         """
         self._is_closed = True
 
-    async def drain(self) -> None:
+    async def drain(
+        self,
+        # internal option to send terminal resize events to container exec
+        _terminal_size: Optional[tuple[int, int]] = None,
+    ) -> None:
         """Flush the write buffer and send data to the running process.
 
         This is a flow control method that blocks until data is sent. It returns
@@ -404,6 +408,7 @@ class _StreamWriter:
         ```
         """
         data = bytes(self._buffer)
+
         self._buffer.clear()
         index = self._get_next_index()
 
@@ -420,7 +425,13 @@ class _StreamWriter:
                     self._client.stub.ContainerExecPutInput,
                     api_pb2.ContainerExecPutInputRequest(
                         exec_id=self._object_id,
-                        input=api_pb2.RuntimeInputMessage(message=data, message_index=index, eof=self._is_closed),
+                        input=api_pb2.RuntimeInputMessage(
+                            message=data,
+                            message_index=index,
+                            eof=self._is_closed,
+                            window_rows=_terminal_size[0] if _terminal_size else None,
+                            window_cols=_terminal_size[1] if _terminal_size else None,
+                        ),
                     ),
                 )
         except GRPCError as exc:
