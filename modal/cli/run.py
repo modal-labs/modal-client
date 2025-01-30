@@ -15,11 +15,12 @@ import typer
 from click import ClickException
 from typing_extensions import TypedDict
 
+from .._functions import _FunctionSpec
 from ..app import App, LocalEntrypoint
 from ..config import config
 from ..environments import ensure_env
 from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
-from ..functions import Function, _FunctionSpec
+from ..functions import Function
 from ..image import Image
 from ..output import enable_output
 from ..runner import deploy_app, interactive_shell, run_app
