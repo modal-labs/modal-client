@@ -580,7 +580,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 )
                 image = _Image._from_args(
                     base_images={"base": image},
-                    build_function=snapshot_function,  # type: ignore   # TODO: separate functions.py and _functions.py
+                    build_function=snapshot_function,
                     force_build=image.force_build or pf.force_build,
                 )
 
