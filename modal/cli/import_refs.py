@@ -226,7 +226,7 @@ def import_app(app_ref: str) -> App:
         error_console = Console(stderr=True)
         error_console.print(f"[bold red]Could not find Modal app '{object_path}' in {import_path}.[/bold red]")
 
-        if object_path is None:
+        if not object_path:
             guidance_msg = Markdown(
                 f"Expected to find an app variable named **`{DEFAULT_APP_NAME}`** (the default app name). "
                 "If your `modal.App` is assigned to a different variable name, "

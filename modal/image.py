@@ -2054,7 +2054,7 @@ class _Image(_Object, type_prefix="im"):
             yield
         except Exception as exc:
             if not self.is_hydrated:
-                # Might be hydrated later
+                # Might be hydrated later (if it's the container's used image)
                 self.inside_exceptions.append(exc)
             elif env_image_id == self.object_id:
                 # Image is already hydrated (we can remove this case later
