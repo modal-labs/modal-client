@@ -180,7 +180,7 @@ def _container_args(
     definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
     app_name: str = "",
     is_builder_function: bool = False,
-    allow_concurrent_inputs: Optional[int] = None,
+    target_concurrent_inputs: Optional[int] = None,
     max_concurrent_inputs: Optional[int] = None,
     batch_max_size: Optional[int] = None,
     batch_wait_ms: Optional[int] = None,
@@ -219,7 +219,7 @@ def _container_args(
         app_name=app_name or "",
         is_builder_function=is_builder_function,
         is_auto_snapshot=is_auto_snapshot,
-        target_concurrent_inputs=allow_concurrent_inputs,
+        target_concurrent_inputs=target_concurrent_inputs,
         max_concurrent_inputs=max_concurrent_inputs,
         batch_max_size=batch_max_size,
         batch_linger_ms=batch_wait_ms,
@@ -259,7 +259,7 @@ def _run_container(
     definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
     app_name: str = "",
     is_builder_function: bool = False,
-    allow_concurrent_inputs: Optional[int] = None,
+    target_concurrent_inputs: Optional[int] = None,
     max_concurrent_inputs: Optional[int] = None,
     batch_max_size: int = 0,
     batch_wait_ms: int = 0,
@@ -285,7 +285,7 @@ def _run_container(
         definition_type,
         app_name,
         is_builder_function,
-        allow_concurrent_inputs,
+        target_concurrent_inputs,
         max_concurrent_inputs,
         batch_max_size,
         batch_wait_ms,
@@ -1333,7 +1333,7 @@ def test_concurrent_inputs_sync_function(servicer):
         "test.supports.functions",
         "sleep_700_sync",
         inputs=_get_inputs(n=n_inputs),
-        allow_concurrent_inputs=n_parallel,
+        target_concurrent_inputs=n_parallel,
     )
 
     expected_execution = n_inputs / n_parallel * SLEEP_TIME
@@ -1356,7 +1356,7 @@ def test_concurrent_inputs_async_function(servicer):
         "test.supports.functions",
         "sleep_700_async",
         inputs=_get_inputs(n=n_inputs),
-        allow_concurrent_inputs=n_parallel,
+        target_concurrent_inputs=n_parallel,
     )
 
     expected_execution = n_inputs / n_parallel * SLEEP_TIME
@@ -1727,7 +1727,7 @@ def _run_container_process(
     function_name,
     *,
     inputs: list[tuple[str, tuple, dict[str, Any]]],
-    allow_concurrent_inputs: Optional[int] = None,
+    target_concurrent_inputs: Optional[int] = None,
     max_concurrent_inputs: Optional[int] = None,
     cls_params: tuple[tuple, dict[str, Any]] = ((), {}),
     _print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
@@ -1737,7 +1737,7 @@ def _run_container_process(
     container_args = _container_args(
         module_name,
         function_name,
-        allow_concurrent_inputs=allow_concurrent_inputs,
+        target_concurrent_inputs=target_concurrent_inputs,
         max_concurrent_inputs=max_concurrent_inputs,
         serialized_params=serialize(cls_params),
         is_class=is_class,
@@ -1834,7 +1834,7 @@ def test_cancellation_stops_subset_of_async_concurrent_inputs(servicer, tmp_path
             "test.supports.functions",
             "delay_async",
             inputs=[("", (1,), {})] * num_inputs,
-            allow_concurrent_inputs=num_inputs,
+            target_concurrent_inputs=num_inputs,
         )
         input_lock.wait()
         input_lock.wait()
@@ -1865,7 +1865,7 @@ def test_sigint_concurrent_async_cancel_doesnt_reraise(servicer, tmp_path):
             "test.supports.functions",
             "async_cancel_doesnt_reraise",
             inputs=[("", (1,), {})] * 2,  # two inputs
-            allow_concurrent_inputs=2,
+            target_concurrent_inputs=2,
         )
         input_lock.wait()
         input_lock.wait()
@@ -1890,7 +1890,7 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, tmp_path):
             "test.supports.functions",
             "delay",
             inputs=[("", (20,), {})] * 2,  # two inputs
-            allow_concurrent_inputs=2,
+            target_concurrent_inputs=2,
         )
         input_lock.wait()
         input_lock.wait()
@@ -2056,7 +2056,7 @@ def test_sigint_termination_input_concurrent(servicer, tmp_path):
             "LifecycleCls.*",
             inputs=[("delay", (10,), {})] * 3,
             cls_params=((), {"print_at_exit": True}),
-            allow_concurrent_inputs=2,
+            target_concurrent_inputs=2,
             is_class=True,
         )
         input_barrier.wait()  # get one input
@@ -2367,7 +2367,7 @@ def test_max_concurrency(servicer):
         "test.supports.functions",
         "get_input_concurrency",
         inputs=_get_inputs(((1,), {}), n=n_inputs),
-        allow_concurrent_inputs=target_concurrency,
+        target_concurrent_inputs=target_concurrency,
         max_concurrent_inputs=max_concurrency,
     )
 
@@ -2387,7 +2387,7 @@ def test_set_local_input_concurrency(servicer):
         "test.supports.functions",
         "set_input_concurrency",
         inputs=_get_inputs(((now,), {}), n=n_inputs),
-        allow_concurrent_inputs=target_concurrency,
+        target_concurrent_inputs=target_concurrency,
         max_concurrent_inputs=max_concurrency,
     )
 
