@@ -914,7 +914,7 @@ def test_implicit_constructor(client, set_env_client):
 
     with pytest.raises(ValueError, match="Missing required parameter: a"):
         with app2.run(client=client):
-            UsingAnnotationParameters().get_value.remote()
+            UsingAnnotationParameters().get_value.remote()  # type: ignore
 
     # check that implicit constructors trigger strict parametrization
     function_info: FunctionInfo = synchronizer._translate_in(UsingAnnotationParameters)._class_service_function._info  # type: ignore

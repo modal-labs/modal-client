@@ -982,11 +982,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         "Use (<parameter_name>=value) keyword arguments when constructing classes instead."
                     )
                 serialized_params = serialize_proto_params(kwargs, parent._class_parameter_info.schema)
-                try:
-                    default_values = serialize_proto_params({}, parent._class_parameter_info.schema)
-                except ValueError:
-                    default_values = None
-                can_use_parent = serialized_params == default_values
+                can_use_parent = len(parent._class_parameter_info.schema) == 0
             else:
                 can_use_parent = len(args) + len(kwargs) == 0 and options is None
                 serialized_params = serialize((args, kwargs))
