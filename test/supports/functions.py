@@ -5,6 +5,7 @@ import pytest
 import threading
 import time
 
+import modal
 from modal import (
     App,
     Sandbox,
@@ -392,12 +393,11 @@ def basic_wsgi_app():
 
 @app.cls()
 class Cls:
-    def __init__(self):
-        self._k = 11
+    _k = 11  # not a parameter, just a static initial value
 
     @enter()
     def enter(self):
-        self._k += 100
+        self._k = 111
 
     @method()
     def f(self, x):
@@ -510,24 +510,10 @@ class LifecycleCls:
         return self.events
 
 
-@app.function()
-def check_sibling_hydration(x):
-    assert square.is_hydrated
-    assert Cls().f.is_hydrated
-    assert Cls().web.is_hydrated
-    assert Cls().web.web_url
-    assert Cls().generator.is_hydrated
-    assert Cls().generator.is_generator
-    assert fastapi_app.is_hydrated
-    assert fun_returning_gen.is_hydrated
-    assert fun_returning_gen.is_generator
-
-
 @app.cls()
 class ParamCls:
-    def __init__(self, x: int, y: str) -> None:
-        self.x = x
-        self.y = y
+    x: int = modal.parameter()
+    y: str = modal.parameter()
 
     @method()
     def f(self, z: int):
@@ -536,6 +522,24 @@ class ParamCls:
     @method()
     def g(self, z):
         return self.f.local(z)
+
+
+@app.function()
+def check_sibling_hydration(x):
+    assert square.is_hydrated
+    assert fastapi_app.is_hydrated
+    assert fastapi_app.web_url
+    assert fun_returning_gen.is_hydrated
+    assert fun_returning_gen.is_generator
+
+    # make sure the underlying service function for the class is hydrated
+    assert Cls._get_class_service_function().is_hydrated
+    assert ParamCls._get_class_service_function().is_hydrated
+
+    # notably not hydrated at this point:
+    # Cls()  (instance of parameter-less class - note that hydration shouldn't require any roundtrips for this)
+    # Cls().f  (method of parameter-less class - note that hydration shouldn't require any roundtrips for this)
+    # ParamCls(x=1, y=3)  (parameter-bound class instance)
 
 
 @app.function(allow_concurrent_inputs=5)

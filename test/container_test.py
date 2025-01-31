@@ -1211,7 +1211,10 @@ def test_cli(servicer, tmp_path, credentials):
 
 @skip_github_non_linux
 def test_function_sibling_hydration(servicer, credentials):
-    deploy_app_externally(servicer, credentials, "test.supports.functions", "app", capture_output=False)
+    # TODO: refactor this test to use its own source module/app instead of test.supports.functions (takes 7s to deploy)
+    deploy_app_externally(
+        servicer, credentials, "test.supports.functions", "app", capture_output=False, env={"MODAL_AUTOMOUNT": "0"}
+    )
     app_layout = servicer.app_get_layout("ap-1")
     ret = _run_container(servicer, "test.supports.functions", "check_sibling_hydration", app_layout=app_layout)
     assert _unwrap_scalar(ret) is None

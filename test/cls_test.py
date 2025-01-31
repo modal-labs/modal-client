@@ -11,7 +11,7 @@ from typing_extensions import assert_type
 
 import modal.partial_function
 from modal import App, Cls, Function, Image, Queue, build, enter, exit, method
-from modal._serialization import deserialize, serialize
+from modal._serialization import deserialize, deserialize_params, serialize
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import FunctionInfo
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError, PendingDeprecationError
@@ -1044,7 +1044,6 @@ def test_modal_object_param_uses_wrapped_type(servicer, set_env_client, client):
 
     req: api_pb2.FunctionBindParamsRequest = ctx.pop_request("FunctionBindParams")
     function_def: api_pb2.Function = servicer.app_functions[req.function_id]
-    from modal._container_entrypoint import deserialize_params
 
     _client = typing.cast(modal.client._Client, synchronizer._translate_in(client))
     container_params = deserialize_params(req.serialized_params, function_def, _client)

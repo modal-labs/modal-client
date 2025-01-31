@@ -33,11 +33,10 @@ from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 from grpclib.events import RecvRequest, listen
 
-import modal._serialization
 from modal import __version__, config
 from modal._functions import _Function
 from modal._runtime.container_io_manager import _ContainerIOManager
-from modal._serialization import serialize_data_format
+from modal._serialization import deserialize, deserialize_params, serialize_data_format
 from modal._utils.async_utils import asyncify, synchronize_api
 from modal._utils.grpc_testing import patch_mock_servicer
 from modal._utils.grpc_utils import find_free_port
@@ -858,8 +857,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Function
 
     async def FunctionBindParams(self, stream):
-        from modal._serialization import deserialize
-
         request: api_pb2.FunctionBindParamsRequest = await stream.recv_message()
         assert request.function_id
         assert request.serialized_params
@@ -876,7 +873,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             bound_func.CopyFrom(base_function)
             self.app_functions[function_id] = bound_func
             self.bound_functions[(request.function_id, request.serialized_params)] = function_id
-            self.function_params[function_id] = deserialize(request.serialized_params, None)
+            self.function_params[function_id] = deserialize_params(request.serialized_params, bound_func, None)
             self.function_options[function_id] = request.function_options
 
         await stream.send_message(
@@ -1060,9 +1057,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         function_call_inputs = self.client_calls.setdefault(function_call_id, [])
         for item in request.inputs:
             if item.input.WhichOneof("args_oneof") == "args":
-                args, kwargs = modal._serialization.deserialize(item.input.args, None)
+                args, kwargs = deserialize(item.input.args, None)
             else:
-                args, kwargs = modal._serialization.deserialize(self.blobs[item.input.args_blob_id], None)
+                args, kwargs = deserialize(self.blobs[item.input.args_blob_id], None)
             self.n_inputs += 1
             idx, input_id, function_call_id = decode_input_jwt(item.input_jwt)
             function_call_inputs.append(((idx, input_id), (args, kwargs)))
@@ -1074,9 +1071,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         function_call_inputs = self.client_calls.setdefault(request.function_call_id, [])
         for item in request.inputs:
             if item.input.WhichOneof("args_oneof") == "args":
-                args, kwargs = modal._serialization.deserialize(item.input.args, None)
+                args, kwargs = deserialize(item.input.args, None)
             else:
-                args, kwargs = modal._serialization.deserialize(self.blobs[item.input.args_blob_id], None)
+                args, kwargs = deserialize(self.blobs[item.input.args_blob_id], None)
 
             input_id = f"in-{self.n_inputs}"
             self.n_inputs += 1
