@@ -53,7 +53,7 @@ from .secret import _Secret
 from .volume import _Volume
 
 if typing.TYPE_CHECKING:
-    import modal.functions
+    import modal._functions
 
 # This is used for both type checking and runtime validation
 ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10"]
@@ -484,7 +484,7 @@ class _Image(_Object, type_prefix="im"):
         dockerfile_function: Optional[Callable[[ImageBuilderVersion], DockerfileSpec]] = None,
         secrets: Optional[Sequence[_Secret]] = None,
         gpu_config: Optional[api_pb2.GPUConfig] = None,
-        build_function: Optional["modal.functions._Function"] = None,
+        build_function: Optional["modal._functions._Function"] = None,
         build_function_input: Optional[api_pb2.FunctionInput] = None,
         image_registry_config: Optional[_ImageRegistryConfig] = None,
         context_mount_function: Optional[Callable[[], Optional[_Mount]]] = None,
@@ -1943,7 +1943,7 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
-        from .functions import _Function
+        from ._functions import _Function
 
         if not callable(raw_f):
             raise InvalidError(f"Argument to Image.run_function must be a function, not {type(raw_f).__name__}.")

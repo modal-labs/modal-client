@@ -11,6 +11,7 @@ from grpclib import GRPCError, Status
 from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP
 from modal_proto import api_pb2
 
+from ._functions import _Function, _parse_retries
 from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
@@ -22,7 +23,6 @@ from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
 from .exception import ExecutionError, InvalidError, NotFoundError, VersionError
-from .functions import _Function, _parse_retries
 from .gpu import GPU_T
 from .partial_function import (
     _find_callables_for_obj,
@@ -75,7 +75,7 @@ def _bind_instance_method(service_function: _Function, class_bound_method: _Func
     """Binds an "instance service function" to a specific method name.
     This "dummy" _Function gets no unique object_id and isn't backend-backed at the moment, since all
     it does it forward invocations to the underlying instance_service_function with the specified method,
-    and we don't support web_config for parameterized methods at the moment.
+    and we don't support web_config for parametrized methods at the moment.
     """
     # TODO(elias): refactor to not use `_from_loader()` as a crutch for lazy-loading the
     #   underlying instance_service_function. It's currently used in order to take advantage
@@ -90,7 +90,7 @@ def _bind_instance_method(service_function: _Function, class_bound_method: _Func
         method_placeholder_fun._web_url = (
             class_bound_method._web_url
         )  # TODO: this shouldn't be set when actual parameters are used
-        method_placeholder_fun._function_name = f"{class_bound_method._function_name}[parameterized]"
+        method_placeholder_fun._function_name = f"{class_bound_method._function_name}[parametrized]"
         method_placeholder_fun._is_generator = class_bound_method._is_generator
         method_placeholder_fun._cluster_size = class_bound_method._cluster_size
         method_placeholder_fun._use_method_name = method_name
@@ -98,7 +98,7 @@ def _bind_instance_method(service_function: _Function, class_bound_method: _Func
 
     async def _load(fun: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
         # there is currently no actual loading logic executed to create each method on
-        # the *parameterized* instance of a class - it uses the parameter-bound service-function
+        # the *parametrized* instance of a class - it uses the parameter-bound service-function
         # for the instance. This load method just makes sure to set all attributes after the
         # `service_function` has been loaded (it's in the `_deps`)
         hydrate_from_instance_service_function(fun)
