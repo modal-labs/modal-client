@@ -5,7 +5,6 @@ import pytest
 import threading
 import time
 
-import modal
 from modal import (
     App,
     Sandbox,
@@ -392,49 +391,6 @@ def basic_wsgi_app():
 
 
 @app.cls()
-class Cls:
-    _k = 11  # not a parameter, just a static initial value
-
-    @enter()
-    def enter(self):
-        self._k = 111
-
-    @method()
-    def f(self, x):
-        return self._k * x
-
-    @web_endpoint()
-    def web(self, arg):
-        return {"ret": arg * self._k}
-
-    @asgi_app()
-    def asgi_web(self):
-        from fastapi import FastAPI
-
-        k_at_construction = self._k  # expected to be 111
-        hydrated_at_contruction = square.is_hydrated
-        web_app = FastAPI()
-
-        @web_app.get("/")
-        def k(arg: str):
-            return {
-                "at_construction": k_at_construction,
-                "at_runtime": self._k,
-                "arg": arg,
-                "other_hydrated": hydrated_at_contruction,
-            }
-
-        return web_app
-
-    def _generator(self, x):
-        yield x**3
-
-    @method(is_generator=True)
-    def generator(self, x):
-        return self._generator(x)
-
-
-@app.cls()
 class LifecycleCls:
     """Ensures that {sync,async} lifecycle hooks work with {sync,async} functions."""
 
@@ -510,38 +466,6 @@ class LifecycleCls:
         return self.events
 
 
-@app.cls()
-class ParamCls:
-    x: int = modal.parameter()
-    y: str = modal.parameter()
-
-    @method()
-    def f(self, z: int):
-        return f"{self.x} {self.y} {z}"
-
-    @method()
-    def g(self, z):
-        return self.f.local(z)
-
-
-@app.function()
-def check_sibling_hydration(x):
-    assert square.is_hydrated
-    assert fastapi_app.is_hydrated
-    assert fastapi_app.web_url
-    assert fun_returning_gen.is_hydrated
-    assert fun_returning_gen.is_generator
-
-    # make sure the underlying service function for the class is hydrated
-    assert Cls._get_class_service_function().is_hydrated
-    assert ParamCls._get_class_service_function().is_hydrated
-
-    # notably not hydrated at this point:
-    # Cls()  (instance of parameter-less class - note that hydration shouldn't require any roundtrips for this)
-    # Cls().f  (method of parameter-less class - note that hydration shouldn't require any roundtrips for this)
-    # ParamCls(x=1, y=3)  (parameter-bound class instance)
-
-
 @app.function(allow_concurrent_inputs=5)
 def sleep_700_sync(x):
     time.sleep(0.7)
@@ -611,12 +535,6 @@ def cube(x):
     # regardless of the actual funtion.
     assert square.is_hydrated
     return square.remote(x) * x
-
-
-@app.function()
-def function_calling_method(x, y, z):
-    obj = ParamCls(x, y)
-    return obj.f.remote(z)
 
 
 with pytest.warns(DeprecationError, match="@modal.build"):

@@ -1052,8 +1052,8 @@ def test_cls_web_asgi_construction(servicer):
     inputs = _get_web_inputs(method_name="asgi_web")
     ret = _run_container(
         servicer,
-        "test.supports.functions",
-        "Cls.*",
+        "test.supports.sibling_hydration_app",
+        "NonParamCls.*",
         inputs=inputs,
         is_class=True,
         app_layout=app_layout,
@@ -1212,11 +1212,11 @@ def test_cli(servicer, tmp_path, credentials):
 @skip_github_non_linux
 def test_function_sibling_hydration(servicer, credentials):
     # TODO: refactor this test to use its own source module/app instead of test.supports.functions (takes 7s to deploy)
-    deploy_app_externally(
-        servicer, credentials, "test.supports.functions", "app", capture_output=False, env={"MODAL_AUTOMOUNT": "0"}
-    )
+    deploy_app_externally(servicer, credentials, "test.supports.sibling_hydration_app", "app", capture_output=False)
     app_layout = servicer.app_get_layout("ap-1")
-    ret = _run_container(servicer, "test.supports.functions", "check_sibling_hydration", app_layout=app_layout)
+    ret = _run_container(
+        servicer, "test.supports.sibling_hydration_app", "check_sibling_hydration", app_layout=app_layout
+    )
     assert _unwrap_scalar(ret) is None
 
 
