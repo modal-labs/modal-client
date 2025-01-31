@@ -520,18 +520,20 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 if warn_missing_modules:
                     python_stringified_modules = ", ".join(f'"{mod}"' for mod in sorted(warn_missing_modules))
                     deprecation_warning(
-                        (2024, 1, 28),
+                        (2024, 1, 31),
                         (
                             "Automatic adding of local python source will be deprecated in the future.\n"
-                            f"Make sure you have explicitly added the source for the following modules to the image "
+                            f"Make sure you have explicitly added the source for the following modules to the Image "
                             f"used by `{info.function_name}`:\n"
                         )
                         + ", ".join(sorted(warn_missing_modules))
                         + "\n\n"
                         + (
-                            "This can be using `Image.add_local_python_source`, e.g.:\n"
-                            f"image_with_source = Image.debian_slim().add_local_python_source"
-                            f"({python_stringified_modules})"
+                            "e.g.:\n"
+                            f"image = Image.debian_slim().add_local_python_source"
+                            f"({python_stringified_modules})\n"
+                            f"@app.function(image=image)\n"
+                            f"..."
                         ),
                         pending=True,
                     )
