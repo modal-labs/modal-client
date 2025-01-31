@@ -1650,7 +1650,7 @@ message FunctionRetryInputsRequest {
 }
 
 message FunctionRetryInputsResponse {
-    repeated string input_jwts = 1;
+  repeated string input_jwts = 1;
 }
 
 message FunctionRetryPolicy {
