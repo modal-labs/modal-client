@@ -337,6 +337,33 @@ def _parse_retries(
         raise InvalidError(msg)
 
 
+def _parse_concurrent_inputs_settings(
+    target_concurrent_inputs: Optional[int],
+    allow_concurrent_inputs: Optional[int],
+) -> tuple[Optional[int], Optional[int]]:
+    """
+    Takes in user-specified target and allow settings and parses them into the
+    values for the function definition.
+    """
+
+    if allow_concurrent_inputs is None and target_concurrent_inputs is None:
+        # Neither value was specified.
+        return None, None
+    elif allow_concurrent_inputs is not None and target_concurrent_inputs is None:
+        # Only an `allow_concurrent_inputs` was specified. Use that value for
+        # both the target and the max on the definition.
+        return allow_concurrent_inputs, allow_concurrent_inputs
+    elif allow_concurrent_inputs is None and target_concurrent_inputs is not None:
+        # Only a `target_concurrent_inputs` was specified. Use that value for
+        # the max on the definition.
+        return target_concurrent_inputs, target_concurrent_inputs
+    else:
+        # Both `target_concurrent_inputs` and `allow_concurrent_inputs` were specified.
+        if allow_concurrent_inputs < target_concurrent_inputs:
+            raise InvalidError("allow_concurrent_inputs must be greater than or equal to target_concurrent_inputs.")
+        return target_concurrent_inputs, allow_concurrent_inputs
+
+
 @dataclass
 class _FunctionSpec:
     """
@@ -455,6 +482,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         retries: Optional[Union[int, Retries]] = None,
         timeout: Optional[int] = None,
         concurrency_limit: Optional[int] = None,
+        target_concurrent_inputs: Optional[int] = None,
         allow_concurrent_inputs: Optional[int] = None,
         batch_max_size: Optional[int] = None,
         batch_wait_ms: Optional[int] = None,
@@ -524,6 +552,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         retry_policy = _parse_retries(
             retries, f"Function '{info.get_tag()}'" if info.raw_f else f"Class '{info.get_tag()}'"
+        )
+
+        target_concurrent_inputs, allow_concurrent_inputs = _parse_concurrent_inputs_settings(
+            target_concurrent_inputs, allow_concurrent_inputs
         )
 
         if webhook_config is not None and retry_policy is not None:
@@ -802,7 +834,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     runtime_perf_record=config.get("runtime_perf_record"),
                     app_name=app_name,
                     is_builder_function=is_builder_function,
-                    target_concurrent_inputs=allow_concurrent_inputs or 0,
+                    target_concurrent_inputs=target_concurrent_inputs or 0,
+                    max_concurrent_inputs=allow_concurrent_inputs or 0,
                     batch_max_size=batch_max_size or 0,
                     batch_linger_ms=batch_wait_ms or 0,
                     worker_id=config.get("worker_id"),

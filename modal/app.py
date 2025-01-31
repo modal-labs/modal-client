@@ -590,7 +590,10 @@ class _App:
         concurrency_limit: Optional[
             int
         ] = None,  # An optional maximum number of concurrent containers running the function (keep_warm sets minimum).
-        allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
+        target_concurrent_inputs: Optional[
+            int
+        ] = None,  # Desired input concurrency for autoscaling. Must be <= allow_concurrent_inputs.
+        allow_concurrent_inputs: Optional[int] = None,  # Maximum number of inputs the container may fetch concurrently.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         keep_warm: Optional[
@@ -742,6 +745,7 @@ class _App:
                 proxy=proxy,
                 retries=retries,
                 concurrency_limit=concurrency_limit,
+                target_concurrent_inputs=target_concurrent_inputs,
                 allow_concurrent_inputs=allow_concurrent_inputs,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
@@ -797,7 +801,10 @@ class _App:
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
-        allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
+        allow_concurrent_inputs: Optional[int] = None,  # Maximum number of inputs the container may fetch concurrently.
+        target_concurrent_inputs: Optional[
+            int
+        ] = None,  # Desired input concurrency for autoscaling. Must be <= allow_concurrent_inputs.
         container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
@@ -874,6 +881,7 @@ class _App:
                 proxy=proxy,
                 retries=retries,
                 concurrency_limit=concurrency_limit,
+                target_concurrent_inputs=target_concurrent_inputs,
                 allow_concurrent_inputs=allow_concurrent_inputs,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
