@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2024
+# Copyright Modal Labs 2025
 import os
 
 from modal._utils.async_utils import synchronize_api

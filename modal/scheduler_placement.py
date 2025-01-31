@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2024
+# Copyright Modal Labs 2025
 from collections.abc import Sequence
 from typing import Optional, Union
 

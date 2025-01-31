@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2024
+# Copyright Modal Labs 2025
 from unittest.mock import MagicMock
 
 from modal._runtime import user_code_imports

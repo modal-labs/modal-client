@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2024
+# Copyright Modal Labs 2025
 """Interface to Modal's OutputManager functionality.
 
 These functions live here so that Modal library code can import them without

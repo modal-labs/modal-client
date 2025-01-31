@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2024
+# Copyright Modal Labs 2025
 import pytest
 from pathlib import Path
 from traceback import extract_tb

@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2024
+# Copyright Modal Labs 2025
 """Helper functions related to displaying tracebacks in the CLI."""
 
 import functools

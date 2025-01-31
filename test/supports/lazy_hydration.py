@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2024
+# Copyright Modal Labs 2025
 from modal import App, Image, Queue, Volume
 
 app = App()

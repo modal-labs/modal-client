@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2024
+# Copyright Modal Labs 2025
 import subprocess
 import sys
 from test.supports.skip import skip_windows

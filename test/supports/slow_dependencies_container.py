@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2024
+# Copyright Modal Labs 2025
 import sys
 
 import modal._container_entrypoint  # noqa

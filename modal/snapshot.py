@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2024
+# Copyright Modal Labs 2025
 from typing import Optional
 
 from modal_proto import api_pb2

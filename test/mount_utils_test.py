@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2024
+# Copyright Modal Labs 2025
 import pytest
 
 from modal._utils.mount_utils import validate_mount_points, validate_network_file_systems, validate_volumes

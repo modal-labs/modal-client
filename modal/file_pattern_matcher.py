@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2024
+# Copyright Modal Labs 2025
 """Pattern matching library ported from https://github.com/moby/patternmatcher.
 
 This is the same pattern-matching logic used by Docker, except it is written in

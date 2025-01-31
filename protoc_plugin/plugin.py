@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# Copyright Modal Labs 2024
+# Copyright Modal Labs 2025
 # built by modifying grpclib.plugin.main, see https://github.com/vmagamedov/grpclib
 # original: Copyright (c) 2019  , Vladimir Magamedov
 import os

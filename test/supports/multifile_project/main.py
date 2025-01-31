@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2024
+# Copyright Modal Labs 2025
 import modal
 from modal import enter, method, web_endpoint
 

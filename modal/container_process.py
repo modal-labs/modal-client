@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2024
+# Copyright Modal Labs 2025
 import asyncio
 import platform
 from typing import Generic, Optional, TypeVar
