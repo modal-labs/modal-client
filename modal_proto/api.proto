@@ -1650,8 +1650,7 @@ message FunctionRetryInputsRequest {
 }
 
 message FunctionRetryInputsResponse {
-  // TODO(ryan): Eventually this will return entry ids, which client
-  // will send back to server to check for lost inputs.
+    repeated string input_jwts = 1;
 }
 
 message FunctionRetryPolicy {
