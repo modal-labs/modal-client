@@ -33,7 +33,7 @@ from modal_proto import api_pb2
 
 from .supports.skip import skip_windows
 
-# Avoid parameterizing tests over ImageBuilderVersion not supported by current Python
+# Avoid parametrizing tests over ImageBuilderVersion not supported by current Python
 PYTHON_MAJOR_MINOR = "{}.{}".format(*sys.version_info)
 SUPPORTED_IMAGE_BUILDER_VERSIONS = [
     v for v in get_args(ImageBuilderVersion) if PYTHON_MAJOR_MINOR in SUPPORTED_PYTHON_SERIES[v]

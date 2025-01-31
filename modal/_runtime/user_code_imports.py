@@ -9,10 +9,10 @@ import modal._object
 import modal._runtime.container_io_manager
 import modal.cls
 from modal import Function
+from modal._functions import _Function
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_object
 from modal.exception import ExecutionError, InvalidError
-from modal.functions import _Function
 from modal.partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 from modal_proto import api_pb2
 

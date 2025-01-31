@@ -35,6 +35,7 @@ from grpclib.events import RecvRequest, listen
 
 import modal._serialization
 from modal import __version__, config
+from modal._functions import _Function
 from modal._runtime.container_io_manager import _ContainerIOManager
 from modal._serialization import serialize_data_format
 from modal._utils.async_utils import asyncify, synchronize_api
@@ -45,7 +46,6 @@ from modal._vendor import cloudpickle
 from modal.app import _App
 from modal.client import Client
 from modal.cls import _Cls
-from modal.functions import _Function
 from modal.image import ImageBuilderVersion
 from modal.mount import PYTHON_STANDALONE_VERSIONS, client_mount_name, python_standalone_mount_name
 from modal_proto import api_grpc, api_pb2
