@@ -902,7 +902,7 @@ class UsingCustomConstructor:
         return self._a
 
 
-def test_implicit_constructor():
+def test_implicit_constructor(client, set_env_client):
     c = UsingAnnotationParameters(a=10)
 
     assert c.a == 10
@@ -912,9 +912,9 @@ def test_implicit_constructor():
     d = UsingAnnotationParameters(a=11, b="goodbye")
     assert d.b == "goodbye"
 
-    # TODO(elias): fix "eager" constructor call validation by looking at signature
-    # with pytest.raises(TypeError, match="missing a required argument: 'a'"):
-    #     UsingAnnotationParameters()
+    with pytest.raises(ValueError, match="Missing required parameter: a"):
+        with app2.run(client=client):
+            UsingAnnotationParameters().get_value.remote()
 
     # check that implicit constructors trigger strict parametrization
     function_info: FunctionInfo = synchronizer._translate_in(UsingAnnotationParameters)._class_service_function._info  # type: ignore

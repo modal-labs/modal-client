@@ -1020,6 +1020,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                         )
                         for method_name, method_definition in function_defn.method_definitions.items()
                     },
+                    class_parameter_info=function_defn.class_parameter_info,
                 ),
             )
         )
