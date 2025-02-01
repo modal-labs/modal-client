@@ -255,7 +255,8 @@ def import_single_function_service(
             else:
                 user_defined_callable = f
         elif len(parts) == 2:
-            # As of v0.63 - this path should only be triggered by @build class builder methods
+            # This path should only be triggered by @build class builder methods and can be removed
+            # once @build is deprecated.
             assert not function_def.use_method_name  # new "placeholder methods" should not be invoked directly!
             assert function_def.is_builder_function
             cls_name, fun_name = parts

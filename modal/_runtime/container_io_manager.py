@@ -492,7 +492,7 @@ class _ContainerIOManager:
         function_call_id: str,
         start_index: int,
         data_format: int,
-        messages_bytes: list[Any],
+        serialized_messages: list[Any],
     ) -> None:
         """Put data onto the `data_out` stream of a function call.
 
@@ -501,7 +501,7 @@ class _ContainerIOManager:
         still use the previous Postgres-backed system based on `FunctionPutOutputs()`.
         """
         data_chunks: list[api_pb2.DataChunk] = []
-        for i, message_bytes in enumerate(messages_bytes):
+        for i, message_bytes in enumerate(serialized_messages):
             chunk = api_pb2.DataChunk(data_format=data_format, index=start_index + i)  # type: ignore
             if len(message_bytes) > MAX_OBJECT_SIZE_BYTES:
                 chunk.data_blob_id = await blob_upload(message_bytes, self._client.stub)
@@ -524,8 +524,8 @@ class _ContainerIOManager:
             # If we don't sleep here for 1ms we end up with an extra call to .put_data_out().
             if index == 1:
                 await asyncio.sleep(0.001)
-            messages_bytes = [serialize_data_format(message, data_format)]
-            total_size = len(messages_bytes[0]) + 512
+            serialized_messages = [serialize_data_format(message, data_format)]
+            total_size = len(serialized_messages[0]) + 512
             while total_size < 16 * 1024 * 1024:  # 16 MiB, maximum size in a single message
                 try:
                     message = message_rx.get_nowait()
@@ -535,10 +535,10 @@ class _ContainerIOManager:
                     received_sentinel = True
                     break
                 else:
-                    messages_bytes.append(serialize_data_format(message, data_format))
-                    total_size += len(messages_bytes[-1]) + 512  # 512 bytes for estimated framing overhead
-            await self.put_data_out(function_call_id, index, data_format, messages_bytes)
-            index += len(messages_bytes)
+                    serialized_messages.append(serialize_data_format(message, data_format))
+                    total_size += len(serialized_messages[-1]) + 512  # 512 bytes for estimated framing overhead
+            await self.put_data_out(function_call_id, index, data_format, serialized_messages)
+            index += len(serialized_messages)
 
     async def _queue_create(self, size: int) -> asyncio.Queue:
         """Create a queue, on the synchronicity event loop (needed on Python 3.8 and 3.9)."""
