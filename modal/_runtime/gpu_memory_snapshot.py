@@ -81,7 +81,7 @@ def get_state() -> CudaCheckpointState:
         raise CudaCheckpointException(e.stderr)
 
 
-def wait_for_state(target_state: CudaCheckpointState, timeout_secs: float = 5.0) -> bool:
+def wait_for_state(target_state: CudaCheckpointState, timeout_secs: float = 5.0):
     """Wait for CUDA checkpoint to reach a specific state."""
     logger.debug(f"Waiting for CUDA checkpoint state {target_state.value}")
     start_time = time.monotonic()
@@ -91,7 +91,9 @@ def wait_for_state(target_state: CudaCheckpointState, timeout_secs: float = 5.0)
 
         if current_state == target_state:
             logger.debug(f"Target state {target_state.value} reached")
-            return True
+
+        if current_state == CudaCheckpointState.FAILED:
+            raise CudaCheckpointException(f"CUDA process state is {current_state}")
 
         elapsed = time.monotonic() - start_time
         if elapsed >= timeout_secs:
