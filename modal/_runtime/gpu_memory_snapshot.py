@@ -69,12 +69,7 @@ def get_state() -> CudaCheckpointState:
         # Parse output to get state
         state_str = result.stdout.strip().lower()
         logger.debug(f"Raw state output: {state_str}")
-
-        try:
-            return CudaCheckpointState(state_str)
-        except ValueError:
-            logger.debug(f"Failed to parse state output: {state_str}")
-            raise CudaCheckpointException(f"Unexpected state output: {state_str}")
+        return CudaCheckpointState(state_str)
 
     except subprocess.CalledProcessError as e:
         logger.debug(f"Failed to get CUDA checkpoint state: {e.stderr}")
