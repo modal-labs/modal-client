@@ -142,3 +142,14 @@ def test_map_no_retries_when_first_call_succeeds(client, setup_app_and_function,
     with app.run(client=client):
         results = list(f.map([1, 1, 1]))
         assert set(results) == {1, 2, 3}
+
+
+def test_map_lost_inputs_retried(client, setup_app_and_function, monkeypatch, servicer):
+    monkeypatch.setenv("MODAL_CLIENT_RETRIES", "true")
+    app, f = setup_app_and_function
+    # The client should retry if it receives a internal failure status.
+    servicer.failure_status = api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE
+
+    with app.run(client=client):
+        results = list(f.map([3, 3, 3]))
+        assert set(results) == {3, 4, 5}
