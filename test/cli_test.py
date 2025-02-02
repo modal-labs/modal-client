@@ -1179,3 +1179,20 @@ def test_run_auto_infer_prefer_target_module(servicer, supports_dir, set_env_cli
     monkeypatch.syspath_prepend(supports_dir / "app_run_tests")
     res = _run(["run", "multifile.util"])
     assert "ran util\nmain func" in res.stdout
+
+
+@pytest.mark.parametrize("func", ["va_entrypoint", "va_function", "VaClass.va_method"])
+def test_cli_run_variadic_args(servicer, set_env_client, test_dir, func):
+    app_file = test_dir / "supports" / "app_run_tests" / "variadic_args.py"
+
+    @servicer.function_body
+    def print_args(*args):
+        print(f"args: {args}")
+
+    res = _run(["run", f"{app_file.as_posix()}::{func}"])
+    assert "args: ()" in res.stdout
+
+    res = _run(["run", f"{app_file.as_posix()}::{func}", "abc", "--foo=123", "--bar=456"])
+    assert "args: ('abc', '--foo=123', '--bar=456')" in res.stdout
+
+    _run(["run", f"{app_file.as_posix()}::{func}_invalid", "--foo=123"], expected_exit_code=1)
