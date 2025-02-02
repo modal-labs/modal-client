@@ -94,7 +94,7 @@ def _get_signature(f: Callable[..., Any], is_method: bool = False) -> FnSignatur
             }
 
     if has_variadic_args and len(signature) > 0:
-        raise InvalidError("Functions with variadic positional parameters cannot accept other parameters")
+        raise InvalidError("Functions with variable-length positional arguments (*args) cannot have other parameters.")
 
     return FnSignature(signature, has_variadic_args)
 
@@ -219,7 +219,7 @@ def _get_click_command_for_cls(app: App, method_ref: MethodReference):
     cls_signature = _get_signature(cls._get_user_cls())
 
     if cls_signature.has_variadic_args:
-        raise InvalidError("Modal classes with variadic positional parameters cannot be run from the CLI")
+        raise InvalidError("Modal classes cannot have variable-length positional arguments (*args).")
 
     partial_functions = cls._get_partial_functions()
 
@@ -248,7 +248,7 @@ def _get_click_command_for_cls(app: App, method_ref: MethodReference):
 
         instance = cls(**cls_kwargs)
         method: Function = getattr(instance, method_name)
-        return method.remote(**fun_kwargs)
+        return method.remote(*args, **fun_kwargs)
 
     f = _make_click_function(app, fun_signature, _inner)
     with_click_options = _add_click_options(f, parameters)
