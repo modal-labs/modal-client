@@ -184,6 +184,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.app_objects = {}
         self.app_unindexed_objects = {}
         self.n_inputs = 0
+        self.n_entry_ids = 0
         self.n_queues = 0
         self.n_dict_heartbeats = 0
         self.n_queue_heartbeats = 0
@@ -663,6 +664,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         blob_id = f"bl-{self.n_blobs}"
         return blob_id
 
+    def next_entry_id(self) -> str:
+        entry_id = f"1738286390000-{self.n_entry_ids}"
+        self.n_entry_ids += 1
+        return entry_id
+
     async def BlobGet(self, stream):
         request: api_pb2.BlobGetRequest = await stream.recv_message()
         download_url = f"{self.blob_host}/download?blob_id={request.blob_id}"
@@ -1088,15 +1094,22 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.FunctionRetryInputsRequest = await stream.recv_message()
         function_id, function_call_id = decode_function_call_jwt(request.function_call_jwt)
         function_call_inputs = self.client_calls.setdefault(function_call_id, [])
+        response_items = []
         for item in request.inputs:
             if item.input.WhichOneof("args_oneof") == "args":
                 args, kwargs = deserialize(item.input.args, None)
             else:
                 args, kwargs = deserialize(self.blobs[item.input.args_blob_id], None)
             self.n_inputs += 1
-            idx, input_id, function_call_id = decode_input_jwt(item.input_jwt)
+            idx, input_id, function_call_id, entry_id = decode_input_jwt(item.input_jwt)
+            entry_id = self.next_entry_id()
+            response_items.append(
+                api_pb2.FunctionRetryInputsResponseItem(
+                    idx=idx, input_jwt=encode_input_jwt(idx, input_id, function_call_id, entry_id)
+                )
+            )
             function_call_inputs.append(((idx, input_id), (args, kwargs)))
-        await stream.send_message(api_pb2.FunctionRetryInputsResponse())
+        await stream.send_message(api_pb2.FunctionRetryInputsResponse(items=response_items))
 
     async def FunctionPutInputs(self, stream):
         request: api_pb2.FunctionPutInputsRequest = await stream.recv_message()
@@ -1109,7 +1122,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 api_pb2.FunctionPutInputsResponseItem(
                     input_id=input_id,
                     idx=item.idx,
-                    input_jwt=encode_input_jwt(item.idx, input_id, request.function_call_id),
+                    input_jwt=encode_input_jwt(item.idx, input_id, request.function_call_id, self.next_entry_id()),
                 )
             )
             self.add_function_call_input(request.function_call_id, item, input_id)
@@ -2185,21 +2198,21 @@ def supports_on_path(supports_dir, monkeypatch):
     monkeypatch.syspath_prepend(str(supports_dir))
 
 
-def encode_input_jwt(idx: int, input_id: str, function_call_id: str) -> str:
+def encode_input_jwt(idx: int, input_id: str, function_call_id: str, entry_id: str) -> str:
     """
     Creates fake input jwt token.
     """
-    assert str(idx) and input_id and function_call_id
-    return f"{idx}:{input_id}:{function_call_id}"
+    assert str(idx) and input_id and function_call_id and entry_id
+    return f"{idx}:{input_id}:{function_call_id}:{entry_id}"
 
 
-def decode_input_jwt(input_jwt: str) -> tuple[int, str, str]:
+def decode_input_jwt(input_jwt: str) -> tuple[int, str, str, str]:
     """
-    Decodes fake input jwt. Returns idx, input_id.
+    Decodes fake input jwt. Returns idx, input_id, function_call_id, entry_id.
     """
     parts = input_jwt.split(":")
-    assert len(parts) == 3
-    return int(parts[0]), parts[1], parts[2]
+    assert len(parts) == 4
+    return int(parts[0]), parts[1], parts[2], parts[3]
 
 
 def encode_function_call_jwt(function_id: str, function_call_id: str) -> str:
