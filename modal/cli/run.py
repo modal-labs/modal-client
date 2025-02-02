@@ -36,7 +36,7 @@ class ParameterMetadata(TypedDict):
     default: Any
     annotation: Any
     type_hint: Any
-    kind: inspect.Parameter
+    kind: Any
 
 
 class AnyParamType(click.ParamType):
