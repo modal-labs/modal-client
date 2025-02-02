@@ -262,7 +262,8 @@ class _Invocation:
                     raise exc
                 await asyncio.sleep(delay_ms / 1000)
             except InternalFailure:
-                # For system failures on the server, we retry immediately.
+                # For system failures on the server, we retry immediately,
+                # and the failure does not count towards the retry policy.
                 pass
             await self._retry_input()
 
