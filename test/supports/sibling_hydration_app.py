@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2025
 import modal
 from modal import asgi_app, enter, method, web_endpoint
 
