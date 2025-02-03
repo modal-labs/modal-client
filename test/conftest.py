@@ -373,6 +373,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             is_method=definition.is_method,
             use_method_name=definition.use_method_name,
             use_function_id=definition.use_function_id,
+            class_parameter_info=definition.class_parameter_info,
             method_handle_metadata={
                 method_name: api_pb2.FunctionHandleMetadata(
                     function_name=method_definition.function_name,
