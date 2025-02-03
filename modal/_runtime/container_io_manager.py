@@ -25,6 +25,7 @@ from grpclib import Status
 from synchronicity.async_wrap import asynccontextmanager
 
 import modal_proto.api_pb2
+from modal._runtime import gpu_memory_snapshot
 from modal._serialization import deserialize, serialize, serialize_data_format
 from modal._traceback import extract_traceback, print_exception
 from modal._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
@@ -877,6 +878,17 @@ class _ContainerIOManager:
             if value != "":
                 config.override_locally(key, value)
 
+        # Restore GPU memory.
+        if self.function_def._experimental_enable_gpu_snapshot and self.function_def.resources.gpu_config.gpu_type:
+            logger.debug("GPU memory snapshot enabled. Attempting to restore GPU memory.")
+            gpu_process_state = gpu_memory_snapshot.get_state()
+            if gpu_process_state != gpu_memory_snapshot.CudaCheckpointState.CHECKPOINTED:
+                raise ValueError(
+                    "Cannot restore GPU state if GPU isn't in a 'checkpointed' state. "
+                    f"Current GPU state: {gpu_process_state}"
+                )
+            gpu_memory_snapshot.toggle()
+
         # Restore input to default state.
         self.current_input_id = None
         self.current_inputs = {}
@@ -892,6 +904,18 @@ class _ContainerIOManager:
 
         # Pause heartbeats since they keep the client connection open which causes the snapshotter to crash
         async with self.heartbeat_condition:
+            # Snapshot GPU memory.
+            if self.function_def._experimental_enable_gpu_snapshot and self.function_def.resources.gpu_config.gpu_type:
+                logger.debug("GPU memory snapshot enabled. Attempting to snapshot GPU memory.")
+                gpu_process_state = gpu_memory_snapshot.get_state()
+                if gpu_process_state != gpu_memory_snapshot.CudaCheckpointState.RUNNING:
+                    raise ValueError(
+                        "Cannot snapshot GPU state if it isn't running. " f"Current GPU state: {gpu_process_state}"
+                    )
+
+                gpu_memory_snapshot.toggle()
+                gpu_memory_snapshot.wait_for_state(gpu_memory_snapshot.CudaCheckpointState.CHECKPOINTED)
+
             # Notify the heartbeat loop that the snapshot phase has begun in order to
             # prevent it from sending heartbeat RPCs
             self._waiting_for_memory_snapshot = True
