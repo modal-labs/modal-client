@@ -72,19 +72,21 @@ def test_deserialization_error(client):
         )
     ],
 )
-def test_proto_serde_params_success(pydict, params):
+def test_proto_serde_params_success(pydict, params, client):
     serialized_params = serialize_proto_params(pydict, params)
-    reconstructed = deserialize_proto_params(serialized_params, params)
+    reconstructed = deserialize_proto_params(serialized_params, params, client)
     assert reconstructed == pydict
 
 
-def test_proto_serde_failure_incomplete_params():
+def test_proto_serde_failure_incomplete_params(client):
     # construct an incorrect serialization:
     incomplete_proto_params = api_pb2.ClassParameterSet(
         parameters=[api_pb2.ClassParameterValue(name="a", type=api_pb2.PARAM_TYPE_STRING, string_value="b")]
     )
     encoded_params = incomplete_proto_params.SerializeToString(deterministic=True)
     with pytest.raises(AttributeError):
-        deserialize_proto_params(encoded_params, [api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_STRING)])
+        deserialize_proto_params(
+            encoded_params, [api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_STRING)], client
+        )
 
     # TODO: add test for incorrect types

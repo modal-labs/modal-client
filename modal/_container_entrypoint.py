@@ -393,7 +393,9 @@ def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function,
         param_args, param_kwargs = deserialize(serialized_params, _client)
     elif function_def.class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO:
         param_args = ()
-        param_kwargs = deserialize_proto_params(serialized_params, list(function_def.class_parameter_info.schema))
+        param_kwargs = deserialize_proto_params(
+            serialized_params, list(function_def.class_parameter_info.schema), _client
+        )
     else:
         raise ExecutionError(
             f"Unknown class parameter serialization format: {function_def.class_parameter_info.format}"

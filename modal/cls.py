@@ -8,7 +8,7 @@ from typing import Any, Callable, Optional, TypeVar, Union
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
-from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP
+from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP, get_param_annotation
 from modal_proto import api_pb2
 
 from ._functions import _Function, _parse_retries
@@ -453,7 +453,9 @@ class _Cls(_Object, type_prefix="cs"):
 
         annotated_params = {k: t for k, t in annotations.items() if k in params}
         for k, t in annotated_params.items():
-            if t not in CLASS_PARAM_TYPE_MAP:
+            param_annotation = get_param_annotation(t)
+
+            if param_annotation not in CLASS_PARAM_TYPE_MAP:
                 t_name = getattr(t, "__name__", repr(t))
                 supported = ", ".join(t.__name__ for t in CLASS_PARAM_TYPE_MAP.keys())
                 raise InvalidError(

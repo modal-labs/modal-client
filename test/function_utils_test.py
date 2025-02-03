@@ -2,6 +2,7 @@
 import functools
 import pytest
 import time
+import typing
 
 from grpclib import Status
 
@@ -10,9 +11,11 @@ from modal._serialization import serialize_data_format
 from modal._utils import async_utils
 from modal._utils.function_utils import (
     FunctionInfo,
+    PickleSerialization,
     _stream_function_call_data,
     callable_has_non_self_non_default_params,
     callable_has_non_self_params,
+    get_param_annotation,
 )
 from modal_proto import api_pb2
 
@@ -155,3 +158,12 @@ def has_global_ref():
 def test_global_variable_extraction(func):
     info = FunctionInfo(func)
     assert info.get_globals().get("GLOBAL_VARIABLE") == GLOBAL_VARIABLE
+
+
+def test_get_param_annotation():
+    assert get_param_annotation(typing.Annotated[dict, PickleSerialization]) == PickleSerialization
+    assert get_param_annotation(typing.Annotated[int, PickleSerialization]) == PickleSerialization
+    assert get_param_annotation(typing.Annotated[str, PickleSerialization]) == PickleSerialization
+
+    assert get_param_annotation(int) == int
+    assert get_param_annotation(str) == str
