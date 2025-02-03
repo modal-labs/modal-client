@@ -402,12 +402,14 @@ class _Image(_Object, type_prefix="im"):
     _deferred_mounts: Sequence[
         _Mount
     ]  # added as mounts on any container referencing the Image, see `def _mount_layers`
+    _added_python_source_set: frozenset[str]  # used to warn about missing mounts during auto-mount deprecation
     _metadata: Optional[api_pb2.ImageMetadata] = None  # set on hydration, private for now
 
     def _initialize_from_empty(self):
         self.inside_exceptions = []
         self._serve_mounts = frozenset()
         self._deferred_mounts = ()
+        self._added_python_source_set = frozenset()
         self.force_build = False
 
     def _initialize_from_other(self, other: "_Image"):
@@ -416,6 +418,7 @@ class _Image(_Object, type_prefix="im"):
         self.force_build = other.force_build
         self._serve_mounts = other._serve_mounts
         self._deferred_mounts = other._deferred_mounts
+        self._added_python_source_set = other._added_python_source_set
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         env_image_id = config.get("image_id")  # set as an env var in containers
@@ -440,7 +443,9 @@ class _Image(_Object, type_prefix="im"):
             self2._deferred_mounts = tuple(base_image._deferred_mounts) + (mount,)
             self2._serve_mounts = base_image._serve_mounts | ({mount} if mount.is_local() else set())
 
-        return _Image._from_loader(_load, "Image(local files)", deps=lambda: [base_image, mount])
+        img = _Image._from_loader(_load, "Image(local files)", deps=lambda: [base_image, mount])
+        img._added_python_source_set = base_image._added_python_source_set
+        return img
 
     @property
     def _mount_layers(self) -> typing.Sequence[_Mount]:
@@ -659,6 +664,9 @@ class _Image(_Object, type_prefix="im"):
         rep = f"Image({dockerfile_function})"
         obj = _Image._from_loader(_load, rep, deps=_deps)
         obj.force_build = force_build
+        obj._added_python_source_set = frozenset.union(
+            frozenset(), *(base._added_python_source_set for base in base_images.values())
+        )
         return obj
 
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
@@ -843,7 +851,9 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
         mount = _Mount._from_local_python_packages(*modules, ignore=ignore)
-        return self._add_mount_layer_or_copy(mount, copy=copy)
+        img = self._add_mount_layer_or_copy(mount, copy=copy)
+        img._added_python_source_set |= set(modules)
+        return img
 
     def copy_local_dir(
         self,
@@ -1954,7 +1964,7 @@ class _Image(_Object, type_prefix="im"):
 
         info = FunctionInfo(raw_f)
 
-        function = _Function.from_args(
+        function = _Function.from_local(
             info,
             app=None,
             image=self,  # type: ignore[reportArgumentType]  # TODO: probably conflict with type stub?

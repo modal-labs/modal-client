@@ -308,7 +308,7 @@ class FunctionInfo:
             format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO, schema=modal_parameters
         )
 
-    def get_entrypoint_mount(self) -> list[_Mount]:
+    def get_entrypoint_mount(self) -> dict[str, _Mount]:
         """
         Includes:
         * Implicit mount of the function itself (the module or package that the function is part of)
@@ -322,7 +322,7 @@ class FunctionInfo:
         """
         if self.is_serialized():
             # Don't auto-mount anything for serialized functions (including notebooks)
-            return []
+            return {}
 
         # make sure the function's own entrypoint is included:
         if self._type == FunctionInfoType.PACKAGE:
@@ -331,21 +331,23 @@ class FunctionInfo:
             #  includes non-.py files, since we'll want to migrate to .py-only
             #  soon to get it consistent with the `add_local_python_source()`
             #  defaults.
-            return [_Mount._from_local_python_packages(top_level_package)]
+            return {top_level_package: _Mount._from_local_python_packages(top_level_package)}
         elif self._type == FunctionInfoType.FILE:
-            remote_path = ROOT_DIR / Path(self._file).name
+            # TODO: inspect if this file is already included as part of
+            #  a package mount, and skip it + reference that package
+            #  instead if that's the case. This avoids possible module
+            #  duplication bugs
+            module_file = Path(self._file)
+            container_module_name = module_file.stem
+            remote_path = ROOT_DIR / module_file.name
             if not _is_modal_path(remote_path):
-                # TODO: inspect if this file is already included as part of
-                #  a package mount, and skip it + reference that package
-                #  instead if that's the case. This avoids possible module
-                #  duplication bugs
-                return [
-                    _Mount._from_local_file(
+                return {
+                    container_module_name: _Mount._from_local_file(
                         self._file,
                         remote_path=remote_path,
                     )
-                ]
-        return []  # this should never be reached...
+                }
+        return {}  # this should never be reached...
 
     def get_tag(self):
         return self.function_name
