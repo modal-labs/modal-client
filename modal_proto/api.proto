@@ -2262,6 +2262,8 @@ message Sandbox {
   optional uint32 snapshot_version = 25;
 
   string cloud_provider_str = 26;  // Supersedes cloud_provider
+
+  bool _experimental_gpu_snapshot = 27; // Enables GPU snapshotting.
 }
 
 message SandboxCreateRequest {
