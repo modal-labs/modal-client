@@ -2263,7 +2263,7 @@ message Sandbox {
 
   string cloud_provider_str = 26;  // Supersedes cloud_provider
 
-  bool _experimental_gpu_snapshot = 27; // Enables GPU snapshotting.
+  bool _experimental_enable_gpu_snapshot = 27; // Enables GPU snapshotting.
 }
 
 message SandboxCreateRequest {

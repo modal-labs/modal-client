@@ -60,7 +60,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     _task_id: Optional[str] = None
     _tunnels: Optional[dict[int, Tunnel]] = None
     _enable_snapshot: bool = False
-    _experimental_gpu_snapshot: bool = False
+    _experimental_enable_gpu_snapshot: bool = False
 
     @staticmethod
     def _new(
@@ -85,7 +85,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         proxy: Optional[_Proxy] = None,
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
         enable_snapshot: bool = False,
-        _experimental_gpu_snapshot: bool = False,
+        _experimental_enable_gpu_snapshot: bool = False,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -183,7 +183,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 network_access=network_access,
                 proxy_id=(proxy.object_id if proxy else None),
                 enable_snapshot=enable_snapshot,
-                _experimental_gpu_snapshot=_experimental_gpu_snapshot,
+                _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
             )
 
             # Note - `resolver.app_id` will be `None` for app-less sandboxes
@@ -237,7 +237,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
-        _experimental_gpu_snapshot: bool = False,  # Experimental support for GPU snapshots.
+        _experimental_enable_gpu_snapshot: bool = False,  # Experimental support for GPU snapshots.
     ) -> "_Sandbox":
         from .app import _App
 
@@ -272,10 +272,10 @@ class _Sandbox(_Object, type_prefix="sb"):
             proxy=proxy,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
             enable_snapshot=_experimental_enable_snapshot,
-            _experimental_gpu_snapshot=_experimental_gpu_snapshot,
+            _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
         )
         obj._enable_snapshot = _experimental_enable_snapshot
-        obj._experimental_gpu_snapshot = _experimental_gpu_snapshot
+        obj._experimental_enable_gpu_snapshot = _experimental_enable_gpu_snapshot
 
         app_id: Optional[str] = None
         app_client: Optional[_Client] = None
