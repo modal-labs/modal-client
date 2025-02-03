@@ -10,10 +10,12 @@ app = modal.App()
 image = modal.Image.debian_slim()
 
 if os.environ.get("ADD_SOURCE") == "add":
-    image = image.add_local_python_source("pkg_a")
+    # intentionally makes add local not the last call, to make sure the added modules transfer to downstream layers
+    image = image.add_local_python_source("pkg_a").add_local_file(__file__, "/tmp/blah")
 
 elif os.environ.get("ADD_SOURCE") == "copy":
-    image = image.add_local_python_source("pkg_a", copy=True)
+    # intentionally makes add local not the last call, to make sure the added modules transfer to downstream layers
+    image = image.add_local_python_source("pkg_a", copy=True).run_commands("echo hello")
 
 
 @app.function(image=image)

@@ -443,7 +443,9 @@ class _Image(_Object, type_prefix="im"):
             self2._deferred_mounts = tuple(base_image._deferred_mounts) + (mount,)
             self2._serve_mounts = base_image._serve_mounts | ({mount} if mount.is_local() else set())
 
-        return _Image._from_loader(_load, "Image(local files)", deps=lambda: [base_image, mount])
+        img = _Image._from_loader(_load, "Image(local files)", deps=lambda: [base_image, mount])
+        img._added_python_source_set = base_image._added_python_source_set
+        return img
 
     @property
     def _mount_layers(self) -> typing.Sequence[_Mount]:
@@ -660,18 +662,12 @@ class _Image(_Object, type_prefix="im"):
             self._serve_mounts = frozenset(local_mounts)
 
         rep = f"Image({dockerfile_function})"
-        img = _Image._from_loader(_load, rep, deps=_deps)
-        img.force_build = force_build
-        return img
-
-    def _extend(self, **kwargs) -> "_Image":
-        """Internal use only - helper method to create a new Image with self as base
-
-        Transfers required static attributes to the new layer as expected.
-        """
-        img = _Image._from_args(base_images={"base": self}, **kwargs)
-        img._added_python_source_set = self._added_python_source_set
-        return img
+        obj = _Image._from_loader(_load, rep, deps=_deps)
+        obj.force_build = force_build
+        obj._added_python_source_set = frozenset.union(
+            frozenset(), *(base._added_python_source_set for base in base_images.values())
+        )
+        return obj
 
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         """
@@ -698,7 +694,8 @@ class _Image(_Object, type_prefix="im"):
             commands = ["FROM base", f"COPY . {remote_path}"]  # copy everything from the supplied mount
             return DockerfileSpec(commands=commands, context_files={})
 
-        return self._extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_function=build_dockerfile,
             context_mount_function=lambda: mount,
         )
@@ -812,7 +809,8 @@ class _Image(_Object, type_prefix="im"):
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base", f"COPY {basename} {remote_path}"], context_files={})
 
-        return self._extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_function=build_dockerfile,
             context_mount_function=lambda: _Mount._from_local_file(local_path, remote_path=f"/{basename}"),
         )
@@ -920,7 +918,8 @@ class _Image(_Object, type_prefix="im"):
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base", f"COPY . {remote_path}"], context_files={})
 
-        return self._extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_function=build_dockerfile,
             context_mount_function=lambda: _Mount._add_local_dir(
                 Path(local_path), PurePosixPath("/"), ignore=_ignore_fn(ignore)
@@ -999,7 +998,8 @@ class _Image(_Object, type_prefix="im"):
             return DockerfileSpec(commands=commands, context_files={})
 
         gpu_config = parse_gpu_config(gpu)
-        return self._extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_function=build_dockerfile,
             force_build=self.force_build or force_build,
             gpu_config=gpu_config,
@@ -1099,7 +1099,8 @@ class _Image(_Object, type_prefix="im"):
 
         gpu_config = parse_gpu_config(gpu)
 
-        return self._extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_function=build_dockerfile,
             secrets=secrets,
             gpu_config=gpu_config,
@@ -1138,7 +1139,8 @@ class _Image(_Object, type_prefix="im"):
                 commands = [cmd.strip() for cmd in commands]
             return DockerfileSpec(commands=commands, context_files=context_files)
 
-        return self._extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_function=build_dockerfile,
             force_build=self.force_build or force_build,
             gpu_config=parse_gpu_config(gpu),
@@ -1199,7 +1201,8 @@ class _Image(_Object, type_prefix="im"):
 
             return DockerfileSpec(commands=commands, context_files={})
 
-        return self._extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_function=build_dockerfile,
             force_build=self.force_build or force_build,
             secrets=secrets,
@@ -1279,7 +1282,8 @@ class _Image(_Object, type_prefix="im"):
             ]
             return DockerfileSpec(commands=commands, context_files=context_files)
 
-        return self._extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_function=build_dockerfile,
             force_build=self.force_build or force_build,
             secrets=secrets,
@@ -1352,7 +1356,8 @@ class _Image(_Object, type_prefix="im"):
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base", *cmds], context_files=context_files)
 
-        return self._extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_function=build_dockerfile,
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu),
@@ -1399,7 +1404,8 @@ class _Image(_Object, type_prefix="im"):
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             return DockerfileSpec(commands=["FROM base"] + [f"RUN {cmd}" for cmd in cmds], context_files={})
 
-        return self._extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_function=build_dockerfile,
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu),
@@ -1509,7 +1515,8 @@ class _Image(_Object, type_prefix="im"):
             context_files = {} if spec_file is None else {remote_spec_file: os.path.expanduser(spec_file)}
             return DockerfileSpec(commands=commands, context_files=context_files)
 
-        return self._extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_function=build_dockerfile,
             force_build=self.force_build or force_build,
             secrets=secrets,
@@ -1823,7 +1830,8 @@ class _Image(_Object, type_prefix="im"):
             context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
             return DockerfileSpec(commands=commands, context_files=context_files)
 
-        return base_image._extend(
+        return _Image._from_args(
+            base_images={"base": base_image},
             dockerfile_function=build_dockerfile_python,
             context_mount_function=add_python_mount,
             force_build=force_build,
@@ -1890,7 +1898,8 @@ class _Image(_Object, type_prefix="im"):
             ]
             return DockerfileSpec(commands=commands, context_files={})
 
-        return self._extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_function=build_dockerfile,
             force_build=self.force_build or force_build,
             gpu_config=parse_gpu_config(gpu),
@@ -1981,7 +1990,8 @@ class _Image(_Object, type_prefix="im"):
             build_function_input = api_pb2.FunctionInput(args=args_serialized, data_format=api_pb2.DATA_FORMAT_PICKLE)
         else:
             build_function_input = None
-        return self._extend(
+        return _Image._from_args(
+            base_images={"base": self},
             build_function=function,
             build_function_input=build_function_input,
             force_build=self.force_build or force_build,
@@ -2004,7 +2014,8 @@ class _Image(_Object, type_prefix="im"):
             commands = ["FROM base"] + [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()]
             return DockerfileSpec(commands=commands, context_files={})
 
-        return self._extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_function=build_dockerfile,
         )
 
@@ -2027,7 +2038,8 @@ class _Image(_Object, type_prefix="im"):
             commands = ["FROM base", f"WORKDIR {shlex.quote(str(path))}"]
             return DockerfileSpec(commands=commands, context_files={})
 
-        return self._extend(
+        return _Image._from_args(
+            base_images={"base": self},
             dockerfile_function=build_dockerfile,
         )
 
