@@ -26,7 +26,7 @@ def fun_returning_gen():
 
 @app.function()
 def function_calling_method(x, y, z):
-    obj = ParamCls(x, y)
+    obj = ParamCls(x=x, y=y)
     return obj.f.remote(z)
 
 
