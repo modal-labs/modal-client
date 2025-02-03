@@ -429,9 +429,15 @@ class _Image(_Object, type_prefix="im"):
             assert isinstance(metadata, api_pb2.ImageMetadata)
             self._metadata = metadata
 
-    def _add_mount_layer_or_copy(self, mount: _Mount, copy: bool = False):
+    def _add_mount_layer_or_copy(
+        self,
+        mount: _Mount,
+        *,
+        copy: bool = False,
+        description: str | None = None,
+    ) -> "_Image":
         if copy:
-            return self.copy_mount(mount, remote_path="/")
+            return self.copy_mount(mount, remote_path="/", description=description)
 
         base_image = self
 
@@ -661,7 +667,13 @@ class _Image(_Object, type_prefix="im"):
         obj.force_build = force_build
         return obj
 
-    def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
+    def copy_mount(
+        self,
+        mount: _Mount,
+        remote_path: Union[str, Path] = ".",
+        *,
+        description: str | None = None,
+    ) -> "_Image":
         """
         **Deprecated**: Use image.add_local_dir(..., copy=True) or similar instead.
 
@@ -683,7 +695,11 @@ class _Image(_Object, type_prefix="im"):
             raise InvalidError("The mount argument to copy has to be a Modal Mount object")
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            commands = ["FROM base", f"COPY . {remote_path}"]  # copy everything from the supplied mount
+            if description:
+                copy_command = f"COPY \\\n   # {description}\n   . {remote_path}"
+            else:
+                copy_command = f"COPY . {remote_path}"
+            commands = ["FROM base", copy_command]  # copy everything from the supplied mount
             return DockerfileSpec(commands=commands, context_files={})
 
         return _Image._from_args(
@@ -716,7 +732,7 @@ class _Image(_Object, type_prefix="im"):
             remote_path = remote_path + Path(local_path).name
 
         mount = _Mount._from_local_file(local_path, remote_path)
-        return self._add_mount_layer_or_copy(mount, copy=copy)
+        return self._add_mount_layer_or_copy(mount, copy=copy, description=f"{local_path} -> {remote_path}")
 
     def add_local_dir(
         self,
@@ -785,7 +801,7 @@ class _Image(_Object, type_prefix="im"):
             raise InvalidError("image.add_local_dir() currently only supports absolute remote_path values")
 
         mount = _Mount._add_local_dir(Path(local_path), PurePosixPath(remote_path), ignore=_ignore_fn(ignore))
-        return self._add_mount_layer_or_copy(mount, copy=copy)
+        return self._add_mount_layer_or_copy(mount, copy=copy, description=f"{local_path} -> {remote_path}")
 
     def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
         """Copy a file into the image as a part of building it.
@@ -843,7 +859,7 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
         mount = _Mount._from_local_python_packages(*modules, ignore=ignore)
-        return self._add_mount_layer_or_copy(mount, copy=copy)
+        return self._add_mount_layer_or_copy(mount, copy=copy, description=", ".join(modules))
 
     def copy_local_dir(
         self,
