@@ -522,19 +522,17 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     deprecation_warning(
                         (2024, 1, 31),
                         (
-                            "Automatic adding of local python source will be deprecated in the future.\n"
-                            f"Make sure you have explicitly added the source for the following modules to the Image "
-                            f"used by `{info.function_name}`:\n"
+                            'Modal will stop implicitly adding local Python modules to the Image ("automounting") in a '
+                            "future update. The following modules need to be explicitly added for future "
+                            "compatibility:\n"
                         )
-                        + ", ".join(sorted(warn_missing_modules))
+                        + "\n".join(sorted([f"* {m}" for m in warn_missing_modules]))
                         + "\n\n"
                         + (
                             "e.g.:\n"
-                            f"image = Image.debian_slim().add_local_python_source"
-                            f"({python_stringified_modules})\n"
-                            f"@app.function(image=image)\n"
-                            f"..."
-                        ),
+                            f"image_with_source = my_image.add_local_python_source({python_stringified_modules})\n\n"
+                        )
+                        + "For more information, see https://modal.com/docs/guide/modal-1-0-migration",
                         pending=True,
                     )
                 all_mounts += auto_mounts.values()
