@@ -60,7 +60,6 @@ class _Sandbox(_Object, type_prefix="sb"):
     _task_id: Optional[str] = None
     _tunnels: Optional[dict[int, Tunnel]] = None
     _enable_snapshot: bool = False
-    _experimental_enable_gpu_snapshot: bool = False
 
     @staticmethod
     def _new(
@@ -275,7 +274,6 @@ class _Sandbox(_Object, type_prefix="sb"):
             _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
         )
         obj._enable_snapshot = _experimental_enable_snapshot
-        obj._experimental_enable_gpu_snapshot = _experimental_enable_gpu_snapshot
 
         app_id: Optional[str] = None
         app_client: Optional[_Client] = None
