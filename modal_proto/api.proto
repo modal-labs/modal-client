@@ -1264,7 +1264,7 @@ message Function {
 
   string cloud_provider_str = 77;  // Supersedes cloud_provider
 
-  bool _experimental_enable_gpu_snapshot = 78; // 
+  bool _experimental_enable_gpu_snapshot = 78; // Experimental support for GPU snapshotting
 }
 
 message FunctionAsyncInvokeRequest {
