@@ -1263,6 +1263,8 @@ message Function {
   bool _experimental_custom_scaling = 76;
 
   string cloud_provider_str = 77;  // Supersedes cloud_provider
+
+  bool _experimental_enable_gpu_snapshot = 78; // 
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1376,6 +1378,7 @@ message FunctionData {
   uint32 _experimental_group_size = 19;
   uint32 _experimental_buffer_containers = 22;
   bool _experimental_custom_scaling = 23;
+  bool _experimental_enable_gpu_snapshot = 24;
   string worker_id = 7; // for internal debugging use only
 
   uint32 timeout_secs = 8;
