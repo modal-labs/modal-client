@@ -237,7 +237,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
-        _experimental_enable_gpu_snapshot: bool = False,  # Experimental support for GPU snapshots.
+        _experimental_enable_gpu_snapshot: bool = False,  # Experimentally enable GPU memory snapshots.
     ) -> "_Sandbox":
         from .app import _App
 
