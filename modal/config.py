@@ -224,7 +224,6 @@ _SETTINGS = {
     "snapshot_debug": _Setting(False, transform=_to_boolean),
     "client_retries": _Setting(False, transform=_to_boolean),  # For internal testing.
     "cuda_checkpoint_path": _Setting("/__modal/.bin/cuda-checkpoint"),  # Used for snapshotting GPU memory.
-    "gpu_snapshot_enabled": _Setting(False, transform=_to_boolean),  # For internal/experimental use
 }
 
 
