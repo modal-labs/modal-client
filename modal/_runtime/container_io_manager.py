@@ -881,8 +881,13 @@ class _ContainerIOManager:
         # Restore GPU memory.
         if self.function_def._experimental_enable_gpu_snapshot and self.function_def.resources.gpu_config.gpu_type:
             logger.debug("GPU memory snapshot enabled. Attempting to restore GPU memory.")
-            if gpu_memory_snapshot.get_state() == gpu_memory_snapshot.CudaCheckpointState.CHECKPOINTED:
-                gpu_memory_snapshot.toggle()
+            gpu_process_state = gpu_memory_snapshot.get_state()
+            if gpu_process_state != gpu_memory_snapshot.CudaCheckpointState.CHECKPOINTED:
+                raise ValueError(
+                    "Cannot restore GPU state if GPU isn't in a 'checkpointed' state. "
+                    f"Current GPU state: {gpu_process_state}"
+                )
+            gpu_memory_snapshot.toggle()
 
         # Restore input to default state.
         self.current_input_id = None
@@ -902,9 +907,14 @@ class _ContainerIOManager:
             # Snapshot GPU memory.
             if self.function_def._experimental_enable_gpu_snapshot and self.function_def.resources.gpu_config.gpu_type:
                 logger.debug("GPU memory snapshot enabled. Attempting to snapshot GPU memory.")
-                if gpu_memory_snapshot.get_state() == gpu_memory_snapshot.CudaCheckpointState.RUNNING:
-                    gpu_memory_snapshot.toggle()
-                    gpu_memory_snapshot.wait_for_state(gpu_memory_snapshot.CudaCheckpointState.CHECKPOINTED)
+                gpu_process_state = gpu_memory_snapshot.get_state()
+                if gpu_process_state != gpu_memory_snapshot.CudaCheckpointState.RUNNING:
+                    raise ValueError(
+                        "Cannot snapshot GPU state if it isn't running. " f"Current GPU state: {gpu_process_state}"
+                    )
+
+                gpu_memory_snapshot.toggle()
+                gpu_memory_snapshot.wait_for_state(gpu_memory_snapshot.CudaCheckpointState.CHECKPOINTED)
 
             # Notify the heartbeat loop that the snapshot phase has begun in order to
             # prevent it from sending heartbeat RPCs
