@@ -84,7 +84,7 @@ def test_proto_serde_failure_incomplete_params():
         parameters=[api_pb2.ClassParameterValue(name="a", type=api_pb2.PARAM_TYPE_STRING, string_value="b")]
     )
     encoded_params = incomplete_proto_params.SerializeToString(deterministic=True)
-    with pytest.raises(AttributeError):
+    with pytest.raises(AttributeError, match="Constructor arguments don't match"):
         deserialize_proto_params(encoded_params, [api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_STRING)])
 
     # TODO: add test for incorrect types
