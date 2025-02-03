@@ -520,7 +520,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 if warn_missing_modules:
                     python_stringified_modules = ", ".join(f'"{mod}"' for mod in sorted(warn_missing_modules))
                     deprecation_warning(
-                        (2024, 1, 31),
+                        (2025, 2, 3),
                         (
                             'Modal will stop implicitly adding local Python modules to the Image ("automounting") in a '
                             "future update. The following modules need to be explicitly added for future "
