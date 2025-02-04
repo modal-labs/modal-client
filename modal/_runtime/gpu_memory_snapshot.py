@@ -36,15 +36,12 @@ def toggle():
     logger.debug(f"Toggling CUDA checkpoint state for PID {pid}")
 
     try:
-        cuda_checkpoint_lock_timeout_ms = 5 * 1000
         subprocess.run(
             [
                 CUDA_CHECKPOINT_PATH,
                 "--toggle",
                 "--pid",
                 str(pid),
-                "--timeout",
-                str(cuda_checkpoint_lock_timeout_ms),
             ],
             check=True,
             capture_output=True,
