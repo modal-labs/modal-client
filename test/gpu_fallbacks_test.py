@@ -44,11 +44,7 @@ def test_gpu_fallback(servicer, client):
             )
         )
         a100_80gb_2 = api_pb2.Resources(
-            gpu_config=api_pb2.GPUConfig(
-                type=api_pb2.GPU_TYPE_A100_80GB,
-                count=2,
-                memory=80,
-            )
+            gpu_config=api_pb2.GPUConfig(type=api_pb2.GPU_TYPE_A100_80GB, count=2, gpu_type="A100-80GB")
         )
 
         fn1 = servicer.app_functions["fu-1"]  # f1
@@ -69,4 +65,4 @@ def test_gpu_fallback(servicer, client):
         assert fn3.ranked_functions[0].function.resources.gpu_config.count == h100_2.gpu_config.count
         assert fn3.ranked_functions[1].function.resources.gpu_config.type == a100_80gb_2.gpu_config.type
         assert fn3.ranked_functions[1].function.resources.gpu_config.count == a100_80gb_2.gpu_config.count
-        assert fn3.ranked_functions[1].function.resources.gpu_config.memory == a100_80gb_2.gpu_config.memory
+        assert fn3.ranked_functions[1].function.resources.gpu_config.gpu_type == a100_80gb_2.gpu_config.gpu_type
