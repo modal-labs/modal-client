@@ -97,13 +97,13 @@ def test_cloud_provider_selection(client, servicer):
 
 
 @pytest.mark.parametrize(
-    "memory_arg,gpu_type,memory_gb",
+    "memory_arg,gpu_type,gpu_type_str",
     [
-        ("40GB", api_pb2.GPU_TYPE_A100, 40),
-        ("80GB", api_pb2.GPU_TYPE_A100_80GB, 80),
+        ("40GB", api_pb2.GPU_TYPE_A100, "A100-40GB"),
+        ("80GB", api_pb2.GPU_TYPE_A100_80GB, "A100-80GB"),
     ],
 )
-def test_memory_selection_gpu_variant(client, servicer, memory_arg, gpu_type, memory_gb):
+def test_memory_selection_gpu_variant(client, servicer, memory_arg, gpu_type, gpu_type_str):
     import modal
 
     app = App()
@@ -119,7 +119,7 @@ def test_memory_selection_gpu_variant(client, servicer, memory_arg, gpu_type, me
 
     assert func_def.resources.gpu_config.count == 1
     assert func_def.resources.gpu_config.type == gpu_type
-    assert func_def.resources.gpu_config.memory == memory_gb
+    assert func_def.resources.gpu_config.gpu_type == gpu_type_str
 
 
 def test_gpu_unsupported_config():

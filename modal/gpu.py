@@ -12,14 +12,12 @@ class _GPUConfig:
     type: "api_pb2.GPUType.V"  # Deprecated, at some point
     count: int
     gpu_type: str
-    memory: int = 0
 
     def _to_proto(self) -> api_pb2.GPUConfig:
         """Convert this GPU config to an internal protobuf representation."""
         return api_pb2.GPUConfig(
             type=self.type,
             count=self.count,
-            memory=self.memory,
             gpu_type=self.gpu_type,
         )
 
@@ -73,17 +71,14 @@ class A100(_GPUConfig):
         size: Union[str, None] = None,  # Select GB configuration of GPU device: "40GB" or "80GB". Defaults to "40GB".
     ):
         if size == "40GB" or not size:
-            super().__init__(api_pb2.GPU_TYPE_A100, count, "A100-40GB", 40)
+            super().__init__(api_pb2.GPU_TYPE_A100, count, "A100-40GB")
         elif size == "80GB":
-            super().__init__(api_pb2.GPU_TYPE_A100_80GB, count, "A100-80GB", 80)
+            super().__init__(api_pb2.GPU_TYPE_A100_80GB, count, "A100-80GB")
         else:
             raise ValueError(f"size='{size}' is invalid. A100s can only have memory values of 40GB or 80GB.")
 
     def __repr__(self):
-        if self.memory == 80:
-            return f"GPU(A100-80GB, count={self.count})"
-        else:
-            return f"GPU(A100-40GB, count={self.count})"
+        return f"GPU({self.gpu_type}, count={self.count})"
 
 
 class A10G(_GPUConfig):
