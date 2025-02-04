@@ -65,7 +65,6 @@ def get_state() -> CudaCheckpointState:
 
         # Parse output to get state
         state_str = result.stdout.strip().lower()
-        logger.debug(f"Raw state output: {state_str}")
         return CudaCheckpointState(state_str)
 
     except subprocess.CalledProcessError as e:
