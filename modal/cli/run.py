@@ -7,6 +7,7 @@ import re
 import shlex
 import sys
 import time
+from dataclasses import dataclass
 from functools import partial
 from typing import Any, Callable, Optional, get_type_hints
 
@@ -35,6 +36,7 @@ class ParameterMetadata(TypedDict):
     default: Any
     annotation: Any
     type_hint: Any
+    kind: Any
 
 
 class AnyParamType(click.ParamType):
@@ -58,7 +60,13 @@ class NoParserAvailable(InvalidError):
     pass
 
 
-def _get_signature(f: Callable[..., Any], is_method: bool = False) -> dict[str, ParameterMetadata]:
+@dataclass
+class FnSignature:
+    parameters: dict[str, ParameterMetadata]
+    has_variadic_args: bool
+
+
+def _get_signature(f: Callable[..., Any], is_method: bool = False) -> FnSignature:
     try:
         type_hints = get_type_hints(f)
     except Exception as exc:
@@ -66,18 +74,29 @@ def _get_signature(f: Callable[..., Any], is_method: bool = False) -> dict[str, 
         msg = "Unable to generate command line interface for app entrypoint. See traceback above for details."
         raise ExecutionError(msg) from exc
 
+    has_variadic_args = False
+
     if is_method:
         self = None  # Dummy, doesn't matter
         f = functools.partial(f, self)
+
     signature: dict[str, ParameterMetadata] = {}
     for param in inspect.signature(f).parameters.values():
-        signature[param.name] = {
-            "name": param.name,
-            "default": param.default,
-            "annotation": param.annotation,
-            "type_hint": type_hints.get(param.name, "Any"),
-        }
-    return signature
+        if param.kind == inspect.Parameter.VAR_POSITIONAL:
+            has_variadic_args = True
+        else:
+            signature[param.name] = {
+                "name": param.name,
+                "default": param.default,
+                "annotation": param.annotation,
+                "type_hint": type_hints.get(param.name, "Any"),
+                "kind": param.kind,
+            }
+
+    if has_variadic_args and len(signature) > 0:
+        raise InvalidError("Functions with variable-length positional arguments (*args) cannot have other parameters.")
+
+    return FnSignature(signature, has_variadic_args)
 
 
 def _get_param_type_as_str(annot: Any) -> str:
@@ -96,17 +115,18 @@ def _get_param_type_as_str(annot: Any) -> str:
     return annot_str
 
 
-def _add_click_options(func, signature: dict[str, ParameterMetadata]):
+def _add_click_options(func, parameters: dict[str, ParameterMetadata]):
     """Adds @click.option based on function signature
 
     Kind of like typer, but using options instead of positional arguments
     """
-    for param in signature.values():
+    for param in parameters.values():
         param_type_str = _get_param_type_as_str(param["type_hint"])
         param_name = param["name"].replace("_", "-")
         cli_name = "--" + param_name
         if param_type_str == "bool":
             cli_name += "/--no-" + param_name
+
         parser = option_parsers.get(param_type_str)
         if parser is None:
             msg = f"Parameter `{param_name}` has unparseable annotation: {param['annotation']!r}"
@@ -145,9 +165,15 @@ def _write_local_result(result_path: str, res: Any):
         fid.write(res)
 
 
-def _make_click_function(app, inner: Callable[[dict[str, Any]], Any]):
+def _make_click_function(app, signature: FnSignature, inner: Callable[[tuple[str, ...], dict[str, Any]], Any]):
     @click.pass_context
     def f(ctx, **kwargs):
+        if signature.has_variadic_args:
+            assert len(kwargs) == 0
+            args = ctx.args
+        else:
+            args = ()
+
         show_progress: bool = ctx.obj["show_progress"]
         with enable_output(show_progress):
             with run_app(
@@ -156,7 +182,7 @@ def _make_click_function(app, inner: Callable[[dict[str, Any]], Any]):
                 environment_name=ctx.obj["env"],
                 interactive=ctx.obj["interactive"],
             ):
-                res = inner(kwargs)
+                res = inner(args, kwargs)
 
             if result_path := ctx.obj["result_path"]:
                 _write_local_result(result_path, res)
@@ -168,23 +194,33 @@ def _get_click_command_for_function(app: App, function: Function):
     if function.is_generator:
         raise InvalidError("`modal run` is not supported for generator functions")
 
-    signature: dict[str, ParameterMetadata] = _get_signature(function.info.raw_f)
+    signature = _get_signature(function.info.raw_f)
 
-    def _inner(click_kwargs):
-        return function.remote(**click_kwargs)
+    def _inner(args, click_kwargs):
+        return function.remote(*args, **click_kwargs)
 
-    f = _make_click_function(app, _inner)
+    f = _make_click_function(app, signature, _inner)
 
-    with_click_options = _add_click_options(f, signature)
-    return click.command(with_click_options)
+    with_click_options = _add_click_options(f, signature.parameters)
+
+    if signature.has_variadic_args:
+        return click.command(context_settings={"ignore_unknown_options": True, "allow_extra_args": True})(
+            with_click_options
+        )
+    else:
+        return click.command(with_click_options)
 
 
 def _get_click_command_for_cls(app: App, method_ref: MethodReference):
-    signature: dict[str, ParameterMetadata]
+    parameters: dict[str, ParameterMetadata]
     cls = method_ref.cls
     method_name = method_ref.method_name
 
     cls_signature = _get_signature(cls._get_user_cls())
+
+    if cls_signature.has_variadic_args:
+        raise InvalidError("Modal classes cannot have variable-length positional arguments (*args).")
+
     partial_functions = cls._get_partial_functions()
 
     if method_name in ("*", ""):
@@ -202,26 +238,34 @@ def _get_click_command_for_cls(app: App, method_ref: MethodReference):
     fun_signature = _get_signature(partial_function._get_raw_f(), is_method=True)
 
     # TODO(erikbern): assert there's no overlap?
-    signature = dict(**cls_signature, **fun_signature)  # Pool all arguments
+    parameters = dict(**cls_signature.parameters, **fun_signature.parameters)  # Pool all arguments
 
-    def _inner(click_kwargs):
+    def _inner(args, click_kwargs):
         # unpool class and method arguments
         # TODO(erikbern): this code is a bit hacky
-        cls_kwargs = {k: click_kwargs[k] for k in cls_signature}
-        fun_kwargs = {k: click_kwargs[k] for k in fun_signature}
+        cls_kwargs = {k: click_kwargs[k] for k in cls_signature.parameters}
+        fun_kwargs = {k: click_kwargs[k] for k in fun_signature.parameters}
 
         instance = cls(**cls_kwargs)
         method: Function = getattr(instance, method_name)
-        return method.remote(**fun_kwargs)
+        return method.remote(*args, **fun_kwargs)
 
-    f = _make_click_function(app, _inner)
-    with_click_options = _add_click_options(f, signature)
-    return click.command(with_click_options)
+    f = _make_click_function(app, fun_signature, _inner)
+    with_click_options = _add_click_options(f, parameters)
+
+    if fun_signature.has_variadic_args:
+        return click.command(context_settings={"ignore_unknown_options": True, "allow_extra_args": True})(
+            with_click_options
+        )
+    else:
+        return click.command(with_click_options)
 
 
 def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoint):
     func = entrypoint.info.raw_f
     isasync = inspect.iscoroutinefunction(func)
+
+    signature = _get_signature(func)
 
     @click.pass_context
     def f(ctx, *args, **kwargs):
@@ -230,6 +274,10 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
                 "Note that running a local entrypoint in detached mode only keeps the last "
                 "triggered Modal function alive after the parent process has been killed or disconnected."
             )
+
+        if signature.has_variadic_args:
+            assert len(args) == 0 and len(kwargs) == 0
+            args = ctx.args
 
         show_progress: bool = ctx.obj["show_progress"]
         with enable_output(show_progress):
@@ -250,8 +298,14 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
             if result_path := ctx.obj["result_path"]:
                 _write_local_result(result_path, res)
 
-    with_click_options = _add_click_options(f, _get_signature(func))
-    return click.command(with_click_options)
+    with_click_options = _add_click_options(f, signature.parameters)
+
+    if signature.has_variadic_args:
+        return click.command(context_settings={"ignore_unknown_options": True, "allow_extra_args": True})(
+            with_click_options
+        )
+    else:
+        return click.command(with_click_options)
 
 
 def _get_runnable_list(all_usable_commands: list[CLICommand]) -> str:
