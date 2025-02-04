@@ -10,10 +10,10 @@ import modal._runtime.container_io_manager
 import modal.cls
 from modal import Function
 from modal._functions import _Function
+from modal._partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_object
 from modal.exception import ExecutionError, InvalidError
-from modal.partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 from modal_proto import api_pb2
 
 if typing.TYPE_CHECKING:
@@ -139,7 +139,7 @@ class ImportedClass(Service):
     app: Optional["modal.app._App"]
     code_deps: Optional[Sequence["modal._object._Object"]]
 
-    _partial_functions: dict[str, "modal.partial_function._PartialFunction"]
+    _partial_functions: dict[str, "modal._partial_function._PartialFunction"]
 
     def get_finalized_functions(
         self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"

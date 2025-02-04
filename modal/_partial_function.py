@@ -15,7 +15,7 @@ import typing_extensions
 from modal_proto import api_pb2
 
 from ._functions import _Function
-from ._utils.async_utils import synchronize_api, synchronizer
+from ._utils.async_utils import synchronizer
 from ._utils.deprecation import deprecation_error, deprecation_warning
 from ._utils.function_utils import callable_has_non_self_non_default_params, callable_has_non_self_params
 from .config import logger
@@ -24,15 +24,18 @@ from .exception import InvalidError
 MAX_MAX_BATCH_SIZE = 1000
 MAX_BATCH_WAIT_MS = 10 * 60 * 1000  # 10 minutes
 
+if typing.TYPE_CHECKING:
+    import modal.partial_function
+
 
 class _PartialFunctionFlags(enum.IntFlag):
-    FUNCTION: int = 1
-    BUILD: int = 2
-    ENTER_PRE_SNAPSHOT: int = 4
-    ENTER_POST_SNAPSHOT: int = 8
-    EXIT: int = 16
-    BATCHED: int = 32
-    CLUSTERED: int = 64  # Experimental: Clustered functions
+    FUNCTION = 1
+    BUILD = 2
+    ENTER_PRE_SNAPSHOT = 4
+    ENTER_POST_SNAPSHOT = 8
+    EXIT = 16
+    BATCHED = 32
+    CLUSTERED = 64  # Experimental: Clustered functions
 
     @staticmethod
     def all() -> int:
@@ -98,6 +101,13 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         return self.webhook_config.type != api_pb2.WEBHOOK_TYPE_UNSPECIFIED
 
     def __get__(self, obj, objtype=None) -> _Function[P, ReturnType, OriginalReturnType]:
+        # to type checkers, any @method or similar function on a modal class, would appear to be
+        # of the type PartialFunction and this descriptor would be triggered when accessing it,
+        #
+        # However, modal classes are *actually* Cls instances (which isn't reflected in type checkers
+        # due to Python's lack of type chekcing intersection types), so at runtime the Cls instance would
+        # use its __getattr__ rather than this descriptor.
+        print("partial", obj, objtype)
         k = self.raw_f.__name__
         if obj:  # accessing the method on an instance of a class, e.g. `MyClass().fun``
             if hasattr(obj, "_modal_functions"):
@@ -140,11 +150,9 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         )
 
 
-PartialFunction = synchronize_api(_PartialFunction)
-
-
 def _find_partial_methods_for_user_cls(user_cls: type[Any], flags: int) -> dict[str, _PartialFunction]:
     """Grabs all method on a user class, and returns partials. Includes legacy methods."""
+    from .partial_function import PartialFunction  # wrapped type
 
     partial_functions: dict[str, _PartialFunction] = {}
     for parent_cls in reversed(user_cls.mro()):
@@ -167,20 +175,21 @@ def _find_callables_for_obj(user_obj: Any, flags: int) -> dict[str, Callable[...
 class _MethodDecoratorType:
     @typing.overload
     def __call__(
-        self, func: PartialFunction[typing_extensions.Concatenate[Any, P], ReturnType, OriginalReturnType]
-    ) -> PartialFunction[P, ReturnType, OriginalReturnType]:
+        self,
+        func: "modal.partial_function.PartialFunction[typing_extensions.Concatenate[Any, P], ReturnType, OriginalReturnType]",  # noqa
+    ) -> "modal.partial_function.PartialFunction[P, ReturnType, OriginalReturnType]":
         ...
 
     @typing.overload
     def __call__(
-        self, func: Callable[typing_extensions.Concatenate[Any, P], Coroutine[Any, Any, ReturnType]]
-    ) -> PartialFunction[P, ReturnType, Coroutine[Any, Any, ReturnType]]:
+        self, func: "Callable[typing_extensions.Concatenate[Any, P], Coroutine[Any, Any, ReturnType]]"
+    ) -> "modal.partial_function.PartialFunction[P, ReturnType, Coroutine[Any, Any, ReturnType]]":
         ...
 
     @typing.overload
     def __call__(
-        self, func: Callable[typing_extensions.Concatenate[Any, P], ReturnType]
-    ) -> PartialFunction[P, ReturnType, ReturnType]:
+        self, func: "Callable[typing_extensions.Concatenate[Any, P], ReturnType]"
+    ) -> "modal.partial_function.PartialFunction[P, ReturnType, ReturnType]":
         ...
 
     def __call__(self, func):
@@ -239,7 +248,7 @@ def _method(
             )
         return _PartialFunction(raw_f, _PartialFunctionFlags.FUNCTION, is_generator=is_generator, keep_warm=keep_warm)
 
-    return wrapper
+    return wrapper  # type: ignore   # synchronicity issue with wrapped vs unwrapped types and protocols
 
 
 def _parse_custom_domains(custom_domains: Optional[Iterable[str]] = None) -> list[api_pb2.CustomDomainConfig]:
@@ -685,14 +694,3 @@ def _batched(
         )
 
     return wrapper
-
-
-method = synchronize_api(_method)
-web_endpoint = synchronize_api(_web_endpoint)
-asgi_app = synchronize_api(_asgi_app)
-wsgi_app = synchronize_api(_wsgi_app)
-web_server = synchronize_api(_web_server)
-build = synchronize_api(_build)
-enter = synchronize_api(_enter)
-exit = synchronize_api(_exit)
-batched = synchronize_api(_batched)

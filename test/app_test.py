@@ -7,9 +7,9 @@ import time
 from grpclib import GRPCError, Status
 
 from modal import App, Image, Mount, Secret, Stub, Volume, enable_output, web_endpoint
+from modal._partial_function import _parse_custom_domains
 from modal._utils.async_utils import synchronizer
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
-from modal.partial_function import _parse_custom_domains
 from modal.runner import deploy_app, deploy_stub, run_app
 from modal_proto import api_pb2
 
