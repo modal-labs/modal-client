@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2025
 from modal._utils.async_utils import synchronize_api
 
 from ._partial_function import (
