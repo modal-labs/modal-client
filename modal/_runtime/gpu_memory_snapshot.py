@@ -83,6 +83,7 @@ def wait_for_state(target_state: CudaCheckpointState, timeout_secs: float = 5.0)
 
         if current_state == target_state:
             logger.debug(f"Target state {target_state.value} reached")
+            break
 
         if current_state == CudaCheckpointState.FAILED:
             raise CudaCheckpointException(f"CUDA process state is {current_state}")
