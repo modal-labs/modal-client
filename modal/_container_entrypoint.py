@@ -24,6 +24,10 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 from google.protobuf.message import Message
 
 from modal._clustered_functions import initialize_clustered_function
+from modal._partial_function import (
+    _find_callables_for_obj,
+    _PartialFunctionFlags,
+)
 from modal._proxy_tunnel import proxy_tunnel
 from modal._serialization import deserialize, deserialize_proto_params
 from modal._utils.async_utils import TaskContext, synchronizer
@@ -34,10 +38,6 @@ from modal.app import App, _App
 from modal.client import Client, _Client
 from modal.config import logger
 from modal.exception import ExecutionError, InputCancellation, InvalidError
-from modal.partial_function import (
-    _find_callables_for_obj,
-    _PartialFunctionFlags,
-)
 from modal.running_app import RunningApp, running_app_from_layout
 from modal_proto import api_pb2
 
