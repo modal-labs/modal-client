@@ -319,7 +319,7 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
         assert "Unable to generate command line interface for app entrypoint." in str(res.exception)
 
 
-def test_run_parse_args_function(servicer, set_env_client, test_dir, recwarn):
+def test_run_parse_args_function(servicer, set_env_client, test_dir, recwarn, disable_auto_mount):
     app_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
     res = _run(["run", app_file.as_posix()], expected_exit_code=1, expected_stderr=None)
     assert "Specify a Modal Function or local entrypoint to run" in res.stderr
