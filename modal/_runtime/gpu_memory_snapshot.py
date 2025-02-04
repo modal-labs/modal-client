@@ -36,15 +36,12 @@ def toggle():
     logger.debug(f"Toggling CUDA checkpoint state for PID {pid}")
 
     try:
-        cuda_checkpoint_lock_timeout_ms = 5 * 1000
         subprocess.run(
             [
                 CUDA_CHECKPOINT_PATH,
                 "--toggle",
                 "--pid",
                 str(pid),
-                "--timeout",
-                str(cuda_checkpoint_lock_timeout_ms),
             ],
             check=True,
             capture_output=True,
@@ -68,7 +65,6 @@ def get_state() -> CudaCheckpointState:
 
         # Parse output to get state
         state_str = result.stdout.strip().lower()
-        logger.debug(f"Raw state output: {state_str}")
         return CudaCheckpointState(state_str)
 
     except subprocess.CalledProcessError as e:
@@ -86,6 +82,7 @@ def wait_for_state(target_state: CudaCheckpointState, timeout_secs: float = 5.0)
 
         if current_state == target_state:
             logger.debug(f"Target state {target_state.value} reached")
+            break
 
         if current_state == CudaCheckpointState.FAILED:
             raise CudaCheckpointException(f"CUDA process state is {current_state}")
