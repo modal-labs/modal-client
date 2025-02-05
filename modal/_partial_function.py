@@ -107,7 +107,6 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         # However, modal classes are *actually* Cls instances (which isn't reflected in type checkers
         # due to Python's lack of type chekcing intersection types), so at runtime the Cls instance would
         # use its __getattr__ rather than this descriptor.
-        print("partial", obj, objtype)
         k = self.raw_f.__name__
         if obj:  # accessing the method on an instance of a class, e.g. `MyClass().fun``
             if hasattr(obj, "_modal_functions"):
