@@ -10,6 +10,35 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.14 (2025-02-04)
+
+- Fixed the status message shown in terminal logs for ephemeral Apps to accurately report the number of active containers.
+
+
+
+### 0.73.11 (2025-02-04)
+
+* Warns users if the `modal.Image` of a Function/Cls doesn't include all the globally imported "local" modules (using `.add_local_python_source()`), and the user hasn't explicitly set an `include_source` value of True/False. This is in preparation for an upcoming deprecation of the current "auto mount" logic.
+
+
+
+### 0.73.10 (2025-02-04)
+
+* Modal functions, methods and entrypoints can now accept variable-length arguments to skip Modal's default CLI parsing. This is useful if you want to use Modal with custom argument parsing via `argparse` or `HfArgumentParser`. For example, the following function can be invoked with `modal run my_file.py --foo=42 --bar="baz"`:
+
+    ```python
+    import argparse
+
+    @app.function()
+    def train(*arglist):
+        parser = argparse.ArgumentParser()
+        parser.add_argument("--foo", type=int)
+        parser.add_argument("--bar", type=str)
+        args = parser.parse_args(args = arglist)
+```
+
+
+
 ### 0.73.1 (2025-01-30)
 
 * `modal run` now runs a single local entrypoints/function in the selected module. If exactly one local entrypoint or function exists in the selected module, the user doesn't have to qualify the runnable

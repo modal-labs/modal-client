@@ -65,7 +65,7 @@ from .exception import (
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
-from .mount import _get_client_mount, _Mount, get_auto_mounts
+from .mount import _get_client_mount, _Mount, get_sys_modules_mounts
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .output import _get_output_manager
 from .parallel_map import (
@@ -436,7 +436,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return fun
 
     @staticmethod
-    def from_args(
+    def from_local(
         info: FunctionInfo,
         app,
         image: _Image,
@@ -476,6 +476,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         _experimental_buffer_containers: Optional[int] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
+        _experimental_enable_gpu_snapshot: bool = False,
     ) -> "_Function":
         """mdmd:hidden"""
         # Needed to avoid circular imports
@@ -503,18 +504,41 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             if include_source_mode != IncludeSourceMode.INCLUDE_NOTHING:
                 entrypoint_mounts = info.get_entrypoint_mount()
             else:
-                entrypoint_mounts = []
+                entrypoint_mounts = {}
 
             all_mounts = [
                 _get_client_mount(),
                 *explicit_mounts,
-                *entrypoint_mounts,
+                *entrypoint_mounts.values(),
             ]
 
             if include_source_mode is IncludeSourceMode.INCLUDE_FIRST_PARTY:
-                # TODO(elias): if using INCLUDE_FIRST_PARTY *and* mounts are added that haven't already been
-                #  added to the image via add_local_python_source
-                all_mounts += get_auto_mounts()
+                auto_mounts = get_sys_modules_mounts()
+                # don't need to add entrypoint modules to automounts:
+                for entrypoint_module in entrypoint_mounts:
+                    auto_mounts.pop(entrypoint_module, None)
+
+                warn_missing_modules = set(auto_mounts.keys()) - image._added_python_source_set
+
+                if warn_missing_modules:
+                    python_stringified_modules = ", ".join(f'"{mod}"' for mod in sorted(warn_missing_modules))
+                    deprecation_warning(
+                        (2025, 2, 3),
+                        (
+                            'Modal will stop implicitly adding local Python modules to the Image ("automounting") in a '
+                            "future update. The following modules need to be explicitly added for future "
+                            "compatibility:\n"
+                        )
+                        + "\n".join(sorted([f"* {m}" for m in warn_missing_modules]))
+                        + "\n\n"
+                        + (
+                            "e.g.:\n"
+                            f"image_with_source = my_image.add_local_python_source({python_stringified_modules})\n\n"
+                        )
+                        + "For more information, see https://modal.com/docs/guide/modal-1-0-migration",
+                        pending=True,
+                    )
+                all_mounts += auto_mounts.values()
         else:
             # skip any mount introspection/logic inside containers, since the function
             # should already be hydrated
@@ -563,7 +587,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             for k, pf in build_functions:
                 build_function = pf.raw_f
                 snapshot_info = FunctionInfo(build_function, user_cls=info.user_cls)
-                snapshot_function = _Function.from_args(
+                snapshot_function = _Function.from_local(
                     snapshot_info,
                     app=None,
                     image=image,
@@ -824,6 +848,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     _experimental_buffer_containers=_experimental_buffer_containers or 0,
                     _experimental_proxy_ip=_experimental_proxy_ip,
                     _experimental_custom_scaling=_experimental_custom_scaling_factor is not None,
+                    _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
                 )
 
                 if isinstance(gpu, list):
@@ -851,6 +876,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         _experimental_group_size=function_definition._experimental_group_size,
                         _experimental_buffer_containers=function_definition._experimental_buffer_containers,
                         _experimental_custom_scaling=function_definition._experimental_custom_scaling,
+                        _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
                         _experimental_proxy_ip=function_definition._experimental_proxy_ip,
                         snapshot_debug=function_definition.snapshot_debug,
                         runtime_perf_record=function_definition.runtime_perf_record,
