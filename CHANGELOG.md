@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.14 (2025-02-04)
+
+- Fixed the status message shown in terminal logs for ephemeral Apps to accurately report the number of active containers.
+
+
+
 ### 0.73.11 (2025-02-04)
 
 * Warns users if the `modal.Image` of a Function/Cls doesn't include all the globally imported "local" modules (using `.add_local_python_source()`), and the user hasn't explicitly set an `include_source` value of True/False. This is in preparation for an upcoming deprecation of the current "auto mount" logic.
