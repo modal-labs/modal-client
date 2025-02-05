@@ -673,17 +673,16 @@ class _Cls(_Object, type_prefix="cs"):
         )
 
     def __getattr__(self, k):
-        # Used by CLI and container entrypoint
-        # TODO: remove this method - access to attributes on classes should be discouraged
-        # if k in self._method_functions:
-        #     deprecation_warning(
-        #         (2025, 1, 13),
-        #         "Usage of methods directly on the class will soon be deprecated, "
-        #         "instantiate classes before using methods, e.g.:\n"
-        #         f"{self._name}().{k} instead of {self._name}.{k}",
-        #         pending=True,
-        #     )
-        #     return self._method_functions[k]
+        # TODO: remove this method - access to attributes on classes (not instances) should be discouraged
+        if k in self._method_functions:
+            deprecation_warning(
+                (2025, 1, 13),
+                "Usage of methods directly on the class will soon be deprecated, "
+                "instantiate classes before using methods, e.g.:\n"
+                f"{self._name}().{k} instead of {self._name}.{k}",
+                pending=True,
+            )
+            return self._method_functions[k]
         return getattr(self._user_cls, k)
 
     def _is_local(self) -> bool:
