@@ -2630,6 +2630,7 @@ message TaskLogsBatch {
   string image_id = 13;  // Used for image logs
   bool eof = 14;
   string pty_exec_id = 15;  // Used for interactive functions
+  string root_function_id = 16;
 }
 
 message TaskProgress {
