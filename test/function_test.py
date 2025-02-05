@@ -49,6 +49,16 @@ def test_run_function(client, servicer):
         assert len(servicer.cleared_function_calls) == 1
 
 
+def test_single_input_function_call_uses_single_rpc(client, servicer):
+    with app.run(client=client):
+        with servicer.intercept() as ctx:
+            assert foo.remote(2, 4) == 20
+        assert len(ctx.calls) == 2
+        (msg1_type, msg1), (msg2_type, msg2) = ctx.calls
+        assert msg1_type == "FunctionMap"
+        assert msg2_type == "FunctionGetOutputs"
+
+
 @pytest.mark.asyncio
 async def test_call_function_locally(client, servicer):
     assert foo.local(22, 44) == 77  # call it locally
