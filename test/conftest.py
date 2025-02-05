@@ -1047,9 +1047,26 @@ class MockClientServicer(api_grpc.ModalClientBase):
         fn_definition = self.app_functions.get(request.function_id)
         retry_policy = fn_definition.retry_policy if fn_definition else None
         function_call_jwt = encode_function_call_jwt(request.function_id, function_call_id)
+
+        response_inputs = []
+        for input_item in request.pipelined_inputs:
+            input_id = f"in-{self.n_inputs}"
+            self.n_inputs += 1
+            self.add_function_call_input(function_call_id, input_item, input_id)
+            response_inputs.append(
+                api_pb2.FunctionPutInputsResponseItem(
+                    idx=self.fcidx,
+                    input_id=input_id,
+                    input_jwt=encode_input_jwt(self.fcidx, input_id, function_call_id),
+                )
+            )
+
         await stream.send_message(
             api_pb2.FunctionMapResponse(
-                function_call_id=function_call_id, retry_policy=retry_policy, function_call_jwt=function_call_jwt
+                function_call_id=function_call_id,
+                retry_policy=retry_policy,
+                function_call_jwt=function_call_jwt,
+                pipelined_inputs=response_inputs,
             )
         )
 
@@ -1070,13 +1087,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def FunctionPutInputs(self, stream):
         request: api_pb2.FunctionPutInputsRequest = await stream.recv_message()
         response_items = []
-        function_call_inputs = self.client_calls.setdefault(request.function_call_id, [])
-        for item in request.inputs:
-            if item.input.WhichOneof("args_oneof") == "args":
-                args, kwargs = modal._serialization.deserialize(item.input.args, None)
-            else:
-                args, kwargs = modal._serialization.deserialize(self.blobs[item.input.args_blob_id], None)
 
+        for item in request.inputs:
             input_id = f"in-{self.n_inputs}"
             self.n_inputs += 1
             response_items.append(
@@ -1086,10 +1098,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     input_jwt=encode_input_jwt(item.idx, input_id, request.function_call_id),
                 )
             )
-            function_call_inputs.append(((item.idx, input_id), (args, kwargs)))
+            self.add_function_call_input(request.function_call_id, item, input_id)
         if self.slow_put_inputs:
             await asyncio.sleep(0.001)
         await stream.send_message(api_pb2.FunctionPutInputsResponse(inputs=response_items))
+
+    def add_function_call_input(self, function_call_id, item, input_id):
+        if item.input.WhichOneof("args_oneof") == "args":
+            args, kwargs = modal._serialization.deserialize(item.input.args, None)
+        else:
+            args, kwargs = modal._serialization.deserialize(self.blobs[item.input.args_blob_id], None)
+        function_call_inputs = self.client_calls.setdefault(function_call_id, [])
+        function_call_inputs.append(((item.idx, input_id), (args, kwargs)))
 
     async def FunctionGetOutputs(self, stream):
         request: api_pb2.FunctionGetOutputsRequest = await stream.recv_message()
