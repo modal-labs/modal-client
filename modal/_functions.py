@@ -1092,6 +1092,16 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         f = modal.Function.from_name("other-app", "function")
         ```
         """
+        if "." in name:
+            deprecation_warning(
+                (2025, 2, 5),
+                "Looking up class methods using Function.from_name will be deprecated"
+                " in a future version of Modal. Use modal.Cls.from_name() instead, e.g.\n"
+                "\n"
+                'DeployedClass = modal.Cls.from_name("some_app", "MyClass")\n'
+                "DeployedClass().some_method.remote()",
+                pending=True,
+            )
 
         async def _load_remote(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
