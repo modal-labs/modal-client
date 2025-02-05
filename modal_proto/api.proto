@@ -143,6 +143,8 @@ enum FunctionCallType {
 }
 
 enum GPUType {
+  // Note: this enum is no longer used by current clients - don't add new types
+  // Old clients still send it, so we use it server-side for compatibility
   GPU_TYPE_UNSPECIFIED = 0;
   GPU_TYPE_T4 = 1;
   GPU_TYPE_A100 = 2;
