@@ -42,6 +42,7 @@ class FunctionInfoType(Enum):
 CLASS_PARAM_TYPE_MAP: dict[type, tuple["api_pb2.ParameterType.ValueType", str]] = {
     str: (api_pb2.PARAM_TYPE_STRING, "string_default"),
     int: (api_pb2.PARAM_TYPE_INT, "int_default"),
+    bytes: (api_pb2.PARAM_TYPE_BYTES, "bytes_default"),
 }
 
 
@@ -297,7 +298,7 @@ class FunctionInfo:
         for param in signature.parameters.values():
             has_default = param.default is not param.empty
             if param.annotation not in CLASS_PARAM_TYPE_MAP:
-                raise InvalidError("modal.parameter() currently only support str or int types")
+                raise InvalidError("modal.parameter() currently only support str, int, or bytes types")
             param_type, default_field = CLASS_PARAM_TYPE_MAP[param.annotation]
             class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=param_type)
             if has_default:
