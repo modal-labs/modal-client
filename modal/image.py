@@ -491,6 +491,7 @@ class _Image(_Object, type_prefix="im"):
         image_registry_config: Optional[_ImageRegistryConfig] = None,
         context_mount_function: Optional[Callable[[], Optional[_Mount]]] = None,
         force_build: bool = False,
+        skip_modal_runtime: bool = False,
         # For internal use only.
         _namespace: "api_pb2.DeploymentNamespace.ValueType" = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         _do_assert_no_mount_layers: bool = True,
@@ -608,6 +609,7 @@ class _Image(_Object, type_prefix="im"):
                 runtime=config.get("function_runtime"),
                 runtime_debug=config.get("function_runtime_debug"),
                 build_function=_build_function,
+                skip_modal_runtime=skip_modal_runtime,
             )
 
             req = api_pb2.ImageGetOrCreateRequest(
@@ -1529,6 +1531,7 @@ class _Image(_Object, type_prefix="im"):
         builder_version: ImageBuilderVersion,
         setup_commands: list[str],
         add_python: Optional[str] = None,
+        skip_modal_requirements: bool = False,
     ) -> list[str]:
         add_python_commands: list[str] = []
         if add_python:
@@ -1559,7 +1562,7 @@ class _Image(_Object, type_prefix="im"):
             f"FROM {tag}",
             *add_python_commands,
             *setup_commands,
-            *modal_requirements_commands,
+            *(modal_requirements_commands if not skip_modal_requirements else []),
         ]
 
     @staticmethod
@@ -1570,6 +1573,7 @@ class _Image(_Object, type_prefix="im"):
         setup_dockerfile_commands: list[str] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         add_python: Optional[str] = None,
+        skip_modal_runtime: bool = False,
         **kwargs,
     ) -> "_Image":
         """Build a Modal image from a public or private image registry, such as Docker Hub.
@@ -1614,7 +1618,9 @@ class _Image(_Object, type_prefix="im"):
             kwargs["image_registry_config"] = _ImageRegistryConfig(api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS, secret)
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            commands = _Image._registry_setup_commands(tag, version, setup_dockerfile_commands, add_python)
+            commands = _Image._registry_setup_commands(
+                tag, version, setup_dockerfile_commands, add_python, skip_modal_runtime
+            )
             context_files = {CONTAINER_REQUIREMENTS_PATH: _get_modal_requirements_path(version, add_python)}
             return DockerfileSpec(commands=commands, context_files=context_files)
 
@@ -1633,6 +1639,7 @@ class _Image(_Object, type_prefix="im"):
         setup_dockerfile_commands: list[str] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         add_python: Optional[str] = None,
+        skip_modal_runtime: bool = False,
         **kwargs,
     ) -> "_Image":
         """Build a Modal image from a private image in Google Cloud Platform (GCP) Artifact Registry.
@@ -1673,6 +1680,7 @@ class _Image(_Object, type_prefix="im"):
             force_build=force_build,
             add_python=add_python,
             image_registry_config=image_registry_config,
+            skip_modal_runtime=skip_modal_runtime,
             **kwargs,
         )
 
@@ -1684,6 +1692,7 @@ class _Image(_Object, type_prefix="im"):
         setup_dockerfile_commands: list[str] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         add_python: Optional[str] = None,
+        skip_modal_runtime: bool = False,
         **kwargs,
     ) -> "_Image":
         """Build a Modal image from a private image in AWS Elastic Container Registry (ECR).
@@ -1718,6 +1727,7 @@ class _Image(_Object, type_prefix="im"):
             force_build=force_build,
             add_python=add_python,
             image_registry_config=image_registry_config,
+            skip_modal_runtime=skip_modal_runtime,
             **kwargs,
         )
 
@@ -1735,6 +1745,7 @@ class _Image(_Object, type_prefix="im"):
         gpu: GPU_T = None,
         add_python: Optional[str] = None,
         ignore: Union[Sequence[str], Callable[[Path], bool]] = AUTO_DOCKERIGNORE,
+        skip_modal_runtime: bool = False,
     ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
 
@@ -1810,6 +1821,9 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
         )
 
+        if not add_python and skip_modal_runtime:
+            return base_image
+
         # --- Now add in the modal dependencies, and, optionally a Python distribution
         # This happening in two steps is probably a vestigial consequence of previous limitations,
         # but it will be difficult to merge them without forcing rebuilds of images.
@@ -1825,9 +1839,9 @@ class _Image(_Object, type_prefix="im"):
             )
 
         def build_dockerfile_python(version: ImageBuilderVersion) -> DockerfileSpec:
-            commands = _Image._registry_setup_commands("base", version, [], add_python)
+            commands = _Image._registry_setup_commands("base", version, [], add_python, skip_modal_runtime)
             requirements_path = _get_modal_requirements_path(version, add_python)
-            context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
+            context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path} if not skip_modal_runtime else {}
             return DockerfileSpec(commands=commands, context_files=context_files)
 
         return _Image._from_args(

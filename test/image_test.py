@@ -1788,3 +1788,50 @@ def test_image_add_local_dir_ignore_from_file(servicer, client, tmp_path_with_co
             assert len(img._mount_layers) == 1
             mount_id = img._mount_layers[0].object_id
             assert servicer.mount_contents[mount_id].keys() == expected
+
+
+def test_image_from_dockerfile_skip_modal_runtime(builder_version, servicer, client, test_dir):
+    # with skip_modal_runtime
+    a1 = App()
+    im1 = Image.from_dockerfile(test_dir / "supports" / "test-dockerfile", skip_modal_runtime=True)
+    a1.function(image=im1)(dummy)
+    with a1.run(client=client):
+        cmds1 = get_all_dockerfile_commands(im1.object_id, servicer)
+        assert "FROM python:3.10-slim-bullseye" in cmds1
+        assert "pip install numpy" in cmds1
+        assert cmds1.upper().count("FROM") == 1
+
+    # without skip_modal_runtime
+    a2 = App()
+    im2 = Image.from_dockerfile(test_dir / "supports" / "test-dockerfile")
+    a2.function(image=im2)(dummy)
+    with a2.run(client=client):
+        cmds2 = get_all_dockerfile_commands(im2.object_id, servicer)
+        print("with the runtime:")
+        print(cmds2)
+        assert "FROM base" in cmds2
+        assert "modal_requirements.txt" in cmds2
+        assert cmds2.upper().count("FROM") == 2
+        assert cmds1 in cmds2
+
+
+def test_image_from_registry_skip_modal_runtime(builder_version, servicer, client, test_dir):
+    # with skip_modal_runtime
+    a1 = App()
+    im1 = Image.from_registry("ubuntu:22.04", skip_modal_runtime=True)
+    a1.function(image=im1)(dummy)
+    with a1.run(client=client):
+        cmds1 = get_all_dockerfile_commands(im1.object_id, servicer)
+        assert "FROM ubuntu:22.04" in cmds1
+        assert cmds1.upper().count("FROM") == 1
+        assert cmds1.count("\n") <= 1
+
+    # without skip_modal_runtime
+    a2 = App()
+    im2 = Image.from_registry("ubuntu:22.04")
+    a2.function(image=im2)(dummy)
+    with a2.run(client=client):
+        cmds2 = get_all_dockerfile_commands(im2.object_id, servicer)
+        assert "FROM ubuntu:22.04" in cmds2
+        assert "modal_requirements.txt" in cmds2
+        assert cmds1 in cmds2

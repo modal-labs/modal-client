@@ -1760,6 +1760,8 @@ message Image {
   bool runtime_debug = 20;
 
   BuildFunction build_function = 21;
+
+  bool skip_modal_runtime = 22;
 }
 
 message ImageContextFile {
