@@ -17,6 +17,7 @@ from modal import (
     exit,
     is_local,
     method,
+    parameter,
     web_endpoint,
     web_server,
     wsgi_app,
@@ -432,6 +433,15 @@ class Cls:
     @method(is_generator=True)
     def generator(self, x):
         return self._generator(x)
+
+
+@app.cls()
+class ClsWithBytesSerialization:
+    bar: bytes = parameter(default=b"world")
+
+    @web_endpoint()
+    def web(self, arg):
+        return {"arg": arg, "bar": b"world"}
 
 
 @app.cls()

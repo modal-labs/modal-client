@@ -879,6 +879,7 @@ class UsingAnnotationParameters:
     a: int = modal.parameter()
     b: str = modal.parameter(default="hello")
     c: float = modal.parameter(init=False)
+    d: bytes = modal.parameter(default=b"world")
 
     @method()
     def get_value(self):
@@ -908,10 +909,10 @@ def test_implicit_constructor():
     assert c.a == 10
     assert c.get_value.local() == 10
     assert c.b == "hello"
-
-    d = UsingAnnotationParameters(a=11, b="goodbye")
-    assert d.b == "goodbye"
-
+    assert c.d == b"world"
+    d = UsingAnnotationParameters(a=11, b="good", d=b"bye")
+    assert d.b == "good"
+    assert d.d == b"bye"
     # TODO(elias): fix "eager" constructor call validation by looking at signature
     # with pytest.raises(TypeError, match="missing a required argument: 'a'"):
     #     UsingAnnotationParameters()
@@ -1076,3 +1077,19 @@ def test_using_method_on_uninstantiated_cls(recwarn, disable_auto_mount):
     warning_string = str(recwarn[0].message)
     assert "instantiate classes before using methods" in warning_string
     assert "C().method instead of C.method" in warning_string
+
+
+def test_bytes_serialization_default_webhook():
+    default = b"hello world"
+    app = modal.App()
+
+    @app.cls(serialized=True)
+    class C:
+        foo: bytes = modal.parameter(default=default)
+
+        @modal.web_endpoint()
+        def get_value(self):
+            return self.foo
+
+    a = C()
+    assert a.foo == default

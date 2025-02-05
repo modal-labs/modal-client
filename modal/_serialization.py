@@ -386,6 +386,11 @@ def check_valid_cls_constructor_arg(key, obj):
         )
 
 
+def assert_bytes(obj: Any):
+    if not isinstance(obj, bytes):
+        raise InvalidError(f"Expected bytes, got {type(obj)}")
+
+
 @dataclass
 class ParamTypeInfo:
     default_field: str
@@ -396,7 +401,9 @@ class ParamTypeInfo:
 PARAM_TYPE_MAPPING = {
     api_pb2.PARAM_TYPE_STRING: ParamTypeInfo(default_field="string_default", proto_field="string_value", converter=str),
     api_pb2.PARAM_TYPE_INT: ParamTypeInfo(default_field="int_default", proto_field="int_value", converter=int),
-    api_pb2.PARAM_TYPE_BYTES: ParamTypeInfo(default_field="bytes_default", proto_field="bytes_value", converter=bytes),
+    api_pb2.PARAM_TYPE_BYTES: ParamTypeInfo(
+        default_field="bytes_default", proto_field="bytes_value", converter=assert_bytes
+    ),
 }
 
 
