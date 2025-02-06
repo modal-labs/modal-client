@@ -1093,13 +1093,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         ```
         """
         if "." in name:
+            class_name, method_name = name.split(".", 1)
             deprecation_warning(
-                (2025, 2, 5),
+                (2025, 2, 6),
                 "Looking up class methods using Function.from_name will be deprecated"
-                " in a future version of Modal. Use modal.Cls.from_name() instead, e.g.\n"
-                "\n"
-                'DeployedClass = modal.Cls.from_name("some_app", "MyClass")\n'
-                "DeployedClass().some_method.remote()",
+                " in a future version of Modal.\nUse modal.Cls.from_name instead, e.g.\n\n"
+                f'{class_name} = modal.Cls.from_name("{app_name}", "{class_name}")\n'
+                f"instance = {class_name}(...)\n"
+                f"instance.{method_name}.remote(...)\n",
                 pending=True,
             )
 
