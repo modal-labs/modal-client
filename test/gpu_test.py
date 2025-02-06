@@ -20,7 +20,6 @@ def test_gpu_any_function(client, servicer):
     assert len(servicer.app_functions) == 1
     func_def = next(iter(servicer.app_functions.values()))
     assert func_def.resources.gpu_config.count == 1
-    assert func_def.resources.gpu_config.type == api_pb2.GPU_TYPE_ANY
 
 
 def test_gpu_string_config(client, servicer):
@@ -37,7 +36,6 @@ def test_gpu_string_config(client, servicer):
     assert len(servicer.app_functions) == 1
     func_def = next(iter(servicer.app_functions.values()))
     assert func_def.resources.gpu_config.count == 1
-    assert func_def.resources.gpu_config.type == api_pb2.GPU_TYPE_A100
 
 
 def test_gpu_string_count_config(client, servicer):
@@ -56,7 +54,6 @@ def test_gpu_string_count_config(client, servicer):
     assert len(servicer.app_functions) == 1
     func_def = next(iter(servicer.app_functions.values()))
     assert func_def.resources.gpu_config.count == 4
-    assert func_def.resources.gpu_config.type == api_pb2.GPU_TYPE_A10G
 
 
 def test_gpu_config_function(client, servicer):
@@ -71,7 +68,6 @@ def test_gpu_config_function(client, servicer):
     assert len(servicer.app_functions) == 1
     func_def = next(iter(servicer.app_functions.values()))
     assert func_def.resources.gpu_config.count == 1
-    assert func_def.resources.gpu_config.type == api_pb2.GPU_TYPE_A100
 
 
 def test_cloud_provider_selection(client, servicer):
@@ -89,7 +85,6 @@ def test_cloud_provider_selection(client, servicer):
     assert func_def.cloud_provider_str == "GCP"
 
     assert func_def.resources.gpu_config.count == 1
-    assert func_def.resources.gpu_config.type == api_pb2.GPU_TYPE_A100
 
     # Invalid enum value.
     with pytest.raises(InvalidError):
@@ -97,13 +92,13 @@ def test_cloud_provider_selection(client, servicer):
 
 
 @pytest.mark.parametrize(
-    "memory_arg,gpu_type,gpu_type_str",
+    "memory_arg,gpu_type",
     [
-        ("40GB", api_pb2.GPU_TYPE_A100, "A100-40GB"),
-        ("80GB", api_pb2.GPU_TYPE_A100_80GB, "A100-80GB"),
+        ("40GB", "A100-40GB"),
+        ("80GB", "A100-80GB"),
     ],
 )
-def test_memory_selection_gpu_variant(client, servicer, memory_arg, gpu_type, gpu_type_str):
+def test_memory_selection_gpu_variant(client, servicer, memory_arg, gpu_type):
     import modal
 
     app = App()
@@ -118,8 +113,7 @@ def test_memory_selection_gpu_variant(client, servicer, memory_arg, gpu_type, gp
     func_def = next(iter(servicer.app_functions.values()))
 
     assert func_def.resources.gpu_config.count == 1
-    assert func_def.resources.gpu_config.type == gpu_type
-    assert func_def.resources.gpu_config.gpu_type == gpu_type_str
+    assert func_def.resources.gpu_config.gpu_type == gpu_type
 
 
 def test_gpu_unsupported_config():
@@ -145,4 +139,3 @@ def test_gpu_type_selection_from_count(client, servicer, count):
     func_def = next(iter(servicer.app_functions.values()))
 
     assert func_def.resources.gpu_config.count == count
-    assert func_def.resources.gpu_config.type == api_pb2.GPU_TYPE_A100
