@@ -129,25 +129,25 @@ def test_app_setup(servicer, set_env_client, server_url_env, modal_config):
         assert "_test" in toml.load(config_file_path)
 
 
-supports_dir = Path(__file__).parent / "supports"
-app_file = supports_dir / "app_run_tests" / "default_app.py"
-file_with_entrypoint = supports_dir / "app_run_tests" / "local_entrypoint.py"
+app_file = Path("app_run_tests") / "default_app.py"
+file_with_entrypoint = Path("app_run_tests") / "local_entrypoint.py"
 
 
 @pytest.mark.parametrize(
     ("file_or_module", "expected_exit_code"),
     [
-        (supports_dir / app_file, 0),
-        (str(supports_dir / app_file) + "::app", 0),
-        (str(supports_dir / app_file) + "::foo", 0),
-        (str(supports_dir / app_file) + "::bar", 1),
-        (str(supports_dir / app_file) + "::app", 0),
-        (supports_dir / file_with_entrypoint, 0),
-        (str(supports_dir / file_with_entrypoint) + "::main", 0),
-        (str(supports_dir / file_with_entrypoint) + "::app.main", 0),
+        (f"{app_file}", 0),
+        (f"{app_file}::app", 0),
+        (f"{app_file}::foo", 0),
+        (f"{app_file}::bar", 1),
+        (f"{file_with_entrypoint}", 0),
+        (f"{file_with_entrypoint}::main", 0),
+        (f"{file_with_entrypoint}::app.main", 0),
+        (f"{file_with_entrypoint}::foo", 0),
     ],
 )
-def test_run(servicer, set_env_client, file_or_module, expected_exit_code):
+def test_run(servicer, set_env_client, supports_dir, monkeypatch, file_or_module, expected_exit_code):
+    monkeypatch.chdir(supports_dir)
     _run(["run", str(file_or_module)], expected_exit_code=expected_exit_code)
 
 
