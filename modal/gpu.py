@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Union
 
 from modal_proto import api_pb2
 
@@ -185,9 +185,9 @@ Other configurations can be created using the constructors documented below.
 GPU_T = Union[None, bool, str, _GPUConfig]
 
 
-def _parse_gpu_config(value: GPU_T) -> Optional[_GPUConfig]:
+def parse_gpu_config(value: GPU_T) -> api_pb2.GPUConfig:
     if isinstance(value, _GPUConfig):
-        return value
+        return value._to_proto()
     elif isinstance(value, str):
         count = 1
         if ":" in value:
@@ -206,21 +206,12 @@ def _parse_gpu_config(value: GPU_T) -> Optional[_GPUConfig]:
             )
         else:
             gpu_type = STRING_TO_GPU_TYPE[value.lower()]
-        return _GPUConfig(gpu_type, count)
+
+        return api_pb2.GPUConfig(
+            gpu_type=gpu_type,
+            count=count,
+        )
     elif value is None or value is False:
-        return None
+        return api_pb2.GPUConfig()
     else:
         raise InvalidError(f"Invalid GPU config: {value}. Value must be a string, a `GPUConfig` object, or `None`.")
-
-
-def parse_gpu_config(value: GPU_T) -> api_pb2.GPUConfig:
-    """mdmd:hidden"""
-    gpu_config = _parse_gpu_config(value)
-    if gpu_config is None:
-        return api_pb2.GPUConfig()
-    return gpu_config._to_proto()
-
-
-def display_gpu_config(value: GPU_T) -> str:
-    """mdmd:hidden"""
-    return repr(_parse_gpu_config(value))
