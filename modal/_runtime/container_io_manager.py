@@ -258,6 +258,7 @@ class _ContainerIOManager:
     calls_completed: int
     total_user_time: float
     current_input_id: Optional[str]
+    _single_input_cancel_issued: bool
     current_inputs: dict[str, IOContext]  # input_id -> IOContext
     current_input_started_at: Optional[float]
 
@@ -289,6 +290,7 @@ class _ContainerIOManager:
         self.calls_completed = 0
         self.total_user_time = 0.0
         self.current_input_id = None
+        self._single_input_cancel_issued = False
         self.current_inputs = {}
         self.current_input_started_at = None
 
@@ -396,8 +398,10 @@ class _ContainerIOManager:
                     # SIGUSR1 signal should interrupt the main thread where user code is running,
                     # raising an InputCancellation() exception. On async functions, the signal should
                     # reach a handler in SignalHandlingEventLoop, which cancels the task.
-                    logger.warning(f"Received a cancellation signal while processing input {self.current_input_id}")
-                    os.kill(os.getpid(), signal.SIGUSR1)
+                    if not self._single_input_cancel_issued:
+                        self._single_input_cancel_issued = True
+                        logger.warning(f"Received a cancellation signal while processing input {self.current_input_id}")
+                        os.kill(os.getpid(), signal.SIGUSR1)
             return True
         return False
 
