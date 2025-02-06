@@ -73,7 +73,7 @@ class LifespanManager:
                     self._shutdown.set_result(None)
                 return
 
-            logger.error(f"Error in ASGI lifespan task: {e}")
+            logger.error(f"Error in ASGI lifespan task: {e}", exc_info=True)
             if not self._startup.done():
                 self._startup.set_exception(ExecutionError("ASGI lifespan task exited startup"))
             if not self._shutdown.done():
