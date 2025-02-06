@@ -22,6 +22,7 @@ import click
 from rich.console import Console
 from rich.markdown import Markdown
 
+from modal._utils.deprecation import deprecation_warning
 from modal.app import App, LocalEntrypoint
 from modal.cls import Cls
 from modal.exception import InvalidError, _CliUserExecutionError
@@ -54,14 +55,27 @@ def parse_import_ref(object_ref: str) -> ImportRef:
 DEFAULT_APP_NAME = "app"
 
 
-def import_file_or_module(file_or_module: str):
+def import_file_or_module(file_or_module: str, module_mode: bool, base_cmd: str):
     if "" not in sys.path:
         # When running from a CLI like `modal run`
         # the current working directory isn't added to sys.path
         # so we add it in order to make module path specification possible
         sys.path.insert(0, "")  # "" means the current working directory
 
-    if file_or_module.endswith(".py"):
+    if not file_or_module.endswith(".py") or module_mode:
+        if not module_mode:
+            deprecation_warning(
+                (2025, 2, 6),
+                f"Using Python module paths will require using the -m flag in a future version of Modal.\n"
+                f"Use `{base_cmd} -m {file_or_module}` instead.",
+                pending=True,
+                show_source=False,
+            )
+        try:
+            module = importlib.import_module(file_or_module)
+        except Exception as exc:
+            raise _CliUserExecutionError(file_or_module) from exc
+    else:
         # when using a script path, that scripts directory should also be on the path as it is
         # with `python some/script.py`
         full_path = Path(file_or_module).resolve()
@@ -84,11 +98,6 @@ def import_file_or_module(file_or_module: str):
             spec.loader.exec_module(module)
         except Exception as exc:
             raise _CliUserExecutionError(str(full_path)) from exc
-    else:
-        try:
-            module = importlib.import_module(file_or_module)
-        except Exception as exc:
-            raise _CliUserExecutionError(file_or_module) from exc
 
     return module
 
@@ -227,7 +236,7 @@ def filter_cli_commands(
     return res
 
 
-def import_app(app_ref: str) -> App:
+def import_app(app_ref: str, module_mode: bool, base_cmd: str) -> App:
     import_ref = parse_import_ref(app_ref)
 
     # TODO: default could be to just pick up any app regardless if it's called DEFAULT_APP_NAME
@@ -235,7 +244,7 @@ def import_app(app_ref: str) -> App:
     import_path = import_ref.file_or_module
     object_path = import_ref.object_path or DEFAULT_APP_NAME
 
-    module = import_file_or_module(import_ref.file_or_module)
+    module = import_file_or_module(import_ref.file_or_module, module_mode, base_cmd)
 
     if "." in object_path:
         raise click.UsageError(f"{object_path} is not a Modal App")

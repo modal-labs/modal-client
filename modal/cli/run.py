@@ -412,17 +412,22 @@ def run(ctx, write_result, detach, quiet, interactive, env, module):
 
 
 def deploy(
-    app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
+    app_ref: str = typer.Argument(..., help="Path to a Python file with an app to deploy"),
     name: str = typer.Option("", help="Name of the deployment."),
     env: str = ENV_OPTION,
     stream_logs: bool = typer.Option(False, help="Stream logs from the app upon deployment."),
     tag: str = typer.Option("", help="Tag the deployment with a version."),
+    module_mode: bool = typer.Option(False, "--module", "-m", help="Use a Python module path instead of a file path"),
 ):
-    """Deploy a Modal application."""
+    """Deploy a Modal application.
+
+    **Usage:**
+    hello
+    """
     # this ensures that lookups without environment specification use the same env as specified
     env = ensure_env(env)
 
-    app = import_app(app_ref)
+    app = import_app(app_ref, module_mode, base_cmd="modal deploy")
 
     if name is None:
         name = app.name

@@ -130,6 +130,7 @@ def test_app_setup(servicer, set_env_client, server_url_env, modal_config):
 
 
 app_file = Path("app_run_tests") / "default_app.py"
+app_module = "app_run_tests.default_app"
 file_with_entrypoint = Path("app_run_tests") / "local_entrypoint.py"
 
 
@@ -140,8 +141,8 @@ file_with_entrypoint = Path("app_run_tests") / "local_entrypoint.py"
         ([f"{app_file}::app"], 0, ""),
         ([f"{app_file}::foo"], 0, ""),
         ([f"{app_file}::bar"], 1, ""),
-        (["app_run_tests.default_app::foo"], 0, "-m"),  # module mode without -m - warn
-        (["-m", "app_run_tests.default_app::foo"], 0, ""),  # module with -m
+        ([f"{app_module}::foo"], 0, "-m"),  # module mode without -m - warn
+        (["-m", f"{app_module}::foo"], 0, ""),  # module with -m
         ([f"{file_with_entrypoint}"], 0, ""),
         ([f"{file_with_entrypoint}::main"], 0, ""),
         ([f"{file_with_entrypoint}::app.main"], 0, ""),
@@ -155,10 +156,6 @@ def test_run(servicer, set_env_client, supports_dir, monkeypatch, run_command, e
         assert re.search(expected_output, res.stdout) or re.search(
             expected_output, res.stderr
         ), "output does not match expected string"
-
-
-def test_run_as_module():
-    _run(["run", app_file.as_posix()])
 
 
 def test_run_stub(servicer, set_env_client, test_dir):
@@ -249,10 +246,26 @@ def test_run_write_result(servicer, set_env_client, test_dir):
         )
 
 
-def test_deploy(servicer, set_env_client, test_dir):
-    app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
-    _run(["deploy", "--name=deployment_name", app_file.as_posix()])
-    assert servicer.app_state_history["ap-1"] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
+@pytest.mark.parametrize(
+    ["args", "success", "expected_warning"],
+    [
+        (["--name=deployment_name", str(app_file)], True, ""),
+        (["--name=deployment_name", app_module], True, f"modal deploy -m {app_module}"),
+        (["--name=deployment_name", "-m", app_module], True, ""),
+    ],
+)
+def test_deploy(
+    servicer, set_env_client, supports_dir, monkeypatch, args, success, expected_warning, disable_auto_mount, recwarn
+):
+    monkeypatch.chdir(supports_dir)
+    _run(["deploy"] + args, expected_exit_code=0 if success else 1)
+    if success:
+        assert servicer.app_state_history["ap-1"] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
+    else:
+        assert api_pb2.APP_STATE_DEPLOYED not in servicer.app_state_history["ap-1"]
+    if expected_warning:
+        assert len(recwarn) == 1
+        assert expected_warning in str(recwarn[0].message)
 
 
 def test_run_custom_app(servicer, set_env_client, test_dir):
