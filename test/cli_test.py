@@ -134,21 +134,26 @@ file_with_entrypoint = Path("app_run_tests") / "local_entrypoint.py"
 
 
 @pytest.mark.parametrize(
-    ("file_or_module", "expected_exit_code"),
+    ("file_or_module", "expected_exit_code", "expected_output"),
     [
-        (f"{app_file}", 0),
-        (f"{app_file}::app", 0),
-        (f"{app_file}::foo", 0),
-        (f"{app_file}::bar", 1),
-        (f"{file_with_entrypoint}", 0),
-        (f"{file_with_entrypoint}::main", 0),
-        (f"{file_with_entrypoint}::app.main", 0),
-        (f"{file_with_entrypoint}::foo", 0),
+        (f"{app_file}", 0, ""),
+        (f"{app_file}::app", 0, ""),
+        (f"{app_file}::foo", 0, ""),
+        (f"{app_file}::bar", 1, ""),
+        ("app_run_tests.default_app::foo", 0, "-m"),  # module mode without -m - warn
+        (f"{file_with_entrypoint}", 0, ""),
+        (f"{file_with_entrypoint}::main", 0, ""),
+        (f"{file_with_entrypoint}::app.main", 0, ""),
+        (f"{file_with_entrypoint}::foo", 0, ""),
     ],
 )
-def test_run(servicer, set_env_client, supports_dir, monkeypatch, file_or_module, expected_exit_code):
+def test_run(servicer, set_env_client, supports_dir, monkeypatch, file_or_module, expected_exit_code, expected_output):
     monkeypatch.chdir(supports_dir)
-    _run(["run", str(file_or_module)], expected_exit_code=expected_exit_code)
+    res = _run(["run", str(file_or_module)], expected_exit_code=expected_exit_code)
+    if expected_output:
+        assert re.search(expected_output, res.stdout) or re.search(
+            expected_output, res.stderr
+        ), "output does not match expected string"
 
 
 def test_run_as_module():
