@@ -418,6 +418,7 @@ def deploy(
     stream_logs: bool = typer.Option(False, help="Stream logs from the app upon deployment."),
     tag: str = typer.Option("", help="Tag the deployment with a version."),
 ):
+    """Deploy a Modal application."""
     # this ensures that lookups without environment specification use the same env as specified
     env = ensure_env(env)
 
