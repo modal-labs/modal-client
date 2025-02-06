@@ -9,14 +9,14 @@ from .exception import InvalidError
 
 @dataclass(frozen=True)
 class _GPUConfig:
-    count: int
     gpu_type: str
+    count: int
 
     def _to_proto(self) -> api_pb2.GPUConfig:
         """Convert this GPU config to an internal protobuf representation."""
         return api_pb2.GPUConfig(
-            count=self.count,
             gpu_type=self.gpu_type,
+            count=self.count,
         )
 
 
@@ -31,7 +31,7 @@ class T4(_GPUConfig):
         self,
         count: int = 1,  # Number of GPUs per container. Defaults to 1.
     ):
-        super().__init__(count, "T4")
+        super().__init__("T4", count)
 
     def __repr__(self):
         return f"GPU(T4, count={self.count})"
@@ -49,7 +49,7 @@ class L4(_GPUConfig):
         self,
         count: int = 1,  # Number of GPUs per container. Defaults to 1.
     ):
-        super().__init__(count, "L4")
+        super().__init__("L4", count)
 
     def __repr__(self):
         return f"GPU(L4, count={self.count})"
@@ -69,9 +69,9 @@ class A100(_GPUConfig):
         size: Union[str, None] = None,  # Select GB configuration of GPU device: "40GB" or "80GB". Defaults to "40GB".
     ):
         if size == "40GB" or not size:
-            super().__init__(count, "A100-40GB")
+            super().__init__("A100-40GB", count)
         elif size == "80GB":
-            super().__init__(count, "A100-80GB")
+            super().__init__("A100-80GB", count)
         else:
             raise ValueError(f"size='{size}' is invalid. A100s can only have memory values of 40GB or 80GB.")
 
@@ -95,7 +95,7 @@ class A10G(_GPUConfig):
         # Useful if you have very large models that don't fit on a single GPU.
         count: int = 1,
     ):
-        super().__init__(count, "A10G")
+        super().__init__("A10G", count)
 
     def __repr__(self):
         return f"GPU(A10G, count={self.count})"
@@ -117,7 +117,7 @@ class H100(_GPUConfig):
         # Useful if you have very large models that don't fit on a single GPU.
         count: int = 1,
     ):
-        super().__init__(count, "H100")
+        super().__init__("H100", count)
 
     def __repr__(self):
         return f"GPU(H100, count={self.count})"
@@ -138,7 +138,7 @@ class L40S(_GPUConfig):
         # Useful if you have very large models that don't fit on a single GPU.
         count: int = 1,
     ):
-        super().__init__(count, "L40S")
+        super().__init__("L40S", count)
 
     def __repr__(self):
         return f"GPU(L40S, count={self.count})"
@@ -148,7 +148,7 @@ class Any(_GPUConfig):
     """Selects any one of the GPU classes available within Modal, according to availability."""
 
     def __init__(self, *, count: int = 1):
-        super().__init__(count, "ANY")
+        super().__init__("ANY", count)
 
     def __repr__(self):
         return f"GPU(Any, count={self.count})"
