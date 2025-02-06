@@ -129,16 +129,30 @@ def test_app_setup(servicer, set_env_client, server_url_env, modal_config):
         assert "_test" in toml.load(config_file_path)
 
 
-def test_run(servicer, set_env_client, test_dir):
-    app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
+supports_dir = Path(__file__).parent / "supports"
+app_file = supports_dir / "app_run_tests" / "default_app.py"
+file_with_entrypoint = supports_dir / "app_run_tests" / "local_entrypoint.py"
+
+
+@pytest.mark.parametrize(
+    ("file_or_module", "expected_exit_code"),
+    [
+        (supports_dir / app_file, 0),
+        (str(supports_dir / app_file) + "::app", 0),
+        (str(supports_dir / app_file) + "::foo", 0),
+        (str(supports_dir / app_file) + "::bar", 1),
+        (str(supports_dir / app_file) + "::app", 0),
+        (supports_dir / file_with_entrypoint, 0),
+        (str(supports_dir / file_with_entrypoint) + "::main", 0),
+        (str(supports_dir / file_with_entrypoint) + "::app.main", 0),
+    ],
+)
+def test_run(servicer, set_env_client, file_or_module, expected_exit_code):
+    _run(["run", str(file_or_module)], expected_exit_code=expected_exit_code)
+
+
+def test_run_as_module():
     _run(["run", app_file.as_posix()])
-    _run(["run", app_file.as_posix() + "::app"])
-    _run(["run", app_file.as_posix() + "::foo"])
-    _run(["run", app_file.as_posix() + "::bar"], expected_exit_code=1, expected_stderr=None)
-    file_with_entrypoint = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
-    _run(["run", file_with_entrypoint.as_posix()])
-    _run(["run", file_with_entrypoint.as_posix() + "::main"])
-    _run(["run", file_with_entrypoint.as_posix() + "::app.main"])
 
 
 def test_run_stub(servicer, set_env_client, test_dir):

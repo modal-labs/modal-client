@@ -369,8 +369,9 @@ class RunGroup(click.Group):
 @click.option("-d", "--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
 @click.option("-i", "--interactive", is_flag=True, help="Run the app in interactive mode.")
 @click.option("-e", "--env", help=ENV_OPTION_HELP, default=None)
+@click.option("-m", "--module", is_flag=True, help="use library module as a script")
 @click.pass_context
-def run(ctx, write_result, detach, quiet, interactive, env):
+def run(ctx, write_result, detach, quiet, interactive, env, module):
     """Run a Modal function or local entrypoint.
 
     `FUNC_REF` should be of the format `{file or module}::{function name}`.
@@ -386,7 +387,7 @@ def run(ctx, write_result, detach, quiet, interactive, env):
     modal run my_app.py::hello_world
     ```
 
-    If your module only has a single app called `app` and your app has a
+    If your module only has a single app and your app has a
     single local entrypoint (or single function), you can omit the app and
     function parts:
 
@@ -394,10 +395,12 @@ def run(ctx, write_result, detach, quiet, interactive, env):
     modal run my_app.py
     ```
 
-    Instead of pointing to a file, you can also use the Python module path:
+    Instead of pointing to a file, you can also use the Python module path, which
+    by default will ensure that your remote functions will use the same module
+    names as they do locally.
 
     ```
-    modal run my_project.my_app
+    modal run -m my_project.my_app
     ```
     """
     ctx.ensure_object(dict)
@@ -405,6 +408,7 @@ def run(ctx, write_result, detach, quiet, interactive, env):
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
     ctx.obj["show_progress"] = False if quiet else True
     ctx.obj["interactive"] = interactive
+    ctx.obj["use_module"] = module
 
 
 def deploy(
