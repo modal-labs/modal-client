@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 from dataclasses import dataclass
-from typing import Callable, Optional, Union
+from typing import Union
 
 from modal_proto import api_pb2
 
@@ -154,17 +154,19 @@ class Any(_GPUConfig):
         return f"GPU(Any, count={self.count})"
 
 
-STRING_TO_GPU_CONFIG: dict[str, Callable] = {
-    "t4": T4,
-    "l4": L4,
-    "a100": A100,
-    "a100-80gb": lambda: A100(size="80GB"),
-    "h100": H100,
-    "a10g": A10G,
-    "l40s": L40S,
-    "any": Any,
+STRING_TO_GPU_TYPE: dict[str, str] = {
+    # TODO(erikbern): we will move this table to the server soon,
+    # and let clients just pass any gpu type string through
+    "t4": "T4",
+    "l4": "L4",
+    "a100": "A100-40GB",
+    "a100-80gb": "A100-80GB",
+    "h100": "H100",
+    "a10g": "A10G",
+    "l40s": "L40S",
+    "any": "ANY",
 }
-display_string_to_config = "\n".join(f'- "{key}" → `{c()}`' for key, c in STRING_TO_GPU_CONFIG.items() if key != "inf2")
+display_string_to_config = "\n".join(f'- "{key}"' for key in STRING_TO_GPU_TYPE.keys())
 __doc__ = f"""
 **GPU configuration shortcodes**
 
@@ -183,9 +185,9 @@ Other configurations can be created using the constructors documented below.
 GPU_T = Union[None, bool, str, _GPUConfig]
 
 
-def _parse_gpu_config(value: GPU_T) -> Optional[_GPUConfig]:
+def parse_gpu_config(value: GPU_T) -> api_pb2.GPUConfig:
     if isinstance(value, _GPUConfig):
-        return value
+        return value._to_proto()
     elif isinstance(value, str):
         count = 1
         if ":" in value:
@@ -195,33 +197,21 @@ def _parse_gpu_config(value: GPU_T) -> Optional[_GPUConfig]:
             except ValueError:
                 raise InvalidError(f"Invalid GPU count: {count_str}. Value must be an integer.")
 
-        if value.lower() == "a100-20g":
-            return A100(size="20GB", count=count)  # Triggers unsupported error underneath.
-        elif value.lower() == "a100-40gb":
-            return A100(size="40GB", count=count)
-        elif value.lower() == "a100-80gb":
-            return A100(size="80GB", count=count)
-        elif value.lower() not in STRING_TO_GPU_CONFIG:
+        if value.lower() == "a100-40gb":
+            gpu_type = "A100-40GB"
+        elif value.lower() not in STRING_TO_GPU_TYPE:
             raise InvalidError(
                 f"Invalid GPU type: {value}. "
-                f"Value must be one of {list(STRING_TO_GPU_CONFIG.keys())} (case-insensitive)."
+                f"Value must be one of {list(STRING_TO_GPU_TYPE.keys())} (case-insensitive)."
             )
         else:
-            return STRING_TO_GPU_CONFIG[value.lower()](count=count)
+            gpu_type = STRING_TO_GPU_TYPE[value.lower()]
+
+        return api_pb2.GPUConfig(
+            gpu_type=gpu_type,
+            count=count,
+        )
     elif value is None or value is False:
-        return None
+        return api_pb2.GPUConfig()
     else:
         raise InvalidError(f"Invalid GPU config: {value}. Value must be a string, a `GPUConfig` object, or `None`.")
-
-
-def parse_gpu_config(value: GPU_T) -> api_pb2.GPUConfig:
-    """mdmd:hidden"""
-    gpu_config = _parse_gpu_config(value)
-    if gpu_config is None:
-        return api_pb2.GPUConfig()
-    return gpu_config._to_proto()
-
-
-def display_gpu_config(value: GPU_T) -> str:
-    """mdmd:hidden"""
-    return repr(_parse_gpu_config(value))

@@ -22,38 +22,39 @@ def test_gpu_any_function(client, servicer):
     assert func_def.resources.gpu_config.count == 1
 
 
-def test_gpu_string_config(client, servicer):
+@pytest.mark.parametrize(
+    "gpu_arg,gpu_type,count",
+    [
+        ("A100-40GB", "A100-40GB", 1),
+        ("A100", "A100-40GB", 1),
+        ("a100-40gb", "A100-40GB", 1),
+        ("a100", "A100-40GB", 1),
+        ("a10g", "A10G", 1),
+        ("t4:7", "T4", 7),
+        ("a100-80GB:5", "A100-80GB", 5),
+        ("l40s:2", "L40S", 2),
+    ],
+)
+def test_gpu_string_config(client, servicer, gpu_arg, gpu_type, count):
+    app = App()
+
+    app.function(gpu=gpu_arg)(dummy)
+    with app.run(client=client):
+        pass
+
+    assert len(servicer.app_functions) == 1
+    func_def = next(iter(servicer.app_functions.values()))
+    assert func_def.resources.gpu_config.gpu_type == gpu_type
+    assert func_def.resources.gpu_config.count == count
+
+
+@pytest.mark.parametrize("gpu_arg", ["foo", "a10g:hello", "nonexistent:2"])
+def test_invalid_gpu_string_config(client, servicer, gpu_arg):
     app = App()
 
     # Invalid enum value.
     with pytest.raises(InvalidError):
-        app.function(gpu="foo")(dummy)
-
-    app.function(gpu="A100")(dummy)
-    with app.run(client=client):
-        pass
-
-    assert len(servicer.app_functions) == 1
-    func_def = next(iter(servicer.app_functions.values()))
-    assert func_def.resources.gpu_config.count == 1
-
-
-def test_gpu_string_count_config(client, servicer):
-    app = App()
-
-    # Invalid count values.
-    with pytest.raises(InvalidError):
-        app.function(gpu="A10G:hello")(dummy)
-    with pytest.raises(InvalidError):
-        app.function(gpu="Nonexistent:2")(dummy)
-
-    app.function(gpu="A10G:4")(dummy)
-    with app.run(client=client):
-        pass
-
-    assert len(servicer.app_functions) == 1
-    func_def = next(iter(servicer.app_functions.values()))
-    assert func_def.resources.gpu_config.count == 4
+        app.function(gpu=gpu_arg)(dummy)
 
 
 def test_gpu_config_function(client, servicer):
