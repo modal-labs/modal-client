@@ -296,15 +296,9 @@ class FunctionInfo:
         signature = _get_class_constructor_signature(self.user_cls)
         for param in signature.parameters.values():
             has_default = param.default is not param.empty
-            param_annotation = get_param_annotation(param.annotation)
-            if param_annotation not in CLASS_PARAM_TYPE_MAP:
-                raise InvalidError(
-                    "Class parameters support the native types int and str. To use other types, you need to explicitly"
-                    + " annotate them as 'pickle serialized' using typing.Annotated[<type>, modal.PickleSerialization]."
-                    + " Note that pickle-serialized parameters can't be used with web endpoints unless they have"
-                    + " default values. Support for additional native types will be added soon."
-                )
-            param_type, default_field = CLASS_PARAM_TYPE_MAP[param_annotation]
+            if param.annotation not in CLASS_PARAM_TYPE_MAP:
+                raise InvalidError("modal.parameter() currently only support str or int types")
+            param_type, default_field = CLASS_PARAM_TYPE_MAP[param.annotation]
             class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=param_type)
             if has_default:
                 type_info = PARAM_TYPE_MAPPING.get(param_type)

@@ -2,7 +2,6 @@
 import functools
 import pytest
 import time
-import typing
 
 from grpclib import Status
 

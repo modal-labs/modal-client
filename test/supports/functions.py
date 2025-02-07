@@ -391,50 +391,6 @@ def basic_wsgi_app():
 
 
 @app.cls()
-class Cls:
-    def __init__(self):
-        self._k = 11
-
-    @enter()
-    def enter(self):
-        self._k += 100
-
-    @method()
-    def f(self, x):
-        return self._k * x
-
-    @web_endpoint()
-    def web(self, arg):
-        return {"ret": arg * self._k}
-
-    @asgi_app()
-    def asgi_web(self):
-        from fastapi import FastAPI
-
-        k_at_construction = self._k  # expected to be 111
-        hydrated_at_contruction = square.is_hydrated
-        web_app = FastAPI()
-
-        @web_app.get("/")
-        def k(arg: str):
-            return {
-                "at_construction": k_at_construction,
-                "at_runtime": self._k,
-                "arg": arg,
-                "other_hydrated": hydrated_at_contruction,
-            }
-
-        return web_app
-
-    def _generator(self, x):
-        yield x**3
-
-    @method(is_generator=True)
-    def generator(self, x):
-        return self._generator(x)
-
-
-@app.cls()
 class LifecycleCls:
     """Ensures that {sync,async} lifecycle hooks work with {sync,async} functions."""
 

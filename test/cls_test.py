@@ -908,11 +908,9 @@ def test_implicit_constructor(client, set_env_client):
     assert c.a == 10
     assert c.get_value.local() == 10
     assert c.b == "hello"
+
     d = UsingAnnotationParameters(a=11, b="goodbye")
     assert d.b == "goodbye"
-    # TODO(elias): fix "eager" constructor call validation by looking at signature
-    # with pytest.raises(TypeError, match="missing a required argument: 'a'"):
-    #     UsingAnnotationParameters()
 
     with pytest.raises(ValueError, match="Missing required parameter: a"):
         with app2.run(client=client):
