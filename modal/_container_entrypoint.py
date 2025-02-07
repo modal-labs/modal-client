@@ -3,7 +3,6 @@
 import os
 
 from modal._runtime.user_code_imports import Service, import_class_service, import_single_function_service
-from modal._utils.function_utils import deserialize_params
 
 telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
 if telemetry_socket:
@@ -26,6 +25,7 @@ from google.protobuf.message import Message
 
 from modal._clustered_functions import initialize_clustered_function
 from modal._proxy_tunnel import proxy_tunnel
+from modal._serialization import deserialize_params
 from modal._utils.async_utils import TaskContext, synchronizer
 from modal._utils.function_utils import (
     callable_has_non_self_params,
