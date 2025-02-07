@@ -1085,7 +1085,7 @@ def test_bytes_serialization_validation(servicer, client, set_env_client):
 
     @app.cls(serialized=True)
     class C:
-        foo: bytes = modal.parameter()
+        foo: bytes = modal.parameter(default=b"foo")
 
         @method()
         def get_foo(self):
@@ -1093,4 +1093,7 @@ def test_bytes_serialization_validation(servicer, client, set_env_client):
 
     with app.run():
         with pytest.raises(ValueError, match="Expected bytes"):
-            C(foo="this is a string").get_foo.remote()  # string should not be allowed, unspecified encoding
+            C(foo="this is a string").get_foo.spawn()  # string should not be allowed, unspecified encoding
+
+        C(foo=b"this is a string").get_foo.spawn()  # bytes are allowed
+        C().get_foo.spawn()  # default is allowed
