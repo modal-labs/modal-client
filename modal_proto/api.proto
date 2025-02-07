@@ -143,6 +143,8 @@ enum FunctionCallType {
 }
 
 enum GPUType {
+  // Note: this enum is no longer used by current clients - don't add new types
+  // Old clients still send it, so we use it server-side for compatibility
   GPU_TYPE_UNSPECIFIED = 0;
   GPU_TYPE_T4 = 1;
   GPU_TYPE_A100 = 2;
@@ -560,6 +562,22 @@ message Asgi {
     WebsocketDisconnect websocket_disconnect = 12;
     WebsocketClose websocket_close = 13;
   }
+}
+
+message AutoscalerSettings {
+  // A collection of user-configurable settings for Function autoscaling
+  // These are used for static configuration and for dynamic autoscaler updates
+
+  // Minimum containers when scale-to-zero is not deisired; pka "keep_warm" or "warm_pool_size"
+  optional uint32 min_containers = 1;
+  // Limit on the number of containers that can be running for each Function; pka "concurrency_limit"
+  optional uint32 max_containers = 2;
+  // Additional container to spin up when Function is active
+  optional uint32 buffer_containers = 3;
+  // Currently unused; a placeholder in case we decide to expose scaleup control to users
+  optional uint32 scaleup_window = 4;
+  // Maximum amount of time a container can be idle before being scaled down, in seconds; pka "container_idle_timeout"
+  optional uint32 scaledown_window = 5;
 }
 
 message BaseImage {
@@ -1676,6 +1694,7 @@ message FunctionStats {
 message FunctionUpdateSchedulingParamsRequest {
   string function_id = 1;
   uint32 warm_pool_size_override = 2;
+  AutoscalerSettings settings = 3;
 }
 
 message FunctionUpdateSchedulingParamsResponse {}
@@ -2264,6 +2283,10 @@ message Sandbox {
   optional uint32 snapshot_version = 25;
 
   string cloud_provider_str = 26;  // Supersedes cloud_provider
+
+  // Specifies container runtime behavior for sandboxes which are restored from a snapshot.
+  // Set by the backend at snapshot creation time.
+  optional string runsc_runtime_version = 27;
 }
 
 message SandboxCreateRequest {

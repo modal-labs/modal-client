@@ -14,6 +14,9 @@ from .config import logger
 from .exception import DeserializationError, ExecutionError, InvalidError
 from .object import Object
 
+if typing.TYPE_CHECKING:
+    import modal.client
+
 PICKLE_PROTOCOL = 4  # Support older Python versions.
 
 
@@ -465,3 +468,21 @@ def deserialize_proto_params(serialized_params: bytes, schema: list[api_pb2.Clas
         python_params[schema_param.name] = python_value
 
     return python_params
+
+
+def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function, _client: "modal.client._Client"):
+    if function_def.class_parameter_info.format in (
+        api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED,
+        api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE,
+    ):
+        # legacy serialization format - pickle of `(args, kwargs)` w/ support for modal object arguments
+        param_args, param_kwargs = deserialize(serialized_params, _client)
+    elif function_def.class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO:
+        param_args = ()
+        param_kwargs = deserialize_proto_params(serialized_params, list(function_def.class_parameter_info.schema))
+    else:
+        raise ExecutionError(
+            f"Unknown class parameter serialization format: {function_def.class_parameter_info.format}"
+        )
+
+    return param_args, param_kwargs

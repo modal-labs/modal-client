@@ -952,8 +952,8 @@ def test_webhook_streaming_async(servicer):
 def test_cls_function(servicer):
     ret = _run_container(
         servicer,
-        "test.supports.functions",
-        "Cls.*",
+        "test.supports.sibling_hydration_app",
+        "NonParamCls.*",
         is_class=True,
         inputs=_get_inputs(method_name="f"),
     )
@@ -989,7 +989,7 @@ def test_param_cls_function(servicer):
     serialized_params = pickle.dumps(([111], {"y": "foo"}))
     ret = _run_container(
         servicer,
-        "test.supports.functions",
+        "test.supports.sibling_hydration_app",
         "ParamCls.*",
         serialized_params=serialized_params,
         is_class=True,
@@ -1007,7 +1007,7 @@ def test_param_cls_function_strict_params(servicer):
     serialized_params = modal._serialization.serialize_proto_params({"x": 111, "y": "foo"}, schema)
     ret = _run_container(
         servicer,
-        "test.supports.functions",
+        "test.supports.sibling_hydration_app",
         "ParamCls.*",
         serialized_params=serialized_params,
         is_class=True,
@@ -1028,8 +1028,8 @@ def test_cls_web_endpoint(servicer):
     inputs = _get_web_inputs(method_name="web")
     ret = _run_container(
         servicer,
-        "test.supports.functions",
-        "Cls.*",
+        "test.supports.sibling_hydration_app",
+        "NonParamCls.*",
         inputs=inputs,
         is_class=True,
     )
@@ -1068,8 +1068,8 @@ def test_cls_web_asgi_construction(servicer):
     inputs = _get_web_inputs(method_name="asgi_web")
     ret = _run_container(
         servicer,
-        "test.supports.functions",
-        "Cls.*",
+        "test.supports.sibling_hydration_app",
+        "NonParamCls.*",
         inputs=inputs,
         is_class=True,
         app_layout=app_layout,
@@ -1115,8 +1115,8 @@ def test_serialized_cls(servicer):
 def test_cls_generator(servicer):
     ret = _run_container(
         servicer,
-        "test.supports.functions",
-        "Cls.*",
+        "test.supports.sibling_hydration_app",
+        "NonParamCls.*",
         function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
         is_class=True,
         inputs=_get_inputs(method_name="generator"),
@@ -1227,9 +1227,12 @@ def test_cli(servicer, tmp_path, credentials):
 
 @skip_github_non_linux
 def test_function_sibling_hydration(servicer, credentials):
-    deploy_app_externally(servicer, credentials, "test.supports.functions", "app", capture_output=False)
+    # TODO: refactor this test to use its own source module/app instead of test.supports.functions (takes 7s to deploy)
+    deploy_app_externally(servicer, credentials, "test.supports.sibling_hydration_app", "app", capture_output=False)
     app_layout = servicer.app_get_layout("ap-1")
-    ret = _run_container(servicer, "test.supports.functions", "check_sibling_hydration", app_layout=app_layout)
+    ret = _run_container(
+        servicer, "test.supports.sibling_hydration_app", "check_sibling_hydration", app_layout=app_layout
+    )
     assert _unwrap_scalar(ret) is None
 
 
@@ -1522,7 +1525,7 @@ def test_param_cls_function_calling_local(servicer):
     serialized_params = pickle.dumps(([111], {"y": "foo"}))
     ret = _run_container(
         servicer,
-        "test.supports.functions",
+        "test.supports.sibling_hydration_app",
         "ParamCls.*",
         serialized_params=serialized_params,
         inputs=_get_inputs(method_name="g"),
@@ -1560,11 +1563,11 @@ def test_call_function_that_calls_function(servicer, credentials):
 @skip_github_non_linux
 def test_call_function_that_calls_method(servicer, credentials, set_env_client):
     # TODO (elias): Remove set_env_client fixture dependency - shouldn't need an env client here?
-    deploy_app_externally(servicer, credentials, "test.supports.functions", "app")
+    deploy_app_externally(servicer, credentials, "test.supports.sibling_hydration_app", "app")
     app_layout = servicer.app_get_layout("ap-1")
     ret = _run_container(
         servicer,
-        "test.supports.functions",
+        "test.supports.sibling_hydration_app",
         "function_calling_method",
         inputs=_get_inputs(((42, "abc", 123), {})),
         app_layout=app_layout,

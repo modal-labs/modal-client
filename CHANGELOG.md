@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.18 (2025-02-06)
+
+* When using a parameterized class (with at least one `modal.parameter()` specified), class instantiation with an incorrect construction signature (wrong arguments or types) will now fail at the `.remote()` calling site instead of container startup for the called class.
+
+
+
 ### 0.73.14 (2025-02-04)
 
 - Fixed the status message shown in terminal logs for ephemeral Apps to accurately report the number of active containers.
@@ -35,7 +41,7 @@ We appreciate your patience while we speedily work towards a stable release of t
         parser.add_argument("--foo", type=int)
         parser.add_argument("--bar", type=str)
         args = parser.parse_args(args = arglist)
-```
+    ```
 
 
 
@@ -57,6 +63,8 @@ in the modal run command, even if some of the module's referenced apps have addi
   
 * Minor change to `MODAL_AUTOMOUNT=0`:  When running/deploying using a module path (e.g. `modal run mypak.mymod`), **all non .pyc files** of the source package (`mypak` in this case) are now included in the function's container. Previously, only the function's home `.py` module file + any `__init__.py` files in its package structure were included. Note that this is only for MODAL_AUTOMOUNT=0. To get full control over which source files are included with your functions, you can set `include_source=False` on your function (see above) and manually specify the files to include using the `ignore` argument to `Image.add_local_python_source`.
 
+
+## 0.72
 
 
 ### 0.72.56 (2025-01-28)
@@ -138,6 +146,8 @@ in the modal run command, even if some of the module's referenced apps have addi
 * The default behavior`Image.from_dockerfile()` and `image.dockerfile_commands()` if no parameter is passed to `ignore` will be to automatically detect if there is a valid dockerignore file in the current working directory or next to the dockerfile following the same rules as `dockerignore` does using `docker` commands. Previously no patterns were ignored.
 
 
+## 0.71
+
 
 ### 0.71.13 (2025-01-09)
 
@@ -172,17 +182,23 @@ for event in events:
 ```
 
 
+## 0.70
+
 
 ### 0.70.1 (2024-12-27)
 
 - The sandbox filesystem API now accepts write payloads of sizes up to 1 GiB.
 
 
+## 0.69
+
 
 ### 0.69.0 (2024-12-21)
 
 * `Image.from_dockerfile()` and `image.dockerfile_commands()` now auto-infer which files need to be uploaded based on COPY commands in the source if `context_mount` is omitted. The `ignore=` argument to these methods can be used to selectively omit files using a set of glob patterns.
 
+
+## 0.68
 
 
 ### 0.68.53 (2024-12-20)
@@ -319,6 +335,8 @@ f = sb.open("test.txt", "rb")
 print(f.read())
 ```
 
+
+## 0.67
 
 
 ### 0.67.43 (2024-12-11)
