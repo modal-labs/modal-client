@@ -26,9 +26,7 @@ def test_gpu_any_function(client, servicer):
     "gpu_arg,gpu_type,count",
     [
         ("A100-40GB", "A100-40GB", 1),
-        ("A100", "A100-40GB", 1),
         ("a100-40gb", "A100-40GB", 1),
-        ("a100", "A100-40GB", 1),
         ("a10g", "A10G", 1),
         ("t4:7", "T4", 7),
         ("a100-80GB:5", "A100-80GB", 5),
@@ -55,6 +53,8 @@ def test_invalid_gpu_string_config(client, servicer, gpu_arg):
     # Invalid enum value.
     with pytest.raises(InvalidError):
         app.function(gpu=gpu_arg)(dummy)
+        with app.run(client=client):
+            pass
 
 
 def test_gpu_config_function(client, servicer):

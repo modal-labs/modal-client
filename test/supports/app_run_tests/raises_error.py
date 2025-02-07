@@ -4,6 +4,6 @@ import modal
 app = modal.App()
 
 
-@app.function(gpu="NOT_A_GPU")
+@app.function(gpu="broken:gpu:string")
 def f():
     pass
