@@ -128,6 +128,7 @@ def type_check(ctx):
         "venv39",
         "venv38",
         "test/cls_test.py",  # blocked by mypy bug: https://github.com/python/mypy/issues/16527
+        "test/supports/sibling_hydration_app.py",  # blocked by mypy bug: https://github.com/python/mypy/issues/16527
         "test/supports/type_assertions_negative.py",
     ]
     excludes = " ".join(f"--exclude {path}" for path in mypy_exclude_list)
@@ -135,7 +136,7 @@ def type_check(ctx):
 
     # use pyright for checking implementation of those files
     pyright_allowlist = [
-        "modal/functions.py",
+        "modal/_functions.py",
         "modal/_runtime/asgi.py",
         "modal/_utils/__init__.py",
         "modal/_utils/async_utils.py",

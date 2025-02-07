@@ -20,6 +20,7 @@ from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
+from ._functions import _Function
 from ._ipython import is_notebook
 from ._object import _get_environment_name, _Object
 from ._utils.async_utils import synchronize_api
@@ -32,7 +33,7 @@ from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, parameter
 from .config import logger
 from .exception import ExecutionError, InvalidError
-from .functions import Function, _Function
+from .functions import Function
 from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
@@ -616,6 +617,7 @@ class _App:
         _experimental_buffer_containers: Optional[int] = None,  # Number of additional, idle containers to keep around.
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
+        _experimental_enable_gpu_snapshot: bool = False,  # Experimentally enable GPU memory snapshots.
     ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal [Function](/docs/reference/modal.Function) with this App."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -723,7 +725,7 @@ class _App:
                     raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
                 scheduler_placement = SchedulerPlacement(region=region)
 
-            function = _Function.from_args(
+            function = _Function.from_local(
                 info,
                 app=self,
                 image=image,
@@ -758,6 +760,7 @@ class _App:
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,  # Experimental: Clustered functions
                 include_source=include_source if include_source is not None else self._include_source_default,
+                _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
             )
 
             self._add_function(function, webhook_config is not None)
@@ -815,6 +818,7 @@ class _App:
         _experimental_buffer_containers: Optional[int] = None,  # Number of additional, idle containers to keep around.
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
+        _experimental_enable_gpu_snapshot: bool = False,  # Experimentally enable GPU memory snapshots.
     ) -> Callable[[CLS_T], CLS_T]:
         """
         Decorator to register a new Modal [Cls](/docs/reference/modal.Cls) with this App.
@@ -858,7 +862,7 @@ class _App:
 
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
-            cls_func = _Function.from_args(
+            cls_func = _Function.from_local(
                 info,
                 app=self,
                 image=image or self._get_default_image(),
@@ -889,6 +893,7 @@ class _App:
                 _experimental_buffer_containers=_experimental_buffer_containers,
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
+                _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
             )
 
             self._add_function(cls_func, is_web_endpoint=False)

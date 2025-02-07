@@ -11,7 +11,8 @@ from grpclib import GRPCError, Status
 from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP, get_param_annotation
 from modal_proto import api_pb2
 
-from ._object import _get_environment_name, _Object
+from ._functions import _Function, _parse_retries
+from ._object import _Object
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._serialization import check_valid_cls_constructor_arg
@@ -21,8 +22,8 @@ from ._utils.deprecation import deprecation_warning, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
-from .exception import ExecutionError, InvalidError, NotFoundError, VersionError
-from .functions import _Function, _parse_retries
+from .config import config
+from .exception import ExecutionError, InvalidError, NotFoundError
 from .gpu import GPU_T
 from .partial_function import (
     _find_callables_for_obj,
@@ -145,10 +146,6 @@ class _Obj:
 
     _instance_service_function: Optional[_Function] = None  # this gets set lazily
 
-    def _uses_common_service_function(self):
-        # Used for backwards compatibility checks with pre v0.63 classes
-        return self._cls._class_service_function is not None
-
     def __init__(
         self,
         cls: "_Cls",
@@ -175,8 +172,6 @@ class _Obj:
     def _cached_service_function(self) -> "modal.functions._Function":
         # Returns a service function for this _Obj, serving all its methods
         # In case of methods without parameters or options, this is simply proxying to the class service function
-
-        # only safe to call for 0.63+ classes (before then, all methods had their own services)
         if not self._instance_service_function:
             assert self._cls._class_service_function
             self._instance_service_function = self._cls._class_service_function._bind_parameters(
@@ -187,6 +182,7 @@ class _Obj:
     def _get_parameter_values(self) -> dict[str, Any]:
         # binds args and kwargs according to the class constructor signature
         # (implicit by parameters or explicit)
+        # can only be called where the local definition exists
         sig = _get_class_constructor_signature(self._user_cls)
         bound_vars = sig.bind(*self._args, **self._kwargs)
         bound_vars.apply_defaults()
@@ -232,10 +228,6 @@ class _Obj:
         Model("fine-tuned-model").keep_warm(2)
         ```
         """
-        if not self._uses_common_service_function():
-            raise VersionError(
-                "Class instance `.keep_warm(...)` can't be used on classes deployed using client version <v0.63"
-            )
         await self._cached_service_function().keep_warm(warm_pool_size)
 
     def _cached_user_cls_instance(self):
@@ -284,7 +276,6 @@ class _Obj:
 
     def __getattr__(self, k):
         # This is a bit messy and branchy because:
-        # * Support for pre-0.63 lookups *and* newer classes
         # * Support .remote() on both hydrated (local or remote classes) or unhydrated classes (remote classes only)
         # * Support .local() on both hydrated and unhydrated classes (assuming local access to code)
         # * Support attribute access (when local cls is available)
@@ -305,11 +296,7 @@ class _Obj:
                 # doesn't require a local instance.
                 # As long as we have the service function or params, we can do remote calls
                 # without calling the constructor of the class in the calling context.
-                if self._cls._class_service_function is None:
-                    # a <v0.63 lookup
-                    return class_bound_method._bind_parameters(self, self._options, self._args, self._kwargs)
-                else:
-                    return _bind_instance_method(self._cached_service_function(), class_bound_method)
+                return _bind_instance_method(self._cached_service_function(), class_bound_method)
 
             return None  # The attribute isn't a method
 
@@ -366,9 +353,7 @@ class _Cls(_Object, type_prefix="cs"):
     """
 
     _user_cls: Optional[type]
-    _class_service_function: Optional[
-        _Function
-    ]  # The _Function serving *all* methods of the class, used for version >=v0.63
+    _class_service_function: Optional[_Function]  # The _Function (read "service") serving *all* methods of the class
     _method_functions: Optional[dict[str, _Function]] = None  # Placeholder _Functions for each method
     _options: Optional[api_pb2.FunctionOptions]
     _callables: dict[str, Callable[..., Any]]
@@ -414,15 +399,15 @@ class _Cls(_Object, type_prefix="cs"):
 
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
-        if (
-            self._class_service_function
-            and self._class_service_function._method_handle_metadata
-            and len(self._class_service_function._method_handle_metadata)
+        assert self._class_service_function.is_hydrated
+
+        if self._class_service_function._method_handle_metadata and len(
+            self._class_service_function._method_handle_metadata
         ):
-            # The class only has a class service function and no method placeholders (v0.67+)
+            # Method metadata stored on the backend Function object (v0.67+)
             if self._method_functions:
                 # We're here when the Cls is loaded locally (e.g. _Cls.from_local) so the _method_functions mapping is
-                # populated with (un-hydrated) _Function objects
+                # populated with (un-hydrated) _Function objects - hydrate using function method metadata
                 for (
                     method_name,
                     method_handle_metadata,
@@ -430,9 +415,10 @@ class _Cls(_Object, type_prefix="cs"):
                     self._method_functions[method_name]._hydrate(
                         self._class_service_function.object_id, self._client, method_handle_metadata
                     )
-
             else:
-                # We're here when the function is loaded remotely (e.g. _Cls.from_name)
+                # We're here when the function is loaded remotely (e.g. _Cls.from_name),
+                # same as above, but we create the method "Functions" from scratch rather
+                # than hydrate existing ones. TODO(elias): feels complicated - refactor?
                 self._method_functions = {}
                 for (
                     method_name,
@@ -441,19 +427,13 @@ class _Cls(_Object, type_prefix="cs"):
                     self._method_functions[method_name] = _Function._new_hydrated(
                         self._class_service_function.object_id, self._client, method_handle_metadata
                     )
-        elif self._class_service_function and self._class_service_function.object_id:
-            # A class with a class service function and method placeholder functions
+        else:
+            # Method metadata stored on the backend Cls object - pre 0.67
+            # Can be removed when v0.67 is least supported version (all metadata is on the function)
             self._method_functions = {}
             for method in metadata.methods:
                 self._method_functions[method.function_name] = _Function._new_hydrated(
                     self._class_service_function.object_id, self._client, method.function_handle_metadata
-                )
-        else:
-            # pre 0.63 class that does not have a class service function and only method functions
-            self._method_functions = {}
-            for method in metadata.methods:
-                self._method_functions[method.function_name] = _Function._new_hydrated(
-                    method.function_id, self._client, method.function_handle_metadata
                 )
 
     @staticmethod
@@ -530,11 +510,6 @@ class _Cls(_Object, type_prefix="cs"):
         cls._name = user_cls.__name__
         return cls
 
-    def _uses_common_service_function(self):
-        # Used for backwards compatibility with version < 0.63
-        # where methods had individual top level functions
-        return self._class_service_function is not None
-
     @classmethod
     @renamed_parameter((2024, 12, 18), "tag", "name")
     def from_name(
@@ -555,9 +530,9 @@ class _Cls(_Object, type_prefix="cs"):
         Model = modal.Cls.from_name("other-app", "Model")
         ```
         """
+        _environment_name = environment_name or config.get("environment")
 
-        async def _load_remote(obj: _Object, resolver: Resolver, existing_object_id: Optional[str]):
-            _environment_name = _get_environment_name(environment_name, resolver)
+        async def _load_remote(self: _Cls, resolver: Resolver, existing_object_id: Optional[str]):
             request = api_pb2.ClassGetRequest(
                 app_name=app_name,
                 object_tag=name,
@@ -578,26 +553,18 @@ class _Cls(_Object, type_prefix="cs"):
                     raise
 
             print_server_warnings(response.server_warnings)
-
-            class_service_name = f"{name}.*"  # special name of the base service function for the class
-
-            class_service_function = _Function.from_name(
-                app_name,
-                class_service_name,
-                environment_name=_environment_name,
-            )
-            try:
-                obj._class_service_function = await resolver.load(class_service_function)
-            except modal.exception.NotFoundError:
-                # this happens when looking up classes deployed using <v0.63
-                # This try-except block can be removed when min supported version >= 0.63
-                pass
-
-            obj._hydrate(response.class_id, resolver.client, response.handle_metadata)
+            await resolver.load(self._class_service_function)
+            self._hydrate(response.class_id, resolver.client, response.handle_metadata)
 
         rep = f"Ref({app_name})"
         cls = cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
-        # TODO: when pre 0.63 is phased out, we can set class_service_function here instead
+
+        class_service_name = f"{name}.*"  # special name of the base service function for the class
+        cls._class_service_function = _Function.from_name(
+            app_name,
+            class_service_name,
+            environment_name=_environment_name,
+        )
         cls._name = name
         return cls
 

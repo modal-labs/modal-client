@@ -33,10 +33,10 @@ from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 from grpclib.events import RecvRequest, listen
 
-import modal._serialization
 from modal import __version__, config
+from modal._functions import _Function
 from modal._runtime.container_io_manager import _ContainerIOManager
-from modal._serialization import serialize_data_format
+from modal._serialization import deserialize, deserialize_params, serialize_data_format
 from modal._utils.async_utils import asyncify, synchronize_api
 from modal._utils.grpc_testing import patch_mock_servicer
 from modal._utils.grpc_utils import find_free_port
@@ -45,7 +45,6 @@ from modal._vendor import cloudpickle
 from modal.app import _App
 from modal.client import Client
 from modal.cls import _Cls
-from modal.functions import _Function
 from modal.image import ImageBuilderVersion
 from modal.mount import PYTHON_STANDALONE_VERSIONS, client_mount_name, python_standalone_mount_name
 from modal_proto import api_grpc, api_pb2
@@ -374,6 +373,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             is_method=definition.is_method,
             use_method_name=definition.use_method_name,
             use_function_id=definition.use_function_id,
+            class_parameter_info=definition.class_parameter_info,
             method_handle_metadata={
                 method_name: api_pb2.FunctionHandleMetadata(
                     function_name=method_definition.function_name,
@@ -858,8 +858,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
     ### Function
 
     async def FunctionBindParams(self, stream):
-        from modal._serialization import deserialize
-
         request: api_pb2.FunctionBindParamsRequest = await stream.recv_message()
         assert request.function_id
         assert request.serialized_params
@@ -876,7 +874,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             bound_func.CopyFrom(base_function)
             self.app_functions[function_id] = bound_func
             self.bound_functions[(request.function_id, request.serialized_params)] = function_id
-            self.function_params[function_id] = deserialize(request.serialized_params, None)
+            self.function_params[function_id] = deserialize_params(request.serialized_params, bound_func, None)
             self.function_options[function_id] = request.function_options
 
         await stream.send_message(
@@ -1020,6 +1018,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                         )
                         for method_name, method_definition in function_defn.method_definitions.items()
                     },
+                    class_parameter_info=function_defn.class_parameter_info,
                 ),
             )
         )
@@ -1047,9 +1046,26 @@ class MockClientServicer(api_grpc.ModalClientBase):
         fn_definition = self.app_functions.get(request.function_id)
         retry_policy = fn_definition.retry_policy if fn_definition else None
         function_call_jwt = encode_function_call_jwt(request.function_id, function_call_id)
+
+        response_inputs = []
+        for input_item in request.pipelined_inputs:
+            input_id = f"in-{self.n_inputs}"
+            self.n_inputs += 1
+            self.add_function_call_input(function_call_id, input_item, input_id)
+            response_inputs.append(
+                api_pb2.FunctionPutInputsResponseItem(
+                    idx=self.fcidx,
+                    input_id=input_id,
+                    input_jwt=encode_input_jwt(self.fcidx, input_id, function_call_id),
+                )
+            )
+
         await stream.send_message(
             api_pb2.FunctionMapResponse(
-                function_call_id=function_call_id, retry_policy=retry_policy, function_call_jwt=function_call_jwt
+                function_call_id=function_call_id,
+                retry_policy=retry_policy,
+                function_call_jwt=function_call_jwt,
+                pipelined_inputs=response_inputs,
             )
         )
 
@@ -1059,9 +1075,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         function_call_inputs = self.client_calls.setdefault(function_call_id, [])
         for item in request.inputs:
             if item.input.WhichOneof("args_oneof") == "args":
-                args, kwargs = modal._serialization.deserialize(item.input.args, None)
+                args, kwargs = deserialize(item.input.args, None)
             else:
-                args, kwargs = modal._serialization.deserialize(self.blobs[item.input.args_blob_id], None)
+                args, kwargs = deserialize(self.blobs[item.input.args_blob_id], None)
             self.n_inputs += 1
             idx, input_id, function_call_id = decode_input_jwt(item.input_jwt)
             function_call_inputs.append(((idx, input_id), (args, kwargs)))
@@ -1070,13 +1086,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def FunctionPutInputs(self, stream):
         request: api_pb2.FunctionPutInputsRequest = await stream.recv_message()
         response_items = []
-        function_call_inputs = self.client_calls.setdefault(request.function_call_id, [])
-        for item in request.inputs:
-            if item.input.WhichOneof("args_oneof") == "args":
-                args, kwargs = modal._serialization.deserialize(item.input.args, None)
-            else:
-                args, kwargs = modal._serialization.deserialize(self.blobs[item.input.args_blob_id], None)
 
+        for item in request.inputs:
             input_id = f"in-{self.n_inputs}"
             self.n_inputs += 1
             response_items.append(
@@ -1086,10 +1097,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     input_jwt=encode_input_jwt(item.idx, input_id, request.function_call_id),
                 )
             )
-            function_call_inputs.append(((item.idx, input_id), (args, kwargs)))
+            self.add_function_call_input(request.function_call_id, item, input_id)
         if self.slow_put_inputs:
             await asyncio.sleep(0.001)
         await stream.send_message(api_pb2.FunctionPutInputsResponse(inputs=response_items))
+
+    def add_function_call_input(self, function_call_id, item, input_id):
+        if item.input.WhichOneof("args_oneof") == "args":
+            args, kwargs = deserialize(item.input.args, None)
+        else:
+            args, kwargs = deserialize(self.blobs[item.input.args_blob_id], None)
+        function_call_inputs = self.client_calls.setdefault(function_call_id, [])
+        function_call_inputs.append(((item.idx, input_id), (args, kwargs)))
 
     async def FunctionGetOutputs(self, stream):
         request: api_pb2.FunctionGetOutputsRequest = await stream.recv_message()

@@ -522,34 +522,6 @@ class LifecycleCls:
         return self.events
 
 
-@app.function()
-def check_sibling_hydration(x):
-    assert square.is_hydrated
-    assert Cls().f.is_hydrated
-    assert Cls().web.is_hydrated
-    assert Cls().web.web_url
-    assert Cls().generator.is_hydrated
-    assert Cls().generator.is_generator
-    assert fastapi_app.is_hydrated
-    assert fun_returning_gen.is_hydrated
-    assert fun_returning_gen.is_generator
-
-
-@app.cls()
-class ParamCls:
-    def __init__(self, x: int, y: str) -> None:
-        self.x = x
-        self.y = y
-
-    @method()
-    def f(self, z: int):
-        return f"{self.x} {self.y} {z}"
-
-    @method()
-    def g(self, z):
-        return self.f.local(z)
-
-
 @app.function(allow_concurrent_inputs=5)
 def sleep_700_sync(x):
     time.sleep(0.7)
@@ -619,12 +591,6 @@ def cube(x):
     # regardless of the actual funtion.
     assert square.is_hydrated
     return square.remote(x) * x
-
-
-@app.function()
-def function_calling_method(x, y, z):
-    obj = ParamCls(x, y)
-    return obj.f.remote(z)
 
 
 with pytest.warns(DeprecationError, match="@modal.build"):

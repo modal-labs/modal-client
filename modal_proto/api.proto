@@ -143,6 +143,8 @@ enum FunctionCallType {
 }
 
 enum GPUType {
+  // Note: this enum is no longer used by current clients - don't add new types
+  // Old clients still send it, so we use it server-side for compatibility
   GPU_TYPE_UNSPECIFIED = 0;
   GPU_TYPE_T4 = 1;
   GPU_TYPE_A100 = 2;
@@ -559,6 +561,22 @@ message Asgi {
     WebsocketDisconnect websocket_disconnect = 12;
     WebsocketClose websocket_close = 13;
   }
+}
+
+message AutoscalerSettings {
+  // A collection of user-configurable settings for Function autoscaling
+  // These are used for static configuration and for dynamic autoscaler updates
+
+  // Minimum containers when scale-to-zero is not deisired; pka "keep_warm" or "warm_pool_size"
+  optional uint32 min_containers = 1;
+  // Limit on the number of containers that can be running for each Function; pka "concurrency_limit"
+  optional uint32 max_containers = 2;
+  // Additional container to spin up when Function is active
+  optional uint32 buffer_containers = 3;
+  // Currently unused; a placeholder in case we decide to expose scaleup control to users
+  optional uint32 scaleup_window = 4;
+  // Maximum amount of time a container can be idle before being scaled down, in seconds; pka "container_idle_timeout"
+  optional uint32 scaledown_window = 5;
 }
 
 message BaseImage {
@@ -1263,6 +1281,8 @@ message Function {
   bool _experimental_custom_scaling = 76;
 
   string cloud_provider_str = 77;  // Supersedes cloud_provider
+
+  bool _experimental_enable_gpu_snapshot = 78; // Experimental support for GPU snapshotting
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1376,6 +1396,7 @@ message FunctionData {
   uint32 _experimental_group_size = 19;
   uint32 _experimental_buffer_containers = 22;
   bool _experimental_custom_scaling = 23;
+  bool _experimental_enable_gpu_snapshot = 30;
   string worker_id = 7; // for internal debugging use only
 
   uint32 timeout_secs = 8;
@@ -1650,8 +1671,7 @@ message FunctionRetryInputsRequest {
 }
 
 message FunctionRetryInputsResponse {
-  // TODO(ryan): Eventually this will return entry ids, which client
-  // will send back to server to check for lost inputs.
+  repeated string input_jwts = 1;
 }
 
 message FunctionRetryPolicy {
@@ -1671,6 +1691,7 @@ message FunctionStats {
 message FunctionUpdateSchedulingParamsRequest {
   string function_id = 1;
   uint32 warm_pool_size_override = 2;
+  AutoscalerSettings settings = 3;
 }
 
 message FunctionUpdateSchedulingParamsResponse {}
@@ -1678,7 +1699,6 @@ message FunctionUpdateSchedulingParamsResponse {}
 message GPUConfig {
   GPUType type = 1;  // Deprecated, at some point
   uint32 count = 2;
-  uint32 memory = 3;
   string gpu_type = 4;
 }
 
@@ -2260,6 +2280,10 @@ message Sandbox {
   optional uint32 snapshot_version = 25;
 
   string cloud_provider_str = 26;  // Supersedes cloud_provider
+
+  // Specifies container runtime behavior for sandboxes which are restored from a snapshot.
+  // Set by the backend at snapshot creation time.
+  optional string runsc_runtime_version = 27;
 }
 
 message SandboxCreateRequest {
@@ -2629,6 +2653,7 @@ message TaskLogsBatch {
   string image_id = 13;  // Used for image logs
   bool eof = 14;
   string pty_exec_id = 15;  // Used for interactive functions
+  string root_function_id = 16;
 }
 
 message TaskProgress {
