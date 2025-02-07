@@ -101,11 +101,16 @@ class _Sandbox(_Object, type_prefix="sb"):
         proxy: Optional[_Proxy] = None,
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
         enable_snapshot: bool = False,
+        run_image_cmd: bool = False,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
-        if len(entrypoint_args) == 0:
+        if len(entrypoint_args) == 0 and not run_image_cmd:
             raise InvalidError("entrypoint_args must not be empty")
+
+        if len(entrypoint_args) > 0 and run_image_cmd:
+            print(entrypoint_args)
+            raise InvalidError("run_image_cmd cannot be used when passing entrypoint_args")
 
         validated_network_file_systems = validate_network_file_systems(network_file_systems)
 
@@ -250,14 +255,18 @@ class _Sandbox(_Object, type_prefix="sb"):
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
+        # Instead of provided entrypoint_args, run the image's default CMD.
+        run_image_cmd: bool = False,
     ) -> "_Sandbox":
         from .app import _App
 
         environment_name = _get_environment_name(environment_name)
 
-        # If there are no entrypoint args, we'll sleep forever so that the sandbox will stay
-        # alive long enough for the user to interact with it.
-        if len(entrypoint_args) == 0:
+        # If there are no entrypoint args, and user hasn't requested
+        # the image's CMD being run, we'll sleep forever so that the
+        # sandbox will stay alive long enough for the user to interact
+        # with it.
+        if len(entrypoint_args) == 0 and not run_image_cmd:
             max_sleep_time = 60 * 60 * 24 * 2  # 2 days is plenty since workers roll every 24h
             entrypoint_args = ("sleep", str(max_sleep_time))
 
@@ -286,6 +295,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             proxy=proxy,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
             enable_snapshot=_experimental_enable_snapshot,
+            run_image_cmd=run_image_cmd,
         )
         obj._enable_snapshot = _experimental_enable_snapshot
 
