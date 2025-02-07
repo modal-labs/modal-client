@@ -388,7 +388,8 @@ def check_valid_cls_constructor_arg(key, obj):
 
 def assert_bytes(obj: Any):
     if not isinstance(obj, bytes):
-        raise InvalidError(f"Expected bytes, got {type(obj)}")
+        raise ValueError(f"Expected bytes, got {type(obj)}")
+    return obj
 
 
 @dataclass

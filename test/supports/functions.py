@@ -437,11 +437,11 @@ class Cls:
 
 @app.cls()
 class ClsWithBytesSerialization:
-    bar: bytes = parameter(default=b"world")
+    bar: bytes = parameter()
 
     @web_endpoint()
     def web(self, arg):
-        return {"arg": arg, "bar": b"world"}
+        return {"arg": arg, "bar": self.bar}
 
 
 @app.cls()

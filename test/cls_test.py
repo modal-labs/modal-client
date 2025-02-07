@@ -1079,17 +1079,17 @@ def test_using_method_on_uninstantiated_cls(recwarn, disable_auto_mount):
     assert "C().method instead of C.method" in warning_string
 
 
-def test_bytes_serialization_default_webhook():
-    default = b"hello world"
+def test_bytes_serialization_validation(servicer, client, set_env_client):
     app = modal.App()
 
     @app.cls(serialized=True)
     class C:
-        foo: bytes = modal.parameter(default=default)
+        foo: bytes = modal.parameter()
 
-        @modal.web_endpoint()
-        def get_value(self):
+        @method()
+        def get_foo(self):
             return self.foo
 
-    a = C()
-    assert a.foo == default
+    with app.run():
+        with pytest.raises(ValueError, match="Expected bytes"):
+            C(foo="this is a string").get_foo.remote()  # string should not be allowed, unspecified encoding
