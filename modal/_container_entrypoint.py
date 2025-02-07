@@ -25,7 +25,7 @@ from google.protobuf.message import Message
 
 from modal._clustered_functions import initialize_clustered_function
 from modal._proxy_tunnel import proxy_tunnel
-from modal._serialization import deserialize, deserialize_proto_params
+from modal._serialization import deserialize_proto_params
 from modal._utils.async_utils import TaskContext, synchronizer
 from modal._utils.function_utils import (
     callable_has_non_self_params,
@@ -382,26 +382,6 @@ def call_lifecycle_functions(
             if inspect.iscoroutine(res):
                 # if however func is async, we have to jump through some hoops
                 event_loop.run(res)
-
-
-def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function, _client: "modal.client._Client"):
-    if function_def.class_parameter_info.format in (
-        api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED,
-        api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE,
-    ):
-        # legacy serialization format - pickle of `(args, kwargs)` w/ support for modal object arguments
-        param_args, param_kwargs = deserialize(serialized_params, _client)
-    elif function_def.class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO:
-        param_args = ()
-        param_kwargs = deserialize_proto_params(
-            serialized_params, list(function_def.class_parameter_info.schema), _client
-        )
-    else:
-        raise ExecutionError(
-            f"Unknown class parameter serialization format: {function_def.class_parameter_info.format}"
-        )
-
-    return param_args, param_kwargs
 
 
 def main(container_args: api_pb2.ContainerArguments, client: Client):

@@ -38,15 +38,10 @@ class FunctionInfoType(Enum):
     NOTEBOOK = "notebook"
 
 
-class PickleSerialization:
-    pass
-
-
 # TODO(elias): Add support for quoted/str annotations
 CLASS_PARAM_TYPE_MAP: dict[type, tuple["api_pb2.ParameterType.ValueType", str]] = {
     str: (api_pb2.PARAM_TYPE_STRING, "string_default"),
     int: (api_pb2.PARAM_TYPE_INT, "int_default"),
-    PickleSerialization: (api_pb2.PARAM_TYPE_PICKLE, "pickle_default"),
 }
 
 
@@ -109,12 +104,6 @@ def is_async(function):
 
 def get_function_type(is_generator: Optional[bool]) -> "api_pb2.Function.FunctionType.ValueType":
     return api_pb2.Function.FUNCTION_TYPE_GENERATOR if is_generator else api_pb2.Function.FUNCTION_TYPE_FUNCTION
-
-
-def get_param_annotation(annotation):
-    if PickleSerialization in getattr(annotation, "__metadata__", []):
-        return PickleSerialization
-    return annotation
 
 
 class FunctionInfo:
