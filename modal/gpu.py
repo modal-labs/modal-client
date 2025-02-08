@@ -13,7 +13,10 @@ class _GPUConfig:
 
     def __init__(self, gpu_type: str, count: int):
         name = self.__class__.__name__
-        deprecation_warning((2025, 2, 7), f'`gpu={name}(...)` is deprecated. Use `gpu="{name}"` instead.')
+        str_value = gpu_type
+        if count > 1:
+            str_value += f":{count}"
+        deprecation_warning((2025, 2, 7), f'`gpu={name}(...)` is deprecated. Use `gpu="{str_value}"` instead.')
         self.gpu_type = gpu_type
         self.count = count
 

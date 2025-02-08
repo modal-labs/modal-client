@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import pytest
 
+import modal.gpu
 from modal import App
 from modal.exception import InvalidError
 from modal_proto import api_pb2
@@ -58,11 +59,9 @@ def test_invalid_gpu_string_config(client, servicer, gpu_arg):
 
 
 def test_gpu_config_function(client, servicer):
-    import modal
-
     app = App()
 
-    with pytest.warns(match='gpu="A100"'):
+    with pytest.warns(match='gpu="A100-40GB"'):
         app.function(gpu=modal.gpu.A100())(dummy)
     with app.run(client=client):
         pass
@@ -70,6 +69,14 @@ def test_gpu_config_function(client, servicer):
     assert len(servicer.app_functions) == 1
     func_def = next(iter(servicer.app_functions.values()))
     assert func_def.resources.gpu_config.count == 1
+
+
+def test_gpu_config_function_more(client, servicer):
+    # Make sure some other GPU types also throw warnings
+    with pytest.warns(match='gpu="A100-80GB"'):
+        modal.gpu.A100(size="80GB")
+    with pytest.warns(match='gpu="T4:7"'):
+        modal.gpu.T4(count=7)
 
 
 def test_cloud_provider_selection(client, servicer):
@@ -100,8 +107,6 @@ def test_cloud_provider_selection(client, servicer):
     ],
 )
 def test_memory_selection_gpu_variant(client, servicer, memory_arg, gpu_type):
-    import modal
-
     app = App()
     with pytest.warns(match='gpu="A100'):
         app.function(gpu=modal.gpu.A100(size=memory_arg))(dummy)
@@ -116,8 +121,6 @@ def test_memory_selection_gpu_variant(client, servicer, memory_arg, gpu_type):
 
 
 def test_gpu_unsupported_config():
-    import modal
-
     app = App()
 
     with pytest.raises(ValueError, match="size='20GB' is invalid"):
