@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2024
-import modal
 from modal import App
 from modal_proto import api_pb2
 
@@ -16,7 +15,7 @@ def f2():
     pass
 
 
-@app.function(gpu=["h100:2", modal.gpu.A100(count=2, size="80GB")])
+@app.function(gpu=["h100:2", "a100-80gb:2"])
 def f3():
     pass
 

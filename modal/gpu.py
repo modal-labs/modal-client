@@ -1,16 +1,21 @@
 # Copyright Modal Labs 2022
-from dataclasses import dataclass
 from typing import Union
 
 from modal_proto import api_pb2
 
+from ._utils.deprecation import deprecation_warning
 from .exception import InvalidError
 
 
-@dataclass(frozen=True)
 class _GPUConfig:
     gpu_type: str
     count: int
+
+    def __init__(self, gpu_type: str, count: int):
+        name = self.__class__.__name__
+        deprecation_warning((2025, 2, 7), f'`gpu={name}(...)` is deprecated. Use `gpu="{name}"` instead.')
+        self.gpu_type = gpu_type
+        self.count = count
 
     def _to_proto(self) -> api_pb2.GPUConfig:
         """Convert this GPU config to an internal protobuf representation."""
