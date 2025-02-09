@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.25 (2025-02-09)
+
+- Fixes an issue introduced in `0.73.19` that prevented access to GPUs during image builds
+
+
+
 ### 0.73.18 (2025-02-06)
 
 * When using a parameterized class (with at least one `modal.parameter()` specified), class instantiation with an incorrect construction signature (wrong arguments or types) will now fail at the `.remote()` calling site instead of container startup for the called class.
