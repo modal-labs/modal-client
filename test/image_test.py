@@ -992,7 +992,6 @@ def test_image_gpu(builder_version, servicer, client):
     app.function()(dummy)
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
-        assert not layers[0].gpu_config.type
         assert not layers[0].gpu_config.gpu_type
 
     app = App(image=Image.debian_slim().run_commands("echo 1", gpu="any"))
