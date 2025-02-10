@@ -13,7 +13,7 @@ from typing import Callable, Literal, Sequence, Union, get_args
 from unittest import mock
 
 import modal
-from modal import App, Dict, Image, Secret, build, environments, gpu, method
+from modal import App, Dict, Image, Secret, build, environments, method
 from modal._serialization import serialize
 from modal._utils.async_utils import synchronizer
 from modal.client import Client
@@ -1002,7 +1002,7 @@ def test_image_gpu(builder_version, servicer, client):
         assert layers[0].gpu
         assert layers[0].gpu_config.gpu_type == "ANY"
 
-    app = App(image=Image.debian_slim().run_commands("echo 2", gpu=gpu.A10G()))
+    app = App(image=Image.debian_slim().run_commands("echo 2", gpu="a10g"))
     app.function()(dummy)
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)

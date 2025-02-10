@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import pytest
 
+import modal.gpu
 from modal import App
 from modal.exception import InvalidError
 from modal_proto import api_pb2
@@ -58,11 +59,10 @@ def test_invalid_gpu_string_config(client, servicer, gpu_arg):
 
 
 def test_gpu_config_function(client, servicer):
-    import modal
-
     app = App()
 
-    app.function(gpu=modal.gpu.A100())(dummy)
+    with pytest.warns(match='gpu="A100-40GB"'):
+        app.function(gpu=modal.gpu.A100())(dummy)
     with app.run(client=client):
         pass
 
@@ -71,12 +71,18 @@ def test_gpu_config_function(client, servicer):
     assert func_def.resources.gpu_config.count == 1
 
 
-def test_cloud_provider_selection(client, servicer):
-    import modal
+def test_gpu_config_function_more(client, servicer):
+    # Make sure some other GPU types also throw warnings
+    with pytest.warns(match='gpu="A100-80GB"'):
+        modal.gpu.A100(size="80GB")
+    with pytest.warns(match='gpu="T4:7"'):
+        modal.gpu.T4(count=7)
 
+
+def test_cloud_provider_selection(client, servicer):
     app = App()
 
-    app.function(gpu=modal.gpu.A100(), cloud="gcp")(dummy)
+    app.function(gpu="A100", cloud="gcp")(dummy)
     with app.run(client=client):
         pass
 
@@ -85,6 +91,7 @@ def test_cloud_provider_selection(client, servicer):
     assert func_def.cloud_provider == api_pb2.CLOUD_PROVIDER_GCP
     assert func_def.cloud_provider_str == "GCP"
 
+    assert func_def.resources.gpu_config.gpu_type == "A100"
     assert func_def.resources.gpu_config.count == 1
 
     # Invalid enum value.
@@ -100,13 +107,9 @@ def test_cloud_provider_selection(client, servicer):
     ],
 )
 def test_memory_selection_gpu_variant(client, servicer, memory_arg, gpu_type):
-    import modal
-
     app = App()
-    if isinstance(memory_arg, str):
+    with pytest.warns(match='gpu="A100'):
         app.function(gpu=modal.gpu.A100(size=memory_arg))(dummy)
-    else:
-        raise RuntimeError(f"Unexpected test parametrization arg type {type(memory_arg)}")
 
     with app.run(client=client):
         pass
@@ -118,8 +121,6 @@ def test_memory_selection_gpu_variant(client, servicer, memory_arg, gpu_type):
 
 
 def test_gpu_unsupported_config():
-    import modal
-
     app = App()
 
     with pytest.raises(ValueError, match="size='20GB' is invalid"):
@@ -128,12 +129,10 @@ def test_gpu_unsupported_config():
 
 @pytest.mark.parametrize("count", [1, 2, 3, 4])
 def test_gpu_type_selection_from_count(client, servicer, count):
-    import modal
-
     app = App()
 
     # Task type does not change when user asks more than 1 GPU on an A100.
-    app.function(gpu=modal.gpu.A100(count=count))(dummy)
+    app.function(gpu=f"A100:{count}")(dummy)
     with app.run(client=client):
         pass
 
