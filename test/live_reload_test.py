@@ -37,7 +37,7 @@ async def test_live_reload_with_logs(app_ref, server_url_env, token_env, service
 
 
 @skip_windows("live-reload not supported on windows")
-def test_file_changes_trigger_reloads(app_ref, server_url_env, token_env, servicer):
+def test_file_changes_trigger_reloads(app_ref, server_url_env, token_env, servicer, capfd):
     watcher_done = threading.Event()
 
     async def fake_watch():
@@ -45,11 +45,14 @@ def test_file_changes_trigger_reloads(app_ref, server_url_env, token_env, servic
             yield {"/some/file"}
         watcher_done.set()
 
-    with serve_app(app, app_ref, _watcher=fake_watch()):
+    with serve_app(app, app_ref, is_module=False, _watcher=fake_watch()):
         watcher_done.wait()  # wait until watcher loop is done
         foo: Function = app.registered_functions["foo"]
         assert foo.web_url.startswith("http://")
 
+    stderr = capfd.readouterr().err
+    print(stderr)
+    assert "Traceback" not in stderr
     # TODO ideally we would assert the specific expected number here, but this test
     # is consistently flaking in CI and I cannot reproduce locally to debug.
     # I'm relaxing the assertion for now to stop the test from blocking deployments.

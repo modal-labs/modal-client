@@ -26,9 +26,11 @@ else:
     _App = TypeVar("_App")
 
 
-def _run_serve(app_ref: str, existing_app_id: str, is_ready: Event, environment_name: str, show_progress: bool):
+def _run_serve(
+    app_ref: str, is_module: bool, existing_app_id: str, is_ready: Event, environment_name: str, show_progress: bool
+):
     # subprocess entrypoint
-    _app = import_app(app_ref)
+    _app = import_app(app_ref, is_module=is_module, base_cmd="modal serve")
     blocking_app = synchronizer._translate_out(_app)
 
     with enable_output(show_progress=show_progress):
@@ -36,13 +38,15 @@ def _run_serve(app_ref: str, existing_app_id: str, is_ready: Event, environment_
 
 
 async def _restart_serve(
-    app_ref: str, existing_app_id: str, environment_name: str, timeout: float = 5.0
+    app_ref: str, *, is_module: bool, existing_app_id: str, environment_name: str, timeout: float = 5.0
 ) -> SpawnProcess:
     ctx = multiprocessing.get_context("spawn")  # Needed to reload the interpreter
     is_ready = ctx.Event()
     output_mgr = OutputManager.get()
     show_progress = output_mgr is not None
-    p = ctx.Process(target=_run_serve, args=(app_ref, existing_app_id, is_ready, environment_name, show_progress))
+    p = ctx.Process(
+        target=_run_serve, args=(app_ref, is_module, existing_app_id, is_ready, environment_name, show_progress)
+    )
     p.start()
     await asyncify(is_ready.wait)(timeout)
     # TODO(erikbern): we don't fail if the above times out, but that's somewhat intentional, since
@@ -69,6 +73,8 @@ async def _terminate(proc: Optional[SpawnProcess], timeout: float = 5.0):
 
 async def _run_watch_loop(
     app_ref: str,
+    *,
+    is_module: bool,
     app_id: str,
     watcher: AsyncGenerator[set[str], None],
     environment_name: str,
@@ -88,7 +94,9 @@ async def _run_watch_loop(
             async for trigger_files in watcher:
                 logger.debug(f"The following files triggered an app update: {', '.join(trigger_files)}")
                 await _terminate(curr_proc)
-                curr_proc = await _restart_serve(app_ref, existing_app_id=app_id, environment_name=environment_name)
+                curr_proc = await _restart_serve(
+                    app_ref, is_module=is_module, existing_app_id=app_id, environment_name=environment_name
+                )
         finally:
             await _terminate(curr_proc)
 
@@ -97,6 +105,8 @@ async def _run_watch_loop(
 async def _serve_app(
     app: "_App",
     app_ref: str,
+    *,
+    is_module: bool,
     _watcher: Optional[AsyncGenerator[set[str], None]] = None,  # for testing
     environment_name: Optional[str] = None,
 ) -> AsyncGenerator["_App", None]:
@@ -112,7 +122,11 @@ async def _serve_app(
             mounts_to_watch = app._get_watch_mounts()
             watcher = watch(mounts_to_watch)
         async with TaskContext(grace=0.1) as tc:
-            tc.create_task(_run_watch_loop(app_ref, app.app_id, watcher, environment_name))
+            tc.create_task(
+                _run_watch_loop(
+                    app_ref, is_module=is_module, app_id=app.app_id, watcher=watcher, environment_name=environment_name
+                )
+            )
             yield app
 
 

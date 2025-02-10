@@ -122,9 +122,9 @@ def test_import_and_filter(dir_structure, ref, mock_dir, returned_runnable_type,
 
 
 def test_import_and_filter_2(monkeypatch, supports_on_path):
-    def import_runnable(name_prefix, accept_local_entrypoint=False, accept_webhook=False):
+    def import_runnable(object_path, accept_local_entrypoint=False, accept_webhook=False):
         return import_and_filter(
-            ImportRef("import_and_filter_source", name_prefix),
+            ImportRef("import_and_filter_source", is_module=True, object_path=object_path),
             base_cmd="",
             accept_local_entrypoint=accept_local_entrypoint,
             accept_webhook=accept_webhook,
