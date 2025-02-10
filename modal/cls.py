@@ -182,6 +182,7 @@ class _Obj:
     def _get_parameter_values(self) -> dict[str, Any]:
         # binds args and kwargs according to the class constructor signature
         # (implicit by parameters or explicit)
+        # can only be called where the local definition exists
         sig = _get_class_constructor_signature(self._user_cls)
         bound_vars = sig.bind(*self._args, **self._kwargs)
         bound_vars.apply_defaults()
