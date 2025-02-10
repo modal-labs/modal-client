@@ -19,7 +19,7 @@ def app_ref(test_dir):
 
 @pytest.mark.asyncio
 async def test_live_reload(app_ref, server_url_env, token_env, servicer):
-    async with serve_app.aio(app, app_ref):
+    async with serve_app.aio(app, app_ref, is_module=False):
         await asyncio.sleep(3.0)
     assert servicer.app_publish_count == 1
     assert servicer.app_client_disconnect_count == 1
@@ -29,7 +29,7 @@ async def test_live_reload(app_ref, server_url_env, token_env, servicer):
 @pytest.mark.asyncio
 async def test_live_reload_with_logs(app_ref, server_url_env, token_env, servicer):
     with enable_output():
-        async with serve_app.aio(app, app_ref):
+        async with serve_app.aio(app, app_ref, is_module=False):
             await asyncio.sleep(3.0)
     assert servicer.app_publish_count == 1
     assert servicer.app_client_disconnect_count == 1
@@ -68,7 +68,7 @@ async def test_no_change(app_ref, server_url_env, token_env, servicer):
         if False:
             yield
 
-    async with serve_app.aio(app, app_ref, _watcher=fake_watch()):
+    async with serve_app.aio(app, app_ref, _watcher=fake_watch(), is_module=False):
         pass
 
     assert servicer.app_publish_count == 1  # Should create the initial app once
@@ -79,7 +79,7 @@ async def test_no_change(app_ref, server_url_env, token_env, servicer):
 async def test_heartbeats(app_ref, server_url_env, token_env, servicer):
     with mock.patch("modal.runner.HEARTBEAT_INTERVAL", 1):
         t0 = time.time()
-        async with serve_app.aio(app, app_ref):
+        async with serve_app.aio(app, app_ref, is_module=False):
             await asyncio.sleep(3.1)
         total_secs = int(time.time() - t0)
 
