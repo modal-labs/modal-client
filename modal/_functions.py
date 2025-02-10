@@ -398,9 +398,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _use_method_name: str = ""
 
     _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
-    _method_handle_metadata: Optional[
-        dict[str, "api_pb2.FunctionHandleMetadata"]
-    ] = None  # set for 0.67+ class service functions
+    _method_handle_metadata: Optional[dict[str, "api_pb2.FunctionHandleMetadata"]] = (
+        None  # set for 0.67+ class service functions
+    )
 
     def _bind_method(
         self,

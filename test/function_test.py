@@ -6,7 +6,6 @@ import pytest
 import time
 import typing
 from contextlib import contextmanager
-from test.helpers import deploy_app_externally
 
 from synchronicity.exceptions import UserCodeException
 
@@ -18,6 +17,7 @@ from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall, gather
 from modal.runner import deploy_app
 from modal_proto import api_pb2
+from test.helpers import deploy_app_externally
 
 app = App()
 
@@ -501,7 +501,7 @@ def test_map_exceptions(client, servicer):
 
         res = list(custom_function_modal.map(range(6), return_exceptions=True))
         assert res[:4] == [0, 1, 4, 9] and res[5] == 25
-        assert type(res[4]) == UserCodeException and "bad" in str(res[4])
+        assert type(res[4]) is UserCodeException and "bad" in str(res[4])
 
 
 def import_failure():
@@ -630,7 +630,7 @@ def test_local_execution_on_asgi_app(client, servicer):
     assert foo.web_url
 
     res = foo.local()
-    assert type(res) == FastAPI
+    assert type(res) is FastAPI
 
 
 @pytest.mark.parametrize("remote_executor", ["remote", "remote_gen", "spawn"])
@@ -844,7 +844,7 @@ def test_deps_explicit(client, servicer):
 
 
 def assert_is_wrapped_dict(some_arg):
-    assert type(some_arg) == modal.Dict  # this should not be a modal._Dict unwrapped instance!
+    assert type(some_arg) is modal.Dict  # this should not be a modal._Dict unwrapped instance!
     return some_arg
 
 
@@ -855,20 +855,20 @@ def test_calls_should_not_unwrap_modal_objects(servicer, client):
 
     # make sure the serialized object is an actual Dict and not a _Dict in all user code contexts
     with app.run(client=client), modal.Dict.ephemeral(client=client) as some_modal_object:
-        assert type(foo.remote(some_modal_object)) == modal.Dict
+        assert type(foo.remote(some_modal_object)) is modal.Dict
         fc = foo.spawn(some_modal_object)
-        assert type(fc.get()) == modal.Dict
+        assert type(fc.get()) is modal.Dict
         for ret in foo.map([some_modal_object]):
-            assert type(ret) == modal.Dict
+            assert type(ret) is modal.Dict
         for ret in foo.starmap([[some_modal_object]]):
-            assert type(ret) == modal.Dict
+            assert type(ret) is modal.Dict
         foo.for_each([some_modal_object])
 
     assert len(servicer.client_calls) == 5
 
 
 def assert_is_wrapped_dict_gen(some_arg):
-    assert type(some_arg) == modal.Dict  # this should not be a modal._Dict unwrapped instance!
+    assert type(some_arg) is modal.Dict  # this should not be a modal._Dict unwrapped instance!
     yield some_arg
 
 
@@ -879,7 +879,7 @@ def test_calls_should_not_unwrap_modal_objects_gen(servicer, client):
 
     # make sure the serialized object is an actual Dict and not a _Dict in all user code contexts
     with app.run(client=client), modal.Dict.ephemeral(client=client) as some_modal_object:
-        assert type(next(foo.remote_gen(some_modal_object))) == modal.Dict
+        assert type(next(foo.remote_gen(some_modal_object))) is modal.Dict
         with pytest.raises(DeprecationError):
             foo.spawn(some_modal_object)
 
@@ -984,8 +984,7 @@ def test_warn_on_local_volume_mount(client, servicer):
 
 
 class X:
-    def f(self):
-        ...
+    def f(self): ...
 
 
 def test_function_decorator_on_method():

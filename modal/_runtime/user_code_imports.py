@@ -46,8 +46,7 @@ class Service(metaclass=ABCMeta):
     @abstractmethod
     def get_finalized_functions(
         self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
-    ) -> dict[str, "FinalizedFunction"]:
-        ...
+    ) -> dict[str, "FinalizedFunction"]: ...
 
 
 def construct_webhook_callable(

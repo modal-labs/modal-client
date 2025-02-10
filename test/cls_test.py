@@ -569,8 +569,7 @@ app_unhydrated = App()
 @app_unhydrated.cls()
 class FooUnhydrated:
     @method()
-    def bar(self, x):
-        ...
+    def bar(self, x): ...
 
 
 def test_unhydrated():
@@ -585,12 +584,10 @@ app_method_args = App()
 @app_method_args.cls(keep_warm=5)
 class XYZ:
     @method()  # warns - keep_warm is not supported on methods anymore
-    def foo(self):
-        ...
+    def foo(self): ...
 
     @method()  # warns - keep_warm is not supported on methods anymore
-    def bar(self):
-        ...
+    def bar(self): ...
 
 
 def test_method_args(servicer, client):
@@ -609,12 +606,10 @@ def test_keep_warm_depr(client, set_env_client):
         @app.cls(serialized=True)
         class ClsWithKeepWarmMethod:
             @method(keep_warm=2)
-            def foo(self):
-                ...
+            def foo(self): ...
 
             @method()
-            def bar(self):
-                ...
+            def bar(self): ...
 
     with app.run(client=client):
         with pytest.raises(modal.exception.InvalidError, match="keep_warm"):
@@ -630,8 +625,7 @@ def test_cls_keep_warm(client, servicer):
             self.arg = arg
 
         @method()
-        def bar(self):
-            ...
+        def bar(self): ...
 
     with app.run(client=client):
         assert len(servicer.app_functions) == 1  # only class service function
@@ -1050,7 +1044,7 @@ def test_modal_object_param_uses_wrapped_type(servicer, set_env_client, client):
     _client = typing.cast(modal.client._Client, synchronizer._translate_in(client))
     container_params = deserialize_params(req.serialized_params, function_def, _client)
     args, kwargs = container_params
-    assert type(kwargs["x"]) == type(dct)
+    assert type(kwargs["x"]) is type(dct)
 
 
 def test_using_method_on_uninstantiated_cls(recwarn, disable_auto_mount):

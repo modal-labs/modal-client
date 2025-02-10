@@ -104,7 +104,7 @@ async def _new_token(
                     result = await token_flow.finish()
                     if result is not None:
                         break
-                    status.update(f"Waiting for token flow to complete... (attempt {attempt+2})")
+                    status.update(f"Waiting for token flow to complete... (attempt {attempt + 2})")
 
         console.print("[green]Web authentication finished successfully![/green]")
 

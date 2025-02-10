@@ -468,8 +468,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         text: Literal[True] = True,
         bufsize: Literal[-1, 1] = -1,
         _pty_info: Optional[api_pb2.PTYInfo] = None,
-    ) -> _ContainerProcess[str]:
-        ...
+    ) -> _ContainerProcess[str]: ...
 
     @overload
     async def exec(
@@ -484,8 +483,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         text: Literal[False] = False,
         bufsize: Literal[-1, 1] = -1,
         _pty_info: Optional[api_pb2.PTYInfo] = None,
-    ) -> _ContainerProcess[bytes]:
-        ...
+    ) -> _ContainerProcess[bytes]: ...
 
     async def exec(
         self,
@@ -597,16 +595,14 @@ class _Sandbox(_Object, type_prefix="sb"):
         self,
         path: str,
         mode: "_typeshed.OpenTextMode",
-    ) -> _FileIO[str]:
-        ...
+    ) -> _FileIO[str]: ...
 
     @overload
     async def open(
         self,
         path: str,
         mode: "_typeshed.OpenBinaryMode",
-    ) -> _FileIO[bytes]:
-        ...
+    ) -> _FileIO[bytes]: ...
 
     async def open(
         self,

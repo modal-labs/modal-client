@@ -176,23 +176,19 @@ class _MethodDecoratorType:
     def __call__(
         self,
         func: "modal.partial_function.PartialFunction[typing_extensions.Concatenate[Any, P], ReturnType, OriginalReturnType]",  # noqa
-    ) -> "modal.partial_function.PartialFunction[P, ReturnType, OriginalReturnType]":
-        ...
+    ) -> "modal.partial_function.PartialFunction[P, ReturnType, OriginalReturnType]": ...
 
     @typing.overload
     def __call__(
         self, func: "Callable[typing_extensions.Concatenate[Any, P], Coroutine[Any, Any, ReturnType]]"
-    ) -> "modal.partial_function.PartialFunction[P, ReturnType, Coroutine[Any, Any, ReturnType]]":
-        ...
+    ) -> "modal.partial_function.PartialFunction[P, ReturnType, Coroutine[Any, Any, ReturnType]]": ...
 
     @typing.overload
     def __call__(
         self, func: "Callable[typing_extensions.Concatenate[Any, P], ReturnType]"
-    ) -> "modal.partial_function.PartialFunction[P, ReturnType, ReturnType]":
-        ...
+    ) -> "modal.partial_function.PartialFunction[P, ReturnType, ReturnType]": ...
 
-    def __call__(self, func):
-        ...
+    def __call__(self, func): ...
 
 
 # TODO(elias): fix support for coroutine type unwrapping for methods (static typing)
