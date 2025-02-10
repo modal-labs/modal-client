@@ -310,6 +310,19 @@ def test_sandbox_exec_wait(app, servicer):
 
 
 @skip_non_subprocess
+def test_sandbox_create_and_exec_with_bad_args(app, servicer):
+    with pytest.raises(InvalidError):
+        too_big = 2_097_152 + 10
+        single_arg_size = too_big // 10
+        args = ["a" * single_arg_size for _ in range(10)]
+        Sandbox.create(*args, app=app)
+
+    sb = Sandbox.create("sleep", "infinity", app=app)
+    with pytest.raises(InvalidError):
+        sb.exec("echo", 1)
+
+
+@skip_non_subprocess
 def test_sandbox_on_app_lookup(client, servicer):
     app = App.lookup("my-app", create_if_missing=True, client=client)
     sb = Sandbox.create("echo", "hi", app=app)
