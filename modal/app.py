@@ -23,6 +23,11 @@ from modal_proto import api_pb2
 from ._functions import _Function
 from ._ipython import is_notebook
 from ._object import _get_environment_name, _Object
+from ._partial_function import (
+    _find_partial_methods_for_user_cls,
+    _PartialFunction,
+    _PartialFunctionFlags,
+)
 from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import deprecation_error, deprecation_warning, renamed_parameter
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
@@ -38,12 +43,7 @@ from .gpu import GPU_T
 from .image import _Image
 from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
-from .partial_function import (
-    PartialFunction,
-    _find_partial_methods_for_user_cls,
-    _PartialFunction,
-    _PartialFunctionFlags,
-)
+from .partial_function import PartialFunction
 from .proxy import _Proxy
 from .retries import Retries
 from .running_app import RunningApp

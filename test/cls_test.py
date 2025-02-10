@@ -11,15 +11,17 @@ from typing_extensions import assert_type
 
 import modal.partial_function
 from modal import App, Cls, Function, Image, Queue, build, enter, exit, method
+from modal._partial_function import (
+    _find_partial_methods_for_user_cls,
+    _PartialFunction,
+    _PartialFunctionFlags,
+)
 from modal._serialization import deserialize, deserialize_params, serialize
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import FunctionInfo
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError, PendingDeprecationError
 from modal.partial_function import (
     PartialFunction,
-    _find_partial_methods_for_user_cls,
-    _PartialFunction,
-    _PartialFunctionFlags,
     asgi_app,
     web_endpoint,
 )
@@ -1075,3 +1077,7 @@ def test_using_method_on_uninstantiated_cls(recwarn, disable_auto_mount):
     warning_string = str(recwarn[0].message)
     assert "instantiate classes before using methods" in warning_string
     assert "C().method instead of C.method" in warning_string
+
+
+def test_method_on_cls_access_warns():
+    print(Foo.bar)
