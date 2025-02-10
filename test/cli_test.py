@@ -141,8 +141,6 @@ file_with_entrypoint = Path("app_run_tests") / "local_entrypoint.py"
         ([f"{app_file}::app"], 0, ""),
         ([f"{app_file}::foo"], 0, ""),
         ([f"{app_file}::bar"], 1, ""),
-        ([f"{app_module}::foo"], 0, "-m"),  # module mode without -m - warn
-        (["-m", f"{app_module}::foo"], 0, ""),  # module with -m
         ([f"{file_with_entrypoint}"], 0, ""),
         ([f"{file_with_entrypoint}::main"], 0, ""),
         ([f"{file_with_entrypoint}::app.main"], 0, ""),
@@ -156,6 +154,17 @@ def test_run(servicer, set_env_client, supports_dir, monkeypatch, run_command, e
         assert re.search(expected_output, res.stdout) or re.search(
             expected_output, res.stderr
         ), "output does not match expected string"
+
+
+def test_run_warns_without_module_flag(
+    servicer, set_env_client, supports_dir, recwarn, monkeypatch, disable_auto_mount
+):
+    monkeypatch.chdir(supports_dir)
+    _run(["run", "-m", f"{app_module}::foo"])
+    assert not len(recwarn)
+
+    with pytest.warns(match=" -m "):
+        _run(["run", f"{app_module}::foo"])
 
 
 def test_run_stub(servicer, set_env_client, test_dir):
@@ -1215,7 +1224,7 @@ def test_run_auto_infer_prefer_target_module(servicer, supports_dir, set_env_cli
 
 
 @pytest.mark.parametrize("func", ["va_entrypoint", "va_function", "VaClass.va_method"])
-def test_cli_run_variadic_args(servicer, set_env_client, test_dir, func):
+def test_cli_run_variadic_args(servicer, set_env_client, test_dir, func, disable_auto_mount):
     app_file = test_dir / "supports" / "app_run_tests" / "variadic_args.py"
 
     @servicer.function_body
