@@ -494,6 +494,24 @@ def test_failure(servicer, capsys):
 
 
 @skip_github_non_linux
+def test_raises_asyncio_cancellederror(servicer, capsys):
+    ret = _run_container(servicer, "test.supports.functions", "raises_asyncio_cancellederror")
+    exc = _unwrap_exception(ret)
+    assert isinstance(exc, asyncio.CancelledError)
+    assert repr(exc) == "CancelledError()"
+    assert "raise asyncio.CancelledError()" in capsys.readouterr().err  # traceback
+
+
+@skip_github_non_linux
+def test_raises_asyncio_cancellederror_async(servicer, capsys):
+    ret = _run_container(servicer, "test.supports.functions", "raises_asyncio_cancellederror_async")
+    exc = _unwrap_exception(ret)
+    assert isinstance(exc, asyncio.CancelledError)
+    assert repr(exc) == "CancelledError()"
+    assert "raise asyncio.CancelledError()" in capsys.readouterr().err  # traceback
+
+
+@skip_github_non_linux
 def test_raises_base_exception(servicer, capsys):
     ret = _run_container(servicer, "test.supports.functions", "raises_sysexit")
     exc = _unwrap_exception(ret)

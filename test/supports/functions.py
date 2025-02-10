@@ -72,6 +72,16 @@ def raises(x):
 
 
 @app.function()
+def raises_asyncio_cancellederror(x):
+    raise asyncio.CancelledError()
+
+
+@app.function()
+async def raises_asyncio_cancellederror_async(x):
+    raise asyncio.CancelledError()
+
+
+@app.function()
 def raises_sysexit(x):
     raise SystemExit(1)
 
