@@ -460,7 +460,7 @@ def serve(
         app.set_description(_get_clean_app_description(app_ref))
 
     with enable_output():
-        with serve_app(app, app_ref, environment_name=env):
+        with serve_app(app, app_ref, is_module=is_module, environment_name=env):
             if timeout is None:
                 timeout = config["serve_timeout"]
             if timeout is None:
