@@ -738,32 +738,22 @@ class _ContainerIOManager:
             # 2. GeneratorExit - raised if this (async) generator is garbage collected while waiting
             #    for the yield. Typically on event loop shutdown
             raise
-        except BaseException as exc:
-            # InputCancellation and asyncio.CancelledError are raised when an input is cancelled.
-            # However, they can _also_ be raised by user code, even if the input wasn't cancelled.
-            # We need to check that the server actually requested that this input be cancelled
-            # before proceeding with the cancellation.
-            server_requested_cancellation = io_context.is_cancelled
-            should_cancel_input = (
-                isinstance(exc, (InputCancellation, asyncio.CancelledError)) and server_requested_cancellation
+        except (InputCancellation, asyncio.CancelledError):
+            # Create terminated outputs for these inputs to signal that the cancellations have been completed.
+            results = [
+                api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
+                for _ in io_context.input_ids
+            ]
+            await self._push_outputs(
+                io_context=io_context,
+                started_at=started_at,
+                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                results=results,
             )
-
-            if should_cancel_input:
-                # Create terminated outputs for these inputs to signal that the cancellations have been completed.
-                results = [
-                    api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
-                    for _ in io_context.input_ids
-                ]
-                await self._push_outputs(
-                    io_context=io_context,
-                    started_at=started_at,
-                    data_format=api_pb2.DATA_FORMAT_PICKLE,
-                    results=results,
-                )
-                self.exit_context(started_at, io_context.input_ids)
-                logger.warning(f"Successfully canceled input {io_context.input_ids}")
-                return
-
+            self.exit_context(started_at, io_context.input_ids)
+            logger.warning(f"Successfully canceled input {io_context.input_ids}")
+            return
+        except BaseException as exc:
             if isinstance(exc, ImportError):
                 # Catches errors raised by imports from within function body
                 check_fastapi_pydantic_compatibility(exc)
