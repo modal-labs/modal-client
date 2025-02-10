@@ -86,6 +86,7 @@ from .secret import _Secret
 from .volume import _Volume
 
 if TYPE_CHECKING:
+    import modal._partial_function
     import modal.app
     import modal.cls
     import modal.partial_function
@@ -405,7 +406,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self,
         user_cls,
         method_name: str,
-        partial_function: "modal.partial_function._PartialFunction",
+        partial_function: "modal._partial_function._PartialFunction",
     ):
         """mdmd:hidden
 
@@ -480,7 +481,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     ) -> "_Function":
         """mdmd:hidden"""
         # Needed to avoid circular imports
-        from .partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
+        from ._partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 
         tag = info.get_tag()
 
