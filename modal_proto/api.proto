@@ -1744,9 +1744,6 @@ message Image {
   repeated string secret_ids = 12;
   // Part of Image definition, because presence of GPU drivers
   // affects the image that's built.
-  // Note: field 13 is getting replaced field 16. The client now sends both fields,
-  // but the server still only reads field 13.
-  bool gpu = 13;
   string context_mount_id = 15;
   GPUConfig gpu_config = 16;
   ImageRegistryConfig image_registry_config = 17;
