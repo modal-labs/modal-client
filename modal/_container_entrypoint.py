@@ -323,13 +323,13 @@ def call_function(
     else:
         for io_context in container_io_manager.run_inputs_outputs(finalized_functions, batch_max_size, batch_wait_ms):
             # This goes to a registered signal handler for sync Modal functions, or to the
-            # `SignalHandlingEventLoop` for async functions.
+            # `UserCodeEventLoop` for async functions.
             #
             # We only send this signal on functions that do not have concurrent inputs enabled.
             # This allows us to do fine-grained input cancellation. On sync functions, the
             # SIGUSR1 signal should interrupt the main thread where user code is running,
             # raising an InputCancellation() exception. On async functions, the signal should
-            # reach a handler in SignalHandlingEventLoop, which cancels the task.
+            # reach a handler in UserCodeEventLoop, which cancels the task.
             io_context.set_cancel_callback(lambda: os.kill(os.getpid(), signal.SIGUSR1))
 
             if io_context.finalized_function.is_async:
