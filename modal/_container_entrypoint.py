@@ -324,7 +324,7 @@ def call_function(
 
             user_code_event_loop.run(
                 run_concurrent_inputs(),
-                # on_sigint=lambda: container_io_manager.mark_all_inputs_as_cancelled(),
+                on_sigint=lambda: container_io_manager.mark_all_inputs_as_cancelled(),
             )
     else:
         for io_context in container_io_manager.run_inputs_outputs(finalized_functions, batch_max_size, batch_wait_ms):
