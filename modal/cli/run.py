@@ -325,9 +325,9 @@ class RunGroup(click.Group):
         ctx.ensure_object(dict)
         ctx.obj["env"] = ensure_env(ctx.params["env"])
 
-        import_ref = parse_import_ref(func_ref)
+        import_ref = parse_import_ref(func_ref, is_module=ctx.params["module"])
         runnable, all_usable_commands = import_and_filter(
-            import_ref, accept_local_entrypoint=True, accept_webhook=False
+            import_ref, base_cmd="modal run", accept_local_entrypoint=True, accept_webhook=False
         )
         if not runnable:
             help_header = (
@@ -443,6 +443,7 @@ def serve(
     app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
     timeout: Optional[float] = None,
     env: str = ENV_OPTION,
+    is_module: bool = typer.Option(False, "--module", "-m", help="Use a Python module path instead of a file path"),
 ):
     """Run a web endpoint(s) associated with a Modal app and hot-reload code.
 
@@ -454,7 +455,7 @@ def serve(
     """
     env = ensure_env(env)
 
-    app = import_app(app_ref)
+    app = import_app(app_ref, is_module, base_cmd="modal serve")
     if app.description is None:
         app.set_description(_get_clean_app_description(app_ref))
 
@@ -574,7 +575,7 @@ def shell(
 
         import_ref = parse_import_ref(container_or_function)
         runnable, all_usable_commands = import_and_filter(
-            import_ref, accept_local_entrypoint=False, accept_webhook=True
+            import_ref, base_cmd="modal shell", accept_local_entrypoint=False, accept_webhook=True
         )
         if not runnable:
             help_header = (

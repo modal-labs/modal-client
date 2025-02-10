@@ -15,7 +15,7 @@ from modal import App, Image, Queue, Secret, Volume, forward
 # Passed by `modal launch` locally via CLI, plumbed to remote runner through secrets.
 args: dict[str, Any] = json.loads(os.environ.get("MODAL_LAUNCH_ARGS", "{}"))
 
-app = App()
+app = App(include_source=True)
 
 image = Image.from_registry(args.get("image"), add_python=args.get("add_python")).pip_install("jupyterlab")
 

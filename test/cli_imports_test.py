@@ -14,7 +14,7 @@ from modal.cli.import_refs import (
     list_cli_commands,
     parse_import_ref,
 )
-from modal.exception import InvalidError
+from modal.exception import InvalidError, PendingDeprecationError
 from modal.functions import Function
 from modal.partial_function import method, web_server
 
@@ -114,7 +114,7 @@ def test_import_and_filter(dir_structure, ref, mock_dir, returned_runnable_type,
     with mock_dir(dir_structure):
         import_ref = parse_import_ref(ref)
         runnable, all_usable_commands = import_and_filter(
-            import_ref, accept_local_entrypoint=True, accept_webhook=False
+            import_ref, base_cmd="dummy", accept_local_entrypoint=True, accept_webhook=False
         )
         print(all_usable_commands)
         assert isinstance(runnable, returned_runnable_type)
@@ -124,7 +124,10 @@ def test_import_and_filter(dir_structure, ref, mock_dir, returned_runnable_type,
 def test_import_and_filter_2(monkeypatch, supports_on_path):
     def import_runnable(name_prefix, accept_local_entrypoint=False, accept_webhook=False):
         return import_and_filter(
-            ImportRef("import_and_filter_source", name_prefix), accept_local_entrypoint, accept_webhook
+            ImportRef("import_and_filter_source", name_prefix),
+            base_cmd="",
+            accept_local_entrypoint=accept_local_entrypoint,
+            accept_webhook=accept_webhook,
         )
 
     runnable, all_usable_commands = import_runnable(
@@ -163,23 +166,25 @@ def test_import_package_and_module_names(monkeypatch, supports_dir):
     # is __main__ when using `python` but in the Modal runtime it's the name of the
     # file minus the ".py", since Modal has its own __main__
     monkeypatch.chdir(supports_dir)
-    mod1 = import_file_or_module("assert_package")
+    mod1 = import_file_or_module(ImportRef("assert_package", is_module=True))
     assert mod1.__package__ == ""
     assert mod1.__name__ == "assert_package"
 
     monkeypatch.chdir(supports_dir.parent)
-    mod2 = import_file_or_module("test.supports.assert_package")
+    with pytest.warns(PendingDeprecationError, match=r"\s-m\s"):
+        mod2 = import_file_or_module(ImportRef("test.supports.assert_package", is_module=False))  # TODO: is_module=True
+
     assert mod2.__package__ == "test.supports"
     assert mod2.__name__ == "test.supports.assert_package"
 
-    mod3 = import_file_or_module("supports/assert_package.py")
+    mod3 = import_file_or_module(ImportRef("supports/assert_package.py", is_module=False))
     assert mod3.__package__ == ""
     assert mod3.__name__ == "assert_package"
 
 
 def test_invalid_source_file_exception():
     with pytest.raises(InvalidError, match="Invalid Modal source filename: 'foo.bar.py'"):
-        import_file_or_module("path/to/foo.bar.py")
+        import_file_or_module(ImportRef("path/to/foo.bar.py", is_module=False))
 
 
 def test_list_cli_commands():
