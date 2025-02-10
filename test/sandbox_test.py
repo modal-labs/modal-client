@@ -319,7 +319,7 @@ def test_sandbox_create_and_exec_with_bad_args(app, servicer):
 
     sb = Sandbox.create("sleep", "infinity", app=app)
     with pytest.raises(InvalidError):
-        sb.exec("echo", 1)
+        sb.exec("echo", 1)  # type: ignore
 
 
 @skip_non_subprocess
