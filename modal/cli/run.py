@@ -230,8 +230,7 @@ def _get_click_command_for_cls(app: App, method_ref: MethodReference):
             method_name = method_names[0]
         else:
             raise click.UsageError(
-                f"Please specify a specific method of {cls._get_name()} to run, "
-                f"e.g. `modal run foo.py::MyClass.bar`"  # noqa: E501
+                f"Please specify a specific method of {cls._get_name()} to run, e.g. `modal run foo.py::MyClass.bar`"  # noqa: E501
             )
 
     partial_function = partial_functions[method_name]
@@ -493,7 +492,7 @@ def shell(
     cloud: Optional[str] = typer.Option(
         default=None,
         help=(
-            "Cloud provider to run the shell on. " "Possible values are `aws`, `gcp`, `oci`, `auto` (if not using REF)."
+            "Cloud provider to run the shell on. Possible values are `aws`, `gcp`, `oci`, `auto` (if not using REF)."
         ),
     ),
     region: Optional[str] = typer.Option(

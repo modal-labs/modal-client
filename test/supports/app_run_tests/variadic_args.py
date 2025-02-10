@@ -3,24 +3,26 @@ from modal import App, method
 
 app = App()
 
+
 @app.cls()
 class VaClass:
     @method()
     def va_method(self, *args):
-        pass # Set via @servicer.function_body
+        pass  # Set via @servicer.function_body
 
     @method()
     def va_method_invalid(self, x: int, *args):
-        pass # Set via @servicer.function_body
+        pass  # Set via @servicer.function_body
+
 
 @app.function()
 def va_function(*args):
-    pass # Set via @servicer.function_body
+    pass  # Set via @servicer.function_body
 
 
 @app.function()
 def va_function_invalid(x: int, *args):
-    pass # Set via @servicer.function_body
+    pass  # Set via @servicer.function_body
 
 
 @app.local_entrypoint()

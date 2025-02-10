@@ -85,7 +85,7 @@ def some_function():
 """
     plural_s = "s" if len(env_dict) > 1 else ""
     console.print(
-        f"""Created a new secret '{secret_name}' with the key{plural_s} {', '.join(repr(k) for k in env_dict.keys())}"""
+        f"""Created a new secret '{secret_name}' with the key{plural_s} {", ".join(repr(k) for k in env_dict.keys())}"""
     )
     console.print("\nUse it in to your Modal app using:\n")
     console.print(Syntax(example_code, "python"))

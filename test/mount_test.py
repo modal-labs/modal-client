@@ -4,11 +4,11 @@ import os
 import platform
 import pytest
 from pathlib import Path, PurePosixPath
-from test.helpers import deploy_app_externally
 
 from modal import App, FilePatternMatcher
 from modal._utils.blob_utils import LARGE_FILE_LIMIT
 from modal.mount import Mount, module_mount_condition, module_mount_ignore_condition
+from test.helpers import deploy_app_externally
 
 
 @pytest.mark.asyncio

@@ -66,7 +66,7 @@ def main():
             title = "Error"
             content = str(exc)
             if notes := getattr(exc, "__notes__", []):
-                content = f"{content}\n\nNote: {' ' .join(notes)}"
+                content = f"{content}\n\nNote: {' '.join(notes)}"
 
         console = Console(stderr=True)
         panel = Panel(Text(content), title=title, title_align="left", border_style="red")
