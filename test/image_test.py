@@ -992,19 +992,22 @@ def test_image_gpu(builder_version, servicer, client):
     app.function()(dummy)
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
-        assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_UNSPECIFIED
+        assert not layers[0].gpu
+        assert not layers[0].gpu_config.gpu_type
 
     app = App(image=Image.debian_slim().run_commands("echo 1", gpu="any"))
     app.function()(dummy)
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
-        assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_ANY
+        assert layers[0].gpu
+        assert layers[0].gpu_config.gpu_type == "ANY"
 
     app = App(image=Image.debian_slim().run_commands("echo 2", gpu=gpu.A10G()))
     app.function()(dummy)
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
-        assert layers[0].gpu_config.type == api_pb2.GPU_TYPE_A10G
+        assert layers[0].gpu
+        assert layers[0].gpu_config.gpu_type == "A10G"
 
 
 def test_image_force_build(builder_version, servicer, client):
