@@ -183,6 +183,16 @@ You can see a list of Modal GPU options in the
 def my_gpu_function():
     ... # This will have 4 A100-80GB with each container
 ```
+
+**Deprecation notes**
+
+An older deprecated way to configure GPU is also still supported,
+but will be removed in future versions of Modal. Examples:
+
+- `gpu=modal.gpu.H100()` will attach 1 H100 GPU to each container
+- `gpu=modal.gpu.T4(count=4)` will attach 4 T4 GPUs to each container
+- `gpu=modal.gpu.A100()` will attach 1 A100-40GB GPUs to each container
+- `gpu=modal.gpu.A100(size="80GB")` will attach 1 A100-80GB GPUs to each container
 """
 
 GPU_T = Union[None, str, _GPUConfig]
