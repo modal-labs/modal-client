@@ -185,8 +185,7 @@ def my_gpu_function():
 ```
 """
 
-# bool will be deprecated in future versions.
-GPU_T = Union[None, bool, str, _GPUConfig]
+GPU_T = Union[None, str, _GPUConfig]
 
 
 def parse_gpu_config(value: GPU_T) -> api_pb2.GPUConfig:
@@ -205,7 +204,9 @@ def parse_gpu_config(value: GPU_T) -> api_pb2.GPUConfig:
             gpu_type=gpu_type,
             count=count,
         )
-    elif value is None or value is False:
+    elif value is None:
         return api_pb2.GPUConfig()
     else:
-        raise InvalidError(f"Invalid GPU config: {value}. Value must be a string, a `GPUConfig` object, or `None`.")
+        raise InvalidError(
+            f"Invalid GPU config: {value}. Value must be a string or `None` (or a deprecated `_GPUConfig` object)."
+        )
