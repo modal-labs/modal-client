@@ -2123,19 +2123,15 @@ def test_sigint_termination_input(servicer, tmp_path, method):
     stdout, stderr = container_process.communicate(timeout=5)
     stop_duration = time.monotonic() - signal_time
 
-    if method == "delay":
-        assert len(servicer.container_outputs) == 0
-    else:
-        # We end up returning a terminated output for async task cancels, which is ignored by the worker anyway.
-        items = _flatten_outputs(servicer.container_outputs)
-        assert len(items) == 1
-        assert items[0].result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
+    # Note that when SIGINT is sent, all outputs are ignored by the worker.
+    # We are OK printing the CancelledError traceback to stderr for async inputs
+    # since this is the "ungraceful" termination path where their code failed
+    # to stop in time.
 
     assert (
         container_process.returncode == 0
     )  # container should catch and indicate successful termination by exiting cleanly when possible
     assert f"[events:enter_sync,enter_async,{method},exit_sync,exit_async]" in stdout.decode()
-    assert "Traceback" not in stderr.decode()
     assert stop_duration < 2.0  # if this would be ~4.5s, then the input isn't getting terminated
     assert servicer.task_result is None
 

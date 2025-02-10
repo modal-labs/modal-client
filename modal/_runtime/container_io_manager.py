@@ -120,13 +120,9 @@ class IOContext:
     def set_cancel_callback(self, cb: Callable[[], None]):
         self._cancel_callback = cb
 
-    def cancel(self, skip_callback: bool = False):
+    def cancel(self):
         # Ensure we only issue the cancellation once.
         if self._cancel_issued:
-            return
-
-        if skip_callback:
-            self._cancel_issued = True
             return
 
         if self._cancel_callback:
@@ -981,10 +977,6 @@ class _ContainerIOManager:
         except Exception as e:
             logger.error("Failed to start PTY shell.")
             raise e
-
-    def mark_all_inputs_as_cancelled(self):
-        for io_context in self.current_inputs.values():
-            io_context.cancel(skip_callback=True)
 
     @property
     def target_concurrency(self) -> int:
