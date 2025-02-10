@@ -978,8 +978,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         Binds a class-function to a specific instance of (init params, options) or a new workspace
         """
 
-        # In some cases, reuse the base function, i.e. not create new clones of each method or the "service function"
-        can_use_parent = len(args) + len(kwargs) == 0 and options is None
         parent = self
 
         async def _load(param_bound_func: _Function, resolver: Resolver, existing_object_id: Optional[str]):
@@ -999,11 +997,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
             assert parent._client and parent._client.stub
 
-            if can_use_parent:
-                # We can end up here if parent wasn't hydrated when class was instantiated, but has been since.
-                param_bound_func._hydrate_from_other(parent)
-                return
-
             if (
                 parent._class_parameter_info
                 and parent._class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO
@@ -1015,8 +1008,16 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         "Use (<parameter_name>=value) keyword arguments when constructing classes instead."
                     )
                 serialized_params = serialize_proto_params(kwargs, parent._class_parameter_info.schema)
+                can_use_parent = len(parent._class_parameter_info.schema) == 0
             else:
+                can_use_parent = len(args) + len(kwargs) == 0 and options is None
                 serialized_params = serialize((args, kwargs))
+
+            if can_use_parent:
+                # We can end up here if parent wasn't hydrated when class was instantiated, but has been since.
+                param_bound_func._hydrate_from_other(parent)
+                return
+
             environment_name = _get_environment_name(None, resolver)
             assert parent is not None and parent.is_hydrated
             req = api_pb2.FunctionBindParamsRequest(
@@ -1031,10 +1032,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             param_bound_func._hydrate(response.bound_function_id, parent._client, response.handle_metadata)
 
         fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
-
-        if can_use_parent and parent.is_hydrated:
-            # skip the resolver altogether:
-            fun._hydrate_from_other(parent)
 
         fun._info = self._info
         fun._obj = obj

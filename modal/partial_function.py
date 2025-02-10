@@ -26,13 +26,13 @@ MAX_BATCH_WAIT_MS = 10 * 60 * 1000  # 10 minutes
 
 
 class _PartialFunctionFlags(enum.IntFlag):
-    FUNCTION: int = 1
-    BUILD: int = 2
-    ENTER_PRE_SNAPSHOT: int = 4
-    ENTER_POST_SNAPSHOT: int = 8
-    EXIT: int = 16
-    BATCHED: int = 32
-    CLUSTERED: int = 64  # Experimental: Clustered functions
+    FUNCTION = 1
+    BUILD = 2
+    ENTER_PRE_SNAPSHOT = 4
+    ENTER_POST_SNAPSHOT = 8
+    EXIT = 16
+    BATCHED = 32
+    CLUSTERED = 64  # Experimental: Clustered functions
 
     @staticmethod
     def all() -> int:
