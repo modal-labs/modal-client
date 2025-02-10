@@ -644,8 +644,8 @@ def test_image_run_function_with_cloud_selection(servicer, client):
 
     assert len(servicer.app_functions) == 2
     func_def = next(iter(servicer.app_functions.values()))
-    assert func_def.cloud_provider == api_pb2.CLOUD_PROVIDER_OCI
-    assert func_def.cloud_provider_str == "OCI"
+    assert func_def.cloud_provider == api_pb2.CLOUD_PROVIDER_UNSPECIFIED  # No longer set
+    assert func_def.cloud_provider_str == "oci"
 
 
 def test_poetry(builder_version, servicer, client):

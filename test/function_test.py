@@ -782,14 +782,14 @@ def test_serialize_deserialize_function_handle(servicer, client):
 def test_default_cloud_provider(client, servicer, monkeypatch):
     app = App()
 
-    monkeypatch.setenv("MODAL_DEFAULT_CLOUD", "oci")
+    monkeypatch.setenv("MODAL_DEFAULT_CLOUD", "xyz")
     app.function()(dummy)
     with app.run(client=client):
         object_id: str = app.registered_functions["dummy"].object_id
         f = servicer.app_functions[object_id]
 
-    assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_OCI
-    assert f.cloud_provider_str == "OCI"
+    assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_UNSPECIFIED  # No longer sent
+    assert f.cloud_provider_str == "xyz"
 
 
 def test_not_hydrated():
