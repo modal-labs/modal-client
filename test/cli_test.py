@@ -1168,7 +1168,7 @@ def test_container_exec(servicer, set_env_client, mock_shell_pty, app):
     sb.terminate()
 
 
-def test_can_run_all_listed_functions_with_includes(supports_on_path, monkeypatch, set_env_client):
+def test_can_run_all_listed_functions_with_includes(supports_on_path, monkeypatch, set_env_client, disable_auto_mount):
     monkeypatch.setenv("TERM", "dumb")  # prevents looking at ansi escape sequences
 
     res = _run(["run", "multifile_project.main"], expected_exit_code=1)
@@ -1217,7 +1217,7 @@ def test_run_file_with_global_lookups(servicer, set_env_client, supports_dir):
     assert len(ctx.get_requests("FunctionGet")) == 0
 
 
-def test_run_auto_infer_prefer_target_module(servicer, supports_dir, set_env_client, monkeypatch):
+def test_run_auto_infer_prefer_target_module(servicer, supports_dir, set_env_client, monkeypatch, disable_auto_mount):
     monkeypatch.syspath_prepend(supports_dir / "app_run_tests")
     res = _run(["run", "multifile.util"])
     assert "ran util\nmain func" in res.stdout
