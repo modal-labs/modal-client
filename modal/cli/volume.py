@@ -297,8 +297,7 @@ async def rename(
 ):
     if not yes:
         typer.confirm(
-            f"Are you sure you want rename the modal.Volume '{old_name}'?"
-            " This may break any Apps currently using it.",
+            f"Are you sure you want rename the modal.Volume '{old_name}'? This may break any Apps currently using it.",
             default=False,
             abort=True,
         )

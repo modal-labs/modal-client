@@ -67,7 +67,7 @@ def protoc(ctx):
 
 @task
 def lint(ctx, fix=False):
-    ctx.run(f"ruff . {'--fix' if fix else ''}", pty=True)
+    ctx.run(f"ruff check . {'--fix' if fix else ''}", pty=True)
 
 
 @task
@@ -200,9 +200,7 @@ def check_copyright(ctx, fix=False):
         for fn in invalid_files:
             print("Missing copyright:", fn)
 
-        raise Exception(
-            f"{len(invalid_files)} are missing copyright headers!" " Please run `inv check-copyright --fix`"
-        )
+        raise Exception(f"{len(invalid_files)} are missing copyright headers! Please run `inv check-copyright --fix`")
 
 
 @task

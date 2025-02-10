@@ -337,8 +337,7 @@ def test_function_named_app():
     with pytest.warns(match="app"):
 
         @app.function(serialized=True)
-        def app():
-            ...
+        def app(): ...
 
 
 def test_stub():

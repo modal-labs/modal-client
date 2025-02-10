@@ -142,8 +142,7 @@ class Resolver:
                     and obj.object_id != existing_object_id
                 ):
                     raise Exception(
-                        f"Tried creating an object using existing id {existing_object_id}"
-                        f" but it has id {obj.object_id}"
+                        f"Tried creating an object using existing id {existing_object_id} but it has id {obj.object_id}"
                     )
 
                 return obj

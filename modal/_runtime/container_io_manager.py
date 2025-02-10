@@ -896,7 +896,7 @@ class _ContainerIOManager:
                 gpu_process_state = gpu_memory_snapshot.get_state()
                 if gpu_process_state != gpu_memory_snapshot.CudaCheckpointState.RUNNING:
                     raise ValueError(
-                        "Cannot snapshot GPU state if it isn't running. " f"Current GPU state: {gpu_process_state}"
+                        f"Cannot snapshot GPU state if it isn't running. Current GPU state: {gpu_process_state}"
                     )
 
                 gpu_memory_snapshot.toggle()

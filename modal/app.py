@@ -102,21 +102,19 @@ class _FunctionDecoratorType:
     @overload
     def __call__(
         self, func: PartialFunction[P, ReturnType, OriginalReturnType]
-    ) -> Function[P, ReturnType, OriginalReturnType]:
-        ...  # already wrapped by a modal decorator, e.g. web_endpoint
+    ) -> Function[P, ReturnType, OriginalReturnType]: ...  # already wrapped by a modal decorator, e.g. web_endpoint
 
     @overload
     def __call__(
         self, func: Callable[P, Coroutine[Any, Any, ReturnType]]
-    ) -> Function[P, ReturnType, Coroutine[Any, Any, ReturnType]]:
-        ...  # decorated async function
+    ) -> Function[P, ReturnType, Coroutine[Any, Any, ReturnType]]: ...  # decorated async function
 
     @overload
-    def __call__(self, func: Callable[P, ReturnType]) -> Function[P, ReturnType, ReturnType]:
-        ...  # decorated non-async function
+    def __call__(
+        self, func: Callable[P, ReturnType]
+    ) -> Function[P, ReturnType, ReturnType]: ...  # decorated non-async function
 
-    def __call__(self, func):
-        ...
+    def __call__(self, func): ...
 
 
 class _App:

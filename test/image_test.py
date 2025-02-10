@@ -152,7 +152,7 @@ def test_image_base(builder_version, servicer, client, test_dir):
                     assert "pip install --no-cache --no-deps -r /modal_requirements.txt" in commands
                 else:
                     assert (
-                        "uv pip install --system --compile-bytecode" " --no-cache --no-deps -r /modal_requirements.txt"
+                        "uv pip install --system --compile-bytecode --no-cache --no-deps -r /modal_requirements.txt"
                     ) in commands
 
 

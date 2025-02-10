@@ -18,7 +18,7 @@ pytest-markdown-docs==0.7.1
 pytest-timeout~=2.1.0
 python-dotenv~=1.0.0;python_version>='3.8'
 requests~=2.31.0
-ruff==0.2.1
+ruff==0.9.6
 types-croniter~=1.0.8
 types-python-dateutil~=2.8.10
 types-requests~=2.31.0
