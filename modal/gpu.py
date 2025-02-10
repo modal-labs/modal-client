@@ -218,5 +218,5 @@ def parse_gpu_config(value: GPU_T) -> api_pb2.GPUConfig:
         return api_pb2.GPUConfig()
     else:
         raise InvalidError(
-            f"Invalid GPU config: {value}. Value must be a string or `None` (or a deprecated `_GPUConfig` object)."
+            f"Invalid GPU config: {value}. Value must be a string or `None` (or a deprecated `modal.gpu` object)"
         )
