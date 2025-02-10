@@ -85,11 +85,6 @@ class IOContext:
         self._is_batched = is_batched
         self._client = client
 
-    @property
-    def is_cancelled(self) -> bool:
-        """Returns whether this input has been cancelled."""
-        return self._cancel_issued
-
     @classmethod
     async def create(
         cls,
