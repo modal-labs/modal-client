@@ -113,12 +113,20 @@ class IOContext:
         finalized_function = finalized_functions[method_name]
         return cls(input_ids, function_call_ids, finalized_function, function_inputs, is_batched, client)
 
+    @property
+    def is_cancelled(self) -> bool:
+        return self._cancel_issued
+
     def set_cancel_callback(self, cb: Callable[[], None]):
         self._cancel_callback = cb
 
-    def cancel(self):
+    def cancel(self, skip_callback: bool = False):
         # Ensure we only issue the cancellation once.
         if self._cancel_issued:
+            return
+
+        if skip_callback:
+            self._cancel_issued = True
             return
 
         if self._cancel_callback:
@@ -733,22 +741,32 @@ class _ContainerIOManager:
             # 2. GeneratorExit - raised if this (async) generator is garbage collected while waiting
             #    for the yield. Typically on event loop shutdown
             raise
-        except (InputCancellation, asyncio.CancelledError):
-            # Create terminated outputs for these inputs to signal that the cancellations have been completed.
-            results = [
-                api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
-                for _ in io_context.input_ids
-            ]
-            await self._push_outputs(
-                io_context=io_context,
-                started_at=started_at,
-                data_format=api_pb2.DATA_FORMAT_PICKLE,
-                results=results,
-            )
-            self.exit_context(started_at, io_context.input_ids)
-            logger.warning(f"Successfully canceled input {io_context.input_ids}")
-            return
         except BaseException as exc:
+            # InputCancellation and asyncio.CancelledError are raised when an input is cancelled.
+            # However, they can _also_ be raised by user code, even if the input wasn't cancelled.
+            # We need to check that the server actually requested that this input be cancelled
+            # before proceeding with the cancellation.
+            server_requested_cancellation = io_context.is_cancelled
+            should_cancel_input = (
+                isinstance(exc, (InputCancellation, asyncio.CancelledError)) and server_requested_cancellation
+            )
+
+            if should_cancel_input:
+                # Create terminated outputs for these inputs to signal that the cancellations have been completed.
+                results = [
+                    api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED)
+                    for _ in io_context.input_ids
+                ]
+                await self._push_outputs(
+                    io_context=io_context,
+                    started_at=started_at,
+                    data_format=api_pb2.DATA_FORMAT_PICKLE,
+                    results=results,
+                )
+                self.exit_context(started_at, io_context.input_ids)
+                logger.warning(f"Successfully canceled input {io_context.input_ids}")
+                return
+
             if isinstance(exc, ImportError):
                 # Catches errors raised by imports from within function body
                 check_fastapi_pydantic_compatibility(exc)
@@ -963,6 +981,10 @@ class _ContainerIOManager:
         except Exception as e:
             logger.error("Failed to start PTY shell.")
             raise e
+
+    def mark_all_inputs_as_cancelled(self):
+        for io_context in self.current_inputs.values():
+            io_context.cancel(skip_callback=True)
 
     @property
     def target_concurrency(self) -> int:

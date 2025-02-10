@@ -135,7 +135,7 @@ class UserCodeEventLoop:
         task.add_done_callback(self.tasks.discard)
         return task
 
-    def run(self, coro):
+    def run(self, coro, on_sigint: Optional[Callable[[], None]] = None):
         task = asyncio.ensure_future(coro, loop=self.loop)
         self._sigints = 0
 
@@ -143,6 +143,9 @@ class UserCodeEventLoop:
             # cancel the task in order to have run_until_complete return soon and
             # prevent a bunch of unwanted tracebacks when shutting down the
             # event loop.
+
+            if on_sigint is not None:
+                on_sigint()
 
             # this basically replicates the sigint handler installed by asyncio.run()
             self._sigints += 1
@@ -319,7 +322,10 @@ def call_function(
                             thread_pool.submit(run_input_sync, io_context)
                             io_context.set_cancel_callback(cancel_callback_sync)
 
-            user_code_event_loop.run(run_concurrent_inputs())
+            user_code_event_loop.run(
+                run_concurrent_inputs(),
+                # on_sigint=lambda: container_io_manager.mark_all_inputs_as_cancelled(),
+            )
     else:
         for io_context in container_io_manager.run_inputs_outputs(finalized_functions, batch_max_size, batch_wait_ms):
             # This goes to a registered signal handler for sync Modal functions, or to the
@@ -333,7 +339,10 @@ def call_function(
             io_context.set_cancel_callback(lambda: os.kill(os.getpid(), signal.SIGUSR1))
 
             if io_context.finalized_function.is_async:
-                user_code_event_loop.run(run_input_async(io_context))
+                user_code_event_loop.run(
+                    run_input_async(io_context),
+                    on_sigint=lambda: container_io_manager.mark_all_inputs_as_cancelled(),
+                )
             else:
                 # Set up a custom signal handler for `SIGUSR1`, which gets translated to an InputCancellation
                 # during function execution. This is sent to cancel inputs from the user
