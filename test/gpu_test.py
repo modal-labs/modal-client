@@ -87,9 +87,15 @@ def test_cloud_provider_selection(client, servicer):
 
     assert func_def.resources.gpu_config.count == 1
 
+
+def test_invalid_cloud_provider_selection(client, servicer):
+    app = App()
+
     # Invalid enum value.
     with pytest.raises(InvalidError):
         app.function(cloud="foo")(dummy)
+        with app.run(client=client):
+            pass
 
 
 @pytest.mark.parametrize(
