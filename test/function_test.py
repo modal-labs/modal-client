@@ -795,7 +795,7 @@ def test_default_cloud_provider(client, servicer, monkeypatch):
 def test_autoscaler_settings(client, servicer):
     app = App()
 
-    kwargs = dict(
+    kwargs: dict[str, typing.Any] = dict(  # No idea why we need that type hint
         keep_warm=2,
         concurrency_limit=10,
         container_idle_timeout=60,
