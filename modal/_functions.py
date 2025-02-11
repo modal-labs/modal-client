@@ -603,6 +603,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     is_builder_function=True,
                     is_auto_snapshot=True,
                     scheduler_placement=scheduler_placement,
+                    include_source=include_source,
                 )
                 image = _Image._from_args(
                     base_images={"base": image},

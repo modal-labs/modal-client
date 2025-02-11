@@ -1,7 +1,9 @@
 # Copyright Modal Labs 2025
 from modal import App, asgi_app, method, web_endpoint
 
-app_with_one_web_function = App()
+app_with_one_web_function = App(
+    include_source=True
+)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @app_with_one_web_function.function()
@@ -10,7 +12,9 @@ def web1():
     pass
 
 
-app_with_one_function_one_web_endpoint = App()
+app_with_one_function_one_web_endpoint = App(
+    include_source=True
+)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @app_with_one_function_one_web_endpoint.function()
@@ -24,7 +28,9 @@ def web2():
     pass
 
 
-app_with_one_web_method = App()
+app_with_one_web_method = App(
+    include_source=True
+)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @app_with_one_web_method.cls()
@@ -34,7 +40,9 @@ class C1:
         pass
 
 
-app_with_one_web_method_one_method = App()
+app_with_one_web_method_one_method = App(
+    include_source=True
+)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @app_with_one_web_method_one_method.cls()
@@ -48,7 +56,9 @@ class C2:
         pass
 
 
-app_with_local_entrypoint_and_function = App()
+app_with_local_entrypoint_and_function = App(
+    include_source=True
+)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @app_with_local_entrypoint_and_function.local_entrypoint()

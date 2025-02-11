@@ -19,7 +19,7 @@ from modal.runner import deploy_app
 from modal_proto import api_pb2
 from test.helpers import deploy_app_externally
 
-app = App()
+app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 if os.environ.get("GITHUB_ACTIONS") == "true":
@@ -716,7 +716,7 @@ def test_from_id_iter_gen(client, servicer, is_generator):
         assert rehydrated_function_call.get() == "hello"
 
 
-lc_app = App()
+lc_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @lc_app.function()

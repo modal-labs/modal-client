@@ -1060,7 +1060,7 @@ def test_hydration_metadata(servicer, client):
             assert_metadata(img, dummy_metadata)
 
 
-cls_app = App()
+cls_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 VARIABLE_5 = 1
 VARIABLE_6 = 1
@@ -1448,7 +1448,7 @@ def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
     assert get_hash(img) == "78d579f243c21dcaa59e5daf97f732e2453b004bc2122de692617d4d725c6184"
 
 
-parallel_app = App()
+parallel_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @parallel_app.function(image=Image.debian_slim().run_commands("sleep 1", "echo hi"))

@@ -2168,7 +2168,7 @@ def no_rich(monkeypatch):
     yield
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def disable_auto_mount(monkeypatch):
     monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
     yield

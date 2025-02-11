@@ -2,7 +2,7 @@
 from modal import App
 from modal_proto import api_pb2
 
-app = App()
+app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @app.function(gpu=["a10g"])
