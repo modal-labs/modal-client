@@ -18,7 +18,6 @@ module = [
 ]
 ignore_errors = true
 
-
 [tool.pytest.ini_options]
 timeout = 300
 addopts = "--ignore=modal/cli/programs"

@@ -68,7 +68,7 @@ def test_run_class(client, servicer):
     assert len(servicer.precreated_functions) == 0
     assert servicer.n_functions == 0
     with app.run(client=client):
-        method_handle_object_id = Foo.bar.object_id  # method handle object id will probably go away
+        method_handle_object_id = Foo._get_class_service_function().object_id  # type: ignore
         assert isinstance(Foo, Cls)
         assert isinstance(NoParamsCls, Cls)
         class_id = Foo.object_id
@@ -334,10 +334,10 @@ def test_lookup(client, servicer):
 
     # objects are resolved
     assert cls.object_id.startswith("cs-")
-    assert cls.bar.object_id.startswith("fu-")
+    assert cls._get_class_service_function().object_id.startswith("fu-")
 
     # Check that function properties are preserved
-    assert cls.bar.is_generator is False
+    assert cls().bar.is_generator is False
 
     # Make sure we can instantiate the class
     with servicer.intercept() as ctx:
@@ -1074,4 +1074,5 @@ def test_using_method_on_uninstantiated_cls(recwarn, disable_auto_mount):
 
 
 def test_method_on_cls_access_warns():
-    print(Foo.bar)
+    with pytest.warns(match="instantiate classes before using methods"):
+        print(Foo.bar)

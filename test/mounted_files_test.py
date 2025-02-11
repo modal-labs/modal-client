@@ -195,6 +195,7 @@ def symlinked_python_installation_venv_path(tmp_path, repo_root):
 def test_mounted_files_symlinked_python_install(
     symlinked_python_installation_venv_path, supports_dir, server_url_env, token_env, servicer
 ):
+    # TODO(elias): This test fails when run from a uv-managed virtualenv
     subprocess.check_call(
         [symlinked_python_installation_venv_path / "bin" / "modal", "run", supports_dir / "imports_ast.py"]
     )
