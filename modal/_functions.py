@@ -19,7 +19,6 @@ from synchronicity.exceptions import UserCodeException
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
-from ._location import parse_cloud_provider
 from ._object import _get_environment_name, _Object, live_method, live_method_gen
 from ._pty import get_pty_info
 from ._resolver import Resolver
@@ -627,10 +626,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         if not cloud and not is_builder_function:
             cloud = config.get("default_cloud")
-        if cloud:
-            cloud_provider = parse_cloud_provider(cloud)
-        else:
-            cloud_provider = None
 
         if is_generator and webhook_config:
             if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
@@ -819,8 +814,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     task_idle_timeout_secs=container_idle_timeout or 0,
                     concurrency_limit=concurrency_limit or 0,
                     pty_info=pty_info,
-                    cloud_provider=cloud_provider,  # Deprecated at some point
-                    cloud_provider_str=cloud.upper() if cloud else "",  # Supersedes cloud_provider
+                    cloud_provider_str=cloud if cloud else "",
                     warm_pool_size=keep_warm or 0,
                     runtime=config.get("function_runtime"),
                     runtime_debug=config.get("function_runtime_debug"),

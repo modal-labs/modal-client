@@ -88,15 +88,21 @@ def test_cloud_provider_selection(client, servicer):
 
     assert len(servicer.app_functions) == 1
     func_def = next(iter(servicer.app_functions.values()))
-    assert func_def.cloud_provider == api_pb2.CLOUD_PROVIDER_GCP
-    assert func_def.cloud_provider_str == "GCP"
+    assert func_def.cloud_provider == api_pb2.CLOUD_PROVIDER_UNSPECIFIED  # No longer set
+    assert func_def.cloud_provider_str == "gcp"
 
     assert func_def.resources.gpu_config.gpu_type == "A100"
     assert func_def.resources.gpu_config.count == 1
 
+
+def test_invalid_cloud_provider_selection(client, servicer):
+    app = App()
+
     # Invalid enum value.
     with pytest.raises(InvalidError):
         app.function(cloud="foo")(dummy)
+        with app.run(client=client):
+            pass
 
 
 @pytest.mark.parametrize(
