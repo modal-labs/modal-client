@@ -50,6 +50,7 @@ from modal.mount import PYTHON_STANDALONE_VERSIONS, client_mount_name, python_st
 from modal_proto import api_grpc, api_pb2
 
 VALID_GPU_TYPES = ["ANY", "T4", "L4", "A10G", "L40S", "A100", "A100-40GB", "A100-80GB", "H100"]
+VALID_CLOUD_PROVIDERS = ["AWS", "GCP", "OCI", "AUTO", "XYZ"]
 
 
 @dataclasses.dataclass
@@ -975,6 +976,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if request.function.resources.gpu_config.count > 0:
             if request.function.resources.gpu_config.gpu_type not in VALID_GPU_TYPES:
                 raise GRPCError(Status.INVALID_ARGUMENT, "Not a valid GPU type")
+        if request.function.cloud_provider_str:
+            if request.function.cloud_provider_str.upper() not in VALID_CLOUD_PROVIDERS:
+                raise GRPCError(Status.INVALID_ARGUMENT, "Not a valid cloud provider")
+
         if request.existing_function_id:
             function_id = request.existing_function_id
         else:
