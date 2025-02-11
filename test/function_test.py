@@ -792,6 +792,25 @@ def test_default_cloud_provider(client, servicer, monkeypatch):
     assert f.cloud_provider_str == "xyz"
 
 
+def test_autoscaler_settings(client, servicer):
+    app = App()
+
+    kwargs: dict[str, typing.Any] = dict(  # No idea why we need that type hint
+        keep_warm=2,
+        concurrency_limit=10,
+        container_idle_timeout=60,
+    )
+    f = app.function(**kwargs)(dummy)
+
+    with app.run(client=client):
+        defn = servicer.app_functions[f.object_id]
+        # Test both backwards and forwards compatibility
+        settings = defn.autoscaler_settings
+        assert settings.min_containers == defn.warm_pool_size == kwargs["keep_warm"]
+        assert settings.max_containers == defn.concurrency_limit == kwargs["concurrency_limit"]
+        assert settings.scaledown_window == defn.task_idle_timeout_secs == kwargs["container_idle_timeout"]
+
+
 def test_not_hydrated():
     with pytest.raises(ExecutionError):
         assert foo.remote(2, 4) == 20
