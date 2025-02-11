@@ -619,6 +619,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 f"strictly less than its `{keep_warm=}` parameter."
             )
 
+        autoscaler_settings = api_pb2.AutoscalerSettings(
+            max_containers=concurrency_limit,
+            min_containers=keep_warm,
+            buffer_containers=_experimental_buffer_containers,
+            scaledown_window=container_idle_timeout,
+        )
+
         if _experimental_custom_scaling_factor is not None and (
             _experimental_custom_scaling_factor < 0 or _experimental_custom_scaling_factor > 1
         ):
@@ -802,6 +809,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     class_serialized=class_serialized or b"",
                     function_type=function_type,
                     webhook_config=webhook_config,
+                    autoscaler_settings=autoscaler_settings,
                     method_definitions=method_definitions,
                     method_definitions_set=True,
                     shared_volume_mounts=network_file_system_mount_protos(

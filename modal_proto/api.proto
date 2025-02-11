@@ -1174,7 +1174,7 @@ message Function {
 
   FunctionRetryPolicy retry_policy = 18;
 
-  uint32 concurrency_limit = 19;
+  uint32 concurrency_limit = 19;  // To be replaced by autoscaler_settings.max_containers
 
   reserved 20; // old fields
 
@@ -1183,11 +1183,11 @@ message Function {
   PTYInfo pty_info = 22;
   bytes class_serialized = 23;
 
-  uint32 task_idle_timeout_secs = 25;
+  uint32 task_idle_timeout_secs = 25;  // To be replaced by autoscaler_settings.scaledown_period
 
   optional CloudProvider cloud_provider = 26;  // Deprecated at some point
 
-  uint32 warm_pool_size = 27;
+  uint32 warm_pool_size = 27;  // To be replaced by autoscaler_settings.min_containers
 
   string web_url = 28;
   WebUrlInfo web_url_info = 29;
@@ -1262,7 +1262,7 @@ message Function {
   // If set, the function will be run in an untrusted environment.
   bool untrusted = 68;
 
-  uint32 _experimental_buffer_containers = 69;
+  uint32 _experimental_buffer_containers = 69;  // To be replaced by autoscaler_settings.buffer_containers
 
   // _experimental_proxy_ip -> ProxyInfo
   // TODO: deprecate.
@@ -1283,6 +1283,9 @@ message Function {
   string cloud_provider_str = 77;  // Supersedes cloud_provider
 
   bool _experimental_enable_gpu_snapshot = 78; // Experimental support for GPU snapshotting
+
+  AutoscalerSettings autoscaler_settings = 79;  // Bundle of parameters related to autoscaling
+
 }
 
 message FunctionAsyncInvokeRequest {
