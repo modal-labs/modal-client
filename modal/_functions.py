@@ -1258,13 +1258,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     # TODO (live_method on properties is not great, since it could be blocking the event loop from async contexts)
     @property
     @live_method
-    async def web_url(self) -> str:
+    async def web_url(self) -> Optional[str]:
         """URL of a Function running as a web endpoint."""
-        if not self._web_url:
-            raise ValueError(
-                f"No web_url can be found for function {self._function_name}. web_url "
-                "can only be referenced from a running app context"
-            )
+        # TODO If we remove the @live_method above, we may want to provide better feedback when the underlying
+        # attribute is None because the object is not hydrated, rather than because it's not a web endpoint.
         return self._web_url
 
     @property
