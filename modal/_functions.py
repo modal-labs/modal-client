@@ -19,6 +19,7 @@ from synchronicity.exceptions import UserCodeException
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
+from ._location import parse_cloud_provider
 from ._object import _get_environment_name, _Object, live_method, live_method_gen
 from ._pty import get_pty_info
 from ._resolver import Resolver
@@ -536,7 +537,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                             f"image_with_source = my_image.add_local_python_source({python_stringified_modules})\n\n"
                         )
                         + "For more information, see https://modal.com/docs/guide/modal-1-0-migration",
-                        pending=True,
                     )
                 all_mounts += auto_mounts.values()
         else:
@@ -603,6 +603,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     is_builder_function=True,
                     is_auto_snapshot=True,
                     scheduler_placement=scheduler_placement,
+                    include_source=include_source,
                 )
                 image = _Image._from_args(
                     base_images={"base": image},
@@ -619,13 +620,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 f"strictly less than its `{keep_warm=}` parameter."
             )
 
-        autoscaler_settings = api_pb2.AutoscalerSettings(
-            max_containers=concurrency_limit,
-            min_containers=keep_warm,
-            buffer_containers=_experimental_buffer_containers,
-            scaledown_window=container_idle_timeout,
-        )
-
         if _experimental_custom_scaling_factor is not None and (
             _experimental_custom_scaling_factor < 0 or _experimental_custom_scaling_factor > 1
         ):
@@ -633,6 +627,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         if not cloud and not is_builder_function:
             cloud = config.get("default_cloud")
+        if cloud:
+            cloud_provider = parse_cloud_provider(cloud)
+        else:
+            cloud_provider = None
 
         if is_generator and webhook_config:
             if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
@@ -809,7 +807,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     class_serialized=class_serialized or b"",
                     function_type=function_type,
                     webhook_config=webhook_config,
-                    autoscaler_settings=autoscaler_settings,
                     method_definitions=method_definitions,
                     method_definitions_set=True,
                     shared_volume_mounts=network_file_system_mount_protos(
@@ -822,7 +819,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     task_idle_timeout_secs=container_idle_timeout or 0,
                     concurrency_limit=concurrency_limit or 0,
                     pty_info=pty_info,
-                    cloud_provider_str=cloud if cloud else "",
+                    cloud_provider=cloud_provider,  # Deprecated at some point
+                    cloud_provider_str=cloud.upper() if cloud else "",  # Supersedes cloud_provider
                     warm_pool_size=keep_warm or 0,
                     runtime=config.get("function_runtime"),
                     runtime_debug=config.get("function_runtime_debug"),
@@ -1074,9 +1072,25 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         await retry_transient_errors(self.client.stub.FunctionUpdateSchedulingParams, request)
 
     @classmethod
-    def _from_name(cls, app_name: str, name: str, namespace, environment_name: Optional[str]):
-        # internal function lookup implementation that allows lookup of class "service functions"
-        # in addition to non-class functions
+    @renamed_parameter((2024, 12, 18), "tag", "name")
+    def from_name(
+        cls: type["_Function"],
+        app_name: str,
+        name: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+    ) -> "_Function":
+        """Reference a Function from a deployed App by its name.
+
+        In contrast to `modal.Function.lookup`, this is a lazy method
+        that defers hydrating the local object with metadata from
+        Modal servers until the first time it is actually used.
+
+        ```python
+        f = modal.Function.from_name("other-app", "function")
+        ```
+        """
+
         async def _load_remote(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
             request = api_pb2.FunctionGetRequest(
@@ -1099,38 +1113,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         rep = f"Function.from_name({app_name}, {name})"
         return cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
-
-    @classmethod
-    @renamed_parameter((2024, 12, 18), "tag", "name")
-    def from_name(
-        cls: type["_Function"],
-        app_name: str,
-        name: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        environment_name: Optional[str] = None,
-    ) -> "_Function":
-        """Reference a Function from a deployed App by its name.
-
-        In contrast to `modal.Function.lookup`, this is a lazy method
-        that defers hydrating the local object with metadata from
-        Modal servers until the first time it is actually used.
-
-        ```python
-        f = modal.Function.from_name("other-app", "function")
-        ```
-        """
-        if "." in name:
-            class_name, method_name = name.split(".", 1)
-            deprecation_warning(
-                (2025, 2, 11),
-                "Looking up class methods using Function.from_name will be deprecated"
-                " in a future version of Modal.\nUse modal.Cls.from_name instead, e.g.\n\n"
-                f'{class_name} = modal.Cls.from_name("{app_name}", "{class_name}")\n'
-                f"instance = {class_name}(...)\n"
-                f"instance.{method_name}.remote(...)\n",
-            )
-
-        return cls._from_name(app_name, name, namespace, environment_name)
 
     @staticmethod
     @renamed_parameter((2024, 12, 18), "tag", "name")
