@@ -112,19 +112,18 @@ def test_mounted_files_package(supports_dir, env_mount_files, servicer, server_u
         "/root/pkg_a/script.py",
         "/root/pkg_a/serialized_fn.py",
         "/root/pkg_a/package.py",
-        "/root/pkg_b/__init__.py",
-        "/root/pkg_b/f.py",
-        "/root/pkg_b/g/h.py",
     }
 
 
-def test_mounted_files_package_no_automount(supports_dir, env_mount_files, servicer, server_url_env, token_env):
-    # when triggered like a module, the target module should be put at the correct package path
+def test_mounted_files_package_with_automount(supports_dir, env_mount_files, servicer, server_url_env, token_env):
     p = subprocess.run(
         ["modal", "run", "pkg_a.package"],
         cwd=supports_dir,
-        env={**os.environ, "MODAL_AUTOMOUNT": "0"},
+        env={**os.environ, "MODAL_AUTOMOUNT": "1", "TERM": "dumb"},
+        capture_output=True,
+        text=True,
     )
+    assert "Modal will stop implicitly adding local Python modules" in p.stdout
     assert p.returncode == 0
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
     assert files == {
@@ -136,6 +135,9 @@ def test_mounted_files_package_no_automount(supports_dir, env_mount_files, servi
         "/root/pkg_a/package.py",
         "/root/pkg_a/script.py",
         "/root/pkg_a/serialized_fn.py",
+        "/root/pkg_b/__init__.py",
+        "/root/pkg_b/f.py",
+        "/root/pkg_b/g/h.py",
     }
 
 
