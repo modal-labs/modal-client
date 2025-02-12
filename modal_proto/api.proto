@@ -1692,16 +1692,8 @@ message FunctionRetryInputsRequest {
   repeated FunctionRetryInputsItem inputs = 2;
 }
 
-// TODO(ryan): We shouldn't need to pass back the idx value, since the client can
-// get it from the input_jwt. But I wasn't able to get the client to see authlib,
-// so couldn't decode it.
-message FunctionRetryInputsResponseItem {
-  uint32 idx = 1;
-  string input_jwt = 2;
-}
-
 message FunctionRetryInputsResponse {
-  repeated FunctionRetryInputsResponseItem items = 1;
+  repeated string input_jwts = 1;
 }
 
 message FunctionRetryPolicy {

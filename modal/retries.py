@@ -116,19 +116,19 @@ class RetryManager:
 
     def __init__(self, retry_policy: api_pb2.FunctionRetryPolicy):
         self.retry_policy = retry_policy
-        self.attempt_count = 0
+        self.retry_count = 0
 
     def get_delay_ms(self) -> Union[float, None]:
         """
         Returns the delay in milliseconds before the next retry, or None
         if the maximum number of retries has been reached.
         """
-        self.attempt_count += 1
+        self.retry_count += 1
 
-        if self.attempt_count > self.retry_policy.retries:
+        if self.retry_count > self.retry_policy.retries:
             return None
 
-        return self._retry_delay_ms(self.attempt_count, self.retry_policy)
+        return self._retry_delay_ms(self.retry_count, self.retry_policy)
 
     @staticmethod
     def _retry_delay_ms(attempt_count: int, retry_policy: api_pb2.FunctionRetryPolicy) -> float:
