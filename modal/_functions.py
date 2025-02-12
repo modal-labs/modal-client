@@ -1074,25 +1074,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         await retry_transient_errors(self.client.stub.FunctionUpdateSchedulingParams, request)
 
     @classmethod
-    @renamed_parameter((2024, 12, 18), "tag", "name")
-    def from_name(
-        cls: type["_Function"],
-        app_name: str,
-        name: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        environment_name: Optional[str] = None,
-    ) -> "_Function":
-        """Reference a Function from a deployed App by its name.
-
-        In contrast to `modal.Function.lookup`, this is a lazy method
-        that defers hydrating the local object with metadata from
-        Modal servers until the first time it is actually used.
-
-        ```python
-        f = modal.Function.from_name("other-app", "function")
-        ```
-        """
-
+    def _from_name(cls, app_name: str, name: str, namespace, environment_name: Optional[str]):
+        # internal function lookup implementation that allows lookup of class "service functions"
+        # in addition to non-class functions
         async def _load_remote(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
             request = api_pb2.FunctionGetRequest(
@@ -1115,6 +1099,38 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         rep = f"Function.from_name({app_name}, {name})"
         return cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
+
+    @classmethod
+    @renamed_parameter((2024, 12, 18), "tag", "name")
+    def from_name(
+        cls: type["_Function"],
+        app_name: str,
+        name: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+    ) -> "_Function":
+        """Reference a Function from a deployed App by its name.
+
+        In contrast to `modal.Function.lookup`, this is a lazy method
+        that defers hydrating the local object with metadata from
+        Modal servers until the first time it is actually used.
+
+        ```python
+        f = modal.Function.from_name("other-app", "function")
+        ```
+        """
+        if "." in name:
+            class_name, method_name = name.split(".", 1)
+            deprecation_warning(
+                (2025, 2, 11),
+                "Looking up class methods using Function.from_name will be deprecated"
+                " in a future version of Modal.\nUse modal.Cls.from_name instead, e.g.\n\n"
+                f'{class_name} = modal.Cls.from_name("{app_name}", "{class_name}")\n'
+                f"instance = {class_name}(...)\n"
+                f"instance.{method_name}.remote(...)\n",
+            )
+
+        return cls._from_name(app_name, name, namespace, environment_name)
 
     @staticmethod
     @renamed_parameter((2024, 12, 18), "tag", "name")

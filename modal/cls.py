@@ -558,9 +558,10 @@ class _Cls(_Object, type_prefix="cs"):
         cls = cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
 
         class_service_name = f"{name}.*"  # special name of the base service function for the class
-        cls._class_service_function = _Function.from_name(
+        cls._class_service_function = _Function._from_name(
             app_name,
             class_service_name,
+            namespace=namespace,
             environment_name=_environment_name,
         )
         cls._name = name
