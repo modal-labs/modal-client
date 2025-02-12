@@ -86,8 +86,12 @@ enum ClientType {
 }
 
 enum CloudProvider {
-  // No longer used by clients, but server needs it to parse old protos
   CLOUD_PROVIDER_UNSPECIFIED = 0;
+  CLOUD_PROVIDER_AWS = 1;
+  CLOUD_PROVIDER_GCP = 2;
+  CLOUD_PROVIDER_AUTO = 3;
+  CLOUD_PROVIDER_OCI = 4;
+  reserved 5, 6, 7, 8; // now unused internal experimental values
 }
 
 enum DNSRecordType {
@@ -1181,7 +1185,7 @@ message Function {
 
   uint32 task_idle_timeout_secs = 25;  // To be replaced by autoscaler_settings.scaledown_period
 
-  optional CloudProvider cloud_provider = 26;  // Deprecated
+  optional CloudProvider cloud_provider = 26;  // Deprecated at some point
 
   uint32 warm_pool_size = 27;  // To be replaced by autoscaler_settings.min_containers
 
@@ -2231,7 +2235,7 @@ message Sandbox {
   repeated string secret_ids = 4;
 
   Resources resources = 5;
-  CloudProvider cloud_provider = 6;  // Deprecated
+  CloudProvider cloud_provider = 6;  // Deprecated at some point
 
   uint32 timeout_secs = 7;
 
@@ -2553,7 +2557,7 @@ message SharedVolumeListItem {
   string label = 1;  // app name of object entity app
   string shared_volume_id = 2;
   double created_at = 3;
-  reserved 4;
+  CloudProvider cloud_provider = 4;
 }
 
 message SharedVolumeListRequest {
@@ -2568,6 +2572,7 @@ message SharedVolumeListResponse {
 message SharedVolumeMount {
   string mount_path = 1;
   string shared_volume_id = 2;
+  CloudProvider cloud_provider = 3;
   bool allow_cross_region = 4;
 }
 
