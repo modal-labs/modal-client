@@ -782,14 +782,33 @@ def test_serialize_deserialize_function_handle(servicer, client):
 def test_default_cloud_provider(client, servicer, monkeypatch):
     app = App()
 
-    monkeypatch.setenv("MODAL_DEFAULT_CLOUD", "oci")
+    monkeypatch.setenv("MODAL_DEFAULT_CLOUD", "xyz")
     app.function()(dummy)
     with app.run(client=client):
         object_id: str = app.registered_functions["dummy"].object_id
         f = servicer.app_functions[object_id]
 
-    assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_OCI
-    assert f.cloud_provider_str == "OCI"
+    assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_UNSPECIFIED  # No longer sent
+    assert f.cloud_provider_str == "xyz"
+
+
+def test_autoscaler_settings(client, servicer):
+    app = App()
+
+    kwargs: dict[str, typing.Any] = dict(  # No idea why we need that type hint
+        keep_warm=2,
+        concurrency_limit=10,
+        container_idle_timeout=60,
+    )
+    f = app.function(**kwargs)(dummy)
+
+    with app.run(client=client):
+        defn = servicer.app_functions[f.object_id]
+        # Test both backwards and forwards compatibility
+        settings = defn.autoscaler_settings
+        assert settings.min_containers == defn.warm_pool_size == kwargs["keep_warm"]
+        assert settings.max_containers == defn.concurrency_limit == kwargs["concurrency_limit"]
+        assert settings.scaledown_window == defn.task_idle_timeout_secs == kwargs["container_idle_timeout"]
 
 
 def test_not_hydrated():
