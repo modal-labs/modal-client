@@ -144,12 +144,9 @@ def test_mounted_files_package_with_automount(supports_dir, env_mount_files, ser
 @skip_windows("venvs behave differently on Windows.")
 def test_mounted_files_sys_prefix(servicer, supports_dir, venv_path, env_mount_files, server_url_env, token_env):
     # Run with venv activated, so it's on sys.prefix, and modal is dev-installed in the VM
-    subprocess.run(
-        [venv_path / "bin" / "modal", "run", script_path],
-        cwd=supports_dir,
-    )
+    subprocess.run([venv_path / "bin" / "modal", "run", script_path], cwd=supports_dir, env={"MODAL_AUTOMOUNT": "1"})
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
-    # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
+    # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c` or `modal`
     assert files == {
         "/root/a.py",
         "/root/b/c.py",
