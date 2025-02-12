@@ -171,9 +171,11 @@ def test_mount_from_local_dir_ignore(test_dir, tmp_path_with_content):
     assert set(file_names) == expected
 
 
-def test_missing_python_source_warning(servicer, credentials, supports_dir):
+def test_missing_python_source_warning(servicer, credentials, supports_dir, monkeypatch):
     # should warn if function doesn't have an imported non-third-party package attached
     # either through add OR copy mode, unless automount=False mode is used
+    monkeypatch.delenv("MODAL_AUTOMOUNT")  # prevent autoused disable_automount fixture
+
     def has_warning(output: str):
         return '.add_local_python_source("pkg_a")' in output
 

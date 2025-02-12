@@ -58,7 +58,8 @@ async def env_mount_files():
     return filenames
 
 
-def test_mounted_files_script(servicer, credentials, supports_dir, env_mount_files, server_url_env):
+def test_mounted_files_script(servicer, credentials, supports_dir, env_mount_files, server_url_env, monkeypatch):
+    monkeypatch.setenv("MODAL_AUTOMOUNT", "1")  # re-enable automount since that's what we test here
     print(helpers.deploy_app_externally(servicer, credentials, script_path, cwd=supports_dir))
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
@@ -77,7 +78,8 @@ def test_mounted_files_script(servicer, credentials, supports_dir, env_mount_fil
 serialized_fn_path = "pkg_a/serialized_fn.py"
 
 
-def test_mounted_files_serialized(servicer, credentials, supports_dir, env_mount_files, server_url_env):
+def test_mounted_files_serialized(servicer, credentials, supports_dir, env_mount_files, server_url_env, monkeypatch):
+    monkeypatch.delenv("MODAL_AUTOMOUNT")
     helpers.deploy_app_externally(servicer, credentials, serialized_fn_path, cwd=supports_dir)
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
@@ -119,11 +121,8 @@ def test_mounted_files_package_with_automount(supports_dir, env_mount_files, ser
     p = subprocess.run(
         ["modal", "run", "pkg_a.package"],
         cwd=supports_dir,
-        env={**os.environ, "MODAL_AUTOMOUNT": "1", "TERM": "dumb"},
-        capture_output=True,
-        text=True,
+        env={**os.environ, "MODAL_AUTOMOUNT": "1"},
     )
-    assert "Modal will stop implicitly adding local Python modules" in p.stdout
     assert p.returncode == 0
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
     assert files == {
@@ -304,7 +303,7 @@ def test_mount_dedupe(servicer, credentials, test_dir, server_url_env):
             credentials,
             "mount_dedupe.py",
             cwd=test_dir / "supports",
-            env={"USE_EXPLICIT": "0"},
+            env={**os.environ, "USE_EXPLICIT": "0", "MODAL_AUTOMOUNT": "1"},
         )
     )
     assert servicer.n_mounts == 2

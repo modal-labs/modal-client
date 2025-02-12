@@ -1067,7 +1067,14 @@ def test_from_name_web_url(servicer, set_env_client):
     ],
 )
 def test_include_source_mode(
-    app_constructor_value, function_decorator_value, config_automount, expected_mounts, servicer, credentials, tmp_path
+    app_constructor_value,
+    function_decorator_value,
+    config_automount,
+    expected_mounts,
+    servicer,
+    credentials,
+    tmp_path,
+    monkeypatch,
 ):
     # a little messy since it tests the "end to end" mounting behavior for the app
     app_constructor_value = "None" if app_constructor_value is None else app_constructor_value
@@ -1086,10 +1093,11 @@ def f():
     (tmp_path / "mod.py").touch()  # some file
     entrypoint_file.write_text(src)
 
+    monkeypatch.delenv("MODAL_AUTOMOUNT")
     if config_automount is not None:
-        env = {"MODAL_AUTOMOUNT": config_automount}
+        env = {**os.environ, "MODAL_AUTOMOUNT": config_automount}
     else:
-        env = {}
+        env = {**os.environ}
     output = deploy_app_externally(servicer, credentials, str(entrypoint_file), env=env)
     print(output)
     mounts = servicer.mounts_excluding_published_client()
