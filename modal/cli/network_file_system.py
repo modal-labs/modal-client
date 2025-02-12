@@ -13,6 +13,7 @@ from rich.table import Table
 from typer import Argument, Typer
 
 import modal
+from modal._location import display_location
 from modal._output import OutputManager, ProgressHandler
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
@@ -36,12 +37,13 @@ async def list_(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
         client.stub.SharedVolumeList, api_pb2.SharedVolumeListRequest(environment_name=env)
     )
     env_part = f" in environment '{env}'" if env else ""
-    column_names = ["Name", "Created at"]
+    column_names = ["Name", "Location", "Created at"]
     rows = []
     for item in response.items:
         rows.append(
             [
                 item.label,
+                display_location(item.cloud_provider),
                 timestamp_to_local(item.created_at, json),
             ]
         )
