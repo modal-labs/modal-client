@@ -8,8 +8,8 @@ description = "Python client library for Modal"
 readme = "README.md"
 dynamic = ["version"]
 requires-python = ">=3.9"
-license = "Apache-2.0"
-license-files = ["LICENSE"]
+license = {text = "Apache-2.0"}
+
 authors = [
     { name = "Modal Labs", email = "support@modal.com" }
 ]
