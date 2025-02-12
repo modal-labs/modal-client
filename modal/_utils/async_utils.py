@@ -314,6 +314,16 @@ class TimestampPriorityQueue(Generic[T]):
     def empty(self) -> bool:
         return self._queue.empty()
 
+    async def clear(self):
+        """
+        Clear the retry queue. Used for testing to simulate reading all elements from queue using queue_batch_iterator.
+        """
+        while not self.empty():
+            await self.get()
+
+    def __len__(self):
+        return self._queue.qsize()
+
 
 async def queue_batch_iterator(
     q: Union[asyncio.Queue, TimestampPriorityQueue], max_batch_size=100, debounce_time=0.015
