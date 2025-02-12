@@ -4,7 +4,7 @@ from modal_proto import api_pb2
 
 from .supports.skip import skip_windows
 
-app = App()
+app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @app.function(

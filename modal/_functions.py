@@ -536,7 +536,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                             f"image_with_source = my_image.add_local_python_source({python_stringified_modules})\n\n"
                         )
                         + "For more information, see https://modal.com/docs/guide/modal-1-0-migration",
-                        pending=True,
                     )
                 all_mounts += auto_mounts.values()
         else:

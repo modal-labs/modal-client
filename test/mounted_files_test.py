@@ -58,7 +58,8 @@ async def env_mount_files():
     return filenames
 
 
-def test_mounted_files_script(servicer, credentials, supports_dir, env_mount_files, server_url_env):
+def test_mounted_files_script(servicer, credentials, supports_dir, env_mount_files, server_url_env, monkeypatch):
+    monkeypatch.setenv("MODAL_AUTOMOUNT", "1")  # re-enable automount since that's what we test here
     print(helpers.deploy_app_externally(servicer, credentials, script_path, cwd=supports_dir))
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
@@ -77,7 +78,8 @@ def test_mounted_files_script(servicer, credentials, supports_dir, env_mount_fil
 serialized_fn_path = "pkg_a/serialized_fn.py"
 
 
-def test_mounted_files_serialized(servicer, credentials, supports_dir, env_mount_files, server_url_env):
+def test_mounted_files_serialized(servicer, credentials, supports_dir, env_mount_files, server_url_env, monkeypatch):
+    monkeypatch.delenv("MODAL_AUTOMOUNT")
     helpers.deploy_app_externally(servicer, credentials, serialized_fn_path, cwd=supports_dir)
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
@@ -112,18 +114,14 @@ def test_mounted_files_package(supports_dir, env_mount_files, servicer, server_u
         "/root/pkg_a/script.py",
         "/root/pkg_a/serialized_fn.py",
         "/root/pkg_a/package.py",
-        "/root/pkg_b/__init__.py",
-        "/root/pkg_b/f.py",
-        "/root/pkg_b/g/h.py",
     }
 
 
-def test_mounted_files_package_no_automount(supports_dir, env_mount_files, servicer, server_url_env, token_env):
-    # when triggered like a module, the target module should be put at the correct package path
+def test_mounted_files_package_with_automount(supports_dir, env_mount_files, servicer, server_url_env, token_env):
     p = subprocess.run(
         ["modal", "run", "pkg_a.package"],
         cwd=supports_dir,
-        env={**os.environ, "MODAL_AUTOMOUNT": "0"},
+        env={**os.environ, "MODAL_AUTOMOUNT": "1"},
     )
     assert p.returncode == 0
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
@@ -136,6 +134,9 @@ def test_mounted_files_package_no_automount(supports_dir, env_mount_files, servi
         "/root/pkg_a/package.py",
         "/root/pkg_a/script.py",
         "/root/pkg_a/serialized_fn.py",
+        "/root/pkg_b/__init__.py",
+        "/root/pkg_b/f.py",
+        "/root/pkg_b/g/h.py",
     }
 
 
@@ -143,11 +144,10 @@ def test_mounted_files_package_no_automount(supports_dir, env_mount_files, servi
 def test_mounted_files_sys_prefix(servicer, supports_dir, venv_path, env_mount_files, server_url_env, token_env):
     # Run with venv activated, so it's on sys.prefix, and modal is dev-installed in the VM
     subprocess.run(
-        [venv_path / "bin" / "modal", "run", script_path],
-        cwd=supports_dir,
+        [venv_path / "bin" / "modal", "run", script_path], cwd=supports_dir, env={**os.environ, "MODAL_AUTOMOUNT": "1"}
     )
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
-    # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
+    # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c` or `modal`
     assert files == {
         "/root/a.py",
         "/root/b/c.py",
@@ -195,6 +195,7 @@ def symlinked_python_installation_venv_path(tmp_path, repo_root):
 def test_mounted_files_symlinked_python_install(
     symlinked_python_installation_venv_path, supports_dir, server_url_env, token_env, servicer
 ):
+    # TODO(elias): This test fails when run from a uv-managed virtualenv
     subprocess.check_call(
         [symlinked_python_installation_venv_path / "bin" / "modal", "run", supports_dir / "imports_ast.py"]
     )
@@ -302,7 +303,7 @@ def test_mount_dedupe(servicer, credentials, test_dir, server_url_env):
             credentials,
             "mount_dedupe.py",
             cwd=test_dir / "supports",
-            env={"USE_EXPLICIT": "0"},
+            env={**os.environ, "USE_EXPLICIT": "0", "MODAL_AUTOMOUNT": "1"},
         )
     )
     assert servicer.n_mounts == 2

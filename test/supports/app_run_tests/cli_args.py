@@ -4,7 +4,7 @@ from typing import Optional, Union
 
 from modal import App, method
 
-app = App()
+app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @app.local_entrypoint()

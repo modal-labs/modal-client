@@ -22,7 +22,7 @@ CODE_SERVER_ENTRYPOINT = (
 FIXUD_INSTALLER = "https://github.com/boxboat/fixuid/releases/download/v0.6.0/fixuid-0.6.0-linux-$ARCH.tar.gz"
 
 
-app = App()
+app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 image = (
     Image.from_registry(args.get("image"), add_python="3.11")
     .apt_install("curl", "dumb-init", "git", "git-lfs")
