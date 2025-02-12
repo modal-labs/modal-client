@@ -47,11 +47,15 @@ Documentation = "https://modal.com/docs"
 modal = "modal.__main__:main"
 
 [tool.setuptools.packages.find]
-exclude = ["test*", "modal_docs/", "modal_global_objects/"]
+include = ["modal", "modal_version", "modal_proto"]
+exclude = ["test*", "modal_docs", "modal_global_objects"]
 
 [tool.setuptools.package-data]
 modal = ["requirements/*.md", "requirements/*.txt", "requirements/*.json", "py.typed", "*.pyi"]
 modal_proto = ["*.proto", "py.typed", "*.pyi"]
+
+[tool.setuptools.exclude-package-data]
+modal = ["test/*", "modal_docs/*", "modal_global_objects/*"]
 
 [tool.setuptools.dynamic]
 version = {attr = "modal_version.__version__"}
