@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.40 (2025-02-12)
+
+- `Function.web_url` will now return None (instead of raising an error) when the Function is not a web endpoint
+
+
+
 ### 0.73.31 (2025-02-10)
 
 * Deprecate the GPU classes (`gpu=A100(...)` etc) in favor of just using strings (`gpu="A100"` etc)
