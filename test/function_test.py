@@ -6,7 +6,6 @@ import pytest
 import time
 import typing
 from contextlib import contextmanager
-from test.helpers import deploy_app_externally
 
 from synchronicity.exceptions import UserCodeException
 
@@ -18,8 +17,9 @@ from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall, gather
 from modal.runner import deploy_app
 from modal_proto import api_pb2
+from test.helpers import deploy_app_externally
 
-app = App()
+app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 if os.environ.get("GITHUB_ACTIONS") == "true":
@@ -501,7 +501,7 @@ def test_map_exceptions(client, servicer):
 
         res = list(custom_function_modal.map(range(6), return_exceptions=True))
         assert res[:4] == [0, 1, 4, 9] and res[5] == 25
-        assert type(res[4]) == UserCodeException and "bad" in str(res[4])
+        assert type(res[4]) is UserCodeException and "bad" in str(res[4])
 
 
 def import_failure():
@@ -630,7 +630,7 @@ def test_local_execution_on_asgi_app(client, servicer):
     assert foo.web_url
 
     res = foo.local()
-    assert type(res) == FastAPI
+    assert type(res) is FastAPI
 
 
 @pytest.mark.parametrize("remote_executor", ["remote", "remote_gen", "spawn"])
@@ -716,7 +716,7 @@ def test_from_id_iter_gen(client, servicer, is_generator):
         assert rehydrated_function_call.get() == "hello"
 
 
-lc_app = App()
+lc_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @lc_app.function()
@@ -782,14 +782,33 @@ def test_serialize_deserialize_function_handle(servicer, client):
 def test_default_cloud_provider(client, servicer, monkeypatch):
     app = App()
 
-    monkeypatch.setenv("MODAL_DEFAULT_CLOUD", "oci")
+    monkeypatch.setenv("MODAL_DEFAULT_CLOUD", "xyz")
     app.function()(dummy)
     with app.run(client=client):
         object_id: str = app.registered_functions["dummy"].object_id
         f = servicer.app_functions[object_id]
 
-    assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_OCI
-    assert f.cloud_provider_str == "OCI"
+    assert f.cloud_provider == api_pb2.CLOUD_PROVIDER_UNSPECIFIED  # No longer sent
+    assert f.cloud_provider_str == "xyz"
+
+
+def test_autoscaler_settings(client, servicer):
+    app = App()
+
+    kwargs: dict[str, typing.Any] = dict(  # No idea why we need that type hint
+        keep_warm=2,
+        concurrency_limit=10,
+        container_idle_timeout=60,
+    )
+    f = app.function(**kwargs)(dummy)
+
+    with app.run(client=client):
+        defn = servicer.app_functions[f.object_id]
+        # Test both backwards and forwards compatibility
+        settings = defn.autoscaler_settings
+        assert settings.min_containers == defn.warm_pool_size == kwargs["keep_warm"]
+        assert settings.max_containers == defn.concurrency_limit == kwargs["concurrency_limit"]
+        assert settings.scaledown_window == defn.task_idle_timeout_secs == kwargs["container_idle_timeout"]
 
 
 def test_not_hydrated():
@@ -844,7 +863,7 @@ def test_deps_explicit(client, servicer):
 
 
 def assert_is_wrapped_dict(some_arg):
-    assert type(some_arg) == modal.Dict  # this should not be a modal._Dict unwrapped instance!
+    assert type(some_arg) is modal.Dict  # this should not be a modal._Dict unwrapped instance!
     return some_arg
 
 
@@ -855,20 +874,20 @@ def test_calls_should_not_unwrap_modal_objects(servicer, client):
 
     # make sure the serialized object is an actual Dict and not a _Dict in all user code contexts
     with app.run(client=client), modal.Dict.ephemeral(client=client) as some_modal_object:
-        assert type(foo.remote(some_modal_object)) == modal.Dict
+        assert type(foo.remote(some_modal_object)) is modal.Dict
         fc = foo.spawn(some_modal_object)
-        assert type(fc.get()) == modal.Dict
+        assert type(fc.get()) is modal.Dict
         for ret in foo.map([some_modal_object]):
-            assert type(ret) == modal.Dict
+            assert type(ret) is modal.Dict
         for ret in foo.starmap([[some_modal_object]]):
-            assert type(ret) == modal.Dict
+            assert type(ret) is modal.Dict
         foo.for_each([some_modal_object])
 
     assert len(servicer.client_calls) == 5
 
 
 def assert_is_wrapped_dict_gen(some_arg):
-    assert type(some_arg) == modal.Dict  # this should not be a modal._Dict unwrapped instance!
+    assert type(some_arg) is modal.Dict  # this should not be a modal._Dict unwrapped instance!
     yield some_arg
 
 
@@ -879,7 +898,7 @@ def test_calls_should_not_unwrap_modal_objects_gen(servicer, client):
 
     # make sure the serialized object is an actual Dict and not a _Dict in all user code contexts
     with app.run(client=client), modal.Dict.ephemeral(client=client) as some_modal_object:
-        assert type(next(foo.remote_gen(some_modal_object))) == modal.Dict
+        assert type(next(foo.remote_gen(some_modal_object))) is modal.Dict
         with pytest.raises(DeprecationError):
             foo.spawn(some_modal_object)
 
@@ -984,8 +1003,7 @@ def test_warn_on_local_volume_mount(client, servicer):
 
 
 class X:
-    def f(self):
-        ...
+    def f(self): ...
 
 
 def test_function_decorator_on_method():
@@ -1068,7 +1086,14 @@ def test_from_name_web_url(servicer, set_env_client):
     ],
 )
 def test_include_source_mode(
-    app_constructor_value, function_decorator_value, config_automount, expected_mounts, servicer, credentials, tmp_path
+    app_constructor_value,
+    function_decorator_value,
+    config_automount,
+    expected_mounts,
+    servicer,
+    credentials,
+    tmp_path,
+    monkeypatch,
 ):
     # a little messy since it tests the "end to end" mounting behavior for the app
     app_constructor_value = "None" if app_constructor_value is None else app_constructor_value
@@ -1087,10 +1112,11 @@ def f():
     (tmp_path / "mod.py").touch()  # some file
     entrypoint_file.write_text(src)
 
+    monkeypatch.delenv("MODAL_AUTOMOUNT")
     if config_automount is not None:
-        env = {"MODAL_AUTOMOUNT": config_automount}
+        env = {**os.environ, "MODAL_AUTOMOUNT": config_automount}
     else:
-        env = {}
+        env = {**os.environ}
     output = deploy_app_externally(servicer, credentials, str(entrypoint_file), env=env)
     print(output)
     mounts = servicer.mounts_excluding_published_client()

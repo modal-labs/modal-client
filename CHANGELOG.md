@@ -10,6 +10,24 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.40 (2025-02-12)
+
+- `Function.web_url` will now return None (instead of raising an error) when the Function is not a web endpoint
+
+
+
+### 0.73.31 (2025-02-10)
+
+* Deprecate the GPU classes (`gpu=A100(...)` etc) in favor of just using strings (`gpu="A100"` etc)
+
+
+
+### 0.73.26 (2025-02-10)
+
+* Adds a pending deprecation warning when looking up class methods using `Function.from_name`, e.g. `Function.from_name("some_app", "SomeClass.some_method")`. The recommended way to reference methods of classes is to look up the class instead: `RemoteClass = Cls.from_name("some_app", "SomeClass")`
+
+
+
 ### 0.73.25 (2025-02-09)
 
 - Fixes an issue introduced in `0.73.19` that prevented access to GPUs during image builds

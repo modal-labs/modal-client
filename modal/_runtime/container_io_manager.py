@@ -5,7 +5,6 @@ import inspect
 import json
 import math
 import os
-import signal
 import sys
 import time
 import traceback
@@ -382,22 +381,9 @@ class _ContainerIOManager:
             # response.cancel_input_event.terminate_containers is never set, the server gets the worker to handle it.
             input_ids_to_cancel = response.cancel_input_event.input_ids
             if input_ids_to_cancel:
-                if self._max_concurrency > 1:
-                    for input_id in input_ids_to_cancel:
-                        if input_id in self.current_inputs:
-                            self.current_inputs[input_id].cancel()
-
-                elif self.current_input_id and self.current_input_id in input_ids_to_cancel:
-                    # This goes to a registered signal handler for sync Modal functions, or to the
-                    # `SignalHandlingEventLoop` for async functions.
-                    #
-                    # We only send this signal on functions that do not have concurrent inputs enabled.
-                    # This allows us to do fine-grained input cancellation. On sync functions, the
-                    # SIGUSR1 signal should interrupt the main thread where user code is running,
-                    # raising an InputCancellation() exception. On async functions, the signal should
-                    # reach a handler in SignalHandlingEventLoop, which cancels the task.
-                    logger.warning(f"Received a cancellation signal while processing input {self.current_input_id}")
-                    os.kill(os.getpid(), signal.SIGUSR1)
+                for input_id in input_ids_to_cancel:
+                    if input_id in self.current_inputs:
+                        self.current_inputs[input_id].cancel()
             return True
         return False
 
@@ -910,7 +896,7 @@ class _ContainerIOManager:
                 gpu_process_state = gpu_memory_snapshot.get_state()
                 if gpu_process_state != gpu_memory_snapshot.CudaCheckpointState.RUNNING:
                     raise ValueError(
-                        "Cannot snapshot GPU state if it isn't running. " f"Current GPU state: {gpu_process_state}"
+                        f"Cannot snapshot GPU state if it isn't running. Current GPU state: {gpu_process_state}"
                     )
 
                 gpu_memory_snapshot.toggle()

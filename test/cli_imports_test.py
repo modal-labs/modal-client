@@ -29,8 +29,8 @@ def main():
 """
 python_module_src = """
 import modal
-app = modal.App("FOO")
-other_app = modal.App("BAR")
+app = modal.App("FOO", include_source=True)  # TODO: remove include_source=True)
+other_app = modal.App("BAR", include_source=True)  # TODO: remove include_source=True)
 @other_app.function()
 def func():
     pass
@@ -45,8 +45,8 @@ assert not __package__
 
 python_package_src = """
 import modal
-app = modal.App("FOO")
-other_app = modal.App("BAR")
+app = modal.App("FOO", include_source=True)  # TODO: remove include_source=True)
+other_app = modal.App("BAR", include_source=True)  # TODO: remove include_source=True)
 @other_app.function()
 def func():
     pass
@@ -55,8 +55,8 @@ assert __package__ == "pack005"
 
 python_subpackage_src = """
 import modal
-app = modal.App("FOO")
-other_app = modal.App("BAR")
+app = modal.App("FOO", include_source=True)  # TODO: remove include_source=True)
+other_app = modal.App("BAR", include_source=True)  # TODO: remove include_source=True)
 @other_app.function()
 def func():
     pass
@@ -65,8 +65,8 @@ assert __package__ == "pack007.sub009"
 
 python_file_src = """
 import modal
-app = modal.App("FOO")
-other_app = modal.App("BAR")
+app = modal.App("FOO", include_source=True)  # TODO: remove include_source=True)
+other_app = modal.App("BAR", include_source=True)  # TODO: remove include_source=True)
 @other_app.function()
 def func():
     pass

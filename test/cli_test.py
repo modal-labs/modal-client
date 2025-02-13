@@ -35,7 +35,7 @@ import modal
 
 import other_module
 
-app = modal.App("my_app")
+app = modal.App("my_app", include_source=True)  # TODO: remove include_source=True)
 
 # Sanity check that the module is imported properly
 import sys
@@ -151,9 +151,9 @@ def test_run(servicer, set_env_client, supports_dir, monkeypatch, run_command, e
     monkeypatch.chdir(supports_dir)
     res = _run(["run"] + run_command, expected_exit_code=expected_exit_code)
     if expected_output:
-        assert re.search(expected_output, res.stdout) or re.search(
-            expected_output, res.stderr
-        ), "output does not match expected string"
+        assert re.search(expected_output, res.stdout) or re.search(expected_output, res.stderr), (
+            "output does not match expected string"
+        )
 
 
 def test_run_warns_without_module_flag(

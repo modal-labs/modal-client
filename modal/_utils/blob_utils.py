@@ -227,7 +227,7 @@ async def blob_upload(payload: bytes, stub: ModalClientModal) -> str:
     blob_id = await _blob_upload(upload_hashes, payload, stub)
     dur_s = max(time.time() - t0, 0.001)  # avoid division by zero
     throughput_mib_s = (size_mib) / dur_s
-    logger.debug(f"Uploaded large blob of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s)." f" {blob_id}")
+    logger.debug(f"Uploaded large blob of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s). {blob_id}")
     return blob_id
 
 

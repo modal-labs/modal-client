@@ -13,7 +13,7 @@ from typing import Callable, Literal, Sequence, Union, get_args
 from unittest import mock
 
 import modal
-from modal import App, Dict, Image, Secret, build, environments, gpu, method
+from modal import App, Dict, Image, Secret, build, environments, method
 from modal._serialization import serialize
 from modal._utils.async_utils import synchronizer
 from modal.client import Client
@@ -152,7 +152,7 @@ def test_image_base(builder_version, servicer, client, test_dir):
                     assert "pip install --no-cache --no-deps -r /modal_requirements.txt" in commands
                 else:
                     assert (
-                        "uv pip install --system --compile-bytecode" " --no-cache --no-deps -r /modal_requirements.txt"
+                        "uv pip install --system --compile-bytecode --no-cache --no-deps -r /modal_requirements.txt"
                     ) in commands
 
 
@@ -644,8 +644,8 @@ def test_image_run_function_with_cloud_selection(servicer, client):
 
     assert len(servicer.app_functions) == 2
     func_def = next(iter(servicer.app_functions.values()))
-    assert func_def.cloud_provider == api_pb2.CLOUD_PROVIDER_OCI
-    assert func_def.cloud_provider_str == "OCI"
+    assert func_def.cloud_provider == api_pb2.CLOUD_PROVIDER_UNSPECIFIED  # No longer set
+    assert func_def.cloud_provider_str == "oci"
 
 
 def test_poetry(builder_version, servicer, client):
@@ -992,22 +992,22 @@ def test_image_gpu(builder_version, servicer, client):
     app.function()(dummy)
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
-        assert not layers[0].gpu
         assert not layers[0].gpu_config.gpu_type
+        assert not layers[0].gpu_config.count
 
     app = App(image=Image.debian_slim().run_commands("echo 1", gpu="any"))
     app.function()(dummy)
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
-        assert layers[0].gpu
         assert layers[0].gpu_config.gpu_type == "ANY"
+        assert layers[0].gpu_config.count == 1
 
-    app = App(image=Image.debian_slim().run_commands("echo 2", gpu=gpu.A10G()))
+    app = App(image=Image.debian_slim().run_commands("echo 2", gpu="a10g"))
     app.function()(dummy)
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
-        assert layers[0].gpu
         assert layers[0].gpu_config.gpu_type == "A10G"
+        assert layers[0].gpu_config.count == 1
 
 
 def test_image_force_build(builder_version, servicer, client):
@@ -1060,7 +1060,7 @@ def test_hydration_metadata(servicer, client):
             assert_metadata(img, dummy_metadata)
 
 
-cls_app = App()
+cls_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 VARIABLE_5 = 1
 VARIABLE_6 = 1
@@ -1448,7 +1448,7 @@ def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
     assert get_hash(img) == "78d579f243c21dcaa59e5daf97f732e2453b004bc2122de692617d4d725c6184"
 
 
-parallel_app = App()
+parallel_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @parallel_app.function(image=Image.debian_slim().run_commands("sleep 1", "echo hi"))

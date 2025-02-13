@@ -8,7 +8,6 @@ import pytest
 import subprocess
 import sys
 import textwrap
-from test import helpers
 
 import pytest_asyncio
 from synchronicity import Synchronizer
@@ -29,6 +28,7 @@ from modal._utils.async_utils import (
     synchronize_api,
     warn_if_generator_is_not_consumed,
 )
+from test import helpers
 
 
 @pytest_asyncio.fixture(autouse=True)

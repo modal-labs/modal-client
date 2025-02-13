@@ -4,11 +4,11 @@ import os
 import platform
 import pytest
 from pathlib import Path, PurePosixPath
-from test.helpers import deploy_app_externally
 
 from modal import App, FilePatternMatcher
 from modal._utils.blob_utils import LARGE_FILE_LIMIT
 from modal.mount import Mount, module_mount_condition, module_mount_ignore_condition
+from test.helpers import deploy_app_externally
 
 
 @pytest.mark.asyncio
@@ -171,9 +171,11 @@ def test_mount_from_local_dir_ignore(test_dir, tmp_path_with_content):
     assert set(file_names) == expected
 
 
-def test_missing_python_source_warning(servicer, credentials, supports_dir):
+def test_missing_python_source_warning(servicer, credentials, supports_dir, monkeypatch):
     # should warn if function doesn't have an imported non-third-party package attached
     # either through add OR copy mode, unless automount=False mode is used
+    monkeypatch.delenv("MODAL_AUTOMOUNT")  # prevent autoused disable_automount fixture
+
     def has_warning(output: str):
         return '.add_local_python_source("pkg_a")' in output
 

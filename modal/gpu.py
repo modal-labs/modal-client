@@ -1,16 +1,24 @@
 # Copyright Modal Labs 2022
-from dataclasses import dataclass
 from typing import Union
 
 from modal_proto import api_pb2
 
+from ._utils.deprecation import deprecation_warning
 from .exception import InvalidError
 
 
-@dataclass(frozen=True)
 class _GPUConfig:
     gpu_type: str
     count: int
+
+    def __init__(self, gpu_type: str, count: int):
+        name = self.__class__.__name__
+        str_value = gpu_type
+        if count > 1:
+            str_value += f":{count}"
+        deprecation_warning((2025, 2, 7), f'`gpu={name}(...)` is deprecated. Use `gpu="{str_value}"` instead.')
+        self.gpu_type = gpu_type
+        self.count = count
 
     def _to_proto(self) -> api_pb2.GPUConfig:
         """Convert this GPU config to an internal protobuf representation."""
@@ -175,10 +183,19 @@ You can see a list of Modal GPU options in the
 def my_gpu_function():
     ... # This will have 4 A100-80GB with each container
 ```
+
+**Deprecation notes**
+
+An older deprecated way to configure GPU is also still supported,
+but will be removed in future versions of Modal. Examples:
+
+- `gpu=modal.gpu.H100()` will attach 1 H100 GPU to each container
+- `gpu=modal.gpu.T4(count=4)` will attach 4 T4 GPUs to each container
+- `gpu=modal.gpu.A100()` will attach 1 A100-40GB GPUs to each container
+- `gpu=modal.gpu.A100(size="80GB")` will attach 1 A100-80GB GPUs to each container
 """
 
-# bool will be deprecated in future versions.
-GPU_T = Union[None, bool, str, _GPUConfig]
+GPU_T = Union[None, str, _GPUConfig]
 
 
 def parse_gpu_config(value: GPU_T) -> api_pb2.GPUConfig:
@@ -197,7 +214,9 @@ def parse_gpu_config(value: GPU_T) -> api_pb2.GPUConfig:
             gpu_type=gpu_type,
             count=count,
         )
-    elif value is None or value is False:
+    elif value is None:
         return api_pb2.GPUConfig()
     else:
-        raise InvalidError(f"Invalid GPU config: {value}. Value must be a string, a `GPUConfig` object, or `None`.")
+        raise InvalidError(
+            f"Invalid GPU config: {value}. Value must be a string or `None` (or a deprecated `modal.gpu` object)"
+        )

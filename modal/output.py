@@ -6,6 +6,7 @@ transitively importing Rich, as we do in global scope in _output.py. This allows
 us to avoid importing Rich for client code that runs in the container environment.
 
 """
+
 import contextlib
 from collections.abc import Generator
 from typing import TYPE_CHECKING, Optional

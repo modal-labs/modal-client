@@ -601,9 +601,8 @@ class _Image(_Object, type_prefix="im"):
                 dockerfile_commands=dockerfile.commands,
                 context_files=context_file_pb2s,
                 secret_ids=[secret.object_id for secret in secrets],
-                gpu=gpu_config.count > 0,  # Note: as of 2023-01-27, server still uses this
                 context_mount_id=(context_mount.object_id if context_mount else ""),
-                gpu_config=gpu_config,  # Note: as of 2023-01-27, server ignores this
+                gpu_config=gpu_config,
                 image_registry_config=image_registry_config.get_proto(),
                 runtime=config.get("function_runtime"),
                 runtime_debug=config.get("function_runtime_debug"),
@@ -1924,6 +1923,8 @@ class _Image(_Object, type_prefix="im"):
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         args: Sequence[Any] = (),  # Positional arguments to the function.
         kwargs: dict[str, Any] = {},  # Keyword arguments to the function.
+        *,
+        include_source: Optional[bool] = None,
     ) -> "_Image":
         """Run user-defined function `raw_f` as an image build step. The function runs just like an ordinary Modal
         function, and any kwargs accepted by `@app.function` (such as `Mount`s, `NetworkFileSystem`s,
@@ -1979,6 +1980,7 @@ class _Image(_Object, type_prefix="im"):
             timeout=timeout,
             cpu=cpu,
             is_builder_function=True,
+            include_source=include_source,
         )
         if len(args) + len(kwargs) > 0:
             args_serialized = serialize((args, kwargs))

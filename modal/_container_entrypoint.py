@@ -24,6 +24,10 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 from google.protobuf.message import Message
 
 from modal._clustered_functions import initialize_clustered_function
+from modal._partial_function import (
+    _find_callables_for_obj,
+    _PartialFunctionFlags,
+)
 from modal._proxy_tunnel import proxy_tunnel
 from modal._serialization import deserialize_params
 from modal._utils.async_utils import TaskContext, synchronizer
@@ -34,10 +38,6 @@ from modal.app import App, _App
 from modal.client import Client, _Client
 from modal.config import logger
 from modal.exception import ExecutionError, InputCancellation, InvalidError
-from modal.partial_function import (
-    _find_callables_for_obj,
-    _PartialFunctionFlags,
-)
 from modal.running_app import RunningApp, running_app_from_layout
 from modal_proto import api_pb2
 
@@ -322,6 +322,16 @@ def call_function(
             user_code_event_loop.run(run_concurrent_inputs())
     else:
         for io_context in container_io_manager.run_inputs_outputs(finalized_functions, batch_max_size, batch_wait_ms):
+            # This goes to a registered signal handler for sync Modal functions, or to the
+            # `UserCodeEventLoop` for async functions.
+            #
+            # We only send this signal on functions that do not have concurrent inputs enabled.
+            # This allows us to do fine-grained input cancellation. On sync functions, the
+            # SIGUSR1 signal should interrupt the main thread where user code is running,
+            # raising an InputCancellation() exception. On async functions, the signal should
+            # reach a handler in UserCodeEventLoop, which cancels the task.
+            io_context.set_cancel_callback(lambda: os.kill(os.getpid(), signal.SIGUSR1))
+
             if io_context.finalized_function.is_async:
                 user_code_event_loop.run(run_input_async(io_context))
             else:

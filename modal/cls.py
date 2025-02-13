@@ -13,6 +13,12 @@ from modal_proto import api_pb2
 
 from ._functions import _Function, _parse_retries
 from ._object import _Object
+from ._partial_function import (
+    _find_callables_for_obj,
+    _find_partial_methods_for_user_cls,
+    _PartialFunction,
+    _PartialFunctionFlags,
+)
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._serialization import check_valid_cls_constructor_arg
@@ -25,12 +31,6 @@ from .client import _Client
 from .config import config
 from .exception import ExecutionError, InvalidError, NotFoundError
 from .gpu import GPU_T
-from .partial_function import (
-    _find_callables_for_obj,
-    _find_partial_methods_for_user_cls,
-    _PartialFunction,
-    _PartialFunctionFlags,
-)
 from .retries import Retries
 from .secret import _Secret
 from .volume import _Volume
@@ -558,9 +558,10 @@ class _Cls(_Object, type_prefix="cs"):
         cls = cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
 
         class_service_name = f"{name}.*"  # special name of the base service function for the class
-        cls._class_service_function = _Function.from_name(
+        cls._class_service_function = _Function._from_name(
             app_name,
             class_service_name,
+            namespace=namespace,
             environment_name=_environment_name,
         )
         cls._name = name
@@ -674,8 +675,7 @@ class _Cls(_Object, type_prefix="cs"):
         )
 
     def __getattr__(self, k):
-        # Used by CLI and container entrypoint
-        # TODO: remove this method - access to attributes on classes should be discouraged
+        # TODO: remove this method - access to attributes on classes (not instances) should be discouraged
         if k in self._method_functions:
             deprecation_warning(
                 (2025, 1, 13),

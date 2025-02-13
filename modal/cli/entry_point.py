@@ -69,7 +69,7 @@ def check_path():
             "[red]The `[white]modal[/white]` command is not executable!\n"
             "You may need to give it permissions or use `[white]python -m modal[/white]` as a workaround.[/red]\n"
         )
-    text += "See more information here:\n\n" f"[link={url}]{url}[/link]\n"
+    text += f"See more information here:\n\n[link={url}]{url}[/link]\n"
     console = Console()
     console.print(text)
     console.print(Rule(style="white"))

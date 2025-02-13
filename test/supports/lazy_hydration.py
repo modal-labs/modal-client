@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2024
 from modal import App, Image, Queue, Volume
 
-app = App()
+app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 image = Image.debian_slim().pip_install("xyz")
 volume = Volume.from_name("my-vol")

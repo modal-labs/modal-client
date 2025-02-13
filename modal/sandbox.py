@@ -15,7 +15,6 @@ from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_p
 from modal.volume import _Volume
 from modal_proto import api_pb2
 
-from ._location import parse_cloud_provider
 from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
@@ -42,8 +41,26 @@ from .stream_type import StreamType
 _default_image: _Image = _Image.debian_slim()
 
 
+# The maximum number of bytes that can be passed to an exec on Linux.
+# Though this is technically a 'server side' limit, it is unlikely to change.
+# getconf ARG_MAX will show this value on a host.
+ARG_MAX_BYTES = 2_097_152  # 2MiB
+
 if TYPE_CHECKING:
     import modal.app
+
+
+def _validate_exec_args(entrypoint_args: Sequence[str]) -> None:
+    # Entrypoint args must be strings.
+    if not all(isinstance(arg, str) for arg in entrypoint_args):
+        raise InvalidError("All entrypoint arguments must be strings")
+    # Avoid "[Errno 7] Argument list too long" errors.
+    total_arg_len = sum(len(arg) for arg in entrypoint_args)
+    if total_arg_len > ARG_MAX_BYTES:
+        raise InvalidError(
+            f"Total length of entrypoint arguments must be less than {ARG_MAX_BYTES} bytes (ARG_MAX). "
+            f"Got {total_arg_len} bytes."
+        )
 
 
 class _Sandbox(_Object, type_prefix="sb"):
@@ -168,8 +185,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 resources=convert_fn_config_to_resources_config(
                     cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
                 ),
-                cloud_provider=parse_cloud_provider(cloud) if cloud else None,  # Deprecated at some point
-                cloud_provider_str=cloud.upper() if cloud else None,  # Supersedes cloud_provider
+                cloud_provider_str=cloud if cloud else None,  # Supersedes cloud_provider
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
                 runtime_debug=config.get("function_runtime_debug"),
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
@@ -244,6 +260,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         if len(entrypoint_args) == 0:
             max_sleep_time = 60 * 60 * 24 * 2  # 2 days is plenty since workers roll every 24h
             entrypoint_args = ("sleep", str(max_sleep_time))
+
+        _validate_exec_args(entrypoint_args)
 
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
@@ -468,8 +486,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         text: Literal[True] = True,
         bufsize: Literal[-1, 1] = -1,
         _pty_info: Optional[api_pb2.PTYInfo] = None,
-    ) -> _ContainerProcess[str]:
-        ...
+    ) -> _ContainerProcess[str]: ...
 
     @overload
     async def exec(
@@ -484,8 +501,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         text: Literal[False] = False,
         bufsize: Literal[-1, 1] = -1,
         _pty_info: Optional[api_pb2.PTYInfo] = None,
-    ) -> _ContainerProcess[bytes]:
-        ...
+    ) -> _ContainerProcess[bytes]: ...
 
     async def exec(
         self,
@@ -523,6 +539,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         if workdir is not None and not workdir.startswith("/"):
             raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
+        _validate_exec_args(cmds)
 
         # Force secret resolution so we can pass the secret IDs to the backend.
         secret_coros = [secret.hydrate(client=self._client) for secret in secrets]
@@ -597,16 +614,14 @@ class _Sandbox(_Object, type_prefix="sb"):
         self,
         path: str,
         mode: "_typeshed.OpenTextMode",
-    ) -> _FileIO[str]:
-        ...
+    ) -> _FileIO[str]: ...
 
     @overload
     async def open(
         self,
         path: str,
         mode: "_typeshed.OpenBinaryMode",
-    ) -> _FileIO[bytes]:
-        ...
+    ) -> _FileIO[bytes]: ...
 
     async def open(
         self,
