@@ -18,7 +18,7 @@ try:
     from .dict import Dict
     from .exception import Error
     from .file_pattern_matcher import FilePatternMatcher
-    from .functions import Function
+    from .functions import Function, FunctionCall
     from .image import Image
     from .mount import Mount
     from .network_file_system import NetworkFileSystem
@@ -52,6 +52,7 @@ __all__ = [
     "Error",
     "FilePatternMatcher",
     "Function",
+    "FunctionCall",
     "Image",
     "Mount",
     "NetworkFileSystem",
