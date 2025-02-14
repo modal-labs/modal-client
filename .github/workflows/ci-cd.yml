@@ -202,10 +202,13 @@ jobs:
 
       - name: Build type stubs
         run: inv type-stubs
+      
+      - name: Install build
+        run: pip install build
 
       - name: Build package distributions (wheel and source)
         run: |
-          python setup.py sdist bdist_wheel
+          python -m build
 
       - name: Upload to PyPI
         env:
