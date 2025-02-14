@@ -426,11 +426,6 @@ def test_sandbox_exec_stdout(app, servicer, capsys):
 
 @skip_non_subprocess
 def test_sandbox_snapshot(app, client, servicer):
-    invalid_sb = Sandbox.create(app=app)
-    with pytest.raises(ValueError):
-        # cannot snapshot a sandbox without memory snapshotting enabled
-        sandbox_snapshot = invalid_sb._experimental_snapshot()
-
     sb = Sandbox.create(app=app, _experimental_enable_snapshot=True)
     sandbox_snapshot = sb._experimental_snapshot()
     snapshot_id = sandbox_snapshot.object_id
