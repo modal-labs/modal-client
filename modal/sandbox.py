@@ -562,11 +562,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr, text=text, by_line=by_line)
 
     async def _experimental_snapshot(self) -> _SandboxSnapshot:
-        if not self._enable_snapshot:
-            raise ValueError(
-                "Memory snapshots are not supported for this sandbox. To enable memory snapshots, "
-                "set `_experimental_enable_snapshot=True` when creating the sandbox."
-            )
         await self._get_task_id()
         snap_req = api_pb2.SandboxSnapshotRequest(sandbox_id=self.object_id)
         snap_resp = await retry_transient_errors(self._client.stub.SandboxSnapshot, snap_req)
