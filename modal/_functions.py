@@ -862,6 +862,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         warm_pool_size=function_definition.warm_pool_size,
                         concurrency_limit=function_definition.concurrency_limit,
                         task_idle_timeout_secs=function_definition.task_idle_timeout_secs,
+                        autoscaler_settings=function_definition.autoscaler_settings,
                         worker_id=function_definition.worker_id,
                         timeout_secs=function_definition.timeout_secs,
                         web_url=function_definition.web_url,

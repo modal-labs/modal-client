@@ -1435,6 +1435,9 @@ message FunctionData {
   bool untrusted = 27; // If set, the function will be run in an untrusted environment.
   bool snapshot_debug = 28; // For internal debugging use only.
   bool runtime_perf_record = 29; // For internal debugging use only.
+
+  AutoscalerSettings autoscaler_settings = 31;  // Bundle of parameters related to autoscaling
+
 }
 
 message FunctionExtended {
