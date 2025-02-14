@@ -47,7 +47,7 @@ Documentation = "https://modal.com/docs"
 modal = "modal.__main__:main"
 
 [tool.setuptools.packages.find]
-include = ["modal", "modal.*", "modal_docs", "modal_version", "modal_proto"]
+include = ["modal", "modal.*", "modal_docs", "modal_docs.*", "modal_version", "modal_proto"]
 exclude = ["test*", "modal_global_objects"]
 
 [tool.setuptools.package-data]
