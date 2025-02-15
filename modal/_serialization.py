@@ -399,6 +399,9 @@ class ParamTypeInfo:
 PARAM_TYPE_MAPPING = {
     api_pb2.PARAM_TYPE_STRING: ParamTypeInfo(default_field="string_default", proto_field="string_value", converter=str),
     api_pb2.PARAM_TYPE_INT: ParamTypeInfo(default_field="int_default", proto_field="int_value", converter=int),
+    api_pb2.PARAM_TYPE_PICKLE: ParamTypeInfo(
+        default_field="pickle_default", proto_field="pickle_value", converter=serialize
+    ),
 }
 
 
@@ -428,7 +431,9 @@ def serialize_proto_params(python_params: dict[str, Any], schema: typing.Sequenc
     return proto_bytes
 
 
-def deserialize_proto_params(serialized_params: bytes, schema: list[api_pb2.ClassParameterSpec]) -> dict[str, Any]:
+def deserialize_proto_params(
+    serialized_params: bytes, schema: list[api_pb2.ClassParameterSpec], _client
+) -> dict[str, Any]:
     proto_struct = api_pb2.ClassParameterSet()
     proto_struct.ParseFromString(serialized_params)
     value_by_name = {p.name: p for p in proto_struct.parameters}
@@ -449,6 +454,8 @@ def deserialize_proto_params(serialized_params: bytes, schema: list[api_pb2.Clas
             python_value = param_value.string_value
         elif schema_param.type == api_pb2.PARAM_TYPE_INT:
             python_value = param_value.int_value
+        elif schema_param.type == api_pb2.PARAM_TYPE_PICKLE:
+            python_value = deserialize(param_value.pickle_value, _client)
         else:
             # TODO(elias): based on `parameters` declared types, we could add support for
             #  custom non proto types encoded as bytes in the proto, e.g. PARAM_TYPE_PYTHON_PICKLE
@@ -468,7 +475,9 @@ def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function,
         param_args, param_kwargs = deserialize(serialized_params, _client)
     elif function_def.class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO:
         param_args = ()
-        param_kwargs = deserialize_proto_params(serialized_params, list(function_def.class_parameter_info.schema))
+        param_kwargs = deserialize_proto_params(
+            serialized_params, list(function_def.class_parameter_info.schema), _client
+        )
     else:
         raise ExecutionError(
             f"Unknown class parameter serialization format: {function_def.class_parameter_info.format}"

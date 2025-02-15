@@ -15,7 +15,7 @@ from synchronicity.exceptions import UserCodeException
 import modal_proto
 from modal_proto import api_pb2
 
-from .._serialization import deserialize, deserialize_data_format, serialize
+from .._serialization import PARAM_TYPE_MAPPING, deserialize, deserialize_data_format, serialize
 from .._traceback import append_modal_tb
 from ..config import config, logger
 from ..exception import (
@@ -300,7 +300,9 @@ class FunctionInfo:
             param_type, default_field = CLASS_PARAM_TYPE_MAP[param.annotation]
             class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=param_type)
             if has_default:
-                setattr(class_param_spec, default_field, param.default)
+                type_info = PARAM_TYPE_MAPPING.get(param_type)
+                converted_value = type_info.converter(param.default)
+                setattr(class_param_spec, default_field, converted_value)
             modal_parameters.append(class_param_spec)
 
         return api_pb2.ClassParameterInfo(
