@@ -41,7 +41,7 @@ class Service(metaclass=ABCMeta):
 
     user_cls_instance: Any
     app: Optional["modal.app._App"]
-    code_deps: Optional[Sequence["modal._object._Object"]]
+    service_deps: Optional[Sequence["modal._object._Object"]]
 
     @abstractmethod
     def get_finalized_functions(
@@ -93,7 +93,7 @@ def construct_webhook_callable(
 class ImportedFunction(Service):
     user_cls_instance: Any
     app: Optional["modal.app._App"]
-    code_deps: Optional[Sequence["modal._object._Object"]]
+    service_deps: Optional[Sequence["modal._object._Object"]]
 
     _user_defined_callable: Callable[..., Any]
 
@@ -227,8 +227,7 @@ def import_single_function_service(
     the import) runs on the right thread.
     """
     user_defined_callable: Callable
-    function: Optional[_Function] = None
-    code_deps: Optional[Sequence["modal._object._Object"]] = None
+    service_deps: Optional[Sequence["modal._object._Object"]] = None
     active_app: Optional[modal.app._App] = None
 
     if ser_fun is not None:
@@ -249,6 +248,7 @@ def import_single_function_service(
             f = getattr(module, qual_name)
             if isinstance(f, Function):
                 function = synchronizer._translate_in(f)
+                service_deps = function.deps(only_explicit_mounts=True)
                 user_defined_callable = function.get_raw_f()
                 active_app = function._app
             else:
@@ -264,9 +264,7 @@ def import_single_function_service(
                 # The cls decorator is in global scope
                 _cls = synchronizer._translate_in(cls)
                 user_defined_callable = _cls._callables[fun_name]
-                function = _cls._method_functions.get(
-                    fun_name
-                )  # bound to the class service function - there is no instance
+                service_deps = _cls._get_class_service_function().deps(only_explicit_mounts=True)
                 active_app = _cls._app
             else:
                 # This is non-decorated class
@@ -283,13 +281,10 @@ def import_single_function_service(
     else:
         user_cls_instance = None
 
-    if function:
-        code_deps = function.deps(only_explicit_mounts=True)
-
     return ImportedFunction(
         user_cls_instance,
         active_app,
-        code_deps,
+        service_deps,
         user_defined_callable,
     )
 

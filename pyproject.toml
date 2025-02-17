@@ -8,11 +8,9 @@ description = "Python client library for Modal"
 readme = "README.md"
 dynamic = ["version"]
 requires-python = ">=3.9"
-license = {text = "Apache-2.0"}
+license = { text = "Apache-2.0" }
 
-authors = [
-    { name = "Modal Labs", email = "support@modal.com" }
-]
+authors = [{ name = "Modal Labs", email = "support@modal.com" }]
 dependencies = [
     "aiohttp",
     "certifi",
@@ -27,14 +25,14 @@ dependencies = [
     "types-certifi",
     "types-toml",
     "watchfiles",
-    "typing_extensions~=4.6"
+    "typing_extensions~=4.6",
 ]
 keywords = ["modal", "client", "cloud", "serverless", "infrastructure"]
 classifiers = [
     "Topic :: System :: Distributed Computing",
     "Operating System :: OS Independent",
     "License :: OSI Approved :: Apache Software License",
-    "Programming Language :: Python :: 3"
+    "Programming Language :: Python :: 3",
 ]
 
 [project.urls]
@@ -47,15 +45,28 @@ Documentation = "https://modal.com/docs"
 modal = "modal.__main__:main"
 
 [tool.setuptools.packages.find]
-include = ["modal", "modal.*", "modal_docs", "modal_docs.*", "modal_version", "modal_proto"]
+include = [
+    "modal",
+    "modal.*",
+    "modal_docs",
+    "modal_docs.*",
+    "modal_version",
+    "modal_proto",
+]
 exclude = ["test*", "modal_global_objects"]
 
 [tool.setuptools.package-data]
-modal = ["requirements/*.md", "requirements/*.txt", "requirements/*.json", "py.typed", "*.pyi"]
+modal = [
+    "requirements/*.md",
+    "requirements/*.txt",
+    "requirements/*.json",
+    "py.typed",
+    "*.pyi",
+]
 modal_proto = ["*.proto", "py.typed", "*.pyi"]
 
 [tool.setuptools.dynamic]
-version = {attr = "modal_version.__version__"}
+version = { attr = "modal_version.__version__" }
 
 [tool.mypy]
 python_version = "3.11"
@@ -117,3 +128,5 @@ extra-standard-library = ["pytest"]
 
 [tool.pyright]
 reportUnnecessaryComparison = true
+venvPath = "."
+venv = ".venv"

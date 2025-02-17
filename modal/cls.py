@@ -8,7 +8,7 @@ from typing import Any, Callable, Optional, TypeVar, Union
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
-from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP
+from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP, FunctionInfo
 from modal_proto import api_pb2
 
 from ._functions import _Function, _parse_retries
@@ -72,30 +72,21 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
         return inspect.Signature(constructor_parameters)
 
 
-def _bind_instance_method(service_function: _Function, class_bound_method: _Function):
-    """Binds an "instance service function" to a specific method name.
-    This "dummy" _Function gets no unique object_id and isn't backend-backed at the moment, since all
-    it does it forward invocations to the underlying instance_service_function with the specified method,
-    and we don't support web_config for parametrized methods at the moment.
-    """
-    # TODO(elias): refactor to not use `_from_loader()` as a crutch for lazy-loading the
-    #   underlying instance_service_function. It's currently used in order to take advantage
-    #   of resolver logic and get "chained" resolution of lazy loads, even though this thin
-    #   object itself doesn't need any "loading"
-    assert service_function._obj
-    method_name = class_bound_method._use_method_name
+def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name: str):
+    """Binds an "instance service function" to a specific method using metadata for that method
 
-    def hydrate_from_instance_service_function(method_placeholder_fun):
-        method_placeholder_fun._hydrate_from_other(service_function)
-        method_placeholder_fun._obj = service_function._obj
-        method_placeholder_fun._web_url = (
-            class_bound_method._web_url
-        )  # TODO: this shouldn't be set when actual parameters are used
-        method_placeholder_fun._function_name = f"{class_bound_method._function_name}[parametrized]"
-        method_placeholder_fun._is_generator = class_bound_method._is_generator
-        method_placeholder_fun._cluster_size = class_bound_method._cluster_size
-        method_placeholder_fun._use_method_name = method_name
-        method_placeholder_fun._is_method = True
+    This "dummy" _Function gets no unique object_id and isn't backend-backed at all, since all
+    it does it forward invocations to the underlying instance_service_function with the specified method
+    """
+    assert service_function._obj
+
+    def hydrate_from_instance_service_function(new_function: _Function):
+        assert service_function.is_hydrated
+        assert cls.is_hydrated
+        # After 0.67 is minimum required version, we should be able to use method metadata directly
+        # from the service_function instead (see _Cls._hydrate_metadata), but for now we use the _Cls
+        method_metadata = cls._method_metadata[method_name]
+        new_function._hydrate(service_function.object_id, service_function.client, method_metadata)
 
     async def _load(fun: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
         # there is currently no actual loading logic executed to create each method on
@@ -111,7 +102,7 @@ def _bind_instance_method(service_function: _Function, class_bound_method: _Func
             return []
         return [service_function]
 
-    rep = f"Method({method_name})"
+    rep = f"Method({cls._name}.{method_name})"
 
     fun = _Function._from_loader(
         _load,
@@ -123,12 +114,20 @@ def _bind_instance_method(service_function: _Function, class_bound_method: _Func
         # Eager hydration (skip load) if the instance service function is already loaded
         hydrate_from_instance_service_function(fun)
 
-    fun._info = class_bound_method._info
+    if cls._is_local():
+        partial_function = cls._method_partials[method_name]
+        fun._info = FunctionInfo(
+            # ugly - needed for .local()  TODO (elias): Clean up!
+            partial_function.raw_f,
+            user_cls=cls._user_cls,
+            serialized=service_function.info.is_serialized(),
+        )
+
     fun._obj = service_function._obj
     fun._is_method = True
-    fun._app = class_bound_method._app
-    fun._spec = class_bound_method._spec
-    fun._is_web_endpoint = class_bound_method._is_web_endpoint
+    fun._app = service_function._app
+    fun._spec = service_function._spec
+    # fun._is_web_endpoint = class_bound_method._is_web_endpoint  # TODO: fix this
     return fun
 
 
@@ -280,31 +279,34 @@ class _Obj:
         # * Support .local() on both hydrated and unhydrated classes (assuming local access to code)
         # * Support attribute access (when local cls is available)
 
-        def _get_method_bound_function() -> Optional["_Function"]:
+        # The returned _Function objects need to be lazily loaded (including loading the Cls and/or service function)
+        # since we can't assume the class is already loaded when this gets called, e.g.
+        # CLs.from_name(...)().my_func.remote().
+
+        def _get_maybe_method() -> Optional["_Function"]:
             """Gets _Function object for method - either for a local or a hydrated remote class
 
             * If class is neither local or hydrated - raise exception (should never happen)
             * If attribute isn't a method - return None
             """
-            if self._cls._method_functions is None:
-                raise ExecutionError("Method is not local and not hydrated")
+            if self._cls._is_local():
+                if k not in self._cls._method_partials:
+                    return None
+            elif self._cls.is_hydrated:
+                if k not in self._cls._method_metadata:
+                    return None
+            else:
+                raise ExecutionError(
+                    "Class is neither hydrated or local - this is probably a bug in the Modal client. Contact support"
+                )
 
-            if class_bound_method := self._cls._method_functions.get(k, None):
-                # If we know the user is accessing a *method* and not another attribute,
-                # we don't have to create an instance of the user class yet.
-                # This is because it might just be a call to `.remote()` on it which
-                # doesn't require a local instance.
-                # As long as we have the service function or params, we can do remote calls
-                # without calling the constructor of the class in the calling context.
-                return _bind_instance_method(self._cached_service_function(), class_bound_method)
+            return _bind_instance_method(self._cls, self._cached_service_function(), k)
 
-            return None  # The attribute isn't a method
-
-        if self._cls._method_functions is not None:
-            # We get here with either a hydrated Cls or an unhydrated one with local definition
-            if method := _get_method_bound_function():
-                return method
-            elif self._user_cls:
+        if self._cls.is_hydrated or self._cls._is_local():
+            # Class is hydrated or local so we know which methods exist
+            if maybe_method := _get_maybe_method():
+                return maybe_method
+            elif self._cls._is_local():
                 # We have the local definition, and the attribute isn't a method
                 # so we instantiate if we don't have an instance, and try to get the attribute
                 user_cls_instance = self._cached_user_cls_instance()
@@ -319,10 +321,9 @@ class _Obj:
 
         # Not hydrated Cls, and we don't have the class - typically a Cls.from_name that
         # has not yet been loaded. So use a special loader that loads it lazily:
-
         async def method_loader(fun, resolver: Resolver, existing_object_id):
             await resolver.load(self._cls)  # load class so we get info about methods
-            method_function = _get_method_bound_function()
+            method_function = _get_maybe_method()
             if method_function is None:
                 raise NotFoundError(
                     f"Class has no method {k}, and attributes can't be accessed for `Cls.from_name` instances"
@@ -334,7 +335,7 @@ class _Obj:
         # on local classes.
         return _Function._from_loader(
             method_loader,
-            repr,
+            rep=f"Method({k})",
             deps=lambda: [],  # TODO: use cls as dep instead of loading inside method_loader?
             hydrate_lazily=True,
         )
@@ -352,13 +353,18 @@ class _Cls(_Object, type_prefix="cs"):
     Instead, use the [`@app.cls()`](/docs/reference/modal.App#cls) decorator on the App object.
     """
 
-    _user_cls: Optional[type]
     _class_service_function: Optional[_Function]  # The _Function (read "service") serving *all* methods of the class
-    _method_functions: Optional[dict[str, _Function]] = None  # Placeholder _Functions for each method
     _options: Optional[api_pb2.FunctionOptions]
-    _callables: dict[str, Callable[..., Any]]
+
     _app: Optional["modal.app._App"] = None  # not set for lookups
     _name: Optional[str]
+    # Only set for hydrated classes:
+    _method_metadata: Optional[dict[str, api_pb2.FunctionHandleMetadata]] = None
+
+    # These are only set where source is locally available:
+    _user_cls: Optional[type]
+    _method_partials: dict[str, _PartialFunction]
+    _callables: dict[str, Callable[..., Any]]
 
     def _initialize_from_empty(self):
         self._user_cls = None
@@ -371,7 +377,7 @@ class _Cls(_Object, type_prefix="cs"):
         super()._initialize_from_other(other)
         self._user_cls = other._user_cls
         self._class_service_function = other._class_service_function
-        self._method_functions = other._method_functions
+        self._method_partials = other._method_partials
         self._options = other._options
         self._callables = other._callables
         self._name = other._name
@@ -382,59 +388,41 @@ class _Cls(_Object, type_prefix="cs"):
         return _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.all())
 
     def _get_app(self) -> "modal.app._App":
+        assert self._app is not None
         return self._app
 
     def _get_user_cls(self) -> type:
+        assert self._user_cls is not None
         return self._user_cls
 
     def _get_name(self) -> str:
+        assert self._name is not None
         return self._name
 
-    def _get_class_service_function(self) -> "modal.functions._Function":
+    def _get_class_service_function(self) -> _Function:
+        assert self._class_service_function is not None
         return self._class_service_function
 
     def _get_method_names(self) -> Collection[str]:
         # returns method names for a *local* class only for now (used by cli)
-        return self._method_functions.keys()
+        return self._method_partials.keys()
 
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
-        assert self._class_service_function.is_hydrated
+        class_service_function = self._get_class_service_function()
+        assert class_service_function.is_hydrated
 
-        if self._class_service_function._method_handle_metadata and len(
-            self._class_service_function._method_handle_metadata
-        ):
-            # Method metadata stored on the backend Function object (v0.67+)
-            if self._method_functions:
-                # We're here when the Cls is loaded locally (e.g. _Cls.from_local) so the _method_functions mapping is
-                # populated with (un-hydrated) _Function objects - hydrate using function method metadata
-                for (
-                    method_name,
-                    method_handle_metadata,
-                ) in self._class_service_function._method_handle_metadata.items():
-                    self._method_functions[method_name]._hydrate(
-                        self._class_service_function.object_id, self._client, method_handle_metadata
-                    )
-            else:
-                # We're here when the function is loaded remotely (e.g. _Cls.from_name),
-                # same as above, but we create the method "Functions" from scratch rather
-                # than hydrate existing ones. TODO(elias): feels complicated - refactor?
-                self._method_functions = {}
-                for (
-                    method_name,
-                    method_handle_metadata,
-                ) in self._class_service_function._method_handle_metadata.items():
-                    self._method_functions[method_name] = _Function._new_hydrated(
-                        self._class_service_function.object_id, self._client, method_handle_metadata
-                    )
+        if class_service_function._method_handle_metadata and len(class_service_function._method_handle_metadata):
+            # If we have the metadata on the class service function
+            # This should be the case for any loaded class (remote or local) as of v0.67
+            method_metadata = class_service_function._method_handle_metadata
         else:
-            # Method metadata stored on the backend Cls object - pre 0.67
+            # Method metadata stored on the backend Cls object - pre 0.67 lookups
             # Can be removed when v0.67 is least supported version (all metadata is on the function)
-            self._method_functions = {}
+            method_metadata = {}
             for method in metadata.methods:
-                self._method_functions[method.function_name] = _Function._new_hydrated(
-                    self._class_service_function.object_id, self._client, method.function_handle_metadata
-                )
+                method_metadata[method.function_name] = method.function_handle_metadata
+        self._method_metadata = method_metadata
 
     @staticmethod
     def validate_construction_mechanism(user_cls):
@@ -467,19 +455,17 @@ class _Cls(_Object, type_prefix="cs"):
         # validate signature
         _Cls.validate_construction_mechanism(user_cls)
 
-        method_functions: dict[str, _Function] = {}
-        partial_functions: dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
+        method_partials: dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
             user_cls, _PartialFunctionFlags.FUNCTION
         )
 
-        for method_name, partial_function in partial_functions.items():
-            method_function = class_service_function._bind_method(user_cls, method_name, partial_function)
+        for method_name, partial_function in method_partials.items():
             if partial_function.webhook_config is not None:
-                app._web_endpoints.append(method_function.tag)
+                full_name = f"{user_cls.__name__}.{method_name}"
+                app._web_endpoints.append(full_name)
             partial_function.wrapped = True
-            method_functions[method_name] = method_function
 
-        # Disable the warning that these are not wrapped
+        # Disable the warning that lifecycle methods are not wrapped
         for partial_function in _find_partial_methods_for_user_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():
             partial_function.wrapped = True
 
@@ -503,7 +489,7 @@ class _Cls(_Object, type_prefix="cs"):
         cls._app = app
         cls._user_cls = user_cls
         cls._class_service_function = class_service_function
-        cls._method_functions = method_functions
+        cls._method_partials = method_partials
         cls._callables = callables
         cls._name = user_cls.__name__
         return cls
@@ -676,7 +662,7 @@ class _Cls(_Object, type_prefix="cs"):
 
     def __getattr__(self, k):
         # TODO: remove this method - access to attributes on classes (not instances) should be discouraged
-        if k in self._method_functions:
+        if k in self._method_partials:
             deprecation_warning(
                 (2025, 1, 13),
                 "Usage of methods directly on the class will soon be deprecated, "
@@ -684,7 +670,7 @@ class _Cls(_Object, type_prefix="cs"):
                 f"{self._name}().{k} instead of {self._name}.{k}",
                 pending=True,
             )
-            return self._method_functions[k]
+            return getattr(self(), k)
         return getattr(self._user_cls, k)
 
     def _is_local(self) -> bool:
