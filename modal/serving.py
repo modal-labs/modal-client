@@ -14,7 +14,7 @@ from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchron
 from ._utils.deprecation import deprecation_error
 from ._utils.logger import logger
 from ._watcher import watch
-from .cli.import_refs import import_app
+from .cli.import_refs import ImportRef, import_app
 from .client import _Client
 from .config import config
 from .output import _get_output_manager, enable_output
@@ -27,10 +27,10 @@ else:
 
 
 def _run_serve(
-    app_ref: str, is_module: bool, existing_app_id: str, is_ready: Event, environment_name: str, show_progress: bool
+    import_ref: ImportRef, existing_app_id: str, is_ready: Event, environment_name: str, show_progress: bool
 ):
     # subprocess entrypoint
-    _app = import_app(app_ref, is_module=is_module, base_cmd="modal serve")
+    _app = import_app(import_ref, base_cmd="modal serve")
     blocking_app = synchronizer._translate_out(_app)
 
     with enable_output(show_progress=show_progress):
@@ -38,15 +38,13 @@ def _run_serve(
 
 
 async def _restart_serve(
-    app_ref: str, *, is_module: bool, existing_app_id: str, environment_name: str, timeout: float = 5.0
+    import_ref: ImportRef, *, existing_app_id: str, environment_name: str, timeout: float = 5.0
 ) -> SpawnProcess:
     ctx = multiprocessing.get_context("spawn")  # Needed to reload the interpreter
     is_ready = ctx.Event()
     output_mgr = OutputManager.get()
     show_progress = output_mgr is not None
-    p = ctx.Process(
-        target=_run_serve, args=(app_ref, is_module, existing_app_id, is_ready, environment_name, show_progress)
-    )
+    p = ctx.Process(target=_run_serve, args=(import_ref, existing_app_id, is_ready, environment_name, show_progress))
     p.start()
     await asyncify(is_ready.wait)(timeout)
     # TODO(erikbern): we don't fail if the above times out, but that's somewhat intentional, since
@@ -72,9 +70,8 @@ async def _terminate(proc: Optional[SpawnProcess], timeout: float = 5.0):
 
 
 async def _run_watch_loop(
-    app_ref: str,
+    import_ref: ImportRef,
     *,
-    is_module: bool,
     app_id: str,
     watcher: AsyncGenerator[set[str], None],
     environment_name: str,
@@ -94,9 +91,7 @@ async def _run_watch_loop(
             async for trigger_files in watcher:
                 logger.debug(f"The following files triggered an app update: {', '.join(trigger_files)}")
                 await _terminate(curr_proc)
-                curr_proc = await _restart_serve(
-                    app_ref, is_module=is_module, existing_app_id=app_id, environment_name=environment_name
-                )
+                curr_proc = await _restart_serve(import_ref, existing_app_id=app_id, environment_name=environment_name)
         finally:
             await _terminate(curr_proc)
 
@@ -104,9 +99,8 @@ async def _run_watch_loop(
 @asynccontextmanager
 async def _serve_app(
     app: "_App",
-    app_ref: str,
+    import_ref: ImportRef,
     *,
-    is_module: bool,
     _watcher: Optional[AsyncGenerator[set[str], None]] = None,  # for testing
     environment_name: Optional[str] = None,
 ) -> AsyncGenerator["_App", None]:
@@ -123,9 +117,7 @@ async def _serve_app(
             watcher = watch(mounts_to_watch)
         async with TaskContext(grace=0.1) as tc:
             tc.create_task(
-                _run_watch_loop(
-                    app_ref, is_module=is_module, app_id=app.app_id, watcher=watcher, environment_name=environment_name
-                )
+                _run_watch_loop(import_ref, app_id=app.app_id, watcher=watcher, environment_name=environment_name)
             )
             yield app
 

@@ -416,7 +416,7 @@ def deploy(
     env: str = ENV_OPTION,
     stream_logs: bool = typer.Option(False, help="Stream logs from the app upon deployment."),
     tag: str = typer.Option("", help="Tag the deployment with a version."),
-    module_mode: bool = typer.Option(False, "--module", "-m", help="Use a Python module path instead of a file path"),
+    is_module: bool = typer.Option(False, "-m", help="Use a Python module path instead of a file path"),
 ):
     """Deploy a Modal application.
 
@@ -426,7 +426,8 @@ def deploy(
     # this ensures that lookups without environment specification use the same env as specified
     env = ensure_env(env)
 
-    app = import_app(app_ref, module_mode, base_cmd="modal deploy")
+    import_ref = parse_import_ref(app_ref, is_module=is_module)
+    app = import_app(import_ref, base_cmd="modal deploy")
 
     if name is None:
         name = app.name
@@ -453,13 +454,13 @@ def serve(
     ```
     """
     env = ensure_env(env)
-
-    app = import_app(app_ref, is_module, base_cmd="modal serve")
+    import_ref = parse_import_ref(app_ref, is_module=is_module)
+    app = import_app(import_ref, base_cmd="modal serve")
     if app.description is None:
         app.set_description(_get_clean_app_description(app_ref))
 
     with enable_output():
-        with serve_app(app, app_ref, is_module=is_module, environment_name=env):
+        with serve_app(app, import_ref, environment_name=env):
             if timeout is None:
                 timeout = config["serve_timeout"]
             if timeout is None:

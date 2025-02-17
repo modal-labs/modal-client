@@ -238,9 +238,7 @@ def filter_cli_commands(
     return res
 
 
-def import_app(app_ref: str, is_module: bool, base_cmd: str) -> App:
-    import_ref = parse_import_ref(app_ref, is_module=is_module)
-
+def import_app(import_ref: ImportRef, base_cmd: str) -> App:
     # TODO: default could be to just pick up any app regardless if it's called DEFAULT_APP_NAME
     #  as long as there is a single app in the module?
     import_path = import_ref.file_or_module
