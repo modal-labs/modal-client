@@ -331,7 +331,7 @@ class RunGroup(click.Group):
         ctx.ensure_object(dict)
         ctx.obj["env"] = ensure_env(ctx.params["env"])
 
-        import_ref = parse_import_ref(func_ref, is_module=ctx.params["module"])
+        import_ref = parse_import_ref(func_ref, is_module=ctx.params["m"])
         runnable, all_usable_commands = import_and_filter(
             import_ref, base_cmd="modal run", accept_local_entrypoint=True, accept_webhook=False
         )
@@ -377,7 +377,7 @@ class RunGroup(click.Group):
 @click.option("-e", "--env", help=ENV_OPTION_HELP, default=None)
 @click.option("-m", is_flag=True, help="Use a Python module path instead of a file path")
 @click.pass_context
-def run(ctx, write_result, detach, quiet, interactive, env, module):
+def run(ctx, write_result, detach, quiet, interactive, env, m):
     """Run a Modal function or local entrypoint.
 
     `FUNC_REF` should be of the format `{file or module}::{function name}`.
@@ -414,7 +414,6 @@ def run(ctx, write_result, detach, quiet, interactive, env, module):
     ctx.obj["detach"] = detach  # if subcommand would be a click command...
     ctx.obj["show_progress"] = False if quiet else True
     ctx.obj["interactive"] = interactive
-    ctx.obj["use_module"] = module
 
 
 def deploy(
