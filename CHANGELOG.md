@@ -10,6 +10,18 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.51 (2025-02-14)
+
+- Fixes a bug where sandboxes returned from `Sandbox.list()` were not snapshottable even if they were created with `_experimental_enable_snapshot`.
+
+
+
+### 0.73.44 (2025-02-13)
+
+- `modal.FunctionCall` is now available in the top-level `modal` namespace. We recommend referencing the class this way instead of using the the fully-qualified `modal.functions.FunctionCall` name.
+
+
+
 ### 0.73.40 (2025-02-12)
 
 - `Function.web_url` will now return None (instead of raising an error) when the Function is not a web endpoint

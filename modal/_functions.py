@@ -862,6 +862,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         warm_pool_size=function_definition.warm_pool_size,
                         concurrency_limit=function_definition.concurrency_limit,
                         task_idle_timeout_secs=function_definition.task_idle_timeout_secs,
+                        autoscaler_settings=function_definition.autoscaler_settings,
                         worker_id=function_definition.worker_id,
                         timeout_secs=function_definition.timeout_secs,
                         web_url=function_definition.web_url,
@@ -1474,7 +1475,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         This experimental version of the spawn method allows up to 1 million inputs to be spawned.
 
-        Returns a `modal.functions.FunctionCall` object, that can later be polled or
+        Returns a `modal.FunctionCall` object, that can later be polled or
         waited for using `.get(timeout=...)`.
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
         """
@@ -1497,7 +1498,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> "_FunctionCall[ReturnType]":
         """Calls the function with the given arguments, without waiting for the results.
 
-        Returns a `modal.functions.FunctionCall` object, that can later be polled or
+        Returns a `modal.FunctionCall` object, that can later be polled or
         waited for using `.get(timeout=...)`.
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
         """

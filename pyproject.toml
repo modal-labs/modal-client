@@ -2,6 +2,61 @@
 requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "modal"
+description = "Python client library for Modal"
+readme = "README.md"
+dynamic = ["version"]
+requires-python = ">=3.9"
+license = {text = "Apache-2.0"}
+
+authors = [
+    { name = "Modal Labs", email = "support@modal.com" }
+]
+dependencies = [
+    "aiohttp",
+    "certifi",
+    "click>=8.1.0",
+    "fastapi",
+    "grpclib==0.4.7",
+    "protobuf>=3.19,<6.0,!=4.24.0",
+    "rich>=12.0.0",
+    "synchronicity~=0.9.10",
+    "toml",
+    "typer>=0.9",
+    "types-certifi",
+    "types-toml",
+    "watchfiles",
+    "typing_extensions~=4.6"
+]
+keywords = ["modal", "client", "cloud", "serverless", "infrastructure"]
+classifiers = [
+    "Topic :: System :: Distributed Computing",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3"
+]
+
+[project.urls]
+Homepage = "https://modal.com"
+Source = "https://github.com/modal-labs/modal-client"
+Documentation = "https://modal.com/docs"
+"Issue Tracker" = "https://github.com/modal-labs/modal-client/issues"
+
+[project.scripts]
+modal = "modal.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["modal", "modal.*", "modal_docs", "modal_docs.*", "modal_version", "modal_proto"]
+exclude = ["test*", "modal_global_objects"]
+
+[tool.setuptools.package-data]
+modal = ["requirements/*.md", "requirements/*.txt", "requirements/*.json", "py.typed", "*.pyi"]
+modal_proto = ["*.proto", "py.typed", "*.pyi"]
+
+[tool.setuptools.dynamic]
+version = {attr = "modal_version.__version__"}
+
 [tool.mypy]
 python_version = "3.11"
 exclude = "build"

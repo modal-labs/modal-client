@@ -1292,7 +1292,7 @@ message FunctionAsyncInvokeRequest {
   string function_id = 1;
   string parent_input_id = 2;
   FunctionInput input = 3;
-} 
+}
 
 message FunctionAsyncInvokeResponse {
   bool retry_with_blob_upload = 1;
@@ -1370,7 +1370,6 @@ message FunctionCreateRequest {
 
 message FunctionCreateResponse {
   string function_id = 1;
-  string __deprecated_web_url = 2  [ deprecated = true];  // Used up until 0.62.212
   Function function = 4;
   FunctionHandleMetadata handle_metadata = 5;
 }
@@ -1435,6 +1434,9 @@ message FunctionData {
   bool untrusted = 27; // If set, the function will be run in an untrusted environment.
   bool snapshot_debug = 28; // For internal debugging use only.
   bool runtime_perf_record = 29; // For internal debugging use only.
+
+  AutoscalerSettings autoscaler_settings = 31;  // Bundle of parameters related to autoscaling
+
 }
 
 message FunctionExtended {
@@ -1509,6 +1511,7 @@ message FunctionGetOutputsItem {
   double input_started_at = 7;
   double output_created_at = 8;
   uint32 retry_count = 9;
+  string fc_trace_tag = 10; // datadog function call trace tag
 }
 
 message FunctionGetOutputsRequest {
@@ -1775,7 +1778,7 @@ message ImageFromIdRequest {
 message ImageFromIdResponse {
   string image_id = 1;
   ImageMetadata metadata = 2;
-} 
+}
 
 message ImageGetOrCreateRequest {
   Image image = 2;
