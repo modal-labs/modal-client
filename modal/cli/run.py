@@ -27,7 +27,14 @@ from ..output import enable_output
 from ..runner import deploy_app, interactive_shell, run_app
 from ..serving import serve_app
 from ..volume import Volume
-from .import_refs import CLICommand, MethodReference, _get_runnable_app, import_and_filter, import_app, parse_import_ref
+from .import_refs import (
+    CLICommand,
+    MethodReference,
+    _get_runnable_app,
+    import_and_filter,
+    import_app_from_ref,
+    parse_import_ref,
+)
 from .utils import ENV_OPTION, ENV_OPTION_HELP, is_tty, stream_app_logs
 
 
@@ -428,7 +435,7 @@ def deploy(
     env = ensure_env(env)
 
     import_ref = parse_import_ref(app_ref, is_module=is_module)
-    app = import_app(import_ref, base_cmd="modal deploy")
+    app = import_app_from_ref(import_ref, base_cmd="modal deploy")
 
     if name is None:
         name = app.name
@@ -456,7 +463,7 @@ def serve(
     """
     env = ensure_env(env)
     import_ref = parse_import_ref(app_ref, is_module=is_module)
-    app = import_app(import_ref, base_cmd="modal serve")
+    app = import_app_from_ref(import_ref, base_cmd="modal serve")
     if app.description is None:
         app.set_description(_get_clean_app_description(app_ref))
 

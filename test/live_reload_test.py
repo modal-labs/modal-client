@@ -6,6 +6,7 @@ import time
 from unittest import mock
 
 from modal import Function, enable_output
+from modal.cli.import_refs import ImportRef
 from modal.serving import serve_app
 
 from .supports.app_run_tests.webhook import app
@@ -13,13 +14,13 @@ from .supports.skip import skip_windows
 
 
 @pytest.fixture
-def app_ref(test_dir):
-    return str(test_dir / "supports" / "app_run_tests" / "webhook.py")
+def import_ref(test_dir):
+    return ImportRef(str(test_dir / "supports" / "app_run_tests" / "webhook.py"), is_module=False)
 
 
 @pytest.mark.asyncio
-async def test_live_reload(app_ref, server_url_env, token_env, servicer):
-    async with serve_app.aio(app, app_ref, is_module=False):
+async def test_live_reload(import_ref, server_url_env, token_env, servicer):
+    async with serve_app.aio(app, import_ref):
         await asyncio.sleep(3.0)
     assert servicer.app_publish_count == 1
     assert servicer.app_client_disconnect_count == 1
@@ -27,9 +28,9 @@ async def test_live_reload(app_ref, server_url_env, token_env, servicer):
 
 
 @pytest.mark.asyncio
-async def test_live_reload_with_logs(app_ref, server_url_env, token_env, servicer):
+async def test_live_reload_with_logs(import_ref, server_url_env, token_env, servicer):
     with enable_output():
-        async with serve_app.aio(app, app_ref, is_module=False):
+        async with serve_app.aio(app, import_ref):
             await asyncio.sleep(3.0)
     assert servicer.app_publish_count == 1
     assert servicer.app_client_disconnect_count == 1
@@ -37,7 +38,7 @@ async def test_live_reload_with_logs(app_ref, server_url_env, token_env, service
 
 
 @skip_windows("live-reload not supported on windows")
-def test_file_changes_trigger_reloads(app_ref, server_url_env, token_env, servicer, capfd):
+def test_file_changes_trigger_reloads(import_ref, server_url_env, token_env, servicer, capfd):
     watcher_done = threading.Event()
 
     async def fake_watch():
@@ -45,7 +46,7 @@ def test_file_changes_trigger_reloads(app_ref, server_url_env, token_env, servic
             yield {"/some/file"}
         watcher_done.set()
 
-    with serve_app(app, app_ref, is_module=False, _watcher=fake_watch()):
+    with serve_app(app, import_ref, _watcher=fake_watch()):
         watcher_done.wait()  # wait until watcher loop is done
         foo: Function = app.registered_functions["foo"]
         assert foo.web_url.startswith("http://")
@@ -62,13 +63,13 @@ def test_file_changes_trigger_reloads(app_ref, server_url_env, token_env, servic
 
 
 @pytest.mark.asyncio
-async def test_no_change(app_ref, server_url_env, token_env, servicer):
+async def test_no_change(import_ref, server_url_env, token_env, servicer):
     async def fake_watch():
         # Iterator that returns immediately, yielding nothing
         if False:
             yield
 
-    async with serve_app.aio(app, app_ref, _watcher=fake_watch(), is_module=False):
+    async with serve_app.aio(app, import_ref, _watcher=fake_watch()):
         pass
 
     assert servicer.app_publish_count == 1  # Should create the initial app once
@@ -76,10 +77,10 @@ async def test_no_change(app_ref, server_url_env, token_env, servicer):
 
 
 @pytest.mark.asyncio
-async def test_heartbeats(app_ref, server_url_env, token_env, servicer):
+async def test_heartbeats(import_ref, server_url_env, token_env, servicer):
     with mock.patch("modal.runner.HEARTBEAT_INTERVAL", 1):
         t0 = time.time()
-        async with serve_app.aio(app, app_ref, is_module=False):
+        async with serve_app.aio(app, import_ref):
             await asyncio.sleep(3.1)
         total_secs = int(time.time() - t0)
 

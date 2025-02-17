@@ -14,7 +14,7 @@ from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchron
 from ._utils.deprecation import deprecation_error
 from ._utils.logger import logger
 from ._watcher import watch
-from .cli.import_refs import ImportRef, import_app
+from .cli.import_refs import ImportRef, import_app_from_ref
 from .client import _Client
 from .config import config
 from .output import _get_output_manager, enable_output
@@ -30,7 +30,7 @@ def _run_serve(
     import_ref: ImportRef, existing_app_id: str, is_ready: Event, environment_name: str, show_progress: bool
 ):
     # subprocess entrypoint
-    _app = import_app(import_ref, base_cmd="modal serve")
+    _app = import_app_from_ref(import_ref, base_cmd="modal serve")
     blocking_app = synchronizer._translate_out(_app)
 
     with enable_output(show_progress=show_progress):
