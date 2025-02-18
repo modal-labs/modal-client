@@ -121,7 +121,6 @@ def test_call_class_sync(client, servicer, set_env_client):
     assert function_map_request.function_id == service_function_id
 
 
-@pytest.mark.skip()
 def test_class_with_options(client, servicer):
     with app.run(client=client):
         with servicer.intercept() as ctx:

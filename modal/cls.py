@@ -84,7 +84,8 @@ def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name:
         assert service_function.is_hydrated
         assert cls.is_hydrated
         # After 0.67 is minimum required version, we should be able to use method metadata directly
-        # from the service_function instead (see _Cls._hydrate_metadata), but for now we use the _Cls
+        # from the service_function instead (see _Cls._hydrate_metadata), but for now we use the Cls
+        # since it can take the data from the cls metadata OR function metadata depending on source
         method_metadata = cls._method_metadata[method_name]
         new_function._hydrate(service_function.object_id, service_function.client, method_metadata)
 
@@ -335,7 +336,7 @@ class _Obj:
         # on local classes.
         return _Function._from_loader(
             method_loader,
-            rep=f"Method({k})",
+            rep=f"Method({self._cls._name}.{k})",
             deps=lambda: [],  # TODO: use cls as dep instead of loading inside method_loader?
             hydrate_lazily=True,
         )
@@ -381,6 +382,7 @@ class _Cls(_Object, type_prefix="cs"):
         self._options = other._options
         self._callables = other._callables
         self._name = other._name
+        self._method_metadata = other._method_metadata
 
     def _get_partial_functions(self) -> dict[str, _PartialFunction]:
         if not self._user_cls:
