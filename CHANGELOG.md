@@ -10,6 +10,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.54 (2025-02-18)
+
+- Passing `App.lookup` an invalid name now raises an error. App names may contain only alphanumeric characters, dashes, periods, and underscores, must be shorter than 64 characters, and cannot conflict with App ID strings.
+
+
+
 ### 0.73.51 (2025-02-14)
 
 - Fixes a bug where sandboxes returned from `Sandbox.list()` were not snapshottable even if they were created with `_experimental_enable_snapshot`.
