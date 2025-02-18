@@ -128,7 +128,6 @@ def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name:
     fun._is_method = True
     fun._app = service_function._app
     fun._spec = service_function._spec
-    # fun._is_web_endpoint = class_bound_method._is_web_endpoint  # TODO: fix this
     return fun
 
 
