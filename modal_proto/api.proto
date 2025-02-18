@@ -1292,7 +1292,7 @@ message FunctionAsyncInvokeRequest {
   string function_id = 1;
   string parent_input_id = 2;
   FunctionInput input = 3;
-}
+} 
 
 message FunctionAsyncInvokeResponse {
   bool retry_with_blob_upload = 1;
@@ -1370,6 +1370,7 @@ message FunctionCreateRequest {
 
 message FunctionCreateResponse {
   string function_id = 1;
+  string __deprecated_web_url = 2  [ deprecated = true];  // Used up until 0.62.212
   Function function = 4;
   FunctionHandleMetadata handle_metadata = 5;
 }
@@ -1778,7 +1779,7 @@ message ImageFromIdRequest {
 message ImageFromIdResponse {
   string image_id = 1;
   ImageMetadata metadata = 2;
-}
+} 
 
 message ImageGetOrCreateRequest {
   Image image = 2;
