@@ -33,6 +33,7 @@ from ._utils.deprecation import deprecation_error, deprecation_warning, renamed_
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
+from ._utils.name_utils import check_object_name
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .cls import _Cls, parameter
@@ -263,6 +264,8 @@ class _App:
         modal.Sandbox.create("echo", "hi", app=app)
         ```
         """
+        check_object_name(name, "App")
+
         if client is None:
             client = await _Client.from_env()
 
