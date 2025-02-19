@@ -375,7 +375,7 @@ class RunGroup(click.Group):
 @click.option("-d", "--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
 @click.option("-i", "--interactive", is_flag=True, help="Run the app in interactive mode.")
 @click.option("-e", "--env", help=ENV_OPTION_HELP, default=None)
-@click.option("-m", is_flag=True, help="Use a Python module path instead of a file path")
+@click.option("-m", is_flag=True, help="Interpret argument as a Python module path instead of a file/script path")
 @click.pass_context
 def run(ctx, write_result, detach, quiet, interactive, env, m):
     """Run a Modal function or local entrypoint.
@@ -422,7 +422,9 @@ def deploy(
     env: str = ENV_OPTION,
     stream_logs: bool = typer.Option(False, help="Stream logs from the app upon deployment."),
     tag: str = typer.Option("", help="Tag the deployment with a version."),
-    is_module: bool = typer.Option(False, "-m", help="Use a Python module path instead of a file path"),
+    is_module: bool = typer.Option(
+        False, "-m", help="Interpret argument as a Python module path instead of a file/script path"
+    ),
 ):
     """Deploy a Modal application.
 
@@ -450,7 +452,9 @@ def serve(
     app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
     timeout: Optional[float] = None,
     env: str = ENV_OPTION,
-    is_module: bool = typer.Option(False, "-m", help="Use a Python module path instead of a file path"),
+    is_module: bool = typer.Option(
+        False, "-m", help="Interpret argument as a Python module path instead of a file/script path"
+    ),
 ):
     """Run a web endpoint(s) associated with a Modal app and hot-reload code.
 

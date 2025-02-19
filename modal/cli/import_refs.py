@@ -57,7 +57,6 @@ DEFAULT_APP_NAME = "app"
 
 
 def import_file_or_module(import_ref: ImportRef, base_cmd: str = ""):
-    # TODO: Remove the base_cmd argument here once we have removed the deprecation
     if "" not in sys.path:
         # When running from a CLI like `modal run`
         # the current working directory isn't added to sys.path
