@@ -2013,8 +2013,12 @@ class _Image(_Object, type_prefix="im"):
         """
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            commands = ["FROM base"] + [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()]
-            return DockerfileSpec(commands=commands, context_files={})
+            try:
+                env_commands = [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()]
+            except TypeError:
+                non_str_keys = [key for key, val in vars.items() if not isinstance(val, str)]
+                raise InvalidError(f"Environment variables must be strings. Invalid keys: {non_str_keys}")
+            return DockerfileSpec(commands=["FROM base"] + env_commands, context_files={})
 
         return _Image._from_args(
             base_images={"base": self},
