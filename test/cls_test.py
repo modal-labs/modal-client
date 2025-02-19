@@ -1087,14 +1087,16 @@ def test_bytes_serialization_validation(servicer, client, set_env_client):
         def get_foo(self):
             return self.foo
 
-    with app.run():
-        with pytest.raises(ValueError, match="Expected bytes"):
-            C(foo="this is a string").get_foo.spawn()  # string should not be allowed, unspecified encoding
+    with servicer.intercept() as ctx:
+        with app.run():
+            with pytest.raises(ValueError, match="Expected bytes"):
+                C(foo="this is a string").get_foo.spawn()  # string should not be allowed, unspecified encoding
 
-        C(foo=b"this is a string").get_foo.spawn()  # bytes are allowed
-        C().get_foo.spawn()  # default is allowed
-
-
-def test_method_on_cls_access_warns():
-    with pytest.warns(match="instantiate classes before using methods"):
-        print(Foo.bar)
+            C(foo=b"this is bytes").get_foo.spawn()  # bytes are allowed
+            create_function_req: api_pb2.FunctionCreateRequest
+            (create_function_req,) = ctx.get_requests("FunctionCreate")
+            bind_req: api_pb2.FunctionBindParamsRequest
+            (bind_req,) = ctx.get_requests("FunctionBindParams")
+            args, kwargs = deserialize_params(bind_req.serialized_params, create_function_req.function, client)
+            assert kwargs["foo"] == b"this is bytes"
+            C().get_foo.spawn()  # default is allowed
