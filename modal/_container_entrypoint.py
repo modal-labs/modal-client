@@ -471,16 +471,16 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # TODO(erikbern): we an remove this once we
         # 1. Enable lazy hydration for all objects
         # 2. Fully deprecate .new() objects
-        if service.code_deps is not None:  # this is not set for serialized or non-global scope functions
+        if service.service_deps is not None:  # this is not set for serialized or non-global scope functions
             dep_object_ids: list[str] = [dep.object_id for dep in function_def.object_dependencies]
-            if len(service.code_deps) != len(dep_object_ids):
+            if len(service.service_deps) != len(dep_object_ids):
                 raise ExecutionError(
-                    f"Function has {len(service.code_deps)} dependencies"
+                    f"Function has {len(service.service_deps)} dependencies"
                     f" but container got {len(dep_object_ids)} object ids.\n"
-                    f"Code deps: {service.code_deps}\n"
+                    f"Code deps: {service.service_deps}\n"
                     f"Object ids: {dep_object_ids}"
                 )
-            for object_id, obj in zip(dep_object_ids, service.code_deps):
+            for object_id, obj in zip(dep_object_ids, service.service_deps):
                 metadata: Message = container_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, _client, metadata)
 
