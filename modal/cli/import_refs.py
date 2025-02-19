@@ -32,7 +32,7 @@ from modal.functions import Function
 @dataclasses.dataclass
 class ImportRef:
     file_or_module: str
-    is_module: bool
+    use_module_mode: bool  # i.e. using the -m flag
 
     # object_path is a .-delimited path to the object to execute, or a parent from which to infer the object
     # e.g.
@@ -42,7 +42,7 @@ class ImportRef:
     object_path: str = dataclasses.field(default="")
 
 
-def parse_import_ref(object_ref: str, is_module: bool = False) -> ImportRef:
+def parse_import_ref(object_ref: str, use_module_mode: bool = False) -> ImportRef:
     if object_ref.find("::") > 1:
         file_or_module, object_path = object_ref.split("::", 1)
     elif object_ref.find(":") > 1:
@@ -50,7 +50,7 @@ def parse_import_ref(object_ref: str, is_module: bool = False) -> ImportRef:
     else:
         file_or_module, object_path = object_ref, ""
 
-    return ImportRef(file_or_module, is_module, object_path)
+    return ImportRef(file_or_module, use_module_mode, object_path)
 
 
 DEFAULT_APP_NAME = "app"
@@ -63,8 +63,8 @@ def import_file_or_module(import_ref: ImportRef, base_cmd: str = ""):
         # so we add it in order to make module path specification possible
         sys.path.insert(0, "")  # "" means the current working directory
 
-    if not import_ref.file_or_module.endswith(".py") or import_ref.is_module:
-        if not import_ref.is_module:
+    if not import_ref.file_or_module.endswith(".py") or import_ref.use_module_mode:
+        if not import_ref.use_module_mode:
             deprecation_warning(
                 (2025, 2, 6),
                 f"Using Python module paths will require using the -m flag in a future version of Modal.\n"

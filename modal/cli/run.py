@@ -331,7 +331,7 @@ class RunGroup(click.Group):
         ctx.ensure_object(dict)
         ctx.obj["env"] = ensure_env(ctx.params["env"])
 
-        import_ref = parse_import_ref(func_ref, is_module=ctx.params["m"])
+        import_ref = parse_import_ref(func_ref, use_module_mode=ctx.params["m"])
         runnable, all_usable_commands = import_and_filter(
             import_ref, base_cmd="modal run", accept_local_entrypoint=True, accept_webhook=False
         )
@@ -422,7 +422,7 @@ def deploy(
     env: str = ENV_OPTION,
     stream_logs: bool = typer.Option(False, help="Stream logs from the app upon deployment."),
     tag: str = typer.Option("", help="Tag the deployment with a version."),
-    is_module: bool = typer.Option(
+    use_module_mode: bool = typer.Option(
         False, "-m", help="Interpret argument as a Python module path instead of a file/script path"
     ),
 ):
@@ -435,7 +435,7 @@ def deploy(
     # this ensures that lookups without environment specification use the same env as specified
     env = ensure_env(env)
 
-    import_ref = parse_import_ref(app_ref, is_module=is_module)
+    import_ref = parse_import_ref(app_ref, use_module_mode=use_module_mode)
     app = import_app_from_ref(import_ref, base_cmd="modal deploy")
 
     if name is None:
@@ -452,7 +452,7 @@ def serve(
     app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
     timeout: Optional[float] = None,
     env: str = ENV_OPTION,
-    is_module: bool = typer.Option(
+    use_module_mode: bool = typer.Option(
         False, "-m", help="Interpret argument as a Python module path instead of a file/script path"
     ),
 ):
@@ -465,7 +465,7 @@ def serve(
     ```
     """
     env = ensure_env(env)
-    import_ref = parse_import_ref(app_ref, is_module=is_module)
+    import_ref = parse_import_ref(app_ref, use_module_mode=use_module_mode)
     app = import_app_from_ref(import_ref, base_cmd="modal serve")
     if app.description is None:
         app.set_description(_get_clean_app_description(app_ref))

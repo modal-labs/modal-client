@@ -29,7 +29,7 @@ def _launch_program(name: str, filename: str, detach: bool, args: dict[str, Any]
 
     program_path = str(Path(__file__).parent / "programs" / filename)
     base_cmd = f"modal launch {name}"
-    module = import_file_or_module(ImportRef(program_path, is_module=False), base_cmd=base_cmd)
+    module = import_file_or_module(ImportRef(program_path, use_module_mode=False), base_cmd=base_cmd)
     entrypoint = module.main
 
     app = _get_runnable_app(entrypoint)

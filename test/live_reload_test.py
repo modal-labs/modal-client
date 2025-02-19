@@ -15,7 +15,7 @@ from .supports.skip import skip_windows
 
 @pytest.fixture
 def import_ref(test_dir):
-    return ImportRef(str(test_dir / "supports" / "app_run_tests" / "webhook.py"), is_module=False)
+    return ImportRef(str(test_dir / "supports" / "app_run_tests" / "webhook.py"), use_module_mode=False)
 
 
 @pytest.mark.asyncio
