@@ -17,6 +17,7 @@ from modal import (
     exit,
     is_local,
     method,
+    parameter,
     web_endpoint,
     web_server,
     wsgi_app,
@@ -388,6 +389,15 @@ def basic_wsgi_app():
         yield b"got body: " + body
 
     return simple_app
+
+
+@app.cls()
+class ClsWithBytesSerialization:
+    bar: bytes = parameter()
+
+    @web_endpoint()
+    def web(self, arg):
+        return {"arg": arg, "bar": self.bar}
 
 
 @app.cls()
