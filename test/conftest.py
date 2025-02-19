@@ -2103,9 +2103,7 @@ def repo_root(request):
 @pytest.fixture(scope="module")
 def test_dir(request):
     """Absolute path to directory containing test file."""
-    root_dir = Path(request.config.rootdir)
-    test_dir = Path(os.getenv("PYTEST_CURRENT_TEST")).parent
-    return root_dir / test_dir
+    return Path(__file__).parent
 
 
 @pytest.fixture(scope="function")
