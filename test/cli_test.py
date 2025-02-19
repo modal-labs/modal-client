@@ -35,7 +35,7 @@ import modal
 
 import other_module
 
-app = modal.App("my_app")
+app = modal.App("my_app", include_source=True)  # TODO: remove include_source=True)
 
 # Sanity check that the module is imported properly
 import sys

@@ -11,15 +11,17 @@ from typing_extensions import assert_type
 
 import modal.partial_function
 from modal import App, Cls, Function, Image, Queue, build, enter, exit, method
+from modal._partial_function import (
+    _find_partial_methods_for_user_cls,
+    _PartialFunction,
+    _PartialFunctionFlags,
+)
 from modal._serialization import deserialize, deserialize_params, serialize
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import FunctionInfo
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError, PendingDeprecationError
 from modal.partial_function import (
     PartialFunction,
-    _find_partial_methods_for_user_cls,
-    _PartialFunction,
-    _PartialFunctionFlags,
     asgi_app,
     web_endpoint,
 )
@@ -29,7 +31,7 @@ from modal_proto import api_pb2
 
 from .supports.base_class import BaseCls2
 
-app = App("app")
+app = App("app", include_source=True)
 
 
 @pytest.fixture(autouse=True)
@@ -66,7 +68,7 @@ def test_run_class(client, servicer):
     assert len(servicer.precreated_functions) == 0
     assert servicer.n_functions == 0
     with app.run(client=client):
-        method_handle_object_id = Foo.bar.object_id  # method handle object id will probably go away
+        method_handle_object_id = Foo._get_class_service_function().object_id  # type: ignore
         assert isinstance(Foo, Cls)
         assert isinstance(NoParamsCls, Cls)
         class_id = Foo.object_id
@@ -150,7 +152,7 @@ def test_class_with_options_need_hydrating(client, servicer):
 # Reusing the app runs into an issue with stale function handles.
 # TODO (akshat): have all the client tests use separate apps, and throw
 # an exception if the user tries to reuse an app.
-app_remote = App()
+app_remote = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @app_remote.cls(cpu=42)
@@ -190,7 +192,7 @@ def test_call_cls_remote_modal_type(client):
             FooRemote(42, q)  # type: ignore
 
 
-app_2 = App()
+app_2 = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @app_2.cls(cpu=42)
@@ -232,7 +234,7 @@ def test_run_class_serialized(client, servicer):
     assert bound_bar(100) == 1000000
 
 
-app_remote_2 = App()
+app_remote_2 = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @app_remote_2.cls(cpu=42)
@@ -253,7 +255,7 @@ async def test_call_cls_remote_async(client):
         assert await bar_remote.baz.remote.aio(8) == 64  # Mock servicer just squares the argument
 
 
-app_local = App()
+app_local = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @app_local.cls(cpu=42, enable_memory_snapshot=True)
@@ -296,7 +298,7 @@ def test_can_call_remotely_from_local(client):
         assert foo.baz.remote(9) == 81
 
 
-app_remote_3 = App()
+app_remote_3 = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @app_remote_3.cls(cpu=42)
@@ -332,10 +334,10 @@ def test_lookup(client, servicer):
 
     # objects are resolved
     assert cls.object_id.startswith("cs-")
-    assert cls.bar.object_id.startswith("fu-")
+    assert cls._get_class_service_function().object_id.startswith("fu-")
 
     # Check that function properties are preserved
-    assert cls.bar.is_generator is False
+    assert cls().bar.is_generator is False
 
     # Make sure we can instantiate the class
     with servicer.intercept() as ctx:
@@ -410,7 +412,7 @@ def test_lookup_lazy_spawn(client, servicer):
     assert function_call.get() == 7693
 
 
-baz_app = App()
+baz_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @baz_app.cls()
@@ -428,7 +430,7 @@ def test_call_not_modal_method():
     assert baz.not_modal_method(7) == 35
 
 
-cls_with_enter_app = App()
+cls_with_enter_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 def get_thread_id():
@@ -502,7 +504,7 @@ async def test_async_enter_on_local_modal_call():
     assert obj.entered
 
 
-inheritance_app = App()
+inheritance_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 class BaseCls:
@@ -526,7 +528,7 @@ def test_derived_cls(client, servicer):
         assert DerivedCls().run.remote(3) == 9
 
 
-inheritance_app_2 = App()
+inheritance_app_2 = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @inheritance_app_2.cls()
@@ -561,14 +563,13 @@ def test_rehydrate(client, servicer, reset_container_app):
     assert obj.bar.local(7) == 343
 
 
-app_unhydrated = App()
+app_unhydrated = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @app_unhydrated.cls()
 class FooUnhydrated:
     @method()
-    def bar(self, x):
-        ...
+    def bar(self, x): ...
 
 
 def test_unhydrated():
@@ -577,18 +578,16 @@ def test_unhydrated():
         foo.bar.remote(42)
 
 
-app_method_args = App()
+app_method_args = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @app_method_args.cls(keep_warm=5)
 class XYZ:
     @method()  # warns - keep_warm is not supported on methods anymore
-    def foo(self):
-        ...
+    def foo(self): ...
 
     @method()  # warns - keep_warm is not supported on methods anymore
-    def bar(self):
-        ...
+    def bar(self): ...
 
 
 def test_method_args(servicer, client):
@@ -607,12 +606,10 @@ def test_keep_warm_depr(client, set_env_client):
         @app.cls(serialized=True)
         class ClsWithKeepWarmMethod:
             @method(keep_warm=2)
-            def foo(self):
-                ...
+            def foo(self): ...
 
             @method()
-            def bar(self):
-                ...
+            def bar(self): ...
 
     with app.run(client=client):
         with pytest.raises(modal.exception.InvalidError, match="keep_warm"):
@@ -628,8 +625,7 @@ def test_cls_keep_warm(client, servicer):
             self.arg = arg
 
         @method()
-        def bar(self):
-            ...
+        def bar(self): ...
 
     with app.run(client=client):
         assert len(servicer.app_functions) == 1  # only class service function
@@ -688,7 +684,7 @@ def test_handlers():
     assert list(pfs.keys()) == ["my_exit"]
 
 
-web_app_app = App()
+web_app_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @web_app_app.cls()
@@ -709,7 +705,7 @@ def test_web_cls(client):
         assert c.asgi.web_url == "http://asgi.internal"
 
 
-handler_app = App("handler-app")
+handler_app = App("handler-app", include_source=True)
 
 
 image = Image.debian_slim().pip_install("xyz")
@@ -737,7 +733,7 @@ def test_build_image(client, servicer):
         assert servicer.force_built_images == []
 
 
-other_handler_app = App("other-handler-app")
+other_handler_app = App("other-handler-app", include_source=True)
 
 
 with pytest.warns(DeprecationError, match="@modal.build"):
@@ -762,7 +758,7 @@ def test_force_build_image(client, servicer):
         assert servicer.force_built_images == ["im-3"]
 
 
-build_timeout_handler_app = App("build-timeout-handler-app")
+build_timeout_handler_app = App("build-timeout-handler-app", include_source=True)
 
 
 with pytest.warns(DeprecationError, match="@modal.build"):
@@ -871,7 +867,7 @@ def test_cross_process_userclass_serde(supports_dir):
     assert revived_cls().method() == "a"  # this should be bound to the object
 
 
-app2 = modal.App("app2")
+app2 = App("app2", include_source=True)
 
 
 @app2.cls()
@@ -961,7 +957,7 @@ class ParametrizedClass3:
         pass
 
 
-app_batched = App()
+app_batched = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 def test_batched_method_duplicate_error(client):
@@ -1051,7 +1047,7 @@ def test_modal_object_param_uses_wrapped_type(servicer, set_env_client, client):
     _client = typing.cast(modal.client._Client, synchronizer._translate_in(client))
     container_params = deserialize_params(req.serialized_params, function_def, _client)
     args, kwargs = container_params
-    assert type(kwargs["x"]) == type(dct)
+    assert type(kwargs["x"]) is type(dct)
 
 
 def test_using_method_on_uninstantiated_cls(recwarn, disable_auto_mount):
@@ -1097,3 +1093,8 @@ def test_bytes_serialization_validation(servicer, client, set_env_client):
 
         C(foo=b"this is a string").get_foo.spawn()  # bytes are allowed
         C().get_foo.spawn()  # default is allowed
+
+
+def test_method_on_cls_access_warns():
+    with pytest.warns(match="instantiate classes before using methods"):
+        print(Foo.bar)

@@ -7,9 +7,9 @@ import time
 from grpclib import GRPCError, Status
 
 from modal import App, Image, Mount, Secret, Stub, Volume, enable_output, web_endpoint
+from modal._partial_function import _parse_custom_domains
 from modal._utils.async_utils import synchronizer
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
-from modal.partial_function import _parse_custom_domains
 from modal.runner import deploy_app, deploy_stub, run_app
 from modal_proto import api_pb2
 
@@ -337,8 +337,7 @@ def test_function_named_app():
     with pytest.warns(match="app"):
 
         @app.function(serialized=True)
-        def app():
-            ...
+        def app(): ...
 
 
 def test_stub():
@@ -472,3 +471,9 @@ def test_overriding_function_warning(caplog):
 
     app_3.include(app_4)
     assert "Overriding existing function" in caplog.messages[0]
+
+
+@pytest.mark.parametrize("name", ["", " ", "no way", "my-app!", "a" * 65])
+def test_lookup_invalid_name(name):
+    with pytest.raises(InvalidError, match="Invalid App name"):
+        App.lookup(name)

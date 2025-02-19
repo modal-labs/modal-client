@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2024
 import modal
 
-app = modal.App("class-hierarchy")
+app = modal.App("class-hierarchy", include_source=True)  # TODO: remove include_source=True)
 
 
 class Base:

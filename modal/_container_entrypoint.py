@@ -24,6 +24,10 @@ from typing import TYPE_CHECKING, Any, Callable, Optional
 from google.protobuf.message import Message
 
 from modal._clustered_functions import initialize_clustered_function
+from modal._partial_function import (
+    _find_callables_for_obj,
+    _PartialFunctionFlags,
+)
 from modal._proxy_tunnel import proxy_tunnel
 from modal._serialization import deserialize_params
 from modal._utils.async_utils import TaskContext, synchronizer
@@ -34,10 +38,6 @@ from modal.app import App, _App
 from modal.client import Client, _Client
 from modal.config import logger
 from modal.exception import ExecutionError, InputCancellation, InvalidError
-from modal.partial_function import (
-    _find_callables_for_obj,
-    _PartialFunctionFlags,
-)
 from modal.running_app import RunningApp, running_app_from_layout
 from modal_proto import api_pb2
 
@@ -322,6 +322,16 @@ def call_function(
             user_code_event_loop.run(run_concurrent_inputs())
     else:
         for io_context in container_io_manager.run_inputs_outputs(finalized_functions, batch_max_size, batch_wait_ms):
+            # This goes to a registered signal handler for sync Modal functions, or to the
+            # `UserCodeEventLoop` for async functions.
+            #
+            # We only send this signal on functions that do not have concurrent inputs enabled.
+            # This allows us to do fine-grained input cancellation. On sync functions, the
+            # SIGUSR1 signal should interrupt the main thread where user code is running,
+            # raising an InputCancellation() exception. On async functions, the signal should
+            # reach a handler in UserCodeEventLoop, which cancels the task.
+            io_context.set_cancel_callback(lambda: os.kill(os.getpid(), signal.SIGUSR1))
+
             if io_context.finalized_function.is_async:
                 user_code_event_loop.run(run_input_async(io_context))
             else:
@@ -461,16 +471,16 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         # TODO(erikbern): we an remove this once we
         # 1. Enable lazy hydration for all objects
         # 2. Fully deprecate .new() objects
-        if service.code_deps is not None:  # this is not set for serialized or non-global scope functions
+        if service.service_deps is not None:  # this is not set for serialized or non-global scope functions
             dep_object_ids: list[str] = [dep.object_id for dep in function_def.object_dependencies]
-            if len(service.code_deps) != len(dep_object_ids):
+            if len(service.service_deps) != len(dep_object_ids):
                 raise ExecutionError(
-                    f"Function has {len(service.code_deps)} dependencies"
+                    f"Function has {len(service.service_deps)} dependencies"
                     f" but container got {len(dep_object_ids)} object ids.\n"
-                    f"Code deps: {service.code_deps}\n"
+                    f"Code deps: {service.service_deps}\n"
                     f"Object ids: {dep_object_ids}"
                 )
-            for object_id, obj in zip(dep_object_ids, service.code_deps):
+            for object_id, obj in zip(dep_object_ids, service.service_deps):
                 metadata: Message = container_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, _client, metadata)
 

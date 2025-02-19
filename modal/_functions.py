@@ -19,7 +19,6 @@ from synchronicity.exceptions import UserCodeException
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
-from ._location import parse_cloud_provider
 from ._object import _get_environment_name, _Object, live_method, live_method_gen
 from ._pty import get_pty_info
 from ._resolver import Resolver
@@ -86,6 +85,7 @@ from .secret import _Secret
 from .volume import _Volume
 
 if TYPE_CHECKING:
+    import modal._partial_function
     import modal.app
     import modal.cls
     import modal.partial_function
@@ -182,7 +182,8 @@ class _Invocation:
         if timeout is None:
             backend_timeout = OUTPUTS_TIMEOUT
         else:
-            backend_timeout = min(OUTPUTS_TIMEOUT, timeout)  # refresh backend call every 55s
+            # refresh backend call every 55s
+            backend_timeout = min(OUTPUTS_TIMEOUT, timeout)
 
         while True:
             # always execute at least one poll for results, regardless if timeout is 0
@@ -278,7 +279,8 @@ class _Invocation:
 
     async def run_generator(self):
         items_received = 0
-        items_total: Union[int, None] = None  # populated when self.run_function() completes
+        # populated when self.run_function() completes
+        items_total: Union[int, None] = None
         async with aclosing(
             async_merge(
                 _stream_function_call_data(self.client, self.function_call_id, variant="data_out"),
@@ -350,7 +352,8 @@ class _FunctionSpec:
     secrets: Sequence[_Secret]
     network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem]
     volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]
-    gpus: Union[GPU_T, list[GPU_T]]  # TODO(irfansharif): Somehow assert that it's the first kind, in sandboxes
+    # TODO(irfansharif): Somehow assert that it's the first kind, in sandboxes
+    gpus: Union[GPU_T, list[GPU_T]]
     cloud: Optional[str]
     cpu: Optional[Union[float, tuple[float, float]]]
     memory: Optional[Union[int, tuple[int, int]]]
@@ -377,16 +380,19 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _info: Optional[FunctionInfo]
     _serve_mounts: frozenset[_Mount]  # set at load time, only by loader
     _app: Optional["modal.app._App"] = None
-    _obj: Optional["modal.cls._Obj"] = None  # only set for InstanceServiceFunctions and bound instance methods
+    # only set for InstanceServiceFunctions and bound instance methods
+    _obj: Optional["modal.cls._Obj"] = None
 
-    _webhook_config: Optional[api_pb2.WebhookConfig] = None  # this is set in definition scope, only locally
+    # this is set in definition scope, only locally
+    _webhook_config: Optional[api_pb2.WebhookConfig] = None
     _web_url: Optional[str]  # this is set on hydration
 
     _function_name: Optional[str]
     _is_method: bool
     _spec: Optional[_FunctionSpec] = None
     _tag: str
-    _raw_f: Optional[Callable[..., Any]]  # this is set to None for a "class service [function]"
+    # this is set to None for a "class service [function]"
+    _raw_f: Optional[Callable[..., Any]]
     _build_args: dict
 
     _is_generator: Optional[bool] = None
@@ -397,43 +403,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _use_method_name: str = ""
 
     _class_parameter_info: Optional["api_pb2.ClassParameterInfo"] = None
-    _method_handle_metadata: Optional[
-        dict[str, "api_pb2.FunctionHandleMetadata"]
-    ] = None  # set for 0.67+ class service functions
-
-    def _bind_method(
-        self,
-        user_cls,
-        method_name: str,
-        partial_function: "modal.partial_function._PartialFunction",
-    ):
-        """mdmd:hidden
-
-        Creates a _Function that is bound to a specific class method name. This _Function is not uniquely tied
-        to any backend function -- its object_id is the function ID of the class service function.
-
-        """
-        class_service_function = self
-        assert class_service_function._info  # has to be a local function to be able to "bind" it
-        assert not class_service_function._is_method  # should not be used on an already bound method placeholder
-        assert not class_service_function._obj  # should only be used on base function / class service function
-        full_name = f"{user_cls.__name__}.{method_name}"
-
-        rep = f"Method({full_name})"
-        fun = _Object.__new__(_Function)
-        fun._init(rep)
-        fun._tag = full_name
-        fun._raw_f = partial_function.raw_f
-        fun._info = FunctionInfo(
-            partial_function.raw_f, user_cls=user_cls, serialized=class_service_function.info.is_serialized()
-        )  # needed for .local()
-        fun._use_method_name = method_name
-        fun._app = class_service_function._app
-        fun._is_generator = partial_function.is_generator
-        fun._cluster_size = partial_function.cluster_size
-        fun._spec = class_service_function._spec
-        fun._is_method = True
-        return fun
+    _method_handle_metadata: Optional[dict[str, "api_pb2.FunctionHandleMetadata"]] = (
+        None  # set for 0.67+ class service functions
+    )
 
     @staticmethod
     def from_local(
@@ -460,7 +432,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         batch_wait_ms: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
         cpu: Optional[Union[float, tuple[float, float]]] = None,
-        keep_warm: Optional[int] = None,  # keep_warm=True is equivalent to keep_warm=1
+        # keep_warm=True is equivalent to keep_warm=1
+        keep_warm: Optional[int] = None,
         cloud: Optional[str] = None,
         scheduler_placement: Optional[SchedulerPlacement] = None,
         is_builder_function: bool = False,
@@ -468,7 +441,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         enable_memory_snapshot: bool = False,
         block_network: bool = False,
         i6pn_enabled: bool = False,
-        cluster_size: Optional[int] = None,  # Experimental: Clustered functions
+        # Experimental: Clustered functions
+        cluster_size: Optional[int] = None,
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
         # current default: first-party, future default: main-package
@@ -480,7 +454,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     ) -> "_Function":
         """mdmd:hidden"""
         # Needed to avoid circular imports
-        from .partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
+        from ._partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 
         tag = info.get_tag()
 
@@ -536,7 +510,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                             f"image_with_source = my_image.add_local_python_source({python_stringified_modules})\n\n"
                         )
                         + "For more information, see https://modal.com/docs/guide/modal-1-0-migration",
-                        pending=True,
                     )
                 all_mounts += auto_mounts.values()
         else:
@@ -603,6 +576,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     is_builder_function=True,
                     is_auto_snapshot=True,
                     scheduler_placement=scheduler_placement,
+                    include_source=include_source,
                 )
                 image = _Image._from_args(
                     base_images={"base": image},
@@ -619,6 +593,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 f"strictly less than its `{keep_warm=}` parameter."
             )
 
+        autoscaler_settings = api_pb2.AutoscalerSettings(
+            max_containers=concurrency_limit,
+            min_containers=keep_warm,
+            buffer_containers=_experimental_buffer_containers,
+            scaledown_window=container_idle_timeout,
+        )
+
         if _experimental_custom_scaling_factor is not None and (
             _experimental_custom_scaling_factor < 0 or _experimental_custom_scaling_factor > 1
         ):
@@ -626,10 +607,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         if not cloud and not is_builder_function:
             cloud = config.get("default_cloud")
-        if cloud:
-            cloud_provider = parse_cloud_provider(cloud)
-        else:
-            cloud_provider = None
 
         if is_generator and webhook_config:
             if webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
@@ -806,6 +783,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     class_serialized=class_serialized or b"",
                     function_type=function_type,
                     webhook_config=webhook_config,
+                    autoscaler_settings=autoscaler_settings,
                     method_definitions=method_definitions,
                     method_definitions_set=True,
                     shared_volume_mounts=network_file_system_mount_protos(
@@ -818,8 +796,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     task_idle_timeout_secs=container_idle_timeout or 0,
                     concurrency_limit=concurrency_limit or 0,
                     pty_info=pty_info,
-                    cloud_provider=cloud_provider,  # Deprecated at some point
-                    cloud_provider_str=cloud.upper() if cloud else "",  # Supersedes cloud_provider
+                    cloud_provider_str=cloud if cloud else "",
                     warm_pool_size=keep_warm or 0,
                     runtime=config.get("function_runtime"),
                     runtime_debug=config.get("function_runtime_debug"),
@@ -859,6 +836,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         warm_pool_size=function_definition.warm_pool_size,
                         concurrency_limit=function_definition.concurrency_limit,
                         task_idle_timeout_secs=function_definition.task_idle_timeout_secs,
+                        autoscaler_settings=function_definition.autoscaler_settings,
                         worker_id=function_definition.worker_id,
                         timeout_secs=function_definition.timeout_secs,
                         web_url=function_definition.web_url,
@@ -930,7 +908,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         raise InvalidError(f"Function {info.function_name} is too large to deploy.")
                     raise
                 function_creation_status.set_response(response)
-            serve_mounts = {m for m in all_mounts if m.is_local()}  # needed for modal.serve file watching
+            # needed for modal.serve file watching
+            serve_mounts = {m for m in all_mounts if m.is_local()}
             serve_mounts |= image._serve_mounts
             obj._serve_mounts = frozenset(serve_mounts)
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
@@ -1035,6 +1014,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         fun._info = self._info
         fun._obj = obj
+        fun._spec = self._spec  # TODO (elias): fix - this is incorrect when using with_options
         return fun
 
     @live_method
@@ -1071,25 +1051,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         await retry_transient_errors(self.client.stub.FunctionUpdateSchedulingParams, request)
 
     @classmethod
-    @renamed_parameter((2024, 12, 18), "tag", "name")
-    def from_name(
-        cls: type["_Function"],
-        app_name: str,
-        name: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
-        environment_name: Optional[str] = None,
-    ) -> "_Function":
-        """Reference a Function from a deployed App by its name.
-
-        In contrast to `modal.Function.lookup`, this is a lazy method
-        that defers hydrating the local object with metadata from
-        Modal servers until the first time it is actually used.
-
-        ```python
-        f = modal.Function.from_name("other-app", "function")
-        ```
-        """
-
+    def _from_name(cls, app_name: str, name: str, namespace, environment_name: Optional[str]):
+        # internal function lookup implementation that allows lookup of class "service functions"
+        # in addition to non-class functions
         async def _load_remote(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
             assert resolver.client and resolver.client.stub
             request = api_pb2.FunctionGetRequest(
@@ -1112,6 +1076,38 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         rep = f"Function.from_name({app_name}, {name})"
         return cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
+
+    @classmethod
+    @renamed_parameter((2024, 12, 18), "tag", "name")
+    def from_name(
+        cls: type["_Function"],
+        app_name: str,
+        name: str,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        environment_name: Optional[str] = None,
+    ) -> "_Function":
+        """Reference a Function from a deployed App by its name.
+
+        In contrast to `modal.Function.lookup`, this is a lazy method
+        that defers hydrating the local object with metadata from
+        Modal servers until the first time it is actually used.
+
+        ```python
+        f = modal.Function.from_name("other-app", "function")
+        ```
+        """
+        if "." in name:
+            class_name, method_name = name.split(".", 1)
+            deprecation_warning(
+                (2025, 2, 11),
+                "Looking up class methods using Function.from_name will be deprecated"
+                " in a future version of Modal.\nUse modal.Cls.from_name instead, e.g.\n\n"
+                f'{class_name} = modal.Cls.from_name("{app_name}", "{class_name}")\n'
+                f"instance = {class_name}(...)\n"
+                f"instance.{method_name}.remote(...)\n",
+            )
+
+        return cls._from_name(app_name, name, namespace, environment_name)
 
     @staticmethod
     @renamed_parameter((2024, 12, 18), "tag", "name")
@@ -1203,7 +1199,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
-        assert metadata and isinstance(metadata, api_pb2.FunctionHandleMetadata)
+        assert metadata and isinstance(metadata, api_pb2.FunctionHandleMetadata), (
+            f"{type(metadata)} is not FunctionHandleMetadata"
+        )
         self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
@@ -1238,13 +1236,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     # TODO (live_method on properties is not great, since it could be blocking the event loop from async contexts)
     @property
     @live_method
-    async def web_url(self) -> str:
+    async def web_url(self) -> Optional[str]:
         """URL of a Function running as a web endpoint."""
-        if not self._web_url:
-            raise ValueError(
-                f"No web_url can be found for function {self._function_name}. web_url "
-                "can only be referenced from a running app context"
-            )
+        # TODO If we remove the @live_method above, we may want to provide better feedback when the underlying
+        # attribute is None because the object is not hydrated, rather than because it's not a web endpoint.
         return self._web_url
 
     @property
@@ -1458,7 +1453,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         This experimental version of the spawn method allows up to 1 million inputs to be spawned.
 
-        Returns a `modal.functions.FunctionCall` object, that can later be polled or
+        Returns a `modal.FunctionCall` object, that can later be polled or
         waited for using `.get(timeout=...)`.
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
         """
@@ -1481,7 +1476,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> "_FunctionCall[ReturnType]":
         """Calls the function with the given arguments, without waiting for the results.
 
-        Returns a `modal.functions.FunctionCall` object, that can later be polled or
+        Returns a `modal.FunctionCall` object, that can later be polled or
         waited for using `.get(timeout=...)`.
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
         """
@@ -1578,7 +1573,8 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
     async def cancel(
         self,
-        terminate_containers: bool = False,  # if true, containers running the inputs are forcibly terminated
+        # if true, containers running the inputs are forcibly terminated
+        terminate_containers: bool = False,
     ):
         """Cancels the function call, which will stop its execution and mark its inputs as
         [`TERMINATED`](/docs/reference/modal.call_graph#modalcall_graphinputstatus).

@@ -1,4 +1,7 @@
 # Copyright Modal Labs 2022
+import pytest
+
+
 def pytest_markdown_docs_globals():
     import math
 
@@ -14,3 +17,9 @@ def pytest_markdown_docs_globals():
         "wsgi_app": modal.wsgi_app,
         "__file__": "xyz.py",
     }
+
+
+@pytest.fixture(autouse=True)
+def disable_auto_mount(monkeypatch):
+    monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
+    yield

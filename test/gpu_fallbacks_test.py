@@ -1,9 +1,8 @@
 # Copyright Modal Labs 2024
-import modal
 from modal import App
 from modal_proto import api_pb2
 
-app = App()
+app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @app.function(gpu=["a10g"])
@@ -16,7 +15,7 @@ def f2():
     pass
 
 
-@app.function(gpu=["h100:2", modal.gpu.A100(count=2, size="80GB")])
+@app.function(gpu=["h100:2", "a100-80gb:2"])
 def f3():
     pass
 

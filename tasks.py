@@ -21,6 +21,12 @@ from invoke import task
 from rich.console import Console
 from rich.table import Table
 
+# Set working directory to the root of the client repository.
+original_cwd = Path.cwd()
+project_root = Path(os.path.dirname(__file__))
+os.chdir(project_root)
+
+
 year = datetime.date.today().year
 copyright_header_start = "# Copyright Modal Labs"
 copyright_header_full = f"{copyright_header_start} {year}"
@@ -56,7 +62,7 @@ def protoc(ctx):
     ctx.run(f"{py_protoc} -I . {input_files}")
 
     # generate modal-specific wrapper around grpclib api stub using custom plugin:
-    grpc_plugin_pyfile = Path(__file__).parent / "protoc_plugin" / "plugin.py"
+    grpc_plugin_pyfile = Path("protoc_plugin/plugin.py")
 
     with python_file_as_executable(grpc_plugin_pyfile) as grpc_plugin_executable:
         ctx.run(
@@ -67,7 +73,7 @@ def protoc(ctx):
 
 @task
 def lint(ctx, fix=False):
-    ctx.run(f"ruff . {'--fix' if fix else ''}", pty=True)
+    ctx.run(f"ruff check . {'--fix' if fix else ''}", pty=True)
 
 
 @task
@@ -165,8 +171,7 @@ def type_check(ctx):
 @task
 def check_copyright(ctx, fix=False):
     invalid_files = []
-    d = str(Path(__file__).parent)
-    for root, dirs, files in os.walk(d):
+    for root, dirs, files in os.walk("."):
         fns = [
             os.path.join(root, fn)
             for fn in files
@@ -175,6 +180,8 @@ def check_copyright(ctx, fix=False):
                 # jupytext notebook formatted .py files can't be detected as notebooks if we put a
                 # copyright comment at the top
                 and not fn.endswith(".notebook.py")
+                # ignore generated protobuf code
+                and "/modal_proto" not in root
                 # vendored code has a different copyright
                 and "_vendor" not in root
                 and "protoc_plugin" not in root
@@ -200,9 +207,7 @@ def check_copyright(ctx, fix=False):
         for fn in invalid_files:
             print("Missing copyright:", fn)
 
-        raise Exception(
-            f"{len(invalid_files)} are missing copyright headers!" " Please run `inv check-copyright --fix`"
-        )
+        raise Exception(f"{len(invalid_files)} are missing copyright headers! Please run `inv check-copyright --fix`")
 
 
 @task
@@ -217,7 +222,7 @@ def publish_base_mounts(ctx, no_confirm=False):
         if answer.upper() not in ["Y", "YES"]:
             exit("Aborting task.")
     for mount in ["modal_client_package", "python_standalone"]:
-        ctx.run(f"{sys.executable} {Path(__file__).parent}/modal_global_objects/mounts/{mount}.py", pty=True)
+        ctx.run(f"{sys.executable} modal_global_objects/mounts/{mount}.py", pty=True)
 
 
 @task
@@ -335,6 +340,7 @@ def update_changelog(ctx, sha: str = ""):
         previous_changelog = content[break_idx:]
     else:
         print("Aborting: Could not find token in existing changelog to mark insertion spot")
+        return
 
     # Build the new changelog and write it out
     from modal_version import __version__

@@ -30,8 +30,7 @@ def test_run_app_unauthenticated(servicer):
                 pass
 
 
-def dummy():
-    ...
+def dummy(): ...
 
 
 def test_run_app_profile_env_with_refs(servicer, client, monkeypatch):

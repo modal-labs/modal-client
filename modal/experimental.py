@@ -7,11 +7,11 @@ from modal_proto import api_pb2
 from ._clustered_functions import ClusterInfo, get_cluster_info as _get_cluster_info
 from ._functions import _Function
 from ._object import _get_environment_name
+from ._partial_function import _PartialFunction, _PartialFunctionFlags
 from ._runtime.container_io_manager import _ContainerIOManager
 from ._utils.async_utils import synchronizer
 from .client import _Client
 from .exception import InvalidError
-from .partial_function import _PartialFunction, _PartialFunctionFlags
 
 
 def stop_fetching_inputs():

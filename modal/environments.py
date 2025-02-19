@@ -29,9 +29,7 @@ class _Environment(_Object, type_prefix="en"):
 
     def __init__(self):
         """mdmd:hidden"""
-        raise RuntimeError(
-            "`Environment(...)` constructor is not allowed." " Please use `Environment.from_name` instead."
-        )
+        raise RuntimeError("`Environment(...)` constructor is not allowed. Please use `Environment.from_name` instead.")
 
     # TODO(michael) Keeping this private for now until we decide what else should be in it
     # And what the rules should be about updates / mutability

@@ -16,8 +16,8 @@ def test_import_function(supports_dir, monkeypatch):
         None,
         None,
     )
-    assert len(service.code_deps) == 1
-    assert type(service.code_deps[0]) is _Image
+    assert len(service.service_deps) == 1
+    assert type(service.service_deps[0]) is _Image
     assert service.app
 
     assert service.user_cls_instance is None
@@ -45,7 +45,7 @@ def test_import_function_undecorated(supports_dir, monkeypatch):
         None,
         None,
     )
-    assert service.code_deps is None  # undecorated - can't get code deps
+    assert service.service_deps is None  # undecorated - can't get code deps
     # can't reliably get app - this is deferred to a name based lookup later in the container entrypoint
     assert service.app is None
 
@@ -62,8 +62,8 @@ def test_import_class(monkeypatch, supports_dir):
         (),
         {},
     )
-    assert len(service.code_deps) == 1
-    assert type(service.code_deps[0]) is _Image
+    assert len(service.service_deps) == 1
+    assert type(service.service_deps[0]) is _Image
 
     assert service.app
 

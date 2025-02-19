@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2023
 import modal
 
-app = modal.App("dummy")
+app = modal.App("dummy", include_source=True)  # TODO: remove include_source=True)
 
 
 def foo(i):

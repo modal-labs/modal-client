@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2024
 import subprocess
 import sys
+
 from test.supports.skip import skip_windows
 
 

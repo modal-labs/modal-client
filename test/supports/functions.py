@@ -28,7 +28,7 @@ from modal.experimental import get_local_input_concurrency, set_local_input_conc
 
 SLEEP_DELAY = 0.1
 
-app = App()
+app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @app.function()

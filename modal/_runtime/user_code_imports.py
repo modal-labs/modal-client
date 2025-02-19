@@ -10,10 +10,10 @@ import modal._runtime.container_io_manager
 import modal.cls
 from modal import Function
 from modal._functions import _Function
+from modal._partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_object
 from modal.exception import ExecutionError, InvalidError
-from modal.partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 from modal_proto import api_pb2
 
 if typing.TYPE_CHECKING:
@@ -41,13 +41,12 @@ class Service(metaclass=ABCMeta):
 
     user_cls_instance: Any
     app: Optional["modal.app._App"]
-    code_deps: Optional[Sequence["modal._object._Object"]]
+    service_deps: Optional[Sequence["modal._object._Object"]]
 
     @abstractmethod
     def get_finalized_functions(
         self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
-    ) -> dict[str, "FinalizedFunction"]:
-        ...
+    ) -> dict[str, "FinalizedFunction"]: ...
 
 
 def construct_webhook_callable(
@@ -94,7 +93,7 @@ def construct_webhook_callable(
 class ImportedFunction(Service):
     user_cls_instance: Any
     app: Optional["modal.app._App"]
-    code_deps: Optional[Sequence["modal._object._Object"]]
+    service_deps: Optional[Sequence["modal._object._Object"]]
 
     _user_defined_callable: Callable[..., Any]
 
@@ -137,9 +136,9 @@ class ImportedFunction(Service):
 class ImportedClass(Service):
     user_cls_instance: Any
     app: Optional["modal.app._App"]
-    code_deps: Optional[Sequence["modal._object._Object"]]
+    service_deps: Optional[Sequence["modal._object._Object"]]
 
-    _partial_functions: dict[str, "modal.partial_function._PartialFunction"]
+    _partial_functions: dict[str, "modal._partial_function._PartialFunction"]
 
     def get_finalized_functions(
         self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
@@ -228,8 +227,7 @@ def import_single_function_service(
     the import) runs on the right thread.
     """
     user_defined_callable: Callable
-    function: Optional[_Function] = None
-    code_deps: Optional[Sequence["modal._object._Object"]] = None
+    service_deps: Optional[Sequence["modal._object._Object"]] = None
     active_app: Optional[modal.app._App] = None
 
     if ser_fun is not None:
@@ -250,6 +248,7 @@ def import_single_function_service(
             f = getattr(module, qual_name)
             if isinstance(f, Function):
                 function = synchronizer._translate_in(f)
+                service_deps = function.deps(only_explicit_mounts=True)
                 user_defined_callable = function.get_raw_f()
                 active_app = function._app
             else:
@@ -265,9 +264,7 @@ def import_single_function_service(
                 # The cls decorator is in global scope
                 _cls = synchronizer._translate_in(cls)
                 user_defined_callable = _cls._callables[fun_name]
-                function = _cls._method_functions.get(
-                    fun_name
-                )  # bound to the class service function - there is no instance
+                service_deps = _cls._get_class_service_function().deps(only_explicit_mounts=True)
                 active_app = _cls._app
             else:
                 # This is non-decorated class
@@ -284,13 +281,10 @@ def import_single_function_service(
     else:
         user_cls_instance = None
 
-    if function:
-        code_deps = function.deps(only_explicit_mounts=True)
-
     return ImportedFunction(
         user_cls_instance,
         active_app,
-        code_deps,
+        service_deps,
         user_defined_callable,
     )
 
@@ -307,7 +301,7 @@ def import_class_service(
     See import_function.
     """
     active_app: Optional["modal.app._App"]
-    code_deps: Optional[Sequence["modal._object._Object"]]
+    service_deps: Optional[Sequence["modal._object._Object"]]
     cls: typing.Union[type, modal.cls.Cls]
 
     if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
@@ -338,12 +332,12 @@ def import_class_service(
         _cls = synchronizer._translate_in(cls)
         method_partials = _cls._get_partial_functions()
         service_function: _Function = _cls._class_service_function
-        code_deps = service_function.deps(only_explicit_mounts=True)
+        service_deps = service_function.deps(only_explicit_mounts=True)
         active_app = service_function.app
     else:
         # Undecorated user class - find all methods
         method_partials = _find_partial_methods_for_user_cls(cls, _PartialFunctionFlags.all())
-        code_deps = None
+        service_deps = None
         active_app = None
 
     user_cls_instance = get_user_class_instance(cls, cls_args, cls_kwargs)
@@ -351,7 +345,7 @@ def import_class_service(
     return ImportedClass(
         user_cls_instance,
         active_app,
-        code_deps,
+        service_deps,
         # TODO (elias/deven): instead of using method_partials here we should use a set of api_pb2.MethodDefinition
         method_partials,
     )

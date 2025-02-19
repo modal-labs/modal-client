@@ -247,7 +247,6 @@ class FunctionInfo:
 
     def get_cls_var_attrs(self) -> dict[str, Any]:
         import dis
-
         import opcode
 
         LOAD_ATTR = opcode.opmap["LOAD_ATTR"]
@@ -604,7 +603,7 @@ class FunctionCreationStatus:
             for custom_domain in self.response.function.custom_domain_info:
                 custom_domain_status_row = self.resolver.add_status_row()
                 custom_domain_status_row.finish(
-                    f"Custom domain for {self.tag} => [magenta underline]" f"{custom_domain.url}[/magenta underline]"
+                    f"Custom domain for {self.tag} => [magenta underline]{custom_domain.url}[/magenta underline]"
                 )
         else:
             self.status_row.finish(f"Created function {self.tag}.")

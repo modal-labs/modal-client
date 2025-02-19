@@ -1,16 +1,24 @@
 # Copyright Modal Labs 2022
-from dataclasses import dataclass
 from typing import Union
 
 from modal_proto import api_pb2
 
+from ._utils.deprecation import deprecation_warning
 from .exception import InvalidError
 
 
-@dataclass(frozen=True)
 class _GPUConfig:
     gpu_type: str
     count: int
+
+    def __init__(self, gpu_type: str, count: int):
+        name = self.__class__.__name__
+        str_value = gpu_type
+        if count > 1:
+            str_value += f":{count}"
+        deprecation_warning((2025, 2, 7), f'`gpu={name}(...)` is deprecated. Use `gpu="{str_value}"` instead.')
+        self.gpu_type = gpu_type
+        self.count = count
 
     def _to_proto(self) -> api_pb2.GPUConfig:
         """Convert this GPU config to an internal protobuf representation."""
@@ -154,35 +162,40 @@ class Any(_GPUConfig):
         return f"GPU(Any, count={self.count})"
 
 
-STRING_TO_GPU_TYPE: dict[str, str] = {
-    # TODO(erikbern): we will move this table to the server soon,
-    # and let clients just pass any gpu type string through
-    "t4": "T4",
-    "l4": "L4",
-    "a100": "A100-40GB",
-    "a100-80gb": "A100-80GB",
-    "h100": "H100",
-    "a10g": "A10G",
-    "l40s": "L40S",
-    "any": "ANY",
-}
-display_string_to_config = "\n".join(f'- "{key}"' for key in STRING_TO_GPU_TYPE.keys())
-__doc__ = f"""
+__doc__ = """
 **GPU configuration shortcodes**
 
-The following are the valid `str` values for the `gpu` parameter of
+You can pass a wide range of `str` values for the `gpu` parameter of
 [`@app.function`](/docs/reference/modal.App#function).
 
-{display_string_to_config}
+For instance:
+- `gpu="H100"` will attach 1 H100 GPU to each container
+- `gpu="L40S"` will attach 1 L40S GPU to each container
+- `gpu="T4:4"` will attach 4 T4 GPUs to each container
 
-The shortcodes also support specifying count by suffixing `:N` to acquire `N` GPUs.
-For example, `a10g:4` will provision 4 A10G GPUs.
+You can see a list of Modal GPU options in the
+[GPU docs](https://modal.com/docs/guide/gpu).
 
-Other configurations can be created using the constructors documented below.
+**Example**
+
+```python
+@app.function(gpu="A100-80GB:4")
+def my_gpu_function():
+    ... # This will have 4 A100-80GB with each container
+```
+
+**Deprecation notes**
+
+An older deprecated way to configure GPU is also still supported,
+but will be removed in future versions of Modal. Examples:
+
+- `gpu=modal.gpu.H100()` will attach 1 H100 GPU to each container
+- `gpu=modal.gpu.T4(count=4)` will attach 4 T4 GPUs to each container
+- `gpu=modal.gpu.A100()` will attach 1 A100-40GB GPUs to each container
+- `gpu=modal.gpu.A100(size="80GB")` will attach 1 A100-80GB GPUs to each container
 """
 
-# bool will be deprecated in future versions.
-GPU_T = Union[None, bool, str, _GPUConfig]
+GPU_T = Union[None, str, _GPUConfig]
 
 
 def parse_gpu_config(value: GPU_T) -> api_pb2.GPUConfig:
@@ -196,22 +209,14 @@ def parse_gpu_config(value: GPU_T) -> api_pb2.GPUConfig:
                 count = int(count_str)
             except ValueError:
                 raise InvalidError(f"Invalid GPU count: {count_str}. Value must be an integer.")
-
-        if value.lower() == "a100-40gb":
-            gpu_type = "A100-40GB"
-        elif value.lower() not in STRING_TO_GPU_TYPE:
-            raise InvalidError(
-                f"Invalid GPU type: {value}. "
-                f"Value must be one of {list(STRING_TO_GPU_TYPE.keys())} (case-insensitive)."
-            )
-        else:
-            gpu_type = STRING_TO_GPU_TYPE[value.lower()]
-
+        gpu_type = value.upper()
         return api_pb2.GPUConfig(
             gpu_type=gpu_type,
             count=count,
         )
-    elif value is None or value is False:
+    elif value is None:
         return api_pb2.GPUConfig()
     else:
-        raise InvalidError(f"Invalid GPU config: {value}. Value must be a string, a `GPUConfig` object, or `None`.")
+        raise InvalidError(
+            f"Invalid GPU config: {value}. Value must be a string or `None` (or a deprecated `modal.gpu` object)"
+        )
