@@ -362,8 +362,9 @@ class _Cls(_Object, type_prefix="cs"):
     _method_metadata: Optional[dict[str, api_pb2.FunctionHandleMetadata]] = None
 
     # These are only set where source is locally available:
-    _user_cls: Optional[type]
-    _method_partials: dict[str, _PartialFunction]
+    # TODO: wrap these in a single optional/property for consistency
+    _user_cls: Optional[type] = None
+    _method_partials: Optional[dict[str, _PartialFunction]] = None
     _callables: dict[str, Callable[..., Any]]
 
     def _initialize_from_empty(self):
@@ -663,7 +664,8 @@ class _Cls(_Object, type_prefix="cs"):
 
     def __getattr__(self, k):
         # TODO: remove this method - access to attributes on classes (not instances) should be discouraged
-        if k in self._method_partials:
+        if not self._is_local() or k in self._method_partials:
+            # if not local (== k *could* be a method) or it is local and we know k is a method
             deprecation_warning(
                 (2025, 1, 13),
                 "Usage of methods directly on the class will soon be deprecated, "
@@ -672,6 +674,7 @@ class _Cls(_Object, type_prefix="cs"):
                 pending=True,
             )
             return getattr(self(), k)
+        # non-method attribute access on local class - arguably shouldn't be used either:
         return getattr(self._user_cls, k)
 
     def _is_local(self) -> bool:
