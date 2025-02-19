@@ -4,6 +4,8 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 The client library is still in pre-1.0 development, and sometimes breaking changes are necessary. We try to minimize them and publish deprecation warnings / migration guides in advance, typically providing a transition window of several months.
 
+You can also refer to the [1.0 migration guide](https://modal.com/docs/guide/modal-1-0-migration) for a summary of major breaking changes that we are rolling out before releasing version 1.0.
+
 We appreciate your patience while we speedily work towards a stable release of the client.
 
 ## Latest
