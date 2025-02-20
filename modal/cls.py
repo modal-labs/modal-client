@@ -8,7 +8,7 @@ from typing import Any, Callable, Optional, TypeVar, Union
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
-from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP, FunctionInfo
+from modal._utils.function_utils import FunctionInfo
 from modal_proto import api_pb2
 
 from ._functions import _Function, _parse_retries
@@ -21,7 +21,7 @@ from ._partial_function import (
 )
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
-from ._serialization import check_valid_cls_constructor_arg
+from ._serialization import PYTHON_TO_PROTO_TYPE, check_valid_cls_constructor_arg
 from ._traceback import print_server_warnings
 from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.deprecation import deprecation_warning, renamed_parameter
@@ -444,9 +444,9 @@ class _Cls(_Object, type_prefix="cs"):
 
         annotated_params = {k: t for k, t in annotations.items() if k in params}
         for k, t in annotated_params.items():
-            if t not in CLASS_PARAM_TYPE_MAP:
+            if t not in PYTHON_TO_PROTO_TYPE:
                 t_name = getattr(t, "__name__", repr(t))
-                supported = ", ".join(t.__name__ for t in CLASS_PARAM_TYPE_MAP.keys())
+                supported = ", ".join(t.__name__ for t in PYTHON_TO_PROTO_TYPE.keys())
                 raise InvalidError(
                     f"{user_cls.__name__}.{k}: {t_name} is not a supported parameter type. Use one of: {supported}"
                 )

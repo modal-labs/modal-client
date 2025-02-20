@@ -36,7 +36,7 @@ from modal._serialization import (
     deserialize,
     deserialize_data_format,
     serialize,
-    serialize_data_format,
+    serialize_data_format, serialize_proto_params, _serialize_proto_params_no_schema,
 )
 from modal._utils import async_utils
 from modal._utils.async_utils import synchronize_api
@@ -1048,6 +1048,11 @@ def test_cls_web_endpoint_default_bytes_parameter(servicer):
         "ClsWithBytesSerialization.*",
         inputs=inputs,
         is_class=True,
+        class_parameter_info=api_pb2.ClassParameterInfo(
+            schema=[
+            ]
+        ])
+        serialized_params=_serialize_proto_params_no_schema({"bar": b"bytes go here"})
     )
 
     _, second_message = _unwrap_asgi(ret)

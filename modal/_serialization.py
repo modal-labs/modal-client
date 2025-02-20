@@ -402,7 +402,13 @@ class ParamTypeInfo:
     converter: typing.Callable[[str], typing.Any]
 
 
-PARAM_TYPE_MAPPING = {
+PYTHON_TO_PROTO_TYPE: dict[type, "api_pb2.ParameterType.ValueType"] = {
+    str: api_pb2.PARAM_TYPE_STRING,
+    int: api_pb2.PARAM_TYPE_INT,
+    bytes: api_pb2.PARAM_TYPE_BYTES,
+}
+
+PROTO_TYPE_INFO = {
     api_pb2.PARAM_TYPE_STRING: ParamTypeInfo(default_field="string_default", proto_field="string_value", converter=str),
     api_pb2.PARAM_TYPE_INT: ParamTypeInfo(default_field="int_default", proto_field="int_value", converter=int),
     api_pb2.PARAM_TYPE_BYTES: ParamTypeInfo(
@@ -414,7 +420,7 @@ PARAM_TYPE_MAPPING = {
 def serialize_proto_params(python_params: dict[str, Any], schema: typing.Sequence[api_pb2.ClassParameterSpec]) -> bytes:
     proto_params: list[api_pb2.ClassParameterValue] = []
     for schema_param in schema:
-        type_info = PARAM_TYPE_MAPPING.get(schema_param.type)
+        type_info = PROTO_TYPE_INFO.get(schema_param.type)
         if not type_info:
             raise ValueError(f"Unsupported parameter type: {schema_param.type}")
         proto_param = api_pb2.ClassParameterValue(
@@ -437,7 +443,25 @@ def serialize_proto_params(python_params: dict[str, Any], schema: typing.Sequenc
     return proto_bytes
 
 
+def _serialize_proto_params_no_schema(python_params: dict[str, Any]) -> api_pb2.ClassParameterSet:
+    # Use types of the payload to determine how to proto encode a set of parameters,
+    # rather than a predetermined schema asin serialize_proto_params
+    # For now we only use this in tests as a convenience
+    # We might use this in the future if we want "non-strict" parameter encoding
+    proto_params = []
+    for param_name, python_value in python_params.items():
+        proto_type = PYTHON_TO_PROTO_TYPE[type(python_value)]
+        proto_type_info = PROTO_TYPE_INFO[proto_type]
+        proto_value = proto_type_info.converter
+        proto_param = api_pb2.ClassParameterValue(
+            name=param_name, type=proto_type, **{PROTO_TYPE_INFO[proto_type].proto_field: proto_value}
+        )
+        proto_params.append(proto_param)
+    return api_pb2.ClassParameterSet(parameters=proto_params)
+
+
 def deserialize_proto_params(serialized_params: bytes, schema: list[api_pb2.ClassParameterSpec]) -> dict[str, Any]:
+    # TODO: this currently requires the schema to decode a payload, but we could make
     proto_struct = api_pb2.ClassParameterSet()
     proto_struct.ParseFromString(serialized_params)
     value_by_name = {p.name: p for p in proto_struct.parameters}

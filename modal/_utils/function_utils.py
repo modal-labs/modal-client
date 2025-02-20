@@ -15,7 +15,7 @@ from synchronicity.exceptions import UserCodeException
 import modal_proto
 from modal_proto import api_pb2
 
-from .._serialization import deserialize, deserialize_data_format, serialize
+from .._serialization import PROTO_TYPE_INFO, PYTHON_TO_PROTO_TYPE, deserialize, deserialize_data_format, serialize
 from .._traceback import append_modal_tb
 from ..config import config, logger
 from ..exception import (
@@ -36,14 +36,6 @@ class FunctionInfoType(Enum):
     FILE = "file"
     SERIALIZED = "serialized"
     NOTEBOOK = "notebook"
-
-
-# TODO(elias): Add support for quoted/str annotations
-CLASS_PARAM_TYPE_MAP: dict[type, tuple["api_pb2.ParameterType.ValueType", str]] = {
-    str: (api_pb2.PARAM_TYPE_STRING, "string_default"),
-    int: (api_pb2.PARAM_TYPE_INT, "int_default"),
-    bytes: (api_pb2.PARAM_TYPE_BYTES, "bytes_default"),
-}
 
 
 class LocalFunctionError(InvalidError):
@@ -296,12 +288,13 @@ class FunctionInfo:
         signature = _get_class_constructor_signature(self.user_cls)
         for param in signature.parameters.values():
             has_default = param.default is not param.empty
-            if param.annotation not in CLASS_PARAM_TYPE_MAP:
+            if param.annotation not in PYTHON_TO_PROTO_TYPE:
                 raise InvalidError("modal.parameter() currently only support str, int, or bytes types")
-            param_type, default_field = CLASS_PARAM_TYPE_MAP[param.annotation]
-            class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=param_type)
+            proto_type = PYTHON_TO_PROTO_TYPE[param.annotation]
+            proto_type_info = PROTO_TYPE_INFO[proto_type]
+            class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=proto_type)
             if has_default:
-                setattr(class_param_spec, default_field, param.default)
+                setattr(class_param_spec, proto_type_info.default_field, param.default)
             modal_parameters.append(class_param_spec)
 
         return api_pb2.ClassParameterInfo(
