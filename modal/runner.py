@@ -19,7 +19,6 @@ from ._functions import _Function
 from ._object import _get_environment_name, _Object
 from ._pty import get_pty_info
 from ._resolver import Resolver
-from ._runtime.execution_context import is_local
 from ._traceback import print_server_warnings, traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, gather_cancel_on_exc, synchronize_api
 from ._utils.deprecation import deprecation_error
@@ -262,12 +261,6 @@ async def _run_app(
     if environment_name is None:
         environment_name = typing.cast(str, config.get("environment"))
 
-    if not is_local():
-        raise InvalidError(
-            "Can not run an app from within a container."
-            " Are you calling app.run() directly?"
-            " Consider using the `modal run` shell command."
-        )
     if app._running_app:
         raise InvalidError(
             "App is already running and can't be started again.\n"
