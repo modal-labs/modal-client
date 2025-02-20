@@ -84,7 +84,7 @@ async def setup(profile: Optional[str] = None):
 
 
 # Commands
-entrypoint_cli_typer.command("deploy", help="Deploy a Modal application.", no_args_is_help=True)(run.deploy)
+entrypoint_cli_typer.command("deploy", no_args_is_help=True)(run.deploy)
 entrypoint_cli_typer.command("serve", no_args_is_help=True)(run.serve)
 entrypoint_cli_typer.command("shell")(run.shell)
 entrypoint_cli_typer.add_typer(launch_cli)
