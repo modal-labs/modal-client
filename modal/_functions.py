@@ -473,51 +473,41 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         explicit_mounts = mounts
 
-        if is_local():
-            include_source_mode = get_include_source_mode(include_source)
-            if include_source_mode != IncludeSourceMode.INCLUDE_NOTHING:
-                entrypoint_mounts = info.get_entrypoint_mount()
-            else:
-                entrypoint_mounts = {}
-
-            all_mounts = [
-                _get_client_mount(),
-                *explicit_mounts,
-                *entrypoint_mounts.values(),
-            ]
-
-            if include_source_mode is IncludeSourceMode.INCLUDE_FIRST_PARTY:
-                auto_mounts = get_sys_modules_mounts()
-                # don't need to add entrypoint modules to automounts:
-                for entrypoint_module in entrypoint_mounts:
-                    auto_mounts.pop(entrypoint_module, None)
-
-                warn_missing_modules = set(auto_mounts.keys()) - image._added_python_source_set
-
-                if warn_missing_modules:
-                    python_stringified_modules = ", ".join(f'"{mod}"' for mod in sorted(warn_missing_modules))
-                    deprecation_warning(
-                        (2025, 2, 3),
-                        (
-                            'Modal will stop implicitly adding local Python modules to the Image ("automounting") in a '
-                            "future update. The following modules need to be explicitly added for future "
-                            "compatibility:\n"
-                        )
-                        + "\n".join(sorted([f"* {m}" for m in warn_missing_modules]))
-                        + "\n\n"
-                        + (
-                            "e.g.:\n"
-                            f"image_with_source = my_image.add_local_python_source({python_stringified_modules})\n\n"
-                        )
-                        + "For more information, see https://modal.com/docs/guide/modal-1-0-migration",
-                    )
-                all_mounts += auto_mounts.values()
+        include_source_mode = get_include_source_mode(include_source)
+        if include_source_mode != IncludeSourceMode.INCLUDE_NOTHING:
+            entrypoint_mounts = info.get_entrypoint_mount()
         else:
-            # skip any mount introspection/logic inside containers, since the function
-            # should already be hydrated
-            # TODO: maybe the entire from_args loader should be exited early if not local?
-            #  since it will be hydrated
-            all_mounts = []
+            entrypoint_mounts = {}
+
+        all_mounts = [
+            _get_client_mount(),
+            *explicit_mounts,
+            *entrypoint_mounts.values(),
+        ]
+
+        if include_source_mode is IncludeSourceMode.INCLUDE_FIRST_PARTY and is_local():
+            auto_mounts = get_sys_modules_mounts()
+            # don't need to add entrypoint modules to automounts:
+            for entrypoint_module in entrypoint_mounts:
+                auto_mounts.pop(entrypoint_module, None)
+
+            warn_missing_modules = set(auto_mounts.keys()) - image._added_python_source_set
+
+            if warn_missing_modules:
+                python_stringified_modules = ", ".join(f'"{mod}"' for mod in sorted(warn_missing_modules))
+                deprecation_warning(
+                    (2025, 2, 3),
+                    (
+                        'Modal will stop implicitly adding local Python modules to the Image ("automounting") in a '
+                        "future update. The following modules need to be explicitly added for future "
+                        "compatibility:\n"
+                    )
+                    + "\n".join(sorted([f"* {m}" for m in warn_missing_modules]))
+                    + "\n\n"
+                    + (f"e.g.:\nimage_with_source = my_image.add_local_python_source({python_stringified_modules})\n\n")
+                    + "For more information, see https://modal.com/docs/guide/modal-1-0-migration",
+                )
+            all_mounts += auto_mounts.values()
 
         retry_policy = _parse_retries(
             retries, f"Function '{info.get_tag()}'" if info.raw_f else f"Class '{info.get_tag()}'"
