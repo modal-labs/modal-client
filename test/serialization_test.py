@@ -7,6 +7,8 @@ from modal._serialization import (
     deserialize,
     deserialize_data_format,
     deserialize_proto_params,
+    proto_to_python_payload,
+    python_to_proto_payload,
     serialize,
     serialize_data_format,
     serialize_proto_params,
@@ -96,3 +98,24 @@ def test_proto_serde_failure_incomplete_params():
         deserialize_proto_params(encoded_params, [api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_STRING)])
 
     # TODO: add test for incorrect types
+
+
+def _call(*args, **kwargs):
+    return args, kwargs
+
+
+@pytest.mark.parametrize(
+    "python_arg_kwargs",
+    [
+        _call("foo"),  # positional args
+        _call("foo", bar="baz"),  # mix
+    ],
+)
+def test_payload_serde(python_arg_kwargs):
+    proto_payload = python_to_proto_payload(*python_arg_kwargs)
+    proto_bytes = proto_payload.SerializeToString()
+    recovered_payload = api_pb2.Payload()
+    recovered_payload.ParseFromString(proto_bytes)
+    assert recovered_payload == proto_payload
+    recovered_python_arg_kwargs = proto_to_python_payload(recovered_payload)
+    assert recovered_python_arg_kwargs == python_arg_kwargs

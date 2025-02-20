@@ -441,11 +441,11 @@ def serialize_proto_params(python_params: dict[str, Any], schema: typing.Sequenc
 def _python_to_proto_value(python_value: Any) -> api_pb2.ClassParameterValue:
     proto_type = PYTHON_TO_PROTO_TYPE[type(python_value)]
     proto_type_info = PROTO_TYPE_INFO[proto_type]
-    proto_dto = proto_type_info.encoder(python_value)
+    proto_scalar = proto_type_info.encoder(python_value)
     return api_pb2.ClassParameterValue(
         name="",  # this field is unused for payloads and exists for legacy reasons/code reuse with class params
         type=proto_type,
-        **{proto_type_info.proto_field: proto_dto},
+        **{proto_type_info.proto_field: proto_scalar},
     )
 
 
