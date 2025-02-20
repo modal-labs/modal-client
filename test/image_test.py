@@ -988,7 +988,7 @@ def test_image_env(builder_version, servicer, client):
 
     # unhappy path, reject invalid input
     with pytest.raises(InvalidError, match="Image ENV variables must be strings."):
-        app = App(image=Image.debian_slim().env({"HELLO": 123}))
+        app = App(image=Image.debian_slim().env({"HELLO": 123}))  # type: ignore
         app.function()(dummy)
         with app.run(client=client):
             pass
