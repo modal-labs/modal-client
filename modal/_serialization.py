@@ -393,7 +393,8 @@ def check_valid_cls_constructor_arg(key, obj):
 class ParamTypeInfo:
     default_field: str
     proto_field: str
-    converter: typing.Callable[[str], typing.Any]
+    encoder: typing.Callable[[Any], Any]
+    decoder: typing.Callable[[Any], Any]
 
 
 PYTHON_TO_PROTO_TYPE: dict[type, "api_pb2.ParameterType.ValueType"] = {
@@ -402,8 +403,12 @@ PYTHON_TO_PROTO_TYPE: dict[type, "api_pb2.ParameterType.ValueType"] = {
 }
 
 PROTO_TYPE_INFO = {
-    api_pb2.PARAM_TYPE_STRING: ParamTypeInfo(default_field="string_default", proto_field="string_value", converter=str),
-    api_pb2.PARAM_TYPE_INT: ParamTypeInfo(default_field="int_default", proto_field="int_value", converter=int),
+    api_pb2.PARAM_TYPE_STRING: ParamTypeInfo(
+        default_field="string_default", proto_field="string_value", encoder=str, decoder=str
+    ),
+    api_pb2.PARAM_TYPE_INT: ParamTypeInfo(
+        default_field="int_default", proto_field="int_value", encoder=int, decoder=int
+    ),
 }
 
 
@@ -424,7 +429,7 @@ def serialize_proto_params(python_params: dict[str, Any], schema: typing.Sequenc
             else:
                 raise ValueError(f"Missing required parameter: {schema_param.name}")
         try:
-            converted_value = type_info.converter(python_value)
+            converted_value = type_info.encoder(python_value)
         except ValueError as exc:
             raise ValueError(f"Invalid type for parameter {schema_param.name}: {exc}")
         setattr(proto_param, type_info.proto_field, converted_value)
@@ -433,25 +438,67 @@ def serialize_proto_params(python_params: dict[str, Any], schema: typing.Sequenc
     return proto_bytes
 
 
-def _serialize_proto_params_no_schema(python_params: dict[str, Any]) -> api_pb2.ClassParameterSet:
-    # Use types of the payload to determine how to proto encode a set of parameters,
-    # rather than a predetermined schema asin serialize_proto_params
-    # For now we only use this in tests as a convenience
-    # We might use this in the future if we want "non-strict" parameter encoding
-    proto_params = []
-    for param_name, python_value in python_params.items():
-        proto_type = PYTHON_TO_PROTO_TYPE[type(python_value)]
-        proto_type_info = PROTO_TYPE_INFO[proto_type]
-        proto_value = proto_type_info.converter
-        proto_param = api_pb2.ClassParameterValue(
-            name=param_name, type=proto_type, **{PROTO_TYPE_INFO[proto_type].proto_field: proto_value}
+def _python_to_proto_value(python_value: Any) -> api_pb2.ClassParameterValue:
+    proto_type = PYTHON_TO_PROTO_TYPE[type(python_value)]
+    proto_type_info = PROTO_TYPE_INFO[proto_type]
+    proto_dto = proto_type_info.encoder(python_value)
+    return api_pb2.ClassParameterValue(
+        name="",  # this field is unused for payloads and exists for legacy reasons/code reuse with class params
+        type=proto_type,
+        **{proto_type_info.proto_field: proto_dto},
+    )
+
+
+def _proto_to_python_value(proto_value: api_pb2.ClassParameterValue) -> Any:
+    proto_type_info = PROTO_TYPE_INFO[proto_value.type]
+    proto_field = proto_type_info.proto_field
+    proto_dto = getattr(proto_value, proto_field)
+    python_value = proto_type_info.decoder(proto_dto)
+    return python_value
+
+
+def python_to_proto_payload(python_args: tuple[Any, ...], python_kwargs: dict[str, Any]) -> api_pb2.Payload:
+    """Serialize a python payload using the input payload type rather than a schema w/ type coercion/validation
+
+    Similar to _serialize_proto_params_no_schema, but uses the new Payload proto and doesn't set the
+    `name` field of the ClassParameterValue message (names are encoded as part of the `kwargs` PayloadDictValue instead)
+    """
+    proto_args = api_pb2.PayloadListValue(values=[])
+    for python_value in python_args:
+        proto_value = _python_to_proto_value(python_value)
+        proto_args.values.append(proto_value)
+
+    proto_kwargs = api_pb2.PayloadDictValue(entries=[])
+    for param_name, python_value in python_kwargs.items():
+        proto_value = _python_to_proto_value(python_value)
+        proto_kwargs.entries.append(
+            api_pb2.PayloadDictEntry(
+                name=param_name,
+                value=proto_value,
+            )
         )
-        proto_params.append(proto_param)
-    return api_pb2.ClassParameterSet(parameters=proto_params)
+    return api_pb2.Payload(
+        args=proto_args,
+        kwargs=proto_kwargs,
+    )
+
+
+def proto_to_python_payload(proto_payload: api_pb2.Payload) -> tuple[tuple[Any, ...], dict[str, Any]]:
+    python_args = []
+    for proto_value in proto_payload.args.values:
+        python_value = _proto_to_python_value(proto_value)
+        python_args.append(python_value)
+
+    python_kwargs = {}
+    for proto_dict_entry in proto_payload.kwargs.entries:
+        python_value = _proto_to_python_value(proto_dict_entry.value)
+        python_kwargs[proto_dict_entry.name] = python_value
+
+    return tuple(python_args), python_kwargs
 
 
 def deserialize_proto_params(serialized_params: bytes, schema: list[api_pb2.ClassParameterSpec]) -> dict[str, Any]:
-    # TODO: this currently requires the schema to decode a payload, but we could make
+    # TODO: this currently requires the schema to decode a payload, but we could separate validation from decoding
     proto_struct = api_pb2.ClassParameterSet()
     proto_struct.ParseFromString(serialized_params)
     value_by_name = {p.name: p for p in proto_struct.parameters}
@@ -472,8 +519,6 @@ def deserialize_proto_params(serialized_params: bytes, schema: list[api_pb2.Clas
             python_value = param_value.string_value
         elif schema_param.type == api_pb2.PARAM_TYPE_INT:
             python_value = param_value.int_value
-        elif schema_param.type == api_pb2.PARAM_TYPE_BYTES:
-            python_value = param_value.bytes_value
         else:
             # TODO(elias): based on `parameters` declared types, we could add support for
             #  custom non proto types encoded as bytes in the proto, e.g. PARAM_TYPE_PYTHON_PICKLE

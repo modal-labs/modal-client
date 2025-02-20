@@ -686,10 +686,8 @@ message ClassParameterInfo {
   repeated ClassParameterSpec schema = 2; // only set for PARAM_SERIALIZATION_FORMAT_PROTO
 }
 
-
-message ParameterArgKwargs {
-  // do not use args for class parameters (can still be used in function calls)
-  // (pack everything in kwargs so its consistent regardless of construction syntax)
+message Payload {
+  // this can be used
   PayloadListValue args = 1;
   PayloadDictValue kwargs = 2;
 }
@@ -698,10 +696,8 @@ message ClassParameterSet {
   // NOTE: adding additional *fields* here can invalidate function lookups
   //  since we use the serialized message as the bound function identifier
   //  for parameter-bound classes. Modify with *caution*
-  oneof parameters_oneof {
-    repeated ClassParameterValue parameters = 1; // legacy mode
-    ParameterArgKwargs arg_kwargs = 2;
-  }
+  repeated ClassParameterValue parameters = 1;
+  // PayloadDictValue kwargs = 2; // could supersede parameters at some point, so we can remove ClassParameterValue.name
 }
 
 message ClassParameterSpec {
@@ -719,7 +715,7 @@ message ClassParameterValue { // TODO: rename to PayloadValue
   // NOTE: adding additional *fields* here can invalidate function lookups
   //  since we use the serialized message as the bound function identifier
   //  for parameter-bound classes. Modify with *caution*
-  optional string name = 1;  // deprecated
+  optional string name = 1; // TODO: deprecate this eventually once all classes use a PayloadDictValue instead
   ParameterType type = 2;
   oneof value_oneof {
     string string_value = 3;
