@@ -19,7 +19,7 @@ from modal._partial_function import (
 from modal._serialization import deserialize, deserialize_params, serialize
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import FunctionInfo
-from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError, PendingDeprecationError
+from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import (
     PartialFunction,
     asgi_app,
@@ -581,12 +581,12 @@ def test_unhydrated():
 app_method_args = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
-@app_method_args.cls(keep_warm=5)
+@app_method_args.cls(min_containers=5)
 class XYZ:
-    @method()  # warns - keep_warm is not supported on methods anymore
+    @method()
     def foo(self): ...
 
-    @method()  # warns - keep_warm is not supported on methods anymore
+    @method()
     def bar(self): ...
 
 
@@ -594,29 +594,11 @@ def test_method_args(servicer, client):
     with app_method_args.run(client=client):
         funcs = servicer.app_functions.values()
         assert {f.function_name for f in funcs} == {"XYZ.*"}
-        warm_pools = {f.function_name: f.warm_pool_size for f in funcs}
+        warm_pools = {f.function_name: f.autoscaler_settings.min_containers for f in funcs}
         assert warm_pools == {"XYZ.*": 5}
 
 
-def test_keep_warm_depr(client, set_env_client):
-    app = App()
-
-    with pytest.warns(PendingDeprecationError, match="keep_warm"):
-
-        @app.cls(serialized=True)
-        class ClsWithKeepWarmMethod:
-            @method(keep_warm=2)
-            def foo(self): ...
-
-            @method()
-            def bar(self): ...
-
-    with app.run(client=client):
-        with pytest.raises(modal.exception.InvalidError, match="keep_warm"):
-            ClsWithKeepWarmMethod().bar.keep_warm(2)  # should not be usable on methods
-
-
-def test_cls_keep_warm(client, servicer):
+def test_cls_update_autoscaler(client, servicer):
     app = App()
 
     @app.cls(serialized=True)
@@ -629,18 +611,20 @@ def test_cls_keep_warm(client, servicer):
 
     with app.run(client=client):
         assert len(servicer.app_functions) == 1  # only class service function
-        cls_service_fun = servicer.function_by_name("ClsWithMethod.*")
-        assert cls_service_fun.is_class
-        assert cls_service_fun.warm_pool_size == 0
+        service_defn = servicer.function_by_name("ClsWithMethod.*")
+        assert service_defn.is_class
+        assert service_defn.warm_pool_size == service_defn.autoscaler_settings.min_containers == 0
 
-        ClsWithMethod().keep_warm(2)  # type: ignore  # Python can't do type intersection
-        assert cls_service_fun.warm_pool_size == 2
+        ClsWithMethod().update_autoscaler(min_containers=2, buffer_containers=1)  # type: ignore
+        assert service_defn.warm_pool_size == service_defn.autoscaler_settings.min_containers == 2
+        assert service_defn._experimental_buffer_containers == service_defn.autoscaler_settings.buffer_containers == 1
 
-        ClsWithMethod("other-instance").keep_warm(5)  # type: ignore  # Python can't do type intersection
-        instance_service_function = servicer.function_by_name("ClsWithMethod.*", params=((("other-instance",), {})))
+        ClsWithMethod("other-instance").update_autoscaler(min_containers=5, max_containers=10)  # type: ignore
+        instance_defn = servicer.function_by_name("ClsWithMethod.*", params=((("other-instance",), {})))
         assert len(servicer.app_functions) == 2  # + instance service function
-        assert cls_service_fun.warm_pool_size == 2
-        assert instance_service_function.warm_pool_size == 5
+        assert service_defn.warm_pool_size == service_defn.autoscaler_settings.min_containers == 2
+        assert instance_defn.warm_pool_size == instance_defn.autoscaler_settings.min_containers == 5
+        assert instance_defn.concurrency_limit == instance_defn.autoscaler_settings.max_containers == 10
 
 
 with pytest.warns(DeprecationError, match="@modal.build"):

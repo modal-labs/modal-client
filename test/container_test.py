@@ -2273,10 +2273,10 @@ def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn, set_env
     assert len(recwarn) == 0
 
 
-@pytest.mark.parametrize("concurrency_limit", [1, 2])
-def test_container_io_manager_concurrency_tracking(client, servicer, concurrency_limit):
+@pytest.mark.parametrize("concurrency", [1, 2])
+def test_container_io_manager_concurrency_tracking(client, servicer, concurrency):
     dummy_container_args = api_pb2.ContainerArguments(
-        function_id="fu-123", function_def=api_pb2.Function(target_concurrent_inputs=concurrency_limit)
+        function_id="fu-123", function_def=api_pb2.Function(target_concurrent_inputs=concurrency)
     )
     from modal._utils.async_utils import synchronizer
 
@@ -2305,7 +2305,7 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
         active_input_ids |= set(io_context.input_ids)
         processed_inputs += len(io_context.input_ids)
 
-        while active_inputs and (len(active_inputs) == concurrency_limit or processed_inputs == total_inputs):
+        while active_inputs and (len(active_inputs) == concurrency or processed_inputs == total_inputs):
             input_to_process = active_inputs.pop(0)
             send_failure = processed_inputs % 2 == 1
             # return values for inputs
