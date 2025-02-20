@@ -82,7 +82,7 @@ def wait_for_port(data: tuple[str, str], q: Queue):
     timeout=args.get("timeout"),
     secrets=[Secret.from_dict({"MODAL_LAUNCH_ARGS": json.dumps(args)})],
     volumes=volumes,
-    concurrency_limit=1 if volume else None,
+    max_containers=1 if volume else None,
 )
 def run_vscode(q: Queue):
     os.chdir("/home/coder")
