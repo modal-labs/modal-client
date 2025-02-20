@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.60 (2025-02-20)
+
+* Fixes an issue where `modal.runner.deploy_app()` didn't work when called from within a running (remote) Modal Function
+
+
+
 ### 0.73.58 (2025-02-20)
 
 * Introduces an `-m` flag to `modal run`, `modal shell`, `modal serve` and `modal deploy`, which indicates that the modal app/function file is specified using python "module syntax" rather than a file path. In the future this will be a required flag when using module syntax.
