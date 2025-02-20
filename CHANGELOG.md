@@ -12,6 +12,24 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.58 (2025-02-20)
+
+* Introduces an `-m` flag to `modal run`, `modal shell`, `modal serve` and `modal deploy`, which indicates that the modal app/function file is specified using python "module syntax" rather than a file path. In the future this will be a required flag when using module syntax.
+
+    Old syntax:
+    ```sh
+    modal run my_package/modal_main.py
+    modal run my_package.modal_main
+    ```
+
+    New syntax (note the `-m` on the second line):
+    ```sh
+    modal run my_package/modal_main.py
+    modal run -m my_package.modal_main
+    ```
+
+
+
 ### 0.73.54 (2025-02-18)
 
 - Passing `App.lookup` an invalid name now raises an error. App names may contain only alphanumeric characters, dashes, periods, and underscores, must be shorter than 64 characters, and cannot conflict with App ID strings.
