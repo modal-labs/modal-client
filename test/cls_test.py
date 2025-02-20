@@ -19,7 +19,7 @@ from modal._partial_function import (
 from modal._serialization import deserialize, deserialize_params, serialize
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import FunctionInfo
-from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError, PendingDeprecationError
+from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import (
     PartialFunction,
     asgi_app,
@@ -596,24 +596,6 @@ def test_method_args(servicer, client):
         assert {f.function_name for f in funcs} == {"XYZ.*"}
         warm_pools = {f.function_name: f.warm_pool_size for f in funcs}
         assert warm_pools == {"XYZ.*": 5}
-
-
-def test_keep_warm_depr(client, set_env_client):
-    app = App()
-
-    with pytest.warns(PendingDeprecationError, match="keep_warm"):
-
-        @app.cls(serialized=True)
-        class ClsWithKeepWarmMethod:
-            @method(keep_warm=2)
-            def foo(self): ...
-
-            @method()
-            def bar(self): ...
-
-    with app.run(client=client):
-        with pytest.raises(modal.exception.InvalidError, match="keep_warm"):
-            ClsWithKeepWarmMethod().bar.keep_warm(2)  # should not be usable on methods
 
 
 def test_cls_keep_warm(client, servicer):
