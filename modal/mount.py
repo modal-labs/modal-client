@@ -51,6 +51,8 @@ PYTHON_STANDALONE_VERSIONS: dict[str, tuple[str, str]] = {
 MOUNT_DEPRECATION_MESSAGE_PATTERN = """modal.Mount usage will soon be deprecated.
 
 Use {replacement} instead, which is functionally and performance-wise equivalent.
+
+See https://modal.com/docs/guide/modal-1-0-migration for more details.
 """
 
 
@@ -408,7 +410,7 @@ class _Mount(_Object, type_prefix="mo"):
         ```
         """
         deprecation_warning(
-            (2024, 1, 8), MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"), pending=True
+            (2025, 1, 8), MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"), pending=True
         )
         return _Mount._from_local_dir(local_path, remote_path=remote_path, condition=condition, recursive=recursive)
 
@@ -465,7 +467,7 @@ class _Mount(_Object, type_prefix="mo"):
         ```
         """
         deprecation_warning(
-            (2024, 1, 8), MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"), pending=True
+            (2025, 1, 8), MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"), pending=True
         )
         return _Mount._from_local_file(local_path, remote_path)
 
@@ -636,7 +638,7 @@ class _Mount(_Object, type_prefix="mo"):
         ```
         """
         deprecation_warning(
-            (2024, 1, 8),
+            (2025, 1, 8),
             MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_python_source"),
             pending=True,
         )
