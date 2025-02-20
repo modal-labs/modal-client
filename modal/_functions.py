@@ -1097,7 +1097,15 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             """
                 )
             )
-        # TODO deprecation warn
+
+        deprecation_warning(
+            (2025, 2, 24),
+            "The .keep_warm() method has been deprecated in favor of the more general "
+            ".update_autoscaler(min_containers=...) method.",
+            pending=True,
+            show_source=True,
+        )
+
         await self.update_autoscaler(min_containers=warm_pool_size)
 
     @classmethod
