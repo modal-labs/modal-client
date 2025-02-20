@@ -581,12 +581,12 @@ def test_unhydrated():
 app_method_args = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
-@app_method_args.cls(keep_warm=5)
+@app_method_args.cls(min_containers=5)
 class XYZ:
-    @method()  # warns - keep_warm is not supported on methods anymore
+    @method()
     def foo(self): ...
 
-    @method()  # warns - keep_warm is not supported on methods anymore
+    @method()
     def bar(self): ...
 
 
@@ -594,7 +594,7 @@ def test_method_args(servicer, client):
     with app_method_args.run(client=client):
         funcs = servicer.app_functions.values()
         assert {f.function_name for f in funcs} == {"XYZ.*"}
-        warm_pools = {f.function_name: f.warm_pool_size for f in funcs}
+        warm_pools = {f.function_name: f.autoscaler_settings.min_containers for f in funcs}
         assert warm_pools == {"XYZ.*": 5}
 
 
