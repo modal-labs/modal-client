@@ -471,3 +471,9 @@ def test_overriding_function_warning(caplog):
 
     app_3.include(app_4)
     assert "Overriding existing function" in caplog.messages[0]
+
+
+@pytest.mark.parametrize("name", ["", " ", "no way", "my-app!", "a" * 65])
+def test_lookup_invalid_name(name):
+    with pytest.raises(InvalidError, match="Invalid App name"):
+        App.lookup(name)

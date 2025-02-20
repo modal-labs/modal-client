@@ -182,7 +182,8 @@ class _Invocation:
         if timeout is None:
             backend_timeout = OUTPUTS_TIMEOUT
         else:
-            backend_timeout = min(OUTPUTS_TIMEOUT, timeout)  # refresh backend call every 55s
+            # refresh backend call every 55s
+            backend_timeout = min(OUTPUTS_TIMEOUT, timeout)
 
         while True:
             # always execute at least one poll for results, regardless if timeout is 0
@@ -278,7 +279,8 @@ class _Invocation:
 
     async def run_generator(self):
         items_received = 0
-        items_total: Union[int, None] = None  # populated when self.run_function() completes
+        # populated when self.run_function() completes
+        items_total: Union[int, None] = None
         async with aclosing(
             async_merge(
                 _stream_function_call_data(self.client, self.function_call_id, variant="data_out"),
@@ -350,7 +352,8 @@ class _FunctionSpec:
     secrets: Sequence[_Secret]
     network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem]
     volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]]
-    gpus: Union[GPU_T, list[GPU_T]]  # TODO(irfansharif): Somehow assert that it's the first kind, in sandboxes
+    # TODO(irfansharif): Somehow assert that it's the first kind, in sandboxes
+    gpus: Union[GPU_T, list[GPU_T]]
     cloud: Optional[str]
     cpu: Optional[Union[float, tuple[float, float]]]
     memory: Optional[Union[int, tuple[int, int]]]
@@ -377,16 +380,19 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _info: Optional[FunctionInfo]
     _serve_mounts: frozenset[_Mount]  # set at load time, only by loader
     _app: Optional["modal.app._App"] = None
-    _obj: Optional["modal.cls._Obj"] = None  # only set for InstanceServiceFunctions and bound instance methods
+    # only set for InstanceServiceFunctions and bound instance methods
+    _obj: Optional["modal.cls._Obj"] = None
 
-    _webhook_config: Optional[api_pb2.WebhookConfig] = None  # this is set in definition scope, only locally
+    # this is set in definition scope, only locally
+    _webhook_config: Optional[api_pb2.WebhookConfig] = None
     _web_url: Optional[str]  # this is set on hydration
 
     _function_name: Optional[str]
     _is_method: bool
     _spec: Optional[_FunctionSpec] = None
     _tag: str
-    _raw_f: Optional[Callable[..., Any]]  # this is set to None for a "class service [function]"
+    # this is set to None for a "class service [function]"
+    _raw_f: Optional[Callable[..., Any]]
     _build_args: dict
 
     _is_generator: Optional[bool] = None
@@ -400,40 +406,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _method_handle_metadata: Optional[dict[str, "api_pb2.FunctionHandleMetadata"]] = (
         None  # set for 0.67+ class service functions
     )
-
-    def _bind_method(
-        self,
-        user_cls,
-        method_name: str,
-        partial_function: "modal._partial_function._PartialFunction",
-    ):
-        """mdmd:hidden
-
-        Creates a _Function that is bound to a specific class method name. This _Function is not uniquely tied
-        to any backend function -- its object_id is the function ID of the class service function.
-
-        """
-        class_service_function = self
-        assert class_service_function._info  # has to be a local function to be able to "bind" it
-        assert not class_service_function._is_method  # should not be used on an already bound method placeholder
-        assert not class_service_function._obj  # should only be used on base function / class service function
-        full_name = f"{user_cls.__name__}.{method_name}"
-
-        rep = f"Method({full_name})"
-        fun = _Object.__new__(_Function)
-        fun._init(rep)
-        fun._tag = full_name
-        fun._raw_f = partial_function.raw_f
-        fun._info = FunctionInfo(
-            partial_function.raw_f, user_cls=user_cls, serialized=class_service_function.info.is_serialized()
-        )  # needed for .local()
-        fun._use_method_name = method_name
-        fun._app = class_service_function._app
-        fun._is_generator = partial_function.is_generator
-        fun._cluster_size = partial_function.cluster_size
-        fun._spec = class_service_function._spec
-        fun._is_method = True
-        return fun
 
     @staticmethod
     def from_local(
@@ -460,7 +432,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         batch_wait_ms: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
         cpu: Optional[Union[float, tuple[float, float]]] = None,
-        keep_warm: Optional[int] = None,  # keep_warm=True is equivalent to keep_warm=1
+        # keep_warm=True is equivalent to keep_warm=1
+        keep_warm: Optional[int] = None,
         cloud: Optional[str] = None,
         scheduler_placement: Optional[SchedulerPlacement] = None,
         is_builder_function: bool = False,
@@ -468,7 +441,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         enable_memory_snapshot: bool = False,
         block_network: bool = False,
         i6pn_enabled: bool = False,
-        cluster_size: Optional[int] = None,  # Experimental: Clustered functions
+        # Experimental: Clustered functions
+        cluster_size: Optional[int] = None,
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
         # current default: first-party, future default: main-package
@@ -934,7 +908,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         raise InvalidError(f"Function {info.function_name} is too large to deploy.")
                     raise
                 function_creation_status.set_response(response)
-            serve_mounts = {m for m in all_mounts if m.is_local()}  # needed for modal.serve file watching
+            # needed for modal.serve file watching
+            serve_mounts = {m for m in all_mounts if m.is_local()}
             serve_mounts |= image._serve_mounts
             obj._serve_mounts = frozenset(serve_mounts)
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
@@ -1039,6 +1014,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         fun._info = self._info
         fun._obj = obj
+        fun._spec = self._spec  # TODO (elias): fix - this is incorrect when using with_options
         return fun
 
     @live_method
@@ -1223,7 +1199,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
-        assert metadata and isinstance(metadata, api_pb2.FunctionHandleMetadata)
+        assert metadata and isinstance(metadata, api_pb2.FunctionHandleMetadata), (
+            f"{type(metadata)} is not FunctionHandleMetadata"
+        )
         self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
@@ -1595,7 +1573,8 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
     async def cancel(
         self,
-        terminate_containers: bool = False,  # if true, containers running the inputs are forcibly terminated
+        # if true, containers running the inputs are forcibly terminated
+        terminate_containers: bool = False,
     ):
         """Cancels the function call, which will stop its execution and mark its inputs as
         [`TERMINATED`](/docs/reference/modal.call_graph#modalcall_graphinputstatus).
