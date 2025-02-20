@@ -29,7 +29,12 @@ from ._partial_function import (
     _PartialFunctionFlags,
 )
 from ._utils.async_utils import synchronize_api
-from ._utils.deprecation import deprecation_error, deprecation_warning, renamed_parameter
+from ._utils.deprecation import (
+    deprecation_error,
+    deprecation_warning,
+    renamed_parameter,
+    warn_on_renamed_autoscaler_settings,
+)
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
@@ -559,6 +564,7 @@ class _App:
 
         return wrapped
 
+    @warn_on_renamed_autoscaler_settings
     def function(
         self,
         _warn_parentheses_missing: Any = None,
@@ -586,17 +592,14 @@ class _App:
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: Optional[Union[int, tuple[int, int]]] = None,
         ephemeral_disk: Optional[int] = None,  # Specify, in MiB, the ephemeral disk size for the Function.
+        min_containers: Optional[int] = None,  # Minimum number of containers to keep warm, even when Function is idle.
+        max_containers: Optional[int] = None,  # Limit on the number of containers that can be spun up for this Function
+        buffer_containers: Optional[int] = None,  # Number of additional idle containers to maintain under active load
+        scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        concurrency_limit: Optional[
-            int
-        ] = None,  # An optional maximum number of concurrent containers running the function (keep_warm sets minimum).
         allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
-        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        keep_warm: Optional[
-            int
-        ] = None,  # An optional minimum number of containers to always keep warm (use concurrency_limit for maximum).
         name: Optional[str] = None,  # Sets the Modal name of the function within the app
         is_generator: Optional[
             bool
@@ -615,10 +618,14 @@ class _App:
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
-        _experimental_buffer_containers: Optional[int] = None,  # Number of additional, idle containers to keep around.
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
         _experimental_enable_gpu_snapshot: bool = False,  # Experimentally enable GPU memory snapshots.
+        # Parameters below here are deprecated. Please update your code as suggested
+        keep_warm: Optional[int] = None,  # Replaced with `min_containers`
+        concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
+        container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
+        _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
     ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal [Function](/docs/reference/modal.Function) with this App."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -635,7 +642,7 @@ class _App:
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any], None],
         ) -> _Function:
-            nonlocal keep_warm, is_generator, cloud, serialized
+            nonlocal is_generator, cloud, serialized
 
             # Check if the decorated object is a class
             if inspect.isclass(f):
@@ -669,7 +676,6 @@ class _App:
                 raw_f = f.raw_f
                 webhook_config = f.webhook_config
                 is_generator = f.is_generator
-                keep_warm = f.keep_warm or keep_warm
                 batch_max_size = f.batch_max_size
                 batch_wait_ms = f.batch_wait_ms
             else:
@@ -743,20 +749,20 @@ class _App:
                 ephemeral_disk=ephemeral_disk,
                 proxy=proxy,
                 retries=retries,
-                concurrency_limit=concurrency_limit,
+                min_containers=min_containers,
+                max_containers=max_containers,
+                buffer_containers=buffer_containers,
+                scaledown_window=scaledown_window,
                 allow_concurrent_inputs=allow_concurrent_inputs,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
-                container_idle_timeout=container_idle_timeout,
                 timeout=timeout,
-                keep_warm=keep_warm,
                 cloud=cloud,
                 webhook_config=webhook_config,
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
-                _experimental_buffer_containers=_experimental_buffer_containers,
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,  # Experimental: Clustered functions
@@ -771,6 +777,7 @@ class _App:
         return wrapped
 
     @typing_extensions.dataclass_transform(field_specifiers=(parameter,), kw_only_default=True)
+    @warn_on_renamed_autoscaler_settings
     def cls(
         self,
         _warn_parentheses_missing: Optional[bool] = None,
@@ -797,13 +804,14 @@ class _App:
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: Optional[Union[int, tuple[int, int]]] = None,
         ephemeral_disk: Optional[int] = None,  # Specify, in MiB, the ephemeral disk size for the Function.
+        min_containers: Optional[int] = None,  # Minimum number of containers to keep warm, even when Function is idle.
+        max_containers: Optional[int] = None,  # Limit on the number of containers that can be spun up for this Function
+        buffer_containers: Optional[int] = None,  # Number of additional idle containers to maintain under active load
+        scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
         allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
-        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
@@ -816,10 +824,14 @@ class _App:
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
-        _experimental_buffer_containers: Optional[int] = None,  # Number of additional, idle containers to keep around.
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
         _experimental_enable_gpu_snapshot: bool = False,  # Experimentally enable GPU memory snapshots.
+        # Parameters below here are deprecated. Please update your code as suggested
+        keep_warm: Optional[int] = None,  # Replaced with `min_containers`
+        concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
+        container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
+        _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
     ) -> Callable[[CLS_T], CLS_T]:
         """
         Decorator to register a new Modal [Cls](/docs/reference/modal.Cls) with this App.
@@ -834,8 +846,6 @@ class _App:
             scheduler_placement = SchedulerPlacement(region=region)
 
         def wrapper(user_cls: CLS_T) -> CLS_T:
-            nonlocal keep_warm
-
             # Check if the decorated object is a class
             if not inspect.isclass(user_cls):
                 raise TypeError("The @app.cls decorator must be used on a class.")
@@ -873,25 +883,25 @@ class _App:
                 network_file_systems=network_file_systems,
                 allow_cross_region_volumes=allow_cross_region_volumes,
                 volumes={**self._volumes, **volumes},
+                cpu=cpu,
                 memory=memory,
                 ephemeral_disk=ephemeral_disk,
+                min_containers=min_containers,
+                max_containers=max_containers,
+                buffer_containers=buffer_containers,
+                scaledown_window=scaledown_window,
                 proxy=proxy,
                 retries=retries,
-                concurrency_limit=concurrency_limit,
                 allow_concurrent_inputs=allow_concurrent_inputs,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
-                container_idle_timeout=container_idle_timeout,
                 timeout=timeout,
-                cpu=cpu,
-                keep_warm=keep_warm,
                 cloud=cloud,
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
                 include_source=include_source if include_source is not None else self._include_source_default,
-                _experimental_buffer_containers=_experimental_buffer_containers,
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
                 _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
