@@ -61,7 +61,7 @@ def test_deserialization_error(client):
 
 
 @pytest.mark.parametrize(
-    ["pydict", "params"],
+    ["pydict", "params", "expected_bytes"],
     [
         (
             {"foo": "bar", "i": 5},
@@ -69,11 +69,19 @@ def test_deserialization_error(client):
                 api_pb2.ClassParameterSpec(name="foo", type=api_pb2.PARAM_TYPE_STRING),
                 api_pb2.ClassParameterSpec(name="i", type=api_pb2.PARAM_TYPE_INT),
             ],
+            # only update this byte sequence if you are aware of the consequences of changing
+            # serialization byte output - it could invalidate existing container pools for users
+            # on redeployment, and possibly cause startup crashes if new containers can't
+            # deserialize old proto parameters.
+            b"\n\x0c\n\x03foo\x10\x01\x1a\x03bar\n\x07\n\x01i\x10\x02 \x05",
         )
     ],
 )
-def test_proto_serde_params_success(pydict, params):
+def test_proto_serde_params_success(pydict, params, expected_bytes):
     serialized_params = serialize_proto_params(pydict, params)
+    # it's important that the serialization doesn't change, since the serialized params bytes
+    # are used as a key for the container pooling of parameterized services (classes)
+    assert serialized_params == expected_bytes
     reconstructed = deserialize_proto_params(serialized_params, params)
     assert reconstructed == pydict
 
