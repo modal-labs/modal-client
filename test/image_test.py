@@ -986,6 +986,13 @@ def test_image_env(builder_version, servicer, client):
         layers = get_image_layers(app.image.object_id, servicer)
         assert any("ENV HELLO=" in cmd and "world!" in cmd for cmd in layers[0].dockerfile_commands)
 
+    # unhappy path, reject invalid input
+    with pytest.raises(InvalidError, match="Image ENV variables must be strings."):
+        app = App(image=Image.debian_slim().env({"HELLO": 123}))
+        app.function()(dummy)
+        with app.run(client=client):
+            pass
+
 
 def test_image_gpu(builder_version, servicer, client):
     app = App(image=Image.debian_slim().run_commands("echo 0"))
