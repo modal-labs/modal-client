@@ -92,7 +92,7 @@ def serialize(obj: Any) -> bytes:
     return buf.getvalue()
 
 
-def deserialize(s: bytes, client) -> Any:
+def deserialize(s: bytes, client: "modal.client.Client") -> Any:
     """Deserializes object and replaces all client placeholders by self."""
     from ._runtime.execution_context import is_local  # Avoid circular import
 
@@ -394,7 +394,7 @@ class ParamTypeInfo:
     default_field: str
     proto_field: str
     encoder: typing.Callable[[Any], Any]
-    decoder: typing.Callable[[Any], Any]
+    decoder: typing.Callable[[Any, "modal.client.Client"], Any]
 
 
 PYTHON_TO_PROTO_TYPE: dict[type, "api_pb2.ParameterType.ValueType"] = {
@@ -404,10 +404,13 @@ PYTHON_TO_PROTO_TYPE: dict[type, "api_pb2.ParameterType.ValueType"] = {
 
 PROTO_TYPE_INFO = {
     api_pb2.PARAM_TYPE_STRING: ParamTypeInfo(
-        default_field="string_default", proto_field="string_value", encoder=str, decoder=str
+        default_field="string_default", proto_field="string_value", encoder=str, decoder=lambda data, _: str(data)
     ),
     api_pb2.PARAM_TYPE_INT: ParamTypeInfo(
-        default_field="int_default", proto_field="int_value", encoder=int, decoder=int
+        default_field="int_default", proto_field="int_value", encoder=int, decoder=lambda data, _: int(data)
+    ),
+    api_pb2.PARAM_TYPE_PICKLE: ParamTypeInfo(
+        default_field="pickle_default", proto_field="pickle_value", encoder=serialize, decoder=deserialize
     ),
 }
 
@@ -439,9 +442,16 @@ def serialize_proto_params(python_params: dict[str, Any], schema: typing.Sequenc
 
 
 def _python_to_proto_value(python_value: Any) -> api_pb2.ClassParameterValue:
-    proto_type = PYTHON_TO_PROTO_TYPE[type(python_value)]
+    # TODO: use schema
+    python_type = type(python_value)
+    if python_type in PYTHON_TO_PROTO_TYPE:
+        proto_type = PYTHON_TO_PROTO_TYPE[python_type]
+    else:
+        proto_type = api_pb2.PARAM_TYPE_PICKLE
+
     proto_type_info = PROTO_TYPE_INFO[proto_type]
     proto_scalar = proto_type_info.encoder(python_value)
+
     return api_pb2.ClassParameterValue(
         name="",  # this field is unused for payloads and exists for legacy reasons/code reuse with class params
         type=proto_type,
@@ -449,19 +459,35 @@ def _python_to_proto_value(python_value: Any) -> api_pb2.ClassParameterValue:
     )
 
 
-def _proto_to_python_value(proto_value: api_pb2.ClassParameterValue) -> Any:
+def _proto_to_python_value(proto_value: api_pb2.ClassParameterValue, client: "modal.client.Client") -> Any:
     proto_type_info = PROTO_TYPE_INFO[proto_value.type]
     proto_field = proto_type_info.proto_field
     proto_dto = getattr(proto_value, proto_field)
-    python_value = proto_type_info.decoder(proto_dto)
+    python_value = proto_type_info.decoder(proto_dto, client)
     return python_value
 
 
 def python_to_proto_payload(python_args: tuple[Any, ...], python_kwargs: dict[str, Any]) -> api_pb2.Payload:
     """Serialize a python payload using the input payload type rather than a schema w/ type coercion/validation
 
-    Similar to _serialize_proto_params_no_schema, but uses the new Payload proto and doesn't set the
+    This is similar to serialize_proto_params but uses the new more general api_pb2.Payload proto and doesn't set the
     `name` field of the ClassParameterValue message (names are encoded as part of the `kwargs` PayloadDictValue instead)
+
+    NOTE: we might want change this to still enforce static schemas even for Function payloads.
+    There are a couple of reasons why a required explicit schema during *encoding* would be good:
+
+    In case of a function lookup from a newer version of a client to an older, the newer client
+    would have to ensure that the payload encodes the call args in a way that is supported by
+    the old client running the remote containers.
+
+    1. Let's say a user deploys a function where we only have support for {str, int, pickle/Any}, and this function
+       takes a DataFrame as an argument. That would be expected to be sent as a pickle and would work well.
+    2. Modal releases a new version of the client with "native" serialization support for pandas.DataFrame
+    3. Using the new client, the user looks up existing Function and calls it with a dataframe which is encoded
+        using the new native format, but the old container can't decode it!
+
+    In the above scenario, if the looked up function had returned a schema, that would let the lookup client know
+    that it should use pickle for that argument, even though it now has native support for DataFrame
     """
     proto_args = api_pb2.PayloadListValue(values=[])
     for python_value in python_args:
@@ -483,15 +509,17 @@ def python_to_proto_payload(python_args: tuple[Any, ...], python_kwargs: dict[st
     )
 
 
-def proto_to_python_payload(proto_payload: api_pb2.Payload) -> tuple[tuple[Any, ...], dict[str, Any]]:
+def proto_to_python_payload(
+    proto_payload: api_pb2.Payload, client: "modal.client.Client"
+) -> tuple[tuple[Any, ...], dict[str, Any]]:
     python_args = []
     for proto_value in proto_payload.args.values:
-        python_value = _proto_to_python_value(proto_value)
+        python_value = _proto_to_python_value(proto_value, client)
         python_args.append(python_value)
 
     python_kwargs = {}
     for proto_dict_entry in proto_payload.kwargs.entries:
-        python_value = _proto_to_python_value(proto_dict_entry.value)
+        python_value = _proto_to_python_value(proto_dict_entry.value, client)
         python_kwargs[proto_dict_entry.name] = python_value
 
     return tuple(python_args), python_kwargs

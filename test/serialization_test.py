@@ -2,6 +2,7 @@
 import pytest
 import random
 
+import modal
 from modal import Queue
 from modal._serialization import (
     deserialize,
@@ -108,14 +109,33 @@ def _call(*args, **kwargs):
     "python_arg_kwargs",
     [
         _call("foo"),  # positional args
-        _call("foo", bar="baz"),  # mix
+        _call(bar=3),
+        _call("foo", bar=2),  # mix
+        _call([1, 2]),  # list
+        _call([1, "bar"]),  # mixed list
+        _call({"some_key": 123}),  # dict
     ],
 )
-def test_payload_serde(python_arg_kwargs):
+def test_payload_serde(python_arg_kwargs, client):
     proto_payload = python_to_proto_payload(*python_arg_kwargs)
     proto_bytes = proto_payload.SerializeToString()
     recovered_payload = api_pb2.Payload()
     recovered_payload.ParseFromString(proto_bytes)
     assert recovered_payload == proto_payload
-    recovered_python_arg_kwargs = proto_to_python_payload(recovered_payload)
+    recovered_python_arg_kwargs = proto_to_python_payload(recovered_payload, client)
     assert recovered_python_arg_kwargs == python_arg_kwargs
+
+
+def test_payload_modal_object(client):
+    with modal.Dict.ephemeral(client=client) as dct:
+        dct["foo"] = "bar"
+        proto_payload = python_to_proto_payload(*_call(dct))
+        proto_bytes = proto_payload.SerializeToString()
+        recovered_payload = api_pb2.Payload()
+        recovered_payload.ParseFromString(proto_bytes)
+        assert recovered_payload == proto_payload
+        recovered_python_arg_kwargs = proto_to_python_payload(recovered_payload, client)
+        recovered_dct = recovered_python_arg_kwargs[0][0]
+        assert recovered_dct.is_hydrated
+        assert recovered_dct.object_id == dct.object_id
+        assert dct["foo"] == "bar"
