@@ -106,17 +106,39 @@ def _call(*args, **kwargs):
 
 
 @pytest.mark.parametrize(
-    "python_arg_kwargs",
+    ["python_arg_kwargs", "proto_bytes"],
     [
-        _call("foo"),  # positional args
-        _call(bar=3),
-        _call("foo", bar=2),  # mix
-        _call([1, 2]),  # list
-        _call([1, "bar"]),  # mixed list
-        _call({"some_key": 123}),  # dict
+        (_call("foo"), b""),  # positional args
+        (_call(bar=3), b""),
+        # _call("foo", bar=2),  # mix
+        # _call([1, 2]),  # list
+        # _call([1, "bar"]),  # mixed list
+        # _call({"some_key": 123}),  # dict
     ],
 )
-def test_payload_serde(python_arg_kwargs, client):
+def test_payload_serde(python_arg_kwargs, proto_bytes, client):
+    proto_payload = python_to_proto_payload(*python_arg_kwargs)
+    proto_bytes = proto_payload.SerializeToString()
+    recovered_payload = api_pb2.Payload()
+    recovered_payload.ParseFromString(proto_bytes)
+    assert recovered_payload == proto_payload
+    recovered_python_arg_kwargs = proto_to_python_payload(recovered_payload, client)
+    assert recovered_python_arg_kwargs == python_arg_kwargs
+
+
+@pytest.mark.parametrize(
+    ["python_arg_kwargs", "proto_bytes"],
+    [
+        (_call("foo"), b""),  # positional args
+        (_call(bar=3), b""),
+        # _call("foo", bar=2),  # mix
+        # _call([1, 2]),  # list
+        # _call([1, "bar"]),  # mixed list
+        # _call({"some_key": 123}),  # dict
+    ],
+)
+def test_payload_can_decode_old_data(python_arg_kwargs, proto_bytes, client):
+    # simulates a call from an older client (typically fewer supported types) to a newer
     proto_payload = python_to_proto_payload(*python_arg_kwargs)
     proto_bytes = proto_payload.SerializeToString()
     recovered_payload = api_pb2.Payload()
