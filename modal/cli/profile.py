@@ -46,6 +46,8 @@ async def list_(json: Optional[bool] = False):
         active = profile == _profile
         if isinstance(resp, AuthError):
             workspace = "Unknown (authentication failure)"
+        elif isinstance(resp, TimeoutError):
+            workspace = "Unknown (timed out)"
         elif isinstance(resp, Exception):
             # Catch-all for other exceptions, like incorrect server url
             workspace = "Unknown (profile misconfigured)"
