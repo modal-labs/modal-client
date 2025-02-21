@@ -1572,6 +1572,24 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
     async def from_id(
         function_call_id: str, client: Optional[_Client] = None, is_generator: bool = False
     ) -> "_FunctionCall[Any]":
+        """Instantiate a FunctionCall object from an existing ID.
+
+        Examples:
+
+        ```python notest
+        # Spawn a FunctionCall and keep track of its object ID
+        fc = my_func.spawn()
+        fc_id = fc.object_id
+
+        # Later, use the ID to re-instantiate the FunctionCall object
+        fc = _FunctionCall.from_id(fc_id)
+        result = fc.get()
+        ```
+
+        Note that it's only necessary to re-instantiate the `FunctionCall` with this method
+        if you no longer have access to the original object returned from `Function.spawn`.
+
+        """
         if client is None:
             client = await _Client.from_env()
 
