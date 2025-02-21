@@ -389,6 +389,12 @@ def check_valid_cls_constructor_arg(key, obj):
         )
 
 
+def assert_bytes(obj: Any):
+    if not isinstance(obj, bytes):
+        raise ValueError(f"Expected bytes, got {type(obj)}")
+    return obj
+
+
 @dataclass
 class ParamTypeInfo:
     default_field: str
@@ -399,6 +405,9 @@ class ParamTypeInfo:
 PARAM_TYPE_MAPPING = {
     api_pb2.PARAM_TYPE_STRING: ParamTypeInfo(default_field="string_default", proto_field="string_value", converter=str),
     api_pb2.PARAM_TYPE_INT: ParamTypeInfo(default_field="int_default", proto_field="int_value", converter=int),
+    api_pb2.PARAM_TYPE_BYTES: ParamTypeInfo(
+        default_field="bytes_default", proto_field="bytes_value", converter=assert_bytes
+    ),
 }
 
 
@@ -449,6 +458,8 @@ def deserialize_proto_params(serialized_params: bytes, schema: list[api_pb2.Clas
             python_value = param_value.string_value
         elif schema_param.type == api_pb2.PARAM_TYPE_INT:
             python_value = param_value.int_value
+        elif schema_param.type == api_pb2.PARAM_TYPE_BYTES:
+            python_value = param_value.bytes_value
         else:
             # TODO(elias): based on `parameters` declared types, we could add support for
             #  custom non proto types encoded as bytes in the proto, e.g. PARAM_TYPE_PYTHON_PICKLE

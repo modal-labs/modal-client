@@ -875,6 +875,7 @@ class UsingAnnotationParameters:
     a: int = modal.parameter()
     b: str = modal.parameter(default="hello")
     c: float = modal.parameter(init=False)
+    d: bytes = modal.parameter(default=b"world")
 
     @method()
     def get_value(self):
@@ -904,9 +905,11 @@ def test_implicit_constructor(client, set_env_client):
     assert c.a == 10
     assert c.get_value.local() == 10
     assert c.b == "hello"
+    assert c.d == b"world"
 
-    d = UsingAnnotationParameters(a=11, b="goodbye")
+    d = UsingAnnotationParameters(a=11, b="goodbye", d=b"bye")
     assert d.b == "goodbye"
+    assert d.d == b"bye"
 
     with pytest.raises(ValueError, match="Missing required parameter: a"):
         with app2.run(client=client):
@@ -1073,6 +1076,27 @@ def test_using_method_on_uninstantiated_cls(recwarn, disable_auto_mount):
     assert "C().method instead of C.method" in warning_string
 
 
-def test_method_on_cls_access_warns():
-    with pytest.warns(match="instantiate classes before using methods"):
-        print(Foo.bar)
+def test_bytes_serialization_validation(servicer, client, set_env_client):
+    app = modal.App()
+
+    @app.cls(serialized=True)
+    class C:
+        foo: bytes = modal.parameter(default=b"foo")
+
+        @method()
+        def get_foo(self):
+            return self.foo
+
+    with servicer.intercept() as ctx:
+        with app.run():
+            with pytest.raises(ValueError, match="Expected bytes"):
+                C(foo="this is a string").get_foo.spawn()  # string should not be allowed, unspecified encoding
+
+            C(foo=b"this is bytes").get_foo.spawn()  # bytes are allowed
+            create_function_req: api_pb2.FunctionCreateRequest
+            (create_function_req,) = ctx.get_requests("FunctionCreate")
+            bind_req: api_pb2.FunctionBindParamsRequest
+            (bind_req,) = ctx.get_requests("FunctionBindParams")
+            args, kwargs = deserialize_params(bind_req.serialized_params, create_function_req.function, client)
+            assert kwargs["foo"] == b"this is bytes"
+            C().get_foo.spawn()  # default is allowed
