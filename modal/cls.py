@@ -231,6 +231,7 @@ class _Obj:
 
     async def update_autoscaler(
         self,
+        *,
         min_containers: Optional[int] = None,
         max_containers: Optional[int] = None,
         scaledown_window: Optional[int] = None,
