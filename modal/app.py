@@ -593,8 +593,8 @@ class _App:
         memory: Optional[Union[int, tuple[int, int]]] = None,
         ephemeral_disk: Optional[int] = None,  # Specify, in MiB, the ephemeral disk size for the Function.
         min_containers: Optional[int] = None,  # Minimum number of containers to keep warm, even when Function is idle.
-        max_containers: Optional[int] = None,  # Limit on the number of containers that can be spun up for this Function
-        buffer_containers: Optional[int] = None,  # Number of additional idle containers to maintain under active load
+        max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
+        buffer_containers: Optional[int] = None,  # Number of additional idle containers to maintain under active load.
         scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
@@ -805,8 +805,8 @@ class _App:
         memory: Optional[Union[int, tuple[int, int]]] = None,
         ephemeral_disk: Optional[int] = None,  # Specify, in MiB, the ephemeral disk size for the Function.
         min_containers: Optional[int] = None,  # Minimum number of containers to keep warm, even when Function is idle.
-        max_containers: Optional[int] = None,  # Limit on the number of containers that can be spun up for this Function
-        buffer_containers: Optional[int] = None,  # Number of additional idle containers to maintain under active load
+        max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
+        buffer_containers: Optional[int] = None,  # Number of additional idle containers to maintain under active load.
         scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
