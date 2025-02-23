@@ -514,12 +514,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             if is_generator:
                 raise InvalidError("Generator functions do not support retries.")
 
-        if proxy:
-            # HACK: remove this once we stop using ssh tunnels for this.
-            if image:
-                # TODO(elias): this will cause an error if users use prior `.add_local_*` commands without copy=True
-                image = image.apt_install("autossh")
-
         function_spec = _FunctionSpec(
             mounts=all_mounts,
             secrets=secrets,
