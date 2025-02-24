@@ -593,12 +593,14 @@ if __name__ == "__main__":
     # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
     client = Client.from_env()
 
+    exited_successfully = True
     try:
         with proxy_tunnel(container_args.proxy_info):
             try:
                 main(container_args, client)
             except UserException:
                 logger.info("User exception caught, exiting")
+                exited_successfully = False
     except KeyboardInterrupt:
         logger.debug("Container: interrupted")
 
@@ -619,3 +621,9 @@ if __name__ == "__main__":
         )
 
     logger.debug("Container: done")
+
+    # At this point, we've already logged that the container hit an error,
+    # but we need to exit with a non-zero exit code so the worker knows about
+    # the failure.
+    if not exited_successfully:
+        exit(1)
