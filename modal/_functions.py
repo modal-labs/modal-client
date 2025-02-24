@@ -1597,26 +1597,35 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         fc._is_generator = is_generator
         return fc
 
+    @staticmethod
+    async def gather(*function_calls: "_FunctionCall[Any]") -> list[Any]:
+        """Wait until all Modal FunctionCall objects have results before returning.
+
+        Accepts a variable number of `FunctionCall` objects, as returned by `Function.spawn()`.
+
+        Returns a list of results from each FunctionCall, or raises an exception
+        from the first failing function call.
+
+        Examples:
+
+        ```python notest
+        fc1 = slow_func_1.spawn()
+        fc2 = slow_func_2.spawn()
+
+        result_1, result_2 = modal.FunctionCall.gather(fc1, fc2)
+        ```
+        """
+        try:
+            return await TaskContext.gather(*[fc.get() for fc in function_calls])
+        except Exception as exc:
+            # TODO: kill all running function calls
+            raise exc
+
 
 async def _gather(*function_calls: _FunctionCall[ReturnType]) -> typing.Sequence[ReturnType]:
-    """Wait until all Modal function calls have results before returning
-
-    Accepts a variable number of FunctionCall objects as returned by `Function.spawn()`.
-
-    Returns a list of results from each function call, or raises an exception
-    of the first failing function call.
-
-    E.g.
-
-    ```python notest
-    function_call_1 = slow_func_1.spawn()
-    function_call_2 = slow_func_2.spawn()
-
-    result_1, result_2 = gather(function_call_1, function_call_2)
-    ```
-    """
-    try:
-        return await TaskContext.gather(*[fc.get() for fc in function_calls])
-    except Exception as exc:
-        # TODO: kill all running function calls
-        raise exc
+    """Deprecated: Please use `modal.FunctionCall.gather()` instead."""
+    deprecation_warning(
+        (2025, 2, 24),
+        "`modal.functions.gather()` is deprecated; please use `modal.FunctionCall.gather()` instead.",
+    )
+    return await _FunctionCall.gather(*function_calls)
