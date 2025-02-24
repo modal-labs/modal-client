@@ -31,7 +31,7 @@ from ._resolver import Resolver
 from ._serialization import serialize
 from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
-from ._utils.deprecation import deprecation_error, deprecation_warning
+from ._utils.deprecation import deprecation_warning
 from ._utils.docker_utils import (
     extract_copy_command_patterns,
     find_dockerignore_file,
@@ -1412,45 +1412,6 @@ class _Image(_Object, type_prefix="im"):
             gpu_config=parse_gpu_config(gpu),
             force_build=self.force_build or force_build,
         )
-
-    @staticmethod
-    def conda(python_version: Optional[str] = None, force_build: bool = False):
-        """mdmd:hidden"""
-        message = (
-            "`Image.conda` is deprecated."
-            " Please use the faster and more reliable `Image.micromamba` constructor instead."
-        )
-        deprecation_error((2025, 5, 2), message)
-
-    def conda_install(
-        self,
-        *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
-        channels: list[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
-        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        secrets: Sequence[_Secret] = [],
-        gpu: GPU_T = None,
-    ):
-        """mdmd:hidden"""
-        message = (
-            "`Image.conda_install` is deprecated."
-            " Please use the faster and more reliable `Image.micromamba_install` instead."
-        )
-        deprecation_error((2025, 5, 2), message)
-
-    def conda_update_from_environment(
-        self,
-        environment_yml: str,
-        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        *,
-        secrets: Sequence[_Secret] = [],
-        gpu: GPU_T = None,
-    ):
-        """mdmd:hidden"""
-        message = (
-            "Image.conda_update_from_environment` is deprecated."
-            " Please use the `Image.micromamba_install` method (with the `spec_file` parameter) instead."
-        )
-        deprecation_error((2025, 5, 2), message)
 
     @staticmethod
     def micromamba(
