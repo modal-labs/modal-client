@@ -92,7 +92,7 @@ def serialize(obj: Any) -> bytes:
     return buf.getvalue()
 
 
-def deserialize(s: bytes, client: "modal.client.Client") -> Any:
+def deserialize(s: bytes, client) -> Any:
     """Deserializes object and replaces all client placeholders by self."""
     from ._runtime.execution_context import is_local  # Avoid circular import
 
@@ -394,7 +394,7 @@ class ParamTypeInfo:
     default_field: str
     proto_field: str
     encoder: typing.Callable[[Any], Any]
-    decoder: typing.Callable[[Any, "modal.client.Client"], Any]
+    decoder: typing.Callable[[Any, "modal.client._Client"], Any]
 
 
 PYTHON_TO_PROTO_TYPE: dict[type, "api_pb2.ParameterType.ValueType"] = {
@@ -412,7 +412,7 @@ def encode_list(python_list: typing.Sequence) -> api_pb2.PayloadListValue:
     )
 
 
-def decode_list(proto_list_value: api_pb2.PayloadListValue, client: "modal.client.Client") -> list:
+def decode_list(proto_list_value: api_pb2.PayloadListValue, client: "modal.client._Client") -> list:
     return [_proto_to_python_value(proto_value, client) for proto_value in proto_list_value.values]
 
 
@@ -425,7 +425,7 @@ def encode_dict(python_dict: typing.Mapping[str, Any]) -> api_pb2.PayloadDictVal
     )
 
 
-def decode_dict(proto_dict: api_pb2.PayloadDictValue, client: "modal.client.Client") -> dict[str, Any]:
+def decode_dict(proto_dict: api_pb2.PayloadDictValue, client: "modal.client._Client") -> dict[str, Any]:
     return {entry.name: _proto_to_python_value(entry.value, client) for entry in proto_dict.entries}
 
 
@@ -498,7 +498,7 @@ def _python_to_proto_value(python_value: Any) -> api_pb2.ClassParameterValue:
     )
 
 
-def _proto_to_python_value(proto_value: api_pb2.ClassParameterValue, client: "modal.client.Client") -> Any:
+def _proto_to_python_value(proto_value: api_pb2.ClassParameterValue, client: "modal.client._Client") -> Any:
     proto_type_info = PROTO_TYPE_INFO[proto_value.type]
     proto_field = proto_type_info.proto_field
     proto_dto = getattr(proto_value, proto_field)
@@ -536,7 +536,7 @@ def python_to_proto_payload(python_args: tuple[Any, ...], python_kwargs: dict[st
 
 
 def proto_to_python_payload(
-    proto_payload: api_pb2.Payload, client: "modal.client.Client"
+    proto_payload: api_pb2.Payload, client: "modal.client._Client"
 ) -> tuple[tuple[Any, ...], dict[str, Any]]:
     python_args = []
     for proto_value in proto_payload.args.values:
