@@ -536,11 +536,8 @@ def test_grpc_failure(servicer, event_loop):
 def test_missing_main_conditional(servicer, capsys):
     _run_container(servicer, "test.supports.missing_main_conditional", "square")
     output = capsys.readouterr()
-    assert "Can not run an app from within a container" in output.err
-
+    assert "Can not run an app in global scope within a container" in output.err
     assert servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
-    assert "modal run" in servicer.task_result.traceback
-
     exc = deserialize(servicer.task_result.data, None)
     assert isinstance(exc, InvalidError)
 

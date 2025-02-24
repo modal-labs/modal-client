@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Optional, TypeVar
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
+import modal._runtime.execution_context
 import modal_proto.api_pb2
 from modal_proto import api_pb2
 
@@ -260,6 +261,9 @@ async def _run_app(
     """mdmd:hidden"""
     if environment_name is None:
         environment_name = typing.cast(str, config.get("environment"))
+
+    if modal._runtime.execution_context._is_currently_importing:
+        raise InvalidError("Can not run an app in global scope within a container")
 
     if app._running_app:
         raise InvalidError(

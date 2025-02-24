@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2024
+from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Callable, Optional
 
@@ -87,3 +88,15 @@ def _set_current_context_ids(input_ids: list[str], function_call_ids: list[str])
 
 _current_input_id: ContextVar = ContextVar("_current_input_id")
 _current_function_call_id: ContextVar = ContextVar("_current_function_call_id")
+
+_is_currently_importing = False  # we set this to True while a container is importing user code
+
+
+@contextmanager
+def _import_context():
+    global _is_currently_importing
+    _is_currently_importing = True
+    try:
+        yield
+    finally:
+        _is_currently_importing = False
