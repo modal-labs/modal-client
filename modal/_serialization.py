@@ -509,24 +509,11 @@ def _proto_to_python_value(proto_value: api_pb2.ClassParameterValue, client: "mo
 def python_to_proto_payload(python_args: tuple[Any, ...], python_kwargs: dict[str, Any]) -> api_pb2.Payload:
     """Serialize a python payload using the input payload type rather than a schema w/ type coercion/validation
 
-    This is similar to serialize_proto_params but uses the new more general api_pb2.Payload proto and doesn't set the
-    `name` field of the ClassParameterValue message (names are encoded as part of the `kwargs` PayloadDictValue instead)
-
-    NOTE: we might want change this to still enforce static schemas even for Function payloads.
-    There are a couple of reasons why a required explicit schema during *encoding* would be good:
-
-    In case of a function lookup from a newer version of a client to an older, the newer client
-    would have to ensure that the payload encodes the call args in a way that is supported by
-    the old client running the remote containers.
-
-    1. Let's say a user deploys a function where we only have support for {str, int, pickle/Any}, and this function
-       takes a DataFrame as an argument. That would be expected to be sent as a pickle and would work well.
-    2. Modal releases a new version of the client with "native" serialization support for pandas.DataFrame
-    3. Using the new client, the user looks up existing Function and calls it with a dataframe which is encoded
-        using the new native format, but the old container can't decode it!
-
-    In the above scenario, if the looked up function had returned a schema, that would let the lookup client know
-    that it should use pickle for that argument, even though it now has native support for DataFrame
+    This is similar to serialize_proto_params except:
+    * Doesn't require a prior schema for encoding
+    * It uses the new api_pb2.Payload container proto to include both args and kwargs
+    * Doesn't use the `name` field of the ClassParameterValue message (names are encoded as part
+      of the `kwargs` PayloadDictValue instead)
     """
     proto_args = api_pb2.PayloadListValue(values=[])
     for python_value in python_args:
