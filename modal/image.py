@@ -85,6 +85,8 @@ AUTO_DOCKERIGNORE = _AutoDockerIgnoreSentinel()
 COPY_DEPRECATION_MESSAGE_PATTERN = """modal.Image.copy_* methods will soon be deprecated.
 
 Use {replacement} instead, which is functionally and performance-wise equivalent.
+
+See https://modal.com/docs/guide/modal-1-0-migration for more details.
 """
 
 
@@ -801,7 +803,7 @@ class _Image(_Object, type_prefix="im"):
         works in a `Dockerfile`.
         """
         deprecation_warning(
-            (2024, 1, 13), COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"), pending=True
+            (2025, 1, 13), COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"), pending=True
         )
         basename = str(Path(local_path).name)
 
@@ -911,7 +913,7 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
         deprecation_warning(
-            (2024, 1, 13), COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"), pending=True
+            (2025, 1, 13), COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"), pending=True
         )
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
@@ -1418,7 +1420,7 @@ class _Image(_Object, type_prefix="im"):
             "`Image.conda` is deprecated."
             " Please use the faster and more reliable `Image.micromamba` constructor instead."
         )
-        deprecation_error((2024, 5, 2), message)
+        deprecation_error((2025, 5, 2), message)
 
     def conda_install(
         self,
@@ -1433,7 +1435,7 @@ class _Image(_Object, type_prefix="im"):
             "`Image.conda_install` is deprecated."
             " Please use the faster and more reliable `Image.micromamba_install` instead."
         )
-        deprecation_error((2024, 5, 2), message)
+        deprecation_error((2025, 5, 2), message)
 
     def conda_update_from_environment(
         self,
@@ -1448,7 +1450,7 @@ class _Image(_Object, type_prefix="im"):
             "Image.conda_update_from_environment` is deprecated."
             " Please use the `Image.micromamba_install` method (with the `spec_file` parameter) instead."
         )
-        deprecation_error((2024, 5, 2), message)
+        deprecation_error((2025, 5, 2), message)
 
     @staticmethod
     def micromamba(
@@ -2011,10 +2013,13 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
+        non_str_keys = [key for key, val in vars.items() if not isinstance(val, str)]
+        if non_str_keys:
+            raise InvalidError(f"Image ENV variables must be strings. Invalid keys: {non_str_keys}")
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            commands = ["FROM base"] + [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()]
-            return DockerfileSpec(commands=commands, context_files={})
+            env_commands = [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()]
+            return DockerfileSpec(commands=["FROM base"] + env_commands, context_files={})
 
         return _Image._from_args(
             base_images={"base": self},

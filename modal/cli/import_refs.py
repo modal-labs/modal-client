@@ -22,6 +22,7 @@ import click
 from rich.console import Console
 from rich.markdown import Markdown
 
+from modal._utils.deprecation import deprecation_warning
 from modal.app import App, LocalEntrypoint
 from modal.cls import Cls
 from modal.exception import InvalidError, _CliUserExecutionError
@@ -31,16 +32,17 @@ from modal.functions import Function
 @dataclasses.dataclass
 class ImportRef:
     file_or_module: str
+    use_module_mode: bool  # i.e. using the -m flag
 
     # object_path is a .-delimited path to the object to execute, or a parent from which to infer the object
     # e.g.
     # function or local_entrypoint in module scope
     # app in module scope [+ method name]
     # app [+ function/entrypoint on that app]
-    object_path: str
+    object_path: str = dataclasses.field(default="")
 
 
-def parse_import_ref(object_ref: str) -> ImportRef:
+def parse_import_ref(object_ref: str, use_module_mode: bool = False) -> ImportRef:
     if object_ref.find("::") > 1:
         file_or_module, object_path = object_ref.split("::", 1)
     elif object_ref.find(":") > 1:
@@ -48,23 +50,36 @@ def parse_import_ref(object_ref: str) -> ImportRef:
     else:
         file_or_module, object_path = object_ref, ""
 
-    return ImportRef(file_or_module, object_path)
+    return ImportRef(file_or_module, use_module_mode, object_path)
 
 
 DEFAULT_APP_NAME = "app"
 
 
-def import_file_or_module(file_or_module: str):
+def import_file_or_module(import_ref: ImportRef, base_cmd: str = ""):
     if "" not in sys.path:
         # When running from a CLI like `modal run`
         # the current working directory isn't added to sys.path
         # so we add it in order to make module path specification possible
         sys.path.insert(0, "")  # "" means the current working directory
 
-    if file_or_module.endswith(".py"):
+    if not import_ref.file_or_module.endswith(".py") or import_ref.use_module_mode:
+        if not import_ref.use_module_mode:
+            deprecation_warning(
+                (2025, 2, 6),
+                f"Using Python module paths will require using the -m flag in a future version of Modal.\n"
+                f"Use `{base_cmd} -m {import_ref.file_or_module}` instead.",
+                pending=True,
+                show_source=False,
+            )
+        try:
+            module = importlib.import_module(import_ref.file_or_module)
+        except Exception as exc:
+            raise _CliUserExecutionError(import_ref.file_or_module) from exc
+    else:
         # when using a script path, that scripts directory should also be on the path as it is
         # with `python some/script.py`
-        full_path = Path(file_or_module).resolve()
+        full_path = Path(import_ref.file_or_module).resolve()
         if "." in full_path.name.removesuffix(".py"):
             raise InvalidError(
                 f"Invalid Modal source filename: {full_path.name!r}."
@@ -72,10 +87,10 @@ def import_file_or_module(file_or_module: str):
             )
         sys.path.insert(0, str(full_path.parent))
 
-        module_name = inspect.getmodulename(file_or_module)
+        module_name = inspect.getmodulename(import_ref.file_or_module)
         assert module_name is not None
         # Import the module - see https://docs.python.org/3/library/importlib.html#importing-a-source-file-directly
-        spec = importlib.util.spec_from_file_location(module_name, file_or_module)
+        spec = importlib.util.spec_from_file_location(module_name, import_ref.file_or_module)
         assert spec is not None
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
@@ -84,11 +99,6 @@ def import_file_or_module(file_or_module: str):
             spec.loader.exec_module(module)
         except Exception as exc:
             raise _CliUserExecutionError(str(full_path)) from exc
-    else:
-        try:
-            module = importlib.import_module(file_or_module)
-        except Exception as exc:
-            raise _CliUserExecutionError(file_or_module) from exc
 
     return module
 
@@ -227,15 +237,18 @@ def filter_cli_commands(
     return res
 
 
-def import_app(app_ref: str) -> App:
-    import_ref = parse_import_ref(app_ref)
+def import_app(app_ref: str):
+    # TODO: remove when integration tests have been migrated to import_app_from_ref
+    return import_app_from_ref(parse_import_ref(app_ref))
 
+
+def import_app_from_ref(import_ref: ImportRef, base_cmd: str = "") -> App:
     # TODO: default could be to just pick up any app regardless if it's called DEFAULT_APP_NAME
     #  as long as there is a single app in the module?
     import_path = import_ref.file_or_module
     object_path = import_ref.object_path or DEFAULT_APP_NAME
 
-    module = import_file_or_module(import_ref.file_or_module)
+    module = import_file_or_module(import_ref, base_cmd)
 
     if "." in object_path:
         raise click.UsageError(f"{object_path} is not a Modal App")
@@ -305,7 +318,7 @@ def _get_runnable_app(runnable: Runnable) -> App:
 
 
 def import_and_filter(
-    import_ref: ImportRef, accept_local_entrypoint=True, accept_webhook=False
+    import_ref: ImportRef, *, base_cmd: str, accept_local_entrypoint=True, accept_webhook=False
 ) -> tuple[Optional[Runnable], list[CLICommand]]:
     """Takes a function ref string and returns a single determined "runnable" to use, and a list of all available
     runnables.
@@ -321,7 +334,7 @@ def import_and_filter(
     3. if there is a single method (within a class) that one is used
     """
     # all commands:
-    module = import_file_or_module(import_ref.file_or_module)
+    module = import_file_or_module(import_ref, base_cmd)
     cli_commands = list_cli_commands(module)
 
     # all commands that satisfy local entrypoint/accept webhook limitations AND object path prefix

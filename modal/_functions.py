@@ -34,7 +34,7 @@ from ._utils.async_utils import (
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
-from ._utils.deprecation import deprecation_warning, renamed_parameter
+from ._utils.deprecation import deprecation_error, deprecation_warning, renamed_parameter
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
@@ -309,13 +309,8 @@ class FunctionStats:
 
     def __getattr__(self, name):
         if name == "num_active_runners":
-            msg = (
-                "'FunctionStats.num_active_runners' is deprecated."
-                " It currently always has a value of 0,"
-                " but it will be removed in a future release."
-            )
-            deprecation_warning((2024, 6, 14), msg)
-            return 0
+            msg = "'FunctionStats.num_active_runners' is no longer available."
+            deprecation_error((2024, 6, 14), msg)
         raise AttributeError(f"'FunctionStats' object has no attribute '{name}'")
 
 
@@ -513,16 +508,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             retries, f"Function '{info.get_tag()}'" if info.raw_f else f"Class '{info.get_tag()}'"
         )
 
-        if webhook_config is not None and retry_policy is not None:
-            raise InvalidError(
-                "Web endpoints do not support retries.",
-            )
-
-        if is_generator and retry_policy is not None:
-            deprecation_warning(
-                (2024, 6, 25),
-                "Retries for generator functions are deprecated and will soon be removed.",
-            )
+        if retry_policy is not None:
+            if webhook_config is not None:
+                raise InvalidError("Web endpoints do not support retries.")
+            if is_generator:
+                raise InvalidError("Generator functions do not support retries.")
 
         if proxy:
             # HACK: remove this once we stop using ssh tunnels for this.
@@ -1582,6 +1572,24 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
     async def from_id(
         function_call_id: str, client: Optional[_Client] = None, is_generator: bool = False
     ) -> "_FunctionCall[Any]":
+        """Instantiate a FunctionCall object from an existing ID.
+
+        Examples:
+
+        ```python notest
+        # Spawn a FunctionCall and keep track of its object ID
+        fc = my_func.spawn()
+        fc_id = fc.object_id
+
+        # Later, use the ID to re-instantiate the FunctionCall object
+        fc = _FunctionCall.from_id(fc_id)
+        result = fc.get()
+        ```
+
+        Note that it's only necessary to re-instantiate the `FunctionCall` with this method
+        if you no longer have access to the original object returned from `Function.spawn`.
+
+        """
         if client is None:
             client = await _Client.from_env()
 
