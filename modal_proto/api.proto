@@ -688,12 +688,6 @@ message ClassParameterInfo {
   repeated ClassParameterSpec schema = 2; // only set for PARAM_SERIALIZATION_FORMAT_PROTO
 }
 
-message Payload {
-  // this can be used
-  PayloadListValue args = 1;
-  PayloadDictValue kwargs = 2;
-}
-
 message ClassParameterSet {
   // NOTE: adding additional *fields* here can invalidate function lookups
   //  since we use the serialized message as the bound function identifier
@@ -726,19 +720,6 @@ message ClassParameterValue { // TODO: rename to PayloadValue
     PayloadListValue list_value = 6;
     PayloadDictValue dict_value = 7;
   }
-}
-
-message PayloadListValue {
-  repeated ClassParameterValue values = 1;
-}
-
-message PayloadDictEntry {
-  string name = 1;
-  ClassParameterValue value = 2;
-}
-
-message PayloadDictValue {
-  repeated PayloadDictEntry entries = 1;
 }
 
 
@@ -2041,6 +2022,25 @@ message PTYInfo {
     PTY_TYPE_SHELL = 2;  // Replace function with shell
   }
   PTYType pty_type = 7;
+}
+
+message Payload {
+  // this can be used
+  PayloadListValue args = 1;
+  PayloadDictValue kwargs = 2;
+}
+
+message PayloadDictEntry {
+  string name = 1;
+  ClassParameterValue value = 2;
+}
+
+message PayloadDictValue {
+  repeated PayloadDictEntry entries = 1;
+}
+
+message PayloadListValue {
+  repeated ClassParameterValue values = 1;
 }
 
 message PortSpec {
