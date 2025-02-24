@@ -24,7 +24,7 @@ from ._resources import convert_fn_config_to_resources_config
 from ._serialization import check_valid_cls_constructor_arg
 from ._traceback import print_server_warnings
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.deprecation import deprecation_warning, renamed_parameter
+from ._utils.deprecation import deprecation_warning, renamed_parameter, warn_on_renamed_autoscaler_settings
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
@@ -559,6 +559,7 @@ class _Cls(_Object, type_prefix="cs"):
         cls._name = name
         return cls
 
+    @warn_on_renamed_autoscaler_settings
     def with_options(
         self: "_Cls",
         cpu: Optional[Union[float, tuple[float, float]]] = None,
@@ -567,10 +568,13 @@ class _Cls(_Object, type_prefix="cs"):
         secrets: Collection[_Secret] = (),
         volumes: dict[Union[str, os.PathLike], _Volume] = {},
         retries: Optional[Union[int, Retries]] = None,
+        max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
+        scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
         timeout: Optional[int] = None,
-        concurrency_limit: Optional[int] = None,
         allow_concurrent_inputs: Optional[int] = None,
-        container_idle_timeout: Optional[int] = None,
+        # The following parameters are deprecated
+        concurrency_limit: Optional[int] = None,  # Now called `max_containers`
+        container_idle_timeout: Optional[int] = None,  # Now called `scaledown_window`
     ) -> "_Cls":
         """
         **Beta:** Allows for the runtime modification of a modal.Cls's configuration.
@@ -607,9 +611,10 @@ class _Cls(_Object, type_prefix="cs"):
             secret_ids=[secret.object_id for secret in secrets],
             resources=resources,
             retry_policy=retry_policy,
-            concurrency_limit=concurrency_limit,
+            # TODO(michael) Update the protos to use the new terminology
+            concurrency_limit=max_containers,
+            task_idle_timeout_secs=scaledown_window,
             timeout_secs=timeout,
-            task_idle_timeout_secs=container_idle_timeout,
             replace_volume_mounts=replace_volume_mounts,
             volume_mounts=volume_mounts,
             target_concurrent_inputs=allow_concurrent_inputs,
