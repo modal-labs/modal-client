@@ -5,6 +5,7 @@ import random
 import modal
 from modal import Queue
 from modal._serialization import (
+    PROTO_TYPE_INFO,
     deserialize,
     deserialize_data_format,
     deserialize_proto_params,
@@ -105,42 +106,43 @@ def _call(*args, **kwargs):
     return args, kwargs
 
 
-@pytest.mark.parametrize(
-    ["python_arg_kwargs", "proto_bytes"],
-    [
-        (_call("foo"), b""),  # positional args
-        (_call(bar=3), b""),
-        # _call("foo", bar=2),  # mix
-        # _call([1, 2]),  # list
-        # _call([1, "bar"]),  # mixed list
-        # _call({"some_key": 123}),  # dict
-    ],
-)
-def test_payload_serde(python_arg_kwargs, proto_bytes, client):
-    proto_payload = python_to_proto_payload(*python_arg_kwargs)
-    proto_bytes = proto_payload.SerializeToString()
-    recovered_payload = api_pb2.Payload()
-    recovered_payload.ParseFromString(proto_bytes)
-    assert recovered_payload == proto_payload
-    recovered_python_arg_kwargs = proto_to_python_payload(recovered_payload, client)
-    assert recovered_python_arg_kwargs == python_arg_kwargs
+@pytest.fixture()
+def disable_pickle_payloads(monkeypatch):
+    def bork():
+        raise Exception("This test is expected to not use pickling")
+
+    monkeypatch.setattr(PROTO_TYPE_INFO[api_pb2.PARAM_TYPE_PICKLE], "encoder", lambda _: bork())
 
 
 @pytest.mark.parametrize(
-    ["python_arg_kwargs", "proto_bytes"],
+    ["python_arg_kwargs", "expected_proto_bytes"],
     [
-        (_call("foo"), b""),  # positional args
-        (_call(bar=3), b""),
-        # _call("foo", bar=2),  # mix
-        # _call([1, 2]),  # list
-        # _call([1, "bar"]),  # mixed list
-        # _call({"some_key": 123}),  # dict
+        (_call("foo"), b"\n\x0b\n\t\n\x00\x10\x01\x1a\x03foo\x12\x00"),  # positional args
+        (_call(bar=3), b"\n\x00\x12\x0f\n\r\n\x03bar\x12\x06\n\x00\x10\x02 \x03"),
+        (
+            _call("foo", bar=2),
+            b"\n\x0b\n\t\n\x00\x10\x01\x1a\x03foo\x12\x0f\n\r\n\x03bar\x12\x06\n\x00\x10\x02 \x02",
+        ),  # mix
+        (
+            _call([1, 2]),
+            b"\n\x18\n\x16\n\x00\x10\x042\x10\n\x06\n\x00\x10\x02 \x01\n\x06\n\x00\x10\x02 \x02\x12\x00",
+        ),  # list
+        (
+            _call([1, "bar"]),
+            b"\n\x1b\n\x19\n\x00\x10\x042\x13\n\x06\n\x00\x10\x02 \x01\n\t\n\x00\x10\x01\x1a\x03bar\x12\x00",
+        ),  # mixed list
+        (
+            _call({"some_key": 123}),
+            b"\n\x1c\n\x1a\n\x00\x10\x05:\x14\n\x12\n\x08some_key\x12\x06\n\x00\x10\x02 {\x12\x00",
+        ),  # dict
     ],
 )
-def test_payload_can_decode_old_data(python_arg_kwargs, proto_bytes, client):
+@pytest.mark.usefixtures("disable_pickle_payloads")
+def test_proto_serde_stability(python_arg_kwargs, expected_proto_bytes, client):
     # simulates a call from an older client (typically fewer supported types) to a newer
     proto_payload = python_to_proto_payload(*python_arg_kwargs)
-    proto_bytes = proto_payload.SerializeToString()
+    proto_bytes = proto_payload.SerializeToString(deterministic=True)
+    assert proto_bytes == expected_proto_bytes  # possibly relax this to only enforce being able to decode?
     recovered_payload = api_pb2.Payload()
     recovered_payload.ParseFromString(proto_bytes)
     assert recovered_payload == proto_payload

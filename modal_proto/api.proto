@@ -171,6 +171,8 @@ enum ParameterType {
   PARAM_TYPE_STRING = 1;
   PARAM_TYPE_INT = 2;
   PARAM_TYPE_PICKLE = 3;
+  PARAM_TYPE_LIST = 4;
+  PARAM_TYPE_DICT = 5;
 }
 
 enum ProgressType {
@@ -721,6 +723,8 @@ message ClassParameterValue { // TODO: rename to PayloadValue
     string string_value = 3;
     int64 int_value = 4;
     bytes pickle_value = 5;
+    PayloadListValue list_value = 6;
+    PayloadDictValue dict_value = 7;
   }
 }
 

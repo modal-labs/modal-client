@@ -400,7 +400,34 @@ class ParamTypeInfo:
 PYTHON_TO_PROTO_TYPE: dict[type, "api_pb2.ParameterType.ValueType"] = {
     str: api_pb2.PARAM_TYPE_STRING,
     int: api_pb2.PARAM_TYPE_INT,
+    list: api_pb2.PARAM_TYPE_LIST,
+    tuple: api_pb2.PARAM_TYPE_LIST,
+    dict: api_pb2.PARAM_TYPE_DICT,
 }
+
+
+def encode_list(python_list: typing.Sequence) -> api_pb2.PayloadListValue:
+    return api_pb2.PayloadListValue(
+        values=[_python_to_proto_value(python_list_value) for python_list_value in python_list]
+    )
+
+
+def decode_list(proto_list_value: api_pb2.PayloadListValue, client: "modal.client.Client") -> list:
+    return [_proto_to_python_value(proto_value, client) for proto_value in proto_list_value.values]
+
+
+def encode_dict(python_dict: typing.Mapping[str, Any]) -> api_pb2.PayloadDictValue:
+    return api_pb2.PayloadDictValue(
+        entries=[
+            api_pb2.PayloadDictEntry(name=k, value=_python_to_proto_value(python_dict_value))
+            for k, python_dict_value in python_dict.items()
+        ]
+    )
+
+
+def decode_dict(proto_dict: api_pb2.PayloadDictValue, client: "modal.client.Client") -> dict[str, Any]:
+    return {entry.name: _proto_to_python_value(entry.value, client) for entry in proto_dict.entries}
+
 
 PROTO_TYPE_INFO = {
     api_pb2.PARAM_TYPE_STRING: ParamTypeInfo(
@@ -411,6 +438,18 @@ PROTO_TYPE_INFO = {
     ),
     api_pb2.PARAM_TYPE_PICKLE: ParamTypeInfo(
         default_field="pickle_default", proto_field="pickle_value", encoder=serialize, decoder=deserialize
+    ),
+    api_pb2.PARAM_TYPE_LIST: ParamTypeInfo(
+        default_field="list_default",
+        proto_field="list_value",
+        encoder=encode_list,
+        decoder=decode_list,
+    ),
+    api_pb2.PARAM_TYPE_DICT: ParamTypeInfo(
+        default_field="dict_default",
+        proto_field="dict_value",
+        encoder=encode_dict,
+        decoder=decode_dict,
     ),
 }
 
