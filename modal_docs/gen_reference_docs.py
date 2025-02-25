@@ -77,10 +77,11 @@ def run(output_dir: str = None):
     base_title_level = "#"
     forced_module_docs = [
         ("modal.call_graph", "modal.call_graph"),
+        ("modal.container_process", "modal.container_process"),
         ("modal.gpu", "modal.gpu"),
         ("modal.runner", "modal.runner"),
         ("modal.io_streams", "modal.io_streams"),
-        ("modal.FileIO", "modal.file_io"),
+        ("modal.file_io", "modal.file_io"),
     ]
     # These aren't defined in `modal`, but should still be documented as top-level entries.
     forced_members: set[str] = set()
