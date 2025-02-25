@@ -470,24 +470,27 @@ def mock_shell_pty(servicer):
 
 
 app_file = Path("app_run_tests") / "default_app.py"
+app_file_as_module = "app_run_tests.default_app"
 webhook_app_file = Path("app_run_tests") / "webhook.py"
 cls_app_file = Path("app_run_tests") / "cls.py"
 
 
 @skip_windows("modal shell is not supported on Windows.")
 @pytest.mark.parametrize(
-    ["rel_file", "suffix"],
+    ["flags", "rel_file", "suffix"],
     [
-        (app_file, "::foo"),  # Function is explicitly specified
-        (webhook_app_file, "::foo"),  # Function is explicitly specified
-        (webhook_app_file, ""),  # Function must be inferred
+        ([], app_file, "::foo"),  # Function is explicitly specified
+        (["-m"], app_file_as_module, "::foo"),  # Function is explicitly specified - module mode
+        ([], webhook_app_file, "::foo"),  # Function is explicitly specified
+        ([], webhook_app_file, ""),  # Function must be inferred
         # TODO: fix modal shell auto-detection of a single class, even if it has multiple methods
-        # (cls_app_file, ""),  # Class must be inferred
-        # (cls_app_file, "AParametrized"),  # class name
-        (cls_app_file, "::AParametrized.some_method"),  # method name
+        # ([], cls_app_file, ""),  # Class must be inferred
+        # ([], cls_app_file, "AParametrized"),  # class name
+        ([], cls_app_file, "::AParametrized.some_method"),  # method name
     ],
 )
-def test_shell(servicer, set_env_client, supports_dir, mock_shell_pty, rel_file, suffix):
+def test_shell(servicer, set_env_client, mock_shell_pty, suffix, monkeypatch, supports_dir, rel_file, flags):
+    monkeypatch.chdir(supports_dir)
     fake_stdin, captured_out = mock_shell_pty
 
     fake_stdin.clear()
@@ -495,9 +498,7 @@ def test_shell(servicer, set_env_client, supports_dir, mock_shell_pty, rel_file,
 
     shell_prompt = servicer.shell_prompt
 
-    fn = (supports_dir / rel_file).as_posix()
-
-    _run(["shell", fn + suffix])
+    _run(["shell"] + flags + [str(rel_file) + suffix])
 
     # first captured message is the empty message the mock server sends
     assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
