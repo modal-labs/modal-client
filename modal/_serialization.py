@@ -443,7 +443,7 @@ class StringPayloadHandler(PayloadHandler, t=str, e=api_pb2.PARAM_TYPE_STRING):
         return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_STRING, string_value=python_value)
 
     def deserialize(self, value: api_pb2.ClassParameterValue, client) -> str:
-        return value.str_value
+        return value.string_value
 
 
 class IntPayloadHandler(PayloadHandler, t=int, e=api_pb2.PARAM_TYPE_INT):
@@ -499,21 +499,20 @@ class ListPayloadHandler(PayloadHandler, t=list, e=api_pb2.PARAM_TYPE_LIST):
         )
 
     def deserialize(self, value: api_pb2.ClassParameterValue, client) -> list:
-        return [payload_handler.deserialize(item, client) for item in value.list_value.items]
+        return [payload_handler.deserialize(item, client) for item in value.list_value.values]
 
 
 class DictPayloadHandler(PayloadHandler, t=dict, e=api_pb2.PARAM_TYPE_DICT):
     def serialize(self, python_value: dict[str, Any]) -> api_pb2.ClassParameterValue:
         entries: list[api_pb2.PayloadDictEntry] = [
-            api_pb2.PayloadDictEntry(name=k, value=payload_handler.serialize(v)) for k, v in python_value
+            api_pb2.PayloadDictEntry(name=k, value=payload_handler.serialize(v)) for k, v in python_value.items()
         ]
         return api_pb2.ClassParameterValue(
             type=api_pb2.PARAM_TYPE_DICT, dict_value=api_pb2.PayloadDictValue(entries=entries)
         )
 
-    def deserialize(self, value: api_pb2.ClassParameterValue, client) -> dict:
-        values: list = [payload_handler.deserialize(value, client) for value in value.dict_value.values]
-        return dict(zip(value.dict_value.keys, values))
+    def deserialize(self, value: api_pb2.ClassParameterValue, client) -> dict[str, Any]:
+        return {entry.name: payload_handler.deserialize(entry.value, client) for entry in value.dict_value.entries}
 
 
 PROTO_TYPE_INFO = {}
@@ -560,17 +559,11 @@ def python_to_proto_payload(python_args: tuple[Any, ...], python_kwargs: dict[st
 def proto_to_python_payload(
     proto_payload: api_pb2.Payload, client: "modal.client._Client"
 ) -> tuple[tuple[Any, ...], dict[str, Any]]:
-    python_args = []
-    for proto_value in proto_payload.args.values:
-        python_value = _proto_to_python_value(proto_value, client)
-        python_args.append(python_value)
-
-    python_kwargs = {}
-    for proto_dict_entry in proto_payload.kwargs.entries:
-        python_value = _proto_to_python_value(proto_dict_entry.value, client)
-        python_kwargs[proto_dict_entry.name] = python_value
-
-    return tuple(python_args), python_kwargs
+    python_args = tuple(payload_handler.deserialize(value, client) for value in proto_payload.args.values)
+    python_kwargs = {
+        entry.name: payload_handler.deserialize(entry.value, client) for entry in proto_payload.kwargs.entries
+    }
+    return python_args, python_kwargs
 
 
 def deserialize_proto_params(serialized_params: bytes, schema: list[api_pb2.ClassParameterSpec]) -> dict[str, Any]:

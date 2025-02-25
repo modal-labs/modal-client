@@ -116,23 +116,23 @@ def disable_pickle_payloads(monkeypatch):
 @pytest.mark.parametrize(
     ["python_arg_kwargs", "expected_proto_bytes"],
     [
-        (_call("foo"), b"\n\x0b\n\t\n\x00\x10\x01\x1a\x03foo\x12\x00"),  # positional args
-        (_call(bar=3), b"\n\x00\x12\x0f\n\r\n\x03bar\x12\x06\n\x00\x10\x02 \x03"),
+        (_call("foo"), b"\n\t\n\x07\x10\x01\x1a\x03foo\x12\x00"),  # positional args
+        (_call(bar=3), b"\n\x00\x12\r\n\x0b\n\x03bar\x12\x04\x10\x02 \x03"),
         (
             _call("foo", bar=2),
-            b"\n\x0b\n\t\n\x00\x10\x01\x1a\x03foo\x12\x0f\n\r\n\x03bar\x12\x06\n\x00\x10\x02 \x02",
+            b"\n\t\n\x07\x10\x01\x1a\x03foo\x12\r\n\x0b\n\x03bar\x12\x04\x10\x02 \x02",
         ),  # mix
         (
             _call([1, 2]),
-            b"\n\x18\n\x16\n\x00\x10\x042\x10\n\x06\n\x00\x10\x02 \x01\n\x06\n\x00\x10\x02 \x02\x12\x00",
+            b"\n\x12\n\x10\x10\x042\x0c\n\x04\x10\x02 \x01\n\x04\x10\x02 \x02\x12\x00",
         ),  # list
         (
             _call([1, "bar"]),
-            b"\n\x1b\n\x19\n\x00\x10\x042\x13\n\x06\n\x00\x10\x02 \x01\n\t\n\x00\x10\x01\x1a\x03bar\x12\x00",
+            b"\n\x15\n\x13\x10\x042\x0f\n\x04\x10\x02 \x01\n\x07\x10\x01\x1a\x03bar\x12\x00",
         ),  # mixed list
         (
             _call({"some_key": 123}),
-            b"\n\x1c\n\x1a\n\x00\x10\x05:\x14\n\x12\n\x08some_key\x12\x06\n\x00\x10\x02 {\x12\x00",
+            b"\n\x18\n\x16\x10\x05:\x12\n\x10\n\x08some_key\x12\x04\x10\x02 {\x12\x00",
         ),  # dict
     ],
 )
@@ -140,7 +140,6 @@ def disable_pickle_payloads(monkeypatch):
 def test_proto_serde_stability(python_arg_kwargs, expected_proto_bytes, client):
     # simulates a call from an older client (typically fewer supported types) to a newer
     proto_payload = python_to_proto_payload(*python_arg_kwargs)
-    print(proto_payload)
     proto_bytes = proto_payload.SerializeToString(deterministic=True)
     assert proto_bytes == expected_proto_bytes  # possibly relax this to only enforce being able to decode?
     recovered_payload = api_pb2.Payload()
