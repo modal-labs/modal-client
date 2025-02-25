@@ -401,7 +401,6 @@ PYTHON_TO_PROTO_TYPE: dict[type, "api_pb2.ParameterType.ValueType"] = {
     str: api_pb2.PARAM_TYPE_STRING,
     int: api_pb2.PARAM_TYPE_INT,
     list: api_pb2.PARAM_TYPE_LIST,
-    tuple: api_pb2.PARAM_TYPE_LIST,
     dict: api_pb2.PARAM_TYPE_DICT,
 }
 
@@ -550,11 +549,11 @@ def python_to_proto_payload(python_args: tuple[Any, ...], python_kwargs: dict[st
     * Doesn't use the `name` field of the ClassParameterValue message (names are encoded as part
       of the `kwargs` PayloadDictValue instead)
     """
-    proto_args = payload_handler.serialize(python_args)
+    proto_args = payload_handler.serialize(list(python_args))
     proto_kwargs = payload_handler.serialize(python_kwargs)
     return api_pb2.Payload(
-        args=proto_args,
-        kwargs=proto_kwargs,
+        args=proto_args.list_value,
+        kwargs=proto_kwargs.dict_value,
     )
 
 

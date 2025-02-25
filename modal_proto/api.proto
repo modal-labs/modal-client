@@ -170,13 +170,13 @@ enum ParameterType {
   PARAM_TYPE_UNSPECIFIED = 0;
   PARAM_TYPE_STRING = 1;
   PARAM_TYPE_INT = 2;
-  PARAM_TYPE_BOOL = 3;
-  PARAM_TYPE_FLOAT = 4;
-  PARAM_TYPE_BYTES = 5;
-  PARAM_TYPE_LIST = 6;
-  PARAM_TYPE_DICT = 7;
-  PARAM_TYPE_NONE = 8;
-  PARAM_TYPE_PICKLE = 9;
+  PARAM_TYPE_PICKLE = 3;
+  PARAM_TYPE_LIST = 4;
+  PARAM_TYPE_DICT = 5;
+  PARAM_TYPE_BOOL = 6;
+  PARAM_TYPE_FLOAT = 7;
+  PARAM_TYPE_BYTES = 8;
+  PARAM_TYPE_NONE = 9;
 }
 
 enum ProgressType {
@@ -719,12 +719,12 @@ message ClassParameterValue { // TODO: rename to PayloadValue
   oneof value_oneof {
     string string_value = 3;
     int64 int_value = 4;
-    bool bool_value = 5;
-    float float_value = 6;
-    bytes bytes_value = 7;
-    PayloadListValue list_value = 8;
-    PayloadDictValue dict_value = 9;
-    bytes pickle_value = 10;
+    bytes pickle_value = 5;
+    PayloadListValue list_value = 6;
+    PayloadDictValue dict_value = 7;
+    bool bool_value = 8;
+    float float_value = 9;
+    bytes bytes_value = 10;
   }
 }
 

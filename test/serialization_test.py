@@ -140,6 +140,7 @@ def disable_pickle_payloads(monkeypatch):
 def test_proto_serde_stability(python_arg_kwargs, expected_proto_bytes, client):
     # simulates a call from an older client (typically fewer supported types) to a newer
     proto_payload = python_to_proto_payload(*python_arg_kwargs)
+    print(proto_payload)
     proto_bytes = proto_payload.SerializeToString(deterministic=True)
     assert proto_bytes == expected_proto_bytes  # possibly relax this to only enforce being able to decode?
     recovered_payload = api_pb2.Payload()
