@@ -407,36 +407,29 @@ PYTHON_TO_PROTO_TYPE: dict[type, "api_pb2.ParameterType.ValueType"] = {
 
 class PayloadHandler:
     _handlers = []  # list of (type, ParameterType, PayloadHandler)
+    _proto_handlers = {}
+    _python_handlers = {}
+
     default_field: str
 
     def __init_subclass__(cls, t, e):
-        PayloadHandler._handlers.append((t, e, cls()))
+        c = cls()
+        assert t not in PayloadHandler._python_handlers
+        assert e not in PayloadHandler._proto_handlers
+        PayloadHandler._proto_handlers[e] = c
+        PayloadHandler._python_handlers[t] = c
 
     @classmethod
     def for_proto_type(cls, proto_type: "api_pb2.ParameterType.ValueType") -> "PayloadHandler":
-        for t, e, c in PayloadHandler._handlers:
-            if proto_type == e:
-                return c
-        raise ValueError(f"No support for {proto_type}")
-
-    @classmethod
-    def for_python_type(cls, python_type: type):
-        for t, e, c in PayloadHandler._handlers:
-            if issubclass(python_type, t):
-                return c
-        else:
-            raise RuntimeError(f"No support for {python_type}")
+        return cls._proto_handlers[proto_type]
 
     @classmethod
     def for_python_instance(cls, python_instance):
-        for t, e, c in PayloadHandler._handlers:
-            if isinstance(python_instance, t):
-                return c
-        else:
-            raise RuntimeError(f"No support for {type(python_instance)}")
+        return cls._python_handlers[type(python_instance)]
 
     def serialize(self, python_value: Any) -> api_pb2.ClassParameterValue:
-        return PayloadHandler.for_python_instance(python_value).serialize(python_value)
+        ph = PayloadHandler.for_python_instance(python_value)
+        return ph.serialize(python_value)
 
     def deserialize(self, pv: api_pb2.ClassParameterValue, client) -> Any:
         return PayloadHandler.for_proto_type(pv.type).deserialize(pv, client)
@@ -557,11 +550,13 @@ def python_to_proto_payload(python_args: tuple[Any, ...], python_kwargs: dict[st
     * Doesn't use the `name` field of the ClassParameterValue message (names are encoded as part
       of the `kwargs` PayloadDictValue instead)
     """
-    proto_args = payload_handler.serialize(list(python_args))
-    proto_kwargs = payload_handler.serialize(python_kwargs)
+    proto_args_values = (payload_handler.serialize(v) for v in python_args)
+    proto_kwargs_entries = (
+        api_pb2.PayloadDictEntry(name=k, value=payload_handler.serialize(v)) for k, v in python_kwargs.items()
+    )
     return api_pb2.Payload(
-        args=proto_args.list_value,
-        kwargs=proto_kwargs.dict_value,
+        args=api_pb2.PayloadListValue(values=proto_args_values),
+        kwargs=api_pb2.PayloadDictValue(entries=proto_kwargs_entries),
     )
 
 
