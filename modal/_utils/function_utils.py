@@ -109,6 +109,7 @@ def schema_from_signature(signature: inspect.Signature) -> list[api_pb2.ClassPar
         has_default = param.default is not param.empty
         if param.annotation not in SUPPORTED_CLASS_PARAM_TYPES:
             raise InvalidError("modal.parameter() currently only support str or int types")
+
         param_type = PYTHON_TO_PROTO_TYPE[param.annotation]
         param_type_info = PROTO_TYPE_INFO[param_type]
         class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=param_type)

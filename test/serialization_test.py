@@ -5,7 +5,6 @@ import random
 import modal
 from modal import Queue
 from modal._serialization import (
-    PROTO_TYPE_INFO,
     deserialize,
     deserialize_data_format,
     deserialize_proto_params,
@@ -111,7 +110,7 @@ def disable_pickle_payloads(monkeypatch):
     def bork():
         raise Exception("This test is expected to not use pickling")
 
-    monkeypatch.setattr(PROTO_TYPE_INFO[api_pb2.PARAM_TYPE_PICKLE], "encoder", lambda _: bork())
+    monkeypatch.setattr("modal._serialization.serialize", lambda _: bork())
 
 
 @pytest.mark.parametrize(

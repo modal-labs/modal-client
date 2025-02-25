@@ -406,104 +406,139 @@ PYTHON_TO_PROTO_TYPE: dict[type, "api_pb2.ParameterType.ValueType"] = {
 }
 
 
-def encode_list(python_list: typing.Sequence) -> api_pb2.PayloadListValue:
-    return api_pb2.PayloadListValue(
-        values=[_python_to_proto_value(python_list_value) for python_list_value in python_list]
-    )
+class PayloadHandler:
+    _handlers = []  # list of (type, ParameterType, PayloadHandler)
+    default_field: str
+
+    def __init_subclass__(cls, t, e):
+        PayloadHandler._handlers.append((t, e, cls()))
+
+    def serialize(self, python_value: Any) -> api_pb2.ClassParameterValue:
+        for t, e, c in PayloadHandler._handlers:
+            if isinstance(python_value, t):
+                return c.serialize(python_value)
+        else:
+            raise RuntimeError(f"can't serialize type {type(python_value)}")
+
+    def deserialize(self, pv: api_pb2.ClassParameterValue, client) -> Any:
+        for t, e, c in PayloadHandler._handlers:
+            if pv.type == e:
+                return c.deserialize(pv, client)
+        else:
+            raise RuntimeError(f"can't deserialize type {pv.type}")
+
+    def for_proto_type(self, proto_type: "api_pb2.ParameterType.ValueType") -> "PayloadHandler":
+        for t, e, c in PayloadHandler._handlers:
+            if proto_type == e:
+                return c
+        raise ValueError(f"No support for {proto_type}")
 
 
-def decode_list(proto_list_value: api_pb2.PayloadListValue, client: "modal.client._Client") -> list:
-    return [_proto_to_python_value(proto_value, client) for proto_value in proto_list_value.values]
+payload_handler = PayloadHandler()
 
 
-def encode_dict(python_dict: typing.Mapping[str, Any]) -> api_pb2.PayloadDictValue:
-    return api_pb2.PayloadDictValue(
-        entries=[
-            api_pb2.PayloadDictEntry(name=k, value=_python_to_proto_value(python_dict_value))
-            for k, python_dict_value in python_dict.items()
+class StringPayloadHandler(PayloadHandler, t=str, e=api_pb2.PARAM_TYPE_STRING):
+    default_field = "string_default"
+
+    def serialize(self, python_value: str) -> api_pb2.ClassParameterValue:
+        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_STRING, string_value=python_value)
+
+    def deserialize(self, value: api_pb2.ClassParameterValue, client) -> str:
+        return value.str_value
+
+
+class IntPayloadHandler(PayloadHandler, t=int, e=api_pb2.PARAM_TYPE_INT):
+    default_field = "int_default"
+
+    def serialize(self, python_value: int) -> api_pb2.ClassParameterValue:
+        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_INT, int_value=python_value)
+
+    def deserialize(self, value: api_pb2.ClassParameterValue, client) -> int:
+        return value.int_value
+
+
+class BoolPayloadHandler(PayloadHandler, t=bool, e=api_pb2.PARAM_TYPE_BOOL):
+    def serialize(self, python_value: bool) -> api_pb2.ClassParameterValue:
+        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_BOOL, bool_value=python_value)
+
+    def deserialize(self, value: api_pb2.ClassParameterValue, client) -> bool:
+        return value.bool_value
+
+
+class FloatPayloadHandler(PayloadHandler, t=float, e=api_pb2.PARAM_TYPE_FLOAT):
+    def serialize(self, python_value: float) -> api_pb2.ClassParameterValue:
+        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_FLOAT, float_value=python_value)
+
+    def deserialize(self, value: api_pb2.ClassParameterValue, client) -> float:
+        return value.float_value
+
+
+class BytesPayloadHandler(PayloadHandler, t=bytes, e=api_pb2.PARAM_TYPE_BYTES):
+    def serialize(self, python_value: bytes) -> api_pb2.ClassParameterValue:
+        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_BYTES, bytes_value=python_value)
+
+    def deserialize(self, value: api_pb2.ClassParameterValue, client) -> bytes:
+        return value.bytes_value
+
+
+NoneType = type(None)
+
+
+class NonePayloadHandler(PayloadHandler, t=NoneType, e=api_pb2.PARAM_TYPE_NONE):
+    def serialize(self, python_value: NoneType) -> api_pb2.ClassParameterValue:
+        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_NONE)
+
+    def deserialize(self, value: api_pb2.ClassParameterValue, client) -> NoneType:
+        return None
+
+
+class ListPayloadHandler(PayloadHandler, t=list, e=api_pb2.PARAM_TYPE_LIST):
+    def serialize(self, python_value: list) -> api_pb2.ClassParameterValue:
+        values: list[api_pb2.ClassParameterValue] = [payload_handler.serialize(v) for v in python_value]
+        return api_pb2.ClassParameterValue(
+            type=api_pb2.PARAM_TYPE_LIST, list_value=api_pb2.PayloadListValue(values=values)
+        )
+
+    def deserialize(self, value: api_pb2.ClassParameterValue, client) -> list:
+        return [payload_handler.deserialize(item, client) for item in value.list_value.items]
+
+
+class DictPayloadHandler(PayloadHandler, t=dict, e=api_pb2.PARAM_TYPE_DICT):
+    def serialize(self, python_value: dict[str, Any]) -> api_pb2.ClassParameterValue:
+        entries: list[api_pb2.PayloadDictEntry] = [
+            api_pb2.PayloadDictEntry(name=k, value=payload_handler.serialize(v)) for k, v in python_value
         ]
-    )
+        return api_pb2.ClassParameterValue(
+            type=api_pb2.PARAM_TYPE_DICT, dict_value=api_pb2.PayloadDictValue(entries=entries)
+        )
+
+    def deserialize(self, value: api_pb2.ClassParameterValue, client) -> dict:
+        values: list = [payload_handler.deserialize(value, client) for value in value.dict_value.values]
+        return dict(zip(value.dict_value.keys, values))
 
 
-def decode_dict(proto_dict: api_pb2.PayloadDictValue, client: "modal.client._Client") -> dict[str, Any]:
-    return {entry.name: _proto_to_python_value(entry.value, client) for entry in proto_dict.entries}
-
-
-PROTO_TYPE_INFO = {
-    api_pb2.PARAM_TYPE_STRING: ParamTypeInfo(
-        default_field="string_default", proto_field="string_value", encoder=str, decoder=lambda data, _: str(data)
-    ),
-    api_pb2.PARAM_TYPE_INT: ParamTypeInfo(
-        default_field="int_default", proto_field="int_value", encoder=int, decoder=lambda data, _: int(data)
-    ),
-    api_pb2.PARAM_TYPE_PICKLE: ParamTypeInfo(
-        default_field="pickle_default", proto_field="pickle_value", encoder=serialize, decoder=deserialize
-    ),
-    api_pb2.PARAM_TYPE_LIST: ParamTypeInfo(
-        default_field="list_default",
-        proto_field="list_value",
-        encoder=encode_list,
-        decoder=decode_list,
-    ),
-    api_pb2.PARAM_TYPE_DICT: ParamTypeInfo(
-        default_field="dict_default",
-        proto_field="dict_value",
-        encoder=encode_dict,
-        decoder=decode_dict,
-    ),
-}
+PROTO_TYPE_INFO = {}
 
 
 def serialize_proto_params(python_params: dict[str, Any], schema: typing.Sequence[api_pb2.ClassParameterSpec]) -> bytes:
     proto_params: list[api_pb2.ClassParameterValue] = []
     for schema_param in schema:
-        type_info = PROTO_TYPE_INFO.get(schema_param.type)
-        if not type_info:
-            raise ValueError(f"Unsupported parameter type: {schema_param.type}")
-        proto_param = api_pb2.ClassParameterValue(
-            name=schema_param.name,
-            type=schema_param.type,
-        )
+        handler = payload_handler.for_proto_type(schema_param.type)
         python_value = python_params.get(schema_param.name)
         if python_value is None:
             if schema_param.has_default:
-                python_value = getattr(schema_param, type_info.default_field)
+                # NOTE: this python_value is actually a proto value that's not packaged in a ClassParameterValue
+                #   which happens to work for int/str which are the only supported types at the moment
+                #   TODO: we should fix this, maybe having a single ClassParameterValue default_value?
+                python_value = getattr(schema_param, handler.default_field)
             else:
                 raise ValueError(f"Missing required parameter: {schema_param.name}")
-        try:
-            converted_value = type_info.encoder(python_value)
-        except ValueError as exc:
-            raise ValueError(f"Invalid type for parameter {schema_param.name}: {exc}")
-        setattr(proto_param, type_info.proto_field, converted_value)
+        proto_param = handler.serialize(python_value)
+        proto_param.name = schema_param.name
         proto_params.append(proto_param)
+
     proto_bytes = api_pb2.ClassParameterSet(parameters=proto_params).SerializeToString(deterministic=True)
     return proto_bytes
-
-
-def _python_to_proto_value(python_value: Any) -> api_pb2.ClassParameterValue:
-    # TODO: use schema
-    python_type = type(python_value)
-    if python_type in PYTHON_TO_PROTO_TYPE:
-        proto_type = PYTHON_TO_PROTO_TYPE[python_type]
-    else:
-        proto_type = api_pb2.PARAM_TYPE_PICKLE
-
-    proto_type_info = PROTO_TYPE_INFO[proto_type]
-    proto_scalar = proto_type_info.encoder(python_value)
-
-    return api_pb2.ClassParameterValue(
-        name="",  # this field is unused for payloads and exists for legacy reasons/code reuse with class params
-        type=proto_type,
-        **{proto_type_info.proto_field: proto_scalar},
-    )
-
-
-def _proto_to_python_value(proto_value: api_pb2.ClassParameterValue, client: "modal.client._Client") -> Any:
-    proto_type_info = PROTO_TYPE_INFO[proto_value.type]
-    proto_field = proto_type_info.proto_field
-    proto_dto = getattr(proto_value, proto_field)
-    python_value = proto_type_info.decoder(proto_dto, client)
-    return python_value
 
 
 def python_to_proto_payload(python_args: tuple[Any, ...], python_kwargs: dict[str, Any]) -> api_pb2.Payload:
@@ -515,20 +550,8 @@ def python_to_proto_payload(python_args: tuple[Any, ...], python_kwargs: dict[st
     * Doesn't use the `name` field of the ClassParameterValue message (names are encoded as part
       of the `kwargs` PayloadDictValue instead)
     """
-    proto_args = api_pb2.PayloadListValue(values=[])
-    for python_value in python_args:
-        proto_value = _python_to_proto_value(python_value)
-        proto_args.values.append(proto_value)
-
-    proto_kwargs = api_pb2.PayloadDictValue(entries=[])
-    for param_name, python_value in python_kwargs.items():
-        proto_value = _python_to_proto_value(python_value)
-        proto_kwargs.entries.append(
-            api_pb2.PayloadDictEntry(
-                name=param_name,
-                value=proto_value,
-            )
-        )
+    proto_args = payload_handler.serialize(python_args)
+    proto_kwargs = payload_handler.serialize(python_kwargs)
     return api_pb2.Payload(
         args=proto_args,
         kwargs=proto_kwargs,
