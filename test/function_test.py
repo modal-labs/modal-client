@@ -14,7 +14,7 @@ from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, web_e
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
 from modal.exception import DeprecationError, ExecutionError, InvalidError
-from modal.functions import Function, FunctionCall, gather
+from modal.functions import Function, FunctionCall
 from modal.runner import deploy_app
 from modal_proto import api_pb2
 from test.helpers import deploy_app_externally
@@ -431,7 +431,7 @@ def test_sync_parallelism(client, servicer):
     with app.run(client=client):
         t0 = time.time()
         # NOTE tests breaks in macOS CI if the smaller time is smaller than ~300ms
-        res = gather(slo1_modal.spawn(0.31), slo1_modal.spawn(0.3))
+        res = FunctionCall.gather(slo1_modal.spawn(0.31), slo1_modal.spawn(0.3))
         t1 = time.time()
         assert res == [0.31, 0.3]  # results should be ordered as inputs, not by completion time
         assert t1 - t0 < 0.6  # less than the combined runtime, make sure they run in parallel
