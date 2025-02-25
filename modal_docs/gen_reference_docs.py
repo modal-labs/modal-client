@@ -76,20 +76,14 @@ def run(output_dir: str = None):
 
     base_title_level = "#"
     forced_module_docs = [
-        ("modal.Function", "modal.functions"),
-        ("modal.Secret", "modal.secret"),
-        ("modal.Dict", "modal.dict"),
-        ("modal.Queue", "modal.queue"),
         ("modal.call_graph", "modal.call_graph"),
         ("modal.gpu", "modal.gpu"),
         ("modal.runner", "modal.runner"),
-        ("modal.Sandbox", "modal.sandbox"),
-        ("modal.ContainerProcess", "modal.container_process"),
         ("modal.io_streams", "modal.io_streams"),
         ("modal.FileIO", "modal.file_io"),
     ]
     # These aren't defined in `modal`, but should still be documented as top-level entries.
-    forced_members = {"web_endpoint", "asgi_app", "method", "wsgi_app", "forward"}
+    forced_members: set[str] = set()
     # These are excluded from the sidebar, typically to 'soft release' some documentation.
     sidebar_excluded: set[str] = set()
 
