@@ -412,25 +412,34 @@ class PayloadHandler:
     def __init_subclass__(cls, t, e):
         PayloadHandler._handlers.append((t, e, cls()))
 
-    def serialize(self, python_value: Any) -> api_pb2.ClassParameterValue:
-        for t, e, c in PayloadHandler._handlers:
-            if isinstance(python_value, t):
-                return c.serialize(python_value)
-        else:
-            raise RuntimeError(f"can't serialize type {type(python_value)}")
-
-    def deserialize(self, pv: api_pb2.ClassParameterValue, client) -> Any:
-        for t, e, c in PayloadHandler._handlers:
-            if pv.type == e:
-                return c.deserialize(pv, client)
-        else:
-            raise RuntimeError(f"can't deserialize type {pv.type}")
-
-    def for_proto_type(self, proto_type: "api_pb2.ParameterType.ValueType") -> "PayloadHandler":
+    @classmethod
+    def for_proto_type(cls, proto_type: "api_pb2.ParameterType.ValueType") -> "PayloadHandler":
         for t, e, c in PayloadHandler._handlers:
             if proto_type == e:
                 return c
         raise ValueError(f"No support for {proto_type}")
+
+    @classmethod
+    def for_python_type(cls, python_type: type):
+        for t, e, c in PayloadHandler._handlers:
+            if issubclass(python_type, t):
+                return c
+        else:
+            raise RuntimeError(f"No support for {python_type}")
+
+    @classmethod
+    def for_python_instance(cls, python_instance):
+        for t, e, c in PayloadHandler._handlers:
+            if isinstance(python_instance, t):
+                return c
+        else:
+            raise RuntimeError(f"No support for {type(python_instance)}")
+
+    def serialize(self, python_value: Any) -> api_pb2.ClassParameterValue:
+        return PayloadHandler.for_python_instance(python_value).serialize(python_value)
+
+    def deserialize(self, pv: api_pb2.ClassParameterValue, client) -> Any:
+        return PayloadHandler.for_proto_type(pv.type).deserialize(pv, client)
 
 
 payload_handler = PayloadHandler()
