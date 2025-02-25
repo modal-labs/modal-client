@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.68 (2025-02-25)
+
+* Fixes issue where running `modal shell` with a dot-separated module reference as input would not accept the required `-m` flag for "module mode", but still emitted a warning telling users to use `-m`
+
+
+
 ### 0.73.60 (2025-02-20)
 
 * Fixes an issue where `modal.runner.deploy_app()` didn't work when called from within a running (remote) Modal Function
