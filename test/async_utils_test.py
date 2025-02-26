@@ -8,6 +8,7 @@ import pytest
 import subprocess
 import sys
 import textwrap
+import time
 
 import pytest_asyncio
 from synchronicity import Synchronizer
@@ -15,6 +16,7 @@ from synchronicity import Synchronizer
 from modal._utils import async_utils
 from modal._utils.async_utils import (
     TaskContext,
+    TimestampPriorityQueue,
     aclosing,
     async_chain,
     async_map,
@@ -1307,3 +1309,50 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     assert p.wait() == 0
     assert p.stdout.read() == ""
     assert p.stderr.read() == ""
+
+
+@pytest.mark.asyncio
+async def test_timed_priority_queue():
+    queue: TimestampPriorityQueue = TimestampPriorityQueue()
+    now = time.time()
+
+    async def producer():
+        await queue.put(now + 0.2, 2)
+        await queue.put(now + 0.1, 1)
+        await queue.put(now + 0.3, 3)
+
+    async def consumer():
+        items = []
+        for _ in range(3):
+            item = await queue.get()
+            items.append(item)
+        return items
+
+    await producer()
+    items = await consumer()
+    assert items == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_timed_priority_queue_duplicates():
+    class _QueueItem:
+        pass
+
+    queue: TimestampPriorityQueue = async_utils.TimestampPriorityQueue()
+    now = time.time()
+    x = now + 0.1
+
+    async def producer():
+        await queue.put(1, x)
+        await queue.put(1, x)
+
+    async def consumer():
+        items = []
+        for _ in range(2):
+            item = await queue.get()
+            items.append(item)
+        return items
+
+    await producer()
+    items = await consumer()
+    assert len([it for it in items]) == 2
