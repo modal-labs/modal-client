@@ -325,10 +325,10 @@ def _run_container(
             env["MODAL_RESTORE_STATE_PATH"] = tmp_file_name
 
             # Override server URL to reproduce restore behavior.
-            env["MODAL_SERVER_URL"] = servicer.container_addr
             env["MODAL_ENABLE_SNAP_RESTORE"] = "1"
 
         # These env vars are always present in containers
+        env["MODAL_SERVER_URL"] = servicer.container_addr
         env["MODAL_TASK_ID"] = "ta-123"
         env["MODAL_IS_REMOTE"] = "1"
 
@@ -533,13 +533,26 @@ def test_grpc_failure(servicer, event_loop):
 
 
 @skip_github_non_linux
-def test_missing_main_conditional(servicer, capsys):
+def test_run_from_global_scope(servicer, capsys):
     _run_container(servicer, "test.supports.missing_main_conditional", "square")
     output = capsys.readouterr()
     assert "Can not run an app in global scope within a container" in output.err
     assert servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
     exc = deserialize(servicer.task_result.data, None)
     assert isinstance(exc, InvalidError)
+
+
+@skip_github_non_linux
+def test_run_from_within_function(servicer, capsys):
+    with servicer.intercept() as ctx:
+        _run_container(servicer, "test.supports.modal_run_from_function", "run_other_app", inputs=_get_inputs(((), {})))
+
+    inner_app_create: api_pb2.AppCreateRequest
+    (inner_app_create,) = ctx.get_requests("AppCreate")
+    assert inner_app_create.description == "app2"
+    inner_function_call: api_pb2.FunctionMapRequest
+    (inner_function_call,) = ctx.get_requests("FunctionMap")
+    assert servicer.app_functions[inner_function_call.function_id].function_name == "foo"
 
 
 @skip_github_non_linux
