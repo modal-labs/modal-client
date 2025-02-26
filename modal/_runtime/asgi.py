@@ -471,6 +471,9 @@ async def _proxy_lifespan_request(base_url, scope, receive, send) -> None:
                     timeout=aiohttp.ClientTimeout(total=3600),
                     auto_decompress=False,
                     read_bufsize=1024 * 1024,  # 1 MiB
+                    connector=aiohttp.TCPConnector(
+                        limit=1000
+                    ),  # 100 is the default max, but 1000 is the max for `allow_concurrent_inputs`
                     **(
                         # These options were introduced in aiohttp 3.9, and we can remove the
                         # conditional after deprecating image builder version 2023.12.
