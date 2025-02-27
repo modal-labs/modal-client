@@ -56,13 +56,14 @@ if typing.TYPE_CHECKING:
     import modal._functions
 
 # This is used for both type checking and runtime validation
-ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10"]
+ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10", "2025.04"]
 
 # Note: we also define supported Python versions via logic at the top of the package __init__.py
 # so that we fail fast / clearly in unsupported containers. Additionally, we enumerate the supported
 # Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
 # Consider consolidating these multiple sources of truth?
 SUPPORTED_PYTHON_SERIES: dict[ImageBuilderVersion, list[str]] = {
+    "2025.04": ["3.9", "3.10", "3.11", "3.12", "3.13"],
     "2024.10": ["3.9", "3.10", "3.11", "3.12", "3.13"],
     "2024.04": ["3.9", "3.10", "3.11", "3.12"],
     "2023.12": ["3.9", "3.10", "3.11", "3.12"],
@@ -1397,6 +1398,17 @@ class _Image(_Object, type_prefix="im"):
 
         return self.dockerfile_commands(dockerfile_cmd)
 
+    def cmd(
+        self,
+        cmd: list[str],
+    ) -> "_Image":
+        """Overwrite default CMD (entrypoint arguments) for the image."""
+        args_str = _flatten_str_args("cmd", "cmd", cmd)
+        args_str = '"' + '", "'.join(args_str) + '"' if args_str else ""
+        dockerfile_cmd = f"CMD [{args_str}]"
+
+        return self.dockerfile_commands(dockerfile_cmd)
+
     def run_commands(
         self,
         *commands: Union[str, list[str]],
@@ -1441,6 +1453,10 @@ class _Image(_Object, type_prefix="im"):
                 f"RUN micromamba install -n base -y python={validated_python_version} pip -c conda-forge",
             ]
             commands = _Image._registry_setup_commands(tag, version, setup_commands)
+            if version >= "2025.04":
+                # default CMD for sandbox ease-of-use
+                max_sleep_time = 60 * 60 * 24 * 2
+                commands.append(f'CMD ["sleep", "{max_sleep_time}"]')
             context_files = {CONTAINER_REQUIREMENTS_PATH: _get_modal_requirements_path(version, python_version)}
             return DockerfileSpec(commands=commands, context_files=context_files)
 
@@ -1830,6 +1846,10 @@ class _Image(_Object, type_prefix="im"):
             ]
             if version > "2023.12":
                 commands.append(f"RUN rm {CONTAINER_REQUIREMENTS_PATH}")
+            if version >= "2025.04":
+                # default CMD for Sandbox ease-of-use
+                max_sleep_time = 60 * 60 * 24 * 2
+                commands.append(f'CMD ["sleep", "{max_sleep_time}"]')
             return DockerfileSpec(commands=commands, context_files=context_files)
 
         return _Image._from_args(
