@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import inspect
+import itertools
 import os
 import typing
 from collections.abc import Collection
@@ -23,7 +24,7 @@ from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._serialization import check_valid_cls_constructor_arg
 from ._traceback import print_server_warnings
-from ._utils.async_utils import synchronize_api, synchronizer
+from ._utils.async_utils import gather_cancel_on_exc, synchronize_api, synchronizer
 from ._utils.deprecation import deprecation_warning, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
@@ -555,7 +556,7 @@ class _Cls(_Object, type_prefix="cs"):
         cls._name = name
         return cls
 
-    def with_options(
+    async def with_options(
         self: "_Cls",
         cpu: Optional[Union[float, tuple[float, float]]] = None,
         memory: Optional[Union[int, tuple[int, int]]] = None,
@@ -581,6 +582,12 @@ class _Cls(_Object, type_prefix="cs"):
         ModelUsingGPU().generate.remote(42)  # will run with an A100 GPU
         ```
         """
+        hydration_coros = []
+        for obj in itertools.chain.from_iterable([[self], secrets, volumes.values()]):
+            if not obj._is_hydrated:
+                hydration_coros.append(obj.hydrate())
+        await gather_cancel_on_exc(*hydration_coros)
+
         retry_policy = _parse_retries(retries, f"Class {self.__name__}" if self._user_cls else "")
         if gpu or cpu or memory:
             resources = convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=None)

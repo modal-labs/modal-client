@@ -144,8 +144,13 @@ def test_class_with_options(client, servicer):
         assert options.retry_policy.retries == 5
 
 
-def test_class_with_options_need_hydrating(client, servicer):
-    with pytest.raises(ExecutionError, match="hydrate"):
+def test_class_with_options_needs_running_app(servicer):
+    with pytest.raises(ExecutionError, match="hydrate.+not running"):
+        Foo.with_options()  # type: ignore
+
+
+def test_class_with_options_lazy_hydration(servicer, set_env_client):
+    with app.run():
         Foo.with_options()  # type: ignore
 
 
