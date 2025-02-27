@@ -2,6 +2,7 @@
 # ruff: noqa: E402
 import os
 
+from modal._runtime import execution_context
 from modal._runtime.user_code_imports import Service, import_class_service, import_single_function_service
 
 telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
@@ -428,21 +429,22 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 param_args = ()
                 param_kwargs = {}
 
-            if function_def.is_class:
-                service = import_class_service(
-                    function_def,
-                    ser_cls,
-                    param_args,
-                    param_kwargs,
-                )
-            else:
-                service = import_single_function_service(
-                    function_def,
-                    ser_cls,
-                    ser_fun,
-                    param_args,
-                    param_kwargs,
-                )
+            with execution_context._import_context():
+                if function_def.is_class:
+                    service = import_class_service(
+                        function_def,
+                        ser_cls,
+                        param_args,
+                        param_kwargs,
+                    )
+                else:
+                    service = import_single_function_service(
+                        function_def,
+                        ser_cls,
+                        ser_fun,
+                        param_args,
+                        param_kwargs,
+                    )
 
             # If the cls/function decorator was applied in local scope, but the app is global, we can look it up
             if service.app is not None:
