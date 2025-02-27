@@ -108,9 +108,6 @@ class _Sandbox(_Object, type_prefix="sb"):
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
-        if len(entrypoint_args) == 0:
-            raise InvalidError("entrypoint_args must not be empty")
-
         validated_network_file_systems = validate_network_file_systems(network_file_systems)
 
         scheduler_placement: Optional[SchedulerPlacement] = _experimental_scheduler_placement
@@ -259,12 +256,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         from .app import _App
 
         environment_name = _get_environment_name(environment_name)
-
-        # If there are no entrypoint args, we'll sleep forever so that the sandbox will stay
-        # alive long enough for the user to interact with it.
-        if len(entrypoint_args) == 0:
-            max_sleep_time = 60 * 60 * 24 * 2  # 2 days is plenty since workers roll every 24h
-            entrypoint_args = ("sleep", str(max_sleep_time))
 
         _validate_exec_args(entrypoint_args)
 
