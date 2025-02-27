@@ -652,7 +652,7 @@ message ClassGetRequest {
   string environment_name = 4;
 
   bool lookup_published = 8; // Lookup class on app published by another workspace
-  string workspace_name = 9;
+  reserved 9; // workspace_name
   bool only_class_function = 10; // True starting with 0.67.x clients, which don't create method placeholder functions
 }
 
