@@ -503,13 +503,13 @@ class _Cls(typing.Generic[UserCls], _Object, type_prefix="cs"):
     @classmethod
     @renamed_parameter((2024, 12, 18), "tag", "name")
     def from_name(
-        cls: type["_Cls"],
+        cls,
         app_name: str,
         name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         workspace: Optional[str] = None,
-    ) -> "_Cls":
+    ) -> "_Cls[Any]":
         """Reference a Cls from a deployed App by its name.
 
         In contrast to `modal.Cls.lookup`, this is a lazy method
@@ -560,7 +560,7 @@ class _Cls(typing.Generic[UserCls], _Object, type_prefix="cs"):
         return cls
 
     def with_options(
-        self: "_Cls",
+        self,
         cpu: Optional[Union[float, tuple[float, float]]] = None,
         memory: Optional[Union[int, tuple[int, int]]] = None,
         gpu: GPU_T = None,
@@ -571,7 +571,7 @@ class _Cls(typing.Generic[UserCls], _Object, type_prefix="cs"):
         concurrency_limit: Optional[int] = None,
         allow_concurrent_inputs: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
-    ) -> "_Cls":
+    ) -> "_Cls[UserCls]":
         """
         **Beta:** Allows for the runtime modification of a modal.Cls's configuration.
 
@@ -626,7 +626,7 @@ class _Cls(typing.Generic[UserCls], _Object, type_prefix="cs"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         workspace: Optional[str] = None,
-    ) -> "_Cls":
+    ) -> "_Cls[Any]":
         """Lookup a Cls from a deployed App by its name.
 
         DEPRECATED: This method is deprecated in favor of `modal.Cls.from_name`.
