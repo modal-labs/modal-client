@@ -343,8 +343,10 @@ class _Obj:
 
 Obj = synchronize_api(_Obj)
 
+UserCls = typing.TypeVar("UserCls")
 
-class _Cls(_Object, type_prefix="cs"):
+
+class _Cls(typing.Generic[UserCls], _Object, type_prefix="cs"):
     """
     Cls adds method pooling and [lifecycle hook](/docs/guide/lifecycle-functions) behavior
     to [modal.Function](/docs/reference/modal.Function).
@@ -452,7 +454,9 @@ class _Cls(_Object, type_prefix="cs"):
                 )
 
     @staticmethod
-    def from_local(user_cls, app: "modal.app._App", class_service_function: _Function) -> "_Cls":
+    def from_local(
+        user_cls: typing.Type[UserCls], app: "modal.app._App", class_service_function: _Function
+    ) -> "_Cls[UserCls]":
         """mdmd:hidden"""
         # validate signature
         _Cls.validate_construction_mechanism(user_cls)
@@ -652,7 +656,7 @@ class _Cls(_Object, type_prefix="cs"):
         return obj
 
     @synchronizer.no_input_translation
-    def __call__(self, *args, **kwargs) -> _Obj:
+    def __call__(self, *args, **kwargs) -> UserCls:
         """This acts as the class constructor."""
         return _Obj(
             self,

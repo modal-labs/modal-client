@@ -55,6 +55,9 @@ from .volume import _Volume
 
 _default_image: _Image = _Image.debian_slim()
 
+if typing.TYPE_CHECKING:
+    import modal.cls
+
 
 class _LocalEntrypoint:
     _info: FunctionInfo
@@ -91,7 +94,7 @@ def check_sequence(items: typing.Sequence[typing.Any], item_type: type[typing.An
         raise InvalidError(error_msg)
 
 
-CLS_T = typing.TypeVar("CLS_T", bound=type[Any])
+CLS_T = typing.TypeVar("CLS_T")
 
 
 P = typing_extensions.ParamSpec("P")
@@ -820,7 +823,7 @@ class _App:
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
         _experimental_enable_gpu_snapshot: bool = False,  # Experimentally enable GPU memory snapshots.
-    ) -> Callable[[CLS_T], CLS_T]:
+    ) -> Callable[[typing.Type[CLS_T]], "modal.cls._Cls[CLS_T]"]:
         """
         Decorator to register a new Modal [Cls](/docs/reference/modal.Cls) with this App.
         """
