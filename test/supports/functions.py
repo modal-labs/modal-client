@@ -243,7 +243,7 @@ def fastapi_app_with_lifespan_failing_shutdown():
 lifespan_global_asgi_app_cls: list[str] = []
 
 
-@app.cls(container_idle_timeout=300, concurrency_limit=1, allow_concurrent_inputs=100)
+@app.cls(scaledown_window=300, max_containers=1, allow_concurrent_inputs=100)
 class fastapi_class_multiple_asgi_apps_lifespans:
     def __init__(self):
         assert len(lifespan_global_asgi_app_cls) == 0
@@ -294,7 +294,7 @@ class fastapi_class_multiple_asgi_apps_lifespans:
 lifespan_global_asgi_app_cls_fail: list[str] = []
 
 
-@app.cls(container_idle_timeout=300, concurrency_limit=1, allow_concurrent_inputs=100)
+@app.cls(scaledown_window=300, max_containers=1, allow_concurrent_inputs=100)
 class fastapi_class_lifespan_shutdown_failure:
     def __init__(self):
         assert len(lifespan_global_asgi_app_cls_fail) == 0
