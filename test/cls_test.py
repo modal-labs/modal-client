@@ -20,7 +20,7 @@ from modal._serialization import deserialize, deserialize_params, serialize
 from modal._utils.async_utils import synchronizer
 from modal._utils.deprecation import PendingDeprecationError
 from modal._utils.function_utils import FunctionInfo
-from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError, PendingDeprecationError
+from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import (
     PartialFunction,
     asgi_app,
