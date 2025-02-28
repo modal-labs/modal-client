@@ -122,10 +122,14 @@ def test_call_class_sync(client, servicer, set_env_client):
 
 
 def test_class_with_options(client, servicer):
+    unhydrated_volume = modal.Volume.from_name("some_volume", create_if_missing=True)
+    unhydrated_secret = modal.Secret.from_dict({"foo": "bar"})
     with app.run(client=client):
         with servicer.intercept() as ctx:
-            foo = Foo.with_options(cpu=48, retries=5)()  # type: ignore
-            assert len(ctx.calls) == 0  # no rpcs
+            foo = Foo.with_options(
+                cpu=48, retries=5, volumes={"/vol": unhydrated_volume}, secrets=[unhydrated_secret]
+            )()
+            assert len(ctx.calls) == 0  # no rpcs in with_options
 
             res = foo.bar.remote(2)
             function_bind_params: api_pb2.FunctionBindParamsRequest
@@ -133,9 +137,14 @@ def test_class_with_options(client, servicer):
             assert function_bind_params.function_options.retry_policy.retries == 5
             assert function_bind_params.function_options.resources.milli_cpu == 48000
 
+            assert len(ctx.get_requests("VolumeGetOrCreate")) == 1
+            assert len(ctx.get_requests("SecretGetOrCreate")) == 1
+
         with servicer.intercept() as ctx:
             res = foo.bar.remote(2)
             assert len(ctx.get_requests("FunctionBindParams")) == 0  # no need to rebind
+            assert len(ctx.get_requests("VolumeGetOrCreate")) == 0  # no need to rehydrate
+            assert len(ctx.get_requests("SecretGetOrCreate")) == 0  # no need to rehydrate
 
         assert res == 4
         assert len(servicer.function_options) == 1
