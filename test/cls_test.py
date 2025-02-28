@@ -124,13 +124,14 @@ def test_call_class_sync(client, servicer, set_env_client):
 def test_class_with_options(client, servicer):
     unhydrated_volume = modal.Volume.from_name("some_volume", create_if_missing=True)
     unhydrated_secret = modal.Secret.from_dict({"foo": "bar"})
+    with servicer.intercept() as ctx:
+        foo = Foo.with_options(  # type: ignore
+            cpu=48, retries=5, volumes={"/vol": unhydrated_volume}, secrets=[unhydrated_secret]
+        )()
+        assert len(ctx.calls) == 0  # no rpcs in with_options
+
     with app.run(client=client):
         with servicer.intercept() as ctx:
-            foo = Foo.with_options(  # type: ignore
-                cpu=48, retries=5, volumes={"/vol": unhydrated_volume}, secrets=[unhydrated_secret]
-            )()
-            assert len(ctx.calls) == 0  # no rpcs in with_options
-
             res = foo.bar.remote(2)
             function_bind_params: api_pb2.FunctionBindParamsRequest
             (function_bind_params,) = ctx.get_requests("FunctionBindParams")
@@ -151,11 +152,6 @@ def test_class_with_options(client, servicer):
         options: api_pb2.FunctionOptions = list(servicer.function_options.values())[0]
         assert options.resources.milli_cpu == 48_000
         assert options.retry_policy.retries == 5
-
-
-def test_class_with_options_need_hydrating(client, servicer):
-    with pytest.raises(ExecutionError, match="hydrate"):
-        Foo.with_options()  # type: ignore
 
 
 # Reusing the app runs into an issue with stale function handles.
