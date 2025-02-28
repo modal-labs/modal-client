@@ -37,14 +37,13 @@ async def async_typed_func(b: bool) -> str:
     return ""
 
 
-async_typed_func
-
 should_be_str = async_typed_func.remote(False)  # should be blocking without aio
 assert_type(should_be_str, str)
 
 
-@app.cls()
-class Cls:
+class OriginalCls:
+    p: int = modal.parameter()
+
     @method()
     def foo(self, a: str) -> int:
         return 1
@@ -54,7 +53,12 @@ class Cls:
         return 1
 
 
-instance = Cls()
+MyCls = app.cls()(OriginalCls)  # simulate decorator
+
+MyCls.with_options()
+
+instance = MyCls(p=10)
+
 should_be_int = instance.foo.remote("foo")
 assert_type(should_be_int, int)
 

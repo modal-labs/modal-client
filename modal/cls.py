@@ -343,8 +343,10 @@ class _Obj:
 
 Obj = synchronize_api(_Obj)
 
+UserCls = typing.TypeVar("UserCls")
 
-class _Cls(_Object, type_prefix="cs"):
+
+class _Cls(typing.Generic[UserCls], _Object, type_prefix="cs"):
     """
     Cls adds method pooling and [lifecycle hook](/docs/guide/lifecycle-functions) behavior
     to [modal.Function](/docs/reference/modal.Function).
@@ -452,7 +454,9 @@ class _Cls(_Object, type_prefix="cs"):
                 )
 
     @staticmethod
-    def from_local(user_cls, app: "modal.app._App", class_service_function: _Function) -> "_Cls":
+    def from_local(
+        user_cls: typing.Type[UserCls], app: "modal.app._App", class_service_function: _Function
+    ) -> "_Cls[UserCls]":
         """mdmd:hidden"""
         # validate signature
         _Cls.validate_construction_mechanism(user_cls)
@@ -499,13 +503,13 @@ class _Cls(_Object, type_prefix="cs"):
     @classmethod
     @renamed_parameter((2024, 12, 18), "tag", "name")
     def from_name(
-        cls: type["_Cls"],
+        cls,
         app_name: str,
         name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         workspace: Optional[str] = None,
-    ) -> "_Cls":
+    ) -> "_Cls[Any]":
         """Reference a Cls from a deployed App by its name.
 
         In contrast to `modal.Cls.lookup`, this is a lazy method
@@ -556,7 +560,7 @@ class _Cls(_Object, type_prefix="cs"):
         return cls
 
     def with_options(
-        self: "_Cls",
+        self,
         cpu: Optional[Union[float, tuple[float, float]]] = None,
         memory: Optional[Union[int, tuple[int, int]]] = None,
         gpu: GPU_T = None,
@@ -567,7 +571,7 @@ class _Cls(_Object, type_prefix="cs"):
         concurrency_limit: Optional[int] = None,
         allow_concurrent_inputs: Optional[int] = None,
         container_idle_timeout: Optional[int] = None,
-    ) -> "_Cls":
+    ) -> "_Cls[UserCls]":
         """
         **Beta:** Allows for the runtime modification of a modal.Cls's configuration.
 
@@ -622,7 +626,7 @@ class _Cls(_Object, type_prefix="cs"):
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         workspace: Optional[str] = None,
-    ) -> "_Cls":
+    ) -> "_Cls[Any]":
         """Lookup a Cls from a deployed App by its name.
 
         DEPRECATED: This method is deprecated in favor of `modal.Cls.from_name`.
@@ -652,7 +656,7 @@ class _Cls(_Object, type_prefix="cs"):
         return obj
 
     @synchronizer.no_input_translation
-    def __call__(self, *args, **kwargs) -> _Obj:
+    def __call__(self, *args, **kwargs) -> UserCls:
         """This acts as the class constructor."""
         return _Obj(
             self,

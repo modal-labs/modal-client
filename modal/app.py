@@ -36,7 +36,7 @@ from ._utils.mount_utils import validate_volumes
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
-from .cls import _Cls, parameter
+from .cls import _Cls
 from .config import logger
 from .exception import ExecutionError, InvalidError
 from .functions import Function
@@ -54,6 +54,9 @@ from .secret import _Secret
 from .volume import _Volume
 
 _default_image: _Image = _Image.debian_slim()
+
+if typing.TYPE_CHECKING:
+    import modal.cls
 
 
 class _LocalEntrypoint:
@@ -91,7 +94,7 @@ def check_sequence(items: typing.Sequence[typing.Any], item_type: type[typing.An
         raise InvalidError(error_msg)
 
 
-CLS_T = typing.TypeVar("CLS_T", bound=type[Any])
+CLS_T = typing.TypeVar("CLS_T")
 
 
 P = typing_extensions.ParamSpec("P")
@@ -770,7 +773,6 @@ class _App:
 
         return wrapped
 
-    @typing_extensions.dataclass_transform(field_specifiers=(parameter,), kw_only_default=True)
     def cls(
         self,
         _warn_parentheses_missing: Optional[bool] = None,
@@ -820,7 +822,7 @@ class _App:
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
         _experimental_enable_gpu_snapshot: bool = False,  # Experimentally enable GPU memory snapshots.
-    ) -> Callable[[CLS_T], CLS_T]:
+    ) -> Callable[[typing.Type[CLS_T]], "modal.cls._Cls[CLS_T]"]:
         """
         Decorator to register a new Modal [Cls](/docs/reference/modal.Cls) with this App.
         """
