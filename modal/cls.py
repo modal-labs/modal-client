@@ -605,16 +605,16 @@ class _Cls(_Object, type_prefix="cs"):
             resources = None
 
         async def _load_from_base(new_cls, resolver, existing_object_id):
-            print("loading with_options cls")
             # this is a bit confusing, the cls will always have the same metadata
             # since it has the same *class* service function (i.e. "template")
             # But the instance_service_function for each Obj will be different
             # since it will rebind to whatever `_options` have been assigned on
             # the particular Cls parent
-            new_cls._hydrate_from_other(self)
+            assert self.is_hydrated
+            new_cls._initialize_from_other(self)
 
         def _deps():
-            return [self]
+            return []
 
         cls = _Cls._from_loader(_load_from_base, rep=f"{self._name}.with_options(...)", is_another_app=True, deps=_deps)
         cls._initialize_from_other(self)
