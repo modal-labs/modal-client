@@ -218,7 +218,7 @@ _SETTINGS = {
     "worker_id": _Setting(),  # For internal debugging use.
     "restore_state_path": _Setting("/__modal/restore-state.json"),
     "force_build": _Setting(False, transform=_to_boolean),
-    "ignore_image_cache": _Setting(False, transform=_to_boolean),
+    "ignore_cache": _Setting(False, transform=_to_boolean),
     "traceback": _Setting(False, transform=_to_boolean),
     "image_builder_version": _Setting(),
     "strict_parameters": _Setting(False, transform=_to_boolean),  # For internal/experimental use
