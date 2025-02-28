@@ -76,8 +76,8 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
 @dataclasses.dataclass()
 class _ServiceOptions:
     secrets: typing.Collection[_Secret]
-    resources: api_pb2.Resources
-    retry_policy: api_pb2.FunctionRetryPolicy
+    resources: Optional[api_pb2.Resources]
+    retry_policy: Optional[api_pb2.FunctionRetryPolicy]
     concurrency_limit: Optional[int]
     timeout_secs: Optional[int]
     task_idle_timeout_secs: Optional[int]

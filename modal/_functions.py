@@ -1015,6 +1015,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         def _deps():
             if options:
                 return [v for _, v in options.validated_volumes] + list(options.secrets)
+            return []
 
         fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True, deps=_deps)
 
