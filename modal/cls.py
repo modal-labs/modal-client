@@ -504,7 +504,7 @@ class _Cls(_Object, type_prefix="cs"):
         name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
-        workspace: Optional[str] = None,
+        workspace: Optional[str] = None,  # Deprecated and unused
     ) -> "_Cls":
         """Reference a Cls from a deployed App by its name.
 
@@ -518,6 +518,11 @@ class _Cls(_Object, type_prefix="cs"):
         """
         _environment_name = environment_name or config.get("environment")
 
+        if workspace is not None:
+            deprecation_warning(
+                (2025, 1, 27), "The `workspace` argument is no longer used and will be removed in a future release."
+            )
+
         async def _load_remote(self: _Cls, resolver: Resolver, existing_object_id: Optional[str]):
             request = api_pb2.ClassGetRequest(
                 app_name=app_name,
@@ -525,7 +530,6 @@ class _Cls(_Object, type_prefix="cs"):
                 namespace=namespace,
                 environment_name=_environment_name,
                 lookup_published=workspace is not None,
-                workspace_name=workspace,
                 only_class_function=True,
             )
             try:
@@ -621,7 +625,7 @@ class _Cls(_Object, type_prefix="cs"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-        workspace: Optional[str] = None,
+        workspace: Optional[str] = None,  # Deprecated and unused
     ) -> "_Cls":
         """Lookup a Cls from a deployed App by its name.
 
