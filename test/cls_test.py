@@ -154,6 +154,46 @@ def test_class_with_options(client, servicer):
         assert options.retry_policy.retries == 5
 
 
+def test_with_options_from_name(servicer):
+    unhydrated_volume = modal.Volume.from_name("some_volume", create_if_missing=True)
+    unhydrated_secret = modal.Secret.from_dict({"foo": "bar"})
+
+    with servicer.intercept() as ctx:
+        SomeClass = modal.Cls.from_name("some_app", "SomeClass")
+        OptionedClass = SomeClass.with_options(cpu=10, secrets=[unhydrated_secret], volumes={"/vol": unhydrated_volume})
+        inst = OptionedClass(x=10)
+        assert len(ctx.calls) == 0
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("VolumeGetOrCreate", api_pb2.VolumeGetOrCreateResponse(volume_id="vo-123"))
+        ctx.add_response("SecretGetOrCreateRequest", api_pb2.SecretGetOrCreateResponse(secret_id="st-123"))
+        ctx.add_response("ClassGet", api_pb2.ClassGetResponse(class_id="cs-123"))
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-123",
+                handle_metadata=api_pb2.FunctionHandleMetadata(
+                    method_handle_metadata={
+                        "some_method": api_pb2.FunctionHandleMetadata(
+                            use_function_id="fu-123",
+                            use_method_name="some_method",
+                            function_name="SomeClass.some_method",
+                        )
+                    }
+                ),
+            ),
+        )
+        ctx.add_response("FunctionBindParams", api_pb2.FunctionBindParamsResponse(bound_function_id="fu-124"))
+        inst.some_method.remote()
+
+    function_bind_params: api_pb2.FunctionBindParamsRequest
+    (function_bind_params,) = ctx.get_requests("FunctionBindParams")
+    assert len(function_bind_params.function_options.volume_mounts) == 1
+    function_map: api_pb2.FunctionMapRequest
+    (function_map,) = ctx.get_requests("FunctionMap")
+    assert function_map.function_id == "fu-124"  # the bound function
+
+
 # Reusing the app runs into an issue with stale function handles.
 # TODO (akshat): have all the client tests use separate apps, and throw
 # an exception if the user tries to reuse an app.
