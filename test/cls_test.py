@@ -126,7 +126,7 @@ def test_class_with_options(client, servicer):
     unhydrated_secret = modal.Secret.from_dict({"foo": "bar"})
     with app.run(client=client):
         with servicer.intercept() as ctx:
-            foo = Foo.with_options(
+            foo = Foo.with_options(  # type: ignore
                 cpu=48, retries=5, volumes={"/vol": unhydrated_volume}, secrets=[unhydrated_secret]
             )()
             assert len(ctx.calls) == 0  # no rpcs in with_options
