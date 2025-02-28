@@ -166,7 +166,7 @@ def test_with_options_from_name(servicer):
 
     with servicer.intercept() as ctx:
         ctx.add_response("VolumeGetOrCreate", api_pb2.VolumeGetOrCreateResponse(volume_id="vo-123"))
-        ctx.add_response("SecretGetOrCreateRequest", api_pb2.SecretGetOrCreateResponse(secret_id="st-123"))
+        ctx.add_response("SecretGetOrCreate", api_pb2.SecretGetOrCreateResponse(secret_id="st-123"))
         ctx.add_response("ClassGet", api_pb2.ClassGetResponse(class_id="cs-123"))
         ctx.add_response(
             "FunctionGet",

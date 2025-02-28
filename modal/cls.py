@@ -607,10 +607,14 @@ class _Cls(_Object, type_prefix="cs"):
         async def _load_from_base(new_cls, resolver, existing_object_id):
             # this is a bit confusing, the cls will always have the same metadata
             # since it has the same *class* service function (i.e. "template")
-            # But the instance_service_function for each Obj will be different
+            # But the (instance) service function for each Obj will be different
             # since it will rebind to whatever `_options` have been assigned on
             # the particular Cls parent
-            assert self.is_hydrated
+            if not self.is_hydrated:
+                # this should only happen for Cls.from_name instances
+                # other classes should already be hydrated!
+                await resolver.load(self)
+
             new_cls._initialize_from_other(self)
 
         def _deps():
