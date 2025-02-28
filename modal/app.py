@@ -36,7 +36,7 @@ from ._utils.mount_utils import validate_volumes
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
-from .cls import _Cls, parameter
+from .cls import _Cls
 from .config import logger
 from .exception import ExecutionError, InvalidError
 from .functions import Function
@@ -773,7 +773,6 @@ class _App:
 
         return wrapped
 
-    @typing_extensions.dataclass_transform(field_specifiers=(parameter,), kw_only_default=True)
     def cls(
         self,
         _warn_parentheses_missing: Optional[bool] = None,
