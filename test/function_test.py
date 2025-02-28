@@ -263,10 +263,10 @@ def test_function_disk_request(client):
     app.function(ephemeral_disk=1_000_000)(dummy)
 
 
-def test_idle_timeout_must_be_positive():
+def test_scaledown_window_must_be_positive():
     app = App()
     with pytest.raises(InvalidError, match="must be > 0"):
-        app.function(container_idle_timeout=0)(dummy)
+        app.function(scaledown_window=0)(dummy)
 
 
 def later():
@@ -796,9 +796,9 @@ def test_autoscaler_settings(client, servicer):
     app = App()
 
     kwargs: dict[str, typing.Any] = dict(  # No idea why we need that type hint
-        keep_warm=2,
-        concurrency_limit=10,
-        container_idle_timeout=60,
+        min_containers=2,
+        max_containers=10,
+        scaledown_window=60,
     )
     f = app.function(**kwargs)(dummy)
 
@@ -806,9 +806,9 @@ def test_autoscaler_settings(client, servicer):
         defn = servicer.app_functions[f.object_id]
         # Test both backwards and forwards compatibility
         settings = defn.autoscaler_settings
-        assert settings.min_containers == defn.warm_pool_size == kwargs["keep_warm"]
-        assert settings.max_containers == defn.concurrency_limit == kwargs["concurrency_limit"]
-        assert settings.scaledown_window == defn.task_idle_timeout_secs == kwargs["container_idle_timeout"]
+        assert settings.min_containers == defn.warm_pool_size == kwargs["min_containers"]
+        assert settings.max_containers == defn.concurrency_limit == kwargs["max_containers"]
+        assert settings.scaledown_window == defn.task_idle_timeout_secs == kwargs["scaledown_window"]
 
 
 def test_not_hydrated():

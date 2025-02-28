@@ -417,18 +417,18 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         allow_cross_region_volumes: bool = False,
         volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
         memory: Optional[Union[int, tuple[int, int]]] = None,
         proxy: Optional[_Proxy] = None,
         retries: Optional[Union[int, Retries]] = None,
         timeout: Optional[int] = None,
-        concurrency_limit: Optional[int] = None,
+        min_containers: Optional[int] = None,
+        max_containers: Optional[int] = None,
+        buffer_containers: Optional[int] = None,
+        scaledown_window: Optional[int] = None,
         allow_concurrent_inputs: Optional[int] = None,
         batch_max_size: Optional[int] = None,
         batch_wait_ms: Optional[int] = None,
-        container_idle_timeout: Optional[int] = None,
-        cpu: Optional[Union[float, tuple[float, float]]] = None,
-        # keep_warm=True is equivalent to keep_warm=1
-        keep_warm: Optional[int] = None,
         cloud: Optional[str] = None,
         scheduler_placement: Optional[SchedulerPlacement] = None,
         is_builder_function: bool = False,
@@ -442,7 +442,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         ephemeral_disk: Optional[int] = None,
         # current default: first-party, future default: main-package
         include_source: Optional[bool] = None,
-        _experimental_buffer_containers: Optional[int] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
         _experimental_enable_gpu_snapshot: bool = False,
@@ -564,20 +563,21 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     force_build=image.force_build or pf.force_build,
                 )
 
-        if keep_warm is not None and not isinstance(keep_warm, int):
-            raise TypeError(f"`keep_warm` must be an int or bool, not {type(keep_warm).__name__}")
-
-        if (keep_warm is not None) and (concurrency_limit is not None) and concurrency_limit < keep_warm:
+        # Note that we also do these checks in FunctionCreate; could drop them here
+        if min_containers is not None and not isinstance(min_containers, int):
+            raise InvalidError(f"`min_containers` must be an int, not {type(min_containers).__name__}")
+        if min_containers is not None and max_containers is not None and max_containers < min_containers:
             raise InvalidError(
-                f"Function `{info.function_name}` has `{concurrency_limit=}`, "
-                f"strictly less than its `{keep_warm=}` parameter."
+                f"`min_containers` ({min_containers}) cannot be greater than `max_containers` ({max_containers})"
             )
+        if scaledown_window is not None and scaledown_window <= 0:
+            raise InvalidError("`scaledown_window` must be > 0")
 
         autoscaler_settings = api_pb2.AutoscalerSettings(
-            max_containers=concurrency_limit,
-            min_containers=keep_warm,
-            buffer_containers=_experimental_buffer_containers,
-            scaledown_window=container_idle_timeout,
+            min_containers=min_containers,
+            max_containers=max_containers,
+            buffer_containers=buffer_containers,
+            scaledown_window=scaledown_window,
         )
 
         if _experimental_custom_scaling_factor is not None and (
@@ -604,9 +604,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             for arg in inspect.signature(info.raw_f).parameters.values():
                 if arg.default is not inspect.Parameter.empty:
                     raise InvalidError(f"Modal batched function {func_name} does not accept default arguments.")
-
-        if container_idle_timeout is not None and container_idle_timeout <= 0:
-            raise InvalidError("`container_idle_timeout` must be > 0")
 
         if max_inputs is not None:
             if not isinstance(max_inputs, int):
@@ -773,11 +770,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     proxy_id=(proxy.object_id if proxy else None),
                     retry_policy=retry_policy,
                     timeout_secs=timeout_secs or 0,
-                    task_idle_timeout_secs=container_idle_timeout or 0,
-                    concurrency_limit=concurrency_limit or 0,
                     pty_info=pty_info,
                     cloud_provider_str=cloud if cloud else "",
-                    warm_pool_size=keep_warm or 0,
                     runtime=config.get("function_runtime"),
                     runtime_debug=config.get("function_runtime_debug"),
                     runtime_perf_record=config.get("runtime_perf_record"),
@@ -802,10 +796,15 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     snapshot_debug=config.get("snapshot_debug"),
                     _experimental_group_size=cluster_size or 0,  # Experimental: Clustered functions
                     _experimental_concurrent_cancellations=True,
-                    _experimental_buffer_containers=_experimental_buffer_containers or 0,
                     _experimental_proxy_ip=_experimental_proxy_ip,
                     _experimental_custom_scaling=_experimental_custom_scaling_factor is not None,
                     _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
+                    # --- These are deprecated in favor of autoscaler_settings
+                    warm_pool_size=min_containers or 0,
+                    concurrency_limit=max_containers or 0,
+                    _experimental_buffer_containers=buffer_containers or 0,
+                    task_idle_timeout_secs=scaledown_window or 0,
+                    # ---
                 )
 
                 if isinstance(gpu, list):
