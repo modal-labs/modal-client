@@ -371,7 +371,7 @@ class _Cls(_Object, type_prefix="cs"):
     """
 
     _class_service_function: Optional[_Function]  # The _Function (read "service") serving *all* methods of the class
-    _options: Optional[_ServiceOptions]  # TODO: typed dict/dataclass?
+    _options: Optional[_ServiceOptions]
 
     _app: Optional["modal.app._App"] = None  # not set for lookups
     _name: Optional[str]
