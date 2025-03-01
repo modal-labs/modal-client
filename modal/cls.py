@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import dataclasses
 import inspect
 import os
 import typing
@@ -70,6 +71,18 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
                     constructor_parameters.append(param)
 
         return inspect.Signature(constructor_parameters)
+
+
+@dataclasses.dataclass()
+class _ServiceOptions:
+    secrets: typing.Collection[_Secret]
+    resources: Optional[api_pb2.Resources]
+    retry_policy: Optional[api_pb2.FunctionRetryPolicy]
+    concurrency_limit: Optional[int]
+    timeout_secs: Optional[int]
+    task_idle_timeout_secs: Optional[int]
+    validated_volumes: typing.Sequence[tuple[str, _Volume]]
+    target_concurrent_inputs: Optional[int]
 
 
 def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name: str):
@@ -144,12 +157,13 @@ class _Obj:
     _kwargs: dict[str, Any]
 
     _instance_service_function: Optional[_Function] = None  # this gets set lazily
+    _options: Optional[_ServiceOptions]
 
     def __init__(
         self,
         cls: "_Cls",
         user_cls: Optional[type],  # this would be None in case of lookups
-        options: Optional[api_pb2.FunctionOptions],
+        options: Optional[_ServiceOptions],
         args,
         kwargs,
     ):
@@ -354,7 +368,7 @@ class _Cls(_Object, type_prefix="cs"):
     """
 
     _class_service_function: Optional[_Function]  # The _Function (read "service") serving *all* methods of the class
-    _options: Optional[api_pb2.FunctionOptions]
+    _options: Optional[_ServiceOptions]  # TODO: typed dict/dataclass?
 
     _app: Optional["modal.app._App"] = None  # not set for lookups
     _name: Optional[str]
@@ -595,28 +609,16 @@ class _Cls(_Object, type_prefix="cs"):
         else:
             resources = None
 
-        volume_mounts = [
-            api_pb2.VolumeMount(
-                mount_path=path,
-                volume_id=volume.object_id,
-                allow_background_commits=True,
-            )
-            for path, volume in validate_volumes(volumes)
-        ]
-        replace_volume_mounts = len(volume_mounts) > 0
-
         cls = self.clone()
-        cls._options = api_pb2.FunctionOptions(
-            replace_secret_ids=bool(secrets),
-            secret_ids=[secret.object_id for secret in secrets],
+        cls._options = _ServiceOptions(
+            secrets=secrets,
             resources=resources,
             retry_policy=retry_policy,
             # TODO(michael) Update the protos to use the new terminology
             concurrency_limit=max_containers,
             task_idle_timeout_secs=scaledown_window,
             timeout_secs=timeout,
-            replace_volume_mounts=replace_volume_mounts,
-            volume_mounts=volume_mounts,
+            validated_volumes=validate_volumes(volumes),
             target_concurrent_inputs=allow_concurrent_inputs,
         )
 
