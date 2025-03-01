@@ -12,6 +12,16 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.78 (2025-03-01)
+
+- It is now possible to call `Cls.with_options` on an unhydrated Cls, e.g.
+
+    ```python
+    ModelWithGPU = modal.Cls.from_name("my-app", "Model").with_options(gpu="H100")
+    ```
+
+
+
 ### 0.73.77 (2025-03-01)
 
 * `Cls.with_options()` now accept unhydated volume and secrets
