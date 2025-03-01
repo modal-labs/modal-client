@@ -12,6 +12,29 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.76 (2025-02-28)
+
+- We're renaming several `App.function` and `App.cls` parameters that configure the behavior of Modal's autoscaler:
+    - `concurrency_limit` is now `max_containers`
+    - `keep_warm` is now `min_containers`
+    - `container_idle_timeout` is now `scaledown_window`
+- The old names will continue to work, but using them will issue a deprecation warning. The aim of the renaming is to reduce some persistent confusion about what these parameters mean. Code updates should require only a simple substitution of the new name.
+- We're adding a new parameter, `buffer_containers` (previously available as `_experimental_buffer_containers`). When your Function is actively handling inputs, the autoscaler will spin up additional `buffer_containers` so that subsequent inputs will not be blocked on cold starts. When the Function is idle, it will still scale down to the value given by `min_containers`.
+
+
+
+### 0.73.75 (2025-02-28)
+
+- Adds a new config field, `ignore_cache` (also accessible via environment variables as `MODAL_IGNORE_CACHE=1`), which will force Images used by the App to rebuild but not clobber any existing cached Images. This can be useful for testing an App's robustness to Image rebuilds without affecting other Apps that depend on the same base Image layer(s).
+
+
+
+### 0.73.73 (2025-02-28)
+
+- Adds a deprecation warning to the `workspace` parameter in `modal.Cls` lookup methods. This argument is unused and will be removed in the future.
+
+
+
 ### 0.73.69 (2025-02-25)
 
 - We've moved the `modal.functions.gather` function to be a staticmethod on `modal.FunctionCall.gather`. The former spelling has been deprecated and will be removed in a future version.

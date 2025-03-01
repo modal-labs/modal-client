@@ -25,7 +25,7 @@ from ._resources import convert_fn_config_to_resources_config
 from ._serialization import check_valid_cls_constructor_arg
 from ._traceback import print_server_warnings
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.deprecation import deprecation_warning, renamed_parameter
+from ._utils.deprecation import deprecation_warning, renamed_parameter, warn_on_renamed_autoscaler_settings
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
@@ -518,7 +518,7 @@ class _Cls(_Object, type_prefix="cs"):
         name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
-        workspace: Optional[str] = None,
+        workspace: Optional[str] = None,  # Deprecated and unused
     ) -> "_Cls":
         """Reference a Cls from a deployed App by its name.
 
@@ -532,6 +532,11 @@ class _Cls(_Object, type_prefix="cs"):
         """
         _environment_name = environment_name or config.get("environment")
 
+        if workspace is not None:
+            deprecation_warning(
+                (2025, 1, 27), "The `workspace` argument is no longer used and will be removed in a future release."
+            )
+
         async def _load_remote(self: _Cls, resolver: Resolver, existing_object_id: Optional[str]):
             request = api_pb2.ClassGetRequest(
                 app_name=app_name,
@@ -539,7 +544,6 @@ class _Cls(_Object, type_prefix="cs"):
                 namespace=namespace,
                 environment_name=_environment_name,
                 lookup_published=workspace is not None,
-                workspace_name=workspace,
                 only_class_function=True,
             )
             try:
@@ -569,6 +573,7 @@ class _Cls(_Object, type_prefix="cs"):
         cls._name = name
         return cls
 
+    @warn_on_renamed_autoscaler_settings
     def with_options(
         self: "_Cls",
         cpu: Optional[Union[float, tuple[float, float]]] = None,
@@ -577,10 +582,13 @@ class _Cls(_Object, type_prefix="cs"):
         secrets: Collection[_Secret] = (),
         volumes: dict[Union[str, os.PathLike], _Volume] = {},
         retries: Optional[Union[int, Retries]] = None,
+        max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
+        scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
         timeout: Optional[int] = None,
-        concurrency_limit: Optional[int] = None,
         allow_concurrent_inputs: Optional[int] = None,
-        container_idle_timeout: Optional[int] = None,
+        # The following parameters are deprecated
+        concurrency_limit: Optional[int] = None,  # Now called `max_containers`
+        container_idle_timeout: Optional[int] = None,  # Now called `scaledown_window`
     ) -> "_Cls":
         """
         **Beta:** Allows for the runtime modification of a modal.Cls's configuration.
@@ -606,9 +614,10 @@ class _Cls(_Object, type_prefix="cs"):
             secrets=secrets,
             resources=resources,
             retry_policy=retry_policy,
-            concurrency_limit=concurrency_limit,
+            # TODO(michael) Update the protos to use the new terminology
+            concurrency_limit=max_containers,
+            task_idle_timeout_secs=scaledown_window,
             timeout_secs=timeout,
-            task_idle_timeout_secs=container_idle_timeout,
             validated_volumes=validate_volumes(volumes),
             target_concurrent_inputs=allow_concurrent_inputs,
         )
@@ -623,7 +632,7 @@ class _Cls(_Object, type_prefix="cs"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-        workspace: Optional[str] = None,
+        workspace: Optional[str] = None,  # Deprecated and unused
     ) -> "_Cls":
         """Lookup a Cls from a deployed App by its name.
 
