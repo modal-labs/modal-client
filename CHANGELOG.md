@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.77 (2025-03-01)
+
+* `Cls.with_options()` now accept unhydated volume and secrets
+
+
+
 ### 0.73.76 (2025-02-28)
 
 - We're renaming several `App.function` and `App.cls` parameters that configure the behavior of Modal's autoscaler:
