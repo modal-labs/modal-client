@@ -927,7 +927,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     def _bind_parameters(
         self,
         obj: "modal.cls._Obj",
-        options: Optional[api_pb2.FunctionOptions],
+        options: Optional["modal.cls._ServiceOptions"],
         args: Sized,
         kwargs: dict[str, Any],
     ) -> "_Function":
@@ -978,10 +978,35 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
             environment_name = _get_environment_name(None, resolver)
             assert parent is not None and parent.is_hydrated
+
+            if options:
+                volume_mounts = [
+                    api_pb2.VolumeMount(
+                        mount_path=path,
+                        volume_id=volume.object_id,
+                        allow_background_commits=True,
+                    )
+                    for path, volume in options.validated_volumes
+                ]
+                options_pb = api_pb2.FunctionOptions(
+                    secret_ids=[s.object_id for s in options.secrets],
+                    replace_secret_ids=bool(options.secrets),
+                    resources=options.resources,
+                    retry_policy=options.retry_policy,
+                    concurrency_limit=options.concurrency_limit,
+                    timeout_secs=options.timeout_secs,
+                    task_idle_timeout_secs=options.task_idle_timeout_secs,
+                    replace_volume_mounts=len(volume_mounts) > 0,
+                    volume_mounts=volume_mounts,
+                    target_concurrent_inputs=options.target_concurrent_inputs,
+                )
+            else:
+                options_pb = None
+
             req = api_pb2.FunctionBindParamsRequest(
                 function_id=parent.object_id,
                 serialized_params=serialized_params,
-                function_options=options,
+                function_options=options_pb,
                 environment_name=environment_name
                 or "",  # TODO: investigate shouldn't environment name always be specified here?
             )
@@ -989,7 +1014,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             response = await retry_transient_errors(parent._client.stub.FunctionBindParams, req)
             param_bound_func._hydrate(response.bound_function_id, parent._client, response.handle_metadata)
 
-        fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
+        def _deps():
+            if options:
+                return [v for _, v in options.validated_volumes] + list(options.secrets)
+            return []
+
+        fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True, deps=_deps)
 
         fun._info = self._info
         fun._obj = obj
