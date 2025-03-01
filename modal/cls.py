@@ -110,11 +110,14 @@ def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name:
         hydrate_from_instance_service_function(fun)
 
     def _deps():
-        if service_function.is_hydrated:
-            # without this check, the common service_function will be reloaded by all methods
-            # TODO(elias): Investigate if we can fix this multi-loader in the resolver - feels like a bug?
-            return []
-        return [service_function]
+        unhydrated_deps = []
+        # without this check, the common service_function will be reloaded by all methods
+        # TODO(elias): Investigate if we can fix this multi-loader in the resolver - feels like a bug?
+        if not cls.is_hydrated:
+            unhydrated_deps.append(cls)
+        if not service_function.is_hydrated:
+            unhydrated_deps.append(service_function)
+        return unhydrated_deps
 
     rep = f"Method({cls._name}.{method_name})"
 
@@ -368,7 +371,7 @@ class _Cls(_Object, type_prefix="cs"):
     """
 
     _class_service_function: Optional[_Function]  # The _Function (read "service") serving *all* methods of the class
-    _options: Optional[_ServiceOptions]  # TODO: typed dict/dataclass?
+    _options: Optional[_ServiceOptions]
 
     _app: Optional["modal.app._App"] = None  # not set for lookups
     _name: Optional[str]
@@ -609,7 +612,24 @@ class _Cls(_Object, type_prefix="cs"):
         else:
             resources = None
 
-        cls = self.clone()
+        async def _load_from_base(new_cls, resolver, existing_object_id):
+            # this is a bit confusing, the cls will always have the same metadata
+            # since it has the same *class* service function (i.e. "template")
+            # But the (instance) service function for each Obj will be different
+            # since it will rebind to whatever `_options` have been assigned on
+            # the particular Cls parent
+            if not self.is_hydrated:
+                # this should only happen for Cls.from_name instances
+                # other classes should already be hydrated!
+                await resolver.load(self)
+
+            new_cls._initialize_from_other(self)
+
+        def _deps():
+            return []
+
+        cls = _Cls._from_loader(_load_from_base, rep=f"{self._name}.with_options(...)", is_another_app=True, deps=_deps)
+        cls._initialize_from_other(self)
         cls._options = _ServiceOptions(
             secrets=secrets,
             resources=resources,
