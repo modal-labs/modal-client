@@ -941,7 +941,7 @@ class _Image(_Object, type_prefix="im"):
             resp = await retry_transient_errors(client.stub.ImageFromId, api_pb2.ImageFromIdRequest(image_id=image_id))
             self._hydrate(resp.image_id, resolver.client, resp.metadata)
 
-        rep = "Image()"
+        rep = f"Image.from_id({image_id!r})"
         obj = _Image._from_loader(_load, rep)
 
         return obj
