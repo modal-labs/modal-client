@@ -2338,6 +2338,7 @@ message SandboxInfo {
   string id = 1;
   double created_at = 3;
   TaskInfo task_info = 4;
+  string app_id = 5;
 
   reserved 2; // modal.client.Sandbox definition
 }
