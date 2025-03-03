@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from synchronicity.exceptions import UserCodeException
 
 import modal
-from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, web_endpoint
+from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, fastapi_endpoint
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
 from modal.exception import DeprecationError, ExecutionError, InvalidError
@@ -591,7 +591,7 @@ def test_local_execution_on_web_endpoint(client, servicer):
     app = App()
 
     @app.function(serialized=True)
-    @web_endpoint()
+    @fastapi_endpoint()
     def foo(x: str):
         return f"{x}!"
 
@@ -638,7 +638,7 @@ def test_invalid_remote_executor_on_web_endpoint(client, servicer, remote_execut
     app = App()
 
     @app.function(serialized=True)
-    @web_endpoint()
+    @fastapi_endpoint()
     def foo():
         pass
 
@@ -746,7 +746,7 @@ def test_allow_cross_region_volumes_webhook(client, servicer):
     vol2 = NetworkFileSystem.from_name("xyz-2", create_if_missing=True)
     # Should pass flag for all the function's NetworkFileSystemMounts
     app.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(
-        web_endpoint()(dummy)
+        fastapi_endpoint()(dummy)
     )
 
     with app.run(client=client):
@@ -763,7 +763,7 @@ def test_serialize_deserialize_function_handle(servicer, client):
     app = App()
 
     @app.function(serialized=True)
-    @web_endpoint()
+    @fastapi_endpoint()
     def my_handle():
         pass
 

@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal import App, asgi_app, batched, method, web_endpoint, wsgi_app
+from modal import App, asgi_app, batched, fastapi_endpoint, method, web_endpoint, wsgi_app
 from modal.exception import InvalidError
 
 
@@ -80,7 +80,7 @@ def test_web_endpoint_method():
         @app.cls()
         class Container:
             @method()  # type: ignore
-            @web_endpoint()
+            @fastapi_endpoint()
             def generate(self):
                 pass
 

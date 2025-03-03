@@ -256,6 +256,64 @@ def _parse_custom_domains(custom_domains: Optional[Iterable[str]] = None) -> lis
     return _custom_domains
 
 
+def _fastapi_endpoint(
+    _warn_parentheses_missing=None,
+    *,
+    method: str = "GET",  # REST method for the created endpoint.
+    label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
+    custom_domains: Optional[Iterable[str]] = None,  # Custom fully-qualified domain name (FQDN) for the endpoint.
+    docs: bool = False,  # Whether to enable interactive documentation for this endpoint at /docs.
+    requires_proxy_auth: bool = False,  # Require Modal-Key and Modal-Secret HTTP Headers on requests.
+) -> Callable[[Callable[P, ReturnType]], _PartialFunction[P, ReturnType, ReturnType]]:
+    """Register a basic web endpoint with this application.
+
+    This is the simple way to create a web endpoint on Modal. The function
+    behaves as a [FastAPI](https://fastapi.tiangolo.com/) handler and should
+    return a response object to the caller.
+
+    Endpoints created with `@app.fastapi_endpoint` are meant to be simple, single
+    request handlers and automatically have
+    [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) enabled.
+    For more flexibility, use `@app.asgi_app`.
+
+    To learn how to use Modal with popular web frameworks, see the
+    [guide on web endpoints](https://modal.com/docs/guide/webhooks).
+
+    This function replaces the deprecated `@web_endpoint` decorator.
+    """
+    if isinstance(_warn_parentheses_missing, str):
+        # Probably passing the method string as a positional argument.
+        raise InvalidError('Positional arguments are not allowed. Suggestion: `@fastapi_endpoint(method="GET")`.')
+    elif _warn_parentheses_missing is not None:
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@fastapi_endpoint()`."
+        )
+
+    def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+        if isinstance(raw_f, _Function):
+            raw_f = raw_f.get_raw_f()
+            raise InvalidError(
+                f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
+                "@app.function()\n@app.fastapi_endpoint()\ndef my_webhook():\n    ..."
+            )
+
+        return _PartialFunction(
+            raw_f,
+            _PartialFunctionFlags.FUNCTION,
+            api_pb2.WebhookConfig(
+                type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+                method=method,
+                web_endpoint_docs=docs,
+                requested_suffix=label or "",
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
+                custom_domains=_parse_custom_domains(custom_domains),
+                requires_proxy_auth=requires_proxy_auth,
+            ),
+        )
+
+    return wrapper
+
+
 def _web_endpoint(
     _warn_parentheses_missing=None,
     *,

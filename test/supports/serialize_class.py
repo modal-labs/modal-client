@@ -2,7 +2,7 @@
 import sys
 
 import modal
-from modal import enter, method, web_endpoint
+from modal import enter, fastapi_endpoint, method
 from modal._serialization import serialize
 
 
@@ -15,7 +15,7 @@ class UserCls:
     def method(self):
         return "a"
 
-    @web_endpoint()
+    @fastapi_endpoint()
     def web_endpoint(self):
         pass
 
