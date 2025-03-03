@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.81 (2025-03-03)
+
+- The `wait_for_response` parameter of Modal's web endpoint decorators has been removed (originally deprecated in May 2024).
+
+
+
 ### 0.73.78 (2025-03-01)
 
 - It is now possible to call `Cls.with_options` on an unhydrated Cls, e.g.
