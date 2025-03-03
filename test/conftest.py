@@ -1672,12 +1672,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def TaskCurrentInputs(self, stream: grpclib.server.Stream[Empty, api_pb2.TaskCurrentInputsResponse]) -> None:
         await stream.send_message(api_pb2.TaskCurrentInputsResponse(input_ids=[]))  # dummy implementation
 
-    async def TaskResult(self, stream):
-        request: api_pb2.TaskResultRequest = await stream.recv_message()
-        if self.task_result is None:
-            self.task_result = request.result
-        await stream.send_message(Empty())
-
     ### Token flow
 
     async def TokenFlowCreate(self, stream):
