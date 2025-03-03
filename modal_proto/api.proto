@@ -2667,10 +2667,6 @@ message TaskProgress {
   string description = 4;
 }
 
-message TaskResultRequest {
-  GenericResult result = 2;
-}
-
 message TaskStats {
   string task_id = 1;
   string app_id = 2;
@@ -3052,7 +3048,6 @@ service ModalClient {
   rpc TaskClusterHello(TaskClusterHelloRequest) returns (TaskClusterHelloResponse);
   rpc TaskCurrentInputs(google.protobuf.Empty) returns (TaskCurrentInputsResponse);
   rpc TaskList(TaskListRequest) returns (TaskListResponse);
-  rpc TaskResult(TaskResultRequest) returns (google.protobuf.Empty);
 
   // Tokens (web auth flow)
   rpc TokenFlowCreate(TokenFlowCreateRequest) returns (TokenFlowCreateResponse);
