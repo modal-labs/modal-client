@@ -117,7 +117,7 @@ def warn_on_renamed_autoscaler_settings(func: Callable[P, R]) -> Callable[P, R]:
                 f"\n\n{substitution_string}"
                 "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more details."
             )
-            deprecation_warning((2025, 2, 24), message, pending=True, show_source=True)
+            deprecation_warning((2025, 2, 24), message, show_source=True)
 
         return func(*args, **kwargs)
 

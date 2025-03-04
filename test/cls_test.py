@@ -18,7 +18,6 @@ from modal._partial_function import (
 )
 from modal._serialization import deserialize, deserialize_params, serialize
 from modal._utils.async_utils import synchronizer
-from modal._utils.deprecation import PendingDeprecationError
 from modal._utils.function_utils import FunctionInfo
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import (
@@ -154,7 +153,7 @@ def test_class_with_options(client, servicer):
         assert options.resources.milli_cpu == 48_000
         assert options.retry_policy.retries == 5
 
-        with pytest.warns(PendingDeprecationError, match="max_containers"):
+        with pytest.warns(DeprecationError, match="max_containers"):
             Foo.with_options(concurrency_limit=10)()  # type: ignore
 
 
