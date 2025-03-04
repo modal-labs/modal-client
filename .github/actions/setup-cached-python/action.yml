@@ -14,13 +14,13 @@ runs:
       with:
         python-version: ${{ inputs.version }}
 
-    - name: Get cached python dependencies
-      uses: actions/cache@v4
-      with:
-        path: ${{ env.pythonLocation }}
-        key: |
-          ${{ runner.os }}-${{ env.pythonLocation }}-${{ hashFiles('**/setup.cfg', 'requirements.dev.txt', 'pyproject.toml') }}
-        restore-keys: ${{ runner.os }}-${{ env.pythonLocation }}-
+    # - name: Get cached python dependencies
+    #   uses: actions/cache@v4
+    #   with:
+    #     path: ${{ env.pythonLocation }}
+    #     key: |
+    #       ${{ runner.os }}-${{ env.pythonLocation }}-${{ hashFiles('**/setup.cfg', 'requirements.dev.txt', 'pyproject.toml') }}
+    #     restore-keys: ${{ runner.os }}-${{ env.pythonLocation }}-
 
     - name: Install Python packages
       shell: bash
