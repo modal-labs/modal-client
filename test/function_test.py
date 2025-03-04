@@ -811,6 +811,21 @@ def test_autoscaler_settings(client, servicer):
         assert settings.scaledown_window == defn.task_idle_timeout_secs == kwargs["scaledown_window"]
 
 
+@pytest.mark.parametrize(
+    "new,old",
+    [
+        ("min_containers", "keep_warm"),
+        ("max_containers", "concurrency_limit"),
+        ("scaledown_window", "container_idle_timeout"),
+    ],
+)
+def test_autoscaler_settings_deprecations(new, old):
+    app = App()
+
+    with pytest.warns(DeprecationError, match=f"{old} -> {new}"):
+        app.function(**{old: 10})(dummy)  # type: ignore
+
+
 def test_not_hydrated():
     with pytest.raises(ExecutionError):
         assert foo.remote(2, 4) == 20
