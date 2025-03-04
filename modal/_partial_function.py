@@ -264,7 +264,7 @@ def _fastapi_endpoint(
     To learn how to use Modal with popular web frameworks, see the
     [guide on web endpoints](https://modal.com/docs/guide/webhooks).
 
-    This function replaces the deprecated `@web_endpoint` decorator.
+    *Added in v0.73.82*: This function replaces the deprecated `@web_endpoint` decorator.
     """
     if isinstance(_warn_parentheses_missing, str):
         # Probably passing the method string as a positional argument.

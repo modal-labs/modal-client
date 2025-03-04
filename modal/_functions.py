@@ -1643,6 +1643,8 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
         result_1, result_2 = modal.FunctionCall.gather(fc1, fc2)
         ```
+
+        *Added in v0.73.69*: This method replaces the deprecated `modal.functions.gather` function.
         """
         try:
             return await TaskContext.gather(*[fc.get() for fc in function_calls])
