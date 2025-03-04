@@ -2295,7 +2295,7 @@ message Sandbox {
   optional string runsc_runtime_version = 27;
 
   // If set, overrides the runtime used by the function, either "runc" or "gvisor".
-  string runtime = 28;
+  optional string runtime = 28;
 }
 
 message SandboxCreateRequest {
