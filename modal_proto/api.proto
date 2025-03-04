@@ -2630,6 +2630,7 @@ message TaskInfo {
   double finished_at = 3;
   modal.client.GenericResult result = 4;
   double enqueued_at = 5;
+  string task_type = 6;
 }
 
 message TaskListRequest {
