@@ -628,8 +628,8 @@ message CheckpointInfo {
   int64 size = 5;
   bool checksum_is_file_index = 6;
   string original_task_id = 7;
-  reserved 8;
-  string runsc_runtime_version = 9;
+  // snapshot version used to take the checkpoint
+  uint32 snapshot_version = 8;
 }
 
 message ClassCreateRequest {
