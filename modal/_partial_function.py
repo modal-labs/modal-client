@@ -63,8 +63,8 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     def __init__(
         self,
         raw_f: Callable[P, ReturnType],
-        *,
         flags: _PartialFunctionFlags,
+        *,
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         is_generator: Optional[bool] = None,
         batch_max_size: Optional[int] = None,
@@ -285,7 +285,7 @@ def _fastapi_endpoint(
         return _PartialFunction(
             raw_f,
             _PartialFunctionFlags.FUNCTION,
-            api_pb2.WebhookConfig(
+            webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION,
                 method=method,
                 web_endpoint_docs=docs,
@@ -343,7 +343,7 @@ def _web_endpoint(
         return _PartialFunction(
             raw_f,
             _PartialFunctionFlags.FUNCTION,
-            api_pb2.WebhookConfig(
+            webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION,
                 method=method,
                 web_endpoint_docs=docs,
@@ -413,7 +413,7 @@ def _asgi_app(
         return _PartialFunction(
             raw_f,
             _PartialFunctionFlags.FUNCTION,
-            api_pb2.WebhookConfig(
+            webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
                 requested_suffix=label,
                 async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
@@ -481,7 +481,7 @@ def _wsgi_app(
         return _PartialFunction(
             raw_f,
             _PartialFunctionFlags.FUNCTION,
-            api_pb2.WebhookConfig(
+            webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
                 requested_suffix=label,
                 async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
@@ -536,7 +536,7 @@ def _web_server(
         return _PartialFunction(
             raw_f,
             _PartialFunctionFlags.FUNCTION,
-            api_pb2.WebhookConfig(
+            webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_WEB_SERVER,
                 requested_suffix=label,
                 async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
