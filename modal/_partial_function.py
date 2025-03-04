@@ -54,7 +54,6 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     flags: _PartialFunctionFlags
     webhook_config: Optional[api_pb2.WebhookConfig]
     is_generator: bool
-    keep_warm: Optional[int]
     batch_max_size: Optional[int]
     batch_wait_ms: Optional[int]
     force_build: bool
@@ -65,9 +64,9 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         self,
         raw_f: Callable[P, ReturnType],
         flags: _PartialFunctionFlags,
+        *,
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         is_generator: Optional[bool] = None,
-        keep_warm: Optional[int] = None,
         batch_max_size: Optional[int] = None,
         batch_wait_ms: Optional[int] = None,
         cluster_size: Optional[int] = None,  # Experimental: Clustered functions
@@ -84,7 +83,6 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
             final_is_generator = is_generator
 
         self.is_generator = final_is_generator
-        self.keep_warm = keep_warm
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
         self.batch_max_size = batch_max_size
         self.batch_wait_ms = batch_wait_ms
@@ -141,7 +139,6 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
             raw_f=self.raw_f,
             flags=(self.flags | flags),
             webhook_config=self.webhook_config,
-            keep_warm=self.keep_warm,
             batch_max_size=self.batch_max_size,
             batch_wait_ms=self.batch_wait_ms,
             force_build=self.force_build,
@@ -198,7 +195,6 @@ def _method(
     # Set this to True if it's a non-generator function returning
     # a [sync/async] generator object
     is_generator: Optional[bool] = None,
-    keep_warm: Optional[int] = None,  # Deprecated: Use keep_warm on @app.cls() instead
 ) -> _MethodDecoratorType:
     """Decorator for methods that should be transformed into a Modal Function registered against this class's App.
 
@@ -216,17 +212,6 @@ def _method(
     if _warn_parentheses_missing is not None:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@method()`.")
 
-    if keep_warm is not None:
-        deprecation_warning(
-            (2024, 6, 10),
-            (
-                "`keep_warm=` is no longer supported per-method on Modal classes. "
-                "All methods and web endpoints of a class use the same set of containers now. "
-                "Use keep_warm via the @app.cls() decorator instead. "
-            ),
-            pending=True,
-        )
-
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         nonlocal is_generator
         if isinstance(raw_f, _PartialFunction) and raw_f.webhook_config:
@@ -241,7 +226,7 @@ def _method(
                 "Batched function on classes should not be wrapped by `@method`. "
                 "Suggestion: remove the `@method` decorator."
             )
-        return _PartialFunction(raw_f, _PartialFunctionFlags.FUNCTION, is_generator=is_generator, keep_warm=keep_warm)
+        return _PartialFunction(raw_f, _PartialFunctionFlags.FUNCTION, is_generator=is_generator)
 
     return wrapper  # type: ignore   # synchronicity issue with wrapped vs unwrapped types and protocols
 
@@ -300,7 +285,7 @@ def _fastapi_endpoint(
         return _PartialFunction(
             raw_f,
             _PartialFunctionFlags.FUNCTION,
-            api_pb2.WebhookConfig(
+            webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION,
                 method=method,
                 web_endpoint_docs=docs,
@@ -358,7 +343,7 @@ def _web_endpoint(
         return _PartialFunction(
             raw_f,
             _PartialFunctionFlags.FUNCTION,
-            api_pb2.WebhookConfig(
+            webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION,
                 method=method,
                 web_endpoint_docs=docs,
@@ -428,7 +413,7 @@ def _asgi_app(
         return _PartialFunction(
             raw_f,
             _PartialFunctionFlags.FUNCTION,
-            api_pb2.WebhookConfig(
+            webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
                 requested_suffix=label,
                 async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
@@ -496,7 +481,7 @@ def _wsgi_app(
         return _PartialFunction(
             raw_f,
             _PartialFunctionFlags.FUNCTION,
-            api_pb2.WebhookConfig(
+            webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
                 requested_suffix=label,
                 async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
@@ -551,7 +536,7 @@ def _web_server(
         return _PartialFunction(
             raw_f,
             _PartialFunctionFlags.FUNCTION,
-            api_pb2.WebhookConfig(
+            webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_WEB_SERVER,
                 requested_suffix=label,
                 async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
