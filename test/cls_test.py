@@ -154,7 +154,7 @@ def test_class_with_options(client, servicer):
         assert options.resources.milli_cpu == 48_000
         assert options.retry_policy.retries == 5
 
-        with pytest.warns(PendingDeprecationError, match="max_containers"):
+        with pytest.warns(DeprecationError, match="max_containers"):
             Foo.with_options(concurrency_limit=10)()  # type: ignore
 
 
