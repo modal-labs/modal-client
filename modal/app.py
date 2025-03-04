@@ -613,7 +613,7 @@ class _App:
         max_inputs: Optional[int] = None,
         i6pn: Optional[bool] = None,  # Whether to enable IPv6 container networking within the region.
         # Whether the function's home package should be included in the image - defaults to True
-        include_source: Optional[bool] = None,
+        include_source: Optional[bool] = None,  # When `False`, don't automatically add the App source to the container.
         # Parameters below here are experimental. Use with caution!
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
@@ -819,7 +819,7 @@ class _App:
         # Limits the number of inputs a container handles before shutting down.
         # Use `max_inputs = 1` for single-use containers.
         max_inputs: Optional[int] = None,
-        include_source: Optional[bool] = None,
+        include_source: Optional[bool] = None,  # When `False`, don't automatically add the App source to the container.
         # Parameters below here are experimental. Use with caution!
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement

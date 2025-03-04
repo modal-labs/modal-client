@@ -714,6 +714,8 @@ class _Image(_Object, type_prefix="im"):
         copy=True can slow down iteration since it requires a rebuild of the Image and any subsequent
         build steps whenever the included files change, but it is required if you want to run additional
         build steps after this one.
+
+        *Added in v0.66.40*: This method replaces the deprecated `modal.Image.copy_local_file` method.
         """
         if not PurePosixPath(remote_path).is_absolute():
             # TODO(elias): implement relative to absolute resolution using image workdir metadata
@@ -788,6 +790,8 @@ class _Image(_Object, type_prefix="im"):
             ignore=FilePatternMatcher.from_file("/path/to/ignorefile"),
         )
         ```
+
+        *Added in v0.66.40*: This method replaces the deprecated `modal.Image.copy_local_dir` method.
         """
         if not PurePosixPath(remote_path).is_absolute():
             # TODO(elias): implement relative to absolute resolution using image workdir metadata
@@ -851,6 +855,8 @@ class _Image(_Object, type_prefix="im"):
             ignore=lambda p: p.stat().st_size > 1e9
         )
         ```
+
+        *Added in v0.67.28*: This method replaces the deprecated `modal.Mount.from_local_python_packages` pattern.
         """
         mount = _Mount._from_local_python_packages(*modules, ignore=ignore)
         img = self._add_mount_layer_or_copy(mount, copy=copy)
