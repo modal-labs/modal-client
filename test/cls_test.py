@@ -646,7 +646,7 @@ def test_method_args(servicer, client):
         assert warm_pools == {"XYZ.*": 5}
 
 
-def test_cls_keep_warm(client, servicer):
+def test_cls_update_autoscaler(client, servicer):
     app = App()
 
     @app.cls(serialized=True)
@@ -659,18 +659,20 @@ def test_cls_keep_warm(client, servicer):
 
     with app.run(client=client):
         assert len(servicer.app_functions) == 1  # only class service function
-        cls_service_fun = servicer.function_by_name("ClsWithMethod.*")
-        assert cls_service_fun.is_class
-        assert cls_service_fun.warm_pool_size == 0
+        service_defn = servicer.function_by_name("ClsWithMethod.*")
+        assert service_defn.is_class
+        assert service_defn.warm_pool_size == service_defn.autoscaler_settings.min_containers == 0
 
-        ClsWithMethod().keep_warm(2)  # type: ignore  # Python can't do type intersection
-        assert cls_service_fun.warm_pool_size == 2
+        ClsWithMethod().update_autoscaler(min_containers=2, buffer_containers=1)  # type: ignore
+        assert service_defn.warm_pool_size == service_defn.autoscaler_settings.min_containers == 2
+        assert service_defn._experimental_buffer_containers == service_defn.autoscaler_settings.buffer_containers == 1
 
-        ClsWithMethod("other-instance").keep_warm(5)  # type: ignore  # Python can't do type intersection
-        instance_service_function = servicer.function_by_name("ClsWithMethod.*", params=((("other-instance",), {})))
+        ClsWithMethod("other-instance").update_autoscaler(min_containers=5, max_containers=10)  # type: ignore
+        instance_defn = servicer.function_by_name("ClsWithMethod.*", params=((("other-instance",), {})))
         assert len(servicer.app_functions) == 2  # + instance service function
-        assert cls_service_fun.warm_pool_size == 2
-        assert instance_service_function.warm_pool_size == 5
+        assert service_defn.warm_pool_size == service_defn.autoscaler_settings.min_containers == 2
+        assert instance_defn.warm_pool_size == instance_defn.autoscaler_settings.min_containers == 5
+        assert instance_defn.concurrency_limit == instance_defn.autoscaler_settings.max_containers == 10
 
 
 with pytest.warns(DeprecationError, match="@modal.build"):

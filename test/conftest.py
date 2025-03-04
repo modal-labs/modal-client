@@ -1228,7 +1228,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # update function definition
         fn_definition = self.app_functions[req.function_id]
         assert isinstance(fn_definition, api_pb2.Function)
-        fn_definition.warm_pool_size = req.warm_pool_size_override  # hacky
+        # Note that this doesn't mock the full server logic very well
+        fn_definition.autoscaler_settings.MergeFrom(req.settings)
+        fn_definition.warm_pool_size = fn_definition.autoscaler_settings.min_containers
+        fn_definition.concurrency_limit = fn_definition.autoscaler_settings.max_containers
+        fn_definition._experimental_buffer_containers = fn_definition.autoscaler_settings.buffer_containers
+        fn_definition.task_idle_timeout_secs = fn_definition.autoscaler_settings.scaledown_window
 
         await stream.send_message(api_pb2.FunctionUpdateSchedulingParamsResponse())
 
