@@ -256,10 +256,10 @@ def _fastapi_endpoint(
     behaves as a [FastAPI](https://fastapi.tiangolo.com/) handler and should
     return a response object to the caller.
 
-    Endpoints created with `@app.fastapi_endpoint` are meant to be simple, single
+    Endpoints created with `@modal.fastapi_endpoint` are meant to be simple, single
     request handlers and automatically have
     [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) enabled.
-    For more flexibility, use `@app.asgi_app`.
+    For more flexibility, use `@modal.asgi_app`.
 
     To learn how to use Modal with popular web frameworks, see the
     [guide on web endpoints](https://modal.com/docs/guide/webhooks).
@@ -316,10 +316,10 @@ def _web_endpoint(
     behaves as a [FastAPI](https://fastapi.tiangolo.com/) handler and should
     return a response object to the caller.
 
-    Endpoints created with `@app.web_endpoint` are meant to be simple, single
+    Endpoints created with `@modal.web_endpoint` are meant to be simple, single
     request handlers and automatically have
     [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) enabled.
-    For more flexibility, use `@app.asgi_app`.
+    For more flexibility, use `@modal.asgi_app`.
 
     To learn how to use Modal with popular web frameworks, see the
     [guide on web endpoints](https://modal.com/docs/guide/webhooks).
@@ -337,7 +337,7 @@ def _web_endpoint(
             raw_f = raw_f.get_raw_f()
             raise InvalidError(
                 f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
-                "@app.function()\n@app.web_endpoint()\ndef my_webhook():\n    ..."
+                "@app.function()\n@modal.web_endpoint()\ndef my_webhook():\n    ..."
             )
 
         return _PartialFunction(
