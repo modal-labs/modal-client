@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2023
-from modal import web_endpoint
+from modal import fastapi_endpoint
 
 
-@web_endpoint()
+@fastapi_endpoint()
 async def absent_minded_function(x):
     pass

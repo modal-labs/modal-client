@@ -15,9 +15,9 @@ from modal import (
     current_input_id,
     enter,
     exit,
+    fastapi_endpoint,
     is_local,
     method,
-    web_endpoint,
     web_server,
     wsgi_app,
 )
@@ -101,7 +101,7 @@ def deprecated_function(x):
 
 
 @app.function()
-@web_endpoint()
+@fastapi_endpoint()
 def webhook(arg="world"):
     return {"hello": arg}
 
@@ -113,7 +113,7 @@ def stream():
 
 
 @app.function()
-@web_endpoint()
+@fastapi_endpoint()
 def webhook_streaming():
     from fastapi.responses import StreamingResponse
 
@@ -127,7 +127,7 @@ async def stream_async():
 
 
 @app.function()
-@web_endpoint()
+@fastapi_endpoint()
 async def webhook_streaming_async():
     from fastapi.responses import StreamingResponse
 

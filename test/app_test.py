@@ -6,7 +6,7 @@ import time
 
 from grpclib import GRPCError, Status
 
-from modal import App, Image, Mount, Secret, Stub, Volume, enable_output, web_endpoint
+from modal import App, Image, Mount, Secret, Stub, Volume, enable_output, fastapi_endpoint, web_endpoint
 from modal._partial_function import _parse_custom_domains
 from modal._utils.async_utils import synchronizer
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
@@ -173,15 +173,16 @@ async def web2(x):
     return {"cube": x**3}
 
 
-def test_registered_web_endpoints(client, servicer):
+@pytest.mark.parametrize("decorator", [web_endpoint, fastapi_endpoint])
+def test_registered_web_endpoints(client, servicer, decorator):
     app = App()
     app.function()(square)
-    app.function()(web_endpoint()(web1))
-    app.function()(web_endpoint()(web2))
+    app.function()(decorator()(web1))
+    app.function()(decorator()(web2))
 
     @app.cls(serialized=True)
     class Cls:
-        @web_endpoint()
+        @decorator()
         def cls_web_endpoint(self):
             pass
 

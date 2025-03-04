@@ -7,6 +7,7 @@ from ._partial_function import (
     _build,
     _enter,
     _exit,
+    _fastapi_endpoint,
     _method,
     _PartialFunction,
     _web_endpoint,
@@ -19,6 +20,7 @@ from ._partial_function import (
 PartialFunction = synchronize_api(_PartialFunction, target_module=__name__)
 method = synchronize_api(_method, target_module=__name__)
 web_endpoint = synchronize_api(_web_endpoint, target_module=__name__)
+fastapi_endpoint = synchronize_api(_fastapi_endpoint, target_module=__name__)
 asgi_app = synchronize_api(_asgi_app, target_module=__name__)
 wsgi_app = synchronize_api(_wsgi_app, target_module=__name__)
 web_server = synchronize_api(_web_server, target_module=__name__)

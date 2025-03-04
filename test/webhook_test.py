@@ -6,7 +6,7 @@ import sys
 
 from fastapi.testclient import TestClient
 
-from modal import App, asgi_app, web_endpoint, wsgi_app
+from modal import App, asgi_app, fastapi_endpoint, web_endpoint, wsgi_app
 from modal._runtime.asgi import webhook_asgi_app
 from modal.exception import DeprecationError, InvalidError
 from modal.functions import Function
@@ -17,7 +17,7 @@ app = App(include_source=True)  # TODO: remove include_source=True when automoun
 
 
 @app.function(cpu=42)
-@web_endpoint(method="PATCH", docs=True)
+@fastapi_endpoint(method="PATCH", docs=True)
 async def f(x):
     return {"square": x**2}
 
@@ -97,7 +97,7 @@ def test_webhook_generator():
     with pytest.raises(InvalidError) as excinfo:
 
         @app.function(serialized=True)
-        @web_endpoint()
+        @fastapi_endpoint()
         def web_gen():
             yield None
 
@@ -115,12 +115,13 @@ async def test_webhook_forgot_function(servicer, client):
 
 
 @pytest.mark.asyncio
-async def test_webhook_decorator_in_wrong_order(servicer, client):
+@pytest.mark.parametrize("decorator", [web_endpoint, fastapi_endpoint])
+async def test_webhook_decorator_in_wrong_order(servicer, client, decorator):
     app = App()
 
-    with pytest.raises(InvalidError) as excinfo:
+    with pytest.raises(InvalidError, match=decorator.__name__) as excinfo:
 
-        @web_endpoint()  # type: ignore
+        @decorator()  # type: ignore
         @app.function(serialized=True)
         async def g(x):
             pass

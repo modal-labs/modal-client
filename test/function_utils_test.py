@@ -5,7 +5,7 @@ import time
 
 from grpclib import Status
 
-from modal import method, web_endpoint
+from modal import fastapi_endpoint, method
 from modal._serialization import serialize_data_format
 from modal._utils import async_utils
 from modal._utils.function_utils import (
@@ -100,7 +100,7 @@ class Foo:
     def bar(self):
         return "hello"
 
-    @web_endpoint()
+    @fastapi_endpoint()
     def web(self):
         pass
 

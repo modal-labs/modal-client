@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal import App, Function, Volume, web_endpoint
+from modal import App, Function, Volume, fastapi_endpoint, web_endpoint
 from modal.exception import ExecutionError, NotFoundError, ServerWarning
 from modal.runner import deploy_app
 from modal_proto import api_pb2
@@ -46,9 +46,10 @@ def test_lookup_function(servicer, client):
         assert f.local(2, 4) == 20
 
 
-def test_webhook_lookup(servicer, client):
+@pytest.mark.parametrize("decorator", [web_endpoint, fastapi_endpoint])
+def test_webhook_lookup(servicer, client, decorator):
     app = App()
-    app.function()(web_endpoint(method="POST")(square))
+    app.function()(decorator(method="POST")(square))
     deploy_app(app, "my-webhook", client=client)
 
     f = Function.from_name("my-webhook", "square").hydrate(client)
