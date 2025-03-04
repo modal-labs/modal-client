@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.82 (2025-03-04)
+
+- Adds `modal.fastapi_endpoint` as an alias for `modal.web_endpoint`. We will be deprecating the `modal.web_endpoint`  _name_ (but not the functionality) as part of the Modal 1.0 release.
+
+
+
 ### 0.73.81 (2025-03-03)
 
 - The `wait_for_response` parameter of Modal's web endpoint decorators has been removed (originally deprecated in May 2024).
