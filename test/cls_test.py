@@ -647,24 +647,6 @@ def test_method_args(servicer, client):
         assert warm_pools == {"XYZ.*": 5}
 
 
-def test_keep_warm_depr(client, set_env_client):
-    app = App()
-
-    with pytest.warns(PendingDeprecationError, match="keep_warm"):
-
-        @app.cls(serialized=True)
-        class ClsWithKeepWarmMethod:
-            @method(keep_warm=2)
-            def foo(self): ...
-
-            @method()
-            def bar(self): ...
-
-    with app.run(client=client):
-        with pytest.raises(modal.exception.InvalidError, match="keep_warm"):
-            ClsWithKeepWarmMethod().bar.keep_warm(2)  # should not be usable on methods
-
-
 def test_cls_keep_warm(client, servicer):
     app = App()
 
