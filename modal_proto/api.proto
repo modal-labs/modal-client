@@ -2290,6 +2290,9 @@ message Sandbox {
   // Specifies container runtime behavior for sandboxes which are restored from a snapshot.
   // Set by the backend at snapshot creation time.
   optional string runsc_runtime_version = 27;
+
+  // If set, overrides the runtime used by the function, either "runc" or "gvisor".
+  optional string runtime = 28;
 }
 
 message SandboxCreateRequest {
