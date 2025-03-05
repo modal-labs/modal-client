@@ -563,7 +563,7 @@ class _Cls(_Object, type_prefix="cs"):
             await resolver.load(self._class_service_function)
             self._hydrate(response.class_id, resolver.client, response.handle_metadata)
 
-        rep = f"Ref({app_name})"
+        rep = f"Cls.from_name({app_name!r}, {name!r})"
         cls = cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
 
         class_service_name = f"{name}.*"  # special name of the base service function for the class
