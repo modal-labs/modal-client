@@ -69,7 +69,7 @@ def construct_webhook_callable(
     elif webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
         # Function is a webhook without an ASGI app. Create one for it.
         return asgi.asgi_app_wrapper(
-            asgi.webhook_asgi_app(user_defined_callable, webhook_config.method, webhook_config.web_endpoint_docs),
+            asgi.magic_fastapi_app(user_defined_callable, webhook_config.method, webhook_config.web_endpoint_docs),
             container_io_manager,
         )
 

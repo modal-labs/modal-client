@@ -173,18 +173,33 @@ async def web2(x):
     return {"cube": x**3}
 
 
-@pytest.mark.parametrize("decorator", [web_endpoint, fastapi_endpoint])
-def test_registered_web_endpoints(client, servicer, decorator):
+def test_registered_fastapi_endpoints(client, servicer):
     app = App()
     app.function()(square)
-    app.function()(decorator()(web1))
-    app.function()(decorator()(web2))
+    app.function()(fastapi_endpoint()(web1))
+    app.function()(fastapi_endpoint()(web2))
 
     @app.cls(serialized=True)
     class Cls:
-        @decorator()
-        def cls_web_endpoint(self):
+        @fastapi_endpoint()
+        def web3(self):
             pass
+
+    assert app.registered_web_endpoints == ["web1", "web2", "Cls.web3"]
+
+
+def test_registered_legacy_web_endpoints(client, servicer):
+    with pytest.warns(DeprecationError, match="fastapi_endpoint"):
+        app = App()
+        app.function()(square)
+        app.function()(web_endpoint()(web1))
+        app.function()(web_endpoint()(web2))
+
+        @app.cls(serialized=True)
+        class Cls:
+            @web_endpoint()
+            def cls_web_endpoint(self):
+                pass
 
     assert app.registered_web_endpoints == ["web1", "web2", "Cls.cls_web_endpoint"]
 

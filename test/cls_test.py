@@ -23,7 +23,7 @@ from modal.exception import DeprecationError, ExecutionError, InvalidError, NotF
 from modal.partial_function import (
     PartialFunction,
     asgi_app,
-    web_endpoint,
+    fastapi_endpoint,
 )
 from modal.runner import deploy_app
 from modal.running_app import RunningApp
@@ -719,7 +719,7 @@ web_app_app = App(include_source=True)  # TODO: remove include_source=True when 
 
 @web_app_app.cls()
 class WebCls:
-    @web_endpoint()
+    @fastapi_endpoint()
     def endpoint(self):
         pass
 
@@ -857,7 +857,7 @@ def test_partial_function_descriptors(client):
         def bar(self):
             return "a"
 
-        @modal.web_endpoint()
+        @modal.fastapi_endpoint()
         def web(self):
             pass
 
@@ -1048,7 +1048,7 @@ def test_unsupported_function_decorators_on_methods():
         @app.cls(serialized=True)
         class M:
             @app.function(serialized=True)
-            @modal.web_endpoint()
+            @modal.fastapi_endpoint()
             def f(self):
                 pass
 
