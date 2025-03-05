@@ -312,6 +312,8 @@ def _web_endpoint(
 ) -> Callable[[Callable[P, ReturnType]], _PartialFunction[P, ReturnType, ReturnType]]:
     """Register a basic web endpoint with this application.
 
+    DEPRECATED: This decorator has been renamed to `@modal.fastapi_endpoint`.
+
     This is the simple way to create a web endpoint on Modal. The function
     behaves as a [FastAPI](https://fastapi.tiangolo.com/) handler and should
     return a response object to the caller.
@@ -331,6 +333,10 @@ def _web_endpoint(
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@web_endpoint()`."
         )
+
+    deprecation_warning(
+        (2025, 3, 5), "The `@modal.web_endpoint` decorator has been renamed to `@modal.fastapi_endpoint`."
+    )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if isinstance(raw_f, _Function):

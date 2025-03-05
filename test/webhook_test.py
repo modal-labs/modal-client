@@ -6,8 +6,8 @@ import sys
 
 from fastapi.testclient import TestClient
 
-from modal import App, asgi_app, fastapi_endpoint, web_endpoint, wsgi_app
-from modal._runtime.asgi import webhook_asgi_app
+from modal import App, asgi_app, fastapi_endpoint, wsgi_app
+from modal._runtime.asgi import magic_fastapi_app
 from modal.exception import DeprecationError, InvalidError
 from modal.functions import Function
 from modal.running_app import RunningApp
@@ -46,7 +46,7 @@ def test_webhook_cors():
     def handler():
         return {"message": "Hello, World!"}
 
-    app = webhook_asgi_app(handler, method="GET", docs=False)
+    app = magic_fastapi_app(handler, method="GET", docs=False)
     client = TestClient(app)
     resp = client.options(
         "/",
@@ -71,7 +71,7 @@ async def test_webhook_no_docs():
     def handler():
         return {"message": "Hello, World!"}
 
-    app = webhook_asgi_app(handler, method="GET", docs=False)
+    app = magic_fastapi_app(handler, method="GET", docs=False)
     client = TestClient(app)
     assert client.get("/docs").status_code == 404
     assert client.get("/redoc").status_code == 404
@@ -84,7 +84,7 @@ async def test_webhook_docs():
     def handler():
         return {"message": "Hello, docs!"}
 
-    app = webhook_asgi_app(handler, method="GET", docs=True)
+    app = magic_fastapi_app(handler, method="GET", docs=True)
     client = TestClient(app)
     assert client.get("/docs").status_code == 200
     assert client.get("/redoc").status_code == 200
@@ -115,13 +115,12 @@ async def test_webhook_forgot_function(servicer, client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("decorator", [web_endpoint, fastapi_endpoint])
-async def test_webhook_decorator_in_wrong_order(servicer, client, decorator):
+async def test_webhook_decorator_in_wrong_order(servicer, client):
     app = App()
 
-    with pytest.raises(InvalidError, match=decorator.__name__) as excinfo:
+    with pytest.raises(InvalidError, match="fastapi_endpoint") as excinfo:
 
-        @decorator()  # type: ignore
+        @fastapi_endpoint()  # type: ignore
         @app.function(serialized=True)
         async def g(x):
             pass
@@ -197,7 +196,7 @@ async def test_asgi_wsgi(servicer, client):
 
 def test_positional_method(servicer, client):
     with pytest.raises(InvalidError, match="method="):
-        web_endpoint("GET")
+        fastapi_endpoint("GET")
     with pytest.raises(InvalidError, match="label="):
         asgi_app("baz")
     with pytest.raises(InvalidError, match="label="):
