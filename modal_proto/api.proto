@@ -2289,9 +2289,6 @@ message Sandbox {
 
   // Specifies container runtime behavior for sandboxes which are restored from a snapshot.
   // Set by the backend at snapshot creation time.
-  // TODO(saltzm): This really should only be provided if the runtime
-  // is "gvisor". See if there's a back-compatible way to enforce this
-  // or whether perhaps runc also requires a version option.
   optional string runsc_runtime_version = 27;
 
   // If set, overrides the runtime used by the function, either "runc" or "gvisor".
