@@ -236,14 +236,14 @@ def wsgi_app_wrapper(wsgi_app, container_io_manager):
     return asgi_app_wrapper(asgi_app, container_io_manager)
 
 
-def webhook_asgi_app(fn: Callable[..., Any], method: str, docs: bool):
+def magic_fastapi_app(fn: Callable[..., Any], method: str, docs: bool):
     """Return a FastAPI app wrapping a function handler."""
     try:
         from fastapi import FastAPI
         from fastapi.middleware.cors import CORSMiddleware
     except ImportError as exc:
         message = (
-            "Modal web_endpoint functions require FastAPI to be installed in the modal.Image."
+            "Modal functions decorated with `fastapi_endpoint` require FastAPI to be installed in the modal.Image."
             ' Please update your Image definition code, e.g. with `.pip_install("fastapi[standard]")`.'
         )
         raise InvalidError(message) from exc

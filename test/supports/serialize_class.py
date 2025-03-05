@@ -16,7 +16,7 @@ class UserCls:
         return "a"
 
     @fastapi_endpoint()
-    def web_endpoint(self):
+    def fastapi_endpoint(self):
         pass
 
 
