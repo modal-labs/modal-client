@@ -191,6 +191,10 @@ async def retry_transient_errors(
                 final_attempt = False
 
             if final_attempt:
+                logger.debug(
+                    f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
+                    f"{total_deadline=} for {fn.name} ({idempotency_key[:8]})"
+                )
                 if isinstance(exc, OSError):
                     raise ConnectionError(str(exc))
                 elif isinstance(exc, asyncio.TimeoutError):
@@ -204,7 +208,7 @@ async def retry_transient_errors(
                 # TODO: update to newer version (>=0.4.8) once stable
                 raise exc
 
-            logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn.name}")
+            logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn.name} ({idempotency_key[:8]})")
 
             n_retries += 1
 
