@@ -285,15 +285,6 @@ message AppCreateResponse {
   string app_logs_url = 3;
 }
 
-message CommitInfo {
-  string vcs = 1; // Only git is supported for now
-  string branch = 2;
-  string commit_hash = 3;
-  bool dirty = 4;
-  optional string commit_url = 5;
-  optional string repo_url = 6;
-}
-
 message AppDeployRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
@@ -752,6 +743,15 @@ message CloudBucketMount {
   optional string bucket_endpoint_url = 7;
   optional string key_prefix = 8;
   optional string oidc_auth_role_arn = 9;
+}
+
+message CommitInfo {
+  string vcs = 1; // Only git is supported for now
+  string branch = 2;
+  string commit_hash = 3;
+  bool dirty = 4;
+  optional string commit_url = 5;
+  optional string repo_url = 6;
 }
 
 message ContainerArguments {  // This is used to pass data from the worker to the container
