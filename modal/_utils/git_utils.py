@@ -33,7 +33,7 @@ def get_git_commit_info() -> Dict[str, Union[str, bool, int]]:
     if not os.path.exists(".git") and run_command(["git", "rev-parse", "--is-inside-work-tree"]) != "true":
         return {}
 
-    git_info = {
+    git_info: Dict[str, Union[str, bool, int]] = {
         "vcs": "git",
     }
 
@@ -52,6 +52,11 @@ def get_git_commit_info() -> Dict[str, Union[str, bool, int]]:
     else:
         # If there's an error getting the commit hash, bail
         return {}
+
+    # Get commit timestamp
+    commit_timestamp = run_command(["git", "show", "-s", "--format=%ct", "HEAD"])
+    if commit_timestamp:
+        git_info["commit_timestamp"] = int(commit_timestamp)
 
     # Check if working directory is dirty
     dirty_output = run_command(["git", "status", "--porcelain"])
