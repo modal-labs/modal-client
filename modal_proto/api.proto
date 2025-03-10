@@ -301,7 +301,7 @@ message AppDeployRequest {
   string object_entity = 4;
   AppDeployVisibility visibility = 5;
   string tag = 6;
-  CommitInfo commit_info = 7;
+  optional CommitInfo commit_info = 7;
 }
 
 message AppDeployResponse {
