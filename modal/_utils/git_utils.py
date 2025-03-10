@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2025
 import os
-import re
 import subprocess
 from typing import Dict, List, Optional, Union
 
@@ -56,24 +55,5 @@ def get_git_commit_info() -> Dict[str, Union[str, bool, int]]:
     repo_url = run_command(["git", "remote", "get-url", "origin"])
     if repo_url:
         git_info["repo_url"] = repo_url
-
-        # Generate commit URL only if we have both repo_url and commit_hash
-        if commit_hash and repo_url:
-            commit_url = None
-            if "github.com" in repo_url:
-                base_url = re.sub(r"git@github\.com:", "https://github.com/", repo_url)
-                base_url = re.sub(r"\.git$", "", base_url)
-                commit_url = f"{base_url}/commit/{commit_hash}"
-            elif "gitlab.com" in repo_url:
-                base_url = re.sub(r"git@gitlab\.com:", "https://gitlab.com/", repo_url)
-                base_url = re.sub(r"\.git$", "", base_url)
-                commit_url = f"{base_url}/-/commit/{commit_hash}"
-            elif "bitbucket.org" in repo_url:
-                base_url = re.sub(r"git@bitbucket\.org:", "https://bitbucket.org/", repo_url)
-                base_url = re.sub(r"\.git$", "", base_url)
-                commit_url = f"{base_url}/commits/{commit_hash}"
-
-            if commit_url:
-                git_info["commit_url"] = commit_url
 
     return git_info

@@ -750,8 +750,7 @@ message CommitInfo {
   string branch = 2;
   string commit_hash = 3;
   bool dirty = 4;
-  optional string commit_url = 5;
-  optional string repo_url = 6;
+  optional string repo_url = 5;
 }
 
 message ContainerArguments {  // This is used to pass data from the worker to the container
