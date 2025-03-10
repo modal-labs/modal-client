@@ -27,12 +27,12 @@ def run_command(args: List[str]) -> Optional[str]:
         return None
 
 
-def get_git_commit_info() -> Dict[str, Union[str, bool, int]] | None:
+def get_git_commit_info() -> Dict[str, Union[str, bool, int]]:
     """Collect git information about the current repository."""
 
     # Check if we're in a git repository
     if not os.path.exists(".git") and run_command(["git", "rev-parse", "--is-inside-work-tree"]) != "true":
-        return None
+        return {}
 
     git_info = {
         "vcs": "git",

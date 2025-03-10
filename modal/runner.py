@@ -522,7 +522,7 @@ async def _deploy_app(
         )
 
     # Get git information to track deployment history
-    commit_info = get_git_commit_info()
+    commit_info = get_git_commit_info() or None
 
     if client is None:
         client = await _Client.from_env()
@@ -551,7 +551,14 @@ async def _deploy_app(
             )
 
             app_url, warnings = await _publish_app(
-                client, running_app, api_pb2.APP_STATE_DEPLOYED, app._functions, app._classes, name, tag, commit_info
+                client,
+                running_app,
+                api_pb2.APP_STATE_DEPLOYED,
+                app._functions,
+                app._classes,
+                name,
+                tag,
+                commit_info,
             )
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
