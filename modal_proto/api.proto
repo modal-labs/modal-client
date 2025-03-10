@@ -285,6 +285,15 @@ message AppCreateResponse {
   string app_logs_url = 3;
 }
 
+message CommitInfo {
+  string vcs = 1; // Only git is supported for now
+  string branch = 2;
+  string commit_hash = 3;
+  bool dirty = 4;
+  optional string commit_url = 5;
+  optional string repo_url = 6;
+}
+
 message AppDeployRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
   DeploymentNamespace namespace = 2;
@@ -292,6 +301,7 @@ message AppDeployRequest {
   string object_entity = 4;
   AppDeployVisibility visibility = 5;
   string tag = 6;
+  CommitInfo commit_info = 7;
 }
 
 message AppDeployResponse {
@@ -308,6 +318,7 @@ message AppDeploymentHistory {
   string tag = 6;
   uint32 rollback_version = 7;
   bool rollback_allowed = 8;
+  CommitInfo commit_info = 10;
 }
 
 message AppDeploymentHistoryRequest {
@@ -418,6 +429,7 @@ message AppPublishRequest {
   map<string, string> definition_ids = 7;  // function_id -> definition_id
   uint32 rollback_version = 8;  // Unused by client, but used internally
   string client_version = 9;  // Unused by client, but used internally
+  CommitInfo commit_info = 10;  // Git information for deployment tracking
 }
 
 message AppPublishResponse {

@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2022
+# Copyright Modal Labs 2025
 import asyncio
 import dataclasses
 import os
@@ -7,7 +7,7 @@ import typing
 import warnings
 from collections.abc import AsyncGenerator
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, Any, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Dict, Optional, TypeVar
 
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
@@ -23,6 +23,7 @@ from ._runtime.execution_context import is_local
 from ._traceback import print_server_warnings, traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, gather_cancel_on_exc, synchronize_api
 from ._utils.deprecation import deprecation_error
+from ._utils.git_utils import get_git_commit_info
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name, is_valid_tag
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
@@ -182,11 +183,13 @@ async def _publish_app(
     classes: dict[str, _Cls],
     name: str = "",  # Only relevant for deployments
     tag: str = "",  # Only relevant for deployments
+    commit_info: Optional[Dict[str, Any]] = None,  # Git commit information
 ) -> tuple[str, list[api_pb2.Warning]]:
     """Wrapper for AppPublish RPC."""
 
     definition_ids = {obj.object_id: obj._get_metadata().definition_id for obj in functions.values()}  # type: ignore
 
+    # Create the request
     request = api_pb2.AppPublishRequest(
         app_id=running_app.app_id,
         name=name,
@@ -195,7 +198,9 @@ async def _publish_app(
         function_ids=running_app.function_ids,
         class_ids=running_app.class_ids,
         definition_ids=definition_ids,
+        commit_info=api_pb2.CommitInfo(**commit_info) if commit_info else None,
     )
+
     try:
         response = await retry_transient_errors(client.stub.AppPublish, request)
     except GRPCError as exc:
@@ -516,6 +521,9 @@ async def _deploy_app(
             "and must be 50 characters or less"
         )
 
+    # Get git information to track deployment history
+    commit_info = get_git_commit_info()
+
     if client is None:
         client = await _Client.from_env()
 
@@ -543,7 +551,7 @@ async def _deploy_app(
             )
 
             app_url, warnings = await _publish_app(
-                client, running_app, api_pb2.APP_STATE_DEPLOYED, app._functions, app._classes, name, tag
+                client, running_app, api_pb2.APP_STATE_DEPLOYED, app._functions, app._classes, name, tag, commit_info
             )
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
