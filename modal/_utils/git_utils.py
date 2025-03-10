@@ -41,11 +41,17 @@ def get_git_commit_info() -> Dict[str, Union[str, bool, int]]:
     branch = run_command(["git", "rev-parse", "--abbrev-ref", "HEAD"])
     if branch:
         git_info["branch"] = branch
+    else:
+        # If there's an error getting the branch name, bail
+        return {}
 
     # Get commit hash
     commit_hash = run_command(["git", "rev-parse", "HEAD"])
     if commit_hash:
         git_info["commit_hash"] = commit_hash
+    else:
+        # If there's an error getting the commit hash, bail
+        return {}
 
     # Check if working directory is dirty
     dirty_output = run_command(["git", "status", "--porcelain"])
@@ -55,5 +61,15 @@ def get_git_commit_info() -> Dict[str, Union[str, bool, int]]:
     repo_url = run_command(["git", "remote", "get-url", "origin"])
     if repo_url:
         git_info["repo_url"] = repo_url
+
+    # Get author name
+    author_name = run_command(["git", "show", "-s", "--format=%an", "HEAD"])
+    if author_name:
+        git_info["author_name"] = author_name
+
+    # Get author email
+    author_email = run_command(["git", "show", "-s", "--format=%ae", "HEAD"])
+    if author_email:
+        git_info["author_email"] = author_email
 
     return git_info
