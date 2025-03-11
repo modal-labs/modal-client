@@ -292,7 +292,6 @@ message AppDeployRequest {
   string object_entity = 4;
   AppDeployVisibility visibility = 5;
   string tag = 6;
-  optional CommitInfo commit_info = 7;
 }
 
 message AppDeployResponse {
@@ -309,7 +308,7 @@ message AppDeploymentHistory {
   string tag = 6;
   uint32 rollback_version = 7;
   bool rollback_allowed = 8;
-  CommitInfo commit_info = 10;
+  optional CommitInfo commit_info = 10;
 }
 
 message AppDeploymentHistoryRequest {
