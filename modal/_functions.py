@@ -835,6 +835,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 if app and app.name:
                     app_name = app.name
 
+                # on builder > 2024.10 we mount client dependencies at runtime
+                mount_client_dependencies = image._metadata.image_builder_version > "2024.10"
+
                 # Relies on dicts being ordered (true as of Python 3.6).
                 volume_mounts = [
                     api_pb2.VolumeMount(
@@ -904,6 +907,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     schedule=schedule.proto_message if schedule is not None else None,
                     snapshot_debug=config.get("snapshot_debug"),
                     experimental_options=experimental_options or {},
+                    mount_client_dependencies=mount_client_dependencies,
                     # ---
                     _experimental_group_size=cluster_size or 0,  # Experimental: Clustered functions
                     _experimental_concurrent_cancellations=True,

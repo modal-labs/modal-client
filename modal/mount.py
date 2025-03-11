@@ -4,6 +4,7 @@ import asyncio
 import concurrent.futures
 import dataclasses
 import os
+import re
 import site
 import sys
 import sysconfig
