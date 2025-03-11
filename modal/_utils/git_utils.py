@@ -53,6 +53,7 @@ async def get_git_commit_info() -> api_pb2.CommitInfo | None:
     info_lines = log_info.split("\n")
     if len(info_lines) < 4:
         # If we didn't get all expected lines, bail
+        logger.debug(f"Log info returned only {len(info_lines)} lines")
         return None
 
     try:
@@ -61,7 +62,7 @@ async def get_git_commit_info() -> api_pb2.CommitInfo | None:
         git_info.author_name = info_lines[2]
         git_info.author_email = info_lines[3]
     except (ValueError, IndexError):
-        # Bail if parsing fails
+        logger.debug(f"Failed to parse git log info: {log_info}")
         return None
 
     git_info.dirty = bool(status)
