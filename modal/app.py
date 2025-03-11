@@ -678,6 +678,7 @@ class _App:
                 is_generator = f.is_generator
                 batch_max_size = f.batch_max_size
                 batch_wait_ms = f.batch_wait_ms
+                concurrency_limit = f.concurrency_limit
             else:
                 if not is_global_object(f.__qualname__) and not serialized:
                     raise InvalidError(
@@ -709,10 +710,11 @@ class _App:
                     )
 
                 info = FunctionInfo(f, serialized=serialized, name_override=name)
+                raw_f = f
                 webhook_config = None
                 batch_max_size = None
                 batch_wait_ms = None
-                raw_f = f
+                concurrency_limit = None
 
                 cluster_size = None  # Experimental: Clustered functions
                 i6pn_enabled = i6pn
@@ -753,7 +755,7 @@ class _App:
                 max_containers=max_containers,
                 buffer_containers=buffer_containers,
                 scaledown_window=scaledown_window,
-                allow_concurrent_inputs=allow_concurrent_inputs,
+                allow_concurrent_inputs=concurrency_limit,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
                 timeout=timeout,
