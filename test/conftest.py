@@ -1340,7 +1340,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.ImageGetOrCreateRequest = await stream.recv_message()
         for image_id, image in self.images.items():
             if request.image.SerializeToString() == image.SerializeToString():
-                await stream.send_message(api_pb2.ImageGetOrCreateResponse(image_id=image_id))
+                await stream.send_message(api_pb2.ImageGetOrCreateResponse(
+                    image_id=image_id,
+                    metadata=api_pb2.ImageMetadata(image_builder_version=self.image_builder_versions[image_id]),
+                ))
                 return
         idx = len(self.images) + 1
         image_id = f"im-{idx}"
@@ -1350,10 +1353,13 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.image_builder_versions[image_id] = request.builder_version
         if request.force_build:
             self.force_built_images.append(image_id)
-        await stream.send_message(api_pb2.ImageGetOrCreateResponse(image_id=image_id))
+        await stream.send_message(api_pb2.ImageGetOrCreateResponse(
+            image_id=image_id,
+            metadata=api_pb2.ImageMetadata(image_builder_version=request.builder_version),
+        ))
 
     async def ImageJoinStreaming(self, stream):
-        await stream.recv_message()
+        req = await stream.recv_message()
 
         if self.image_join_sleep_duration is not None:
             await asyncio.sleep(self.image_join_sleep_duration)
@@ -1368,7 +1374,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.ImageJoinStreamingResponse(task_logs=[task_log_1, task_log_2, task_log_3]))
         await stream.send_message(
             api_pb2.ImageJoinStreamingResponse(
-                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
+                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
+                metadata=api_pb2.ImageMetadata(
+                    image_builder_version=self.image_builder_versions.get(req.image_id),
+                )
             )
         )
 
