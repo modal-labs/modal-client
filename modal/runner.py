@@ -526,7 +526,7 @@ async def _deploy_app(
     t0 = time.time()
 
     # Get git information to track deployment history
-    commit_info_coroutine = get_git_commit_info()
+    commit_info_future = get_git_commit_info()
 
     running_app: RunningApp = await _init_local_app_from_name(
         client, name, namespace, environment_name=environment_name
@@ -549,6 +549,12 @@ async def _deploy_app(
                 environment_name=environment_name,
             )
 
+            commit_info = None
+            try:
+                commit_info = await commit_info_future
+            except Exception as e:
+                logger.debug(f"Failed to get git commit info: {repr(e)}")
+
             app_url, warnings = await _publish_app(
                 client,
                 running_app,
@@ -557,7 +563,7 @@ async def _deploy_app(
                 app._classes,
                 name,
                 tag,
-                await commit_info_coroutine,
+                commit_info,
             )
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.

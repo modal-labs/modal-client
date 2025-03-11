@@ -20,7 +20,7 @@ async def run_command_fallible(args: list[str]) -> Optional[str]:
         return stdout_bytes.decode("utf-8").strip()
 
     except Exception as e:
-        logger.debug(f"Command {args} failed: {e}")
+        logger.debug(f"Command {args} failed: {repr(e)}")
         return None
 
 
