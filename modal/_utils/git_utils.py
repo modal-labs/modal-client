@@ -24,7 +24,7 @@ async def run_command_fallible(args: list[str]) -> Optional[str]:
         return None
 
 
-async def get_git_commit_info() -> api_pb2.CommitInfo | None:
+async def get_git_commit_info() -> Optional[api_pb2.CommitInfo]:
     """Collect git information about the current repository asynchronously."""
     git_info: api_pb2.CommitInfo = api_pb2.CommitInfo(vcs="git")
 
