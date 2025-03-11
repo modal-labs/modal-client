@@ -1146,6 +1146,7 @@ _map_attempt_count = 0
 def _maybe_fail(i):
     global _map_attempt_count
     if _map_attempt_count > PUMP_INPUTS_MAX_RETRIES:
+        assert _map_retry_servicer
         _map_retry_servicer.fail_put_inputs = False
     _map_attempt_count += 1
     return i
