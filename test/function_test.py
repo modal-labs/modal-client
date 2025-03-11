@@ -15,6 +15,7 @@ from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
 from modal.exception import DeprecationError, ExecutionError, InvalidError
 from modal.functions import Function, FunctionCall
+from modal.parallel_map import PUMP_INPUTS_MAX_RETRIES
 from modal.runner import deploy_app
 from modal_proto import api_pb2
 from test.helpers import deploy_app_externally
@@ -1137,3 +1138,32 @@ def f():
     mounts = servicer.mounts_excluding_published_client()
 
     assert len(mounts) == expected_mounts
+
+
+_map_retry_servicer = None
+_map_attempt_count = 0
+
+def _maybe_fail(i):
+    global _map_attempt_count
+    if _map_attempt_count > PUMP_INPUTS_MAX_RETRIES:
+        _map_retry_servicer.fail_put_inputs = False
+    _map_attempt_count += 1
+    return i
+
+
+def test_map_retry(client, servicer, monkeypatch):
+    """
+    .map retries forever for all status codes in PUMP_INPUTS_RETRYABLE_GRPC_STATUS_CODES, which includes INTERNAL.
+    This test forces pump_inputs to fail with INTERNAL for more than PUMP_INPUTS_MAX_RETRIES times. This verifies
+    that catch and retry the INTERNAL exception, and don't stop retrying until the call succeeds.
+    """
+    global _map_retry_servicer
+    monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
+    app = App()
+    _map_retry_servicer= servicer
+    maybe_fail = app.function()(_maybe_fail)
+    servicer.function_body(_maybe_fail)
+    servicer.fail_put_inputs = True
+    with app.run(client=client):
+        for _ in maybe_fail.map(range(1), order_outputs=False):
+            pass

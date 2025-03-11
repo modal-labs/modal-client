@@ -27,13 +27,17 @@ from modal._utils.function_utils import (
     _create_input,
     _process_result,
 )
-from modal._utils.grpc_utils import retry_transient_errors
+from modal._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
 from modal.config import logger
 from modal_proto import api_pb2
 
 if typing.TYPE_CHECKING:
     import modal.client
 
+# pump_inputs should retry if it receives any of the standard retryable codes plus RESOURCE_EXHAUSTED.
+PUMP_INPUTS_RETRYABLE_GRPC_STATUS_CODES = RETRYABLE_GRPC_STATUS_CODES + [Status.RESOURCE_EXHAUSTED]
+PUMP_INPUTS_MAX_RETRIES = 8
+PUMP_INPUTS_MAX_RETRY_DELAY=15
 
 class _SynchronizedQueue:
     """mdmd:hidden"""
@@ -141,14 +145,14 @@ async def _map_invocation(
                     resp = await retry_transient_errors(
                         client.stub.FunctionPutInputs,
                         request,
-                        # with 8 retries we log the warning below about every 30 secondswhich isn't too spammy.
-                        max_retries=8,
-                        max_delay=15,
+                        # with 8 retries we log the warning below about every 30 seconds which isn't too spammy.
+                        max_retries=PUMP_INPUTS_MAX_RETRIES,
+                        max_delay=PUMP_INPUTS_MAX_RETRY_DELAY,
                         additional_status_codes=[Status.RESOURCE_EXHAUSTED],
                     )
                     break
                 except GRPCError as err:
-                    if err.status != Status.RESOURCE_EXHAUSTED:
+                    if err.status not in PUMP_INPUTS_RETRYABLE_GRPC_STATUS_CODES:
                         raise err
                     logger.warning(
                         f"Warning: map progress for function {function._function_name} is limited."
