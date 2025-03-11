@@ -832,7 +832,7 @@ class _App:
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
-    ) -> Callable[[CLS_T], CLS_T]:
+    ) -> Callable[[CLS_T | _PartialFunction], CLS_T]:
         """
         Decorator to register a new Modal [Cls](/docs/reference/modal.Cls) with this App.
         """
@@ -845,8 +845,16 @@ class _App:
                 raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
             scheduler_placement = SchedulerPlacement(region=region)
 
-        def wrapper(user_cls: CLS_T) -> CLS_T:
+        def wrapper(wrapped_cls: CLS_T | _PartialFunction) -> CLS_T:
             # Check if the decorated object is a class
+            if isinstance(wrapped_cls, _PartialFunction):
+                wrapped_cls.wrapped = True
+                user_cls = wrapped_cls.raw_f
+                concurrency_limit = wrapped_cls.concurrency_limit
+            else:
+                user_cls = wrapped_cls
+                concurrency_limit = None
+
             if not inspect.isclass(user_cls):
                 raise TypeError("The @app.cls decorator must be used on a class.")
 
@@ -892,7 +900,7 @@ class _App:
                 scaledown_window=scaledown_window,
                 proxy=proxy,
                 retries=retries,
-                allow_concurrent_inputs=allow_concurrent_inputs,
+                allow_concurrent_inputs=concurrency_limit,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
                 timeout=timeout,
