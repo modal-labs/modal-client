@@ -29,7 +29,6 @@ async def get_git_commit_info() -> Optional[api_pb2.CommitInfo]:
     git_info: api_pb2.CommitInfo = api_pb2.CommitInfo(vcs="git")
 
     commands = [
-        ["git", "rev-parse", "--is-inside-work-tree"],
         # Get commit hash, timestamp, author name, and author email
         ["git", "log", "-1", "--format=%H%n%ct%n%an%n%ae", "HEAD"],
         # Get branch name
@@ -40,9 +39,9 @@ async def get_git_commit_info() -> Optional[api_pb2.CommitInfo]:
     ]
 
     tasks = (run_command_fallible(cmd) for cmd in commands)
-    (is_repo, log_info, branch, status, origin_url) = await asyncio.gather(*tasks)
+    (log_info, branch, status, origin_url) = await asyncio.gather(*tasks)
 
-    if not is_repo or not branch:
+    if not branch:
         return None
 
     git_info.branch = branch
