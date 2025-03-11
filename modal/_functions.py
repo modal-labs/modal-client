@@ -64,7 +64,7 @@ from .exception import (
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
-from .mount import _get_client_mount, _Mount, get_sys_modules_mounts
+from .mount import _get_client_dependency_mount, _get_client_mount, _Mount, get_sys_modules_mounts
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .output import _get_output_manager
 from .parallel_map import (
@@ -726,6 +726,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 app_name = ""
                 if app and app.name:
                     app_name = app.name
+
+                # on builder > 2024.10 we mount client dependencies at runtime
+                client_dependency_mount = _get_client_dependency_mount(image._metadata)
+                if client_dependency_mount:
+                    await client_dependency_mount.hydrate()
+                    all_mounts.append(client_dependency_mount)
 
                 # Relies on dicts being ordered (true as of Python 3.6).
                 volume_mounts = [

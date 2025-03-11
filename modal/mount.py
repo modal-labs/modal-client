@@ -4,6 +4,7 @@ import asyncio
 import concurrent.futures
 import dataclasses
 import os
+import re
 import site
 import sys
 import sysconfig
@@ -859,3 +860,53 @@ def get_sys_modules_mounts() -> dict[str, _Mount]:
             auto_mounts[module_name] = potential_mount
 
     return auto_mounts
+
+
+_python_version_re = re.compile("^Python ([0-9]+.[0-9]+).*")
+_libc_version_re = re.compile("^glibc ([0-9]+.[0-9]+)")
+
+
+def _get_client_dependency_mount(image_metadata: api_pb2.ImageMetadata) -> Optional["_Mount"]:
+    if image_metadata.image_builder_version <= "2024.10":
+        return None
+
+    if image_metadata.python_version_info is None:
+        raise ValueError("image has no python_version")
+    if image_metadata.libc_version_info is None:
+        raise ValueError("image has no libc_version")
+
+    # validate python version
+    pyver_match = _python_version_re.match(image_metadata.python_version_info)
+    if pyver_match is None:
+        raise ValueError("image has malformed python version: %s" % image_metadata.python_version_info)
+
+    try:
+        py_major, py_minor = map(int, pyver_match.group(1).split("."))
+    except ValueError:
+        raise ValueError("image has malformed python version: %s" % image_metadata.python_version_info)
+
+    if py_major < 3 or py_minor < 9:
+        raise ValueError("image has unsupported python version: %s" % image_metadata.python_version_info)
+
+    # validate libc version
+    libc_match = _libc_version_re.match(image_metadata.libc_version_info)
+    if libc_match is None:
+        raise ValueError("image has malformed libc version: %s" % image_metadata.libc_version_info)
+
+    try:
+        glibc_major, glibc_minor = map(int, libc_match.group(1).split("."))
+    except ValueError:
+        raise ValueError("image has malformed libc version: %s" % image_metadata.libc_version_info)
+
+    if glibc_major < 2 or glibc_minor < 17:
+        raise ValueError("image has unsupported glibc version: %s" % image_metadata.libc_version_info)
+
+    image_builder_version = image_metadata.image_builder_version
+    platform_tag = "manylinux_2_17-x86_64"
+    abi_tag = "cp%d%d" % (py_major, py_minor)
+
+    mount_name = f"{image_builder_version}-{abi_tag}-{platform_tag}"
+
+    print("picking client dep mount: %s" % mount_name)
+
+    return _Mount.from_name(mount_name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL)

@@ -56,13 +56,14 @@ if typing.TYPE_CHECKING:
     import modal._functions
 
 # This is used for both type checking and runtime validation
-ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10"]
+ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10", "PREVIEW"]
 
 # Note: we also define supported Python versions via logic at the top of the package __init__.py
 # so that we fail fast / clearly in unsupported containers. Additionally, we enumerate the supported
 # Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
 # Consider consolidating these multiple sources of truth?
 SUPPORTED_PYTHON_SERIES: dict[ImageBuilderVersion, list[str]] = {
+    "PREVIEW": ["3.9", "3.10", "3.11", "3.12", "3.13"],
     "2024.10": ["3.9", "3.10", "3.11", "3.12", "3.13"],
     "2024.04": ["3.9", "3.10", "3.11", "3.12"],
     "2023.12": ["3.9", "3.10", "3.11", "3.12"],
@@ -1516,12 +1517,16 @@ class _Image(_Object, type_prefix="im"):
 
         # Note: this change is because we install dependencies with uv in 2024.10+
         requirements_prefix = "python -m " if builder_version < "2024.10" else ""
-        modal_requirements_commands = [
-            f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
-            f"RUN python -m pip install --upgrade {_base_image_config('package_tools', builder_version)}",
-            f"RUN {requirements_prefix}{_get_modal_requirements_command(builder_version)}",
-        ]
-        if builder_version > "2023.12":
+        modal_requirements_commands = (
+            [
+                f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
+                f"RUN python -m pip install --upgrade {_base_image_config('package_tools', builder_version)}",
+                f"RUN {requirements_prefix}{_get_modal_requirements_command(builder_version)}",
+            ]
+            if builder_version < "PREVIEW"
+            else []
+        )
+        if "PREVIEW" > builder_version > "2023.12":
             modal_requirements_commands.append(f"RUN rm {CONTAINER_REQUIREMENTS_PATH}")
 
         return [
@@ -1584,7 +1589,10 @@ class _Image(_Object, type_prefix="im"):
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             commands = _Image._registry_setup_commands(tag, version, setup_dockerfile_commands, add_python)
-            context_files = {CONTAINER_REQUIREMENTS_PATH: _get_modal_requirements_path(version, add_python)}
+            if version < "PREVIEW":
+                context_files = {CONTAINER_REQUIREMENTS_PATH: _get_modal_requirements_path(version, add_python)}
+            else:
+                context_files = {}
             return DockerfileSpec(commands=commands, context_files=context_files)
 
         return _Image._from_args(

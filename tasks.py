@@ -221,7 +221,7 @@ def publish_base_mounts(ctx, no_confirm=False):
         answer = input(f"Modal server URL is '{server_url}' not localhost. Continue operation? [y/N]: ")
         if answer.upper() not in ["Y", "YES"]:
             exit("Aborting task.")
-    for mount in ["modal_client_package", "python_standalone"]:
+    for mount in ["modal_client_package", "python_standalone", "modal_client_dependencies"]:
         ctx.run(f"{sys.executable} modal_global_objects/mounts/{mount}.py", pty=True)
 
 
