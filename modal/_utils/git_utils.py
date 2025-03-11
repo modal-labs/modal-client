@@ -5,7 +5,7 @@ from typing import Optional
 from modal_proto import api_pb2
 
 
-async def run_command_async(args: list[str]) -> Optional[str]:
+async def run_command_fallible(args: list[str]) -> Optional[str]:
     try:
         process = await asyncio.create_subprocess_exec(
             *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -37,7 +37,7 @@ async def get_git_commit_info() -> api_pb2.CommitInfo | None:
     ]
 
     # Run commands in parallel using asyncio.gather
-    tasks = (run_command_async(cmd) for cmd in commands)
+    tasks = (run_command_fallible(cmd) for cmd in commands)
     (is_repo, log_info, branch, status, origin_url) = await asyncio.gather(*tasks)
 
     if not is_repo or not branch:
