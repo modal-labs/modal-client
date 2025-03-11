@@ -2,6 +2,7 @@
 import asyncio
 import dataclasses
 import inspect
+import re
 import textwrap
 import time
 import typing
@@ -71,7 +72,7 @@ from .exception import (
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
-from .mount import _get_client_mount, _Mount
+from .mount import _get_client_mount, _Mount, PYTHON_STANDALONE_VERSIONS
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .output import _get_output_manager
 from .parallel_map import (
@@ -819,6 +820,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 mount_client_dependencies = False
                 if image._metadata is not None:
                     mount_client_dependencies = image._metadata.image_builder_version > "2024.10"
+                    if mount_client_dependencies:
+                        # Warn user if the image is expected to lack dependency mount
+                        _warn_on_missing_dependency_mount(image._metadata)
 
                 # Relies on dicts being ordered (true as of Python 3.6).
                 volume_mounts = [
@@ -1824,3 +1828,52 @@ async def _gather(*function_calls: _FunctionCall[T]) -> typing.Sequence[T]:
         "`modal.functions.gather()` is deprecated; please use `modal.FunctionCall.gather()` instead.",
     )
     return await _FunctionCall.gather(*function_calls)
+
+_libc_version_re = re.compile(r'glibc +([0-9])\.([0-9]+)')
+_python_version_re = re.compile(r'Python ([0-9]\.[0-9]+)')
+def _warn_on_missing_dependency_mount(metadata: api_pb2.ImageMetadata) -> None:
+    """Emits a warning if Modal lacks client dependency mount for this image."""
+
+    if not metadata.libc_version_info or not metadata.python_version_info:
+        warnings.warn(
+            "Image lacks libc and/or python version metadata! " +
+            "This image is very unlikely to succesfully power a Modal function!",
+            stacklevel=2,
+        )
+        return
+
+    mlibc = _libc_version_re.match(metadata.libc_version_info)
+    mpy = _python_version_re.match(metadata.python_version_info)
+
+    if mlibc is None:
+        warnings.warn(
+            "Image doesn't appear to use glibc. " +
+            "This image is very unlikely to succesfully power a Modal function!",
+            stacklevel=2,
+        )
+        return
+
+    if mpy is None:
+        warnings.warn(
+            "Image doesn't appear to have Python installed. " +
+            "This image is very unlikely to succesfully power a Modal function!",
+            stacklevel=2,
+        )
+        return
+
+    libc_major, libc_minor = int(mlibc.group(1)), int(mlibc.group(2))
+    pyver = mpy.group(1)
+
+    if pyver not in PYTHON_STANDALONE_VERSIONS:
+        warnings.warn(
+            f"Image uses Python {pyver}, which is not a supported version. " +
+            "This image is very unlikely to succesfully power a Modal function!",
+            stacklevel=2,
+        )
+
+    elif libc_major != 2 or (libc_major == 2 and libc_minor < 17):
+        warnings.warn(
+            f"Image uses glibc {libc_major}.{libc_minor}, which is not a supported version. " +
+            "This image is very unlikely to succesfully power a Modal function!",
+            stacklevel=2,
+        )
