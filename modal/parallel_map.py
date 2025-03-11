@@ -5,7 +5,7 @@ import typing
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
-from grpclib import GRPCError, Status
+from grpclib import Status
 
 from modal._runtime.execution_context import current_input_id
 from modal._utils.async_utils import (
@@ -27,7 +27,7 @@ from modal._utils.function_utils import (
     _create_input,
     _process_result,
 )
-from modal._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
+from modal._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, RetryWarningMessage, retry_transient_errors
 from modal.config import logger
 from modal_proto import api_pb2
 
@@ -140,25 +140,18 @@ async def _map_invocation(
             logger.debug(
                 f"Pushing {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}."
             )
-            while True:
-                try:
-                    resp = await retry_transient_errors(
-                        client.stub.FunctionPutInputs,
-                        request,
-                        # with 8 retries we log the warning below about every 30 seconds which isn't too spammy.
-                        max_retries=PUMP_INPUTS_MAX_RETRIES,
-                        max_delay=PUMP_INPUTS_MAX_RETRY_DELAY,
-                        additional_status_codes=[Status.RESOURCE_EXHAUSTED],
-                    )
-                    break
-                except GRPCError as err:
-                    if err.status not in PUMP_INPUTS_RETRYABLE_GRPC_STATUS_CODES:
-                        raise err
-                    logger.warning(
-                        f"Warning: map progress for function {function._function_name} is limited."
-                        " Common bottlenecks include slow iteration over results, or function backlogs."
-                    )
-
+            # with 8 retries we log the warning below about every 30 seconds which isn't too spammy.
+            retry_warning_message = RetryWarningMessage(
+                f"Warning: map progress for function {function._function_name} is limited."
+                " Common bottlenecks include slow iteration over results, or function backlogs.",
+                8, [Status.RESOURCE_EXHAUSTED])
+            resp = await retry_transient_errors(
+                client.stub.FunctionPutInputs,
+                request,
+                max_retries=None,
+                max_delay=PUMP_INPUTS_MAX_RETRY_DELAY,
+                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                retry_warning_message=retry_warning_message)
             count_update()
             for item in resp.inputs:
                 pending_outputs.setdefault(item.input_id, 0)
