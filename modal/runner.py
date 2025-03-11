@@ -7,7 +7,7 @@ import typing
 import warnings
 from collections.abc import AsyncGenerator
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, Any, Dict, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Optional, TypeVar
 
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
@@ -183,7 +183,7 @@ async def _publish_app(
     classes: dict[str, _Cls],
     name: str = "",  # Only relevant for deployments
     tag: str = "",  # Only relevant for deployments
-    commit_info: Optional[Dict[str, Any]] = None,  # Git commit information
+    commit_info: Optional[api_pb2.CommitInfo] = None,  # Git commit information
 ) -> tuple[str, list[api_pb2.Warning]]:
     """Wrapper for AppPublish RPC."""
 
@@ -198,7 +198,7 @@ async def _publish_app(
         function_ids=running_app.function_ids,
         class_ids=running_app.class_ids,
         definition_ids=definition_ids,
-        commit_info=api_pb2.CommitInfo(**commit_info) if commit_info else None,
+        commit_info=commit_info,
     )
 
     try:
@@ -521,13 +521,13 @@ async def _deploy_app(
             "and must be 50 characters or less"
         )
 
-    # Get git information to track deployment history
-    commit_info = get_git_commit_info() or None
-
     if client is None:
         client = await _Client.from_env()
 
     t0 = time.time()
+
+    # Get git information to track deployment history
+    commit_info_coroutine = get_git_commit_info()
 
     running_app: RunningApp = await _init_local_app_from_name(
         client, name, namespace, environment_name=environment_name
@@ -558,7 +558,7 @@ async def _deploy_app(
                 app._classes,
                 name,
                 tag,
-                commit_info,
+                await commit_info_coroutine,
             )
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.

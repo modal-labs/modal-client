@@ -1,80 +1,70 @@
 # Copyright Modal Labs 2025
-import os
-import subprocess
-from typing import Dict, List, Optional, Union
+import asyncio
+from typing import Optional
+
+from modal_proto import api_pb2
 
 
-def run_command(args: List[str]) -> Optional[str]:
-    """Run a command and return its output.
-
-    Args:
-        args: Command and arguments as a list
-
-    Returns:
-        Command output as string or None if command failed
-    """
+async def run_command_async(args: list[str]) -> Optional[str]:
     try:
-        result = subprocess.run(
-            args,
-            check=True,
-            capture_output=True,
-            text=True,
-            shell=False,
+        process = await asyncio.create_subprocess_exec(
+            *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        return result.stdout.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
+        stdout_bytes, _ = await process.communicate()
+
+        if process.returncode != 0:
+            return None
+
+        return stdout_bytes.decode("utf-8").strip()
+    except (OSError, FileNotFoundError):
         return None
 
 
-def get_git_commit_info() -> Dict[str, Union[str, bool, int]]:
-    """Collect git information about the current repository."""
+async def get_git_commit_info() -> api_pb2.CommitInfo | None:
+    """Collect git information about the current repository asynchronously."""
+    git_info: api_pb2.CommitInfo = api_pb2.CommitInfo(vcs="git")
 
-    # Check if we're in a git repository
-    if not os.path.exists(".git") and run_command(["git", "rev-parse", "--is-inside-work-tree"]) != "true":
-        return {}
+    # Define the minimal set of commands to run in parallel
+    commands = [
+        ["git", "rev-parse", "--is-inside-work-tree"],
+        # Get commit hash, timestamp, author name, and author email
+        ["git", "log", "-1", "--format=%H%n%ct%n%an%n%ae", "HEAD"],
+        # Get branch name
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        # Check if working directory is dirty
+        ["git", "status", "--porcelain"],
+        ["git", "remote", "get-url", "origin"],
+    ]
 
-    git_info: Dict[str, Union[str, bool, int]] = {
-        "vcs": "git",
-    }
+    # Run commands in parallel using asyncio.gather
+    tasks = (run_command_async(cmd) for cmd in commands)
+    (is_repo, log_info, branch, status, origin_url) = await asyncio.gather(*tasks)
 
-    # Get branch name
-    branch = run_command(["git", "rev-parse", "--abbrev-ref", "HEAD"])
-    if branch:
-        git_info["branch"] = branch
-    else:
-        # If there's an error getting the branch name, bail
-        return {}
+    if not is_repo or not branch:
+        return None
 
-    # Get commit hash
-    commit_hash = run_command(["git", "rev-parse", "HEAD"])
-    if commit_hash:
-        git_info["commit_hash"] = commit_hash
-    else:
-        # If there's an error getting the commit hash, bail
-        return {}
+    git_info.branch = branch
 
-    # Get commit timestamp
-    commit_timestamp = run_command(["git", "show", "-s", "--format=%ct", "HEAD"])
-    if commit_timestamp:
-        git_info["commit_timestamp"] = int(commit_timestamp)
+    if not log_info:
+        return None
 
-    # Check if working directory is dirty
-    dirty_output = run_command(["git", "status", "--porcelain"])
-    git_info["dirty"] = bool(dirty_output)
+    info_lines = log_info.split("\n")
+    if len(info_lines) < 4:
+        # If we didn't get all expected lines, bail
+        return None
 
-    # Get repository URL
-    repo_url = run_command(["git", "remote", "get-url", "origin"])
-    if repo_url:
-        git_info["repo_url"] = repo_url
+    try:
+        git_info.commit_hash = info_lines[0]
+        git_info.commit_timestamp = int(info_lines[1])
+        git_info.author_name = info_lines[2]
+        git_info.author_email = info_lines[3]
+    except (ValueError, IndexError):
+        # Bail if parsing fails
+        return None
 
-    # Get author name
-    author_name = run_command(["git", "show", "-s", "--format=%an", "HEAD"])
-    if author_name:
-        git_info["author_name"] = author_name
+    git_info.dirty = bool(status)
 
-    # Get author email
-    author_email = run_command(["git", "show", "-s", "--format=%ae", "HEAD"])
-    if author_email:
-        git_info["author_email"] = author_email
+    if origin_url:
+        git_info.repo_url = origin_url
 
     return git_info
