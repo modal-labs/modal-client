@@ -2,6 +2,7 @@
 import asyncio
 from typing import Optional
 
+from modal.config import logger
 from modal_proto import api_pb2
 
 
@@ -13,10 +14,13 @@ async def run_command_fallible(args: list[str]) -> Optional[str]:
         stdout_bytes, _ = await process.communicate()
 
         if process.returncode != 0:
+            logger.debug(f"Command {args} exited with code {process.returncode}")
             return None
 
         return stdout_bytes.decode("utf-8").strip()
-    except (OSError, FileNotFoundError):
+
+    except Exception as e:
+        logger.debug(f"Command {args} failed: {e}")
         return None
 
 
@@ -24,7 +28,6 @@ async def get_git_commit_info() -> api_pb2.CommitInfo | None:
     """Collect git information about the current repository asynchronously."""
     git_info: api_pb2.CommitInfo = api_pb2.CommitInfo(vcs="git")
 
-    # Define the minimal set of commands to run in parallel
     commands = [
         ["git", "rev-parse", "--is-inside-work-tree"],
         # Get commit hash, timestamp, author name, and author email
@@ -36,7 +39,6 @@ async def get_git_commit_info() -> api_pb2.CommitInfo | None:
         ["git", "remote", "get-url", "origin"],
     ]
 
-    # Run commands in parallel using asyncio.gather
     tasks = (run_command_fallible(cmd) for cmd in commands)
     (is_repo, log_info, branch, status, origin_url) = await asyncio.gather(*tasks)
 
