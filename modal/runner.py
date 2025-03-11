@@ -189,7 +189,6 @@ async def _publish_app(
 
     definition_ids = {obj.object_id: obj._get_metadata().definition_id for obj in functions.values()}  # type: ignore
 
-    # Create the request
     request = api_pb2.AppPublishRequest(
         app_id=running_app.app_id,
         name=name,
