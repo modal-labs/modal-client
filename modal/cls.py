@@ -2,6 +2,7 @@
 import dataclasses
 import inspect
 import os
+import textwrap
 import typing
 from collections.abc import Collection
 from typing import Any, Callable, Optional, TypeVar, Union
@@ -452,6 +453,22 @@ class _Cls(_Object, type_prefix="cs"):
             raise InvalidError(
                 "A class can't have both a custom __init__ constructor "
                 "and dataclass-style modal.parameter() annotations"
+            )
+        elif has_custom_constructor:
+            deprecation_warning(
+                (2025, 3, 11),
+                textwrap.dedent(f"""
+                {user_cls} uses a non-default constructor (__init__) method.
+                Custom constructors will not be supported in a a future version of Modal.
+
+                To parameterize classes, use dataclass-style modal.parameter() declarations instead,
+                e.g.:\n
+
+                class {user_cls.__name__}:
+                    model_name: str = modal.parameter()
+
+                More information on class parameterization can be found here: https://modal.com/docs/guide/parametrized-functions
+                """),
             )
 
         annotations = user_cls.__dict__.get("__annotations__", {})  # compatible with older pythons
