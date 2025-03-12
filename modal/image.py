@@ -249,7 +249,8 @@ def _get_image_builder_version(server_version: ImageBuilderVersion) -> ImageBuil
             update_suggestion = "your image builder version using the Modal dashboard"
         else:
             update_suggestion = "your client library (pip install --upgrade modal)"
-        suggested_versions = supported_versions - {"PREVIEW"}
+        preview_versions: set[ImageBuilderVersion] = {"PREVIEW"}
+        suggested_versions = supported_versions - preview_versions
         raise VersionError(
             "This version of the modal client supports the following image builder versions:"
             f" {suggested_versions!r}."
