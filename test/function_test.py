@@ -96,6 +96,22 @@ def test_nested_map(client):
         assert final_results == [1, 16]
 
 
+def test_map_with_exception_in_input_iterator(client):
+    class CustomException(Exception):
+        pass
+
+    def input_gen():
+        yield 1
+        raise CustomException()
+
+    app = App()
+    dummy_modal = app.function()(dummy)
+
+    with app.run(client=client):
+        with pytest.raises(CustomException):
+            list(dummy_modal.map(input_gen()))
+
+
 @pytest.mark.asyncio
 async def test_map_async_generator(client):
     app = App()
