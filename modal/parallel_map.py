@@ -312,7 +312,7 @@ def _map_sync(
 
 @warn_if_generator_is_not_consumed(function_name="Function.map.aio")
 async def _map_async(
-    self,
+    self: "modal.functions.Function",
     *input_iterators: typing.Union[
         typing.Iterable[Any], typing.AsyncIterable[Any]
     ],  # one input iterator per argument in the mapped-over function/generator
@@ -339,19 +339,20 @@ async def _map_async(
             async for args in streamer:
                 await raw_input_queue.put.aio((args, kwargs))
         await raw_input_queue.put.aio(None)  # end-of-input sentinel
+        if False:
+            # make this a never yielding generator so we can async_merge it below
+            # this is important so any exception raised in feed_queue will be propagated
+            yield
 
-    feed_input_task = asyncio.create_task(feed_queue())
-
-    try:
-        # note that `map()` and `map.aio()` are not synchronicity-wrapped, since
-        # they accept executable code in the form of
-        # iterators that we don't want to run inside the synchronicity thread.
-        # Instead, we delegate to `._map()` with a safer Queue as input
-        async with aclosing(self._map.aio(raw_input_queue, order_outputs, return_exceptions)) as map_output_stream:
-            async for output in map_output_stream:
-                yield output
-    finally:
-        feed_input_task.cancel()  # should only be needed in case of exceptions
+    # note that `map()` and `map.aio()` are not synchronicity-wrapped, since
+    # they accept executable code in the form of
+    # iterators that we don't want to run inside the synchronicity thread.
+    # Instead, we delegate to `._map()` with a safer Queue as input
+    async with aclosing(
+        async_merge(self._map.aio(raw_input_queue, order_outputs, return_exceptions), feed_queue())
+    ) as map_output_stream:
+        async for output in map_output_stream:
+            yield output
 
 
 def _for_each_sync(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
