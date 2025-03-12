@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.95 (2025-03-12)
+
+* Fixes a bug which could cause `Function.map` and sibling methods to stall indefinitely if there was an exception in the input iterator itself (i.e. not the mapper function)
+
+
+
 ### 0.73.89 (2025-03-05)
 
 - The `@modal.web_endpoint` decorator is now deprecated. We are replacing it with `@modal.fastapi_endpoint`. This can be a simple name substitution in your code; the two decorators have identical semantics.
