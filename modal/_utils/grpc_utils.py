@@ -73,7 +73,7 @@ RETRYABLE_GRPC_STATUS_CODES = [
 class RetryWarningMessage:
     message: str
     warning_interval: int
-    error_to_warn_for: typing.List[Status]
+    errors_to_warn_for: typing.List[Status]
 
 def create_channel(
     server_url: str,

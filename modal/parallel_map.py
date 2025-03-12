@@ -142,9 +142,10 @@ async def _map_invocation(
             )
             # with 8 retries we log the warning below about every 30 seconds which isn't too spammy.
             retry_warning_message = RetryWarningMessage(
-                f"Warning: map progress for function {function._function_name} is limited."
+                message=f"Warning: map progress for function {function._function_name} is limited."
                 " Common bottlenecks include slow iteration over results, or function backlogs.",
-                8, [Status.RESOURCE_EXHAUSTED])
+                warning_interval=8,
+                errors_to_warn_for=[Status.RESOURCE_EXHAUSTED])
             resp = await retry_transient_errors(
                 client.stub.FunctionPutInputs,
                 request,
