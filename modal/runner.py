@@ -553,7 +553,7 @@ async def _deploy_app(
             try:
                 commit_info = await commit_info_future
             except Exception as e:
-                logger.debug(f"Failed to get git commit info: {repr(e)}")
+                logger.debug("Failed to get git commit info", exc_info=e)
 
             app_url, warnings = await _publish_app(
                 client,
