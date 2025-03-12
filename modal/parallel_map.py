@@ -5,7 +5,7 @@ import typing
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
-from grpclib import GRPCError, Status
+from grpclib import Status
 
 from modal._runtime.execution_context import current_input_id
 from modal._utils.async_utils import (
@@ -27,13 +27,17 @@ from modal._utils.function_utils import (
     _create_input,
     _process_result,
 )
-from modal._utils.grpc_utils import retry_transient_errors
+from modal._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, RetryWarningMessage, retry_transient_errors
 from modal.config import logger
 from modal_proto import api_pb2
 
 if typing.TYPE_CHECKING:
     import modal.client
 
+# pump_inputs should retry if it receives any of the standard retryable codes plus RESOURCE_EXHAUSTED.
+PUMP_INPUTS_RETRYABLE_GRPC_STATUS_CODES = RETRYABLE_GRPC_STATUS_CODES + [Status.RESOURCE_EXHAUSTED]
+PUMP_INPUTS_MAX_RETRIES = 8
+PUMP_INPUTS_MAX_RETRY_DELAY=15
 
 class _SynchronizedQueue:
     """mdmd:hidden"""
@@ -136,25 +140,19 @@ async def _map_invocation(
             logger.debug(
                 f"Pushing {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}."
             )
-            while True:
-                try:
-                    resp = await retry_transient_errors(
-                        client.stub.FunctionPutInputs,
-                        request,
-                        # with 8 retries we log the warning below about every 30 secondswhich isn't too spammy.
-                        max_retries=8,
-                        max_delay=15,
-                        additional_status_codes=[Status.RESOURCE_EXHAUSTED],
-                    )
-                    break
-                except GRPCError as err:
-                    if err.status != Status.RESOURCE_EXHAUSTED:
-                        raise err
-                    logger.warning(
-                        f"Warning: map progress for function {function._function_name} is limited."
-                        " Common bottlenecks include slow iteration over results, or function backlogs."
-                    )
-
+            # with 8 retries we log the warning below about every 30 seconds which isn't too spammy.
+            retry_warning_message = RetryWarningMessage(
+                message=f"Warning: map progress for function {function._function_name} is limited."
+                " Common bottlenecks include slow iteration over results, or function backlogs.",
+                warning_interval=8,
+                errors_to_warn_for=[Status.RESOURCE_EXHAUSTED])
+            resp = await retry_transient_errors(
+                client.stub.FunctionPutInputs,
+                request,
+                max_retries=None,
+                max_delay=PUMP_INPUTS_MAX_RETRY_DELAY,
+                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                retry_warning_message=retry_warning_message)
             count_update()
             for item in resp.inputs:
                 pending_outputs.setdefault(item.input_id, 0)
