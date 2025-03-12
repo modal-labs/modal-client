@@ -1163,3 +1163,51 @@ def f():
     mounts = servicer.mounts_excluding_published_client()
 
     assert len(mounts) == expected_mounts
+
+
+_map_retry_servicer = None
+_map_attempt_count = 0
+
+def _maybe_fail(i):
+    global _map_attempt_count
+    if _map_attempt_count > 10:
+        assert _map_retry_servicer
+        _map_retry_servicer.fail_put_inputs_with_internal_error = False
+        _map_retry_servicer.fail_put_inputs_with_stream_terminated_error = False
+    _map_attempt_count += 1
+    return i
+
+
+def test_map_retry_with_internal_error(client, servicer, monkeypatch):
+    """
+    .map retries forever for all status codes in PUMP_INPUTS_RETRYABLE_GRPC_STATUS_CODES, which includes INTERNAL.
+    This test forces pump_inputs to fail with INTERNAL for more than PUMP_INPUTS_MAX_RETRIES times. This verifies
+    that catch and retry the INTERNAL exception, and don't stop retrying until the call succeeds.
+    """
+    global _map_retry_servicer
+    monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
+    app = App()
+    _map_retry_servicer= servicer
+    maybe_fail = app.function()(_maybe_fail)
+    servicer.function_body(_maybe_fail)
+    servicer.fail_put_inputs_with_internal_error = True
+    with app.run(client=client):
+        for _ in maybe_fail.map(range(1), order_outputs=False):
+            pass
+
+def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch):
+    """
+    .map retries forever for all status codes in PUMP_INPUTS_RETRYABLE_GRPC_STATUS_CODES, which includes INTERNAL.
+    This test forces pump_inputs to fail with INTERNAL for more than PUMP_INPUTS_MAX_RETRIES times. This verifies
+    that catch and retry the INTERNAL exception, and don't stop retrying until the call succeeds.
+    """
+    global _map_retry_servicer
+    monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
+    app = App()
+    _map_retry_servicer= servicer
+    maybe_fail = app.function()(_maybe_fail)
+    servicer.function_body(_maybe_fail)
+    servicer.fail_put_inputs_with_stream_terminated_error = True
+    with app.run(client=client):
+        for _ in maybe_fail.map(range(1), order_outputs=False):
+            pass
