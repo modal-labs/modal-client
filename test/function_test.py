@@ -1194,12 +1194,11 @@ def test_map_retry_with_internal_error(client, servicer, monkeypatch, caplog):
     maybe_fail = app.function()(_maybe_fail)
     servicer.function_body(_maybe_fail)
     servicer.fail_put_inputs_with_grpc_error = Status.INTERNAL
-    with caplog.at_level(logging.WARNING):
-        with app.run(client=client):
-            for _ in maybe_fail.map(range(1), order_outputs=False):
-                pass
+    with app.run(client=client):
+        for _ in maybe_fail.map(range(1), order_outputs=False):
+            pass
     # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
-    assert "Warning: map progress for function" not in caplog.text
+    assert not [r for r in caplog.records if r.levelno == logging.WARNING]
 
 def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog):
     """
@@ -1215,12 +1214,12 @@ def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog
     maybe_fail = app.function()(_maybe_fail)
     servicer.function_body(_maybe_fail)
     servicer.fail_put_inputs_with_grpc_error = Status.RESOURCE_EXHAUSTED
-    # with caplog.at_level(logging.WARNING):
     with app.run(client=client):
         for _ in maybe_fail.map(range(1), order_outputs=False):
             pass
     # Verify we log the warning for RESOURCE_EXHAUSTED
-    assert "Warning: map progress for function" in caplog.text
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
 
 def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, caplog):
     """
@@ -1236,9 +1235,8 @@ def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, c
     maybe_fail = app.function()(_maybe_fail)
     servicer.function_body(_maybe_fail)
     servicer.fail_put_inputs_with_stream_terminated_error = True
-    with caplog.at_level(logging.WARNING):
-        with app.run(client=client):
-            for _ in maybe_fail.map(range(1), order_outputs=False):
-                pass
+    with app.run(client=client):
+        for _ in maybe_fail.map(range(1), order_outputs=False):
+            pass
     # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
-    assert "Warning: map progress for function" not in caplog.text
+    assert not [r for r in caplog.records if r.levelno == logging.WARNING]
