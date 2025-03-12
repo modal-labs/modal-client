@@ -385,6 +385,10 @@ class AsyncOrSyncIterable:
         except NestedEventLoops:
             raise InvalidError(self.nested_async_message)
 
+    async def aclose(self):
+        if hasattr(self._async_iterable, "aclose"):
+            await self._async_iterable.aclose()
+
 
 _shutdown_tasks = []
 
