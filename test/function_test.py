@@ -86,6 +86,16 @@ def test_map(client, servicer, slow_put_inputs):
         assert len(servicer.cleared_function_calls) == 2
 
 
+def test_nested_map(client):
+    app = App()
+    dummy_modal = app.function()(dummy)
+
+    with app.run(client=client):
+        res1 = dummy_modal.map([1, 2])
+        final_results = list(dummy_modal.map(res1))
+        assert final_results == [1, 16]
+
+
 @pytest.mark.asyncio
 async def test_map_async_generator(client):
     app = App()
