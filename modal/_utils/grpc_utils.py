@@ -219,7 +219,12 @@ async def retry_transient_errors(
 
             n_retries += 1
 
-            if retry_warning_message and n_retries % retry_warning_message.warning_interval == 0:
+            if (
+                retry_warning_message
+                and n_retries % retry_warning_message.warning_interval == 0
+                and isinstance(exc, GRPCError)
+                and exc.status in retry_warning_message.errors_to_warn_for
+            ):
                 logger.warning(retry_warning_message.message)
 
             await asyncio.sleep(delay)
