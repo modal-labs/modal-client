@@ -1598,6 +1598,7 @@ message FunctionMapResponse {
   repeated FunctionPutInputsResponseItem pipelined_inputs = 2;
   FunctionRetryPolicy retry_policy = 3;
   string function_call_jwt = 4;
+  bool sync_client_retries_enabled = 5;
 }
 
 message FunctionOptions {
