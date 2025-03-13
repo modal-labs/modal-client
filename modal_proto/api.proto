@@ -1927,6 +1927,7 @@ message NotebookKernelPublishResultsRequest {
   message ExecuteReply {
     string status = 1;
     uint32 execution_count = 2;
+    double duration = 3;
   }
 
   // IOPub message or reply received from the kernel for a cell.
