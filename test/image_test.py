@@ -996,6 +996,50 @@ def test_image_env(builder_version, servicer, client):
             pass
 
 
+def test_image_cmd_empty(builder_version, servicer, client, tmp_path_with_content):
+    app = App()
+    app.image = Image.debian_slim().cmd([])
+    app.function()(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(app.image.object_id, servicer)
+        assert "CMD []" in layers[0].dockerfile_commands
+
+
+def test_image_cmd_nonempty(builder_version, servicer, client, tmp_path_with_content):
+    app = App()
+    app.image = Image.debian_slim().cmd(["echo", "hello"])
+    app.function()(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(app.image.object_id, servicer)
+        assert 'CMD ["echo", "hello"]' in layers[0].dockerfile_commands
+
+
+def test_image_debian_slim_default_cmd(builder_version, servicer, client, test_dir):
+    app = App(image=Image.debian_slim())
+    app.function()(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(app.image.object_id, servicer)
+        if builder_version > "2024.10":
+            assert 'CMD ["sleep", "172800"]' in layers[0].dockerfile_commands
+        else:
+            assert "CMD" not in layers[0].dockerfile_commands
+
+
+def test_image_micromamba_default_cmd(builder_version, servicer, client, test_dir):
+    app = App(image=Image.micromamba())
+    app.function()(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(app.image.object_id, servicer)
+        if builder_version > "2024.10":
+            assert 'CMD ["sleep", "172800"]' in layers[0].dockerfile_commands
+        else:
+            assert "CMD" not in layers[0].dockerfile_commands
+
+
 def test_image_gpu(builder_version, servicer, client):
     app = App(image=Image.debian_slim().run_commands("echo 0"))
     app.function()(dummy)

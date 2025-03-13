@@ -1444,6 +1444,9 @@ class _Image(_Object, type_prefix="im"):
                 f"RUN micromamba install -n base -y python={validated_python_version} pip -c conda-forge",
             ]
             commands = _Image._registry_setup_commands(tag, version, setup_commands)
+            if version > "2024.10":
+                # for convenience when launching in a sandbox: sleep for 48h
+                commands.append(f'CMD ["sleep", "{48 * 3600}"]')
             context_files = {CONTAINER_REQUIREMENTS_PATH: _get_modal_requirements_path(version, python_version)}
             return DockerfileSpec(commands=commands, context_files=context_files)
 
@@ -1833,6 +1836,9 @@ class _Image(_Object, type_prefix="im"):
             ]
             if version > "2023.12":
                 commands.append(f"RUN rm {CONTAINER_REQUIREMENTS_PATH}")
+            if version > "2024.10":
+                # for convenience when launching in a sandbox: sleep for 48h
+                commands.append(f'CMD ["sleep", "{48 * 3600}"]')
             return DockerfileSpec(commands=commands, context_files=context_files)
 
         return _Image._from_args(
@@ -2020,6 +2026,24 @@ class _Image(_Object, type_prefix="im"):
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
         )
+
+    def cmd(self, cmd: list[str]) -> "_Image":
+        """Set the default entrypoint argument (`CMD`) for the image.
+
+        **Example**
+
+        ```python
+        image = (
+            modal.Image.debian_slim().cmd(["python", "app.py"])
+        )
+        ```
+        """
+
+        cmd_str = _flatten_str_args("cmd", "cmd", cmd)
+        cmd_str = '"' + '", "'.join(cmd_str) + '"' if cmd_str else ""
+        dockerfile_cmd = f"CMD [{cmd_str}]"
+
+        return self.dockerfile_commands(dockerfile_cmd)
 
     # Live handle methods
 
