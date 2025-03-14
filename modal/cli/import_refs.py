@@ -12,7 +12,7 @@ import importlib
 import importlib.util
 import inspect
 import sys
-import types
+import typing
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -130,7 +130,7 @@ class AutoRunPriority:
 
 
 def list_cli_commands(
-    module: types.ModuleType,
+    module_members: dict[str, typing.Any],
 ) -> list[CLICommand]:
     """
     Extracts all runnables found either directly in the input module, or in any of the Apps listed in that module
@@ -142,7 +142,9 @@ def list_cli_commands(
 
     Where the first name is always the module level name if such a name exists
     """
-    apps = cast(list[tuple[str, App]], inspect.getmembers(module, lambda x: isinstance(x, App)))
+    apps = cast(
+        list[tuple[str, App]], [(name, member) for name, member in module_members.items() if isinstance(member, App)]
+    )
 
     all_runnables: dict[Runnable, list[str]] = defaultdict(list)
     priorities: dict[Runnable, int] = defaultdict(lambda: AutoRunPriority.APP_FUNCTION)
@@ -163,10 +165,11 @@ def list_cli_commands(
 
     # If any class or function is exported as a module level object, use that
     # as the preferred name by putting it first in the list
-    module_level_entities = cast(
-        list[tuple[str, Runnable]],
-        inspect.getmembers(module, lambda x: isinstance(x, (Function, Cls, LocalEntrypoint))),
-    )
+    module_level_entities = [
+        (name, member)
+        for name, member in module_members.items()
+        if isinstance(member, (Function, Cls, LocalEntrypoint))
+    ]
     for name, entity in module_level_entities:
         if isinstance(entity, Cls) and entity._is_local():
             for method_name in entity._get_method_names():
@@ -335,25 +338,33 @@ def import_and_filter(
     """
     # all commands:
     module = import_file_or_module(import_ref, base_cmd)
-    cli_commands = list_cli_commands(module)
+    cli_commands = list_cli_commands(dict(inspect.getmembers(module)))
 
     # all commands that satisfy local entrypoint/accept webhook limitations AND object path prefix
-    filtered_commands = filter_cli_commands(
-        cli_commands, import_ref.object_path, accept_local_entrypoint, accept_webhook
-    )
 
     all_usable_commands = filter_cli_commands(cli_commands, "", accept_local_entrypoint, accept_webhook)
+    inferred_runnable = infer_runnable(cli_commands, import_ref.object_path, accept_local_entrypoint, accept_webhook)
 
-    if filtered_commands:
+    if inferred_runnable:
         # if there is a single command with "highest run prio" - use that
-        filtered_commands_by_prio = defaultdict(list)
-        for cmd in filtered_commands:
-            filtered_commands_by_prio[cmd.priority].append(cmd)
-
-        _, highest_prio_commands = min(filtered_commands_by_prio.items())
-        if len(highest_prio_commands) == 1:
-            cli_command = highest_prio_commands[0]
-            return cli_command.runnable, all_usable_commands
+        return inferred_runnable, all_usable_commands
 
     # otherwise, just return the list of all commands
     return None, all_usable_commands
+
+
+def infer_runnable(
+    cli_commands: list[CLICommand], object_path: str, accept_local_entrypoint: bool, accept_webhook: bool
+) -> Runnable:
+    filtered_commands = filter_cli_commands(cli_commands, object_path, accept_local_entrypoint, accept_webhook)
+
+    filtered_commands_by_prio = defaultdict(list)
+    for cmd in filtered_commands:
+        filtered_commands_by_prio[cmd.priority].append(cmd)
+
+    _, highest_prio_commands = min(filtered_commands_by_prio.items())
+    if len(highest_prio_commands) == 1:
+        cli_command = highest_prio_commands[0]
+        return cli_command.runnable
+
+    return None
