@@ -1361,10 +1361,7 @@ message FunctionCreateRequest {
   string app_id = 2  [ (modal.options.audit_target_attr) = true ];
   Schedule schedule = 6 [deprecated=true]; // Deprecated: now passed in the Function definition
   string existing_function_id = 7;
-  // This flag tells the server to avoid doing updates in FunctionCreate that should now
-  // be done in AppPublish. Provides a smoother migration onto atomic deployments with 0.64,
-  // and can be deprecated once we no longer support ealier versions.
-  bool defer_updates = 8;
+  reserved 8;  // defer_updates
   FunctionData function_data = 9;  // supersedes 'function' field above
 }
 
