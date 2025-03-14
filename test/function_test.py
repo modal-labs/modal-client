@@ -1,20 +1,22 @@
 # Copyright Modal Labs 2022
 import asyncio
 import inspect
+import logging
 import os
 import pytest
 import time
 import typing
 from contextlib import contextmanager
 
+from grpclib import Status
 from synchronicity.exceptions import UserCodeException
 
 import modal
-from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, web_endpoint
+from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, fastapi_endpoint
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
 from modal.exception import DeprecationError, ExecutionError, InvalidError
-from modal.functions import Function, FunctionCall, gather
+from modal.functions import Function, FunctionCall
 from modal.runner import deploy_app
 from modal_proto import api_pb2
 from test.helpers import deploy_app_externally
@@ -84,6 +86,32 @@ def test_map(client, servicer, slow_put_inputs):
         assert len(servicer.cleared_function_calls) == 1
         assert set(dummy_modal.map([5, 2], [4, 3], order_outputs=False)) == {13, 41}
         assert len(servicer.cleared_function_calls) == 2
+
+
+def test_nested_map(client):
+    app = App()
+    dummy_modal = app.function()(dummy)
+
+    with app.run(client=client):
+        res1 = dummy_modal.map([1, 2])
+        final_results = list(dummy_modal.map(res1))
+        assert final_results == [1, 16]
+
+
+def test_map_with_exception_in_input_iterator(client):
+    class CustomException(Exception):
+        pass
+
+    def input_gen():
+        yield 1
+        raise CustomException()
+
+    app = App()
+    dummy_modal = app.function()(dummy)
+
+    with app.run(client=client):
+        with pytest.raises(CustomException):
+            list(dummy_modal.map(input_gen()))
 
 
 @pytest.mark.asyncio
@@ -263,10 +291,10 @@ def test_function_disk_request(client):
     app.function(ephemeral_disk=1_000_000)(dummy)
 
 
-def test_idle_timeout_must_be_positive():
+def test_scaledown_window_must_be_positive():
     app = App()
     with pytest.raises(InvalidError, match="must be > 0"):
-        app.function(container_idle_timeout=0)(dummy)
+        app.function(scaledown_window=0)(dummy)
 
 
 def later():
@@ -431,7 +459,7 @@ def test_sync_parallelism(client, servicer):
     with app.run(client=client):
         t0 = time.time()
         # NOTE tests breaks in macOS CI if the smaller time is smaller than ~300ms
-        res = gather(slo1_modal.spawn(0.31), slo1_modal.spawn(0.3))
+        res = FunctionCall.gather(slo1_modal.spawn(0.31), slo1_modal.spawn(0.3))
         t1 = time.time()
         assert res == [0.31, 0.3]  # results should be ordered as inputs, not by completion time
         assert t1 - t0 < 0.6  # less than the combined runtime, make sure they run in parallel
@@ -591,7 +619,7 @@ def test_local_execution_on_web_endpoint(client, servicer):
     app = App()
 
     @app.function(serialized=True)
-    @web_endpoint()
+    @fastapi_endpoint()
     def foo(x: str):
         return f"{x}!"
 
@@ -638,7 +666,7 @@ def test_invalid_remote_executor_on_web_endpoint(client, servicer, remote_execut
     app = App()
 
     @app.function(serialized=True)
-    @web_endpoint()
+    @fastapi_endpoint()
     def foo():
         pass
 
@@ -746,7 +774,7 @@ def test_allow_cross_region_volumes_webhook(client, servicer):
     vol2 = NetworkFileSystem.from_name("xyz-2", create_if_missing=True)
     # Should pass flag for all the function's NetworkFileSystemMounts
     app.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(
-        web_endpoint()(dummy)
+        fastapi_endpoint()(dummy)
     )
 
     with app.run(client=client):
@@ -763,7 +791,7 @@ def test_serialize_deserialize_function_handle(servicer, client):
     app = App()
 
     @app.function(serialized=True)
-    @web_endpoint()
+    @fastapi_endpoint()
     def my_handle():
         pass
 
@@ -796,9 +824,9 @@ def test_autoscaler_settings(client, servicer):
     app = App()
 
     kwargs: dict[str, typing.Any] = dict(  # No idea why we need that type hint
-        keep_warm=2,
-        concurrency_limit=10,
-        container_idle_timeout=60,
+        min_containers=2,
+        max_containers=10,
+        scaledown_window=60,
     )
     f = app.function(**kwargs)(dummy)
 
@@ -806,9 +834,24 @@ def test_autoscaler_settings(client, servicer):
         defn = servicer.app_functions[f.object_id]
         # Test both backwards and forwards compatibility
         settings = defn.autoscaler_settings
-        assert settings.min_containers == defn.warm_pool_size == kwargs["keep_warm"]
-        assert settings.max_containers == defn.concurrency_limit == kwargs["concurrency_limit"]
-        assert settings.scaledown_window == defn.task_idle_timeout_secs == kwargs["container_idle_timeout"]
+        assert settings.min_containers == defn.warm_pool_size == kwargs["min_containers"]
+        assert settings.max_containers == defn.concurrency_limit == kwargs["max_containers"]
+        assert settings.scaledown_window == defn.task_idle_timeout_secs == kwargs["scaledown_window"]
+
+
+@pytest.mark.parametrize(
+    "new,old",
+    [
+        ("min_containers", "keep_warm"),
+        ("max_containers", "concurrency_limit"),
+        ("scaledown_window", "container_idle_timeout"),
+    ],
+)
+def test_autoscaler_settings_deprecations(new, old):
+    app = App()
+
+    with pytest.warns(DeprecationError, match=f"{old} -> {new}"):
+        app.function(**{old: 10})(dummy)  # type: ignore
 
 
 def test_not_hydrated():
@@ -1122,3 +1165,78 @@ def f():
     mounts = servicer.mounts_excluding_published_client()
 
     assert len(mounts) == expected_mounts
+
+
+_map_retry_servicer = None
+_map_attempt_count = 0
+
+def _maybe_fail(i):
+    global _map_attempt_count
+    if _map_attempt_count >= 10:
+        assert _map_retry_servicer
+        _map_retry_servicer.fail_put_inputs_with_grpc_error = None
+        _map_retry_servicer.fail_put_inputs_with_stream_terminated_error = False
+    _map_attempt_count += 1
+    return i
+
+
+def test_map_retry_with_internal_error(client, servicer, monkeypatch, caplog):
+    """
+    This test forces pump_inputs to fail with INTERNAL for 10 times, and then succeed. This tests that the error
+    is caught and retried error, and does not propagate up.
+    """
+    global _map_retry_servicer, _map_attempt_count
+    monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
+    app = App()
+    _map_retry_servicer= servicer
+    # reset count from any previous tests
+    _map_attempt_count = 0
+    maybe_fail = app.function()(_maybe_fail)
+    servicer.function_body(_maybe_fail)
+    servicer.fail_put_inputs_with_grpc_error = Status.INTERNAL
+    with app.run(client=client):
+        for _ in maybe_fail.map(range(1), order_outputs=False):
+            pass
+    # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
+    assert not [r for r in caplog.records if r.levelno == logging.WARNING]
+
+def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog):
+    """
+    This test forces pump_inputs to fail with RESOURCE_EXHAUSTED for 10 times, and then succeed. This tests that
+    the error is caught and retried error, and does not propagate up.
+    """
+    global _map_retry_servicer, _map_attempt_count
+    monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
+    app = App()
+    _map_retry_servicer= servicer
+    # reset count from any previous tests
+    _map_attempt_count = 0
+    maybe_fail = app.function()(_maybe_fail)
+    servicer.function_body(_maybe_fail)
+    servicer.fail_put_inputs_with_grpc_error = Status.RESOURCE_EXHAUSTED
+    with app.run(client=client):
+        for _ in maybe_fail.map(range(1), order_outputs=False):
+            pass
+    # Verify we log the warning for RESOURCE_EXHAUSTED
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+
+def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, caplog):
+    """
+    This test forces pump_inputs to fail with StreamTerminatedError for 10 times, and then succeed. This tests that
+    the error is caught and retried error, and does not propagate up.
+    """
+    global _map_retry_servicer, _map_attempt_count
+    monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
+    app = App()
+    _map_retry_servicer= servicer
+    # reset count from any previous tests
+    _map_attempt_count = 0
+    maybe_fail = app.function()(_maybe_fail)
+    servicer.function_body(_maybe_fail)
+    servicer.fail_put_inputs_with_stream_terminated_error = True
+    with app.run(client=client):
+        for _ in maybe_fail.map(range(1), order_outputs=False):
+            pass
+    # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
+    assert not [r for r in caplog.records if r.levelno == logging.WARNING]

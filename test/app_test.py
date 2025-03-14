@@ -6,7 +6,7 @@ import time
 
 from grpclib import GRPCError, Status
 
-from modal import App, Image, Mount, Secret, Stub, Volume, enable_output, web_endpoint
+from modal import App, Image, Mount, Secret, Stub, Volume, enable_output, fastapi_endpoint, web_endpoint
 from modal._partial_function import _parse_custom_domains
 from modal._utils.async_utils import synchronizer
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
@@ -173,17 +173,33 @@ async def web2(x):
     return {"cube": x**3}
 
 
-def test_registered_web_endpoints(client, servicer):
+def test_registered_fastapi_endpoints(client, servicer):
     app = App()
     app.function()(square)
-    app.function()(web_endpoint()(web1))
-    app.function()(web_endpoint()(web2))
+    app.function()(fastapi_endpoint()(web1))
+    app.function()(fastapi_endpoint()(web2))
 
     @app.cls(serialized=True)
     class Cls:
-        @web_endpoint()
-        def cls_web_endpoint(self):
+        @fastapi_endpoint()
+        def web3(self):
             pass
+
+    assert app.registered_web_endpoints == ["web1", "web2", "Cls.web3"]
+
+
+def test_registered_legacy_web_endpoints(client, servicer):
+    with pytest.warns(DeprecationError, match="fastapi_endpoint"):
+        app = App()
+        app.function()(square)
+        app.function()(web_endpoint()(web1))
+        app.function()(web_endpoint()(web2))
+
+        @app.cls(serialized=True)
+        class Cls:
+            @web_endpoint()
+            def cls_web_endpoint(self):
+                pass
 
     assert app.registered_web_endpoints == ["web1", "web2", "Cls.cls_web_endpoint"]
 

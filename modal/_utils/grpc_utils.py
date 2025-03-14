@@ -8,6 +8,7 @@ import typing
 import urllib.parse
 import uuid
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import (
     Any,
     Optional,
@@ -68,6 +69,11 @@ RETRYABLE_GRPC_STATUS_CODES = [
     Status.INTERNAL,
 ]
 
+@dataclass
+class RetryWarningMessage:
+    message: str
+    warning_interval: int
+    errors_to_warn_for: typing.List[Status]
 
 def create_channel(
     server_url: str,
@@ -144,6 +150,7 @@ async def retry_transient_errors(
     attempt_timeout: Optional[float] = None,  # timeout for each attempt
     total_timeout: Optional[float] = None,  # timeout for the entire function call
     attempt_timeout_floor=2.0,  # always have at least this much timeout (only for total_timeout)
+    retry_warning_message: Optional[RetryWarningMessage] = None
 ) -> ResponseType:
     """Retry on transient gRPC failures with back-off until max_retries is reached.
     If max_retries is None, retry forever."""
@@ -191,6 +198,10 @@ async def retry_transient_errors(
                 final_attempt = False
 
             if final_attempt:
+                logger.debug(
+                    f"Final attempt failed with {repr(exc)} {n_retries=} {delay=} "
+                    f"{total_deadline=} for {fn.name} ({idempotency_key[:8]})"
+                )
                 if isinstance(exc, OSError):
                     raise ConnectionError(str(exc))
                 elif isinstance(exc, asyncio.TimeoutError):
@@ -204,9 +215,17 @@ async def retry_transient_errors(
                 # TODO: update to newer version (>=0.4.8) once stable
                 raise exc
 
-            logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn.name}")
+            logger.debug(f"Retryable failure {repr(exc)} {n_retries=} {delay=} for {fn.name} ({idempotency_key[:8]})")
 
             n_retries += 1
+
+            if (
+                retry_warning_message
+                and n_retries % retry_warning_message.warning_interval == 0
+                and isinstance(exc, GRPCError)
+                and exc.status in retry_warning_message.errors_to_warn_for
+            ):
+                logger.warning(retry_warning_message.message)
 
             await asyncio.sleep(delay)
             delay = min(delay * delay_factor, max_delay)

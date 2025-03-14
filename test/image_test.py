@@ -122,7 +122,9 @@ def test_python_version_validation(builder_version):
 def test_dockerhub_python_version(builder_version):
     assert _dockerhub_python_version(builder_version, "3.9.1") == "3.9.1"
 
-    expected_39_full = {"2023.12": "3.9.15", "2024.04": "3.9.19", "2024.10": "3.9.20"}[builder_version]
+    expected_39_full = {"2023.12": "3.9.15", "2024.04": "3.9.19", "2024.10": "3.9.20", "PREVIEW": "3.9.20"}[
+        builder_version
+    ]
     assert _dockerhub_python_version(builder_version, "3.9") == expected_39_full
 
     v = _dockerhub_python_version(builder_version, None).split(".")
@@ -985,6 +987,13 @@ def test_image_env(builder_version, servicer, client):
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
         assert any("ENV HELLO=" in cmd and "world!" in cmd for cmd in layers[0].dockerfile_commands)
+
+    # unhappy path, reject invalid input
+    with pytest.raises(InvalidError, match="Image ENV variables must be strings."):
+        app = App(image=Image.debian_slim().env({"HELLO": 123}))  # type: ignore
+        app.function()(dummy)
+        with app.run(client=client):
+            pass
 
 
 def test_image_gpu(builder_version, servicer, client):

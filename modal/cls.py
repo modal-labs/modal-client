@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import dataclasses
 import inspect
 import os
 import typing
@@ -24,7 +25,7 @@ from ._resources import convert_fn_config_to_resources_config
 from ._serialization import PYTHON_TO_PROTO_TYPE, check_valid_cls_constructor_arg
 from ._traceback import print_server_warnings
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.deprecation import deprecation_warning, renamed_parameter
+from ._utils.deprecation import deprecation_warning, renamed_parameter, warn_on_renamed_autoscaler_settings
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
@@ -72,6 +73,18 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
         return inspect.Signature(constructor_parameters)
 
 
+@dataclasses.dataclass()
+class _ServiceOptions:
+    secrets: typing.Collection[_Secret]
+    resources: Optional[api_pb2.Resources]
+    retry_policy: Optional[api_pb2.FunctionRetryPolicy]
+    concurrency_limit: Optional[int]
+    timeout_secs: Optional[int]
+    task_idle_timeout_secs: Optional[int]
+    validated_volumes: typing.Sequence[tuple[str, _Volume]]
+    target_concurrent_inputs: Optional[int]
+
+
 def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name: str):
     """Binds an "instance service function" to a specific method using metadata for that method
 
@@ -97,11 +110,14 @@ def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name:
         hydrate_from_instance_service_function(fun)
 
     def _deps():
-        if service_function.is_hydrated:
-            # without this check, the common service_function will be reloaded by all methods
-            # TODO(elias): Investigate if we can fix this multi-loader in the resolver - feels like a bug?
-            return []
-        return [service_function]
+        unhydrated_deps = []
+        # without this check, the common service_function will be reloaded by all methods
+        # TODO(elias): Investigate if we can fix this multi-loader in the resolver - feels like a bug?
+        if not cls.is_hydrated:
+            unhydrated_deps.append(cls)
+        if not service_function.is_hydrated:
+            unhydrated_deps.append(service_function)
+        return unhydrated_deps
 
     rep = f"Method({cls._name}.{method_name})"
 
@@ -144,12 +160,13 @@ class _Obj:
     _kwargs: dict[str, Any]
 
     _instance_service_function: Optional[_Function] = None  # this gets set lazily
+    _options: Optional[_ServiceOptions]
 
     def __init__(
         self,
         cls: "_Cls",
         user_cls: Optional[type],  # this would be None in case of lookups
-        options: Optional[api_pb2.FunctionOptions],
+        options: Optional[_ServiceOptions],
         args,
         kwargs,
     ):
@@ -354,7 +371,7 @@ class _Cls(_Object, type_prefix="cs"):
     """
 
     _class_service_function: Optional[_Function]  # The _Function (read "service") serving *all* methods of the class
-    _options: Optional[api_pb2.FunctionOptions]
+    _options: Optional[_ServiceOptions]
 
     _app: Optional["modal.app._App"] = None  # not set for lookups
     _name: Optional[str]
@@ -504,7 +521,7 @@ class _Cls(_Object, type_prefix="cs"):
         name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
-        workspace: Optional[str] = None,
+        workspace: Optional[str] = None,  # Deprecated and unused
     ) -> "_Cls":
         """Reference a Cls from a deployed App by its name.
 
@@ -518,6 +535,11 @@ class _Cls(_Object, type_prefix="cs"):
         """
         _environment_name = environment_name or config.get("environment")
 
+        if workspace is not None:
+            deprecation_warning(
+                (2025, 1, 27), "The `workspace` argument is no longer used and will be removed in a future release."
+            )
+
         async def _load_remote(self: _Cls, resolver: Resolver, existing_object_id: Optional[str]):
             request = api_pb2.ClassGetRequest(
                 app_name=app_name,
@@ -525,7 +547,6 @@ class _Cls(_Object, type_prefix="cs"):
                 namespace=namespace,
                 environment_name=_environment_name,
                 lookup_published=workspace is not None,
-                workspace_name=workspace,
                 only_class_function=True,
             )
             try:
@@ -542,7 +563,7 @@ class _Cls(_Object, type_prefix="cs"):
             await resolver.load(self._class_service_function)
             self._hydrate(response.class_id, resolver.client, response.handle_metadata)
 
-        rep = f"Ref({app_name})"
+        rep = f"Cls.from_name({app_name!r}, {name!r})"
         cls = cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
 
         class_service_name = f"{name}.*"  # special name of the base service function for the class
@@ -555,6 +576,7 @@ class _Cls(_Object, type_prefix="cs"):
         cls._name = name
         return cls
 
+    @warn_on_renamed_autoscaler_settings
     def with_options(
         self: "_Cls",
         cpu: Optional[Union[float, tuple[float, float]]] = None,
@@ -563,10 +585,13 @@ class _Cls(_Object, type_prefix="cs"):
         secrets: Collection[_Secret] = (),
         volumes: dict[Union[str, os.PathLike], _Volume] = {},
         retries: Optional[Union[int, Retries]] = None,
+        max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
+        scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
         timeout: Optional[int] = None,
-        concurrency_limit: Optional[int] = None,
         allow_concurrent_inputs: Optional[int] = None,
-        container_idle_timeout: Optional[int] = None,
+        # The following parameters are deprecated
+        concurrency_limit: Optional[int] = None,  # Now called `max_containers`
+        container_idle_timeout: Optional[int] = None,  # Now called `scaledown_window`
     ) -> "_Cls":
         """
         **Beta:** Allows for the runtime modification of a modal.Cls's configuration.
@@ -587,27 +612,33 @@ class _Cls(_Object, type_prefix="cs"):
         else:
             resources = None
 
-        volume_mounts = [
-            api_pb2.VolumeMount(
-                mount_path=path,
-                volume_id=volume.object_id,
-                allow_background_commits=True,
-            )
-            for path, volume in validate_volumes(volumes)
-        ]
-        replace_volume_mounts = len(volume_mounts) > 0
+        async def _load_from_base(new_cls, resolver, existing_object_id):
+            # this is a bit confusing, the cls will always have the same metadata
+            # since it has the same *class* service function (i.e. "template")
+            # But the (instance) service function for each Obj will be different
+            # since it will rebind to whatever `_options` have been assigned on
+            # the particular Cls parent
+            if not self.is_hydrated:
+                # this should only happen for Cls.from_name instances
+                # other classes should already be hydrated!
+                await resolver.load(self)
 
-        cls = self.clone()
-        cls._options = api_pb2.FunctionOptions(
-            replace_secret_ids=bool(secrets),
-            secret_ids=[secret.object_id for secret in secrets],
+            new_cls._initialize_from_other(self)
+
+        def _deps():
+            return []
+
+        cls = _Cls._from_loader(_load_from_base, rep=f"{self._name}.with_options(...)", is_another_app=True, deps=_deps)
+        cls._initialize_from_other(self)
+        cls._options = _ServiceOptions(
+            secrets=secrets,
             resources=resources,
             retry_policy=retry_policy,
-            concurrency_limit=concurrency_limit,
+            # TODO(michael) Update the protos to use the new terminology
+            concurrency_limit=max_containers,
+            task_idle_timeout_secs=scaledown_window,
             timeout_secs=timeout,
-            task_idle_timeout_secs=container_idle_timeout,
-            replace_volume_mounts=replace_volume_mounts,
-            volume_mounts=volume_mounts,
+            validated_volumes=validate_volumes(volumes),
             target_concurrent_inputs=allow_concurrent_inputs,
         )
 
@@ -621,7 +652,7 @@ class _Cls(_Object, type_prefix="cs"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-        workspace: Optional[str] = None,
+        workspace: Optional[str] = None,  # Deprecated and unused
     ) -> "_Cls":
         """Lookup a Cls from a deployed App by its name.
 

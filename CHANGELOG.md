@@ -4,11 +4,118 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 The client library is still in pre-1.0 development, and sometimes breaking changes are necessary. We try to minimize them and publish deprecation warnings / migration guides in advance, typically providing a transition window of several months.
 
+You can also refer to the [1.0 migration guide](https://modal.com/docs/guide/modal-1-0-migration) for a summary of major breaking changes that we are rolling out before releasing version 1.0.
+
 We appreciate your patience while we speedily work towards a stable release of the client.
 
 ## Latest
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
+
+### 0.73.95 (2025-03-12)
+
+* Fixes a bug which could cause `Function.map` and sibling methods to stall indefinitely if there was an exception in the input iterator itself (i.e. not the mapper function)
+
+
+
+### 0.73.89 (2025-03-05)
+
+- The `@modal.web_endpoint` decorator is now deprecated. We are replacing it with `@modal.fastapi_endpoint`. This can be a simple name substitution in your code; the two decorators have identical semantics.
+
+
+
+### 0.73.84 (2025-03-04)
+
+- The `keep_warm=`  parameter has been removed from the`@modal.method` decorator. This parameter has been nonfunctional since v0.63.0; all autoscaler configuration must be done at the level of the modal Cls.
+
+
+
+### 0.73.82 (2025-03-04)
+
+- Adds `modal.fastapi_endpoint` as an alias for `modal.web_endpoint`. We will be deprecating the `modal.web_endpoint`  _name_ (but not the functionality) as part of the Modal 1.0 release.
+
+
+
+### 0.73.81 (2025-03-03)
+
+- The `wait_for_response` parameter of Modal's web endpoint decorators has been removed (originally deprecated in May 2024).
+
+
+
+### 0.73.78 (2025-03-01)
+
+- It is now possible to call `Cls.with_options` on an unhydrated Cls, e.g.
+
+    ```python
+    ModelWithGPU = modal.Cls.from_name("my-app", "Model").with_options(gpu="H100")
+    ```
+
+
+
+### 0.73.77 (2025-03-01)
+
+* `Cls.with_options()` now accept unhydated volume and secrets
+
+
+
+### 0.73.76 (2025-02-28)
+
+- We're renaming several `App.function` and `App.cls` parameters that configure the behavior of Modal's autoscaler:
+    - `concurrency_limit` is now `max_containers`
+    - `keep_warm` is now `min_containers`
+    - `container_idle_timeout` is now `scaledown_window`
+- The old names will continue to work, but using them will issue a deprecation warning. The aim of the renaming is to reduce some persistent confusion about what these parameters mean. Code updates should require only a simple substitution of the new name.
+- We're adding a new parameter, `buffer_containers` (previously available as `_experimental_buffer_containers`). When your Function is actively handling inputs, the autoscaler will spin up additional `buffer_containers` so that subsequent inputs will not be blocked on cold starts. When the Function is idle, it will still scale down to the value given by `min_containers`.
+
+
+
+### 0.73.75 (2025-02-28)
+
+- Adds a new config field, `ignore_cache` (also accessible via environment variables as `MODAL_IGNORE_CACHE=1`), which will force Images used by the App to rebuild but not clobber any existing cached Images. This can be useful for testing an App's robustness to Image rebuilds without affecting other Apps that depend on the same base Image layer(s).
+
+
+
+### 0.73.73 (2025-02-28)
+
+- Adds a deprecation warning to the `workspace` parameter in `modal.Cls` lookup methods. This argument is unused and will be removed in the future.
+
+
+
+### 0.73.69 (2025-02-25)
+
+- We've moved the `modal.functions.gather` function to be a staticmethod on `modal.FunctionCall.gather`. The former spelling has been deprecated and will be removed in a future version.
+
+
+
+### 0.73.68 (2025-02-25)
+
+* Fixes issue where running `modal shell` with a dot-separated module reference as input would not accept the required `-m` flag for "module mode", but still emitted a warning telling users to use `-m`
+
+
+
+### 0.73.60 (2025-02-20)
+
+* Fixes an issue where `modal.runner.deploy_app()` didn't work when called from within a running (remote) Modal Function
+
+
+
+### 0.73.58 (2025-02-20)
+
+* Introduces an `-m` flag to `modal run`, `modal shell`, `modal serve` and `modal deploy`, which indicates that the modal app/function file is specified using python "module syntax" rather than a file path. In the future this will be a required flag when using module syntax.
+
+    Old syntax:
+    ```sh
+    modal run my_package/modal_main.py
+    modal run my_package.modal_main
+    ```
+
+    New syntax (note the `-m` on the second line):
+    ```sh
+    modal run my_package/modal_main.py
+    modal run -m my_package.modal_main
+    ```
+
+
 
 ### 0.73.54 (2025-02-18)
 

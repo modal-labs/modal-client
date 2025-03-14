@@ -60,6 +60,13 @@ Other possible configuration options are:
   When set, ignores the Image cache and builds all Image layers. Note that this
   will break the cache for all images based on the rebuilt layers, so other images
   may rebuild on subsequent runs / deploys even if the config is reverted.
+* `ignore_cache` (in the .toml file) / `MODAL_IGNORE_CACHE` (as an env var).
+  Defaults to False.
+  When set, ignores the Image cache and builds all Image layers. Unlike `force_build`,
+  this will not overwrite the cache for other images that have the same recipe.
+  Subsequent runs that do not use this option will pull the *previous* Image from
+  the cache, if one exists. It can be useful for testing an App's robustness to
+  Image rebuilds without clobbering Images used by other Apps.
 * `traceback` (in the .toml file) / `MODAL_TRACEBACK` (as an env var).
   Defaults to False. Enables printing full tracebacks on unexpected CLI
   errors, which can be useful for debugging client issues.
@@ -133,7 +140,7 @@ async def _lookup_workspace(server_url: str, token_id: str, token_secret: str) -
 
     credentials = (token_id, token_secret)
     async with _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
-        return await client.stub.WorkspaceNameLookup(Empty())
+        return await client.stub.WorkspaceNameLookup(Empty(), timeout=3)
 
 
 def config_profiles():
@@ -218,6 +225,7 @@ _SETTINGS = {
     "worker_id": _Setting(),  # For internal debugging use.
     "restore_state_path": _Setting("/__modal/restore-state.json"),
     "force_build": _Setting(False, transform=_to_boolean),
+    "ignore_cache": _Setting(False, transform=_to_boolean),
     "traceback": _Setting(False, transform=_to_boolean),
     "image_builder_version": _Setting(),
     "strict_parameters": _Setting(False, transform=_to_boolean),  # For internal/experimental use

@@ -129,16 +129,42 @@ def test_app_setup(servicer, set_env_client, server_url_env, modal_config):
         assert "_test" in toml.load(config_file_path)
 
 
-def test_run(servicer, set_env_client, test_dir):
-    app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
-    _run(["run", app_file.as_posix()])
-    _run(["run", app_file.as_posix() + "::app"])
-    _run(["run", app_file.as_posix() + "::foo"])
-    _run(["run", app_file.as_posix() + "::bar"], expected_exit_code=1, expected_stderr=None)
-    file_with_entrypoint = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
-    _run(["run", file_with_entrypoint.as_posix()])
-    _run(["run", file_with_entrypoint.as_posix() + "::main"])
-    _run(["run", file_with_entrypoint.as_posix() + "::app.main"])
+app_file = Path("app_run_tests") / "default_app.py"
+app_module = "app_run_tests.default_app"
+file_with_entrypoint = Path("app_run_tests") / "local_entrypoint.py"
+
+
+@pytest.mark.parametrize(
+    ("run_command", "expected_exit_code", "expected_output"),
+    [
+        ([f"{app_file}"], 0, ""),
+        ([f"{app_file}::app"], 0, ""),
+        ([f"{app_file}::foo"], 0, ""),
+        ([f"{app_file}::bar"], 1, ""),
+        ([f"{file_with_entrypoint}"], 0, ""),
+        ([f"{file_with_entrypoint}::main"], 0, ""),
+        ([f"{file_with_entrypoint}::app.main"], 0, ""),
+        ([f"{file_with_entrypoint}::foo"], 0, ""),
+    ],
+)
+def test_run(servicer, set_env_client, supports_dir, monkeypatch, run_command, expected_exit_code, expected_output):
+    monkeypatch.chdir(supports_dir)
+    res = _run(["run"] + run_command, expected_exit_code=expected_exit_code)
+    if expected_output:
+        assert re.search(expected_output, res.stdout) or re.search(expected_output, res.stderr), (
+            "output does not match expected string"
+        )
+
+
+def test_run_warns_without_module_flag(
+    servicer, set_env_client, supports_dir, recwarn, monkeypatch, disable_auto_mount
+):
+    monkeypatch.chdir(supports_dir)
+    _run(["run", "-m", f"{app_module}::foo"])
+    assert not len(recwarn)
+
+    with pytest.warns(match=" -m "):
+        _run(["run", f"{app_module}::foo"])
 
 
 def test_run_stub(servicer, set_env_client, test_dir):
@@ -229,10 +255,26 @@ def test_run_write_result(servicer, set_env_client, test_dir):
         )
 
 
-def test_deploy(servicer, set_env_client, test_dir):
-    app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
-    _run(["deploy", "--name=deployment_name", app_file.as_posix()])
-    assert servicer.app_state_history["ap-1"] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
+@pytest.mark.parametrize(
+    ["args", "success", "expected_warning"],
+    [
+        (["--name=deployment_name", str(app_file)], True, ""),
+        (["--name=deployment_name", app_module], True, f"modal deploy -m {app_module}"),
+        (["--name=deployment_name", "-m", app_module], True, ""),
+    ],
+)
+def test_deploy(
+    servicer, set_env_client, supports_dir, monkeypatch, args, success, expected_warning, disable_auto_mount, recwarn
+):
+    monkeypatch.chdir(supports_dir)
+    _run(["deploy"] + args, expected_exit_code=0 if success else 1)
+    if success:
+        assert servicer.app_state_history["ap-1"] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
+    else:
+        assert api_pb2.APP_STATE_DEPLOYED not in servicer.app_state_history["ap-1"]
+    if expected_warning:
+        assert len(recwarn) == 1
+        assert expected_warning in str(recwarn[0].message)
 
 
 def test_run_custom_app(servicer, set_env_client, test_dir):
@@ -428,24 +470,27 @@ def mock_shell_pty(servicer):
 
 
 app_file = Path("app_run_tests") / "default_app.py"
+app_file_as_module = "app_run_tests.default_app"
 webhook_app_file = Path("app_run_tests") / "webhook.py"
 cls_app_file = Path("app_run_tests") / "cls.py"
 
 
 @skip_windows("modal shell is not supported on Windows.")
 @pytest.mark.parametrize(
-    ["rel_file", "suffix"],
+    ["flags", "rel_file", "suffix"],
     [
-        (app_file, "::foo"),  # Function is explicitly specified
-        (webhook_app_file, "::foo"),  # Function is explicitly specified
-        (webhook_app_file, ""),  # Function must be inferred
+        ([], app_file, "::foo"),  # Function is explicitly specified
+        (["-m"], app_file_as_module, "::foo"),  # Function is explicitly specified - module mode
+        ([], webhook_app_file, "::foo"),  # Function is explicitly specified
+        ([], webhook_app_file, ""),  # Function must be inferred
         # TODO: fix modal shell auto-detection of a single class, even if it has multiple methods
-        # (cls_app_file, ""),  # Class must be inferred
-        # (cls_app_file, "AParametrized"),  # class name
-        (cls_app_file, "::AParametrized.some_method"),  # method name
+        # ([], cls_app_file, ""),  # Class must be inferred
+        # ([], cls_app_file, "AParametrized"),  # class name
+        ([], cls_app_file, "::AParametrized.some_method"),  # method name
     ],
 )
-def test_shell(servicer, set_env_client, supports_dir, mock_shell_pty, rel_file, suffix):
+def test_shell(servicer, set_env_client, mock_shell_pty, suffix, monkeypatch, supports_dir, rel_file, flags):
+    monkeypatch.chdir(supports_dir)
     fake_stdin, captured_out = mock_shell_pty
 
     fake_stdin.clear()
@@ -453,9 +498,7 @@ def test_shell(servicer, set_env_client, supports_dir, mock_shell_pty, rel_file,
 
     shell_prompt = servicer.shell_prompt
 
-    fn = (supports_dir / rel_file).as_posix()
-
-    _run(["shell", fn + suffix])
+    _run(["shell"] + flags + [str(rel_file) + suffix])
 
     # first captured message is the empty message the mock server sends
     assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
@@ -1126,7 +1169,7 @@ def test_container_exec(servicer, set_env_client, mock_shell_pty, app):
     sb.terminate()
 
 
-def test_can_run_all_listed_functions_with_includes(supports_on_path, monkeypatch, set_env_client):
+def test_can_run_all_listed_functions_with_includes(supports_on_path, monkeypatch, set_env_client, disable_auto_mount):
     monkeypatch.setenv("TERM", "dumb")  # prevents looking at ansi escape sequences
 
     res = _run(["run", "multifile_project.main"], expected_exit_code=1)
@@ -1175,14 +1218,14 @@ def test_run_file_with_global_lookups(servicer, set_env_client, supports_dir):
     assert len(ctx.get_requests("FunctionGet")) == 0
 
 
-def test_run_auto_infer_prefer_target_module(servicer, supports_dir, set_env_client, monkeypatch):
+def test_run_auto_infer_prefer_target_module(servicer, supports_dir, set_env_client, monkeypatch, disable_auto_mount):
     monkeypatch.syspath_prepend(supports_dir / "app_run_tests")
     res = _run(["run", "multifile.util"])
     assert "ran util\nmain func" in res.stdout
 
 
 @pytest.mark.parametrize("func", ["va_entrypoint", "va_function", "VaClass.va_method"])
-def test_cli_run_variadic_args(servicer, set_env_client, test_dir, func):
+def test_cli_run_variadic_args(servicer, set_env_client, test_dir, func, disable_auto_mount):
     app_file = test_dir / "supports" / "app_run_tests" / "variadic_args.py"
 
     @servicer.function_body

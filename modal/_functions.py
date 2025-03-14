@@ -34,7 +34,7 @@ from ._utils.async_utils import (
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
-from ._utils.deprecation import deprecation_warning, renamed_parameter
+from ._utils.deprecation import deprecation_error, deprecation_warning, renamed_parameter
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
@@ -309,13 +309,8 @@ class FunctionStats:
 
     def __getattr__(self, name):
         if name == "num_active_runners":
-            msg = (
-                "'FunctionStats.num_active_runners' is deprecated."
-                " It currently always has a value of 0,"
-                " but it will be removed in a future release."
-            )
-            deprecation_warning((2024, 6, 14), msg)
-            return 0
+            msg = "'FunctionStats.num_active_runners' is no longer available."
+            deprecation_error((2024, 6, 14), msg)
         raise AttributeError(f"'FunctionStats' object has no attribute '{name}'")
 
 
@@ -422,18 +417,18 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         allow_cross_region_volumes: bool = False,
         volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
         memory: Optional[Union[int, tuple[int, int]]] = None,
         proxy: Optional[_Proxy] = None,
         retries: Optional[Union[int, Retries]] = None,
         timeout: Optional[int] = None,
-        concurrency_limit: Optional[int] = None,
+        min_containers: Optional[int] = None,
+        max_containers: Optional[int] = None,
+        buffer_containers: Optional[int] = None,
+        scaledown_window: Optional[int] = None,
         allow_concurrent_inputs: Optional[int] = None,
         batch_max_size: Optional[int] = None,
         batch_wait_ms: Optional[int] = None,
-        container_idle_timeout: Optional[int] = None,
-        cpu: Optional[Union[float, tuple[float, float]]] = None,
-        # keep_warm=True is equivalent to keep_warm=1
-        keep_warm: Optional[int] = None,
         cloud: Optional[str] = None,
         scheduler_placement: Optional[SchedulerPlacement] = None,
         is_builder_function: bool = False,
@@ -447,7 +442,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         ephemeral_disk: Optional[int] = None,
         # current default: first-party, future default: main-package
         include_source: Optional[bool] = None,
-        _experimental_buffer_containers: Optional[int] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
         _experimental_enable_gpu_snapshot: bool = False,
@@ -473,66 +467,51 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         explicit_mounts = mounts
 
-        if is_local():
-            include_source_mode = get_include_source_mode(include_source)
-            if include_source_mode != IncludeSourceMode.INCLUDE_NOTHING:
-                entrypoint_mounts = info.get_entrypoint_mount()
-            else:
-                entrypoint_mounts = {}
-
-            all_mounts = [
-                _get_client_mount(),
-                *explicit_mounts,
-                *entrypoint_mounts.values(),
-            ]
-
-            if include_source_mode is IncludeSourceMode.INCLUDE_FIRST_PARTY:
-                auto_mounts = get_sys_modules_mounts()
-                # don't need to add entrypoint modules to automounts:
-                for entrypoint_module in entrypoint_mounts:
-                    auto_mounts.pop(entrypoint_module, None)
-
-                warn_missing_modules = set(auto_mounts.keys()) - image._added_python_source_set
-
-                if warn_missing_modules:
-                    python_stringified_modules = ", ".join(f'"{mod}"' for mod in sorted(warn_missing_modules))
-                    deprecation_warning(
-                        (2025, 2, 3),
-                        (
-                            'Modal will stop implicitly adding local Python modules to the Image ("automounting") in a '
-                            "future update. The following modules need to be explicitly added for future "
-                            "compatibility:\n"
-                        )
-                        + "\n".join(sorted([f"* {m}" for m in warn_missing_modules]))
-                        + "\n\n"
-                        + (
-                            "e.g.:\n"
-                            f"image_with_source = my_image.add_local_python_source({python_stringified_modules})\n\n"
-                        )
-                        + "For more information, see https://modal.com/docs/guide/modal-1-0-migration",
-                    )
-                all_mounts += auto_mounts.values()
+        include_source_mode = get_include_source_mode(include_source)
+        if include_source_mode != IncludeSourceMode.INCLUDE_NOTHING:
+            entrypoint_mounts = info.get_entrypoint_mount()
         else:
-            # skip any mount introspection/logic inside containers, since the function
-            # should already be hydrated
-            # TODO: maybe the entire from_args loader should be exited early if not local?
-            #  since it will be hydrated
-            all_mounts = []
+            entrypoint_mounts = {}
+
+        all_mounts = [
+            _get_client_mount(),
+            *explicit_mounts,
+            *entrypoint_mounts.values(),
+        ]
+
+        if include_source_mode is IncludeSourceMode.INCLUDE_FIRST_PARTY and is_local():
+            auto_mounts = get_sys_modules_mounts()
+            # don't need to add entrypoint modules to automounts:
+            for entrypoint_module in entrypoint_mounts:
+                auto_mounts.pop(entrypoint_module, None)
+
+            warn_missing_modules = set(auto_mounts.keys()) - image._added_python_source_set
+
+            if warn_missing_modules:
+                python_stringified_modules = ", ".join(f'"{mod}"' for mod in sorted(warn_missing_modules))
+                deprecation_warning(
+                    (2025, 2, 3),
+                    (
+                        'Modal will stop implicitly adding local Python modules to the Image ("automounting") in a '
+                        "future update. The following modules need to be explicitly added for future "
+                        "compatibility:\n"
+                    )
+                    + "\n".join(sorted([f"* {m}" for m in warn_missing_modules]))
+                    + "\n\n"
+                    + (f"e.g.:\nimage_with_source = my_image.add_local_python_source({python_stringified_modules})\n\n")
+                    + "For more information, see https://modal.com/docs/guide/modal-1-0-migration",
+                )
+            all_mounts += auto_mounts.values()
 
         retry_policy = _parse_retries(
             retries, f"Function '{info.get_tag()}'" if info.raw_f else f"Class '{info.get_tag()}'"
         )
 
-        if webhook_config is not None and retry_policy is not None:
-            raise InvalidError(
-                "Web endpoints do not support retries.",
-            )
-
-        if is_generator and retry_policy is not None:
-            deprecation_warning(
-                (2024, 6, 25),
-                "Retries for generator functions are deprecated and will soon be removed.",
-            )
+        if retry_policy is not None:
+            if webhook_config is not None:
+                raise InvalidError("Web endpoints do not support retries.")
+            if is_generator:
+                raise InvalidError("Generator functions do not support retries.")
 
         if proxy:
             # HACK: remove this once we stop using ssh tunnels for this.
@@ -584,20 +563,21 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     force_build=image.force_build or pf.force_build,
                 )
 
-        if keep_warm is not None and not isinstance(keep_warm, int):
-            raise TypeError(f"`keep_warm` must be an int or bool, not {type(keep_warm).__name__}")
-
-        if (keep_warm is not None) and (concurrency_limit is not None) and concurrency_limit < keep_warm:
+        # Note that we also do these checks in FunctionCreate; could drop them here
+        if min_containers is not None and not isinstance(min_containers, int):
+            raise InvalidError(f"`min_containers` must be an int, not {type(min_containers).__name__}")
+        if min_containers is not None and max_containers is not None and max_containers < min_containers:
             raise InvalidError(
-                f"Function `{info.function_name}` has `{concurrency_limit=}`, "
-                f"strictly less than its `{keep_warm=}` parameter."
+                f"`min_containers` ({min_containers}) cannot be greater than `max_containers` ({max_containers})"
             )
+        if scaledown_window is not None and scaledown_window <= 0:
+            raise InvalidError("`scaledown_window` must be > 0")
 
         autoscaler_settings = api_pb2.AutoscalerSettings(
-            max_containers=concurrency_limit,
-            min_containers=keep_warm,
-            buffer_containers=_experimental_buffer_containers,
-            scaledown_window=container_idle_timeout,
+            min_containers=min_containers,
+            max_containers=max_containers,
+            buffer_containers=buffer_containers,
+            scaledown_window=scaledown_window,
         )
 
         if _experimental_custom_scaling_factor is not None and (
@@ -624,9 +604,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             for arg in inspect.signature(info.raw_f).parameters.values():
                 if arg.default is not inspect.Parameter.empty:
                     raise InvalidError(f"Modal batched function {func_name} does not accept default arguments.")
-
-        if container_idle_timeout is not None and container_idle_timeout <= 0:
-            raise InvalidError("`container_idle_timeout` must be > 0")
 
         if max_inputs is not None:
             if not isinstance(max_inputs, int):
@@ -793,11 +770,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     proxy_id=(proxy.object_id if proxy else None),
                     retry_policy=retry_policy,
                     timeout_secs=timeout_secs or 0,
-                    task_idle_timeout_secs=container_idle_timeout or 0,
-                    concurrency_limit=concurrency_limit or 0,
                     pty_info=pty_info,
                     cloud_provider_str=cloud if cloud else "",
-                    warm_pool_size=keep_warm or 0,
                     runtime=config.get("function_runtime"),
                     runtime_debug=config.get("function_runtime_debug"),
                     runtime_perf_record=config.get("runtime_perf_record"),
@@ -822,10 +796,15 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     snapshot_debug=config.get("snapshot_debug"),
                     _experimental_group_size=cluster_size or 0,  # Experimental: Clustered functions
                     _experimental_concurrent_cancellations=True,
-                    _experimental_buffer_containers=_experimental_buffer_containers or 0,
                     _experimental_proxy_ip=_experimental_proxy_ip,
                     _experimental_custom_scaling=_experimental_custom_scaling_factor is not None,
                     _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
+                    # --- These are deprecated in favor of autoscaler_settings
+                    warm_pool_size=min_containers or 0,
+                    concurrency_limit=max_containers or 0,
+                    _experimental_buffer_containers=buffer_containers or 0,
+                    task_idle_timeout_secs=scaledown_window or 0,
+                    # ---
                 )
 
                 if isinstance(gpu, list):
@@ -948,7 +927,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     def _bind_parameters(
         self,
         obj: "modal.cls._Obj",
-        options: Optional[api_pb2.FunctionOptions],
+        options: Optional["modal.cls._ServiceOptions"],
         args: Sized,
         kwargs: dict[str, Any],
     ) -> "_Function":
@@ -999,10 +978,35 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
             environment_name = _get_environment_name(None, resolver)
             assert parent is not None and parent.is_hydrated
+
+            if options:
+                volume_mounts = [
+                    api_pb2.VolumeMount(
+                        mount_path=path,
+                        volume_id=volume.object_id,
+                        allow_background_commits=True,
+                    )
+                    for path, volume in options.validated_volumes
+                ]
+                options_pb = api_pb2.FunctionOptions(
+                    secret_ids=[s.object_id for s in options.secrets],
+                    replace_secret_ids=bool(options.secrets),
+                    resources=options.resources,
+                    retry_policy=options.retry_policy,
+                    concurrency_limit=options.concurrency_limit,
+                    timeout_secs=options.timeout_secs,
+                    task_idle_timeout_secs=options.task_idle_timeout_secs,
+                    replace_volume_mounts=len(volume_mounts) > 0,
+                    volume_mounts=volume_mounts,
+                    target_concurrent_inputs=options.target_concurrent_inputs,
+                )
+            else:
+                options_pb = None
+
             req = api_pb2.FunctionBindParamsRequest(
                 function_id=parent.object_id,
                 serialized_params=serialized_params,
-                function_options=options,
+                function_options=options_pb,
                 environment_name=environment_name
                 or "",  # TODO: investigate shouldn't environment name always be specified here?
             )
@@ -1010,7 +1014,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             response = await retry_transient_errors(parent._client.stub.FunctionBindParams, req)
             param_bound_func._hydrate(response.bound_function_id, parent._client, response.handle_metadata)
 
-        fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
+        def _deps():
+            if options:
+                return [v for _, v in options.validated_volumes] + list(options.secrets)
+            return []
+
+        fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True, deps=_deps)
 
         fun._info = self._info
         fun._obj = obj
@@ -1592,6 +1601,24 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
     async def from_id(
         function_call_id: str, client: Optional[_Client] = None, is_generator: bool = False
     ) -> "_FunctionCall[Any]":
+        """Instantiate a FunctionCall object from an existing ID.
+
+        Examples:
+
+        ```python notest
+        # Spawn a FunctionCall and keep track of its object ID
+        fc = my_func.spawn()
+        fc_id = fc.object_id
+
+        # Later, use the ID to re-instantiate the FunctionCall object
+        fc = _FunctionCall.from_id(fc_id)
+        result = fc.get()
+        ```
+
+        Note that it's only necessary to re-instantiate the `FunctionCall` with this method
+        if you no longer have access to the original object returned from `Function.spawn`.
+
+        """
         if client is None:
             client = await _Client.from_env()
 
@@ -1599,26 +1626,37 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         fc._is_generator = is_generator
         return fc
 
+    @staticmethod
+    async def gather(*function_calls: "_FunctionCall[Any]") -> list[Any]:
+        """Wait until all Modal FunctionCall objects have results before returning.
+
+        Accepts a variable number of `FunctionCall` objects, as returned by `Function.spawn()`.
+
+        Returns a list of results from each FunctionCall, or raises an exception
+        from the first failing function call.
+
+        Examples:
+
+        ```python notest
+        fc1 = slow_func_1.spawn()
+        fc2 = slow_func_2.spawn()
+
+        result_1, result_2 = modal.FunctionCall.gather(fc1, fc2)
+        ```
+
+        *Added in v0.73.69*: This method replaces the deprecated `modal.functions.gather` function.
+        """
+        try:
+            return await TaskContext.gather(*[fc.get() for fc in function_calls])
+        except Exception as exc:
+            # TODO: kill all running function calls
+            raise exc
+
 
 async def _gather(*function_calls: _FunctionCall[ReturnType]) -> typing.Sequence[ReturnType]:
-    """Wait until all Modal function calls have results before returning
-
-    Accepts a variable number of FunctionCall objects as returned by `Function.spawn()`.
-
-    Returns a list of results from each function call, or raises an exception
-    of the first failing function call.
-
-    E.g.
-
-    ```python notest
-    function_call_1 = slow_func_1.spawn()
-    function_call_2 = slow_func_2.spawn()
-
-    result_1, result_2 = gather(function_call_1, function_call_2)
-    ```
-    """
-    try:
-        return await TaskContext.gather(*[fc.get() for fc in function_calls])
-    except Exception as exc:
-        # TODO: kill all running function calls
-        raise exc
+    """Deprecated: Please use `modal.FunctionCall.gather()` instead."""
+    deprecation_warning(
+        (2025, 2, 24),
+        "`modal.functions.gather()` is deprecated; please use `modal.FunctionCall.gather()` instead.",
+    )
+    return await _FunctionCall.gather(*function_calls)

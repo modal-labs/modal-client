@@ -31,7 +31,7 @@ from ._resolver import Resolver
 from ._serialization import serialize
 from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
-from ._utils.deprecation import deprecation_error, deprecation_warning
+from ._utils.deprecation import deprecation_warning
 from ._utils.docker_utils import (
     extract_copy_command_patterns,
     find_dockerignore_file,
@@ -56,13 +56,14 @@ if typing.TYPE_CHECKING:
     import modal._functions
 
 # This is used for both type checking and runtime validation
-ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10"]
+ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10", "PREVIEW"]
 
 # Note: we also define supported Python versions via logic at the top of the package __init__.py
 # so that we fail fast / clearly in unsupported containers. Additionally, we enumerate the supported
 # Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
 # Consider consolidating these multiple sources of truth?
 SUPPORTED_PYTHON_SERIES: dict[ImageBuilderVersion, list[str]] = {
+    "PREVIEW": ["3.9", "3.10", "3.11", "3.12", "3.13"],
     "2024.10": ["3.9", "3.10", "3.11", "3.12", "3.13"],
     "2024.04": ["3.9", "3.10", "3.11", "3.12"],
     "2023.12": ["3.9", "3.10", "3.11", "3.12"],
@@ -85,6 +86,8 @@ AUTO_DOCKERIGNORE = _AutoDockerIgnoreSentinel()
 COPY_DEPRECATION_MESSAGE_PATTERN = """modal.Image.copy_* methods will soon be deprecated.
 
 Use {replacement} instead, which is functionally and performance-wise equivalent.
+
+See https://modal.com/docs/guide/modal-1-0-migration for more details.
 """
 
 
@@ -246,9 +249,11 @@ def _get_image_builder_version(server_version: ImageBuilderVersion) -> ImageBuil
             update_suggestion = "your image builder version using the Modal dashboard"
         else:
             update_suggestion = "your client library (pip install --upgrade modal)"
+        preview_versions: set[ImageBuilderVersion] = {"PREVIEW"}
+        suggested_versions = supported_versions - preview_versions
         raise VersionError(
             "This version of the modal client supports the following image builder versions:"
-            f" {supported_versions!r}."
+            f" {suggested_versions!r}."
             f"\n\nYou are using {version!r}{version_source}."
             f" Please update {update_suggestion}."
         )
@@ -620,6 +625,7 @@ class _Image(_Object, type_prefix="im"):
                 # Failsafe mechanism to prevent inadvertant updates to the global images.
                 # Only admins can publish to the global namespace, but they have to additionally request it.
                 allow_global_deployment=os.environ.get("MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT", "0") == "1",
+                ignore_cache=config.get("ignore_cache"),
             )
             resp = await retry_transient_errors(resolver.client.stub.ImageGetOrCreate, req)
             image_id = resp.image_id
@@ -711,6 +717,8 @@ class _Image(_Object, type_prefix="im"):
         copy=True can slow down iteration since it requires a rebuild of the Image and any subsequent
         build steps whenever the included files change, but it is required if you want to run additional
         build steps after this one.
+
+        *Added in v0.66.40*: This method replaces the deprecated `modal.Image.copy_local_file` method.
         """
         if not PurePosixPath(remote_path).is_absolute():
             # TODO(elias): implement relative to absolute resolution using image workdir metadata
@@ -785,6 +793,8 @@ class _Image(_Object, type_prefix="im"):
             ignore=FilePatternMatcher.from_file("/path/to/ignorefile"),
         )
         ```
+
+        *Added in v0.66.40*: This method replaces the deprecated `modal.Image.copy_local_dir` method.
         """
         if not PurePosixPath(remote_path).is_absolute():
             # TODO(elias): implement relative to absolute resolution using image workdir metadata
@@ -801,7 +811,7 @@ class _Image(_Object, type_prefix="im"):
         works in a `Dockerfile`.
         """
         deprecation_warning(
-            (2024, 1, 13), COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"), pending=True
+            (2025, 1, 13), COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"), pending=True
         )
         basename = str(Path(local_path).name)
 
@@ -848,6 +858,8 @@ class _Image(_Object, type_prefix="im"):
             ignore=lambda p: p.stat().st_size > 1e9
         )
         ```
+
+        *Added in v0.67.28*: This method replaces the deprecated `modal.Mount.from_local_python_packages` pattern.
         """
         mount = _Mount._from_local_python_packages(*modules, ignore=ignore)
         img = self._add_mount_layer_or_copy(mount, copy=copy)
@@ -911,7 +923,7 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
         deprecation_warning(
-            (2024, 1, 13), COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"), pending=True
+            (2025, 1, 13), COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"), pending=True
         )
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
@@ -938,7 +950,7 @@ class _Image(_Object, type_prefix="im"):
             resp = await retry_transient_errors(client.stub.ImageFromId, api_pb2.ImageFromIdRequest(image_id=image_id))
             self._hydrate(resp.image_id, resolver.client, resp.metadata)
 
-        rep = "Image()"
+        rep = f"Image.from_id({image_id!r})"
         obj = _Image._from_loader(_load, rep)
 
         return obj
@@ -1410,45 +1422,6 @@ class _Image(_Object, type_prefix="im"):
             gpu_config=parse_gpu_config(gpu),
             force_build=self.force_build or force_build,
         )
-
-    @staticmethod
-    def conda(python_version: Optional[str] = None, force_build: bool = False):
-        """mdmd:hidden"""
-        message = (
-            "`Image.conda` is deprecated."
-            " Please use the faster and more reliable `Image.micromamba` constructor instead."
-        )
-        deprecation_error((2024, 5, 2), message)
-
-    def conda_install(
-        self,
-        *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
-        channels: list[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
-        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        secrets: Sequence[_Secret] = [],
-        gpu: GPU_T = None,
-    ):
-        """mdmd:hidden"""
-        message = (
-            "`Image.conda_install` is deprecated."
-            " Please use the faster and more reliable `Image.micromamba_install` instead."
-        )
-        deprecation_error((2024, 5, 2), message)
-
-    def conda_update_from_environment(
-        self,
-        environment_yml: str,
-        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        *,
-        secrets: Sequence[_Secret] = [],
-        gpu: GPU_T = None,
-    ):
-        """mdmd:hidden"""
-        message = (
-            "Image.conda_update_from_environment` is deprecated."
-            " Please use the `Image.micromamba_install` method (with the `spec_file` parameter) instead."
-        )
-        deprecation_error((2024, 5, 2), message)
 
     @staticmethod
     def micromamba(
@@ -2011,10 +1984,13 @@ class _Image(_Object, type_prefix="im"):
         )
         ```
         """
+        non_str_keys = [key for key, val in vars.items() if not isinstance(val, str)]
+        if non_str_keys:
+            raise InvalidError(f"Image ENV variables must be strings. Invalid keys: {non_str_keys}")
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            commands = ["FROM base"] + [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()]
-            return DockerfileSpec(commands=commands, context_files={})
+            env_commands = [f"ENV {key}={shlex.quote(val)}" for (key, val) in vars.items()]
+            return DockerfileSpec(commands=["FROM base"] + env_commands, context_files={})
 
         return _Image._from_args(
             base_images={"base": self},

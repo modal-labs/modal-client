@@ -87,3 +87,38 @@ def renamed_parameter(
         return wrapper
 
     return decorator
+
+
+def warn_on_renamed_autoscaler_settings(func: Callable[P, R]) -> Callable[P, R]:
+    name_map = {
+        "keep_warm": "min_containers",
+        "concurrency_limit": "max_containers",
+        "_experimental_buffer_containers": "buffer_containers",
+        "container_idle_timeout": "scaledown_window",
+    }
+
+    @functools.wraps(func)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        mut_kwargs: dict[str, Any] = locals()["kwargs"]  # Avoid referencing kwargs directly due to bug in sigtools
+
+        substitutions = []
+        old_params_used = name_map.keys() & mut_kwargs.keys()
+        for old_param, new_param in name_map.items():
+            if old_param in old_params_used:
+                new_param = name_map[old_param]
+                mut_kwargs[new_param] = mut_kwargs.pop(old_param)
+                substitutions.append(f"- {old_param} -> {new_param}")
+
+        if substitutions:
+            substitution_string = "\n".join(substitutions)
+            message = (
+                "We have renamed several parameters related to autoscaling."
+                " Please update your code to use the following new names:"
+                f"\n\n{substitution_string}"
+                "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more details."
+            )
+            deprecation_warning((2025, 2, 24), message, show_source=True)
+
+        return func(*args, **kwargs)
+
+    return wrapper

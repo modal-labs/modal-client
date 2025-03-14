@@ -16,7 +16,7 @@ from modal_proto import api_pb2
 
 from ._functions import _Function
 from ._utils.async_utils import synchronizer
-from ._utils.deprecation import deprecation_error, deprecation_warning
+from ._utils.deprecation import deprecation_warning
 from ._utils.function_utils import callable_has_non_self_non_default_params, callable_has_non_self_params
 from .config import logger
 from .exception import InvalidError
@@ -54,7 +54,6 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     flags: _PartialFunctionFlags
     webhook_config: Optional[api_pb2.WebhookConfig]
     is_generator: bool
-    keep_warm: Optional[int]
     batch_max_size: Optional[int]
     batch_wait_ms: Optional[int]
     force_build: bool
@@ -65,9 +64,9 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         self,
         raw_f: Callable[P, ReturnType],
         flags: _PartialFunctionFlags,
+        *,
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         is_generator: Optional[bool] = None,
-        keep_warm: Optional[int] = None,
         batch_max_size: Optional[int] = None,
         batch_wait_ms: Optional[int] = None,
         cluster_size: Optional[int] = None,  # Experimental: Clustered functions
@@ -84,7 +83,6 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
             final_is_generator = is_generator
 
         self.is_generator = final_is_generator
-        self.keep_warm = keep_warm
         self.wrapped = False  # Make sure that this was converted into a FunctionHandle
         self.batch_max_size = batch_max_size
         self.batch_wait_ms = batch_wait_ms
@@ -141,7 +139,6 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
             raw_f=self.raw_f,
             flags=(self.flags | flags),
             webhook_config=self.webhook_config,
-            keep_warm=self.keep_warm,
             batch_max_size=self.batch_max_size,
             batch_wait_ms=self.batch_wait_ms,
             force_build=self.force_build,
@@ -198,7 +195,6 @@ def _method(
     # Set this to True if it's a non-generator function returning
     # a [sync/async] generator object
     is_generator: Optional[bool] = None,
-    keep_warm: Optional[int] = None,  # Deprecated: Use keep_warm on @app.cls() instead
 ) -> _MethodDecoratorType:
     """Decorator for methods that should be transformed into a Modal Function registered against this class's App.
 
@@ -216,17 +212,6 @@ def _method(
     if _warn_parentheses_missing is not None:
         raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@method()`.")
 
-    if keep_warm is not None:
-        deprecation_warning(
-            (2024, 6, 10),
-            (
-                "`keep_warm=` is no longer supported per-method on Modal classes. "
-                "All methods and web endpoints of a class use the same set of containers now. "
-                "Use keep_warm via the @app.cls() decorator instead. "
-            ),
-            pending=True,
-        )
-
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         nonlocal is_generator
         if isinstance(raw_f, _PartialFunction) and raw_f.webhook_config:
@@ -241,7 +226,7 @@ def _method(
                 "Batched function on classes should not be wrapped by `@method`. "
                 "Suggestion: remove the `@method` decorator."
             )
-        return _PartialFunction(raw_f, _PartialFunctionFlags.FUNCTION, is_generator=is_generator, keep_warm=keep_warm)
+        return _PartialFunction(raw_f, _PartialFunctionFlags.FUNCTION, is_generator=is_generator)
 
     return wrapper  # type: ignore   # synchronicity issue with wrapped vs unwrapped types and protocols
 
@@ -256,6 +241,64 @@ def _parse_custom_domains(custom_domains: Optional[Iterable[str]] = None) -> lis
     return _custom_domains
 
 
+def _fastapi_endpoint(
+    _warn_parentheses_missing=None,
+    *,
+    method: str = "GET",  # REST method for the created endpoint.
+    label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
+    custom_domains: Optional[Iterable[str]] = None,  # Custom fully-qualified domain name (FQDN) for the endpoint.
+    docs: bool = False,  # Whether to enable interactive documentation for this endpoint at /docs.
+    requires_proxy_auth: bool = False,  # Require Modal-Key and Modal-Secret HTTP Headers on requests.
+) -> Callable[[Callable[P, ReturnType]], _PartialFunction[P, ReturnType, ReturnType]]:
+    """Register a basic web endpoint with this application.
+
+    This is the simple way to create a web endpoint on Modal. The function
+    behaves as a [FastAPI](https://fastapi.tiangolo.com/) handler and should
+    return a response object to the caller.
+
+    Endpoints created with `@modal.fastapi_endpoint` are meant to be simple, single
+    request handlers and automatically have
+    [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) enabled.
+    For more flexibility, use `@modal.asgi_app`.
+
+    To learn how to use Modal with popular web frameworks, see the
+    [guide on web endpoints](https://modal.com/docs/guide/webhooks).
+
+    *Added in v0.73.82*: This function replaces the deprecated `@web_endpoint` decorator.
+    """
+    if isinstance(_warn_parentheses_missing, str):
+        # Probably passing the method string as a positional argument.
+        raise InvalidError('Positional arguments are not allowed. Suggestion: `@fastapi_endpoint(method="GET")`.')
+    elif _warn_parentheses_missing is not None:
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@fastapi_endpoint()`."
+        )
+
+    def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+        if isinstance(raw_f, _Function):
+            raw_f = raw_f.get_raw_f()
+            raise InvalidError(
+                f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
+                "@app.function()\n@app.fastapi_endpoint()\ndef my_webhook():\n    ..."
+            )
+
+        return _PartialFunction(
+            raw_f,
+            _PartialFunctionFlags.FUNCTION,
+            webhook_config=api_pb2.WebhookConfig(
+                type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+                method=method,
+                web_endpoint_docs=docs,
+                requested_suffix=label or "",
+                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
+                custom_domains=_parse_custom_domains(custom_domains),
+                requires_proxy_auth=requires_proxy_auth,
+            ),
+        )
+
+    return wrapper
+
+
 def _web_endpoint(
     _warn_parentheses_missing=None,
     *,
@@ -266,18 +309,19 @@ def _web_endpoint(
         Iterable[str]
     ] = None,  # Create an endpoint using a custom domain fully-qualified domain name (FQDN).
     requires_proxy_auth: bool = False,  # Require Modal-Key and Modal-Secret HTTP Headers on requests.
-    wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[P, ReturnType]], _PartialFunction[P, ReturnType, ReturnType]]:
     """Register a basic web endpoint with this application.
+
+    DEPRECATED: This decorator has been renamed to `@modal.fastapi_endpoint`.
 
     This is the simple way to create a web endpoint on Modal. The function
     behaves as a [FastAPI](https://fastapi.tiangolo.com/) handler and should
     return a response object to the caller.
 
-    Endpoints created with `@app.web_endpoint` are meant to be simple, single
+    Endpoints created with `@modal.web_endpoint` are meant to be simple, single
     request handlers and automatically have
     [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) enabled.
-    For more flexibility, use `@app.asgi_app`.
+    For more flexibility, use `@modal.asgi_app`.
 
     To learn how to use Modal with popular web frameworks, see the
     [guide on web endpoints](https://modal.com/docs/guide/webhooks).
@@ -290,26 +334,22 @@ def _web_endpoint(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@web_endpoint()`."
         )
 
+    deprecation_warning(
+        (2025, 3, 5), "The `@modal.web_endpoint` decorator has been renamed to `@modal.fastapi_endpoint`."
+    )
+
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if isinstance(raw_f, _Function):
             raw_f = raw_f.get_raw_f()
             raise InvalidError(
                 f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
-                "@app.function()\n@app.web_endpoint()\ndef my_webhook():\n    ..."
+                "@app.function()\n@modal.web_endpoint()\ndef my_webhook():\n    ..."
             )
-        if not wait_for_response:
-            deprecation_error(
-                (2024, 5, 13),
-                "wait_for_response=False has been deprecated on web endpoints. See "
-                "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives.",
-            )
-
-        # self._loose_webhook_configs.add(raw_f)
 
         return _PartialFunction(
             raw_f,
             _PartialFunctionFlags.FUNCTION,
-            api_pb2.WebhookConfig(
+            webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_FUNCTION,
                 method=method,
                 web_endpoint_docs=docs,
@@ -329,7 +369,6 @@ def _asgi_app(
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
     requires_proxy_auth: bool = False,  # Require Modal-Key and Modal-Secret HTTP Headers on requests.
-    wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering an ASGI app with a Modal function.
 
@@ -377,17 +416,10 @@ def _asgi_app(
                 f"ASGI app function {raw_f.__name__} is an async function. Only sync Python functions are supported."
             )
 
-        if not wait_for_response:
-            deprecation_error(
-                (2024, 5, 13),
-                "wait_for_response=False has been deprecated on web endpoints. See "
-                "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives",
-            )
-
         return _PartialFunction(
             raw_f,
             _PartialFunctionFlags.FUNCTION,
-            api_pb2.WebhookConfig(
+            webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_ASGI_APP,
                 requested_suffix=label,
                 async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
@@ -405,7 +437,6 @@ def _wsgi_app(
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
     requires_proxy_auth: bool = False,  # Require Modal-Key and Modal-Secret HTTP Headers on requests.
-    wait_for_response: bool = True,  # DEPRECATED: this must always be True now
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator for registering a WSGI app with a Modal function.
 
@@ -453,17 +484,10 @@ def _wsgi_app(
                 f"WSGI app function {raw_f.__name__} is an async function. Only sync Python functions are supported."
             )
 
-        if not wait_for_response:
-            deprecation_error(
-                (2024, 5, 13),
-                "wait_for_response=False has been deprecated on web endpoints. See "
-                "https://modal.com/docs/guide/webhook-timeouts#polling-solutions for alternatives",
-            )
-
         return _PartialFunction(
             raw_f,
             _PartialFunctionFlags.FUNCTION,
-            api_pb2.WebhookConfig(
+            webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_WSGI_APP,
                 requested_suffix=label,
                 async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
@@ -518,7 +542,7 @@ def _web_server(
         return _PartialFunction(
             raw_f,
             _PartialFunctionFlags.FUNCTION,
-            api_pb2.WebhookConfig(
+            webhook_config=api_pb2.WebhookConfig(
                 type=api_pb2.WEBHOOK_TYPE_WEB_SERVER,
                 requested_suffix=label,
                 async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,

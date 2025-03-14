@@ -27,7 +27,14 @@ from ..output import enable_output
 from ..runner import deploy_app, interactive_shell, run_app
 from ..serving import serve_app
 from ..volume import Volume
-from .import_refs import CLICommand, MethodReference, _get_runnable_app, import_and_filter, import_app, parse_import_ref
+from .import_refs import (
+    CLICommand,
+    MethodReference,
+    _get_runnable_app,
+    import_and_filter,
+    import_app_from_ref,
+    parse_import_ref,
+)
 from .utils import ENV_OPTION, ENV_OPTION_HELP, is_tty, stream_app_logs
 
 
@@ -324,9 +331,9 @@ class RunGroup(click.Group):
         ctx.ensure_object(dict)
         ctx.obj["env"] = ensure_env(ctx.params["env"])
 
-        import_ref = parse_import_ref(func_ref)
+        import_ref = parse_import_ref(func_ref, use_module_mode=ctx.params["m"])
         runnable, all_usable_commands = import_and_filter(
-            import_ref, accept_local_entrypoint=True, accept_webhook=False
+            import_ref, base_cmd="modal run", accept_local_entrypoint=True, accept_webhook=False
         )
         if not runnable:
             help_header = (
@@ -368,8 +375,9 @@ class RunGroup(click.Group):
 @click.option("-d", "--detach", is_flag=True, help="Don't stop the app if the local process dies or disconnects.")
 @click.option("-i", "--interactive", is_flag=True, help="Run the app in interactive mode.")
 @click.option("-e", "--env", help=ENV_OPTION_HELP, default=None)
+@click.option("-m", is_flag=True, help="Interpret argument as a Python module path instead of a file/script path")
 @click.pass_context
-def run(ctx, write_result, detach, quiet, interactive, env):
+def run(ctx, write_result, detach, quiet, interactive, env, m):
     """Run a Modal function or local entrypoint.
 
     `FUNC_REF` should be of the format `{file or module}::{function name}`.
@@ -385,7 +393,7 @@ def run(ctx, write_result, detach, quiet, interactive, env):
     modal run my_app.py::hello_world
     ```
 
-    If your module only has a single app called `app` and your app has a
+    If your module only has a single app and your app has a
     single local entrypoint (or single function), you can omit the app and
     function parts:
 
@@ -393,10 +401,12 @@ def run(ctx, write_result, detach, quiet, interactive, env):
     modal run my_app.py
     ```
 
-    Instead of pointing to a file, you can also use the Python module path:
+    Instead of pointing to a file, you can also use the Python module path, which
+    by default will ensure that your remote functions will use the same module
+    names as they do locally.
 
     ```
-    modal run my_project.my_app
+    modal run -m my_project.my_app
     ```
     """
     ctx.ensure_object(dict)
@@ -407,16 +417,26 @@ def run(ctx, write_result, detach, quiet, interactive, env):
 
 
 def deploy(
-    app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
+    app_ref: str = typer.Argument(..., help="Path to a Python file with an app to deploy"),
     name: str = typer.Option("", help="Name of the deployment."),
     env: str = ENV_OPTION,
     stream_logs: bool = typer.Option(False, help="Stream logs from the app upon deployment."),
     tag: str = typer.Option("", help="Tag the deployment with a version."),
+    use_module_mode: bool = typer.Option(
+        False, "-m", help="Interpret argument as a Python module path instead of a file/script path"
+    ),
 ):
+    """Deploy a Modal application.
+
+    **Usage:**
+    modal deploy my_script.py
+    modal deploy -m my_package.my_mod
+    """
     # this ensures that lookups without environment specification use the same env as specified
     env = ensure_env(env)
 
-    app = import_app(app_ref)
+    import_ref = parse_import_ref(app_ref, use_module_mode=use_module_mode)
+    app = import_app_from_ref(import_ref, base_cmd="modal deploy")
 
     if name is None:
         name = app.name
@@ -432,6 +452,9 @@ def serve(
     app_ref: str = typer.Argument(..., help="Path to a Python file with an app."),
     timeout: Optional[float] = None,
     env: str = ENV_OPTION,
+    use_module_mode: bool = typer.Option(
+        False, "-m", help="Interpret argument as a Python module path instead of a file/script path"
+    ),
 ):
     """Run a web endpoint(s) associated with a Modal app and hot-reload code.
 
@@ -442,13 +465,13 @@ def serve(
     ```
     """
     env = ensure_env(env)
-
-    app = import_app(app_ref)
+    import_ref = parse_import_ref(app_ref, use_module_mode=use_module_mode)
+    app = import_app_from_ref(import_ref, base_cmd="modal serve")
     if app.description is None:
         app.set_description(_get_clean_app_description(app_ref))
 
     with enable_output():
-        with serve_app(app, app_ref, environment_name=env):
+        with serve_app(app, import_ref, environment_name=env):
             if timeout is None:
                 timeout = config["serve_timeout"]
             if timeout is None:
@@ -503,6 +526,9 @@ def shell(
         ),
     ),
     pty: Optional[bool] = typer.Option(default=None, help="Run the command using a PTY."),
+    use_module_mode: bool = typer.Option(
+        False, "-m", help="Interpret argument as a Python module path instead of a file/script path"
+    ),
 ):
     """Run a command or interactive shell inside a Modal container.
 
@@ -561,9 +587,9 @@ def shell(
             exec(container_id=container_or_function, command=shlex.split(cmd), pty=pty)
             return
 
-        import_ref = parse_import_ref(container_or_function)
+        import_ref = parse_import_ref(container_or_function, use_module_mode=use_module_mode)
         runnable, all_usable_commands = import_and_filter(
-            import_ref, accept_local_entrypoint=False, accept_webhook=True
+            import_ref, base_cmd="modal shell", accept_local_entrypoint=False, accept_webhook=True
         )
         if not runnable:
             help_header = (

@@ -12,7 +12,7 @@ def pytest_markdown_docs_globals():
         "app": modal.App.lookup("my-app", create_if_missing=True),
         "math": math,
         "__name__": "runtest",
-        "web_endpoint": modal.web_endpoint,
+        "fastapi_endpoint": modal.fastapi_endpoint,
         "asgi_app": modal.asgi_app,
         "wsgi_app": modal.wsgi_app,
         "__file__": "xyz.py",

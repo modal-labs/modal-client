@@ -36,7 +36,7 @@ from modal._serialization import (
     deserialize,
     deserialize_data_format,
     serialize,
-    serialize_data_format, serialize_proto_params, _serialize_proto_params_no_schema,
+    serialize_data_format,
 )
 from modal._utils import async_utils
 from modal._utils.async_utils import synchronize_api
@@ -1036,27 +1036,6 @@ def test_cls_web_endpoint(servicer):
 
     _, second_message = _unwrap_asgi(ret)
     assert json.loads(second_message["body"]) == {"ret": "space" * 111}
-
-
-@skip_github_non_linux
-def test_cls_web_endpoint_default_bytes_parameter(servicer):
-    inputs = _get_web_inputs(method_name="web")
-
-    ret = _run_container(
-        servicer,
-        "test.supports.functions",
-        "ClsWithBytesSerialization.*",
-        inputs=inputs,
-        is_class=True,
-        class_parameter_info=api_pb2.ClassParameterInfo(
-            schema=[
-            ]
-        ])
-        serialized_params=_serialize_proto_params_no_schema({"bar": b"bytes go here"})
-    )
-
-    _, second_message = _unwrap_asgi(ret)
-    assert json.loads(second_message["body"]) == {"arg": "space", "bar": "world"}
 
 
 @skip_github_non_linux
@@ -2294,10 +2273,10 @@ def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn, set_env
     assert len(recwarn) == 0
 
 
-@pytest.mark.parametrize("concurrency_limit", [1, 2])
-def test_container_io_manager_concurrency_tracking(client, servicer, concurrency_limit):
+@pytest.mark.parametrize("concurrency", [1, 2])
+def test_container_io_manager_concurrency_tracking(client, servicer, concurrency):
     dummy_container_args = api_pb2.ContainerArguments(
-        function_id="fu-123", function_def=api_pb2.Function(target_concurrent_inputs=concurrency_limit)
+        function_id="fu-123", function_def=api_pb2.Function(target_concurrent_inputs=concurrency)
     )
     from modal._utils.async_utils import synchronizer
 
@@ -2326,7 +2305,7 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
         active_input_ids |= set(io_context.input_ids)
         processed_inputs += len(io_context.input_ids)
 
-        while active_inputs and (len(active_inputs) == concurrency_limit or processed_inputs == total_inputs):
+        while active_inputs and (len(active_inputs) == concurrency or processed_inputs == total_inputs):
             input_to_process = active_inputs.pop(0)
             send_failure = processed_inputs % 2 == 1
             # return values for inputs

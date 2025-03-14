@@ -69,7 +69,7 @@ def construct_webhook_callable(
     elif webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
         # Function is a webhook without an ASGI app. Create one for it.
         return asgi.asgi_app_wrapper(
-            asgi.webhook_asgi_app(user_defined_callable, webhook_config.method, webhook_config.web_endpoint_docs),
+            asgi.magic_fastapi_app(user_defined_callable, webhook_config.method, webhook_config.web_endpoint_docs),
             container_io_manager,
         )
 
@@ -264,7 +264,9 @@ def import_single_function_service(
                 # The cls decorator is in global scope
                 _cls = synchronizer._translate_in(cls)
                 user_defined_callable = _cls._callables[fun_name]
-                service_deps = _cls._get_class_service_function().deps(only_explicit_mounts=True)
+                # Intentionally not including these, since @build functions don't actually
+                # forward the information from their parent class.
+                # service_deps = _cls._get_class_service_function().deps(only_explicit_mounts=True)
                 active_app = _cls._app
             else:
                 # This is non-decorated class

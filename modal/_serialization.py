@@ -443,23 +443,6 @@ def serialize_proto_params(python_params: dict[str, Any], schema: typing.Sequenc
     return proto_bytes
 
 
-def _serialize_proto_params_no_schema(python_params: dict[str, Any]) -> api_pb2.ClassParameterSet:
-    # Use types of the payload to determine how to proto encode a set of parameters,
-    # rather than a predetermined schema asin serialize_proto_params
-    # For now we only use this in tests as a convenience
-    # We might use this in the future if we want "non-strict" parameter encoding
-    proto_params = []
-    for param_name, python_value in python_params.items():
-        proto_type = PYTHON_TO_PROTO_TYPE[type(python_value)]
-        proto_type_info = PROTO_TYPE_INFO[proto_type]
-        proto_value = proto_type_info.converter
-        proto_param = api_pb2.ClassParameterValue(
-            name=param_name, type=proto_type, **{PROTO_TYPE_INFO[proto_type].proto_field: proto_value}
-        )
-        proto_params.append(proto_param)
-    return api_pb2.ClassParameterSet(parameters=proto_params)
-
-
 def deserialize_proto_params(serialized_params: bytes, schema: list[api_pb2.ClassParameterSpec]) -> dict[str, Any]:
     # TODO: this currently requires the schema to decode a payload, but we could make
     proto_struct = api_pb2.ClassParameterSet()

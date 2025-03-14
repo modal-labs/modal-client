@@ -629,8 +629,8 @@ message CheckpointInfo {
   int64 size = 5;
   bool checksum_is_file_index = 6;
   string original_task_id = 7;
-  // snapshot version used to take the checkpoint
-  uint32 snapshot_version = 8;
+  reserved 8;
+  string runsc_runtime_version = 9;
 }
 
 message ClassCreateRequest {
@@ -653,7 +653,7 @@ message ClassGetRequest {
   string environment_name = 4;
 
   bool lookup_published = 8; // Lookup class on app published by another workspace
-  string workspace_name = 9;
+  reserved 9; // workspace_name
   bool only_class_function = 10; // True starting with 0.67.x clients, which don't create method placeholder functions
 }
 
@@ -1695,7 +1695,6 @@ message FunctionRetryPolicy {
 
 message FunctionStats {
   uint32 backlog = 1;
-  uint32 num_active_tasks = 2;
   uint32 num_total_tasks = 3;
 }
 
@@ -1794,6 +1793,8 @@ message ImageGetOrCreateRequest {
   string builder_version = 9;
   // Only admins can publish global images, but this provides an extra failsafe
   bool allow_global_deployment = 10;
+  // Force the Image to build but don't clobber any Images with the same recipe in the cache
+  bool ignore_cache = 11;
 }
 
 message ImageGetOrCreateResponse {
@@ -1929,6 +1930,7 @@ message NotebookKernelPublishResultsRequest {
   message ExecuteReply {
     string status = 1;
     uint32 execution_count = 2;
+    double duration = 3;
   }
 
   // IOPub message or reply received from the kernel for a cell.
@@ -2292,6 +2294,9 @@ message Sandbox {
   // Specifies container runtime behavior for sandboxes which are restored from a snapshot.
   // Set by the backend at snapshot creation time.
   optional string runsc_runtime_version = 27;
+
+  // If set, overrides the runtime used by the function, either "runc" or "gvisor".
+  optional string runtime = 28;
 }
 
 message SandboxCreateRequest {
@@ -2340,6 +2345,7 @@ message SandboxInfo {
   string id = 1;
   double created_at = 3;
   TaskInfo task_info = 4;
+  string app_id = 5;
 
   reserved 2; // modal.client.Sandbox definition
 }
@@ -2631,6 +2637,7 @@ message TaskInfo {
   double finished_at = 3;
   modal.client.GenericResult result = 4;
   double enqueued_at = 5;
+  string task_type = 6;
 }
 
 message TaskListRequest {

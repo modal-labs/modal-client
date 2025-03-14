@@ -236,14 +236,14 @@ def wsgi_app_wrapper(wsgi_app, container_io_manager):
     return asgi_app_wrapper(asgi_app, container_io_manager)
 
 
-def webhook_asgi_app(fn: Callable[..., Any], method: str, docs: bool):
+def magic_fastapi_app(fn: Callable[..., Any], method: str, docs: bool):
     """Return a FastAPI app wrapping a function handler."""
     try:
         from fastapi import FastAPI
         from fastapi.middleware.cors import CORSMiddleware
     except ImportError as exc:
         message = (
-            "Modal web_endpoint functions require FastAPI to be installed in the modal.Image."
+            "Modal functions decorated with `fastapi_endpoint` require FastAPI to be installed in the modal.Image."
             ' Please update your Image definition code, e.g. with `.pip_install("fastapi[standard]")`.'
         )
         raise InvalidError(message) from exc
@@ -471,6 +471,10 @@ async def _proxy_lifespan_request(base_url, scope, receive, send) -> None:
                     timeout=aiohttp.ClientTimeout(total=3600),
                     auto_decompress=False,
                     read_bufsize=1024 * 1024,  # 1 MiB
+                    connector=aiohttp.TCPConnector(
+                        limit=1000
+                    ),  # 100 is the default max, but 1000 is the max for `allow_concurrent_inputs`.
+                    # Note: these values will need to be kept in sync.
                     **(
                         # These options were introduced in aiohttp 3.9, and we can remove the
                         # conditional after deprecating image builder version 2023.12.

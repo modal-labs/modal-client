@@ -19,11 +19,11 @@ from modal._partial_function import (
 from modal._serialization import deserialize, deserialize_params, serialize
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import FunctionInfo
-from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError, PendingDeprecationError
+from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import (
     PartialFunction,
     asgi_app,
-    web_endpoint,
+    fastapi_endpoint,
 )
 from modal.runner import deploy_app
 from modal.running_app import RunningApp
@@ -122,20 +122,30 @@ def test_call_class_sync(client, servicer, set_env_client):
 
 
 def test_class_with_options(client, servicer):
+    unhydrated_volume = modal.Volume.from_name("some_volume", create_if_missing=True)
+    unhydrated_secret = modal.Secret.from_dict({"foo": "bar"})
+    with servicer.intercept() as ctx:
+        foo = Foo.with_options(  # type: ignore
+            cpu=48, retries=5, volumes={"/vol": unhydrated_volume}, secrets=[unhydrated_secret]
+        )()
+        assert len(ctx.calls) == 0  # no rpcs in with_options
+
     with app.run(client=client):
         with servicer.intercept() as ctx:
-            foo = Foo.with_options(cpu=48, retries=5)()  # type: ignore
-            assert len(ctx.calls) == 0  # no rpcs
-
             res = foo.bar.remote(2)
             function_bind_params: api_pb2.FunctionBindParamsRequest
             (function_bind_params,) = ctx.get_requests("FunctionBindParams")
             assert function_bind_params.function_options.retry_policy.retries == 5
             assert function_bind_params.function_options.resources.milli_cpu == 48000
 
+            assert len(ctx.get_requests("VolumeGetOrCreate")) == 1
+            assert len(ctx.get_requests("SecretGetOrCreate")) == 1
+
         with servicer.intercept() as ctx:
             res = foo.bar.remote(2)
             assert len(ctx.get_requests("FunctionBindParams")) == 0  # no need to rebind
+            assert len(ctx.get_requests("VolumeGetOrCreate")) == 0  # no need to rehydrate
+            assert len(ctx.get_requests("SecretGetOrCreate")) == 0  # no need to rehydrate
 
         assert res == 4
         assert len(servicer.function_options) == 1
@@ -143,10 +153,48 @@ def test_class_with_options(client, servicer):
         assert options.resources.milli_cpu == 48_000
         assert options.retry_policy.retries == 5
 
+        with pytest.warns(DeprecationError, match="max_containers"):
+            Foo.with_options(concurrency_limit=10)()  # type: ignore
 
-def test_class_with_options_need_hydrating(client, servicer):
-    with pytest.raises(ExecutionError, match="hydrate"):
-        Foo.with_options()  # type: ignore
+
+def test_with_options_from_name(servicer):
+    unhydrated_volume = modal.Volume.from_name("some_volume", create_if_missing=True)
+    unhydrated_secret = modal.Secret.from_dict({"foo": "bar"})
+
+    with servicer.intercept() as ctx:
+        SomeClass = modal.Cls.from_name("some_app", "SomeClass")
+        OptionedClass = SomeClass.with_options(cpu=10, secrets=[unhydrated_secret], volumes={"/vol": unhydrated_volume})
+        inst = OptionedClass(x=10)
+        assert len(ctx.calls) == 0
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("VolumeGetOrCreate", api_pb2.VolumeGetOrCreateResponse(volume_id="vo-123"))
+        ctx.add_response("SecretGetOrCreate", api_pb2.SecretGetOrCreateResponse(secret_id="st-123"))
+        ctx.add_response("ClassGet", api_pb2.ClassGetResponse(class_id="cs-123"))
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-123",
+                handle_metadata=api_pb2.FunctionHandleMetadata(
+                    method_handle_metadata={
+                        "some_method": api_pb2.FunctionHandleMetadata(
+                            use_function_id="fu-123",
+                            use_method_name="some_method",
+                            function_name="SomeClass.some_method",
+                        )
+                    }
+                ),
+            ),
+        )
+        ctx.add_response("FunctionBindParams", api_pb2.FunctionBindParamsResponse(bound_function_id="fu-124"))
+        inst.some_method.remote()
+
+    function_bind_params: api_pb2.FunctionBindParamsRequest
+    (function_bind_params,) = ctx.get_requests("FunctionBindParams")
+    assert len(function_bind_params.function_options.volume_mounts) == 1
+    function_map: api_pb2.FunctionMapRequest
+    (function_map,) = ctx.get_requests("FunctionMap")
+    assert function_map.function_id == "fu-124"  # the bound function
 
 
 # Reusing the app runs into an issue with stale function handles.
@@ -581,12 +629,12 @@ def test_unhydrated():
 app_method_args = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
-@app_method_args.cls(keep_warm=5)
+@app_method_args.cls(min_containers=5)
 class XYZ:
-    @method()  # warns - keep_warm is not supported on methods anymore
+    @method()
     def foo(self): ...
 
-    @method()  # warns - keep_warm is not supported on methods anymore
+    @method()
     def bar(self): ...
 
 
@@ -594,26 +642,8 @@ def test_method_args(servicer, client):
     with app_method_args.run(client=client):
         funcs = servicer.app_functions.values()
         assert {f.function_name for f in funcs} == {"XYZ.*"}
-        warm_pools = {f.function_name: f.warm_pool_size for f in funcs}
+        warm_pools = {f.function_name: f.autoscaler_settings.min_containers for f in funcs}
         assert warm_pools == {"XYZ.*": 5}
-
-
-def test_keep_warm_depr(client, set_env_client):
-    app = App()
-
-    with pytest.warns(PendingDeprecationError, match="keep_warm"):
-
-        @app.cls(serialized=True)
-        class ClsWithKeepWarmMethod:
-            @method(keep_warm=2)
-            def foo(self): ...
-
-            @method()
-            def bar(self): ...
-
-    with app.run(client=client):
-        with pytest.raises(modal.exception.InvalidError, match="keep_warm"):
-            ClsWithKeepWarmMethod().bar.keep_warm(2)  # should not be usable on methods
 
 
 def test_cls_keep_warm(client, servicer):
@@ -689,7 +719,7 @@ web_app_app = App(include_source=True)  # TODO: remove include_source=True when 
 
 @web_app_app.cls()
 class WebCls:
-    @web_endpoint()
+    @fastapi_endpoint()
     def endpoint(self):
         pass
 
@@ -827,7 +857,7 @@ def test_partial_function_descriptors(client):
         def bar(self):
             return "a"
 
-        @modal.web_endpoint()
+        @modal.fastapi_endpoint()
         def web(self):
             pass
 
@@ -1021,7 +1051,7 @@ def test_unsupported_function_decorators_on_methods():
         @app.cls(serialized=True)
         class M:
             @app.function(serialized=True)
-            @modal.web_endpoint()
+            @modal.fastapi_endpoint()
             def f(self):
                 pass
 
@@ -1093,10 +1123,12 @@ def test_bytes_serialization_validation(servicer, client, set_env_client):
                 C(foo="this is a string").get_foo.spawn()  # string should not be allowed, unspecified encoding
 
             C(foo=b"this is bytes").get_foo.spawn()  # bytes are allowed
-            create_function_req: api_pb2.FunctionCreateRequest
-            (create_function_req,) = ctx.get_requests("FunctionCreate")
-            bind_req: api_pb2.FunctionBindParamsRequest
-            (bind_req,) = ctx.get_requests("FunctionBindParams")
+            create_function_req: api_pb2.FunctionCreateRequest = ctx.pop_request("FunctionCreate")
+            bind_req: api_pb2.FunctionBindParamsRequest = ctx.pop_request("FunctionBindParams")
             args, kwargs = deserialize_params(bind_req.serialized_params, create_function_req.function, client)
             assert kwargs["foo"] == b"this is bytes"
-            C().get_foo.spawn()  # default is allowed
+
+            C().get_foo.spawn()  # omission when using default is allowed
+            bind_req: api_pb2.FunctionBindParamsRequest = ctx.pop_request("FunctionBindParams")
+            args, kwargs = deserialize_params(bind_req.serialized_params, create_function_req.function, client)
+            assert kwargs["foo"] == b"foo"

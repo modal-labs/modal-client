@@ -187,6 +187,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 ),
                 cloud_provider_str=cloud if cloud else None,  # Supersedes cloud_provider
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
+                runtime=config.get("function_runtime"),
                 runtime_debug=config.get("function_runtime_debug"),
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 volume_mounts=volume_mounts,
@@ -520,8 +521,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         # Internal option to set terminal size and metadata
         _pty_info: Optional[api_pb2.PTYInfo] = None,
     ):
-        """Execute a command in the Sandbox and return
-        a [`ContainerProcess`](/docs/reference/modal.ContainerProcess#modalcontainer_process) handle.
+        """Execute a command in the Sandbox and return a ContainerProcess handle.
+
+        See the [`ContainerProcess`](/docs/reference/modal.container_process#modalcontainer_processcontainerprocess)
+        docs for more information.
 
         **Usage**
 
@@ -623,8 +626,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         path: str,
         mode: Union["_typeshed.OpenTextMode", "_typeshed.OpenBinaryMode"] = "r",
     ):
-        """Open a file in the Sandbox and return
-        a [`FileIO`](/docs/reference/modal.FileIO#modalfile_io) handle.
+        """Open a file in the Sandbox and return a FileIO handle.
+
+        See the [`FileIO`](/docs/reference/modal.file_io#modalfile_iofileio) docs for more information.
 
         **Usage**
 
