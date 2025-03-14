@@ -29,6 +29,11 @@ def pytest_markdown_docs_globals():
     }
 
 
+@pytest.fixture()
+def running_app():
+    return modal.App.lookup("pytest-markdown-docs-running-app", create_if_missing=True)
+
+
 @pytest.fixture(autouse=True)
 def disable_auto_mount(monkeypatch):
     monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
