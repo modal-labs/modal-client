@@ -872,7 +872,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     function=function_definition,
                     function_data=function_data,
                     existing_function_id=existing_object_id or "",
-                    defer_updates=True,
                 )
                 try:
                     response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
