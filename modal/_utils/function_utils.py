@@ -207,6 +207,7 @@ class FunctionInfo:
             if serialized:  # if explicit
                 self._type = FunctionInfoType.SERIALIZED
             else:
+                # notebook, or in general any exec() on a function definition
                 self._type = FunctionInfoType.NOTEBOOK
 
         if not self.is_serialized():
