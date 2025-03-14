@@ -309,6 +309,7 @@ message AppDeploymentHistory {
   string tag = 6;
   uint32 rollback_version = 7;
   bool rollback_allowed = 8;
+  optional CommitInfo commit_info = 10;
 }
 
 message AppDeploymentHistoryRequest {
@@ -419,6 +420,7 @@ message AppPublishRequest {
   map<string, string> definition_ids = 7;  // function_id -> definition_id
   uint32 rollback_version = 8;  // Unused by client, but used internally
   string client_version = 9;  // Unused by client, but used internally
+  CommitInfo commit_info = 10;  // Git information for deployment tracking
 }
 
 message AppPublishResponse {
@@ -743,6 +745,17 @@ message CloudBucketMount {
   optional string bucket_endpoint_url = 7;
   optional string key_prefix = 8;
   optional string oidc_auth_role_arn = 9;
+}
+
+message CommitInfo {
+  string vcs = 1; // Only git is supported for now
+  string branch = 2;
+  string commit_hash = 3;
+  int64 commit_timestamp = 4;
+  bool dirty = 5;
+  string author_name = 6;
+  string author_email = 7;
+  string repo_url = 8;
 }
 
 message ContainerArguments {  // This is used to pass data from the worker to the container
