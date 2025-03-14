@@ -99,6 +99,7 @@ class _RetryContext:
     input_jwt: str
     input_id: str
     item: api_pb2.FunctionPutInputsItem
+    sync_client_retries_enabled: bool
 
 
 class _Invocation:
@@ -151,6 +152,7 @@ class _Invocation:
                 input_jwt=input.input_jwt,
                 input_id=input.input_id,
                 item=item,
+                sync_client_retries_enabled=response.sync_client_retries_enabled,
             )
             return _Invocation(client.stub, function_call_id, client, retry_context)
 
@@ -172,6 +174,7 @@ class _Invocation:
             input_jwt=input.input_jwt,
             input_id=input.input_id,
             item=item,
+            sync_client_retries_enabled=response.sync_client_retries_enabled
         )
         return _Invocation(client.stub, function_call_id, client, retry_context)
 
@@ -242,6 +245,7 @@ class _Invocation:
             or not ctx.retry_policy
             or ctx.retry_policy.retries == 0
             or ctx.function_call_invocation_type != api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
+            or not ctx.sync_client_retries_enabled
         ):
             return await self._get_single_output()
 

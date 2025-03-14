@@ -196,6 +196,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.files_sha2data = {}
         self.function_id_for_function_call = {}
         self.client_calls = {}
+        self.sync_client_retries_enabled = False
         self.function_is_running = False
         self.n_functions = 0
         self.n_schedules = 0
@@ -1079,6 +1080,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 retry_policy=retry_policy,
                 function_call_jwt=function_call_jwt,
                 pipelined_inputs=response_inputs,
+                sync_client_retries_enabled=self.sync_client_retries_enabled
             )
         )
 
