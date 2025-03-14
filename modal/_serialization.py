@@ -444,7 +444,8 @@ def serialize_proto_params(python_params: dict[str, Any], schema: typing.Sequenc
 
 
 def deserialize_proto_params(serialized_params: bytes, schema: list[api_pb2.ClassParameterSpec]) -> dict[str, Any]:
-    # TODO: this currently requires the schema to decode a payload, but we could make
+    # TODO: this currently requires the schema to decode a payload, but we should make the validation
+    #       distinct from the deserialization
     proto_struct = api_pb2.ClassParameterSet()
     proto_struct.ParseFromString(serialized_params)
     value_by_name = {p.name: p for p in proto_struct.parameters}

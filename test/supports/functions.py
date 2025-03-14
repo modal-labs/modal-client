@@ -5,7 +5,6 @@ import pytest
 import threading
 import time
 
-import modal
 from modal import (
     App,
     Sandbox,
@@ -389,15 +388,6 @@ def basic_wsgi_app():
         yield b"got body: " + body
 
     return simple_app
-
-
-@app.cls()
-class ClsWithBytesSerialization:
-    bar: bytes = modal.parameter()
-
-    @fastapi_endpoint()
-    def web(self, arg):
-        return {"arg": arg, "bar": self.bar}
 
 
 @app.cls()
