@@ -2039,6 +2039,9 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
 
+        if not isinstance(cmd, list) or not all(isinstance(x, str) for x in cmd):
+            raise InvalidError("Image CMD must be a list of strings.")
+
         cmd_str = _flatten_str_args("cmd", "cmd", cmd)
         cmd_str = '"' + '", "'.join(cmd_str) + '"' if cmd_str else ""
         dockerfile_cmd = f"CMD [{cmd_str}]"
