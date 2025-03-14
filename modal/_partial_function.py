@@ -36,6 +36,7 @@ class _PartialFunctionFlags(enum.IntFlag):
     EXIT = 16
     BATCHED = 32
     CLUSTERED = 64  # Experimental: Clustered functions
+    CONCURRENT = 128
 
     @staticmethod
     def all() -> int:
@@ -59,6 +60,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     force_build: bool
     cluster_size: Optional[int]  # Experimental: Clustered functions
     build_timeout: Optional[int]
+    concurrency_limit: Optional[int]
 
     def __init__(
         self,
@@ -72,6 +74,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         cluster_size: Optional[int] = None,  # Experimental: Clustered functions
         force_build: bool = False,
         build_timeout: Optional[int] = None,
+        concurrency_limit: Optional[int] = None,
     ):
         self.raw_f = raw_f
         self.flags = flags
@@ -89,6 +92,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         self.cluster_size = cluster_size  # Experimental: Clustered functions
         self.force_build = force_build
         self.build_timeout = build_timeout
+        self.concurrency_limit = concurrency_limit
 
     def _get_raw_f(self) -> Callable[P, ReturnType]:
         return self.raw_f
@@ -710,6 +714,26 @@ def _batched(
             _PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.BATCHED,
             batch_max_size=max_batch_size,
             batch_wait_ms=wait_ms,
+        )
+
+    return wrapper
+
+
+def _concurrent(
+    _warn_parentheses_missing=None,
+    *,
+    limit: int,
+) -> Callable[[Callable[..., Any]], _PartialFunction]:
+    if _warn_parentheses_missing is not None:
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@concurrent()`."
+        )
+
+    def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+        return _PartialFunction(
+            raw_f,
+            _PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.CONCURRENT,
+            concurrency_limit=limit,
         )
 
     return wrapper
