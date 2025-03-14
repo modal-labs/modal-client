@@ -46,7 +46,7 @@ async def test_run_command_fallible_exception(mock_subprocess):
     assert result is None
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="Skipping on Windows")
+@pytest.mark.skipif(sys.platform == "win32", reason="Skipping on Windows: feel free to fix if you can")
 @pytest.mark.asyncio
 async def test_run_command_fallible_success_real():
     result = await run_command_fallible(["echo", "hello world"])
