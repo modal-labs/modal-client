@@ -1607,6 +1607,11 @@ def test_from_local_python_packages_missing_module(servicer, client, test_dir, s
             pass
 
 
+def test_from_local_python_packages_wrong_type():
+    with pytest.raises(TypeError, match="specified as strings"):
+        Image.debian_slim().add_local_python_source(os, sys)  # type: ignore
+
+
 @skip_windows("servicer sandbox implementation not working on windows")
 def test_add_locals_are_attached_to_sandboxes(servicer, client, supports_on_path):
     deb_slim = Image.debian_slim()
