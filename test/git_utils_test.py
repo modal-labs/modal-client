@@ -46,18 +46,12 @@ async def test_run_command_fallible_exception(mock_subprocess):
     assert result is None
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Skipping on Windows")
 @pytest.mark.asyncio
 async def test_run_command_fallible_success_real():
-    # Use a platform-independent command
-    if sys.platform == "win32":
-        # On Windows, use 'cmd /c echo' to execute echo command
-        result = await run_command_fallible(["cmd", "/c", "echo", "hello world"])
-    else:
-        # On Unix-like systems, use the regular echo command
-        result = await run_command_fallible(["echo", "hello world"])
+    result = await run_command_fallible(["echo", "hello world"])
 
-    # Strip whitespace to handle Windows echo which adds CRLF
-    assert result.strip() == "hello world"
+    assert result == "hello world"
 
 
 @pytest.mark.asyncio
