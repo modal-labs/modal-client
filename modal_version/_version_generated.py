@@ -1,4 +1,4 @@
 # Copyright Modal Labs 2025
 
 # Note: Reset this value to -1 whenever you make a minor `0.X` release of the client.
-build_number = 104  # git: 63b1efa
+build_number = 105  # git: 78b3be2
