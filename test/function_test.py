@@ -1,12 +1,14 @@
 # Copyright Modal Labs 2022
 import asyncio
 import inspect
+import logging
 import os
 import pytest
 import time
 import typing
 from contextlib import contextmanager
 
+from grpclib import Status
 from synchronicity.exceptions import UserCodeException
 
 import modal
@@ -1163,3 +1165,78 @@ def f():
     mounts = servicer.mounts_excluding_published_client()
 
     assert len(mounts) == expected_mounts
+
+
+_map_retry_servicer = None
+_map_attempt_count = 0
+
+def _maybe_fail(i):
+    global _map_attempt_count
+    if _map_attempt_count >= 10:
+        assert _map_retry_servicer
+        _map_retry_servicer.fail_put_inputs_with_grpc_error = None
+        _map_retry_servicer.fail_put_inputs_with_stream_terminated_error = False
+    _map_attempt_count += 1
+    return i
+
+
+def test_map_retry_with_internal_error(client, servicer, monkeypatch, caplog):
+    """
+    This test forces pump_inputs to fail with INTERNAL for 10 times, and then succeed. This tests that the error
+    is caught and retried error, and does not propagate up.
+    """
+    global _map_retry_servicer, _map_attempt_count
+    monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
+    app = App()
+    _map_retry_servicer= servicer
+    # reset count from any previous tests
+    _map_attempt_count = 0
+    maybe_fail = app.function()(_maybe_fail)
+    servicer.function_body(_maybe_fail)
+    servicer.fail_put_inputs_with_grpc_error = Status.INTERNAL
+    with app.run(client=client):
+        for _ in maybe_fail.map(range(1), order_outputs=False):
+            pass
+    # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
+    assert not [r for r in caplog.records if r.levelno == logging.WARNING]
+
+def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog):
+    """
+    This test forces pump_inputs to fail with RESOURCE_EXHAUSTED for 10 times, and then succeed. This tests that
+    the error is caught and retried error, and does not propagate up.
+    """
+    global _map_retry_servicer, _map_attempt_count
+    monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
+    app = App()
+    _map_retry_servicer= servicer
+    # reset count from any previous tests
+    _map_attempt_count = 0
+    maybe_fail = app.function()(_maybe_fail)
+    servicer.function_body(_maybe_fail)
+    servicer.fail_put_inputs_with_grpc_error = Status.RESOURCE_EXHAUSTED
+    with app.run(client=client):
+        for _ in maybe_fail.map(range(1), order_outputs=False):
+            pass
+    # Verify we log the warning for RESOURCE_EXHAUSTED
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+
+def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, caplog):
+    """
+    This test forces pump_inputs to fail with StreamTerminatedError for 10 times, and then succeed. This tests that
+    the error is caught and retried error, and does not propagate up.
+    """
+    global _map_retry_servicer, _map_attempt_count
+    monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
+    app = App()
+    _map_retry_servicer= servicer
+    # reset count from any previous tests
+    _map_attempt_count = 0
+    maybe_fail = app.function()(_maybe_fail)
+    servicer.function_body(_maybe_fail)
+    servicer.fail_put_inputs_with_stream_terminated_error = True
+    with app.run(client=client):
+        for _ in maybe_fail.map(range(1), order_outputs=False):
+            pass
+    # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
+    assert not [r for r in caplog.records if r.levelno == logging.WARNING]

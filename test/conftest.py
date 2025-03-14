@@ -156,6 +156,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.done = False
         self.rate_limit_sleep_duration = None
         self.fail_get_inputs = False
+        self.fail_put_inputs_with_grpc_error: None | Status = None
+        self.fail_put_inputs_with_stream_terminated_error = False
+        self.fail_put_inputs_with_resource_exhausted = False
         self.failure_status = api_pb2.GenericResult.GENERIC_STATUS_FAILURE
         self.slow_put_inputs = False
         self.container_inputs = []
@@ -1110,6 +1113,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.add_function_call_input(request.function_call_id, item, input_id)
         if self.slow_put_inputs:
             await asyncio.sleep(0.001)
+        if self.fail_put_inputs_with_grpc_error:
+            raise GRPCError(self.fail_put_inputs_with_grpc_error)
+        if self.fail_put_inputs_with_stream_terminated_error:
+            await stream.cancel()
         await stream.send_message(api_pb2.FunctionPutInputsResponse(inputs=response_items))
 
     def add_function_call_input(self, function_call_id, item, input_id):
