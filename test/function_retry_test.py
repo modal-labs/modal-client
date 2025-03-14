@@ -80,6 +80,8 @@ def test_no_retries_when_first_call_succeeds(client, setup_app_and_function, mon
         function_call_count = f.remote(1)
         assert function_call_count == 1
 
+
+@pytest.mark.skip(reason="Disabled until server changes rolled out")
 def test_no_retries_when_client_retries_disabled(client, setup_app_and_function, monkeypatch, servicer):
     servicer.sync_client_retries_enabled = False
     # Set MODAL_CLIENT_RETRIES to true to use SYNC, rather than SYNC_LEGACY. This tests the sync_client_retries_enabled
@@ -90,6 +92,7 @@ def test_no_retries_when_client_retries_disabled(client, setup_app_and_function,
         with pytest.raises(FunctionCallCountException) as exc_info:
             f.remote(2)
         assert exc_info.value.function_call_count == 1
+
 
 def test_retry_dealy_ms():
     with pytest.raises(ValueError):

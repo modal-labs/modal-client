@@ -245,7 +245,8 @@ class _Invocation:
             or not ctx.retry_policy
             or ctx.retry_policy.retries == 0
             or ctx.function_call_invocation_type != api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
-            or not ctx.sync_client_retries_enabled
+            # TODO: Eventually we want to honor this flag. For now, we ignore it.
+            # or not ctx.sync_client_retries_enabled
         ):
             return await self._get_single_output()
 
