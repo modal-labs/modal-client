@@ -2,8 +2,10 @@
 import ast
 import pytest
 import traceback
+from typing import Any
 
 from pytest_markdown_docs._runners import DefaultRunner, register_runner
+from pytest_markdown_docs.definitions import FenceTestDefinition
 
 import modal
 from modal import enable_output
@@ -51,7 +53,7 @@ class ModalRunner(DefaultRunner):
                 raise
 
             exec_globals = args.copy()
-            exec_locals = {}  # this will contain anything defined in the fence, like @app.function
+            exec_locals: dict[str, Any] = {}  # this will contain anything defined in the fence, like @app.function
             exec(compiled, exec_globals, exec_locals)
 
             # TODO (elias): add support for runnable "arguments" in pytest-markdown-docs so the code fence
@@ -64,16 +66,18 @@ class ModalRunner(DefaultRunner):
             runnable = infer_runnable(cli_commands, "", True, False)
 
             with enable_output():
-                with runnable.app.run():
-                    if isinstance(runnable, LocalEntrypoint):
+                if isinstance(runnable, LocalEntrypoint):
+                    with runnable.app.run():
                         runnable()
-                    elif isinstance(runnable, Function):
+                elif isinstance(runnable, Function):
+                    with runnable.app.run():
                         runnable.remote()
-                    else:
+                else:
+                    with runnable.cls.app.run():
                         getattr(runnable.cls(), runnable.method_name).remote()
         except:
             traceback.print_exc()
             raise
 
-    def repr_failure(self, test_def, exc_info: pytest.ExceptionInfo, style):
+    def repr_failure(self, test: FenceTestDefinition, excinfo: pytest.ExceptionInfo[BaseException], style=None):
         return "Error during app run, see logs"

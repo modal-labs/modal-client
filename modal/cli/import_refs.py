@@ -355,8 +355,10 @@ def import_and_filter(
 
 def infer_runnable(
     cli_commands: list[CLICommand], object_path: str, accept_local_entrypoint: bool, accept_webhook: bool
-) -> Runnable:
+) -> Optional[Runnable]:
     filtered_commands = filter_cli_commands(cli_commands, object_path, accept_local_entrypoint, accept_webhook)
+    if len(filtered_commands) == 0:
+        return None
 
     filtered_commands_by_prio = defaultdict(list)
     for cmd in filtered_commands:
