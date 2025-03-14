@@ -526,7 +526,7 @@ async def _deploy_app(
     t0 = time.time()
 
     # Get git information to track deployment history
-    commit_info_future = get_git_commit_info()
+    commit_info_task = asyncio.create_task(get_git_commit_info())
 
     running_app: RunningApp = await _init_local_app_from_name(
         client, name, namespace, environment_name=environment_name
@@ -551,7 +551,7 @@ async def _deploy_app(
 
             commit_info = None
             try:
-                commit_info = await commit_info_future
+                commit_info = await commit_info_task
             except Exception as e:
                 logger.debug("Failed to get git commit info", exc_info=e)
 

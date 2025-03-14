@@ -751,7 +751,7 @@ message CommitInfo {
   int64 commit_timestamp = 4;
   bool dirty = 5;
   string author_name = 6;
-  string author_email = 7;
+  optional string author_email = 7;
   optional string repo_url = 8;
 }
 
