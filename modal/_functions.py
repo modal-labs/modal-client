@@ -245,8 +245,7 @@ class _Invocation:
             or not ctx.retry_policy
             or ctx.retry_policy.retries == 0
             or ctx.function_call_invocation_type != api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
-            # TODO: Eventually we want to honor this flag. For now, we ignore it.
-            # or not ctx.sync_client_retries_enabled
+            or not ctx.sync_client_retries_enabled
         ):
             return await self._get_single_output()
 
@@ -1311,16 +1310,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 yield item
 
     async def _call_function(self, args, kwargs) -> ReturnType:
-        if config.get("client_retries"):
-            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
-        else:
-            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY
         invocation = await _Invocation.create(
             self,
             args,
             kwargs,
             client=self.client,
-            function_call_invocation_type=function_call_invocation_type,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
         )
 
         return await invocation.run_function()
