@@ -862,7 +862,7 @@ class _Image(_Object, type_prefix="im"):
         *Added in v0.67.28*: This method replaces the deprecated `modal.Mount.from_local_python_packages` pattern.
         """
         if not all(isinstance(module, str) for module in modules):
-            raise TypeError("Local Python modules must be specified as strings.")
+            raise InvalidError("Local Python modules must be specified as strings.")
         mount = _Mount._from_local_python_packages(*modules, ignore=ignore)
         img = self._add_mount_layer_or_copy(mount, copy=copy)
         img._added_python_source_set |= set(modules)

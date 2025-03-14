@@ -1608,7 +1608,7 @@ def test_from_local_python_packages_missing_module(servicer, client, test_dir, s
 
 
 def test_from_local_python_packages_wrong_type():
-    with pytest.raises(TypeError, match="specified as strings"):
+    with pytest.raises(InvalidError, match="specified as strings"):
         Image.debian_slim().add_local_python_source(os, sys)  # type: ignore
 
 
