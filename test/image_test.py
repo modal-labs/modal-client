@@ -972,9 +972,9 @@ def test_image_docker_command_entrypoint_nonempty(builder_version, servicer, cli
 
 def test_image_docker_command_entrypoint_malformed():
     with pytest.raises(InvalidError, match="must be a list of strings"):
-        Image.debian_slim().entrypoint("this is not a list of strings")
+        Image.debian_slim().entrypoint("this is not a list of strings")  # type: ignore
     with pytest.raises(InvalidError, match="must be a list of strings"):
-        Image.debian_slim().entrypoint(4711)
+        Image.debian_slim().entrypoint(4711)  # type: ignore
 
 
 def test_image_docker_command_shell(builder_version, servicer, client, tmp_path_with_content):
@@ -989,9 +989,9 @@ def test_image_docker_command_shell(builder_version, servicer, client, tmp_path_
 
 def test_image_docker_command_shell_malformed():
     with pytest.raises(InvalidError, match="must be a list of strings"):
-        Image.debian_slim().shell("this is not a list of strings")
+        Image.debian_slim().shell("this is not a list of strings")  # type: ignore
     with pytest.raises(InvalidError, match="must be a list of strings"):
-        Image.debian_slim().shell(4711)
+        Image.debian_slim().shell(4711)  # type: ignore
 
 
 def test_image_env(builder_version, servicer, client):
@@ -1032,9 +1032,9 @@ def test_image_cmd_nonempty(builder_version, servicer, client, tmp_path_with_con
 
 def test_image_cmd_malformed(builder_version, servicer, client, tmp_path_with_content):
     with pytest.raises(InvalidError, match="must be a list of strings"):
-        Image.debian_slim().cmd("this is not a list of strings")
+        Image.debian_slim().cmd("this is not a list of strings")  # type: ignore
     with pytest.raises(InvalidError, match="must be a list of strings"):
-        Image.debian_slim().cmd(4711)
+        Image.debian_slim().cmd(4711)  # type: ignore
 
 
 def test_image_debian_slim_default_cmd(builder_version, servicer, client, test_dir):
