@@ -58,6 +58,15 @@ async def test_run_command_fallible_unknown_command_real():
     assert result is None
 
 
+def assert_commit_info(result, expected_values):
+    """Helper function to assert CommitInfo fields match expected values."""
+    assert result is not None
+    for field, expected in expected_values.items():
+        assert getattr(result, field) == expected, (
+            f"Field {field} mismatch: expected {expected}, got {getattr(result, field)}"
+        )
+
+
 @mock.patch("modal._utils.git_utils.run_command_fallible")
 @pytest.mark.asyncio
 async def test_get_git_commit_info_success(mock_run_command):
@@ -70,15 +79,17 @@ async def test_get_git_commit_info_success(mock_run_command):
 
     result = await get_git_commit_info()
 
-    assert result is not None
-    assert result.vcs == "git"
-    assert result.commit_hash == "abc123"
-    assert result.commit_timestamp == 1609459200
-    assert result.author_name == "Test User"
-    assert result.author_email == "test@example.com"
-    assert result.branch == "main"
-    assert not result.dirty
-    assert result.repo_url == "git@github.com:modal-labs/modal-client.git"
+    expected = {
+        "vcs": "git",
+        "commit_hash": "abc123",
+        "commit_timestamp": 1609459200,
+        "author_name": "Test User",
+        "author_email": "test@example.com",
+        "branch": "main",
+        "dirty": False,
+        "repo_url": "git@github.com:modal-labs/modal-client.git",
+    }
+    assert_commit_info(result, expected)
 
 
 @mock.patch("modal._utils.git_utils.run_command_fallible")
@@ -93,8 +104,17 @@ async def test_get_git_commit_info_dirty_repo(mock_run_command):
 
     result = await get_git_commit_info()
 
-    assert result is not None
-    assert result.dirty
+    expected = {
+        "vcs": "git",
+        "commit_hash": "abc123",
+        "commit_timestamp": 1609459200,
+        "author_name": "Test User",
+        "author_email": "test@example.com",
+        "branch": "main",
+        "dirty": True,
+        "repo_url": "https://github.com/modal-labs/modal-client.git",
+    }
+    assert_commit_info(result, expected)
 
 
 @mock.patch("modal._utils.git_utils.run_command_fallible")
@@ -109,14 +129,17 @@ async def test_get_git_commit_info_missing_remote(mock_run_command):
 
     result = await get_git_commit_info()
 
-    assert result is not None
-    assert result.repo_url == ""
-    assert result.branch == "main"
-    assert result.commit_hash == "abc123"
-    assert result.commit_timestamp == 1609459200
-    assert result.author_name == "Test User"
-    assert result.author_email == "test@example.com"
-    assert not result.dirty
+    expected = {
+        "vcs": "git",
+        "commit_hash": "abc123",
+        "commit_timestamp": 1609459200,
+        "author_name": "Test User",
+        "author_email": "test@example.com",
+        "branch": "main",
+        "dirty": False,
+        "repo_url": "",
+    }
+    assert_commit_info(result, expected)
 
 
 @mock.patch("modal._utils.git_utils.run_command_fallible")
@@ -131,14 +154,17 @@ async def test_get_git_commit_info_missing_author_email(mock_run_command):
 
     result = await get_git_commit_info()
 
-    assert result is not None
-    assert result.author_email == ""
-    assert result.author_name == "Test User"
-    assert result.commit_hash == "abc123"
-    assert result.commit_timestamp == 1609459200
-    assert result.branch == "main"
-    assert not result.dirty
-    assert result.repo_url == "https://github.com/modal-labs/modal-client.git"
+    expected = {
+        "vcs": "git",
+        "commit_hash": "abc123",
+        "commit_timestamp": 1609459200,
+        "author_name": "Test User",
+        "author_email": "",
+        "branch": "main",
+        "dirty": False,
+        "repo_url": "https://github.com/modal-labs/modal-client.git",
+    }
+    assert_commit_info(result, expected)
 
 
 @mock.patch("modal._utils.git_utils.run_command_fallible")
