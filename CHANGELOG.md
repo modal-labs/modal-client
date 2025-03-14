@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.107 (2025-03-14)
+
+* Include git commit info at the time of app deployment.
+
+
+
 ### 0.73.105 (2025-03-14)
 
 - Added `Image.cmd()` for setting image default entrypoint args (a.k.a. `CMD`).
