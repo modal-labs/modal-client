@@ -1,5 +1,7 @@
+# Copyright Modal Labs 2025
 import asyncio
 import pytest
+import sys
 from unittest import mock
 
 from modal._utils.git_utils import get_git_commit_info, run_command_fallible
@@ -46,9 +48,16 @@ async def test_run_command_fallible_exception(mock_subprocess):
 
 @pytest.mark.asyncio
 async def test_run_command_fallible_success_real():
-    result = await run_command_fallible(["echo", "hello world"])
+    # Use a platform-independent command
+    if sys.platform == "win32":
+        # On Windows, use 'cmd /c echo' to execute echo command
+        result = await run_command_fallible(["cmd", "/c", "echo", "hello world"])
+    else:
+        # On Unix-like systems, use the regular echo command
+        result = await run_command_fallible(["echo", "hello world"])
 
-    assert result == "hello world"
+    # Strip whitespace to handle Windows echo which adds CRLF
+    assert result.strip() == "hello world"
 
 
 @pytest.mark.asyncio

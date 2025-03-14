@@ -751,8 +751,8 @@ message CommitInfo {
   int64 commit_timestamp = 4;
   bool dirty = 5;
   string author_name = 6;
-  optional string author_email = 7;
-  optional string repo_url = 8;
+  string author_email = 7;
+  string repo_url = 8;
 }
 
 message ContainerArguments {  // This is used to pass data from the worker to the container
