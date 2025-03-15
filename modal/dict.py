@@ -26,8 +26,12 @@ def _serialize_dict(data):
 class _Dict(_Object, type_prefix="di"):
     """Distributed dictionary for storage in Modal apps.
 
-    Keys and values can be essentially any object, so long as they can be serialized by
-    `cloudpickle`, which includes other Modal objects.
+    Dict contents can be essentially any object so long as they can be serialized by
+    `cloudpickle`. This includes other Modal objects. If writing and reading in different
+    environments (eg., writing locally and reading remotely), it's necessary to have the
+    library defining the data type installed, with compatible versions, on both sides.
+    Additionally, cloudpickle serialization is not guaranteed to be deterministic, so it is
+    generally recommended to use primitive types for keys.
 
     **Lifetime of a Dict and its items**
 
@@ -52,8 +56,9 @@ class _Dict(_Object, type_prefix="di"):
 
     The `Dict` class offers a few methods for operations that are usually accomplished
     in Python with operators, such as `Dict.put` and `Dict.contains`. The advantage of
-    these methods is that they can be safely called in an asynchronous context, whereas
-    their operator-based analogues will block the event loop.
+    these methods is that they can be safely called in an asynchronous context by using
+    the `.aio` suffix on the method, whereas their operator-based analogues will always
+    run synchronously and block the event loop.
 
     For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-dicts).
     """
