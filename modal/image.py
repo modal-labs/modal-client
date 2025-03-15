@@ -1383,7 +1383,9 @@ class _Image(_Object, type_prefix="im"):
         entrypoint_commands: list[str],
     ) -> "_Image":
         """Set the entrypoint for the image."""
-        args_str = _flatten_str_args("entrypoint", "entrypoint_files", entrypoint_commands)
+        if not isinstance(entrypoint_commands, list) or not all(isinstance(x, str) for x in entrypoint_commands):
+            raise InvalidError("entrypoint_commands must be a list of strings.")
+        args_str = _flatten_str_args("entrypoint", "entrypoint_commands", entrypoint_commands)
         args_str = '"' + '", "'.join(args_str) + '"' if args_str else ""
         dockerfile_cmd = f"ENTRYPOINT [{args_str}]"
 
@@ -1394,6 +1396,8 @@ class _Image(_Object, type_prefix="im"):
         shell_commands: list[str],
     ) -> "_Image":
         """Overwrite default shell for the image."""
+        if not isinstance(shell_commands, list) or not all(isinstance(x, str) for x in shell_commands):
+            raise InvalidError("shell_commands must be a list of strings.")
         args_str = _flatten_str_args("shell", "shell_commands", shell_commands)
         args_str = '"' + '", "'.join(args_str) + '"' if args_str else ""
         dockerfile_cmd = f"SHELL [{args_str}]"
