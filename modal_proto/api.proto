@@ -1916,6 +1916,7 @@ message MountPutFileRequest {
 
 message MountPutFileResponse {
   bool exists = 2;
+  string sha256_hex = 3;
 }
 
 message MultiPartUpload {
