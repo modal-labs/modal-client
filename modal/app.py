@@ -678,7 +678,7 @@ class _App:
                 is_generator = f.is_generator
                 batch_max_size = f.batch_max_size
                 batch_wait_ms = f.batch_wait_ms
-                concurrency_limit = f.concurrency_limit
+                max_concurrent_inputs = f.max_concurrent_inputs
             else:
                 if not is_global_object(f.__qualname__) and not serialized:
                     raise InvalidError(
@@ -714,7 +714,7 @@ class _App:
                 webhook_config = None
                 batch_max_size = None
                 batch_wait_ms = None
-                concurrency_limit = None
+                max_concurrent_inputs = None
 
                 cluster_size = None  # Experimental: Clustered functions
                 i6pn_enabled = i6pn
@@ -755,7 +755,7 @@ class _App:
                 max_containers=max_containers,
                 buffer_containers=buffer_containers,
                 scaledown_window=scaledown_window,
-                allow_concurrent_inputs=concurrency_limit,
+                allow_concurrent_inputs=max_concurrent_inputs,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
                 timeout=timeout,
@@ -852,10 +852,10 @@ class _App:
             if isinstance(wrapped_cls, _PartialFunction):
                 wrapped_cls.wrapped = True
                 user_cls = wrapped_cls.raw_f
-                concurrency_limit = wrapped_cls.concurrency_limit
+                max_concurrent_inputs = wrapped_cls.max_concurrent_inputs
             else:
                 user_cls = wrapped_cls
-                concurrency_limit = None
+                max_concurrent_inputs = None
 
             if not inspect.isclass(user_cls):
                 raise TypeError("The @app.cls decorator must be used on a class.")
@@ -902,7 +902,7 @@ class _App:
                 scaledown_window=scaledown_window,
                 proxy=proxy,
                 retries=retries,
-                allow_concurrent_inputs=concurrency_limit,
+                allow_concurrent_inputs=max_concurrent_inputs,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
                 timeout=timeout,
