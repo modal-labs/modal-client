@@ -1030,7 +1030,7 @@ def test_image_cmd_nonempty(builder_version, servicer, client, tmp_path_with_con
         assert 'CMD ["echo", "hello"]' in layers[0].dockerfile_commands
 
 
-def test_image_cmd_malformed(builder_version, servicer, client, tmp_path_with_content):
+def test_image_cmd_malformed():
     with pytest.raises(InvalidError, match="must be a list of strings"):
         Image.debian_slim().cmd("this is not a list of strings")  # type: ignore
     with pytest.raises(InvalidError, match="must be a list of strings"):
