@@ -210,7 +210,9 @@ def _method(
     ```
     """
     if _warn_parentheses_missing is not None:
-        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@method()`.")
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.method()`."
+        )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         nonlocal is_generator
@@ -268,10 +270,12 @@ def _fastapi_endpoint(
     """
     if isinstance(_warn_parentheses_missing, str):
         # Probably passing the method string as a positional argument.
-        raise InvalidError('Positional arguments are not allowed. Suggestion: `@fastapi_endpoint(method="GET")`.')
+        raise InvalidError(
+            f'Positional arguments are not allowed. Suggestion: `@modal.fastapi_endpoint(method="{method}")`.'
+        )
     elif _warn_parentheses_missing is not None:
         raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@fastapi_endpoint()`."
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.fastapi_endpoint()`."
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
@@ -328,10 +332,10 @@ def _web_endpoint(
     """
     if isinstance(_warn_parentheses_missing, str):
         # Probably passing the method string as a positional argument.
-        raise InvalidError('Positional arguments are not allowed. Suggestion: `@web_endpoint(method="GET")`.')
+        raise InvalidError('Positional arguments are not allowed. Suggestion: `@modal.web_endpoint(method="GET")`.')
     elif _warn_parentheses_missing is not None:
         raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@web_endpoint()`."
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.web_endpoint()`."
         )
 
     deprecation_warning(
@@ -392,10 +396,10 @@ def _asgi_app(
     [guide on web endpoints](https://modal.com/docs/guide/webhooks).
     """
     if isinstance(_warn_parentheses_missing, str):
-        raise InvalidError('Positional arguments are not allowed. Suggestion: `@asgi_app(label="foo")`.')
+        raise InvalidError(f'Positional arguments are not allowed. Suggestion: `@modal.asgi_app(label="{label}")`.')
     elif _warn_parentheses_missing is not None:
         raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@asgi_app()`."
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.asgi_app()`."
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
@@ -460,10 +464,10 @@ def _wsgi_app(
     [guide on web endpoints](https://modal.com/docs/guide/webhooks).
     """
     if isinstance(_warn_parentheses_missing, str):
-        raise InvalidError('Positional arguments are not allowed. Suggestion: `@wsgi_app(label="foo")`.')
+        raise InvalidError(f'Positional arguments are not allowed. Suggestion: `@modal.wsgi_app(label="{label}")`.')
     elif _warn_parentheses_missing is not None:
         raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@wsgi_app()`."
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.wsgi_app()`."
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
@@ -588,7 +592,9 @@ def _build(
     ```
     """
     if _warn_parentheses_missing is not None:
-        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@build()`.")
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.build()`."
+        )
 
     deprecation_warning(
         (2025, 1, 15),
@@ -620,7 +626,9 @@ def _enter(
 
     See the [lifeycle function guide](https://modal.com/docs/guide/lifecycle-functions#enter) for more information."""
     if _warn_parentheses_missing is not None:
-        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@enter()`.")
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.enter()`."
+        )
 
     if snap:
         flag = _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
@@ -652,7 +660,9 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
 
     See the [lifeycle function guide](https://modal.com/docs/guide/lifecycle-functions#exit) for more information."""
     if _warn_parentheses_missing is not None:
-        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@exit()`.")
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.exit()`."
+        )
 
     def wrapper(f: ExitHandlerType) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
@@ -687,7 +697,7 @@ def _batched(
     """
     if _warn_parentheses_missing is not None:
         raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@batched()`."
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.batched()`."
         )
     if max_batch_size < 1:
         raise InvalidError("max_batch_size must be a positive integer.")
