@@ -250,18 +250,17 @@ def _fastapi_endpoint(
     docs: bool = False,  # Whether to enable interactive documentation for this endpoint at /docs.
     requires_proxy_auth: bool = False,  # Require Modal-Key and Modal-Secret HTTP Headers on requests.
 ) -> Callable[[Callable[P, ReturnType]], _PartialFunction[P, ReturnType, ReturnType]]:
-    """Register a basic web endpoint with this application.
+    """Convert a function into a basic web endpoint by wrapping it with a FastAPI App.
 
-    This is the simple way to create a web endpoint on Modal. The function
-    behaves as a [FastAPI](https://fastapi.tiangolo.com/) handler and should
-    return a response object to the caller.
+    Modal will internally use [FastAPI](https://fastapi.tiangolo.com/) to expose a
+    simple, single request handler. If you are defining your own `FastAPI` application
+    (e.g. if you want to define multiple routes), use `@modal.asgi_app` instead.
 
-    Endpoints created with `@modal.fastapi_endpoint` are meant to be simple, single
-    request handlers and automatically have
-    [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) enabled.
-    For more flexibility, use `@modal.asgi_app`.
+    The endpoint created with this decorator will automatically have
+    [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) enabled
+    and can leverage many of FastAPI's features.
 
-    To learn how to use Modal with popular web frameworks, see the
+    For more information on using Modal with popular web frameworks, see our
     [guide on web endpoints](https://modal.com/docs/guide/webhooks).
 
     *Added in v0.73.82*: This function replaces the deprecated `@web_endpoint` decorator.
