@@ -60,7 +60,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     force_build: bool
     cluster_size: Optional[int]  # Experimental: Clustered functions
     build_timeout: Optional[int]
-    concurrency_limit: Optional[int]
+    max_concurrent_inputs: Optional[int]
 
     def __init__(
         self,
@@ -74,7 +74,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         cluster_size: Optional[int] = None,  # Experimental: Clustered functions
         force_build: bool = False,
         build_timeout: Optional[int] = None,
-        concurrency_limit: Optional[int] = None,
+        max_concurrent_inputs: Optional[int] = None,
     ):
         self.raw_f = raw_f
         self.flags = flags
@@ -92,7 +92,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         self.cluster_size = cluster_size  # Experimental: Clustered functions
         self.force_build = force_build
         self.build_timeout = build_timeout
-        self.concurrency_limit = concurrency_limit
+        self.max_concurrent_inputs = max_concurrent_inputs
 
     def _get_raw_f(self) -> Callable[P, ReturnType]:
         return self.raw_f
@@ -731,18 +731,28 @@ def _batched(
 def _concurrent(
     _warn_parentheses_missing=None,
     *,
-    limit: int,
+    max_inputs: int,  # Limit on each contianer's concurrency
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
+    """Decorator that allows containers to handle multiple inputs concurrently.
+
+    The concurrency mechanism depends on whether the function is async or not:
+    - Async functions will run inputs on a single thread as asyncio tasks.
+    - Synchronous functions will use multi-threading. The code must be thread-safe.
+
+    Within-container concurrency will be most useful for IO-bound operations
+    (e.g., making network requests) or when running an inference server that supports
+    dynamic batching.
+    """
     if _warn_parentheses_missing is not None:
         raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@concurrent()`."
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.concurrent()`."
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         return _PartialFunction(
             raw_f,
             _PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.CONCURRENT,
-            concurrency_limit=limit,
+            max_concurrent_inputs=max_inputs,
         )
 
     return wrapper
