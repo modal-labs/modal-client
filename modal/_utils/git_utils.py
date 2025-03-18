@@ -30,7 +30,9 @@ def is_valid_commit_info(commit_info: api_pb2.CommitInfo) -> tuple[bool, str]:
         return False, "Invalid VCS"
     if len(commit_info.commit_hash) != 40:
         return False, "Invalid commit hash"
-    if len(commit_info.branch) > 200:
+    if len(commit_info.branch) > 255:
+        # Git doesn't enforce a max length for branch names, but github does, so use their limit
+        # https://stackoverflow.com/questions/24014361/max-length-of-git-branch-name
         return False, "Branch name too long"
     if len(commit_info.repo_url) > 200:
         return False, "Repo URL too long"
@@ -88,7 +90,7 @@ async def get_git_commit_info() -> Optional[api_pb2.CommitInfo]:
 
     valid, error_message = is_valid_commit_info(git_info)
     if not valid:
-        logger.debug(f"Invalid commit info: {error_message}")
+        logger.warning(f"Invalid commit info: {error_message}")
         return None
 
     return git_info
