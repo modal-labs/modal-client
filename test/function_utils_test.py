@@ -161,3 +161,13 @@ def test_schema_extraction_unknown():
 
     fields = signature_to_protobuf_schema(inspect.signature(foo))
     assert fields == [api_pb2.ClassParameterSpec(name="a", type=api_pb2.PARAM_TYPE_UNKNOWN, has_default=False)]
+
+
+def test_schema_extraction_bytes():
+    def foo(a: bytes = b"foo"):
+        pass
+
+    fields = signature_to_protobuf_schema(inspect.signature(foo))
+    assert fields == [
+        api_pb2.ClassParameterSpec(name="a", type=api_pb2.PARAM_TYPE_BYTES, has_default=True, bytes_default=b"foo")
+    ]
