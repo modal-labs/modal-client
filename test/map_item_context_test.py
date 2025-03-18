@@ -32,13 +32,13 @@ def retry_queue():
 
 
 def test_ctx_initial_state():
-    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy))
+    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy), sync_client_retries_enabled=True)
     assert_context_is(ctx, _MapItemState.SENDING, 0, None, None, input_data.args)
 
 
 @pytest.mark.asyncio
 async def test_successful_output(retry_queue):
-    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy))
+    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy), sync_client_retries_enabled=True)
     input_jwt_data = InputJwtData.of(0, 0)
     # Put inputs
     response_item = api_pb2.FunctionPutInputsResponseItem(idx=0, input_id="in-0", input_jwt=input_jwt_data.to_jwt())
@@ -58,9 +58,9 @@ async def test_successful_output(retry_queue):
 
 
 @pytest.mark.asyncio
-async def test_failed_output_no_retries(retry_queue):
+async def test_failed_output_zero_retries(retry_queue):
     retry_policy = api_pb2.FunctionRetryPolicy(retries=0)
-    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy))
+    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy), sync_client_retries_enabled=True)
     input_jwt_data = InputJwtData.of(0, 0)
     # Put inputs
     response_item = api_pb2.FunctionPutInputsResponseItem(idx=0, input_id="in-0", input_jwt=input_jwt_data.to_jwt())
@@ -79,11 +79,33 @@ async def test_failed_output_no_retries(retry_queue):
     assert_context_is(ctx, _MapItemState.COMPLETE, 1, "in-0", input_jwt_data, input_data.args)
     assert retry_queue.empty()
 
+@pytest.mark.asyncio
+async def test_failed_output_retries_disabled(retry_queue):
+    retry_policy = api_pb2.FunctionRetryPolicy(retries=3)
+    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy), sync_client_retries_enabled=False)
+    input_jwt_data = InputJwtData.of(0, 0)
+    # Put inputs
+    response_item = api_pb2.FunctionPutInputsResponseItem(idx=0, input_id="in-0", input_jwt=input_jwt_data.to_jwt())
+    ctx.handle_put_inputs_response(response_item)
+    assert_context_is(ctx, _MapItemState.WAITING_FOR_OUTPUT, 0, "in-0", input_jwt_data, input_data.args)
+
+    # Get outputs
+    changed_to_complete = await ctx.handle_get_outputs_response(
+        api_pb2.FunctionGetOutputsItem(idx=0, result=result_failure),
+        now_seconds,
+        api_pb2.FunctionCallInvocationType.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
+        retry_queue,
+    )
+
+    assert changed_to_complete == True
+    assert_context_is(ctx, _MapItemState.COMPLETE, 0, "in-0", input_jwt_data, input_data.args)
+    assert retry_queue.empty()
+
 
 @pytest.mark.asyncio
 async def test_failed_output_retries_then_succeeds(retry_queue):
     retry_policy = api_pb2.FunctionRetryPolicy(retries=2)
-    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy))
+    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy), sync_client_retries_enabled=True)
     input_jwt_data_0 = InputJwtData.of(0, 0)
     # Put inputs
     response_item = api_pb2.FunctionPutInputsResponseItem(idx=0, input_id="in-0", input_jwt=input_jwt_data_0.to_jwt())
@@ -148,7 +170,7 @@ async def test_failed_output_retries_then_succeeds(retry_queue):
 @pytest.mark.asyncio
 async def test_lost_input_retries_then_succeeds(retry_queue):
     retry_policy = api_pb2.FunctionRetryPolicy(retries=1)
-    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy))
+    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy), sync_client_retries_enabled=True)
     input_jwt_data_0 = InputJwtData.of(0, 0)
     # Put inputs
     response_item = api_pb2.FunctionPutInputsResponseItem(idx=0, input_id="in-0", input_jwt=input_jwt_data_0.to_jwt())
@@ -190,7 +212,7 @@ async def test_lost_input_retries_then_succeeds(retry_queue):
 @pytest.mark.asyncio
 async def test_failed_output_exhausts_retries(retry_queue):
     retry_policy = api_pb2.FunctionRetryPolicy(retries=1)
-    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy))
+    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy), sync_client_retries_enabled=True)
     input_jwt_data_0 = InputJwtData.of(0, 0)
     # Put inputs
     response_item = api_pb2.FunctionPutInputsResponseItem(idx=0, input_id="in-0", input_jwt=input_jwt_data_0.to_jwt())
@@ -231,7 +253,7 @@ async def test_failed_output_exhausts_retries(retry_queue):
 
 @pytest.mark.asyncio
 async def test_get_successful_output_before_put_inputs_completes(retry_queue):
-    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy))
+    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy), sync_client_retries_enabled=True)
     input_jwt_data = InputJwtData.of(0, 0)
 
     # Get outputs
@@ -254,7 +276,7 @@ async def test_get_successful_output_before_put_inputs_completes(retry_queue):
 
 @pytest.mark.asyncio
 async def test_get_failed_output_before_put_inputs_completes(retry_queue):
-    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy))
+    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy), sync_client_retries_enabled=True)
     input_jwt_data = InputJwtData.of(0, 0)
 
     # Get outputs
@@ -277,7 +299,7 @@ async def test_get_failed_output_before_put_inputs_completes(retry_queue):
 
 @pytest.mark.asyncio
 async def test_retry_failed_output_before_put_inputs_completes(retry_queue):
-    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy))
+    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy), sync_client_retries_enabled=True)
     input_jwt_data = InputJwtData.of(0, 0)
 
     # Get outputs
@@ -321,7 +343,7 @@ async def test_retry_failed_output_before_put_inputs_completes(retry_queue):
 
 @pytest.mark.asyncio
 async def test_ignore_duplicate_failed_output(retry_queue):
-    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy))
+    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy), sync_client_retries_enabled=True)
     input_jwt_data = InputJwtData.of(0, 0)
     # Put inputs
     response_item = api_pb2.FunctionPutInputsResponseItem(idx=0, input_id="in-0", input_jwt=input_jwt_data.to_jwt())
@@ -354,7 +376,7 @@ async def test_ignore_duplicate_failed_output(retry_queue):
 
 @pytest.mark.asyncio
 async def test_ignore_duplicate_successful_output(retry_queue):
-    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy))
+    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy), sync_client_retries_enabled=True)
     input_jwt_data = InputJwtData.of(0, 0)
     # Put inputs
     response_item = api_pb2.FunctionPutInputsResponseItem(idx=0, input_id="in-0", input_jwt=input_jwt_data.to_jwt())

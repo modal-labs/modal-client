@@ -6,7 +6,7 @@ import typing
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
-from grpclib import GRPCError, Status
+from grpclib import Status
 
 from modal._runtime.execution_context import current_input_id
 from modal._utils.async_utils import (
@@ -99,11 +99,12 @@ async def _map_invocation(
         return_exceptions=return_exceptions,
         function_call_invocation_type=function_call_invocation_type,
     )
-    response = await retry_transient_errors(client.stub.FunctionMap, request)
+    response: api_pb2.FunctionMapResponse = await retry_transient_errors(client.stub.FunctionMap, request)
 
     function_call_id = response.function_call_id
     function_call_jwt = response.function_call_jwt
     retry_policy = response.retry_policy
+    sync_client_retries_enabled = response.sync_client_retries_enabled
 
     have_all_inputs = False
     num_inputs = 0
@@ -116,7 +117,9 @@ async def _map_invocation(
     retry_queue = TimestampPriorityQueue()
     completed_outputs: set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
     input_queue: asyncio.Queue[api_pb2.FunctionPutInputsItem | None] = asyncio.Queue()
-    map_items_manager = _MapItemsManager(retry_policy, function_call_invocation_type, retry_queue)
+    map_items_manager = _MapItemsManager(
+        retry_policy, function_call_invocation_type, retry_queue, sync_client_retries_enabled
+    )
 
     async def create_input(argskwargs):
         nonlocal num_inputs
@@ -512,6 +515,7 @@ class _MapItemContext:
     state: _MapItemState
     input: api_pb2.FunctionInput
     retry_manager: RetryManager
+    sync_client_retries_enabled:bool
     # Both these futures are strings. Omitting generic type because
     # it causes an error when running `inv protoc type-stubs`.
     input_id: asyncio.Future
@@ -519,10 +523,11 @@ class _MapItemContext:
     previous_input_jwt: Optional[str]
     _event_loop: asyncio.AbstractEventLoop
 
-    def __init__(self, input: api_pb2.FunctionInput, retry_manager: RetryManager):
+    def __init__(self, input: api_pb2.FunctionInput, retry_manager: RetryManager, sync_client_retries_enabled: bool):
         self.state = _MapItemState.SENDING
         self.input = input
         self.retry_manager = retry_manager
+        self.sync_client_retries_enabled = sync_client_retries_enabled
         self._event_loop = asyncio.get_event_loop()
         # create a future for each input, to be resolved when we have
         # received the input ID and JWT from the server. this addresses
@@ -571,6 +576,7 @@ class _MapItemContext:
         if (
             item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
             or function_call_invocation_type != api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
+            or not self.sync_client_retries_enabled
         ):
             self.state = _MapItemState.COMPLETE
             return True
@@ -624,6 +630,7 @@ class _MapItemsManager:
         retry_policy: api_pb2.FunctionRetryPolicy,
         function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
         retry_queue: TimestampPriorityQueue,
+        sync_client_retries_enabled: bool
     ):
         self._retry_policy = retry_policy
         self.function_call_invocation_type = function_call_invocation_type
@@ -631,6 +638,7 @@ class _MapItemsManager:
         # semaphore to limit the number of inputs that can be in progress at once
         self._inputs_outstanding = asyncio.BoundedSemaphore(MAP_MAX_INPUTS_OUTSTANDING)
         self._item_context: dict[int, _MapItemContext] = {}
+        self._sync_client_retries_enabled = sync_client_retries_enabled
 
     async def add_items(self, items: list[api_pb2.FunctionPutInputsItem]):
         for item in items:
@@ -638,7 +646,9 @@ class _MapItemsManager:
             # (either queued to be sent, waiting for completion, or retrying)
             await self._inputs_outstanding.acquire()
             self._item_context[item.idx] = _MapItemContext(
-                input=item.input, retry_manager=RetryManager(self._retry_policy)
+                input=item.input,
+                retry_manager=RetryManager(self._retry_policy),
+                sync_client_retries_enabled=self._sync_client_retries_enabled,
             )
 
     async def prepare_items_for_retry(self, retriable_idxs: list[int]) -> list[api_pb2.FunctionRetryInputsItem]:

@@ -1301,11 +1301,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         else:
             count_update_callback = None
 
-        if config.get("client_retries"):
-            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
-        else:
-            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY
-
         async with aclosing(
             _map_invocation(
                 self,
@@ -1314,7 +1309,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 order_outputs,
                 return_exceptions,
                 count_update_callback,
-                function_call_invocation_type,
+                api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
             )
         ) as stream:
             async for item in stream:
