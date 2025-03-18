@@ -24,6 +24,23 @@ async def run_command_fallible(args: list[str]) -> Optional[str]:
         return None
 
 
+def is_valid_commit_info(commit_info: api_pb2.CommitInfo) -> tuple[bool, str]:
+    # returns (valid, error_message)
+    if commit_info.vcs != "git":
+        return False, "Invalid VCS"
+    if len(commit_info.commit_hash) != 40:
+        return False, "Invalid commit hash"
+    if len(commit_info.branch) > 200:
+        return False, "Branch name too long"
+    if len(commit_info.repo_url) > 200:
+        return False, "Repo URL too long"
+    if len(commit_info.author_name) > 200:
+        return False, "Author name too long"
+    if len(commit_info.author_email) > 200:
+        return False, "Author email too long"
+    return True, ""
+
+
 async def get_git_commit_info() -> Optional[api_pb2.CommitInfo]:
     """Collect git information about the current repository asynchronously."""
     git_info: api_pb2.CommitInfo = api_pb2.CommitInfo(vcs="git")
@@ -68,5 +85,10 @@ async def get_git_commit_info() -> Optional[api_pb2.CommitInfo]:
 
     if origin_url:
         git_info.repo_url = origin_url
+
+    valid, error_message = is_valid_commit_info(git_info)
+    if not valid:
+        logger.debug(f"Invalid commit info: {error_message}")
+        return None
 
     return git_info
