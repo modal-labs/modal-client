@@ -102,16 +102,17 @@ def get_function_type(is_generator: Optional[bool]) -> "api_pb2.Function.Functio
 def signature_to_protobuf_schema(signature: inspect.Signature) -> list[api_pb2.ClassParameterSpec]:
     modal_parameters: list[api_pb2.ClassParameterSpec] = []
     for param in signature.parameters.values():
+        has_default = param.default is not param.empty
+        class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default)
         if param.annotation not in PYTHON_TO_PROTO_TYPE:
-            proto_type = api_pb2.PARAM_TYPE_UNKNOWN
+            class_param_spec.type = api_pb2.PARAM_TYPE_UNKNOWN
         else:
             proto_type = PYTHON_TO_PROTO_TYPE[param.annotation]
+            class_param_spec.type = proto_type
+            proto_type_info = PROTO_TYPE_INFO[proto_type]
+            if has_default and proto_type is not api_pb2.PARAM_TYPE_UNKNOWN:
+                setattr(class_param_spec, proto_type_info.default_field, param.default)
 
-        has_default = param.default is not param.empty
-        proto_type_info = PROTO_TYPE_INFO[proto_type]
-        class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=proto_type)
-        if has_default and proto_type is not api_pb2.PARAM_TYPE_UNKNOWN:
-            setattr(class_param_spec, proto_type_info.default_field, param.default)
         modal_parameters.append(class_param_spec)
     return modal_parameters
 

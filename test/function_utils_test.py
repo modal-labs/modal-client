@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2023
 import functools
+import inspect
 import pytest
 import time
 
@@ -13,6 +14,7 @@ from modal._utils.function_utils import (
     _stream_function_call_data,
     callable_has_non_self_non_default_params,
     callable_has_non_self_params,
+    signature_to_protobuf_schema,
 )
 from modal_proto import api_pb2
 
@@ -151,3 +153,11 @@ def has_global_ref():
 def test_global_variable_extraction(func):
     info = FunctionInfo(func)
     assert info.get_globals().get("GLOBAL_VARIABLE") == GLOBAL_VARIABLE
+
+
+def test_schema_extraction_unknown():
+    def foo(a):
+        pass
+
+    fields = signature_to_protobuf_schema(inspect.signature(foo))
+    assert fields == [api_pb2.ClassParameterSpec(name="a", type=api_pb2.PARAM_TYPE_UNKNOWN, has_default=False)]
