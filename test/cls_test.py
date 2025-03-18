@@ -1119,7 +1119,7 @@ def test_bytes_serialization_validation(servicer, client, set_env_client):
 
     with servicer.intercept() as ctx:
         with app.run():
-            with pytest.raises(ValueError, match="Expected bytes"):
+            with pytest.raises(TypeError, match="Expected bytes"):
                 C(foo="this is a string").get_foo.spawn()  # type: ignore   # string should not be allowed, unspecified encoding
 
             C(foo=b"this is bytes").get_foo.spawn()  # bytes are allowed

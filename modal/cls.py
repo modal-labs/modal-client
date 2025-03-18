@@ -362,12 +362,13 @@ class _Obj:
 Obj = synchronize_api(_Obj)
 
 
-def _validate_parameter_type(cls_name: str, parameter_name: str, parameter_type):
-    type_name = getattr(parameter_type, "__name__", repr(parameter_type))
-    supported = ", ".join(parameter_type.__name__ for parameter_type in PYTHON_TO_PROTO_TYPE.keys())
-    raise InvalidError(
-        f"{cls_name}.{parameter_name}: {type_name} is not a supported parameter type. Use one of: {supported}"
-    )
+def _validate_parameter_type(cls_name: str, parameter_name: str, parameter_type: type):
+    if parameter_type not in PYTHON_TO_PROTO_TYPE:
+        type_name = getattr(parameter_type, "__name__", repr(parameter_type))
+        supported = ", ".join(parameter_type.__name__ for parameter_type in PYTHON_TO_PROTO_TYPE.keys())
+        raise InvalidError(
+            f"{cls_name}.{parameter_name}: {type_name} is not a supported parameter type. Use one of: {supported}"
+        )
 
 
 class _Cls(_Object, type_prefix="cs"):
