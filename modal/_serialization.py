@@ -391,7 +391,7 @@ def check_valid_cls_constructor_arg(key, obj):
 
 def assert_bytes(obj: Any):
     if not isinstance(obj, bytes):
-        raise ValueError(f"Expected bytes, got {type(obj)}")
+        raise TypeError(f"Expected bytes, got {type(obj)}")
     return obj
 
 
@@ -403,12 +403,14 @@ class ParamTypeInfo:
 
 
 PYTHON_TO_PROTO_TYPE: dict[type, "api_pb2.ParameterType.ValueType"] = {
+    # python type -> protobuf type enum
     str: api_pb2.PARAM_TYPE_STRING,
     int: api_pb2.PARAM_TYPE_INT,
     bytes: api_pb2.PARAM_TYPE_BYTES,
 }
 
 PROTO_TYPE_INFO = {
+    # Protobuf type enum -> encode/decode helper metadata
     api_pb2.PARAM_TYPE_STRING: ParamTypeInfo(default_field="string_default", proto_field="string_value", converter=str),
     api_pb2.PARAM_TYPE_INT: ParamTypeInfo(default_field="int_default", proto_field="int_value", converter=int),
     api_pb2.PARAM_TYPE_BYTES: ParamTypeInfo(

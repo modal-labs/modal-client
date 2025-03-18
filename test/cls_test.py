@@ -1038,7 +1038,7 @@ def test_unannotated_parameters_are_invalid():
 
 
 def test_unsupported_type_parameters_raise_errors():
-    with pytest.raises(InvalidError, match="float"):
+    with pytest.raises(InvalidError, match="float is not a supported parameter type"):
 
         @app.cls(serialized=True)
         class C:
