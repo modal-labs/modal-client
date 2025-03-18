@@ -172,6 +172,7 @@ enum ParameterType {
   PARAM_TYPE_INT = 2;
   PARAM_TYPE_PICKLE = 3;
   PARAM_TYPE_BYTES = 4;
+  PARAM_TYPE_UNKNOWN = 5;  // used in schemas to signify unrecognized or un-annotated types
 }
 
 enum ProgressType {

@@ -99,6 +99,23 @@ def get_function_type(is_generator: Optional[bool]) -> "api_pb2.Function.Functio
     return api_pb2.Function.FUNCTION_TYPE_GENERATOR if is_generator else api_pb2.Function.FUNCTION_TYPE_FUNCTION
 
 
+def signature_to_protobuf_schema(signature: inspect.Signature) -> list[api_pb2.ClassParameterSpec]:
+    modal_parameters: list[api_pb2.ClassParameterSpec] = []
+    for param in signature.parameters.values():
+        if param.annotation not in PYTHON_TO_PROTO_TYPE:
+            proto_type = api_pb2.PARAM_TYPE_UNKNOWN
+        else:
+            proto_type = PYTHON_TO_PROTO_TYPE[param.annotation]
+
+        has_default = param.default is not param.empty
+        proto_type_info = PROTO_TYPE_INFO[proto_type]
+        class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=proto_type)
+        if has_default and proto_type is not api_pb2.PARAM_TYPE_UNKNOWN:
+            setattr(class_param_spec, proto_type_info.default_field, param.default)
+        modal_parameters.append(class_param_spec)
+    return modal_parameters
+
+
 class FunctionInfo:
     """Utility that determines serialization/deserialization mechanisms for functions
 
@@ -284,21 +301,16 @@ class FunctionInfo:
 
         # annotation parameters trigger strictly typed parametrization
         # which enables web endpoint for parametrized classes
-
-        modal_parameters: list[api_pb2.ClassParameterSpec] = []
         signature = _get_class_constructor_signature(self.user_cls)
+        # validate that the schema has no unspecified fields/unsupported class parameter types
         for param in signature.parameters.values():
-            has_default = param.default is not param.empty
             _validate_parameter_type(self.user_cls.__name__, param.name, param.annotation)
-            proto_type = PYTHON_TO_PROTO_TYPE[param.annotation]
-            proto_type_info = PROTO_TYPE_INFO[proto_type]
-            class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=proto_type)
-            if has_default:
-                setattr(class_param_spec, proto_type_info.default_field, param.default)
-            modal_parameters.append(class_param_spec)
+
+        protobuf_schema = signature_to_protobuf_schema(signature)
 
         return api_pb2.ClassParameterInfo(
-            format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO, schema=modal_parameters
+            format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
+            schema=protobuf_schema,
         )
 
     def get_entrypoint_mount(self) -> dict[str, _Mount]:
