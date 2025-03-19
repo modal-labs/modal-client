@@ -1000,11 +1000,7 @@ def test_param_cls_function(servicer):
 
 @skip_github_non_linux
 def test_param_cls_function_strict_params(servicer):
-    schema = [
-        api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_INT),
-        api_pb2.ClassParameterSpec(name="y", type=api_pb2.PARAM_TYPE_STRING),
-    ]
-    serialized_params = modal._serialization.serialize_proto_params({"x": 111, "y": "foo"}, schema)
+    serialized_params = modal._serialization.serialize_proto_params({"x": 111, "y": "foo"})
     ret = _run_container(
         servicer,
         "test.supports.sibling_hydration_app",

@@ -400,6 +400,7 @@ class ParamTypeInfo:
     default_field: str
     proto_field: str
     converter: typing.Callable[[str], typing.Any]
+    type: type
 
 
 PYTHON_TO_PROTO_TYPE: dict[type, "api_pb2.ParameterType.ValueType"] = {
@@ -411,10 +412,23 @@ PYTHON_TO_PROTO_TYPE: dict[type, "api_pb2.ParameterType.ValueType"] = {
 
 PROTO_TYPE_INFO = {
     # Protobuf type enum -> encode/decode helper metadata
-    api_pb2.PARAM_TYPE_STRING: ParamTypeInfo(default_field="string_default", proto_field="string_value", converter=str),
-    api_pb2.PARAM_TYPE_INT: ParamTypeInfo(default_field="int_default", proto_field="int_value", converter=int),
+    api_pb2.PARAM_TYPE_STRING: ParamTypeInfo(
+        default_field="string_default",
+        proto_field="string_value",
+        converter=str,
+        type=str,
+    ),
+    api_pb2.PARAM_TYPE_INT: ParamTypeInfo(
+        default_field="int_default",
+        proto_field="int_value",
+        converter=int,
+        type=int,
+    ),
     api_pb2.PARAM_TYPE_BYTES: ParamTypeInfo(
-        default_field="bytes_default", proto_field="bytes_value", converter=assert_bytes
+        default_field="bytes_default",
+        proto_field="bytes_value",
+        converter=assert_bytes,
+        type=bytes,
     ),
 }
 
@@ -485,13 +499,16 @@ def validate_params(params: dict[str, Any], schema: list[api_pb2.ClassParameterS
         if schema_param.name not in params:
             # we expect all values to be present - even defaulted ones (defaults are applied on payload construction)
             raise InvalidError(f"Missing required parameter: {schema_param.name}")
-        param_value = params[schema_param.name]
-        param_protobuf_type = PYTHON_TO_PROTO_TYPE[type(param_value)]
+        python_value = params[schema_param.name]
+        python_type = type(python_value)
+        param_protobuf_type = validate_parameter_type(python_type)
         if schema_param.type != param_protobuf_type:
+            expected_python_type = PROTO_TYPE_INFO[schema_param.type].type
             raise TypeError(
-                "Parameter type does not match the declared type annotation:"
-                f"({schema_param.name}: type {schema_param.type} != type {param_protobuf_type})"
+                f"Parameter '{schema_param.name}' type mismatch:"
+                f" expected {expected_python_type.__name__}, got {python_type.__name__})"
             )
+
     schema_fields = {p.name for p in schema}
     # then check that no extra values are provided
     non_declared_fields = params.keys() - schema_fields
@@ -509,8 +526,10 @@ def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function,
         # legacy serialization format - pickle of `(args, kwargs)` w/ support for modal object arguments
         param_args, param_kwargs = deserialize(serialized_params, _client)
     elif function_def.class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO:
-        param_args = ()
-        param_kwargs = deserialize_proto_params(serialized_params, list(function_def.class_parameter_info.schema))
+        param_args = ()  # we use kwargs only for our implicit constructors
+        param_kwargs = deserialize_proto_params(serialized_params)
+        # TODO: We can probably remove the validation below since we do validation in the caller?
+        validate_params(param_kwargs, list(function_def.class_parameter_info.schema))
     else:
         raise ExecutionError(
             f"Unknown class parameter serialization format: {function_def.class_parameter_info.format}"

@@ -941,7 +941,7 @@ def test_implicit_constructor(client, set_env_client):
     assert d.b == "goodbye"
     assert d.d == b"bye"
 
-    with pytest.raises(ValueError, match="Missing required parameter: a"):
+    with pytest.raises(InvalidError, match="Missing required parameter: a"):
         with app2.run(client=client):
             UsingAnnotationParameters().get_value.remote()  # type: ignore
 
@@ -1119,7 +1119,7 @@ def test_bytes_serialization_validation(servicer, client, set_env_client):
 
     with servicer.intercept() as ctx:
         with app.run():
-            with pytest.raises(TypeError, match="Expected bytes"):
+            with pytest.raises(TypeError, match="expected bytes"):
                 C(foo="this is a string").get_foo.spawn()  # type: ignore   # string should not be allowed, unspecified encoding
 
             C(foo=b"this is bytes").get_foo.spawn()  # bytes are allowed

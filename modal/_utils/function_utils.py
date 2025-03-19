@@ -15,7 +15,14 @@ from synchronicity.exceptions import UserCodeException
 import modal_proto
 from modal_proto import api_pb2
 
-from .._serialization import PROTO_TYPE_INFO, PYTHON_TO_PROTO_TYPE, deserialize, deserialize_data_format, serialize
+from .._serialization import (
+    PROTO_TYPE_INFO,
+    PYTHON_TO_PROTO_TYPE,
+    deserialize,
+    deserialize_data_format,
+    serialize,
+    validate_parameter_type,
+)
 from .._traceback import append_modal_tb
 from ..config import config, logger
 from ..exception import (
@@ -295,7 +302,7 @@ class FunctionInfo:
             return api_pb2.ClassParameterInfo()
 
         # TODO(elias): Resolve circular dependencies... maybe we'll need some cls_utils module
-        from modal.cls import _get_class_constructor_signature, _use_annotation_parameters, _validate_parameter_type
+        from modal.cls import _get_class_constructor_signature, _use_annotation_parameters
 
         if not _use_annotation_parameters(self.user_cls):
             return api_pb2.ClassParameterInfo(format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE)
@@ -305,7 +312,7 @@ class FunctionInfo:
         signature = _get_class_constructor_signature(self.user_cls)
         # validate that the schema has no unspecified fields/unsupported class parameter types
         for param in signature.parameters.values():
-            _validate_parameter_type(self.user_cls.__name__, param.name, param.annotation)
+            validate_parameter_type(param.annotation)
 
         protobuf_schema = signature_to_protobuf_schema(signature)
 
