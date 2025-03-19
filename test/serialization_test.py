@@ -4,6 +4,7 @@ import random
 
 from modal import Queue
 from modal._serialization import (
+    apply_defaults,
     deserialize,
     deserialize_data_format,
     deserialize_proto_params,
@@ -62,24 +63,21 @@ def test_deserialization_error(client):
 
 
 @pytest.mark.parametrize(
-    ["pydict", "schema", "expected_bytes"],
+    ["pydict", "expected_bytes"],
     [
         (
             {"foo": "bar", "i": 5},
-            [
-                api_pb2.ClassParameterSpec(name="foo", type=api_pb2.PARAM_TYPE_STRING),
-                api_pb2.ClassParameterSpec(name="i", type=api_pb2.PARAM_TYPE_INT),
-            ],
             # only update this byte sequence if you are aware of the consequences of changing
             # serialization byte output - it could invalidate existing container pools for users
             # on redeployment, and possibly cause startup crashes if new containers can't
             # deserialize old proto parameters.
             b"\n\x0c\n\x03foo\x10\x01\x1a\x03bar\n\x07\n\x01i\x10\x02 \x05",
-        )
+        ),
+        ({"x": b"\x00"}, b"\n\x08\n\x01x\x10\x042\x01\x00"),
     ],
 )
-def test_proto_serde_params_success(pydict, schema, expected_bytes):
-    serialized_params = serialize_proto_params(pydict, schema)
+def test_proto_serde_params_success(pydict, expected_bytes):
+    serialized_params = serialize_proto_params(pydict)
     # it's important that the serialization doesn't change, since the serialized params bytes
     # are used as a key for the container pooling of parameterized services (classes)
     assert serialized_params == expected_bytes
@@ -90,7 +88,7 @@ def test_proto_serde_params_success(pydict, schema, expected_bytes):
 def test_proto_serde_failure_incomplete_params():
     # construct an incorrect serialization:
     schema = [api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_STRING)]
-    with pytest.raises(InvalidError, match="Constructor arguments don't match"):
+    with pytest.raises(InvalidError, match="Missing required parameter: x"):
         validate_params({"a": "b"}, schema)
 
     with pytest.raises(TypeError, match="Parameter type does not match the declared type"):
@@ -101,3 +99,12 @@ def test_proto_serde_failure_incomplete_params():
 
     # this should pass:
     validate_params({"x": "y"}, schema)
+
+
+def test_apply_defaults():
+    schema = [
+        api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_STRING, has_default=True, string_default="hello")
+    ]
+    assert apply_defaults({}, schema) == {"x": "hello"}
+    assert apply_defaults({"x": "goodbye"}, schema) == {"x": "goodbye"}
+    assert apply_defaults({"y": "goodbye"}, schema) == {"x": "hello", "y": "goodbye"}

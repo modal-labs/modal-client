@@ -419,26 +419,40 @@ PROTO_TYPE_INFO = {
 }
 
 
-def serialize_proto_params(python_params: dict[str, Any], schema: typing.Sequence[api_pb2.ClassParameterSpec]) -> bytes:
-    proto_params: list[api_pb2.ClassParameterValue] = []
+def apply_defaults(
+    python_params: typing.Mapping[str, Any], schema: typing.Sequence[api_pb2.ClassParameterSpec]
+) -> dict[str, Any]:
+    """Apply any declared defaults from the provided schema, if values aren't provided in python_params
+
+    Conceptually similar to inspect.BoundArguments.apply_defaults.
+
+    Note: Apply this before serializing parameters in order to get consistent parameter
+        pools regardless if a value is explicitly provided or not.
+    """
+    result = {**python_params}
     for schema_param in schema:
-        type_info = PROTO_TYPE_INFO.get(schema_param.type)
-        if not type_info:
-            raise ValueError(f"Unsupported parameter type: {schema_param.type}")
+        if schema_param.has_default and schema_param.name not in python_params:
+            default_field_name = schema_param.WhichOneof("default_oneof")
+            if default_field_name is None:
+                raise InvalidError(f"{schema_param.name} declared as having a default, but has no default value")
+            result[schema_param.name] = getattr(schema_param, default_field_name)
+    return result
+
+
+def serialize_proto_params(python_params: dict[str, Any]) -> bytes:
+    proto_params: list[api_pb2.ClassParameterValue] = []
+    for param_name, python_value in python_params.items():
+        python_type = type(python_value)
+        protobuf_type = validate_parameter_type(python_type)
+        type_info = PROTO_TYPE_INFO.get(protobuf_type)
         proto_param = api_pb2.ClassParameterValue(
-            name=schema_param.name,
-            type=schema_param.type,
+            name=param_name,
+            type=protobuf_type,
         )
-        python_value = python_params.get(schema_param.name)
-        if python_value is None:
-            if schema_param.has_default:
-                python_value = getattr(schema_param, type_info.default_field)
-            else:
-                raise ValueError(f"Missing required parameter: {schema_param.name}")
         try:
             converted_value = type_info.converter(python_value)
         except ValueError as exc:
-            raise ValueError(f"Invalid type for parameter {schema_param.name}: {exc}")
+            raise ValueError(f"Invalid type for parameter {param_name}: {exc}")
         setattr(proto_param, type_info.proto_field, converted_value)
         proto_params.append(proto_param)
     proto_bytes = api_pb2.ClassParameterSet(parameters=proto_params).SerializeToString(deterministic=True)
@@ -466,11 +480,11 @@ def deserialize_proto_params(serialized_params: bytes) -> dict[str, Any]:
 
 
 def validate_params(params: dict[str, Any], schema: list[api_pb2.ClassParameterSpec]):
-    # first check that all values are provided
+    # first check that all declared values are provided
     for schema_param in schema:
         if schema_param.name not in params:
             # we expect all values to be present - even defaulted ones (defaults are applied on payload construction)
-            raise InvalidError(f"Constructor arguments don't match declared parameters (missing {schema_param.name})")
+            raise InvalidError(f"Missing required parameter: {schema_param.name}")
         param_value = params[schema_param.name]
         param_protobuf_type = PYTHON_TO_PROTO_TYPE[type(param_value)]
         if schema_param.type != param_protobuf_type:
@@ -503,3 +517,11 @@ def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function,
         )
 
     return param_args, param_kwargs
+
+
+def validate_parameter_type(parameter_type: type) -> "api_pb2.ParameterType.ValueType":
+    if parameter_type not in PYTHON_TO_PROTO_TYPE:
+        type_name = getattr(parameter_type, "__name__", repr(parameter_type))
+        supported = ", ".join(parameter_type.__name__ for parameter_type in PYTHON_TO_PROTO_TYPE.keys())
+        raise InvalidError(f"{type_name} is not a supported parameter type. Use one of: {supported}")
+    return PYTHON_TO_PROTO_TYPE[parameter_type]

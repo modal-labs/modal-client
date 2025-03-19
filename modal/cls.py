@@ -21,7 +21,7 @@ from ._partial_function import (
 )
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
-from ._serialization import PYTHON_TO_PROTO_TYPE, check_valid_cls_constructor_arg
+from ._serialization import check_valid_cls_constructor_arg, validate_parameter_type
 from ._traceback import print_server_warnings
 from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.deprecation import deprecation_warning, renamed_parameter, warn_on_renamed_autoscaler_settings
@@ -362,15 +362,6 @@ class _Obj:
 Obj = synchronize_api(_Obj)
 
 
-def _validate_parameter_type(cls_name: str, parameter_name: str, parameter_type: type):
-    if parameter_type not in PYTHON_TO_PROTO_TYPE:
-        type_name = getattr(parameter_type, "__name__", repr(parameter_type))
-        supported = ", ".join(parameter_type.__name__ for parameter_type in PYTHON_TO_PROTO_TYPE.keys())
-        raise InvalidError(
-            f"{cls_name}.{parameter_name}: {type_name} is not a supported parameter type. Use one of: {supported}"
-        )
-
-
 class _Cls(_Object, type_prefix="cs"):
     """
     Cls adds method pooling and [lifecycle hook](/docs/guide/lifecycle-functions) behavior
@@ -467,12 +458,11 @@ class _Cls(_Object, type_prefix="cs"):
         annotations = user_cls.__dict__.get("__annotations__", {})  # compatible with older pythons
         missing_annotations = params.keys() - annotations.keys()
         if missing_annotations:
-            raise InvalidError("All modal.parameter() specifications need to be type annotated")
+            raise InvalidError("All modal.parameter() specifications need to be type-annotated")
 
         annotated_params = {k: t for k, t in annotations.items() if k in params}
         for k, t in annotated_params.items():
-            if t not in PYTHON_TO_PROTO_TYPE:
-                _validate_parameter_type(user_cls.__name__, k, t)
+            validate_parameter_type(t)
 
     @staticmethod
     def from_local(user_cls, app: "modal.app._App", class_service_function: _Function) -> "_Cls":
