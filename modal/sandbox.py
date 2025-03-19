@@ -2,6 +2,7 @@
 import asyncio
 import os
 from collections.abc import AsyncGenerator, Sequence
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, AsyncIterator, Literal, Optional, Union, overload
 
 if TYPE_CHECKING:
@@ -61,6 +62,23 @@ def _validate_exec_args(entrypoint_args: Sequence[str]) -> None:
             f"Total length of entrypoint arguments must be less than {ARG_MAX_BYTES} bytes (ARG_MAX). "
             f"Got {total_arg_len} bytes."
         )
+
+
+@dataclass(frozen=True)
+class SandboxResourceUsage:
+    """Simple data structure storing resource usage stats of a Sandbox."""
+
+    # CPU usage is in core-nanoseconds. Using 1 core for 1 second is 1e9 core ns.
+    # Using 0.5 core for 1 second is 5e8 core ns.
+    cpu_core_nanosecs: int
+    # Memory usage is in gibibyte-nanoseconds. Using 1 GiB for 1 second is 1e9 gib ns.
+    # Using 0.5 GiB for 1 second is 5e8 gib ns.
+    mem_gib_nanosecs: int
+    # GPU type, e.g. "a10g". Combine with `gpu_nanosecs` to understand billable GPU spend.
+    # Empty if no GPU was used by the Sandbox (CPU-only).
+    gpu_type: Optional[str]
+    # GPU usage is in nanoseconds. Using 1 second is 1e9 ns of GPU usage.
+    gpu_nanosecs: int
 
 
 class _Sandbox(_Object, type_prefix="sb"):
@@ -465,6 +483,31 @@ class _Sandbox(_Object, type_prefix="sb"):
             self._result = resp.result
 
         return self.returncode
+
+    async def resource_usage(self) -> SandboxResourceUsage:
+        """
+        Return the compute resource usage of a running or terminated Sandbox.
+        Includes the billed compute resource components: CPU, RAM, GPU.
+
+        **Usage**
+
+        ```python notest
+        sandbox = modal.Sandbox.from_id("sb-123abcd")
+        usage = sandbox.resource_usage()
+        print(usage.gpu_type)           # "gpu_h100"
+        print(usage.gpu_nanosecs)       # 929_001.123
+        print(usage.cpu_core_nanosecs)  # 194_030_244.21
+        print(usage.mem_gib_nanosecs)   # 294_945.902
+        ```
+        """
+        req = api_pb2.SandboxGetResourceUsageRequest(sandbox_id=self.object_id)
+        resp = await retry_transient_errors(self._client.stub.SandboxGetResourceUsage, req)
+        return SandboxResourceUsage(
+            cpu_core_nanosecs=resp.cpu_core_nanosecs,
+            mem_gib_nanosecs=resp.mem_gib_nanosecs,
+            gpu_nanosecs=resp.gpu_nanosecs,
+            gpu_type=resp.gpu_type or None,
+        )
 
     async def _get_task_id(self):
         while not self._task_id:

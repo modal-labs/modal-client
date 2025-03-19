@@ -473,3 +473,18 @@ def test_sandbox_proxy(app, servicer):
     _ = Sandbox.create(proxy=Proxy.from_name("my-proxy"), app=app)
 
     assert servicer.sandbox_defs[0].proxy_id == "pr-123"
+
+
+@skip_non_subprocess
+def test_sandbox_resource_usage(app, servicer):
+    sb = Sandbox.create(app=app)
+    usage = sb.resource_usage()
+    assert usage.cpu_core_nanosecs > 0
+    assert usage.mem_gib_nanosecs > 0
+
+    sb.terminate()
+    usage = sb.resource_usage()
+    assert usage.cpu_core_nanosecs > 0
+    assert usage.mem_gib_nanosecs > 0
+    assert usage.gpu_type is None
+    assert usage.gpu_nanosecs == 0
