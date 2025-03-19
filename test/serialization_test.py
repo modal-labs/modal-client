@@ -10,9 +10,10 @@ from modal._serialization import (
     serialize,
     serialize_data_format,
     serialize_proto_params,
+    validate_params,
 )
 from modal._utils.rand_pb_testing import rand_pb
-from modal.exception import DeserializationError
+from modal.exception import DeserializationError, InvalidError
 from modal_proto import api_pb2
 
 from .supports.skip import skip_old_py
@@ -61,7 +62,7 @@ def test_deserialization_error(client):
 
 
 @pytest.mark.parametrize(
-    ["pydict", "params", "expected_bytes"],
+    ["pydict", "schema", "expected_bytes"],
     [
         (
             {"foo": "bar", "i": 5},
@@ -77,22 +78,26 @@ def test_deserialization_error(client):
         )
     ],
 )
-def test_proto_serde_params_success(pydict, params, expected_bytes):
-    serialized_params = serialize_proto_params(pydict, params)
+def test_proto_serde_params_success(pydict, schema, expected_bytes):
+    serialized_params = serialize_proto_params(pydict, schema)
     # it's important that the serialization doesn't change, since the serialized params bytes
     # are used as a key for the container pooling of parameterized services (classes)
     assert serialized_params == expected_bytes
-    reconstructed = deserialize_proto_params(serialized_params, params)
+    reconstructed = deserialize_proto_params(serialized_params)
     assert reconstructed == pydict
 
 
 def test_proto_serde_failure_incomplete_params():
     # construct an incorrect serialization:
-    incomplete_proto_params = api_pb2.ClassParameterSet(
-        parameters=[api_pb2.ClassParameterValue(name="a", type=api_pb2.PARAM_TYPE_STRING, string_value="b")]
-    )
-    encoded_params = incomplete_proto_params.SerializeToString(deterministic=True)
-    with pytest.raises(AttributeError, match="Constructor arguments don't match"):
-        deserialize_proto_params(encoded_params, [api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_STRING)])
+    schema = [api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_STRING)]
+    with pytest.raises(InvalidError, match="Constructor arguments don't match"):
+        validate_params({"a": "b"}, schema)
 
-    # TODO: add test for incorrect types
+    with pytest.raises(TypeError, match="Parameter type does not match the declared type"):
+        validate_params({"x": b"b"}, schema)
+
+    with pytest.raises(InvalidError, match="provided but are not present in the schema"):
+        validate_params({"x": "y", "a": "b"}, schema)
+
+    # this should pass:
+    validate_params({"x": "y"}, schema)
