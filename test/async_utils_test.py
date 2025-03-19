@@ -1329,15 +1329,13 @@ async def test_timed_priority_queue():
         return items
 
     await producer()
+    assert queue.qsize() == 3
     items = await consumer()
     assert items == [1, 2, 3]
 
 
 @pytest.mark.asyncio
 async def test_timed_priority_queue_duplicates():
-    class _QueueItem:
-        pass
-
     queue: TimestampPriorityQueue = async_utils.TimestampPriorityQueue()
     now = time.time()
     x = now + 0.1
@@ -1354,5 +1352,6 @@ async def test_timed_priority_queue_duplicates():
         return items
 
     await producer()
+    assert queue.qsize() == 2
     items = await consumer()
     assert len([it for it in items]) == 2

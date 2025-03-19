@@ -334,7 +334,8 @@ async def _map_invocation(
                 f"Map stats: have_all_inputs={have_all_inputs} inputs_created={inputs_created} "
                 f"input_sent={inputs_sent} inputs_retried={inputs_retried} outputs_received={outputs_received} "
                 f"outputs_completed={outputs_completed} duplicate_outputs={duplicate_outputs} "
-                f"retried_outputs={retried_outputs}"
+                f"retried_outputs={retried_outputs} input_queue_size={input_queue.qsize()} "
+                f"retry_queue_size={retry_queue.qsize()} "
             )
         while True:
             log_stats()
