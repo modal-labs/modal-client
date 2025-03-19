@@ -145,7 +145,8 @@ async def _map_invocation(
             async for item in streamer:
                 await input_queue.put(item)
 
-        have_all_inputs = True
+        # close queue iterator
+        await input_queue.put(None)
         yield
 
     async def pump_inputs():
@@ -171,6 +172,7 @@ async def _map_invocation(
                 f"Successfully pushed {len(items)} inputs to server. "
                 f"Num queued inputs awaiting push is {input_queue.qsize()}."
             )
+        have_all_inputs = True
         yield
 
     async def retry_inputs():
@@ -265,9 +267,6 @@ async def _map_invocation(
                 requested_at=time.time(),
             )
             await retry_transient_errors(client.stub.FunctionGetOutputs, request)
-
-            # close the input queue iterator
-            await input_queue.put(None)
             await retry_queue.close()
 
     async def fetch_output(item: api_pb2.FunctionGetOutputsItem) -> tuple[int, Any]:
