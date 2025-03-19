@@ -15,7 +15,7 @@ from synchronicity.exceptions import UserCodeException
 import modal_proto
 from modal_proto import api_pb2
 
-from .._serialization import deserialize, deserialize_data_format, serialize
+from .._serialization import PROTO_TYPE_INFO, PYTHON_TO_PROTO_TYPE, deserialize, deserialize_data_format, serialize
 from .._traceback import append_modal_tb
 from ..config import config, logger
 from ..exception import (
@@ -36,13 +36,6 @@ class FunctionInfoType(Enum):
     FILE = "file"
     SERIALIZED = "serialized"
     NOTEBOOK = "notebook"
-
-
-# TODO(elias): Add support for quoted/str annotations
-CLASS_PARAM_TYPE_MAP: dict[type, tuple["api_pb2.ParameterType.ValueType", str]] = {
-    str: (api_pb2.PARAM_TYPE_STRING, "string_default"),
-    int: (api_pb2.PARAM_TYPE_INT, "int_default"),
-}
 
 
 class LocalFunctionError(InvalidError):
@@ -284,7 +277,7 @@ class FunctionInfo:
             return api_pb2.ClassParameterInfo()
 
         # TODO(elias): Resolve circular dependencies... maybe we'll need some cls_utils module
-        from modal.cls import _get_class_constructor_signature, _use_annotation_parameters
+        from modal.cls import _get_class_constructor_signature, _use_annotation_parameters, _validate_parameter_type
 
         if not _use_annotation_parameters(self.user_cls):
             return api_pb2.ClassParameterInfo(format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE)
@@ -296,12 +289,12 @@ class FunctionInfo:
         signature = _get_class_constructor_signature(self.user_cls)
         for param in signature.parameters.values():
             has_default = param.default is not param.empty
-            if param.annotation not in CLASS_PARAM_TYPE_MAP:
-                raise InvalidError("modal.parameter() currently only support str or int types")
-            param_type, default_field = CLASS_PARAM_TYPE_MAP[param.annotation]
-            class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=param_type)
+            _validate_parameter_type(self.user_cls.__name__, param.name, param.annotation)
+            proto_type = PYTHON_TO_PROTO_TYPE[param.annotation]
+            proto_type_info = PROTO_TYPE_INFO[proto_type]
+            class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=proto_type)
             if has_default:
-                setattr(class_param_spec, default_field, param.default)
+                setattr(class_param_spec, proto_type_info.default_field, param.default)
             modal_parameters.append(class_param_spec)
 
         return api_pb2.ClassParameterInfo(

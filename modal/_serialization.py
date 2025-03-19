@@ -389,6 +389,12 @@ def check_valid_cls_constructor_arg(key, obj):
         )
 
 
+def assert_bytes(obj: Any):
+    if not isinstance(obj, bytes):
+        raise TypeError(f"Expected bytes, got {type(obj)}")
+    return obj
+
+
 @dataclass
 class ParamTypeInfo:
     default_field: str
@@ -396,16 +402,27 @@ class ParamTypeInfo:
     converter: typing.Callable[[str], typing.Any]
 
 
-PARAM_TYPE_MAPPING = {
+PYTHON_TO_PROTO_TYPE: dict[type, "api_pb2.ParameterType.ValueType"] = {
+    # python type -> protobuf type enum
+    str: api_pb2.PARAM_TYPE_STRING,
+    int: api_pb2.PARAM_TYPE_INT,
+    bytes: api_pb2.PARAM_TYPE_BYTES,
+}
+
+PROTO_TYPE_INFO = {
+    # Protobuf type enum -> encode/decode helper metadata
     api_pb2.PARAM_TYPE_STRING: ParamTypeInfo(default_field="string_default", proto_field="string_value", converter=str),
     api_pb2.PARAM_TYPE_INT: ParamTypeInfo(default_field="int_default", proto_field="int_value", converter=int),
+    api_pb2.PARAM_TYPE_BYTES: ParamTypeInfo(
+        default_field="bytes_default", proto_field="bytes_value", converter=assert_bytes
+    ),
 }
 
 
 def serialize_proto_params(python_params: dict[str, Any], schema: typing.Sequence[api_pb2.ClassParameterSpec]) -> bytes:
     proto_params: list[api_pb2.ClassParameterValue] = []
     for schema_param in schema:
-        type_info = PARAM_TYPE_MAPPING.get(schema_param.type)
+        type_info = PROTO_TYPE_INFO.get(schema_param.type)
         if not type_info:
             raise ValueError(f"Unsupported parameter type: {schema_param.type}")
         proto_param = api_pb2.ClassParameterValue(
@@ -429,6 +446,8 @@ def serialize_proto_params(python_params: dict[str, Any], schema: typing.Sequenc
 
 
 def deserialize_proto_params(serialized_params: bytes, schema: list[api_pb2.ClassParameterSpec]) -> dict[str, Any]:
+    # TODO: this currently requires the schema to decode a payload, but we should make the validation
+    #       distinct from the deserialization
     proto_struct = api_pb2.ClassParameterSet()
     proto_struct.ParseFromString(serialized_params)
     value_by_name = {p.name: p for p in proto_struct.parameters}
@@ -449,6 +468,8 @@ def deserialize_proto_params(serialized_params: bytes, schema: list[api_pb2.Clas
             python_value = param_value.string_value
         elif schema_param.type == api_pb2.PARAM_TYPE_INT:
             python_value = param_value.int_value
+        elif schema_param.type == api_pb2.PARAM_TYPE_BYTES:
+            python_value = param_value.bytes_value
         else:
             # TODO(elias): based on `parameters` declared types, we could add support for
             #  custom non proto types encoded as bytes in the proto, e.g. PARAM_TYPE_PYTHON_PICKLE
