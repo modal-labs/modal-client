@@ -1819,6 +1819,79 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
+    def _notebook(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
+        """Private API. Default image used for Modal notebook kernels."""
+        # Include several common packages, as well as kernelshim dependencies (except 'modal').
+        # These packages aren't pinned right now. Notebooks are not yet stable.
+        base_image = _Image.debian_slim(python_version, force_build)
+        kernelshim_image = base_image.pip_install(
+            "fastapi>=0.100", "ipykernel>=6", "pydantic>=2", "pyzmq>=26", "uvicorn>=0.32"
+        )
+
+        # TODO: Compile a better list, this is just a quick MVP.
+        # https://pypistats.org/top
+        # https://github.com/vinta/awesome-python
+        # https://github.com/Paperspace/jupyter-docker-stacks/blob/master/scipy-notebook/Dockerfile
+        # https://github.com/modal-labs/modal-examples
+        return (
+            kernelshim_image.apt_install("libpq-dev")
+            .pip_install(
+                "torch",
+                "torchvision",
+                "torchaudio",
+                index_url="https://download.pytorch.org/whl/cu126",
+            )
+            .pip_install(
+                "accelerate",
+                "aiohttp",
+                "altair",
+                "asyncpg",
+                "beautifulsoup4",
+                "bokeh",
+                "boto3[crt]",
+                "click",
+                "diffusers[torch,flax]",
+                "dm-sonnet",
+                "flax",
+                "ftfy",
+                "h5py",
+                "urllib3",
+                "httpx",
+                "huggingface-hub",
+                "ipywidgets",
+                "jax[cuda12]",
+                "keras",
+                "matplotlib",
+                "numba",
+                "numpy",
+                "optax",
+                "pandas",
+                "plotly[express]",
+                "psycopg2",
+                "requests",
+                "safetensors",
+                "scikit-image",
+                "scikit-learn",
+                "scipy",
+                "seaborn",
+                "sentencepiece",
+                "sqlalchemy",
+                "statsmodels",
+                "sympy",
+                "tabulate",
+                "tensorflow",
+                "tensorflow-probability",
+                "toml",
+                "transformers",
+                "triton",
+                "typer",
+                "vega-datasets",
+                "watchfiles",
+                "websockets",
+            )
+        )
+
+    @staticmethod
     def debian_slim(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
         """Default image, based on the official `python` Docker images."""
         if isinstance(python_version, float):
