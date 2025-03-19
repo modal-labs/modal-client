@@ -2,7 +2,7 @@
 import pytest
 
 from modal._utils.async_utils import TimestampPriorityQueue
-from modal.parallel_map import _MapItemsManager, _MapItemState
+from modal.parallel_map import _MapItemsManager, _MapItemState, _OutputType
 from modal_proto import api_pb2
 from test.supports.map_item_test_utils import (
     InputJwtData,
@@ -72,14 +72,14 @@ async def handle_get_outputs_response(
     result: api_pb2.GenericResult,
     state: _MapItemState,
     retry_count: int,
-    output_is_complete: bool,
+    output_type: _OutputType,
     include_input_jwt: bool = True,
 ):
     for i in range(count):
-        _output_is_complete = await manager.handle_get_outputs_response(
+        _output_type = await manager.handle_get_outputs_response(
             api_pb2.FunctionGetOutputsItem(idx=i, result=result, retry_count=retry_count), now_seconds
         )
-        assert _output_is_complete == output_is_complete
+        assert _output_type == output_type
         ctx = manager.get_item_context(i)
         if state == _MapItemState.COMPLETE:
             assert ctx is None
@@ -127,7 +127,7 @@ async def test_happy_path():
     await handle_put_inputs_response(_MapItemState.WAITING_FOR_OUTPUT)
     # get_all_outputs
     get_input_jwts_waiting_for_output(0)
-    await handle_get_outputs_response(result_success, _MapItemState.COMPLETE, 0, True)
+    await handle_get_outputs_response(result_success, _MapItemState.COMPLETE, 0, _OutputType.COMPLETE)
 
 
 @pytest.mark.asyncio
@@ -138,7 +138,7 @@ async def test_retry():
 
     # get_all_outputs - retry count 0
     get_input_jwts_waiting_for_output(0)
-    await handle_get_outputs_response(result_failure, _MapItemState.WAITING_TO_RETRY, 0, False)
+    await handle_get_outputs_response(result_failure, _MapItemState.WAITING_TO_RETRY, 0, _OutputType.RETRYING)
 
     # retry_inputs - retry count 1
     await prepare_items_for_retry(1)
@@ -147,7 +147,7 @@ async def test_retry():
 
     # get_all_outputs - retry count 1
     get_input_jwts_waiting_for_output(1)
-    await handle_get_outputs_response(result_success, _MapItemState.COMPLETE, 1, True)
+    await handle_get_outputs_response(result_success, _MapItemState.COMPLETE, 1, _OutputType.COMPLETE)
 
 
 @pytest.mark.asyncio
@@ -158,7 +158,7 @@ async def test_retry_lost_input():
 
     # get_all_outputs - retry count 0
     get_input_jwts_waiting_for_output(0)
-    await handle_get_outputs_response(result_internal_failure, _MapItemState.WAITING_TO_RETRY, 0, False)
+    await handle_get_outputs_response(result_internal_failure, _MapItemState.WAITING_TO_RETRY, 0, _OutputType.RETRYING)
 
     # retry_inputs - retry count 1
     await prepare_items_for_retry(1)
@@ -167,23 +167,23 @@ async def test_retry_lost_input():
 
     # get_all_outputs - retry count 1
     get_input_jwts_waiting_for_output(1)
-    await handle_get_outputs_response(result_success, _MapItemState.COMPLETE, 1, True)
+    await handle_get_outputs_response(result_success, _MapItemState.COMPLETE, 1, _OutputType.COMPLETE)
 
 
 @pytest.mark.asyncio
-async def test_duplicate_succcesful_outputs():
+async def test_duplicate_successful_outputs():
     # pump_inputs - retry count 0
     await add_items()
     await handle_put_inputs_response(_MapItemState.WAITING_FOR_OUTPUT)
 
     # get_all_outputs - retry count 0
     get_input_jwts_waiting_for_output(0)
-    await handle_get_outputs_response(result_success, _MapItemState.COMPLETE, 0, True)
+    await handle_get_outputs_response(result_success, _MapItemState.COMPLETE, 0, _OutputType.COMPLETE)
 
     # get_all_outputs - retry count 0 (duplicate)
     # No items should be waiting for output since we already processed all the outputs
     assert manager.get_input_jwts_waiting_for_output() == []
-    await handle_get_outputs_response(result_success, _MapItemState.COMPLETE, 0, False)
+    await handle_get_outputs_response(result_success, _MapItemState.COMPLETE, 0, _OutputType.DUPLICATE)
 
 
 @pytest.mark.asyncio
@@ -194,12 +194,12 @@ async def test_duplicate_failed_outputs():
 
     # get_all_outputs - retry_count 0
     get_input_jwts_waiting_for_output(0)
-    await handle_get_outputs_response(result_failure, _MapItemState.WAITING_TO_RETRY, 0, False)
+    await handle_get_outputs_response(result_failure, _MapItemState.WAITING_TO_RETRY, 0, _OutputType.RETRYING)
 
     # get_all_outputs - retry_count 0 (duplicate)
     # No items should be waiting for output since we already processed all the outputs
     assert manager.get_input_jwts_waiting_for_output() == []
-    await handle_get_outputs_response(result_failure, _MapItemState.WAITING_TO_RETRY, 0, False)
+    await handle_get_outputs_response(result_failure, _MapItemState.WAITING_TO_RETRY, 0, _OutputType.DUPLICATE)
 
 
 @pytest.mark.asyncio
@@ -220,7 +220,7 @@ async def test_get_outputs_completes_before_put_inputs():
     # Verify there are no input_jwts waiting for output yet. The input_jwt is returned in the PutInputsResponse,
     # which we have not received yet.
     assert manager.get_input_jwts_waiting_for_output() == []
-    await handle_get_outputs_response(result_success, _MapItemState.COMPLETE, 0, True)
+    await handle_get_outputs_response(result_success, _MapItemState.COMPLETE, 0, _OutputType.COMPLETE)
 
     # pump_inputs - retry_count 0 - receive response
     await handle_put_inputs_response(_MapItemState.COMPLETE)
@@ -234,7 +234,7 @@ async def test_get_outputs_completes_before_function_retry():
 
     # get_all_outputs - retry_count 0
     get_input_jwts_waiting_for_output(0)
-    await handle_get_outputs_response(result_failure, _MapItemState.WAITING_TO_RETRY, 0, False)
+    await handle_get_outputs_response(result_failure, _MapItemState.WAITING_TO_RETRY, 0, _OutputType.RETRYING)
 
     # First retry fails
 
@@ -243,9 +243,9 @@ async def test_get_outputs_completes_before_function_retry():
     await retry_queue.clear()
 
     # get_all_outputs - retry_count 1
-    # The retry call has not returned yet, so there are not input_jwts waiting for output.
+    # The retry call has not returned yet, so there are no input_jwts waiting for output.
     assert manager.get_input_jwts_waiting_for_output() == []
-    await handle_get_outputs_response(result_failure, _MapItemState.WAITING_TO_RETRY, 1, False, False)
+    await handle_get_outputs_response(result_failure, _MapItemState.WAITING_TO_RETRY, 1, _OutputType.RETRYING, False)
 
     # retry_inputs -  retry_count 1 - handle response
     response_items = [InputJwtData.of(i, 1).to_jwt() for i in range(count)]
@@ -271,7 +271,7 @@ async def test_get_outputs_completes_before_function_retry():
     # get_all_outputs - retry_count 2
     # The retry call has not returned yet, so there are not input_jwts waiting for output.
     assert manager.get_input_jwts_waiting_for_output() == []
-    await handle_get_outputs_response(result_success, _MapItemState.COMPLETE, 2, True)
+    await handle_get_outputs_response(result_success, _MapItemState.COMPLETE, 2, _OutputType.COMPLETE)
 
     # retry_inputs - retry_count 2 - handle response
     response_items = [InputJwtData.of(i, 2).to_jwt() for i in range(count)]
