@@ -12,6 +12,37 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.115 (2025-03-19)
+
+* Adds support for new strict `bytes` type for  `modal.parameter`
+
+Usage:
+```py
+import typing
+import modal
+
+app = modal.App()
+
+
+@app.cls()
+class Foo:
+    a: bytes = modal.parameter(default=b"hello")
+
+    @modal.method()
+    def bar(self):
+        return f"hello {self.a}"
+
+
+@app.local_entrypoint()
+def main():
+    foo = Foo(a=b"world")
+    foo.bar.remote()
+```
+
+**Note**: For parameterized web endoints you must base64 encode the bytes before passing them in as a query parameter.
+
+
+
 ### 0.73.107 (2025-03-14)
 
 * Include git commit info at the time of app deployment.
