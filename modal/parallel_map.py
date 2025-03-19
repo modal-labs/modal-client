@@ -329,16 +329,20 @@ async def _map_invocation(
         assert len(received_outputs) == 0
 
     async def log_debug_stats():
-        while True:
+        def log_stats():
             logger.debug(
                 f"Map stats: have_all_inputs={have_all_inputs} inputs_created={inputs_created} "
                 f"input_sent={inputs_sent} inputs_retried={inputs_retried} outputs_received={outputs_received} "
                 f"outputs_completed={outputs_completed} duplicate_outputs={duplicate_outputs} "
                 f"retried_outputs={retried_outputs}"
             )
+        while True:
+            log_stats()
             try:
                 await asyncio.sleep(10)
             except asyncio.CancelledError:
+                # Log final stats before exiting
+                log_stats()
                 break
 
     log_debug_stats_task = asyncio.create_task(log_debug_stats())
