@@ -493,7 +493,7 @@ def deserialize_proto_params(serialized_params: bytes) -> dict[str, Any]:
     return python_params
 
 
-def validate_params(params: dict[str, Any], schema: list[api_pb2.ClassParameterSpec]):
+def validate_params(params: dict[str, Any], schema: typing.Sequence[api_pb2.ClassParameterSpec]):
     # first check that all declared values are provided
     for schema_param in schema:
         if schema_param.name not in params:
