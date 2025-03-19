@@ -225,13 +225,15 @@ def _check_prod(no_confirm: bool):
 
 @task
 def publish_base_mounts(ctx, no_confirm: bool = False):
+    """Publish the client mount and other mounts."""
     _check_prod(no_confirm)
     for mount in ["modal_client_package", "python_standalone"]:
         ctx.run(f"{sys.executable} modal_global_objects/mounts/{mount}.py", pty=True)
 
 
 @task
-def publish_base_image(ctx, name: str, builder_version: str = "2024.10", no_confirm: bool = False) -> None:
+def publish_base_images(ctx, name: str, builder_version: str = "2024.10", no_confirm: bool = False) -> None:
+    """Publish base images. For example, `inv publish-base-images debian_slim`."""
     _check_prod(no_confirm)
     ctx.run(
         f"python -m modal_global_objects.images.base_images {name}",

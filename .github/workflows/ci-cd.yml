@@ -281,5 +281,5 @@ jobs:
         run: modal config set-environment main
 
       - name: Publish base images
-        run: inv publish-base-image ${{ matrix.image-name }}
+        run: inv publish-base-images ${{ matrix.image-name }}
           --builder-version ${{ matrix.image-builder-version }} --no-confirm
