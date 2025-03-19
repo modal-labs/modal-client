@@ -970,6 +970,13 @@ def test_image_docker_command_entrypoint_nonempty(builder_version, servicer, cli
         assert 'ENTRYPOINT ["/temp.sh"]' in layers[0].dockerfile_commands
 
 
+def test_image_docker_command_entrypoint_malformed():
+    with pytest.raises(InvalidError, match="must be a list of strings"):
+        Image.debian_slim().entrypoint("this is not a list of strings")  # type: ignore
+    with pytest.raises(InvalidError, match="must be a list of strings"):
+        Image.debian_slim().entrypoint(4711)  # type: ignore
+
+
 def test_image_docker_command_shell(builder_version, servicer, client, tmp_path_with_content):
     app = App()
     app.image = Image.debian_slim().shell(["/bin/sh", "-c"])
@@ -978,6 +985,13 @@ def test_image_docker_command_shell(builder_version, servicer, client, tmp_path_
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
         assert 'SHELL ["/bin/sh", "-c"]' in layers[0].dockerfile_commands
+
+
+def test_image_docker_command_shell_malformed():
+    with pytest.raises(InvalidError, match="must be a list of strings"):
+        Image.debian_slim().shell("this is not a list of strings")  # type: ignore
+    with pytest.raises(InvalidError, match="must be a list of strings"):
+        Image.debian_slim().shell(4711)  # type: ignore
 
 
 def test_image_env(builder_version, servicer, client):
@@ -994,6 +1008,57 @@ def test_image_env(builder_version, servicer, client):
         app.function()(dummy)
         with app.run(client=client):
             pass
+
+
+def test_image_cmd_empty(builder_version, servicer, client, tmp_path_with_content):
+    app = App()
+    app.image = Image.debian_slim().cmd([])
+    app.function()(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(app.image.object_id, servicer)
+        assert "CMD []" in layers[0].dockerfile_commands
+
+
+def test_image_cmd_nonempty(builder_version, servicer, client, tmp_path_with_content):
+    app = App()
+    app.image = Image.debian_slim().cmd(["echo", "hello"])
+    app.function()(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(app.image.object_id, servicer)
+        assert 'CMD ["echo", "hello"]' in layers[0].dockerfile_commands
+
+
+def test_image_cmd_malformed():
+    with pytest.raises(InvalidError, match="must be a list of strings"):
+        Image.debian_slim().cmd("this is not a list of strings")  # type: ignore
+    with pytest.raises(InvalidError, match="must be a list of strings"):
+        Image.debian_slim().cmd(4711)  # type: ignore
+
+
+def test_image_debian_slim_default_cmd(builder_version, servicer, client, test_dir):
+    app = App(image=Image.debian_slim())
+    app.function()(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(app.image.object_id, servicer)
+        if builder_version > "2024.10":
+            assert 'CMD ["sleep", "172800"]' in layers[0].dockerfile_commands
+        else:
+            assert "CMD" not in layers[0].dockerfile_commands
+
+
+def test_image_micromamba_default_cmd(builder_version, servicer, client, test_dir):
+    app = App(image=Image.micromamba())
+    app.function()(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(app.image.object_id, servicer)
+        if builder_version > "2024.10":
+            assert 'CMD ["sleep", "172800"]' in layers[0].dockerfile_commands
+        else:
+            assert "CMD" not in layers[0].dockerfile_commands
 
 
 def test_image_gpu(builder_version, servicer, client):

@@ -1,4 +1,4 @@
-# Copyright Modal Labs 2022
+# Copyright Modal Labs 2025
 import asyncio
 import dataclasses
 import os
@@ -23,6 +23,7 @@ from ._runtime.execution_context import is_local
 from ._traceback import print_server_warnings, traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, gather_cancel_on_exc, synchronize_api
 from ._utils.deprecation import deprecation_error
+from ._utils.git_utils import get_git_commit_info
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name, is_valid_tag
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
@@ -182,6 +183,7 @@ async def _publish_app(
     classes: dict[str, _Cls],
     name: str = "",  # Only relevant for deployments
     tag: str = "",  # Only relevant for deployments
+    commit_info: Optional[api_pb2.CommitInfo] = None,  # Git commit information
 ) -> tuple[str, list[api_pb2.Warning]]:
     """Wrapper for AppPublish RPC."""
 
@@ -195,7 +197,9 @@ async def _publish_app(
         function_ids=running_app.function_ids,
         class_ids=running_app.class_ids,
         definition_ids=definition_ids,
+        commit_info=commit_info,
     )
+
     try:
         response = await retry_transient_errors(client.stub.AppPublish, request)
     except GRPCError as exc:
@@ -521,6 +525,9 @@ async def _deploy_app(
 
     t0 = time.time()
 
+    # Get git information to track deployment history
+    commit_info_task = asyncio.create_task(get_git_commit_info())
+
     running_app: RunningApp = await _init_local_app_from_name(
         client, name, namespace, environment_name=environment_name
     )
@@ -542,8 +549,21 @@ async def _deploy_app(
                 environment_name=environment_name,
             )
 
+            commit_info = None
+            try:
+                commit_info = await commit_info_task
+            except Exception as e:
+                logger.debug("Failed to get git commit info", exc_info=e)
+
             app_url, warnings = await _publish_app(
-                client, running_app, api_pb2.APP_STATE_DEPLOYED, app._functions, app._classes, name, tag
+                client,
+                running_app,
+                api_pb2.APP_STATE_DEPLOYED,
+                app._functions,
+                app._classes,
+                name,
+                tag,
+                commit_info,
             )
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
