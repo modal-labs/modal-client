@@ -506,7 +506,7 @@ def validate_params(params: dict[str, Any], schema: typing.Sequence[api_pb2.Clas
             expected_python_type = PROTO_TYPE_INFO[schema_param.type].type
             raise TypeError(
                 f"Parameter '{schema_param.name}' type error: expected {expected_python_type.__name__}, "
-                f"got {expected_python_type.__name__}"
+                f"got {python_type.__name__}"
             )
 
     schema_fields = {p.name for p in schema}

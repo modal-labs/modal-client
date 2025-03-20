@@ -91,7 +91,7 @@ def test_proto_serde_failure_incomplete_params():
     with pytest.raises(InvalidError, match="Missing required parameter: x"):
         validate_params({"a": "b"}, schema)
 
-    with pytest.raises(TypeError, match="expected str, got str"):
+    with pytest.raises(TypeError, match="expected str, got bytes"):
         validate_params({"x": b"b"}, schema)
 
     with pytest.raises(InvalidError, match="provided but are not present in the schema"):
