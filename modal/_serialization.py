@@ -509,7 +509,7 @@ class PayloadHandler(metaclass=abc.ABCMeta):
     def from_proto_struct(cls, struct: api_pb2.ClassParameterValue) -> Any: ...
 
     @abstractmethod
-    def proto_schema(self, default_value=None) -> api_pb2.ClassParameterSpec: ...
+    def proto_generic_type(self, full_python_type: type) -> api_pb2.GenericPayloadType: ...
 
     def validate_python_value(self, v: Any):
         # generic validation that types match declared types
@@ -525,12 +525,11 @@ class IntType(PayloadHandler, python_type=int, proto_type_enum=api_pb2.PARAM_TYP
     def from_proto_struct(self, p: api_pb2.ClassParameterValue) -> int:
         return p.int_value
 
-    def proto_schema(self, default_value: typing.Optional[int] = None) -> api_pb2.ClassParameterSpec:
-        s = api_pb2.ClassParameterSpec(type=api_pb2.PARAM_TYPE_INT)
-        if default_value is not None:
-            s.has_default = True
-            s.int_default = default_value
-        return s
+    def proto_generic_type(self, full_python_type: type) -> api_pb2.GenericPayloadType:
+        assert full_python_type is int
+        return api_pb2.GenericPayloadType(
+            type=api_pb2.PARAM_TYPE_INT,
+        )
 
 
 class StringType(PayloadHandler, python_type=str, proto_type_enum=api_pb2.PARAM_TYPE_STRING):
@@ -540,12 +539,11 @@ class StringType(PayloadHandler, python_type=str, proto_type_enum=api_pb2.PARAM_
     def from_proto_struct(self, p: api_pb2.ClassParameterValue) -> str:
         return p.string_value
 
-    def proto_schema(self, default_value: typing.Optional[str] = None) -> api_pb2.ClassParameterSpec:
-        s = api_pb2.ClassParameterSpec(type=api_pb2.PARAM_TYPE_STRING)
-        if default_value is not None:
-            s.has_default = True
-            s.string_default = default_value
-        return s
+    def proto_generic_type(self, full_python_type: type) -> api_pb2.GenericPayloadType:
+        assert full_python_type is str
+        return api_pb2.GenericPayloadType(
+            type=api_pb2.PARAM_TYPE_STRING,
+        )
 
 
 class BytesType(PayloadHandler, python_type=bytes, proto_type_enum=api_pb2.PARAM_TYPE_BYTES):
@@ -555,12 +553,11 @@ class BytesType(PayloadHandler, python_type=bytes, proto_type_enum=api_pb2.PARAM
     def from_proto_struct(self, p: api_pb2.ClassParameterValue) -> bytes:
         return p.bytes_value
 
-    def proto_schema(self, default_value: typing.Optional[bytes] = None) -> api_pb2.ClassParameterSpec:
-        s = api_pb2.ClassParameterSpec(type=api_pb2.PARAM_TYPE_BYTES)
-        if default_value is not None:
-            s.has_default = True
-            s.bytes_default = default_value
-        return s
+    def proto_generic_type(self, full_python_type: type) -> api_pb2.GenericPayloadType:
+        assert full_python_type is bytes
+        return api_pb2.GenericPayloadType(
+            type=api_pb2.PARAM_TYPE_BYTES,
+        )
 
 
 def python_type_to_payload_handler(parameter_type: type) -> PayloadHandler:

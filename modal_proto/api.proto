@@ -170,9 +170,10 @@ enum ParameterType {
   PARAM_TYPE_UNSPECIFIED = 0;
   PARAM_TYPE_STRING = 1;
   PARAM_TYPE_INT = 2;
-  PARAM_TYPE_PICKLE = 3;
+  PARAM_TYPE_PICKLE = 3; // currently unused
   PARAM_TYPE_BYTES = 4;
   PARAM_TYPE_UNKNOWN = 5;  // used in schemas to signify unrecognized or un-annotated types
+  PARAM_TYPE_LIST = 6;
 }
 
 enum ProgressType {
@@ -699,14 +700,21 @@ message ClassParameterSet {
 
 message ClassParameterSpec { // TODO: rename into PayloadParameterSpec
   string name = 1;
-  ParameterType type = 2;
+  ParameterType type = 2; // TODO: deprecate - use full_type instead
   bool has_default = 3;
-  oneof default_oneof {
+  oneof default_oneof {  // TODO: deprecate - use default_value instead
     string string_default = 4;
     int64 int_default = 5;
     bytes pickle_default = 6;
     bytes bytes_default = 7;
   }
+  GenericPayloadType full_type = 8; // supersedes type
+  optional ClassParameterValue default_value = 9; // supersedes default_oneof
+}
+
+message GenericPayloadType {
+  ParameterType type = 1;
+  repeated GenericPayloadType sub_types = 2;  // sub-type for generic types like lists
 }
 
 message ClassParameterValue {  // TODO: rename into PayloadValue

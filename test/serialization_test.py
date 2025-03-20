@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import inspect
 import pytest
 import random
 
@@ -14,6 +15,7 @@ from modal._serialization import (
     serialize_proto_params,
     validate_params,
 )
+from modal._utils.function_utils import signature_to_protobuf_schema
 from modal._utils.rand_pb_testing import rand_pb
 from modal.exception import DeserializationError, InvalidError
 from modal_proto import api_pb2
@@ -117,3 +119,19 @@ def test_non_implemented_proto_type():
 
     with pytest.raises(InvalidError, match="recognize payload type 1000"):
         proto_type_enum_to_payload_handler(1000)  # type: ignore
+
+
+def test_new_schema_format_for_legacy_types():
+    def f(int_value: int = 1337, str_value: str = "foo", bytes_value: bytes = b"bar"): ...
+
+    sig = inspect.signature(f)
+    int_spec, str_spec, bytes_spec = signature_to_protobuf_schema(sig)
+    print(int_spec)
+    assert int_spec == api_pb2.ClassParameterSpec(
+        name="int_value",
+        type=api_pb2.PARAM_TYPE_INT,
+        full_type=api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_INT),
+        has_default=True,
+        default_value=api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_INT, int_value=1337),
+        int_default=1337,
+    )
