@@ -314,6 +314,9 @@ class TimestampPriorityQueue(Generic[T]):
     def empty(self) -> bool:
         return self._queue.empty()
 
+    def qsize(self) -> int:
+        return self._queue.qsize()
+
     async def clear(self):
         """
         Clear the retry queue. Used for testing to simulate reading all elements from queue using queue_batch_iterator.
