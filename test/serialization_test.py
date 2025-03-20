@@ -112,4 +112,8 @@ def test_apply_defaults():
 
 
 def test_non_implemented_proto_type():
-    proto_type_enum_to_payload_handler(api_pb2.PARAM_TYPE_UNKNOWN)
+    with pytest.raises(InvalidError, match="No payload handler implemented for payload type PARAM_TYPE_UNKNOWN"):
+        proto_type_enum_to_payload_handler(api_pb2.PARAM_TYPE_UNKNOWN)
+
+    with pytest.raises(InvalidError, match="recognize payload type 1000"):
+        proto_type_enum_to_payload_handler(1000)  # type: ignore
