@@ -174,7 +174,7 @@ class _Invocation:
             input_jwt=input.input_jwt,
             input_id=input.input_id,
             item=item,
-            sync_client_retries_enabled=response.sync_client_retries_enabled
+            sync_client_retries_enabled=response.sync_client_retries_enabled,
         )
         return _Invocation(client.stub, function_call_id, client, retry_context)
 
@@ -430,7 +430,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         max_containers: Optional[int] = None,
         buffer_containers: Optional[int] = None,
         scaledown_window: Optional[int] = None,
-        allow_concurrent_inputs: Optional[int] = None,
+        max_concurrent_inputs: Optional[int] = None,
         batch_max_size: Optional[int] = None,
         batch_wait_ms: Optional[int] = None,
         cloud: Optional[str] = None,
@@ -781,7 +781,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     runtime_perf_record=config.get("runtime_perf_record"),
                     app_name=app_name,
                     is_builder_function=is_builder_function,
-                    target_concurrent_inputs=allow_concurrent_inputs or 0,
+                    max_concurrent_inputs=max_concurrent_inputs or 0,
                     batch_max_size=batch_max_size or 0,
                     batch_linger_ms=batch_wait_ms or 0,
                     worker_id=config.get("worker_id"),
