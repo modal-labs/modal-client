@@ -1245,23 +1245,9 @@ def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, c
     assert not [r for r in caplog.records if r.levelno == logging.WARNING]
 
 
-@app.function(allow_concurrent_inputs=(OLD_CONCURRENCY_CONFIG_VALUE := 100))
-def has_old_concurrency_config():
-    pass
-
-
-@app.function()
-@modal.concurrent(max_inputs=(NEW_CONCURRENCY_CONFIG_VALUE := 1000))
-def has_new_concurrency_config():
-    pass
-
-
-@app.function()
-def has_no_concurrency_config():
-    pass
-
-
 def test_concurrency_migration(client, servicer):
+    from test.supports.concurrency_config import CONFIG_VALS, app
+
     with servicer.intercept() as ctx:
         with app.run(client=client):
             pass
@@ -1269,8 +1255,8 @@ def test_concurrency_migration(client, servicer):
     function_create_requests = ctx.get_requests("FunctionCreate")
     for request in function_create_requests:
         if request.function.function_name == "has_new_concurrency_config":
-            assert request.function.max_concurrent_inputs == NEW_CONCURRENCY_CONFIG_VALUE
+            assert request.function.max_concurrent_inputs == CONFIG_VALS["NEW"]
         elif request.function.function_name == "has_old_concurrency_config":
-            assert request.function.max_concurrent_inputs == OLD_CONCURRENCY_CONFIG_VALUE
+            assert request.function.max_concurrent_inputs == CONFIG_VALS["OLD"]
         elif request.function.function_name == "has_no_concurrency_config":
             assert request.function.max_concurrent_inputs == 0
