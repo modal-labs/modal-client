@@ -1856,6 +1856,7 @@ class _Image(_Object, type_prefix="im"):
             "optax",
             "pandas",
             "plotly[express]",
+            "polars",
             "psycopg2",
             "requests",
             "safetensors",
