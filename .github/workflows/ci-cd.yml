@@ -17,7 +17,6 @@ env:
   PYTHONIOENCODING: utf-8
 
 jobs:
-
   client-versioning:
     if: github.ref == 'refs/heads/main'
     name: Update changelog and client version
@@ -74,7 +73,6 @@ jobs:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
         run: python -m modal_global_objects.mounts.modal_client_package
-
 
   client-test:
     name: Unit tests on ${{ matrix.python-version }} and ${{ matrix.os }} (protobuf=${{ matrix.proto-version }})
@@ -189,7 +187,6 @@ jobs:
     concurrency: publish-client
     timeout-minutes: 5
     steps:
-
       - uses: actions/checkout@v3
         with:
           ref: v${{ needs.client-versioning.outputs.client-version}}
@@ -249,7 +246,6 @@ jobs:
       - name: Publish mounts
         run: python -m modal_global_objects.mounts.python_standalone
 
-
   publish-base-images:
     name: |
       Publish base images for ${{ matrix.image-name }} ${{ matrix.image-builder-version }}
@@ -285,8 +281,5 @@ jobs:
         run: modal config set-environment main
 
       - name: Publish base images
-        env:
-          MODAL_IMAGE_BUILDER_VERSION: ${{ matrix.image-builder-version }}
-          MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT: "1"
-        run: |
-          python -m modal_global_objects.images.base_images ${{ matrix.image-name }}
+        run: inv publish-base-images ${{ matrix.image-name }}
+          --builder-version ${{ matrix.image-builder-version }} --no-confirm
