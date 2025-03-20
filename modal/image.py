@@ -1824,17 +1824,14 @@ class _Image(_Object, type_prefix="im"):
         # Include several common packages, as well as kernelshim dependencies (except 'modal').
         # These packages aren't pinned right now. Notebooks are not yet stable.
         base_image = _Image.debian_slim(python_version, force_build)
-        kernelshim_image = base_image.pip_install(
-            "fastapi>=0.100", "ipykernel>=6", "pydantic>=2", "pyzmq>=26", "uvicorn>=0.32"
-        )
 
         # TODO: Compile a better list, this is just a quick MVP.
         # https://pypistats.org/top
         # https://github.com/vinta/awesome-python
         # https://github.com/Paperspace/jupyter-docker-stacks/blob/master/scipy-notebook/Dockerfile
         # https://github.com/modal-labs/modal-examples
-        return (
-            kernelshim_image.apt_install("libpq-dev", "pkg-config", "cmake")
+        environment_image = (
+            base_image.apt_install("libpq-dev", "pkg-config", "cmake")
             .pip_install(
                 "torch",
                 "torchvision",
@@ -1889,6 +1886,19 @@ class _Image(_Object, type_prefix="im"):
                 "websockets",
             )
         )
+
+        # Kernelshim dependencies.
+        kernelshim_image = environment_image.pip_install(
+            "basedpyright>=1.28",
+            "fastapi>=0.100",
+            "ipykernel>=6",
+            "pydantic>=2",
+            "pyzmq>=26",
+            "ruff>=0.11",
+            "uvicorn>=0.32",
+        )
+
+        return kernelshim_image
 
     @staticmethod
     def debian_slim(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
