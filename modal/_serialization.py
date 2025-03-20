@@ -457,7 +457,7 @@ def serialize_proto_params(python_params: dict[str, Any]) -> bytes:
     proto_params: list[api_pb2.ClassParameterValue] = []
     for param_name, python_value in python_params.items():
         python_type = type(python_value)
-        protobuf_type = validate_parameter_type(python_type)
+        protobuf_type = get_proto_parameter_type(python_type)
         type_info = PROTO_TYPE_INFO.get(protobuf_type)
         proto_param = api_pb2.ClassParameterValue(
             name=param_name,
@@ -501,7 +501,7 @@ def validate_params(params: dict[str, Any], schema: typing.Sequence[api_pb2.Clas
             raise InvalidError(f"Missing required parameter: {schema_param.name}")
         python_value = params[schema_param.name]
         python_type = type(python_value)
-        param_protobuf_type = validate_parameter_type(python_type)
+        param_protobuf_type = get_proto_parameter_type(python_type)
         if schema_param.type != param_protobuf_type:
             expected_python_type = PROTO_TYPE_INFO[schema_param.type].type
             raise TypeError(
@@ -538,7 +538,7 @@ def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function,
     return param_args, param_kwargs
 
 
-def validate_parameter_type(parameter_type: type) -> "api_pb2.ParameterType.ValueType":
+def get_proto_parameter_type(parameter_type: type) -> "api_pb2.ParameterType.ValueType":
     if parameter_type not in PYTHON_TO_PROTO_TYPE:
         type_name = getattr(parameter_type, "__name__", repr(parameter_type))
         supported = ", ".join(parameter_type.__name__ for parameter_type in PYTHON_TO_PROTO_TYPE.keys())

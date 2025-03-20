@@ -20,8 +20,8 @@ from .._serialization import (
     PYTHON_TO_PROTO_TYPE,
     deserialize,
     deserialize_data_format,
+    get_proto_parameter_type,
     serialize,
-    validate_parameter_type,
 )
 from .._traceback import append_modal_tb
 from ..config import config, logger
@@ -312,7 +312,7 @@ class FunctionInfo:
         signature = _get_class_constructor_signature(self.user_cls)
         # validate that the schema has no unspecified fields/unsupported class parameter types
         for param in signature.parameters.values():
-            validate_parameter_type(param.annotation)
+            get_proto_parameter_type(param.annotation)
 
         protobuf_schema = signature_to_protobuf_schema(signature)
 

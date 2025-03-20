@@ -21,7 +21,7 @@ from ._partial_function import (
 )
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
-from ._serialization import check_valid_cls_constructor_arg, validate_parameter_type
+from ._serialization import check_valid_cls_constructor_arg, get_proto_parameter_type
 from ._traceback import print_server_warnings
 from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.deprecation import deprecation_warning, renamed_parameter, warn_on_renamed_autoscaler_settings
@@ -462,7 +462,7 @@ class _Cls(_Object, type_prefix="cs"):
 
         annotated_params = {k: t for k, t in annotations.items() if k in params}
         for k, t in annotated_params.items():
-            validate_parameter_type(t)
+            get_proto_parameter_type(t)
 
     @staticmethod
     def from_local(user_cls, app: "modal.app._App", class_service_function: _Function) -> "_Cls":
