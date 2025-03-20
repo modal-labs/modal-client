@@ -16,11 +16,9 @@ import modal_proto
 from modal_proto import api_pb2
 
 from .._serialization import (
-    PROTO_TYPE_INFO,
-    PYTHON_TO_PROTO_TYPE,
     deserialize,
     deserialize_data_format,
-    get_proto_parameter_type,
+    python_type_to_payload_handler,
     serialize,
 )
 from .._traceback import append_modal_tb
@@ -109,18 +107,19 @@ def get_function_type(is_generator: Optional[bool]) -> "api_pb2.Function.Functio
 def signature_to_protobuf_schema(signature: inspect.Signature) -> list[api_pb2.ClassParameterSpec]:
     modal_parameters: list[api_pb2.ClassParameterSpec] = []
     for param in signature.parameters.values():
-        has_default = param.default is not param.empty
-        class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default)
-        if param.annotation not in PYTHON_TO_PROTO_TYPE:
-            class_param_spec.type = api_pb2.PARAM_TYPE_UNKNOWN
+        try:
+            payload_handler = python_type_to_payload_handler(param.annotation)
+        except InvalidError:
+            parameter_spec = api_pb2.ClassParameterSpec(
+                type=api_pb2.PARAM_TYPE_UNKNOWN, has_default=param.default is not param.empty
+            )
         else:
-            proto_type = PYTHON_TO_PROTO_TYPE[param.annotation]
-            class_param_spec.type = proto_type
-            proto_type_info = PROTO_TYPE_INFO[proto_type]
-            if has_default and proto_type is not api_pb2.PARAM_TYPE_UNKNOWN:
-                setattr(class_param_spec, proto_type_info.default_field, param.default)
+            parameter_spec = payload_handler.proto_schema(
+                default_value=param.default if param.default is not param.empty else None
+            )
 
-        modal_parameters.append(class_param_spec)
+        parameter_spec.name = param.name
+        modal_parameters.append(parameter_spec)
     return modal_parameters
 
 
@@ -312,7 +311,7 @@ class FunctionInfo:
         signature = _get_class_constructor_signature(self.user_cls)
         # validate that the schema has no unspecified fields/unsupported class parameter types
         for param in signature.parameters.values():
-            get_proto_parameter_type(param.annotation)
+            python_type_to_payload_handler(param.annotation)
 
         protobuf_schema = signature_to_protobuf_schema(signature)
 
