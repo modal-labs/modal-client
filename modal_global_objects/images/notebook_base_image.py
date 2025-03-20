@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2025
 import shlex
 from typing import Optional
 
