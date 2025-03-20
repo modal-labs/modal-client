@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import abc
 import io
 import pickle
 import typing
@@ -400,7 +401,7 @@ T = typing.TypeVar("T", bound=type)
 PT = typing.TypeVar("PT", bound="api_pb2.ParameterType.ValueType")
 
 
-class PayloadHandler:
+class PayloadHandler(metaclass=abc.ABCMeta):
     _py_type_handlers: typing.ClassVar[dict[type, "PayloadHandler"]] = {}
     _proto_type_handlers: typing.ClassVar[dict["api_pb2.ParameterType.ValueType", "PayloadHandler"]] = {}
 
