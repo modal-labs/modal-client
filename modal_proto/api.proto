@@ -697,7 +697,7 @@ message ClassParameterSet {
   repeated ClassParameterValue parameters = 1;
 }
 
-message ClassParameterSpec {
+message ClassParameterSpec { // TODO: rename into PayloadParameterSpec
   string name = 1;
   ParameterType type = 2;
   bool has_default = 3;
@@ -709,11 +709,11 @@ message ClassParameterSpec {
   }
 }
 
-message ClassParameterValue {
+message ClassParameterValue {  // TODO: rename into PayloadValue
   // NOTE: adding additional *fields* here can invalidate function lookups
   //  since we use the serialized message as the bound function identifier
   //  for parameter-bound classes. Modify with *caution*
-  string name = 1;
+  string name = 1;  // TODO: would be nice to move this into a parent wrapper message
   ParameterType type = 2;
   oneof value_oneof {
     string string_value = 3;

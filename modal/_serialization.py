@@ -391,93 +391,6 @@ def check_valid_cls_constructor_arg(key, obj):
         )
 
 
-def assert_bytes(obj: Any):
-    if not isinstance(obj, bytes):
-        raise TypeError(f"Expected bytes, got {type(obj)}")
-    return obj
-
-
-T = typing.TypeVar("T", bound=type)
-PT = typing.TypeVar("PT", bound="api_pb2.ParameterType.ValueType")
-
-
-class PayloadHandler(metaclass=abc.ABCMeta):
-    _py_type_handlers: typing.ClassVar[dict[type, "PayloadHandler"]] = {}
-    _proto_type_handlers: typing.ClassVar[dict["api_pb2.ParameterType.ValueType", "PayloadHandler"]] = {}
-
-    python_base_type: typing.ClassVar[type]
-    proto_type_enum: typing.ClassVar["api_pb2.ParameterType.ValueType"]
-
-    def __init_subclass__(cls, *, python_type: T, proto_type_enum: PT):
-        super().__init_subclass__()
-        cls.python_base_type = python_type
-        cls.proto_type_enum = proto_type_enum
-        instance = cls()
-        PayloadHandler._py_type_handlers[python_type] = instance
-        PayloadHandler._proto_type_handlers[proto_type_enum] = instance
-
-    @abstractmethod
-    def to_proto_struct(cls, python_value) -> api_pb2.ClassParameterValue: ...
-
-    @abstractmethod
-    def from_proto_struct(cls, dto: api_pb2.ClassParameterValue) -> Any: ...
-
-    @abstractmethod
-    def proto_schema(self, default_value=None) -> api_pb2.ClassParameterSpec: ...
-
-    def validate_python_value(self, v: Any):
-        # generic validation that types match declared types
-        provided_type = type(v)
-        if provided_type != self.python_base_type:
-            raise TypeError(f"Expected {self.python_base_type.__name__}, got {provided_type.__name__}")
-
-
-class IntType(PayloadHandler, python_type=int, proto_type_enum=api_pb2.PARAM_TYPE_INT):
-    def to_proto_struct(self, i: int) -> api_pb2.ClassParameterValue:
-        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_INT, int_value=i)
-
-    def from_proto_struct(self, p: api_pb2.ClassParameterValue) -> int:
-        return p.int_value
-
-    def proto_schema(self, default_value: typing.Optional[int] = None) -> api_pb2.ClassParameterSpec:
-        s = api_pb2.ClassParameterSpec(type=api_pb2.PARAM_TYPE_INT)
-        if default_value is not None:
-            s.has_default = True
-            s.int_default = default_value
-        return s
-
-
-class StringType(PayloadHandler, python_type=str, proto_type_enum=api_pb2.PARAM_TYPE_STRING):
-    def to_proto_struct(self, s: str) -> api_pb2.ClassParameterValue:
-        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_STRING, string_value=s)
-
-    def from_proto_struct(self, p: api_pb2.ClassParameterValue) -> str:
-        return p.string_value
-
-    def proto_schema(self, default_value: typing.Optional[str] = None) -> api_pb2.ClassParameterSpec:
-        s = api_pb2.ClassParameterSpec(type=api_pb2.PARAM_TYPE_STRING)
-        if default_value is not None:
-            s.has_default = True
-            s.string_default = default_value
-        return s
-
-
-class BytesType(PayloadHandler, python_type=bytes, proto_type_enum=api_pb2.PARAM_TYPE_BYTES):
-    def to_proto_struct(self, b: bytes) -> api_pb2.ClassParameterValue:
-        assert_bytes(b)
-        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_BYTES, bytes_value=b)
-
-    def from_proto_struct(self, p: api_pb2.ClassParameterValue) -> bytes:
-        return p.bytes_value
-
-    def proto_schema(self, default_value: typing.Optional[bytes] = None) -> api_pb2.ClassParameterSpec:
-        s = api_pb2.ClassParameterSpec(type=api_pb2.PARAM_TYPE_BYTES)
-        if default_value is not None:
-            s.has_default = True
-            s.bytes_default = default_value
-        return s
-
-
 def apply_defaults(
     python_params: typing.Mapping[str, Any], schema: typing.Sequence[api_pb2.ClassParameterSpec]
 ) -> dict[str, Any]:
@@ -498,7 +411,7 @@ def apply_defaults(
     return result
 
 
-def get_parameter_value_dto(name: str, python_value: Any) -> api_pb2.ClassParameterValue:
+def get_payload_value_struct(name: str, python_value: Any) -> api_pb2.ClassParameterValue:
     """Map to proto payload struct using python runtime type information"""
     struct = python_type_to_payload_handler(type(python_value)).to_proto_struct(python_value)
     struct.name = name
@@ -508,7 +421,7 @@ def get_parameter_value_dto(name: str, python_value: Any) -> api_pb2.ClassParame
 def serialize_proto_params(python_params: dict[str, Any]) -> bytes:
     proto_params: list[api_pb2.ClassParameterValue] = []
     for param_name, python_value in python_params.items():
-        proto_params.append(get_parameter_value_dto(param_name, python_value))
+        proto_params.append(get_payload_value_struct(param_name, python_value))
     proto_bytes = api_pb2.ClassParameterSet(parameters=proto_params).SerializeToString(deterministic=True)
     return proto_bytes
 
@@ -572,6 +485,82 @@ def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function,
         )
 
     return param_args, param_kwargs
+
+
+class PayloadHandler(metaclass=abc.ABCMeta):
+    _py_type_handlers: typing.ClassVar[dict[type, "PayloadHandler"]] = {}
+    _proto_type_handlers: typing.ClassVar[dict["api_pb2.ParameterType.ValueType", "PayloadHandler"]] = {}
+
+    python_base_type: typing.ClassVar[type]
+    proto_type_enum: typing.ClassVar["api_pb2.ParameterType.ValueType"]
+
+    def __init_subclass__(cls, *, python_type: type, proto_type_enum: "api_pb2.ParameterType.ValueType"):
+        super().__init_subclass__()
+        cls.python_base_type = python_type
+        cls.proto_type_enum = proto_type_enum
+        instance = cls()
+        PayloadHandler._py_type_handlers[python_type] = instance
+        PayloadHandler._proto_type_handlers[proto_type_enum] = instance
+
+    @abstractmethod
+    def to_proto_struct(cls, python_value: Any) -> api_pb2.ClassParameterValue: ...
+
+    @abstractmethod
+    def from_proto_struct(cls, struct: api_pb2.ClassParameterValue) -> Any: ...
+
+    @abstractmethod
+    def proto_schema(self, default_value=None) -> api_pb2.ClassParameterSpec: ...
+
+    def validate_python_value(self, v: Any):
+        # generic validation that types match declared types
+        provided_type = type(v)
+        if provided_type != self.python_base_type:
+            raise TypeError(f"Expected {self.python_base_type.__name__}, got {provided_type.__name__}")
+
+
+class IntType(PayloadHandler, python_type=int, proto_type_enum=api_pb2.PARAM_TYPE_INT):
+    def to_proto_struct(self, i: int) -> api_pb2.ClassParameterValue:
+        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_INT, int_value=i)
+
+    def from_proto_struct(self, p: api_pb2.ClassParameterValue) -> int:
+        return p.int_value
+
+    def proto_schema(self, default_value: typing.Optional[int] = None) -> api_pb2.ClassParameterSpec:
+        s = api_pb2.ClassParameterSpec(type=api_pb2.PARAM_TYPE_INT)
+        if default_value is not None:
+            s.has_default = True
+            s.int_default = default_value
+        return s
+
+
+class StringType(PayloadHandler, python_type=str, proto_type_enum=api_pb2.PARAM_TYPE_STRING):
+    def to_proto_struct(self, s: str) -> api_pb2.ClassParameterValue:
+        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_STRING, string_value=s)
+
+    def from_proto_struct(self, p: api_pb2.ClassParameterValue) -> str:
+        return p.string_value
+
+    def proto_schema(self, default_value: typing.Optional[str] = None) -> api_pb2.ClassParameterSpec:
+        s = api_pb2.ClassParameterSpec(type=api_pb2.PARAM_TYPE_STRING)
+        if default_value is not None:
+            s.has_default = True
+            s.string_default = default_value
+        return s
+
+
+class BytesType(PayloadHandler, python_type=bytes, proto_type_enum=api_pb2.PARAM_TYPE_BYTES):
+    def to_proto_struct(self, b: bytes) -> api_pb2.ClassParameterValue:
+        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_BYTES, bytes_value=b)
+
+    def from_proto_struct(self, p: api_pb2.ClassParameterValue) -> bytes:
+        return p.bytes_value
+
+    def proto_schema(self, default_value: typing.Optional[bytes] = None) -> api_pb2.ClassParameterSpec:
+        s = api_pb2.ClassParameterSpec(type=api_pb2.PARAM_TYPE_BYTES)
+        if default_value is not None:
+            s.has_default = True
+            s.bytes_default = default_value
+        return s
 
 
 def python_type_to_payload_handler(parameter_type: type) -> PayloadHandler:
