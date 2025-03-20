@@ -7,6 +7,7 @@ from typing import Any
 
 from modal._utils.async_utils import synchronizer
 from modal_proto import api_pb2
+from modal_version import __version__ as client_version
 
 from ._object import _Object
 from ._vendor import cloudpickle
@@ -584,6 +585,12 @@ def python_type_to_payload_handler(parameter_type: type) -> PayloadHandler:
 def proto_type_enum_to_payload_handler(proto_type_enum: "api_pb2.ParameterType.ValueType") -> PayloadHandler:
     if handler := PayloadHandler._proto_type_handlers.get(proto_type_enum):
         return handler
+
+    if proto_type_enum not in api_pb2.ParameterType.values():
+        raise InvalidError(
+            f"modal {client_version} doesn't recognize payload type {proto_type_enum}. "
+            f"Try upgrading to a later version of Modal."
+        )
 
     enum_name = api_pb2.ParameterType.Name(proto_type_enum)
     raise InvalidError(f"No payload handler implemented for payload type {enum_name}")
