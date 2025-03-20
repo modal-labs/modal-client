@@ -1890,7 +1890,7 @@ class _Image(_Object, type_prefix="im"):
             "uvicorn>=0.32",
         ]
 
-        return base_image.run_commands(
+        commands: list[str] = [
             "apt-get update",
             "apt-get install -y libpq-dev pkg-config cmake",
             # Install uv since it's faster than pip for installing packages.
@@ -1899,7 +1899,16 @@ class _Image(_Object, type_prefix="im"):
             "pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126",
             f"uv pip install --system {shlex.join(sorted(environment_packages))}",
             f"uv pip install --system {shlex.join(sorted(kernelshim_packages))}",
+        ]
+
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+            return DockerfileSpec(commands=["FROM base", *(f"RUN {cmd}" for cmd in commands)], context_files={})
+
+        return _Image._from_args(
+            base_images={"base": base_image},
+            dockerfile_function=build_dockerfile,
             force_build=force_build,
+            _namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
         )
 
     @staticmethod
