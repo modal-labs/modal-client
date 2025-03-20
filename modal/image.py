@@ -1823,72 +1823,63 @@ class _Image(_Object, type_prefix="im"):
         """Private API. Default image used for Modal notebook kernels."""
         # Include several common packages, as well as kernelshim dependencies (except 'modal').
         # These packages aren't pinned right now. Notebooks are not yet stable.
-        base_image = _Image.debian_slim(python_version, force_build)
+        base_image = _Image.debian_slim(python_version, force_build=force_build)
 
         # TODO: Compile a better list, this is just a quick MVP.
         # https://pypistats.org/top
         # https://github.com/vinta/awesome-python
         # https://github.com/Paperspace/jupyter-docker-stacks/blob/master/scipy-notebook/Dockerfile
         # https://github.com/modal-labs/modal-examples
-        environment_image = (
-            base_image.apt_install("libpq-dev", "pkg-config", "cmake")
-            .pip_install(
-                "torch",
-                "torchvision",
-                "torchaudio",
-                index_url="https://download.pytorch.org/whl/cu126",
-            )
-            .pip_install(
-                "accelerate",
-                "aiohttp",
-                "altair",
-                "asyncpg",
-                "beautifulsoup4",
-                "bokeh",
-                "boto3[crt]",
-                "click",
-                "diffusers[torch,flax]",
-                "dm-sonnet",
-                "flax",
-                "ftfy",
-                "h5py",
-                "urllib3",
-                "httpx",
-                "huggingface-hub",
-                "ipywidgets",
-                "jax[cuda12]",
-                "keras",
-                "matplotlib",
-                "numba",
-                "numpy",
-                "optax",
-                "pandas",
-                "plotly[express]",
-                "psycopg2",
-                "requests",
-                "safetensors",
-                "scikit-image",
-                "scikit-learn",
-                "scipy",
-                "seaborn",
-                "sentencepiece",
-                "sqlalchemy",
-                "statsmodels",
-                "sympy",
-                "tabulate",
-                "tensorboard",
-                "toml",
-                "transformers",
-                "triton",
-                "typer",
-                "vega-datasets",
-                "watchfiles",
-                "websockets",
-            )
-        )
+        environment_packages = [
+            "accelerate",
+            "aiohttp",
+            "altair",
+            "asyncpg",
+            "beautifulsoup4",
+            "bokeh",
+            "boto3[crt]",
+            "click",
+            "diffusers[torch,flax]",
+            "dm-sonnet",
+            "flax",
+            "ftfy",
+            "h5py",
+            "urllib3",
+            "httpx",
+            "huggingface-hub",
+            "ipywidgets",
+            "jax[cuda12]",
+            "keras",
+            "matplotlib",
+            "numba",
+            "numpy",
+            "optax",
+            "pandas",
+            "plotly[express]",
+            "psycopg2",
+            "requests",
+            "safetensors",
+            "scikit-image",
+            "scikit-learn",
+            "scipy",
+            "seaborn",
+            "sentencepiece",
+            "sqlalchemy",
+            "statsmodels",
+            "sympy",
+            "tabulate",
+            "tensorboard",
+            "toml",
+            "transformers",
+            "triton",
+            "typer",
+            "vega-datasets",
+            "watchfiles",
+            "websockets",
+        ]
 
         # Kernelshim dependencies.
-        kernelshim_image = environment_image.pip_install(
+        kernelshim_packages = [
             "basedpyright>=1.28",
             "fastapi>=0.100",
             "ipykernel>=6",
@@ -1896,9 +1887,19 @@ class _Image(_Object, type_prefix="im"):
             "pyzmq>=26",
             "ruff>=0.11",
             "uvicorn>=0.32",
-        )
+        ]
 
-        return kernelshim_image
+        return base_image.run_commands(
+            "apt-get update",
+            "apt-get install -y libpq-dev pkg-config cmake",
+            # Install uv since it's faster than pip for installing packages.
+            "pip install uv",
+            # https://github.com/astral-sh/uv/issues/11480
+            "pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126",
+            f"uv pip install --system {shlex.join(sorted(environment_packages))}",
+            f"uv pip install --system {shlex.join(sorted(kernelshim_packages))}",
+            force_build=force_build,
+        )
 
     @staticmethod
     def debian_slim(python_version: Optional[str] = None, force_build: bool = False) -> "_Image":
