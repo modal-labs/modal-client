@@ -706,7 +706,7 @@ class _Cls(_Object, type_prefix="cs"):
             # if not local (== k *could* be a method) or it is local and we know k is a method
             deprecation_warning(
                 (2025, 1, 13),
-                "Calling on an uninstantiated class will soon be deprecated; "
+                "Calling a method on an uninstantiated class will soon be deprecated; "
                 "update your code to instantiate the class first, i.e.:\n"
                 f"{self._name}().{k} instead of {self._name}.{k}",
             )
