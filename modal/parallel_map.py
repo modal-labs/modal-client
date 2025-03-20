@@ -107,12 +107,17 @@ async def _map_invocation(
     sync_client_retries_enabled = response.sync_client_retries_enabled
 
     have_all_inputs = False
-    num_inputs = 0
-    num_outputs = 0
+    inputs_created = 0
+    inputs_sent = 0
+    inputs_retried = 0
+    outputs_completed = 0
+    outputs_received = 0
+    duplicate_outputs = 0
+    retried_outputs = 0
 
     def count_update():
         if count_update_callback is not None:
-            count_update_callback(num_outputs, num_inputs)
+            count_update_callback(outputs_completed, inputs_created)
 
     retry_queue = TimestampPriorityQueue()
     completed_outputs: set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
@@ -122,9 +127,9 @@ async def _map_invocation(
     )
 
     async def create_input(argskwargs):
-        nonlocal num_inputs
-        idx = num_inputs
-        num_inputs += 1
+        nonlocal inputs_created
+        idx = inputs_created
+        inputs_created += 1
         (args, kwargs) = argskwargs
         return await _create_input(args, kwargs, client, idx=idx, method_name=function._use_method_name)
 
@@ -151,7 +156,7 @@ async def _map_invocation(
 
     async def pump_inputs():
         assert client.stub
-        nonlocal have_all_inputs, num_inputs
+        nonlocal have_all_inputs, inputs_created, inputs_sent
         async for items in queue_batch_iterator(input_queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
             # Add items to the manager. Their state will be SENDING.
             await map_items_manager.add_items(items)
@@ -166,6 +171,7 @@ async def _map_invocation(
 
             resp = await send_inputs(client.stub.FunctionPutInputs, request)
             count_update()
+            inputs_sent += len(items)
             # Change item state to WAITING_FOR_OUTPUT, and set the input_id and input_jwt which are in the response.
             map_items_manager.handle_put_inputs_response(resp.inputs)
             logger.debug(
@@ -176,6 +182,7 @@ async def _map_invocation(
         yield
 
     async def retry_inputs():
+        nonlocal inputs_retried
         async for retriable_idxs in queue_batch_iterator(retry_queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
             # For each index, use the context in the manager to create a FunctionRetryInputsItem.
             # This will also update the context state to RETRYING.
@@ -191,6 +198,7 @@ async def _map_invocation(
             # to the new value in the response.
             map_items_manager.handle_retry_response(resp.input_jwts)
             logger.debug(f"Successfully pushed retry for {len(inputs)} to server.")
+            inputs_retried += len(inputs)
         yield
 
     async def send_inputs(
@@ -215,11 +223,18 @@ async def _map_invocation(
 
     async def get_all_outputs():
         assert client.stub
-        nonlocal num_inputs, num_outputs, have_all_inputs
+        nonlocal \
+            inputs_created, \
+            outputs_completed, \
+            have_all_inputs, \
+            outputs_received, \
+            duplicate_outputs, \
+            retried_outputs
+
         last_entry_id = "0-0"
 
-        while not have_all_inputs or num_outputs < num_inputs:
-            logger.debug(f"Requesting outputs. Have {num_outputs} outputs, {num_inputs} inputs.")
+        while not have_all_inputs or outputs_completed < inputs_created:
+            logger.debug(f"Requesting outputs. Have {outputs_completed} outputs, {inputs_created} inputs.")
             # Get input_jwts of all items in the WAITING_FOR_OUTPUT state.
             # The server uses these to track for lost inputs.
             input_jwts = [input_jwt for input_jwt in map_items_manager.get_input_jwts_waiting_for_output()]
@@ -242,14 +257,19 @@ async def _map_invocation(
             last_entry_id = response.last_entry_id
             now_seconds = int(time.time())
             for item in response.outputs:
+                outputs_received += 1
                 # If the output failed, and there are retries remaining, the input will be placed on the
-                # retry queue, and state updated to WAITING_FOR_RETRY. Otherwise the output is considered
+                # retry queue, and state updated to WAITING_FOR_RETRY. Otherwise, the output is considered
                 # complete and the item is removed from the manager.
-                output_is_complete = await map_items_manager.handle_get_outputs_response(item, now_seconds)
-                if output_is_complete:
+                output_type = await map_items_manager.handle_get_outputs_response(item, now_seconds)
+                if output_type == _OutputType.COMPLETE:
                     completed_outputs.add(item.input_id)
-                    num_outputs += 1
+                    outputs_completed += 1
                     yield item
+                elif output_type == _OutputType.DUPLICATE:
+                    duplicate_outputs += 1
+                elif output_type == _OutputType.RETRYING:
+                    retried_outputs += 1
 
     async def get_all_outputs_and_clean_up():
         assert client.stub
@@ -308,12 +328,33 @@ async def _map_invocation(
 
         assert len(received_outputs) == 0
 
+    async def log_debug_stats():
+        def log_stats():
+            logger.debug(
+                f"Map stats: have_all_inputs={have_all_inputs} inputs_created={inputs_created} "
+                f"input_sent={inputs_sent} inputs_retried={inputs_retried} outputs_received={outputs_received} "
+                f"outputs_completed={outputs_completed} duplicate_outputs={duplicate_outputs} "
+                f"retried_outputs={retried_outputs} input_queue_size={input_queue.qsize()} "
+                f"retry_queue_size={retry_queue.qsize()} "
+            )
+        while True:
+            log_stats()
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                # Log final stats before exiting
+                log_stats()
+                break
+
+    log_debug_stats_task = asyncio.create_task(log_debug_stats())
     async with aclosing(
         async_merge(drain_input_generator(), pump_inputs(), poll_outputs(), retry_inputs())
     ) as streamer:
         async for response in streamer:
             if response is not None:
                 yield response.value
+    log_debug_stats_task.cancel()
+    await log_debug_stats_task
 
 
 @warn_if_generator_is_not_consumed(function_name="Function.map")
@@ -509,6 +550,10 @@ class _MapItemState(enum.Enum):
     # The output has been received and was either successful, or failed with no more retries remaining.
     COMPLETE = 5
 
+class _OutputType(enum.Enum):
+    COMPLETE = 1
+    RETRYING = 2
+    DUPLICATE = 3
 
 class _MapItemContext:
     state: _MapItemState
@@ -549,7 +594,7 @@ class _MapItemContext:
         now_seconds: int,
         function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
         retry_queue: TimestampPriorityQueue,
-    ) -> bool:
+    ) -> _OutputType:
         """
         Processes the output, and determines if it is complete or needs to be retried.
 
@@ -561,7 +606,7 @@ class _MapItemContext:
                 f"Received output for input marked as complete. Must be duplicate, so ignoring. "
                 f"idx={item.idx} input_id={item.input_id}, retry_count={item.retry_count}"
             )
-            return False
+            return _OutputType.DUPLICATE
         # If the item's retry count doesn't match our retry count, this is probably an old output.
         if item.retry_count != self.retry_manager.retry_count:
             logger.debug(
@@ -569,7 +614,7 @@ class _MapItemContext:
                 f"idx={item.idx} input_id={item.input_id} retry_count={item.retry_count} "
                 f"expected_retry_count={self.retry_manager.retry_count}"
             )
-            return False
+            return _OutputType.DUPLICATE
 
         # retry failed inputs when the function call invocation type is SYNC
         if (
@@ -578,12 +623,12 @@ class _MapItemContext:
             or not self.sync_client_retries_enabled
         ):
             self.state = _MapItemState.COMPLETE
-            return True
+            return _OutputType.COMPLETE
 
         # Get the retry delay and increment the retry count.
         # TODO(ryan): We must call this for lost inputs - even though we will set the retry delay to 0 later -
         # because we must increment the retry count. That's awkward, let's come up with something better.
-        # TODO(ryan):To maintain paritiy with server-side retries, retrying lost inputs should not count towards
+        # TODO(ryan):To maintain parity with server-side retries, retrying lost inputs should not count towards
         # the retry policy. However we use the retry_count number as a unique identifier on each attempt to:
         #  1) ignore duplicate outputs
         #  2) ignore late outputs received from previous attempts
@@ -600,12 +645,12 @@ class _MapItemContext:
         # None means the maximum number of retries has been reached, so output the error
         if delay_ms is None:
             self.state = _MapItemState.COMPLETE
-            return True
+            return _OutputType.COMPLETE
 
         self.state = _MapItemState.WAITING_TO_RETRY
         await retry_queue.put(now_seconds + (delay_ms / 1000), item.idx)
 
-        return False
+        return _OutputType.RETRYING
 
     async def prepare_item_for_retry(self) -> api_pb2.FunctionRetryInputsItem:
         self.state = _MapItemState.RETRYING
@@ -690,18 +735,18 @@ class _MapItemsManager:
             if ctx is not None:
                 ctx.handle_retry_response(input_jwt)
 
-    async def handle_get_outputs_response(self, item: api_pb2.FunctionGetOutputsItem, now_seconds: int) -> bool:
+    async def handle_get_outputs_response(self, item: api_pb2.FunctionGetOutputsItem, now_seconds: int) -> _OutputType:
         ctx = self._item_context.get(item.idx, None)
         if ctx is None:
             # We've already processed this output, so we can skip it.
             # This can happen because the worker can sometimes send duplicate outputs.
-            return False
-        output_is_complete = await ctx.handle_get_outputs_response(
+            return _OutputType.DUPLICATE
+        output_type = await ctx.handle_get_outputs_response(
             item, now_seconds, self.function_call_invocation_type, self._retry_queue
         )
-        if output_is_complete:
+        if output_type == _OutputType.COMPLETE:
             self._remove_item(item.idx)
-        return output_is_complete
+        return output_type
 
     def __len__(self):
         return len(self._item_context)
