@@ -1834,7 +1834,7 @@ class _Image(_Object, type_prefix="im"):
         # https://github.com/Paperspace/jupyter-docker-stacks/blob/master/scipy-notebook/Dockerfile
         # https://github.com/modal-labs/modal-examples
         return (
-            kernelshim_image.apt_install("libpq-dev")
+            kernelshim_image.apt_install("libpq-dev", "pkg-config", "cmake")
             .pip_install(
                 "torch",
                 "torchvision",
@@ -1879,8 +1879,7 @@ class _Image(_Object, type_prefix="im"):
                 "statsmodels",
                 "sympy",
                 "tabulate",
-                "tensorflow",
-                "tensorflow-probability",
+                "tensorboard",
                 "toml",
                 "transformers",
                 "triton",
