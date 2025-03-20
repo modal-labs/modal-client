@@ -1823,7 +1823,7 @@ class _Image(_Object, type_prefix="im"):
         """Private API. Default image used for Modal notebook kernels."""
         # Include several common packages, as well as kernelshim dependencies (except 'modal').
         # These packages aren't pinned right now. Notebooks are not yet stable.
-        base_image = _Image.debian_slim(python_version, force_build=force_build)
+        base_image = _Image.debian_slim(python_version)
 
         # TODO: Compile a better list, this is just a quick MVP.
         # https://pypistats.org/top
