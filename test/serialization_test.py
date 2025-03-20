@@ -8,6 +8,7 @@ from modal._serialization import (
     deserialize,
     deserialize_data_format,
     deserialize_proto_params,
+    proto_type_enum_to_payload_handler,
     serialize,
     serialize_data_format,
     serialize_proto_params,
@@ -91,7 +92,7 @@ def test_proto_serde_failure_incomplete_params():
     with pytest.raises(InvalidError, match="Missing required parameter: x"):
         validate_params({"a": "b"}, schema)
 
-    with pytest.raises(TypeError, match="expected str, got bytes"):
+    with pytest.raises(TypeError, match="Expected str, got bytes"):
         validate_params({"x": b"b"}, schema)
 
     with pytest.raises(InvalidError, match="provided but are not present in the schema"):
@@ -108,3 +109,7 @@ def test_apply_defaults():
     assert apply_defaults({}, schema) == {"x": "hello"}
     assert apply_defaults({"x": "goodbye"}, schema) == {"x": "goodbye"}
     assert apply_defaults({"y": "goodbye"}, schema) == {"x": "hello", "y": "goodbye"}
+
+
+def test_non_implemented_proto_type():
+    proto_type_enum_to_payload_handler(api_pb2.PARAM_TYPE_UNKNOWN)
