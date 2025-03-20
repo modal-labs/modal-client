@@ -61,6 +61,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     cluster_size: Optional[int]  # Experimental: Clustered functions
     build_timeout: Optional[int]
     max_concurrent_inputs: Optional[int]
+    target_concurrent_inputs: Optional[int]
 
     def __init__(
         self,
@@ -75,6 +76,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         force_build: bool = False,
         build_timeout: Optional[int] = None,
         max_concurrent_inputs: Optional[int] = None,
+        target_concurrent_inputs: Optional[int] = None,
     ):
         self.raw_f = raw_f
         self.flags = flags
@@ -93,6 +95,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         self.force_build = force_build
         self.build_timeout = build_timeout
         self.max_concurrent_inputs = max_concurrent_inputs
+        self.target_concurrent_inputs = target_concurrent_inputs
 
     def _get_raw_f(self) -> Callable[P, ReturnType]:
         return self.raw_f
@@ -731,28 +734,37 @@ def _batched(
 def _concurrent(
     _warn_parentheses_missing=None,
     *,
-    max_inputs: int,  # Limit on each contianer's concurrency
+    max_inputs: int,  # Hard limit on each contianer's input concurrency
+    target_inputs: Optional[int],  # Level of input concurrency for Modal's autoscaler to target
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
-    """Decorator that allows containers to handle multiple inputs concurrently.
+    """Decorator that allows individual containers to handle multiple inputs concurrently.
 
     The concurrency mechanism depends on whether the function is async or not:
     - Async functions will run inputs on a single thread as asyncio tasks.
     - Synchronous functions will use multi-threading. The code must be thread-safe.
 
-    Within-container concurrency will be most useful for IO-bound operations
+    Input concurrency will be most useful for workflows that are IO-bound
     (e.g., making network requests) or when running an inference server that supports
     dynamic batching.
+
+    When `target_inputs` is set, Modal's autoscaler will try to provision resources such
+    that each container is running that many inputs concurrently. Containers may burst up to
+    up to `max_inputs` when resources are insufficient to remain at the target concurrency.
     """
     if _warn_parentheses_missing is not None:
         raise InvalidError(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.concurrent()`."
         )
 
+    if target_inputs and target_inputs > max_inputs:
+        raise InvalidError("`target_inputs` parameter cannot be greater than `max_inputs`.")
+
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         return _PartialFunction(
             raw_f,
             _PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.CONCURRENT,
             max_concurrent_inputs=max_inputs,
+            target_concurrent_inputs=target_inputs,
         )
 
     return wrapper
