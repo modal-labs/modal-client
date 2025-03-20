@@ -680,8 +680,10 @@ class _App:
                 batch_wait_ms = f.batch_wait_ms
                 if f.flags & _PartialFunctionFlags.CONCURRENT:
                     max_concurrent_inputs = f.max_concurrent_inputs
+                    target_concurrent_inputs = f.target_concurrent_inputs
                 else:
                     max_concurrent_inputs = allow_concurrent_inputs
+                    target_concurrent_inputs = None
             else:
                 if not is_global_object(f.__qualname__) and not serialized:
                     raise InvalidError(
@@ -718,6 +720,7 @@ class _App:
                 batch_max_size = None
                 batch_wait_ms = None
                 max_concurrent_inputs = allow_concurrent_inputs
+                target_concurrent_inputs = None
 
                 cluster_size = None  # Experimental: Clustered functions
                 i6pn_enabled = i6pn
@@ -759,6 +762,7 @@ class _App:
                 buffer_containers=buffer_containers,
                 scaledown_window=scaledown_window,
                 max_concurrent_inputs=max_concurrent_inputs,
+                target_concurrent_inputs=target_concurrent_inputs,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
                 timeout=timeout,
