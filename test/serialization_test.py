@@ -122,21 +122,6 @@ def test_non_implemented_proto_type():
         type_register.get_decoder(1000)  # type: ignore
 
 
-def test_schema_extraction_list():
-    def new_f(simple_list: list[int]): ...
-    def old_f(simple_list: typing.List[int]): ...
-
-    for f in [new_f, old_f]:
-        (list_spec,) = signature_to_protobuf_schema(inspect.signature(f))
-        assert list_spec == api_pb2.ClassParameterSpec(
-            name="simple_list",
-            full_type=api_pb2.GenericPayloadType(
-                type=api_pb2.PARAM_TYPE_LIST, sub_types=[api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_INT)]
-            ),
-            has_default=False,
-        )
-
-
 def test_schema_extraction_unknown():
     def with_empty(a): ...
 
@@ -213,4 +198,37 @@ def test_schema_extraction_bytes():
         bytes_default=b"foo",  # for backward compatibility
         full_type=api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_BYTES),
         default_value=api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_BYTES, bytes_value=b"foo"),
+    )
+
+
+def test_schema_extraction_list():
+    def new_f(simple_list: list[int]): ...
+    def old_f(simple_list: typing.List[int]): ...
+
+    for f in [new_f, old_f]:
+        (list_spec,) = signature_to_protobuf_schema(inspect.signature(f))
+        assert list_spec == api_pb2.ClassParameterSpec(
+            name="simple_list",
+            full_type=api_pb2.GenericPayloadType(
+                type=api_pb2.PARAM_TYPE_LIST, sub_types=[api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_INT)]
+            ),
+            has_default=False,
+        )
+
+
+def test_schema_extraction_nested_list():
+    def f(nested_list: list[list[bytes]]): ...
+
+    (list_spec,) = signature_to_protobuf_schema(inspect.signature(f))
+    assert list_spec == api_pb2.ClassParameterSpec(
+        name="nested_list",
+        full_type=api_pb2.GenericPayloadType(
+            type=api_pb2.PARAM_TYPE_LIST,
+            sub_types=[
+                api_pb2.GenericPayloadType(
+                    type=api_pb2.PARAM_TYPE_LIST, sub_types=[api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_BYTES)]
+                )
+            ],
+        ),
+        has_default=False,
     )
