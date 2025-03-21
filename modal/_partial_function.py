@@ -734,8 +734,8 @@ def _batched(
 def _concurrent(
     _warn_parentheses_missing=None,
     *,
-    max_inputs: int,  # Hard limit on each contianer's input concurrency
-    target_inputs: Optional[int],  # Level of input concurrency for Modal's autoscaler to target
+    max_inputs: int,  # Hard limit on each container's input concurrency
+    target_inputs: Optional[int] = None,  # Input concurrency that Modal's autoscaler should target
 ) -> Callable[[Callable[..., Any]], _PartialFunction]:
     """Decorator that allows individual containers to handle multiple inputs concurrently.
 
@@ -749,7 +749,7 @@ def _concurrent(
 
     When `target_inputs` is set, Modal's autoscaler will try to provision resources such
     that each container is running that many inputs concurrently. Containers may burst up to
-    up to `max_inputs` when resources are insufficient to remain at the target concurrency.
+    up to `max_inputs` if resources are insufficient to remain at the target concurrency.
     """
     if _warn_parentheses_missing is not None:
         raise InvalidError(
