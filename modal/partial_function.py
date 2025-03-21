@@ -5,6 +5,7 @@ from ._partial_function import (
     _asgi_app,
     _batched,
     _build,
+    _concurrent,
     _enter,
     _exit,
     _fastapi_endpoint,
@@ -28,3 +29,4 @@ build = synchronize_api(_build, target_module=__name__)
 enter = synchronize_api(_enter, target_module=__name__)
 exit = synchronize_api(_exit, target_module=__name__)
 batched = synchronize_api(_batched, target_module=__name__)
+concurrent = synchronize_api(_concurrent, target_module=__name__)
