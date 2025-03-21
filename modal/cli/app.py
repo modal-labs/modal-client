@@ -227,6 +227,8 @@ async def history(
     ]
     rows = []
     deployments_with_tags = False
+    deployments_with_commit_info = False
+    deployments_with_dirty_commit = False
     for idx, app_stats in enumerate(resp.app_deployment_histories):
         style = "bold green" if idx == 0 else ""
 
@@ -241,10 +243,23 @@ async def history(
             deployments_with_tags = True
             row.append(Text(app_stats.tag, style=style))
 
+        if app_stats.commit_info.commit_hash:
+            deployments_with_commit_info = True
+            short_hash = app_stats.commit_info.commit_hash[:7]
+            if app_stats.commit_info.dirty:
+                deployments_with_dirty_commit = True
+                short_hash = f"{short_hash}*"
+            row.append(Text(short_hash, style=style))
+
         rows.append(row)
 
     if deployments_with_tags:
         columns.append("Tag")
+    if deployments_with_commit_info:
+        columns.append("Commit")
 
     rows = sorted(rows, key=lambda x: int(str(x[0])[1:]), reverse=True)
     display_table(columns, rows, json)
+
+    if deployments_with_dirty_commit and not json:
+        rich.print("* - repo had uncommitted changes")

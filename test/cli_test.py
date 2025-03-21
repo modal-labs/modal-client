@@ -900,7 +900,9 @@ def test_app_list(servicer, mock_dir, set_env_client):
     assert "my-vol" not in res.stdout
 
 
-def test_app_history(servicer, mock_dir, set_env_client):
+@mock.patch("modal._utils.git_utils.get_git_commit_info", new_callable=mock.AsyncMock)
+def test_app_history(mock_get_git_commit_info, servicer, mock_dir, set_env_client):
+    mock_get_git_commit_info.return_value = api_pb2.CommitInfo(vcs="git", branch="main", commit_hash="commit-hash")
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
         _run(["deploy", "myapp.py", "--name", "my_app_foo"])
 
@@ -918,6 +920,7 @@ def test_app_history(servicer, mock_dir, set_env_client):
     res = _run(["app", "history", "my_app_foo"])
     assert "v1" in res.stdout
     assert "v2" in res.stdout, f"{res.stdout=}"
+    assert "commit-hash" in res.stdout
 
     # can't fetch history for stopped apps
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
