@@ -1080,7 +1080,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 retry_policy=retry_policy,
                 function_call_jwt=function_call_jwt,
                 pipelined_inputs=response_inputs,
-                sync_client_retries_enabled=self.sync_client_retries_enabled
+                sync_client_retries_enabled=self.sync_client_retries_enabled,
             )
         )
 
@@ -1503,6 +1503,14 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 ]
             )
         )
+
+    async def SandboxGetResourceUsage(self, stream):
+        request: api_pb2.SandboxGetResourceUsageRequest = await stream.recv_message()
+        sb_id = request.sandbox_id
+        if sb_id != "sb-123":
+            raise GRPCError(Status.NOT_FOUND, "Sandbox not found")
+
+        await stream.send_message(api_pb2.SandboxGetResourceUsageResponse(cpu_core_nanosecs=100, mem_gib_nanosecs=100))
 
     async def SandboxTagsSet(self, stream):
         request: api_pb2.SandboxTagsSetRequest = await stream.recv_message()
