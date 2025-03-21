@@ -893,6 +893,11 @@ class _App:
             ):
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
 
+            if _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.CONCURRENT):
+                raise InvalidError(
+                    "The `@modal.concurrent` decorator cannot be used on methods; decorate the class instead."
+                )
+
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             cls_func = _Function.from_local(

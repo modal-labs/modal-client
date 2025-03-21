@@ -1257,6 +1257,10 @@ def test_concurrency_migration(client, servicer):
         if request.function.function_name in {"has_new_config", "HasNewConfig.*"}:
             assert request.function.max_concurrent_inputs == CONFIG_VALS["NEW_MAX"]
             assert request.function.target_concurrent_inputs == CONFIG_VALS["TARGET"]
+        elif request.function.function_name in {"has_new_config_and_web_endpoint", "has_web_endpoint_and_new_config"}:
+            assert request.function.max_concurrent_inputs == CONFIG_VALS["NEW_MAX"]
+            assert request.function.target_concurrent_inputs == CONFIG_VALS["TARGET"]
+            assert request.function.webhook_config is not None
         elif request.function.function_name in {"has_old_config", "HasOldConfig.*"}:
             assert request.function.max_concurrent_inputs == CONFIG_VALS["OLD_MAX"]
             assert request.function.target_concurrent_inputs == 0

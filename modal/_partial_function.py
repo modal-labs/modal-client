@@ -150,6 +150,8 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
             batch_wait_ms=self.batch_wait_ms,
             force_build=self.force_build,
             build_timeout=self.build_timeout,
+            max_concurrent_inputs=self.max_concurrent_inputs,
+            target_concurrent_inputs=self.target_concurrent_inputs,
         )
 
 
@@ -161,8 +163,10 @@ def _find_partial_methods_for_user_cls(user_cls: type[Any], flags: int) -> dict[
     for parent_cls in reversed(user_cls.mro()):
         if parent_cls is not object:
             for k, v in parent_cls.__dict__.items():
+                print(f">>>> {k} {v}")
                 if isinstance(v, PartialFunction):  # type: ignore[reportArgumentType]   # synchronicity wrapper types
                     _partial_function: _PartialFunction = typing.cast(_PartialFunction, synchronizer._translate_in(v))
+                    print(f">>> {_partial_function.flags}")
                     if _partial_function.flags & flags:
                         partial_functions[k] = _partial_function
 
@@ -736,7 +740,7 @@ def _concurrent(
     *,
     max_inputs: int,  # Hard limit on each container's input concurrency
     target_inputs: Optional[int] = None,  # Input concurrency that Modal's autoscaler should target
-) -> Callable[[Callable[..., Any]], _PartialFunction]:
+) -> Callable[[Union[Callable[..., Any], _PartialFunction]], _PartialFunction]:
     """Decorator that allows individual containers to handle multiple inputs concurrently.
 
     The concurrency mechanism depends on whether the function is async or not:
@@ -759,9 +763,16 @@ def _concurrent(
     if target_inputs and target_inputs > max_inputs:
         raise InvalidError("`target_inputs` parameter cannot be greater than `max_inputs`.")
 
-    def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
+    def wrapper(obj: Union[Callable[..., Any], _PartialFunction]) -> _PartialFunction:
+        if isinstance(obj, _PartialFunction):
+            # This fees quite janky,,,
+            obj.max_concurrent_inputs = max_inputs
+            obj.target_concurrent_inputs = target_inputs
+            obj.add_flags(_PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.CONCURRENT)
+            return obj
+
         return _PartialFunction(
-            raw_f,
+            obj,
             _PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.CONCURRENT,
             max_concurrent_inputs=max_inputs,
             target_concurrent_inputs=target_inputs,
