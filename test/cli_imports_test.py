@@ -12,7 +12,7 @@ from modal.cli.import_refs import (
     list_cli_commands,
     parse_import_ref,
 )
-from modal.exception import InvalidError, PendingDeprecationError
+from modal.exception import DeprecationError, InvalidError
 from modal.functions import Function
 from modal.partial_function import method, web_server
 
@@ -169,7 +169,7 @@ def test_import_package_and_module_names(monkeypatch, supports_dir):
     assert mod1.__name__ == "assert_package"
 
     monkeypatch.chdir(supports_dir.parent)
-    with pytest.warns(PendingDeprecationError, match=r"\s-m\s"):
+    with pytest.warns(DeprecationError, match=r"\s-m\s"):
         # TODO: this should use use_module_mode=True once we remove the deprecation warning
         mod2 = import_file_or_module(ImportRef("test.supports.assert_package", use_module_mode=False))
 
