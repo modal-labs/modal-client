@@ -712,6 +712,11 @@ message ClassParameterSpec { // TODO: rename into PayloadParameterSpec
   optional ClassParameterValue default_value = 9; // supersedes default_oneof
 }
 
+message ListValue {
+  // corresponds to PARAMETER_TYPE_LIST
+  repeated ClassParameterValue items = 1;
+}
+
 message GenericPayloadType {
   ParameterType type = 1;
   repeated GenericPayloadType sub_types = 2;  // sub-type for generic types like lists

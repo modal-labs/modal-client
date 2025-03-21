@@ -24,7 +24,7 @@ from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._runtime.execution_context import current_input_id, is_local
-from ._serialization import apply_defaults, serialize, serialize_proto_params, validate_params
+from ._serialization import apply_defaults, serialize, serialize_proto_params, validate_parameter_values
 from ._traceback import print_server_warnings
 from ._utils.async_utils import (
     TaskContext,
@@ -970,7 +970,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     )
                 schema = parent._class_parameter_info.schema
                 kwargs_with_defaults = apply_defaults(kwargs, schema)
-                validate_params(kwargs_with_defaults, schema)
+                validate_parameter_values(kwargs_with_defaults, schema)
                 serialized_params = serialize_proto_params(kwargs_with_defaults)
                 can_use_parent = len(parent._class_parameter_info.schema) == 0  # no parameters
             else:

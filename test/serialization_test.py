@@ -2,6 +2,7 @@
 import inspect
 import pytest
 import random
+import typing
 
 from modal import Queue
 from modal._serialization import (
@@ -9,13 +10,13 @@ from modal._serialization import (
     deserialize,
     deserialize_data_format,
     deserialize_proto_params,
-    proto_type_enum_to_payload_handler,
     serialize,
     serialize_data_format,
     serialize_proto_params,
-    validate_params,
+    signature_to_protobuf_schema,
+    type_register,
+    validate_parameter_values,
 )
-from modal._utils.function_utils import signature_to_protobuf_schema
 from modal._utils.rand_pb_testing import rand_pb
 from modal.exception import DeserializationError, InvalidError
 from modal_proto import api_pb2
@@ -92,16 +93,16 @@ def test_proto_serde_failure_incomplete_params():
     # construct an incorrect serialization:
     schema = [api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_STRING)]
     with pytest.raises(InvalidError, match="Missing required parameter: x"):
-        validate_params({"a": "b"}, schema)
+        validate_parameter_values({"a": "b"}, schema)
 
     with pytest.raises(TypeError, match="Expected str, got bytes"):
-        validate_params({"x": b"b"}, schema)
+        validate_parameter_values({"x": b"b"}, schema)
 
     with pytest.raises(InvalidError, match="provided but are not present in the schema"):
-        validate_params({"x": "y", "a": "b"}, schema)
+        validate_parameter_values({"x": "y", "a": "b"}, schema)
 
     # this should pass:
-    validate_params({"x": "y"}, schema)
+    validate_parameter_values({"x": "y"}, schema)
 
 
 def test_apply_defaults():
@@ -115,18 +116,66 @@ def test_apply_defaults():
 
 def test_non_implemented_proto_type():
     with pytest.raises(InvalidError, match="No payload handler implemented for payload type PARAM_TYPE_UNKNOWN"):
-        proto_type_enum_to_payload_handler(api_pb2.PARAM_TYPE_UNKNOWN)
+        type_register.get_decoder(api_pb2.PARAM_TYPE_UNKNOWN)
 
     with pytest.raises(InvalidError, match="recognize payload type 1000"):
-        proto_type_enum_to_payload_handler(1000)  # type: ignore
+        type_register.get_decoder(1000)  # type: ignore
 
 
-def test_new_schema_format_for_legacy_types():
-    def f(int_value: int = 1337, str_value: str = "foo", bytes_value: bytes = b"bar"): ...
+def test_schema_extraction_list():
+    def new_f(simple_list: list[int]): ...
+    def old_f(simple_list: typing.List[int]): ...
+
+    for f in [new_f, old_f]:
+        (list_spec,) = signature_to_protobuf_schema(inspect.signature(f))
+        assert list_spec == api_pb2.ClassParameterSpec(
+            name="simple_list",
+            full_type=api_pb2.GenericPayloadType(
+                type=api_pb2.PARAM_TYPE_LIST, sub_types=[api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_INT)]
+            ),
+            has_default=False,
+        )
+
+
+def test_schema_extraction_unknown():
+    def with_empty(a): ...
+
+    def with_any(a: typing.Any): ...
+
+    class Custom:
+        pass
+
+    def with_custom(a: Custom): ...
+
+    for func in [with_empty, with_any, with_custom]:
+        fields = signature_to_protobuf_schema(inspect.signature(func))
+        assert fields == [
+            api_pb2.ClassParameterSpec(
+                name="a", has_default=False, full_type=api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_UNKNOWN)
+            )
+        ]
+
+    def with_default(a=5): ...
+
+    fields = signature_to_protobuf_schema(inspect.signature(with_default))
+    assert fields == [
+        api_pb2.ClassParameterSpec(
+            name="a",
+            full_type=api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_UNKNOWN),
+            has_default=True,
+            default_value=api_pb2.ClassParameterValue(
+                type=api_pb2.PARAM_TYPE_INT,
+                int_value=5,
+            ),
+        )
+    ]
+
+
+def test_schema_extraction_int():
+    def f(int_value: int = 1337): ...
 
     sig = inspect.signature(f)
-    int_spec, str_spec, bytes_spec = signature_to_protobuf_schema(sig)
-    print(int_spec)
+    (int_spec,) = signature_to_protobuf_schema(sig)
     assert int_spec == api_pb2.ClassParameterSpec(
         name="int_value",
         type=api_pb2.PARAM_TYPE_INT,
@@ -134,4 +183,34 @@ def test_new_schema_format_for_legacy_types():
         has_default=True,
         default_value=api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_INT, int_value=1337),
         int_default=1337,
+    )
+
+
+def test_schema_extraction_str():
+    def foo(str_value: str = "foo"):
+        pass
+
+    (str_spec,) = signature_to_protobuf_schema(inspect.signature(foo))
+    assert str_spec == api_pb2.ClassParameterSpec(
+        name="str_value",
+        type=api_pb2.PARAM_TYPE_STRING,
+        full_type=api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_STRING),
+        has_default=True,
+        default_value=api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_STRING, string_value="foo"),
+        string_default="foo",
+    )
+
+
+def test_schema_extraction_bytes():
+    def foo(a: bytes = b"foo"):
+        pass
+
+    (bytes_spec,) = signature_to_protobuf_schema(inspect.signature(foo))
+    assert bytes_spec == api_pb2.ClassParameterSpec(
+        name="a",
+        type=api_pb2.PARAM_TYPE_BYTES,  # for backward compatibility
+        has_default=True,
+        bytes_default=b"foo",  # for backward compatibility
+        full_type=api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_BYTES),
+        default_value=api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_BYTES, bytes_value=b"foo"),
     )

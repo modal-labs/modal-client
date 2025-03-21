@@ -5,11 +5,9 @@ import inspect
 import os
 from collections.abc import AsyncGenerator
 from enum import Enum
-from inspect import Parameter
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable, Literal, Optional
 
-import typing_extensions
 from grpclib import GRPCError
 from grpclib.exceptions import StreamTerminatedError
 from synchronicity.exceptions import UserCodeException
@@ -20,8 +18,8 @@ from modal_proto import api_pb2
 from .._serialization import (
     deserialize,
     deserialize_data_format,
-    python_type_to_payload_handler,
     serialize,
+    signature_to_protobuf_schema,
 )
 from .._traceback import append_modal_tb
 from ..config import config, logger
@@ -104,67 +102,6 @@ def is_async(function):
 
 def get_function_type(is_generator: Optional[bool]) -> "api_pb2.Function.FunctionType.ValueType":
     return api_pb2.Function.FUNCTION_TYPE_GENERATOR if is_generator else api_pb2.Function.FUNCTION_TYPE_FUNCTION
-
-
-def _unknown_type(python_signature_parameter: inspect.Parameter):
-    return api_pb2.ClassParameterSpec(
-        name=python_signature_parameter.name,
-        type=api_pb2.PARAM_TYPE_UNKNOWN,  # legacy type, replaced by
-        has_default=python_signature_parameter.default is not Parameter.empty,
-        full_type=api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_UNKNOWN),
-    )
-
-
-def signature_parameter_to_proto(python_signature_parameter: inspect.Parameter) -> api_pb2.ClassParameterSpec:
-    python_type = python_signature_parameter.annotation
-    if python_type is Parameter.empty:
-        return _unknown_type(python_signature_parameter)
-
-    origin = typing_extensions.get_origin(python_type)
-    if origin:
-        base_type = origin
-    else:
-        base_type = python_type
-
-    try:
-        payload_handler = python_type_to_payload_handler(base_type)
-    except InvalidError:
-        # the python type isn't registered in the PayloadHandler system
-        return _unknown_type(python_signature_parameter)
-
-    full_proto_type = payload_handler.proto_generic_type(python_type)
-    maybe_default_value = None
-    if python_signature_parameter.default is not Parameter.empty:
-        maybe_default_value = payload_handler.to_proto_struct(python_signature_parameter.default)
-    field_spec = api_pb2.ClassParameterSpec(
-        name=python_signature_parameter.name,
-        full_type=full_proto_type,
-        has_default=python_signature_parameter.default is not Parameter.empty,
-        default_value=maybe_default_value,
-    )
-    # For backward compatibility reasons with clients that don't look at default_value
-    # we need to still provide defaults for int, str and bytes in the base object
-    # We can remove this when all supported clients + backend only look at .default_value and .full_type
-    if full_proto_type.type == api_pb2.PARAM_TYPE_INT:
-        field_spec.int_default = python_signature_parameter.default
-        field_spec.type = api_pb2.PARAM_TYPE_INT
-    elif full_proto_type.type == api_pb2.PARAM_TYPE_STRING:
-        field_spec.string_default = python_signature_parameter.default
-        field_spec.type = api_pb2.PARAM_TYPE_STRING
-    elif full_proto_type.type == api_pb2.PARAM_TYPE_BYTES:
-        field_spec.bytes_default = python_signature_parameter.default
-        field_spec.type = api_pb2.PARAM_TYPE_BYTES
-
-    return field_spec
-
-
-def signature_to_protobuf_schema(signature: inspect.Signature) -> list[api_pb2.ClassParameterSpec]:
-    # TODO: Extend "schema" to include return value types
-    modal_parameters: list[api_pb2.ClassParameterSpec] = []
-    for param in signature.parameters.values():
-        field_spec = signature_parameter_to_proto(param)
-        modal_parameters.append(field_spec)
-    return modal_parameters
 
 
 class FunctionInfo:
@@ -353,10 +290,7 @@ class FunctionInfo:
         # annotation parameters trigger strictly typed parametrization
         # which enables web endpoint for parametrized classes
         signature = _get_class_constructor_signature(self.user_cls)
-        # validate that the schema has no unspecified fields/unsupported class parameter types
-        for param in signature.parameters.values():
-            python_type_to_payload_handler(param.annotation)
-
+        # at this point, the types in the signature should already have been validated (see Cls.from_local())
         protobuf_schema = signature_to_protobuf_schema(signature)
 
         return api_pb2.ClassParameterInfo(
