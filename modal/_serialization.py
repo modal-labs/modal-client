@@ -601,7 +601,7 @@ class IntType(PayloadHandler):
     def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
         assert full_python_type is int
         return api_pb2.GenericPayloadType(
-            base_type=api_pb2.PARAM_TYPE_INT,
+            type=api_pb2.PARAM_TYPE_INT,
         )
 
 
@@ -619,7 +619,7 @@ class StringType(PayloadHandler):
     def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
         assert full_python_type is str
         return api_pb2.GenericPayloadType(
-            base_type=api_pb2.PARAM_TYPE_STRING,
+            type=api_pb2.PARAM_TYPE_STRING,
         )
 
 
@@ -637,14 +637,14 @@ class BytesType(PayloadHandler):
     def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
         assert full_python_type is bytes
         return api_pb2.GenericPayloadType(
-            base_type=api_pb2.PARAM_TYPE_BYTES,
+            type=api_pb2.PARAM_TYPE_BYTES,
         )
 
 
 class UnknownTypeHandler(PayloadHandler):
     # we could potentially use this to encode/decode values as pickle bytes
     def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
-        return api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN)
+        return api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_UNKNOWN)
 
     def encode(self, python_value: Any) -> api_pb2.ClassParameterValue:
         # TODO: we could use pickle here?
@@ -675,7 +675,7 @@ class ListType(PayloadHandler):
             arg = typing.Any
 
         return api_pb2.GenericPayloadType(
-            base_type=api_pb2.PARAM_TYPE_LIST, sub_types=[sub_type_handler.proto_type_def(arg)]
+            type=api_pb2.PARAM_TYPE_LIST, sub_types=[sub_type_handler.proto_type_def(arg)]
         )
 
 
@@ -713,15 +713,15 @@ def _signature_parameter_to_spec(
         # We need to still provide defaults for int, str and bytes in the base object
         # We can remove this when all supported clients + backend only look at .default_value and .full_type
 
-        if full_proto_type.base_type == api_pb2.PARAM_TYPE_INT:
+        if full_proto_type.type == api_pb2.PARAM_TYPE_INT:
             if has_default:
                 field_spec.int_default = python_signature_parameter.default
             field_spec.type = api_pb2.PARAM_TYPE_INT
-        elif full_proto_type.base_type == api_pb2.PARAM_TYPE_STRING:
+        elif full_proto_type.type == api_pb2.PARAM_TYPE_STRING:
             if has_default:
                 field_spec.string_default = python_signature_parameter.default
             field_spec.type = api_pb2.PARAM_TYPE_STRING
-        elif full_proto_type.base_type == api_pb2.PARAM_TYPE_BYTES:
+        elif full_proto_type.type == api_pb2.PARAM_TYPE_BYTES:
             if has_default:
                 field_spec.bytes_default = python_signature_parameter.default
             field_spec.type = api_pb2.PARAM_TYPE_BYTES
@@ -754,3 +754,15 @@ def validate_parameter_type(declared_type: type):
         raise TypeError(
             f"{declared_type.__name__} is not a supported modal.parameter() type. Use one of: {supported_str}"
         )
+
+
+def get_callable_schema(callable: typing.Callable) -> api_pb2.FunctionSchema:
+    sig = inspect.signature(callable)
+    # TODO: treat no return value annotation as None return?
+    return_type_handler = type_register.get_for_declared_type(sig.return_annotation)
+    return_type_proto = return_type_handler.proto_type_def(sig.return_annotation)
+
+    return api_pb2.FunctionSchema(
+        arguments=[_signature_parameter_to_spec(p) for p in sig.parameters.values()],
+        return_value=return_type_proto,
+    )

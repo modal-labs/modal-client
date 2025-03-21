@@ -691,6 +691,11 @@ message ClassParameterInfo {
   repeated ClassParameterSpec schema = 2; // only set for PARAM_SERIALIZATION_FORMAT_PROTO
 }
 
+message FunctionSchema {
+  repeated ClassParameterSpec arguments = 1;
+  GenericPayloadType return_value = 2;
+}
+
 message ClassParameterSet {
   // NOTE: adding additional *fields* here can invalidate function lookups
   //  since we use the serialized message as the bound function identifier
@@ -698,7 +703,7 @@ message ClassParameterSet {
   repeated ClassParameterValue parameters = 1;
 }
 
-message ClassParameterSpec { // TODO: rename into NamedPayloadArgument or similar
+message ClassParameterSpec { // TODO: rename into PayloadParameterSpec or PayloadArgumentSpec
   string name = 1;
   ParameterType type = 2; // TODO: deprecate - use full_type instead
   bool has_default = 3;
@@ -712,6 +717,15 @@ message ClassParameterSpec { // TODO: rename into NamedPayloadArgument or simila
   optional ClassParameterValue default_value = 9; // supersedes default_oneof
 }
 
+message ListValue {
+  // corresponds to PARAMETER_TYPE_LIST
+  repeated ClassParameterValue items = 1;
+}
+
+message GenericPayloadType {
+  ParameterType type = 1;
+  repeated GenericPayloadType sub_types = 2;  // sub-type for generic types like lists
+}
 
 message ClassParameterValue {  // TODO: rename into PayloadValue
   // NOTE: adding additional *fields* here can invalidate function lookups
@@ -1306,7 +1320,7 @@ message Function {
   bool _experimental_enable_gpu_snapshot = 78; // Experimental support for GPU snapshotting
 
   AutoscalerSettings autoscaler_settings = 79;  // Bundle of parameters related to autoscaling
-
+  FunctionSchema function_schema = 80;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1455,7 +1469,7 @@ message FunctionData {
   bool runtime_perf_record = 29; // For internal debugging use only.
 
   AutoscalerSettings autoscaler_settings = 31;  // Bundle of parameters related to autoscaling
-
+  FunctionSchema function_schema = 32;
 }
 
 message FunctionExtended {
@@ -1589,6 +1603,7 @@ message FunctionHandleMetadata {
   ClassParameterInfo class_parameter_info = 43;
   // Mapping of method names to their metadata, only non-empty for class service functions
   map<string, FunctionHandleMetadata> method_handle_metadata = 44;
+  FunctionSchema function_schema = 45;
 }
 
 message FunctionInput {
@@ -1644,6 +1659,7 @@ message FunctionPrecreateRequest {
   string use_method_name = 7;  // for class methods - this method name needs to be included in the FunctionInput
   // Mapping of method names to method definitions, only non-empty for class service functions
   map<string, MethodDefinition> method_definitions = 8;
+  FunctionSchema function_schema = 9;
 }
 
 message FunctionPrecreateResponse {
@@ -1730,11 +1746,6 @@ message GPUConfig {
 
 message GeneratorDone {  // Sent as the output when a generator finishes running.
   uint64 items_total = 1;
-}
-
-message GenericPayloadType {
-  ParameterType base_type = 1;
-  repeated GenericPayloadType sub_types = 2;  // sub-type for generic types like lists
 }
 
 message GenericResult {  // Used for both tasks and function outputs
@@ -1881,11 +1892,6 @@ message InputInfo {
   bool task_first_input = 7;
 }
 
-message ListValue {
-  // corresponds to PARAMETER_TYPE_LIST base type
-  repeated ClassParameterValue items = 1;
-}
-
 message MethodDefinition {
   string function_name = 1;
   Function.FunctionType function_type = 2;
@@ -1893,6 +1899,7 @@ message MethodDefinition {
   string web_url = 4;
   WebUrlInfo web_url_info = 5;
   repeated CustomDomainInfo custom_domain_info = 6;
+  FunctionSchema schema = 7;
 }
 
 message MountFile {
