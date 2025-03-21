@@ -400,6 +400,7 @@ class ParamTypeInfo:
     default_field: str
     proto_field: str
     converter: typing.Callable[[str], typing.Any]
+    type: type
 
 
 PYTHON_TO_PROTO_TYPE: dict[type, "api_pb2.ParameterType.ValueType"] = {
@@ -411,73 +412,110 @@ PYTHON_TO_PROTO_TYPE: dict[type, "api_pb2.ParameterType.ValueType"] = {
 
 PROTO_TYPE_INFO = {
     # Protobuf type enum -> encode/decode helper metadata
-    api_pb2.PARAM_TYPE_STRING: ParamTypeInfo(default_field="string_default", proto_field="string_value", converter=str),
-    api_pb2.PARAM_TYPE_INT: ParamTypeInfo(default_field="int_default", proto_field="int_value", converter=int),
+    api_pb2.PARAM_TYPE_STRING: ParamTypeInfo(
+        default_field="string_default",
+        proto_field="string_value",
+        converter=str,
+        type=str,
+    ),
+    api_pb2.PARAM_TYPE_INT: ParamTypeInfo(
+        default_field="int_default",
+        proto_field="int_value",
+        converter=int,
+        type=int,
+    ),
     api_pb2.PARAM_TYPE_BYTES: ParamTypeInfo(
-        default_field="bytes_default", proto_field="bytes_value", converter=assert_bytes
+        default_field="bytes_default",
+        proto_field="bytes_value",
+        converter=assert_bytes,
+        type=bytes,
     ),
 }
 
 
-def serialize_proto_params(python_params: dict[str, Any], schema: typing.Sequence[api_pb2.ClassParameterSpec]) -> bytes:
-    proto_params: list[api_pb2.ClassParameterValue] = []
+def apply_defaults(
+    python_params: typing.Mapping[str, Any], schema: typing.Sequence[api_pb2.ClassParameterSpec]
+) -> dict[str, Any]:
+    """Apply any declared defaults from the provided schema, if values aren't provided in python_params
+
+    Conceptually similar to inspect.BoundArguments.apply_defaults.
+
+    Note: Apply this before serializing parameters in order to get consistent parameter
+        pools regardless if a value is explicitly provided or not.
+    """
+    result = {**python_params}
     for schema_param in schema:
-        type_info = PROTO_TYPE_INFO.get(schema_param.type)
-        if not type_info:
-            raise ValueError(f"Unsupported parameter type: {schema_param.type}")
+        if schema_param.has_default and schema_param.name not in python_params:
+            default_field_name = schema_param.WhichOneof("default_oneof")
+            if default_field_name is None:
+                raise InvalidError(f"{schema_param.name} declared as having a default, but has no default value")
+            result[schema_param.name] = getattr(schema_param, default_field_name)
+    return result
+
+
+def serialize_proto_params(python_params: dict[str, Any]) -> bytes:
+    proto_params: list[api_pb2.ClassParameterValue] = []
+    for param_name, python_value in python_params.items():
+        python_type = type(python_value)
+        protobuf_type = get_proto_parameter_type(python_type)
+        type_info = PROTO_TYPE_INFO.get(protobuf_type)
         proto_param = api_pb2.ClassParameterValue(
-            name=schema_param.name,
-            type=schema_param.type,
+            name=param_name,
+            type=protobuf_type,
         )
-        python_value = python_params.get(schema_param.name)
-        if python_value is None:
-            if schema_param.has_default:
-                python_value = getattr(schema_param, type_info.default_field)
-            else:
-                raise ValueError(f"Missing required parameter: {schema_param.name}")
         try:
             converted_value = type_info.converter(python_value)
         except ValueError as exc:
-            raise ValueError(f"Invalid type for parameter {schema_param.name}: {exc}")
+            raise ValueError(f"Invalid type for parameter {param_name}: {exc}")
         setattr(proto_param, type_info.proto_field, converted_value)
         proto_params.append(proto_param)
     proto_bytes = api_pb2.ClassParameterSet(parameters=proto_params).SerializeToString(deterministic=True)
     return proto_bytes
 
 
-def deserialize_proto_params(serialized_params: bytes, schema: list[api_pb2.ClassParameterSpec]) -> dict[str, Any]:
-    # TODO: this currently requires the schema to decode a payload, but we should make the validation
-    #       distinct from the deserialization
+def deserialize_proto_params(serialized_params: bytes) -> dict[str, Any]:
     proto_struct = api_pb2.ClassParameterSet()
     proto_struct.ParseFromString(serialized_params)
-    value_by_name = {p.name: p for p in proto_struct.parameters}
     python_params = {}
-    for schema_param in schema:
-        if schema_param.name not in value_by_name:
-            # TODO: handle default values? Could just be a flag on the FunctionParameter schema spec,
-            #  allowing it to not be supplied in the FunctionParameterSet?
-            raise AttributeError(f"Constructor arguments don't match declared parameters (missing {schema_param.name})")
-        param_value = value_by_name[schema_param.name]
-        if schema_param.type != param_value.type:
-            raise ValueError(
-                "Constructor arguments types don't match declared parameters "
-                f"({schema_param.name}: type {schema_param.type} != type {param_value.type})"
-            )
+    for param in proto_struct.parameters:
         python_value: Any
-        if schema_param.type == api_pb2.PARAM_TYPE_STRING:
-            python_value = param_value.string_value
-        elif schema_param.type == api_pb2.PARAM_TYPE_INT:
-            python_value = param_value.int_value
-        elif schema_param.type == api_pb2.PARAM_TYPE_BYTES:
-            python_value = param_value.bytes_value
+        if param.type == api_pb2.PARAM_TYPE_STRING:
+            python_value = param.string_value
+        elif param.type == api_pb2.PARAM_TYPE_INT:
+            python_value = param.int_value
+        elif param.type == api_pb2.PARAM_TYPE_BYTES:
+            python_value = param.bytes_value
         else:
-            # TODO(elias): based on `parameters` declared types, we could add support for
-            #  custom non proto types encoded as bytes in the proto, e.g. PARAM_TYPE_PYTHON_PICKLE
-            raise NotImplementedError("Only strings and ints are supported parameter value types at the moment")
+            raise NotImplementedError(f"Unimplemented parameter type: {param.type}.")
 
-        python_params[schema_param.name] = python_value
+        python_params[param.name] = python_value
 
     return python_params
+
+
+def validate_params(params: dict[str, Any], schema: typing.Sequence[api_pb2.ClassParameterSpec]):
+    # first check that all declared values are provided
+    for schema_param in schema:
+        if schema_param.name not in params:
+            # we expect all values to be present - even defaulted ones (defaults are applied on payload construction)
+            raise InvalidError(f"Missing required parameter: {schema_param.name}")
+        python_value = params[schema_param.name]
+        python_type = type(python_value)
+        param_protobuf_type = get_proto_parameter_type(python_type)
+        if schema_param.type != param_protobuf_type:
+            expected_python_type = PROTO_TYPE_INFO[schema_param.type].type
+            raise TypeError(
+                f"Parameter '{schema_param.name}' type error: expected {expected_python_type.__name__}, "
+                f"got {python_type.__name__}"
+            )
+
+    schema_fields = {p.name for p in schema}
+    # then check that no extra values are provided
+    non_declared_fields = params.keys() - schema_fields
+    if non_declared_fields:
+        raise InvalidError(
+            f"The following parameter names were provided but are not present in the schema: {non_declared_fields}"
+        )
 
 
 def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function, _client: "modal.client._Client"):
@@ -488,11 +526,21 @@ def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function,
         # legacy serialization format - pickle of `(args, kwargs)` w/ support for modal object arguments
         param_args, param_kwargs = deserialize(serialized_params, _client)
     elif function_def.class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO:
-        param_args = ()
-        param_kwargs = deserialize_proto_params(serialized_params, list(function_def.class_parameter_info.schema))
+        param_args = ()  # we use kwargs only for our implicit constructors
+        param_kwargs = deserialize_proto_params(serialized_params)
+        # TODO: We can probably remove the validation below since we do validation in the caller?
+        validate_params(param_kwargs, list(function_def.class_parameter_info.schema))
     else:
         raise ExecutionError(
             f"Unknown class parameter serialization format: {function_def.class_parameter_info.format}"
         )
 
     return param_args, param_kwargs
+
+
+def get_proto_parameter_type(parameter_type: type) -> "api_pb2.ParameterType.ValueType":
+    if parameter_type not in PYTHON_TO_PROTO_TYPE:
+        type_name = getattr(parameter_type, "__name__", repr(parameter_type))
+        supported = ", ".join(parameter_type.__name__ for parameter_type in PYTHON_TO_PROTO_TYPE.keys())
+        raise InvalidError(f"{type_name} is not a supported parameter type. Use one of: {supported}")
+    return PYTHON_TO_PROTO_TYPE[parameter_type]

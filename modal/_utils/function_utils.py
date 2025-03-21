@@ -15,7 +15,14 @@ from synchronicity.exceptions import UserCodeException
 import modal_proto
 from modal_proto import api_pb2
 
-from .._serialization import PROTO_TYPE_INFO, PYTHON_TO_PROTO_TYPE, deserialize, deserialize_data_format, serialize
+from .._serialization import (
+    PROTO_TYPE_INFO,
+    PYTHON_TO_PROTO_TYPE,
+    deserialize,
+    deserialize_data_format,
+    get_proto_parameter_type,
+    serialize,
+)
 from .._traceback import append_modal_tb
 from ..config import config, logger
 from ..exception import (
@@ -97,6 +104,24 @@ def is_async(function):
 
 def get_function_type(is_generator: Optional[bool]) -> "api_pb2.Function.FunctionType.ValueType":
     return api_pb2.Function.FUNCTION_TYPE_GENERATOR if is_generator else api_pb2.Function.FUNCTION_TYPE_FUNCTION
+
+
+def signature_to_protobuf_schema(signature: inspect.Signature) -> list[api_pb2.ClassParameterSpec]:
+    modal_parameters: list[api_pb2.ClassParameterSpec] = []
+    for param in signature.parameters.values():
+        has_default = param.default is not param.empty
+        class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default)
+        if param.annotation not in PYTHON_TO_PROTO_TYPE:
+            class_param_spec.type = api_pb2.PARAM_TYPE_UNKNOWN
+        else:
+            proto_type = PYTHON_TO_PROTO_TYPE[param.annotation]
+            class_param_spec.type = proto_type
+            proto_type_info = PROTO_TYPE_INFO[proto_type]
+            if has_default and proto_type is not api_pb2.PARAM_TYPE_UNKNOWN:
+                setattr(class_param_spec, proto_type_info.default_field, param.default)
+
+        modal_parameters.append(class_param_spec)
+    return modal_parameters
 
 
 class FunctionInfo:
@@ -277,28 +302,23 @@ class FunctionInfo:
             return api_pb2.ClassParameterInfo()
 
         # TODO(elias): Resolve circular dependencies... maybe we'll need some cls_utils module
-        from modal.cls import _get_class_constructor_signature, _use_annotation_parameters, _validate_parameter_type
+        from modal.cls import _get_class_constructor_signature, _use_annotation_parameters
 
         if not _use_annotation_parameters(self.user_cls):
             return api_pb2.ClassParameterInfo(format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE)
 
         # annotation parameters trigger strictly typed parametrization
         # which enables web endpoint for parametrized classes
-
-        modal_parameters: list[api_pb2.ClassParameterSpec] = []
         signature = _get_class_constructor_signature(self.user_cls)
+        # validate that the schema has no unspecified fields/unsupported class parameter types
         for param in signature.parameters.values():
-            has_default = param.default is not param.empty
-            _validate_parameter_type(self.user_cls.__name__, param.name, param.annotation)
-            proto_type = PYTHON_TO_PROTO_TYPE[param.annotation]
-            proto_type_info = PROTO_TYPE_INFO[proto_type]
-            class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=proto_type)
-            if has_default:
-                setattr(class_param_spec, proto_type_info.default_field, param.default)
-            modal_parameters.append(class_param_spec)
+            get_proto_parameter_type(param.annotation)
+
+        protobuf_schema = signature_to_protobuf_schema(signature)
 
         return api_pb2.ClassParameterInfo(
-            format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO, schema=modal_parameters
+            format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
+            schema=protobuf_schema,
         )
 
     def get_entrypoint_mount(self) -> dict[str, _Mount]:
