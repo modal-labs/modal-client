@@ -1254,9 +1254,12 @@ def test_concurrency_migration(client, servicer):
 
     function_create_requests = ctx.get_requests("FunctionCreate")
     for request in function_create_requests:
-        if request.function.function_name == "has_new_concurrency_config":
-            assert request.function.max_concurrent_inputs == CONFIG_VALS["NEW"]
-        elif request.function.function_name == "has_old_concurrency_config":
-            assert request.function.max_concurrent_inputs == CONFIG_VALS["OLD"]
-        elif request.function.function_name == "has_no_concurrency_config":
+        if request.function.function_name in {"has_new_config", "HasNewConfig.*"}:
+            assert request.function.max_concurrent_inputs == CONFIG_VALS["NEW_MAX"]
+            assert request.function.target_concurrent_inputs == CONFIG_VALS["TARGET"]
+        elif request.function.function_name in {"has_old_config", "HasOldConfig.*"}:
+            assert request.function.max_concurrent_inputs == CONFIG_VALS["OLD_MAX"]
+            assert request.function.target_concurrent_inputs == 0
+        elif request.function.function_name in {"has_no_config", "HasNoConfig.*"}:
             assert request.function.max_concurrent_inputs == 0
+            assert request.function.target_concurrent_inputs == 0

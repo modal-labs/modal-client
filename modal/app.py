@@ -861,12 +861,14 @@ class _App:
                 user_cls = wrapped_cls.raw_f
                 if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
                     max_concurrent_inputs = wrapped_cls.max_concurrent_inputs
+                    target_concurrent_inputs = wrapped_cls.target_concurrent_inputs
                 else:
                     max_concurrent_inputs = allow_concurrent_inputs
+                    target_concurrent_inputs = None
             else:
                 user_cls = wrapped_cls
                 max_concurrent_inputs = allow_concurrent_inputs
-
+                target_concurrent_inputs = None
             if not inspect.isclass(user_cls):
                 raise TypeError("The @app.cls decorator must be used on a class.")
 
@@ -913,6 +915,7 @@ class _App:
                 proxy=proxy,
                 retries=retries,
                 max_concurrent_inputs=max_concurrent_inputs,
+                target_concurrent_inputs=target_concurrent_inputs,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
                 timeout=timeout,
