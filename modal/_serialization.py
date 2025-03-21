@@ -568,6 +568,7 @@ type_register = TypeRegistry()
 
 class PayloadHandler(metaclass=abc.ABCMeta):
     allow_as_class_parameter = False
+    _singleton: typing.ClassVar[typing.Optional[typing_extensions.Self]] = None
 
     @abstractmethod
     def encode(self, python_value: Any) -> api_pb2.ClassParameterValue: ...

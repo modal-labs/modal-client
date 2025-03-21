@@ -1038,7 +1038,7 @@ def test_unannotated_parameters_are_invalid():
 
 
 def test_unsupported_type_parameters_raise_errors():
-    with pytest.raises(InvalidError, match="float is not a supported parameter type"):
+    with pytest.raises(InvalidError, match=r"float is not a supported modal.parameter\(\) type"):
 
         @app.cls(serialized=True)
         class C:
@@ -1134,7 +1134,7 @@ def test_bytes_serialization_validation(servicer, client, set_env_client):
             assert kwargs["foo"] == b"foo"
 
 
-def test_class_cant_use_list_parameter(client):
+def test_class_can_not_use_list_parameter(client):
     # we might want to allow lists in the future though...
     app = modal.App()
 
