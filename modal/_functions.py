@@ -24,7 +24,7 @@ from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._runtime.execution_context import current_input_id, is_local
-from ._serialization import serialize, serialize_proto_params
+from ._serialization import apply_defaults, serialize, serialize_proto_params, validate_params
 from ._traceback import print_server_warnings
 from ._utils.async_utils import (
     TaskContext,
@@ -174,7 +174,7 @@ class _Invocation:
             input_jwt=input.input_jwt,
             input_id=input.input_id,
             item=item,
-            sync_client_retries_enabled=response.sync_client_retries_enabled
+            sync_client_retries_enabled=response.sync_client_retries_enabled,
         )
         return _Invocation(client.stub, function_call_id, client, retry_context)
 
@@ -968,8 +968,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         "Can't use positional arguments with modal.parameter-based synthetic constructors.\n"
                         "Use (<parameter_name>=value) keyword arguments when constructing classes instead."
                     )
-                serialized_params = serialize_proto_params(kwargs, parent._class_parameter_info.schema)
-                can_use_parent = len(parent._class_parameter_info.schema) == 0
+                schema = parent._class_parameter_info.schema
+                kwargs_with_defaults = apply_defaults(kwargs, schema)
+                validate_params(kwargs_with_defaults, schema)
+                serialized_params = serialize_proto_params(kwargs_with_defaults)
+                can_use_parent = len(parent._class_parameter_info.schema) == 0  # no parameters
             else:
                 can_use_parent = len(args) + len(kwargs) == 0 and options is None
                 serialized_params = serialize((args, kwargs))
