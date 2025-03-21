@@ -1132,3 +1132,14 @@ def test_bytes_serialization_validation(servicer, client, set_env_client):
             bind_req: api_pb2.FunctionBindParamsRequest = ctx.pop_request("FunctionBindParams")
             args, kwargs = deserialize_params(bind_req.serialized_params, create_function_req.function, client)
             assert kwargs["foo"] == b"foo"
+
+
+def test_class_cant_use_list_parameter(client):
+    # we might want to allow lists in the future though...
+    app = modal.App()
+
+    with pytest.raises(InvalidError, match="list is not a supported modal.parameter"):
+
+        @app.cls(serialized=True)
+        class A:
+            p: list[int] = modal.parameter()
