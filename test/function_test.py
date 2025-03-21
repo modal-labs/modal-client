@@ -8,6 +8,7 @@ import time
 import typing
 from contextlib import contextmanager
 
+import typing_extensions
 from grpclib import Status
 from synchronicity.exceptions import UserCodeException
 
@@ -1240,3 +1241,114 @@ def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, c
             pass
     # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
     assert not [r for r in caplog.records if r.levelno == logging.WARNING]
+
+
+def test_concurrency_migration(client, servicer):
+    from test.supports.concurrency_config import CONFIG_VALS, app
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            pass
+
+    function_create_requests = ctx.get_requests("FunctionCreate")
+    for request in function_create_requests:
+        if request.function.function_name in {
+            "has_new_config",
+            "HasNewConfig.*",
+            "has_new_config_and_fastapi_endpoint",
+            "has_fastapi_endpoint_and_new_config",
+            "HasNewConfigAndFastapiEndpoint.*",
+        }:
+            assert request.function.max_concurrent_inputs == CONFIG_VALS["NEW_MAX"]
+            assert request.function.target_concurrent_inputs == CONFIG_VALS["TARGET"]
+            assert request.function.webhook_config is not None
+        elif request.function.function_name in {"has_old_config", "HasOldConfig.*"}:
+            assert request.function.max_concurrent_inputs == CONFIG_VALS["OLD_MAX"]
+            assert request.function.target_concurrent_inputs == 0
+        elif request.function.function_name in {"has_no_config", "HasNoConfig.*"}:
+            assert request.function.max_concurrent_inputs == 0
+            assert request.function.target_concurrent_inputs == 0
+        else:
+            raise RuntimeError(f"Unexpected function name: {request.function.function_name}")
+
+
+@pytest.fixture()
+def record_annotations(monkeypatch):
+    monkeypatch.setenv("MODAL_RECORD_ANNOTATIONS", "1")
+
+
+def test_function_schema_recording(client, servicer, set_env_client, record_annotations):
+    app = App("app")
+
+    @app.function(name="f", serialized=True)
+    def f(a: int) -> list[str]: ...
+
+    deploy_app(app, client=client)
+    expected_schema = api_pb2.FunctionSchema(
+        arguments=[
+            api_pb2.ClassParameterSpec(
+                name="a",
+                full_type=api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_INT,
+                ),
+            )
+        ],
+        return_type=api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_LIST,
+            sub_types=[
+                api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_STRING,
+                )
+            ],
+        ),
+    )
+    assert f._get_schema() == expected_schema
+    # test lazy lookup
+    assert Function.from_name("app", "f")._get_schema() == expected_schema
+
+
+def test_class_schema_recording(client, servicer, set_env_client, record_annotations):
+    app = App("app")
+
+    @app.cls(serialized=True)
+    class F:
+        b: str = modal.parameter()
+
+        @modal.method()
+        def f(self, a: int) -> list[str]: ...
+
+    expected_method_schema = api_pb2.FunctionSchema(
+        arguments=[
+            api_pb2.ClassParameterSpec(
+                name="a",
+                full_type=api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_INT,
+                ),
+            )
+        ],
+        return_type=api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_LIST,
+            sub_types=[
+                api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_STRING,
+                )
+            ],
+        ),
+    )
+
+    deploy_app(app)
+    (constructor_arg,) = typing.cast(modal.Cls, F)._get_constructor_args()
+    assert constructor_arg.name == "b"
+    assert constructor_arg.full_type == api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_STRING)
+
+    method_schemas = typing.cast(modal.Cls, F)._get_method_schemas()
+    typing_extensions.reveal_type(F)
+    method_schema = F(b="hello").f._get_schema()  # type: ignore  # mypy dataclass_transform bug
+
+    assert method_schema == expected_method_schema
+    assert method_schemas["f"] == expected_method_schema
+
+    # Test lazy lookups
+    assert modal.Cls.from_name("app", "F")._get_method_schemas() == method_schemas
+    (looked_up_construct_arg,) = modal.Cls.from_name("app", "F")._get_constructor_args()
+    assert looked_up_construct_arg == constructor_arg
