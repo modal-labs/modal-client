@@ -1170,6 +1170,7 @@ def f():
 _map_retry_servicer = None
 _map_attempt_count = 0
 
+
 def _maybe_fail(i):
     global _map_attempt_count
     if _map_attempt_count >= 10:
@@ -1188,7 +1189,7 @@ def test_map_retry_with_internal_error(client, servicer, monkeypatch, caplog):
     global _map_retry_servicer, _map_attempt_count
     monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
     app = App()
-    _map_retry_servicer= servicer
+    _map_retry_servicer = servicer
     # reset count from any previous tests
     _map_attempt_count = 0
     maybe_fail = app.function()(_maybe_fail)
@@ -1200,6 +1201,7 @@ def test_map_retry_with_internal_error(client, servicer, monkeypatch, caplog):
     # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
     assert not [r for r in caplog.records if r.levelno == logging.WARNING]
 
+
 def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog):
     """
     This test forces pump_inputs to fail with RESOURCE_EXHAUSTED for 10 times, and then succeed. This tests that
@@ -1208,7 +1210,7 @@ def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog
     global _map_retry_servicer, _map_attempt_count
     monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
     app = App()
-    _map_retry_servicer= servicer
+    _map_retry_servicer = servicer
     # reset count from any previous tests
     _map_attempt_count = 0
     maybe_fail = app.function()(_maybe_fail)
@@ -1221,6 +1223,7 @@ def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 1
 
+
 def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, caplog):
     """
     This test forces pump_inputs to fail with StreamTerminatedError for 10 times, and then succeed. This tests that
@@ -1229,7 +1232,7 @@ def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, c
     global _map_retry_servicer, _map_attempt_count
     monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
     app = App()
-    _map_retry_servicer= servicer
+    _map_retry_servicer = servicer
     # reset count from any previous tests
     _map_attempt_count = 0
     maybe_fail = app.function()(_maybe_fail)
@@ -1240,3 +1243,30 @@ def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, c
             pass
     # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
     assert not [r for r in caplog.records if r.levelno == logging.WARNING]
+
+
+def test_function_schema_recording(client, servicer):
+    app = App()
+
+    @app.function(serialized=True)
+    def f(a: int) -> list[str]: ...
+
+    with app.run(client=client):
+        assert f._schema() == api_pb2.FunctionSchema(
+            arguments=[
+                api_pb2.ClassParameterSpec(
+                    name="a",
+                    full_type=api_pb2.GenericPayloadType(
+                        type=api_pb2.PARAM_TYPE_INT,
+                    ),
+                )
+            ],
+            return_value=api_pb2.GenericPayloadType(
+                type=api_pb2.PARAM_TYPE_LIST,
+                sub_types=[
+                    api_pb2.GenericPayloadType(
+                        type=api_pb2.PARAM_TYPE_STRING,
+                    )
+                ],
+            ),
+        )

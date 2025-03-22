@@ -754,3 +754,15 @@ def validate_parameter_type(declared_type: type):
         raise TypeError(
             f"{declared_type.__name__} is not a supported modal.parameter() type. Use one of: {supported_str}"
         )
+
+
+def get_callable_schema(callable: typing.Callable) -> api_pb2.FunctionSchema:
+    sig = inspect.signature(callable)
+    # TODO: treat no return value annotation as None return?
+    return_type_handler = type_register.get_for_declared_type(sig.return_annotation)
+    return_type_proto = return_type_handler.proto_type_def(sig.return_annotation)
+
+    return api_pb2.FunctionSchema(
+        arguments=[_signature_parameter_to_spec(p) for p in sig.parameters.values()],
+        return_value=return_type_proto,
+    )

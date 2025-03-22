@@ -17,6 +17,7 @@ import tempfile
 import textwrap
 import threading
 import traceback
+import typing
 import uuid
 from collections import defaultdict
 from collections.abc import Iterator
@@ -958,6 +959,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 function_name=method_definition.function_name,
                 function_type=method_definition.function_type,
                 web_url=method_web_url,
+                function_schema=method_definition.schema,
             )
         await stream.send_message(
             api_pb2.FunctionPrecreateResponse(
@@ -969,6 +971,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     use_function_id=req.use_function_id or function_id,
                     use_method_name=req.use_method_name,
                     method_handle_metadata=method_handle_metadata,
+                    function_schema=req.function_schema,
                 ),
             )
         )
@@ -1000,7 +1003,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             function.CopyFrom(request.function)
 
         assert (function is None) != (function_data is None)
-        function_defn = function or function_data
+        function_defn: typing.Union[api_pb2.Function, api_pb2.FunctionData] = function or function_data
         assert function_defn
         if function_defn.webhook_config.type:
             function_defn.web_url = "http://xyz.internal"
@@ -1033,6 +1036,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                         for method_name, method_definition in function_defn.method_definitions.items()
                     },
                     class_parameter_info=function_defn.class_parameter_info,
+                    function_schema=function_defn.function_schema,
                 ),
             )
         )
