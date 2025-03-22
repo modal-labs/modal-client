@@ -698,7 +698,7 @@ message ClassParameterSet {
   repeated ClassParameterValue parameters = 1;
 }
 
-message ClassParameterSpec { // TODO: rename into PayloadParameterSpec
+message ClassParameterSpec { // TODO: rename into NamedPayloadArgument or similar
   string name = 1;
   ParameterType type = 2; // TODO: deprecate - use full_type instead
   bool has_default = 3;
@@ -712,15 +712,6 @@ message ClassParameterSpec { // TODO: rename into PayloadParameterSpec
   optional ClassParameterValue default_value = 9; // supersedes default_oneof
 }
 
-message ListValue {
-  // corresponds to PARAMETER_TYPE_LIST
-  repeated ClassParameterValue items = 1;
-}
-
-message GenericPayloadType {
-  ParameterType type = 1;
-  repeated GenericPayloadType sub_types = 2;  // sub-type for generic types like lists
-}
 
 message ClassParameterValue {  // TODO: rename into PayloadValue
   // NOTE: adding additional *fields* here can invalidate function lookups
@@ -1741,6 +1732,11 @@ message GeneratorDone {  // Sent as the output when a generator finishes running
   uint64 items_total = 1;
 }
 
+message GenericPayloadType {
+  ParameterType base_type = 1;
+  repeated GenericPayloadType sub_types = 2;  // sub-type for generic types like lists
+}
+
 message GenericResult {  // Used for both tasks and function outputs
   enum GenericStatus {
     GENERIC_STATUS_UNSPECIFIED = 0;
@@ -1883,6 +1879,11 @@ message InputInfo {
   double finished_at = 5;
   double task_startup_time = 6;
   bool task_first_input = 7;
+}
+
+message ListValue {
+  // corresponds to PARAMETER_TYPE_LIST base type
+  repeated ClassParameterValue items = 1;
 }
 
 message MethodDefinition {

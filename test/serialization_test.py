@@ -13,7 +13,7 @@ from modal._serialization import (
     serialize,
     serialize_data_format,
     serialize_proto_params,
-    signature_to_protobuf_schema,
+    signature_to_parameter_specs,
     type_register,
     validate_parameter_values,
 )
@@ -133,20 +133,20 @@ def test_schema_extraction_unknown():
     def with_custom(a: Custom): ...
 
     for func in [with_empty, with_any, with_custom]:
-        fields = signature_to_protobuf_schema(inspect.signature(func))
+        fields = signature_to_parameter_specs(inspect.signature(func))
         assert fields == [
             api_pb2.ClassParameterSpec(
-                name="a", has_default=False, full_type=api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_UNKNOWN)
+                name="a", has_default=False, full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN)
             )
         ]
 
     def with_default(a=5): ...
 
-    fields = signature_to_protobuf_schema(inspect.signature(with_default))
+    fields = signature_to_parameter_specs(inspect.signature(with_default))
     assert fields == [
         api_pb2.ClassParameterSpec(
             name="a",
-            full_type=api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_UNKNOWN),
+            full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN),
             has_default=True,
             default_value=api_pb2.ClassParameterValue(
                 type=api_pb2.PARAM_TYPE_INT,
@@ -160,11 +160,11 @@ def test_schema_extraction_int():
     def f(int_value: int = 1337): ...
 
     sig = inspect.signature(f)
-    (int_spec,) = signature_to_protobuf_schema(sig)
+    (int_spec,) = signature_to_parameter_specs(sig)
     assert int_spec == api_pb2.ClassParameterSpec(
         name="int_value",
         type=api_pb2.PARAM_TYPE_INT,
-        full_type=api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_INT),
+        full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_INT),
         has_default=True,
         default_value=api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_INT, int_value=1337),
         int_default=1337,
@@ -175,11 +175,11 @@ def test_schema_extraction_str():
     def foo(str_value: str = "foo"):
         pass
 
-    (str_spec,) = signature_to_protobuf_schema(inspect.signature(foo))
+    (str_spec,) = signature_to_parameter_specs(inspect.signature(foo))
     assert str_spec == api_pb2.ClassParameterSpec(
         name="str_value",
         type=api_pb2.PARAM_TYPE_STRING,
-        full_type=api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_STRING),
+        full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_STRING),
         has_default=True,
         default_value=api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_STRING, string_value="foo"),
         string_default="foo",
@@ -190,13 +190,13 @@ def test_schema_extraction_bytes():
     def foo(a: bytes = b"foo"):
         pass
 
-    (bytes_spec,) = signature_to_protobuf_schema(inspect.signature(foo))
+    (bytes_spec,) = signature_to_parameter_specs(inspect.signature(foo))
     assert bytes_spec == api_pb2.ClassParameterSpec(
         name="a",
         type=api_pb2.PARAM_TYPE_BYTES,  # for backward compatibility
         has_default=True,
         bytes_default=b"foo",  # for backward compatibility
-        full_type=api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_BYTES),
+        full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_BYTES),
         default_value=api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_BYTES, bytes_value=b"foo"),
     )
 
@@ -206,11 +206,12 @@ def test_schema_extraction_list():
     def old_f(simple_list: typing.List[int]): ...
 
     for f in [new_f, old_f]:
-        (list_spec,) = signature_to_protobuf_schema(inspect.signature(f))
+        (list_spec,) = signature_to_parameter_specs(inspect.signature(f))
         assert list_spec == api_pb2.ClassParameterSpec(
             name="simple_list",
             full_type=api_pb2.GenericPayloadType(
-                type=api_pb2.PARAM_TYPE_LIST, sub_types=[api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_INT)]
+                base_type=api_pb2.PARAM_TYPE_LIST,
+                sub_types=[api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_INT)],
             ),
             has_default=False,
         )
@@ -219,14 +220,15 @@ def test_schema_extraction_list():
 def test_schema_extraction_nested_list():
     def f(nested_list: list[list[bytes]]): ...
 
-    (list_spec,) = signature_to_protobuf_schema(inspect.signature(f))
+    (list_spec,) = signature_to_parameter_specs(inspect.signature(f))
     assert list_spec == api_pb2.ClassParameterSpec(
         name="nested_list",
         full_type=api_pb2.GenericPayloadType(
-            type=api_pb2.PARAM_TYPE_LIST,
+            base_type=api_pb2.PARAM_TYPE_LIST,
             sub_types=[
                 api_pb2.GenericPayloadType(
-                    type=api_pb2.PARAM_TYPE_LIST, sub_types=[api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_BYTES)]
+                    base_type=api_pb2.PARAM_TYPE_LIST,
+                    sub_types=[api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_BYTES)],
                 )
             ],
         ),

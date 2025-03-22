@@ -601,7 +601,7 @@ class IntType(PayloadHandler):
     def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
         assert full_python_type is int
         return api_pb2.GenericPayloadType(
-            type=api_pb2.PARAM_TYPE_INT,
+            base_type=api_pb2.PARAM_TYPE_INT,
         )
 
 
@@ -619,7 +619,7 @@ class StringType(PayloadHandler):
     def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
         assert full_python_type is str
         return api_pb2.GenericPayloadType(
-            type=api_pb2.PARAM_TYPE_STRING,
+            base_type=api_pb2.PARAM_TYPE_STRING,
         )
 
 
@@ -637,14 +637,14 @@ class BytesType(PayloadHandler):
     def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
         assert full_python_type is bytes
         return api_pb2.GenericPayloadType(
-            type=api_pb2.PARAM_TYPE_BYTES,
+            base_type=api_pb2.PARAM_TYPE_BYTES,
         )
 
 
 class UnknownTypeHandler(PayloadHandler):
     # we could potentially use this to encode/decode values as pickle bytes
     def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
-        return api_pb2.GenericPayloadType(type=api_pb2.PARAM_TYPE_UNKNOWN)
+        return api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN)
 
     def encode(self, python_value: Any) -> api_pb2.ClassParameterValue:
         # TODO: we could use pickle here?
@@ -675,11 +675,13 @@ class ListType(PayloadHandler):
             arg = typing.Any
 
         return api_pb2.GenericPayloadType(
-            type=api_pb2.PARAM_TYPE_LIST, sub_types=[sub_type_handler.proto_type_def(arg)]
+            base_type=api_pb2.PARAM_TYPE_LIST, sub_types=[sub_type_handler.proto_type_def(arg)]
         )
 
 
-def _signature_parameter_to_spec(python_signature_parameter: inspect.Parameter) -> api_pb2.ClassParameterSpec:
+def _signature_parameter_to_spec(
+    python_signature_parameter: inspect.Parameter, include_legacy_parameter_fields: bool = False
+) -> api_pb2.ClassParameterSpec:
     python_type = python_signature_parameter.annotation
 
     origin = typing_extensions.get_origin(python_type)
@@ -706,30 +708,32 @@ def _signature_parameter_to_spec(python_signature_parameter: inspect.Parameter) 
         has_default=has_default,
         default_value=maybe_default_value,
     )
-    # For backward compatibility reasons with clients that don't look at .default_value:
-    # We need to still provide defaults for int, str and bytes in the base object
-    # We can remove this when all supported clients + backend only look at .default_value and .full_type
-    if full_proto_type.type == api_pb2.PARAM_TYPE_INT:
-        if has_default:
-            field_spec.int_default = python_signature_parameter.default
-        field_spec.type = api_pb2.PARAM_TYPE_INT
-    elif full_proto_type.type == api_pb2.PARAM_TYPE_STRING:
-        if has_default:
-            field_spec.string_default = python_signature_parameter.default
-        field_spec.type = api_pb2.PARAM_TYPE_STRING
-    elif full_proto_type.type == api_pb2.PARAM_TYPE_BYTES:
-        if has_default:
-            field_spec.bytes_default = python_signature_parameter.default
-        field_spec.type = api_pb2.PARAM_TYPE_BYTES
+    if include_legacy_parameter_fields:
+        # For backward compatibility reasons with clients that don't look at .default_value:
+        # We need to still provide defaults for int, str and bytes in the base object
+        # We can remove this when all supported clients + backend only look at .default_value and .full_type
+
+        if full_proto_type.base_type == api_pb2.PARAM_TYPE_INT:
+            if has_default:
+                field_spec.int_default = python_signature_parameter.default
+            field_spec.type = api_pb2.PARAM_TYPE_INT
+        elif full_proto_type.base_type == api_pb2.PARAM_TYPE_STRING:
+            if has_default:
+                field_spec.string_default = python_signature_parameter.default
+            field_spec.type = api_pb2.PARAM_TYPE_STRING
+        elif full_proto_type.base_type == api_pb2.PARAM_TYPE_BYTES:
+            if has_default:
+                field_spec.bytes_default = python_signature_parameter.default
+            field_spec.type = api_pb2.PARAM_TYPE_BYTES
 
     return field_spec
 
 
-def signature_to_protobuf_schema(signature: inspect.Signature) -> list[api_pb2.ClassParameterSpec]:
-    # TODO: Extend "schema" to include return value types
+def signature_to_parameter_specs(signature: inspect.Signature) -> list[api_pb2.ClassParameterSpec]:
+    # only used for modal.parameter() specs, uses backwards compatible
     modal_parameters: list[api_pb2.ClassParameterSpec] = []
     for param in signature.parameters.values():
-        field_spec = _signature_parameter_to_spec(param)
+        field_spec = _signature_parameter_to_spec(param, include_legacy_parameter_fields=True)
         modal_parameters.append(field_spec)
     return modal_parameters
 

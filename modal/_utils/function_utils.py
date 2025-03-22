@@ -19,7 +19,7 @@ from .._serialization import (
     deserialize,
     deserialize_data_format,
     serialize,
-    signature_to_protobuf_schema,
+    signature_to_parameter_specs,
 )
 from .._traceback import append_modal_tb
 from ..config import config, logger
@@ -291,11 +291,11 @@ class FunctionInfo:
         # which enables web endpoint for parametrized classes
         signature = _get_class_constructor_signature(self.user_cls)
         # at this point, the types in the signature should already have been validated (see Cls.from_local())
-        protobuf_schema = signature_to_protobuf_schema(signature)
+        parameter_specs = signature_to_parameter_specs(signature)
 
         return api_pb2.ClassParameterInfo(
             format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
-            schema=protobuf_schema,
+            schema=parameter_specs,
         )
 
     def get_entrypoint_mount(self) -> dict[str, _Mount]:

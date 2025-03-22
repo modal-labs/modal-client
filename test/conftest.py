@@ -1080,7 +1080,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 retry_policy=retry_policy,
                 function_call_jwt=function_call_jwt,
                 pipelined_inputs=response_inputs,
-                sync_client_retries_enabled=self.sync_client_retries_enabled
+                sync_client_retries_enabled=self.sync_client_retries_enabled,
             )
         )
 
