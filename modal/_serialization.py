@@ -1,12 +1,18 @@
 # Copyright Modal Labs 2022
+import abc
+import inspect
 import io
 import pickle
 import typing
-from dataclasses import dataclass
+from abc import abstractmethod
+from inspect import Parameter
 from typing import Any
+
+import typing_extensions
 
 from modal._utils.async_utils import synchronizer
 from modal_proto import api_pb2
+from modal_version import __version__ as client_version
 
 from ._object import _Object
 from ._vendor import cloudpickle
@@ -389,50 +395,6 @@ def check_valid_cls_constructor_arg(key, obj):
         )
 
 
-def assert_bytes(obj: Any):
-    if not isinstance(obj, bytes):
-        raise TypeError(f"Expected bytes, got {type(obj)}")
-    return obj
-
-
-@dataclass
-class ParamTypeInfo:
-    default_field: str
-    proto_field: str
-    converter: typing.Callable[[str], typing.Any]
-    type: type
-
-
-PYTHON_TO_PROTO_TYPE: dict[type, "api_pb2.ParameterType.ValueType"] = {
-    # python type -> protobuf type enum
-    str: api_pb2.PARAM_TYPE_STRING,
-    int: api_pb2.PARAM_TYPE_INT,
-    bytes: api_pb2.PARAM_TYPE_BYTES,
-}
-
-PROTO_TYPE_INFO = {
-    # Protobuf type enum -> encode/decode helper metadata
-    api_pb2.PARAM_TYPE_STRING: ParamTypeInfo(
-        default_field="string_default",
-        proto_field="string_value",
-        converter=str,
-        type=str,
-    ),
-    api_pb2.PARAM_TYPE_INT: ParamTypeInfo(
-        default_field="int_default",
-        proto_field="int_value",
-        converter=int,
-        type=int,
-    ),
-    api_pb2.PARAM_TYPE_BYTES: ParamTypeInfo(
-        default_field="bytes_default",
-        proto_field="bytes_value",
-        converter=assert_bytes,
-        type=bytes,
-    ),
-}
-
-
 def apply_defaults(
     python_params: typing.Mapping[str, Any], schema: typing.Sequence[api_pb2.ClassParameterSpec]
 ) -> dict[str, Any]:
@@ -453,22 +415,19 @@ def apply_defaults(
     return result
 
 
+def encode_parameter_value(name: str, python_value: Any) -> api_pb2.ClassParameterValue:
+    """Map to proto payload struct using python runtime type information"""
+    payload_handler = type_register.get_encoder(python_value)
+    assert payload_handler.allow_as_class_parameter  # this should have been tested for earlier
+    struct = payload_handler.encode(python_value)
+    struct.name = name
+    return struct
+
+
 def serialize_proto_params(python_params: dict[str, Any]) -> bytes:
     proto_params: list[api_pb2.ClassParameterValue] = []
     for param_name, python_value in python_params.items():
-        python_type = type(python_value)
-        protobuf_type = get_proto_parameter_type(python_type)
-        type_info = PROTO_TYPE_INFO.get(protobuf_type)
-        proto_param = api_pb2.ClassParameterValue(
-            name=param_name,
-            type=protobuf_type,
-        )
-        try:
-            converted_value = type_info.converter(python_value)
-        except ValueError as exc:
-            raise ValueError(f"Invalid type for parameter {param_name}: {exc}")
-        setattr(proto_param, type_info.proto_field, converted_value)
-        proto_params.append(proto_param)
+        proto_params.append(encode_parameter_value(param_name, python_value))
     proto_bytes = api_pb2.ClassParameterSet(parameters=proto_params).SerializeToString(deterministic=True)
     return proto_bytes
 
@@ -493,25 +452,31 @@ def deserialize_proto_params(serialized_params: bytes) -> dict[str, Any]:
     return python_params
 
 
-def validate_params(params: dict[str, Any], schema: typing.Sequence[api_pb2.ClassParameterSpec]):
-    # first check that all declared values are provided
+def validate_parameter_values(payload: dict[str, Any], schema: typing.Sequence[api_pb2.ClassParameterSpec]):
+    """Ensure parameter payload conforms to the schema of a class
+
+    Checks that:
+    * All fields are specified (defaults are expected to already be applied on the payload)
+    * No extra fields are specified
+    * The type of each field is correct
+    """
     for schema_param in schema:
-        if schema_param.name not in params:
-            # we expect all values to be present - even defaulted ones (defaults are applied on payload construction)
+        if schema_param.name not in payload:
             raise InvalidError(f"Missing required parameter: {schema_param.name}")
-        python_value = params[schema_param.name]
-        python_type = type(python_value)
-        param_protobuf_type = get_proto_parameter_type(python_type)
-        if schema_param.type != param_protobuf_type:
-            expected_python_type = PROTO_TYPE_INFO[schema_param.type].type
+        python_value = payload[schema_param.name]
+        decoder = type_register.get_decoder(schema_param.type)  # use the schema's expected decoder
+        encoder = type_register.get_encoder(python_value)
+        if decoder != encoder:
+            got_type = type(python_value)
+            compatible_types = type_register._python_types_for_handler(decoder)
+            compatible_types_str = "|".join(t.__name__ for t in compatible_types)
             raise TypeError(
-                f"Parameter '{schema_param.name}' type error: expected {expected_python_type.__name__}, "
-                f"got {python_type.__name__}"
+                f"Parameter '{schema_param.name}' type error: Expected {compatible_types_str}, got {got_type.__name__}"
             )
 
     schema_fields = {p.name for p in schema}
     # then check that no extra values are provided
-    non_declared_fields = params.keys() - schema_fields
+    non_declared_fields = payload.keys() - schema_fields
     if non_declared_fields:
         raise InvalidError(
             f"The following parameter names were provided but are not present in the schema: {non_declared_fields}"
@@ -528,8 +493,6 @@ def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function,
     elif function_def.class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO:
         param_args = ()  # we use kwargs only for our implicit constructors
         param_kwargs = deserialize_proto_params(serialized_params)
-        # TODO: We can probably remove the validation below since we do validation in the caller?
-        validate_params(param_kwargs, list(function_def.class_parameter_info.schema))
     else:
         raise ExecutionError(
             f"Unknown class parameter serialization format: {function_def.class_parameter_info.format}"
@@ -538,9 +501,256 @@ def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function,
     return param_args, param_kwargs
 
 
-def get_proto_parameter_type(parameter_type: type) -> "api_pb2.ParameterType.ValueType":
-    if parameter_type not in PYTHON_TO_PROTO_TYPE:
-        type_name = getattr(parameter_type, "__name__", repr(parameter_type))
-        supported = ", ".join(parameter_type.__name__ for parameter_type in PYTHON_TO_PROTO_TYPE.keys())
-        raise InvalidError(f"{type_name} is not a supported parameter type. Use one of: {supported}")
-    return PYTHON_TO_PROTO_TYPE[parameter_type]
+PH = typing.TypeVar("PH", bound=type["PayloadHandler"])
+
+
+class TypeRegistry:
+    _py_base_type_to_handler: dict[type, "PayloadHandler"]
+    _proto_type_to_handler: dict["api_pb2.ParameterType.ValueType", "PayloadHandler"]
+
+    def __init__(self):
+        self._py_base_type_to_handler = {}
+        self._proto_type_to_handler = {}
+
+    def register_encoder(self, python_base_type: type) -> typing.Callable[[PH], PH]:
+        def deco(ph: type[PayloadHandler]):
+            self._py_base_type_to_handler[python_base_type] = ph.singleton()
+            return ph
+
+        return deco
+
+    def register_decoder(self, enum_type_value: "api_pb2.ParameterType.ValueType"):
+        def deco(ph: type[PayloadHandler]):
+            self._proto_type_to_handler[enum_type_value] = ph.singleton()
+            return ph
+
+        return deco
+
+    def _get_for_base_type(self, python_base_type: type) -> "PayloadHandler":
+        # private helper method
+        if handler := self._py_base_type_to_handler.get(python_base_type):
+            return handler
+
+        return UnknownTypeHandler.singleton()
+
+    def get_for_declared_type(self, python_declared_type: type) -> "PayloadHandler":
+        """PayloadHandler for a type annotation (that could be a generic type)"""
+        if origin := typing_extensions.get_origin(python_declared_type):
+            base_type = origin  # look up by generic type, not exact type
+        else:
+            base_type = python_declared_type
+
+        return self._get_for_base_type(base_type)
+
+    def get_encoder(self, python_runtime_value: Any) -> "PayloadHandler":
+        return self._get_for_base_type(type(python_runtime_value))
+
+    def get_decoder(self, proto_type_enum: "api_pb2.ParameterType.ValueType") -> "PayloadHandler":
+        if handler := self._proto_type_to_handler.get(proto_type_enum):
+            return handler
+
+        if proto_type_enum not in api_pb2.ParameterType.values():
+            raise InvalidError(
+                f"modal {client_version} doesn't recognize payload type {proto_type_enum}. "
+                f"Try upgrading to a later version of Modal."
+            )
+
+        enum_name = api_pb2.ParameterType.Name(proto_type_enum)
+        raise InvalidError(f"No payload handler implemented for payload type {enum_name}")
+
+    def _python_types_for_handler(self, payload_handler: "PayloadHandler") -> set[type]:
+        # reverse lookup of which types map to a specific handler
+        return {k for k, h in self._py_base_type_to_handler.items() if h == payload_handler}
+
+
+type_register = TypeRegistry()
+
+
+class PayloadHandler(metaclass=abc.ABCMeta):
+    allow_as_class_parameter = False
+    _singleton: typing.ClassVar[typing.Optional[typing_extensions.Self]] = None
+
+    @abstractmethod
+    def encode(self, python_value: Any) -> api_pb2.ClassParameterValue: ...
+
+    @abstractmethod
+    def decode(self, struct: api_pb2.ClassParameterValue) -> Any: ...
+
+    @abstractmethod
+    def proto_type_def(self, declared_python_type: type) -> api_pb2.GenericPayloadType: ...
+
+    @classmethod
+    def singleton(cls) -> typing_extensions.Self:
+        # a bit hacky, but this lets us register the same instance multiple times using decorators
+        if "_singleton" not in cls.__dict__:  # use .__dict__ to avoid parent class resolution of getattr
+            cls._singleton = cls()
+        return cls._singleton
+
+
+@type_register.register_encoder(int)
+@type_register.register_decoder(api_pb2.PARAM_TYPE_INT)
+class IntType(PayloadHandler):
+    allow_as_class_parameter = True
+
+    def encode(self, i: int) -> api_pb2.ClassParameterValue:
+        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_INT, int_value=i)
+
+    def decode(self, p: api_pb2.ClassParameterValue) -> int:
+        return p.int_value
+
+    def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
+        assert full_python_type is int
+        return api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_INT,
+        )
+
+
+@type_register.register_encoder(str)
+@type_register.register_decoder(api_pb2.PARAM_TYPE_STRING)
+class StringType(PayloadHandler):
+    allow_as_class_parameter = True
+
+    def encode(self, s: str) -> api_pb2.ClassParameterValue:
+        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_STRING, string_value=s)
+
+    def decode(self, p: api_pb2.ClassParameterValue) -> str:
+        return p.string_value
+
+    def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
+        assert full_python_type is str
+        return api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_STRING,
+        )
+
+
+@type_register.register_encoder(bytes)
+@type_register.register_decoder(api_pb2.PARAM_TYPE_BYTES)
+class BytesType(PayloadHandler):
+    allow_as_class_parameter = True
+
+    def encode(self, b: bytes) -> api_pb2.ClassParameterValue:
+        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_BYTES, bytes_value=b)
+
+    def decode(self, p: api_pb2.ClassParameterValue) -> bytes:
+        return p.bytes_value
+
+    def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
+        assert full_python_type is bytes
+        return api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_BYTES,
+        )
+
+
+class UnknownTypeHandler(PayloadHandler):
+    # we could potentially use this to encode/decode values as pickle bytes
+    def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
+        return api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN)
+
+    def encode(self, python_value: Any) -> api_pb2.ClassParameterValue:
+        # TODO: we could use pickle here?
+        raise NotImplementedError("Can't encode unknown type")
+
+    def decode(self, struct: api_pb2.ClassParameterValue) -> Any:
+        raise NotImplementedError("Can't decode unknown value")
+
+
+@type_register.register_encoder(list)  # might want to do tuple separately
+@type_register.register_decoder(api_pb2.PARAM_TYPE_LIST)
+class ListType(PayloadHandler):
+    def encode(self, b: list) -> api_pb2.ClassParameterValue:
+        raise NotImplementedError("TODO: implement list")
+        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_LIST)
+
+    def decode(self, p: api_pb2.ClassParameterValue) -> list:
+        raise NotImplementedError("TODO: implement list")
+
+    def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
+        origin = typing_extensions.get_origin(full_python_type)  # expected to be `list`
+        args = typing_extensions.get_args(full_python_type)
+        if origin and len(args) == 1:
+            sub_type_handler = type_register.get_for_declared_type(args[0])
+            arg = args[0]
+        else:
+            sub_type_handler = UnknownTypeHandler()
+            arg = typing.Any
+
+        return api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_LIST, sub_types=[sub_type_handler.proto_type_def(arg)]
+        )
+
+
+def _signature_parameter_to_spec(
+    python_signature_parameter: inspect.Parameter, include_legacy_parameter_fields: bool = False
+) -> api_pb2.ClassParameterSpec:
+    python_type = python_signature_parameter.annotation
+
+    origin = typing_extensions.get_origin(python_type)
+    if origin:
+        base_type = origin
+    else:
+        base_type = python_type
+
+    payload_handler = type_register.get_for_declared_type(base_type)
+
+    full_proto_type = payload_handler.proto_type_def(python_type)
+    has_default = python_signature_parameter.default is not Parameter.empty
+
+    if has_default:
+        maybe_default_value = type_register.get_encoder(python_signature_parameter.default).encode(
+            python_signature_parameter.default
+        )
+    else:
+        maybe_default_value = None
+
+    field_spec = api_pb2.ClassParameterSpec(
+        name=python_signature_parameter.name,
+        full_type=full_proto_type,
+        has_default=has_default,
+        default_value=maybe_default_value,
+    )
+    if include_legacy_parameter_fields:
+        # For backward compatibility reasons with clients that don't look at .default_value:
+        # We need to still provide defaults for int, str and bytes in the base object
+        # We can remove this when all supported clients + backend only look at .default_value and .full_type
+
+        if full_proto_type.base_type == api_pb2.PARAM_TYPE_INT:
+            if has_default:
+                field_spec.int_default = python_signature_parameter.default
+            field_spec.type = api_pb2.PARAM_TYPE_INT
+        elif full_proto_type.base_type == api_pb2.PARAM_TYPE_STRING:
+            if has_default:
+                field_spec.string_default = python_signature_parameter.default
+            field_spec.type = api_pb2.PARAM_TYPE_STRING
+        elif full_proto_type.base_type == api_pb2.PARAM_TYPE_BYTES:
+            if has_default:
+                field_spec.bytes_default = python_signature_parameter.default
+            field_spec.type = api_pb2.PARAM_TYPE_BYTES
+
+    return field_spec
+
+
+def signature_to_parameter_specs(signature: inspect.Signature) -> list[api_pb2.ClassParameterSpec]:
+    # only used for modal.parameter() specs, uses backwards compatible
+    modal_parameters: list[api_pb2.ClassParameterSpec] = []
+    for param in signature.parameters.values():
+        field_spec = _signature_parameter_to_spec(param, include_legacy_parameter_fields=True)
+        modal_parameters.append(field_spec)
+    return modal_parameters
+
+
+def validate_parameter_type(declared_type: type):
+    """Raises a helpful TypeError if the supplied type isn't supported by class parameters"""
+    supported_types = [
+        base_type
+        for base_type, handler in type_register._py_base_type_to_handler.items()
+        if handler.allow_as_class_parameter
+    ]
+    supported_str = ", ".join(t.__name__ for t in supported_types)
+
+    if (
+        not (payload_handler := type_register.get_for_declared_type(declared_type))
+        or not payload_handler.allow_as_class_parameter
+    ):
+        raise TypeError(
+            f"{declared_type.__name__} is not a supported modal.parameter() type. Use one of: {supported_str}"
+        )

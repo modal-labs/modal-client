@@ -1010,10 +1010,6 @@ def test_param_cls_function_strict_params(servicer):
         inputs=_get_inputs(method_name="f"),
         class_parameter_info=api_pb2.ClassParameterInfo(
             format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
-            schema=[
-                api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_INT),
-                api_pb2.ClassParameterSpec(name="y", type=api_pb2.PARAM_TYPE_STRING),
-            ],
         ),
     )
     assert _unwrap_scalar(ret) == "111 foo 42"
