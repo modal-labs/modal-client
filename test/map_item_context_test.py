@@ -53,7 +53,7 @@ async def test_successful_output(retry_queue):
         retry_queue,
     )
 
-    assert output_type == _OutputType.COMPLETE
+    assert output_type == _OutputType.SUCCESSFUL_COMPLETION
     assert_context_is(ctx, _MapItemState.COMPLETE, 0, "in-0", input_jwt_data, input_data.args)
 
 
@@ -75,7 +75,7 @@ async def test_failed_output_zero_retries(retry_queue):
         retry_queue,
     )
 
-    assert output_type == _OutputType.COMPLETE
+    assert output_type == _OutputType.FAILED_COMPLETION
     assert_context_is(ctx, _MapItemState.COMPLETE, 1, "in-0", input_jwt_data, input_data.args)
     assert retry_queue.empty()
 
@@ -97,7 +97,7 @@ async def test_failed_output_retries_disabled(retry_queue):
         retry_queue,
     )
 
-    assert output_type == _OutputType.COMPLETE
+    assert output_type == _OutputType.FAILED_COMPLETION
     assert_context_is(ctx, _MapItemState.COMPLETE, 0, "in-0", input_jwt_data, input_data.args)
     assert retry_queue.empty()
 
@@ -163,7 +163,7 @@ async def test_failed_output_retries_then_succeeds(retry_queue):
         api_pb2.FunctionCallInvocationType.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
         retry_queue,
     )
-    assert output_type == _OutputType.COMPLETE
+    assert output_type == _OutputType.SUCCESSFUL_COMPLETION
     assert_context_is(ctx, _MapItemState.COMPLETE, 2, "in-0", input_jwt_data_2, input_data.args)
 
 
@@ -205,7 +205,7 @@ async def test_lost_input_retries_then_succeeds(retry_queue):
         api_pb2.FunctionCallInvocationType.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
         retry_queue,
     )
-    assert output_type == _OutputType.COMPLETE
+    assert output_type == _OutputType.SUCCESSFUL_COMPLETION
     assert_context_is(ctx, _MapItemState.COMPLETE, 1, "in-0", input_jwt_data_1, input_data.args)
 
 
@@ -247,7 +247,7 @@ async def test_failed_output_exhausts_retries(retry_queue):
         api_pb2.FunctionCallInvocationType.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
         retry_queue,
     )
-    assert output_type == _OutputType.COMPLETE
+    assert output_type == _OutputType.FAILED_COMPLETION
     assert_context_is(ctx, _MapItemState.COMPLETE, 2, "in-0", input_jwt_data_1, input_data.args)
 
 
@@ -264,7 +264,7 @@ async def test_get_successful_output_before_put_inputs_completes(retry_queue):
         retry_queue,
     )
 
-    assert output_type == _OutputType.COMPLETE
+    assert output_type == _OutputType.SUCCESSFUL_COMPLETION
     assert_context_is(ctx, _MapItemState.COMPLETE, 0, None, None, input_data.args)
     assert retry_queue.empty()
 
@@ -369,7 +369,7 @@ async def test_ignore_stale_failed_output(retry_queue):
         api_pb2.FunctionCallInvocationType.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
         retry_queue,
     )
-    assert output_type == _OutputType.DUPLICATE
+    assert output_type == _OutputType.STALE_RETRY_DUPLICATE
     # The output should have been ignored because it has retry count 0, but the ctx is on retry count 1.
     # Assert that state has not changed since.
     assert_context_is(ctx, _MapItemState.WAITING_TO_RETRY, 1, "in-0", input_jwt_data, input_data.args)
@@ -390,7 +390,7 @@ async def test_ignore_duplicate_successful_output(retry_queue):
         api_pb2.FunctionCallInvocationType.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
         retry_queue,
     )
-    assert output_type == _OutputType.COMPLETE
+    assert output_type == _OutputType.SUCCESSFUL_COMPLETION
     assert_context_is(ctx, _MapItemState.COMPLETE, 0, "in-0", input_jwt_data, input_data.args)
 
     # Get outputs
@@ -401,8 +401,60 @@ async def test_ignore_duplicate_successful_output(retry_queue):
         api_pb2.FunctionCallInvocationType.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
         retry_queue,
     )
-    # Changed to complete should be false since it was already complete - there was no change.
-    assert output_type == _OutputType.DUPLICATE
+    # Output type should be duplicate since it was already complete.
+    assert output_type == _OutputType.ALREADY_COMPLETE_DUPLICATE
     # The output should have been ignored because it is already complete.
     # Assert that state has not changed since.
     assert_context_is(ctx, _MapItemState.COMPLETE, 0, "in-0", input_jwt_data, input_data.args)
+
+@pytest.mark.asyncio
+async def test_ignore_duplicate_failed_output(retry_queue):
+    retry_policy = api_pb2.FunctionRetryPolicy(retries=1)
+    ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy), sync_client_retries_enabled=True)
+    input_jwt_data_0 = InputJwtData.of(0, 0)
+    # Put inputs
+    response_item = api_pb2.FunctionPutInputsResponseItem(idx=0, input_id="in-0", input_jwt=input_jwt_data_0.to_jwt())
+    ctx.handle_put_inputs_response(response_item)
+    assert_context_is(ctx, _MapItemState.WAITING_FOR_OUTPUT, 0, "in-0", input_jwt_data_0, input_data.args)
+
+    # Get outputs
+    output_type = await ctx.handle_get_outputs_response(
+        api_pb2.FunctionGetOutputsItem(idx=0, result=result_failure),
+        now_seconds,
+        api_pb2.FunctionCallInvocationType.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
+        retry_queue,
+    )
+
+    assert output_type == _OutputType.RETRYING
+    assert_context_is(ctx, _MapItemState.WAITING_TO_RETRY, 1, "in-0", input_jwt_data_0, input_data.args)
+    assert len(retry_queue) == 1
+
+    # Retry input
+    retry_item = await ctx.prepare_item_for_retry()
+    assert_retry_item_is(retry_item, input_jwt_data_0, 1, input_data.args)
+    assert_context_is(ctx, _MapItemState.RETRYING, 1, "in-0", None, input_data.args)
+
+    input_jwt_data_1 = InputJwtData.of(0, 1)
+    ctx.handle_retry_response(input_jwt_data_1.to_jwt())
+    assert_context_is(ctx, _MapItemState.WAITING_FOR_OUTPUT, 1, "in-0", input_jwt_data_1, input_data.args)
+
+    # Get outputs
+    output_type = await ctx.handle_get_outputs_response(
+        api_pb2.FunctionGetOutputsItem(idx=0, result=result_failure, retry_count=1),
+        now_seconds,
+        api_pb2.FunctionCallInvocationType.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
+        retry_queue,
+    )
+    assert output_type == _OutputType.FAILED_COMPLETION
+    assert_context_is(ctx, _MapItemState.COMPLETE, 2, "in-0", input_jwt_data_1, input_data.args)
+
+    # Get outputs (duplicate)
+    output_type = await ctx.handle_get_outputs_response(
+        api_pb2.FunctionGetOutputsItem(idx=0, result=result_failure, retry_count=1),
+        now_seconds,
+        api_pb2.FunctionCallInvocationType.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
+        retry_queue,
+    )
+    # Output type should be duplicate because it was already complete.
+    assert output_type == _OutputType.ALREADY_COMPLETE_DUPLICATE
+    assert_context_is(ctx, _MapItemState.COMPLETE, 2, "in-0", input_jwt_data_1, input_data.args)
