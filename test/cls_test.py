@@ -819,12 +819,19 @@ def test_build_timeout_image(client, servicer):
 
 @pytest.mark.parametrize("decorator", [enter, exit])
 def test_disallow_lifecycle_decorators_with_method(decorator):
-    name = decorator.__name__.split("_")[-1]  # remove synchronicity prefix
-    with pytest.raises(InvalidError, match=f"Cannot use `@{name}` decorator with `@method`."):
+    with pytest.raises(InvalidError, match="cannot be combined with lifecycle decorators"):
 
-        class ClsDecoratorMethodStack:
+        class HasLifecycleOnMethod:
             @decorator()
             @method()
+            def f(self):
+                pass
+
+    with pytest.raises(InvalidError, match="cannot be combined with lifecycle decorators"):
+
+        class HasMethodOnLifecycle:
+            @method()
+            @decorator()
             def f(self):
                 pass
 

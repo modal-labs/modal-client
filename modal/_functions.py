@@ -644,8 +644,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         if info.user_cls:
             method_definitions = {}
-            partial_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.FUNCTION)
-            for method_name, partial_function in partial_functions.items():
+            interface_methods = _find_partial_methods_for_user_cls(
+                info.user_cls, _PartialFunctionFlags.interface_flags()
+            )
+            for method_name, partial_function in interface_methods.items():
                 function_type = get_function_type(partial_function.is_generator)
                 function_name = f"{info.user_cls.__name__}.{method_name}"
                 method_definition = api_pb2.MethodDefinition(

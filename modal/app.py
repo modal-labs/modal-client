@@ -876,7 +876,7 @@ class _App:
             if batch_functions:
                 if len(batch_functions) > 1:
                     raise InvalidError(f"Modal class {user_cls.__name__} can only have one batched function.")
-                if len(_find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.FUNCTION)) > 1:
+                if len(_find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.interface_flags())) > 1:
                     raise InvalidError(
                         f"Modal class {user_cls.__name__} with a modal batched function cannot have other modal methods."  # noqa
                     )
