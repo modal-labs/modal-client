@@ -2342,6 +2342,17 @@ message SandboxGetLogsRequest {
   string last_entry_id = 4;
 }
 
+message SandboxGetResourceUsageRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxGetResourceUsageResponse {
+  uint64 cpu_core_nanosecs = 1;
+  uint64 mem_gib_nanosecs = 2;
+  uint64 gpu_nanosecs = 3;
+  optional string gpu_type = 4;
+}
+
 message SandboxGetTaskIdRequest {
   string sandbox_id = 1;
   optional float timeout = 2; // Legacy clients do not provide a timeout. New clients must always provide a timeout.
@@ -3056,6 +3067,7 @@ service ModalClient {
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
+  rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
   rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse); // needed for modal container exec
   rpc SandboxGetTunnels(SandboxGetTunnelsRequest) returns (SandboxGetTunnelsResponse);
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
