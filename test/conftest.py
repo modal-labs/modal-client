@@ -555,6 +555,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 "deployed_by": "foo-user",
                 "tag": "latest",
                 "rollback_version": None,
+                "commit_info": request.commit_info,
             }
         )
 
@@ -581,6 +582,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     client_version=app_deployment_history["client_version"],
                     deployed_by=app_deployment_history["deployed_by"],
                     tag=app_deployment_history["tag"],
+                    commit_info=app_deployment_history.get("commit_info", None),
                 )
             )
 
@@ -1080,7 +1082,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 retry_policy=retry_policy,
                 function_call_jwt=function_call_jwt,
                 pipelined_inputs=response_inputs,
-                sync_client_retries_enabled=self.sync_client_retries_enabled
+                sync_client_retries_enabled=self.sync_client_retries_enabled,
             )
         )
 
