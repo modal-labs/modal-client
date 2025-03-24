@@ -9,7 +9,7 @@ import sys
 import time
 import traceback
 from collections.abc import AsyncGenerator, AsyncIterator
-from contextlib import AsyncExitStack
+from contextlib import AsyncExitStack, contextmanager
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -47,6 +47,13 @@ DYNAMIC_CONCURRENCY_TIMEOUT_SECS = 10
 MAX_OUTPUT_BATCH_SIZE: int = 49
 
 RTT_S: float = 0.5  # conservative estimate of RTT in seconds.
+
+
+@contextmanager
+def timer(name):
+    t = time.monotonic_ns()
+    yield
+    print(f"{name}: {time.monotonic_ns() - t:_}")
 
 
 class UserException(Exception):
@@ -452,14 +459,19 @@ class _ContainerIOManager:
         return cls, fun
 
     def serialize(self, obj: Any) -> bytes:
-        return serialize(obj)
+        with timer("serialize"):
+            return serialize(obj)
 
     def deserialize(self, data: bytes) -> Any:
-        return deserialize(data, self._client)
+        with timer("deserialize"):
+            return deserialize(data, self._client)
 
     @synchronizer.no_io_translation
     def serialize_data_format(self, obj: Any, data_format: int) -> bytes:
-        return serialize_data_format(obj, data_format)
+        with timer(f"serialize data format {api_pb2.DataFormat.Name(data_format)}"):
+            data = serialize_data_format(obj, data_format)
+            print("data bytes", len(data))
+            return data
 
     async def format_blob_data(self, data: bytes) -> dict[str, Any]:
         return (
@@ -641,22 +653,24 @@ class _ContainerIOManager:
         results: list[api_pb2.GenericResult],
     ) -> None:
         output_created_at = time.time()
-        outputs = [
-            api_pb2.FunctionPutOutputsItem(
-                input_id=input_id,
-                input_started_at=started_at,
-                output_created_at=output_created_at,
-                result=result,
-                data_format=data_format,
+        with timer(f"constructing output items ({len(results)}"):
+            outputs = [
+                api_pb2.FunctionPutOutputsItem(
+                    input_id=input_id,
+                    input_started_at=started_at,
+                    output_created_at=output_created_at,
+                    result=result,
+                    data_format=data_format,
+                )
+                for input_id, result in zip(io_context.input_ids, results)
+            ]
+        with timer("sending outputs"):
+            await retry_transient_errors(
+                self._client.stub.FunctionPutOutputs,
+                api_pb2.FunctionPutOutputsRequest(outputs=outputs),
+                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                max_retries=None,  # Retry indefinitely, trying every 1s.
             )
-            for input_id, result in zip(io_context.input_ids, results)
-        ]
-        await retry_transient_errors(
-            self._client.stub.FunctionPutOutputs,
-            api_pb2.FunctionPutOutputsRequest(outputs=outputs),
-            additional_status_codes=[Status.RESOURCE_EXHAUSTED],
-            max_retries=None,  # Retry indefinitely, trying every 1s.
-        )
 
     def serialize_exception(self, exc: BaseException) -> bytes:
         try:
@@ -815,13 +829,14 @@ class _ContainerIOManager:
         formatted_data = await asyncio.gather(
             *[self.format_blob_data(self.serialize_data_format(d, data_format)) for d in data]
         )
-        results = [
-            api_pb2.GenericResult(
-                status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
-                **d,
-            )
-            for d in formatted_data
-        ]
+        with timer("constructing generic result"):
+            results = [
+                api_pb2.GenericResult(
+                    status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+                    **d,
+                )
+                for d in formatted_data
+            ]
         await self._push_outputs(
             io_context=io_context,
             started_at=started_at,

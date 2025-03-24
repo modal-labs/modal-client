@@ -176,6 +176,7 @@ enum ParameterType {
   PARAM_TYPE_UNKNOWN = 5;  // used in schemas to signify unrecognized or un-annotated types
   PARAM_TYPE_LIST = 6;
   PARAM_TYPE_DICT = 7;
+  PARAM_TYPE_NONE = 8;
 }
 
 enum ProgressType {

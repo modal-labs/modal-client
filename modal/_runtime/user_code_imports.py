@@ -13,6 +13,7 @@ from modal._functions import _Function
 from modal._partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_object
+from modal.config import config
 from modal.exception import ExecutionError, InvalidError
 from modal_proto import api_pb2
 
@@ -29,6 +30,11 @@ class FinalizedFunction:
     is_generator: bool
     data_format: int  # api_pb2.DataFormat
     lifespan_manager: Optional["LifespanManager"] = None
+
+
+DATA_FORMAT = api_pb2.DATA_FORMAT_PICKLE
+if config.get("data_format") == "proto":
+    DATA_FORMAT = api_pb2.DATA_FORMAT_PROTO
 
 
 class Service(metaclass=ABCMeta):
@@ -113,7 +119,7 @@ class ImportedFunction(Service):
                     callable=self._user_defined_callable,
                     is_async=is_async,
                     is_generator=is_generator,
-                    data_format=api_pb2.DATA_FORMAT_PICKLE,
+                    data_format=DATA_FORMAT,
                 )
             }
 

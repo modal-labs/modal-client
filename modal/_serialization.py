@@ -353,8 +353,7 @@ def serialize_data_format(obj: Any, data_format: int) -> bytes:
     if data_format == api_pb2.DATA_FORMAT_PICKLE:
         return serialize(obj)
     elif data_format == api_pb2.DATA_FORMAT_PROTO:
-        args, kwargs = obj
-        return encode_proto_payload(args, kwargs).SerializeToString()
+        return encode_proto_payload(obj).SerializeToString()
     elif data_format == api_pb2.DATA_FORMAT_ASGI:
         return _serialize_asgi(obj).SerializeToString(deterministic=True)
     elif data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE:
@@ -364,27 +363,21 @@ def serialize_data_format(obj: Any, data_format: int) -> bytes:
         raise InvalidError(f"Unknown data format {data_format!r}")
 
 
-def encode_proto_payload(args: tuple, kwargs: dict[str, Any]) -> api_pb2.Payload:
-    list_args = list(args)
-    args_value = type_register.get_encoder(list_args).encode(list_args)
-    kwargs_value = type_register.get_encoder(kwargs).encode(kwargs)
-    return api_pb2.Payload(
-        args=args_value.list_value,
-        kwargs=kwargs_value.dict_value,
-    )
+def encode_proto_payload(obj: Any) -> api_pb2.ClassParameterValue:
+    return type_register.get_encoder(obj).encode(obj)
 
 
-def decode_proto_payload(payload: api_pb2.Payload) -> tuple[typing.Sequence[Any], dict[str, Any]]:
-    args = ListType()._decode_list_value(payload.args)
-    kwargs = DictType()._decode_dict_value(payload.kwargs)
-    return (args, kwargs)
+def decode_proto_payload(payload: api_pb2.ClassParameterValue) -> Any:
+    return type_register.get_decoder(payload.type).decode(payload)
 
 
 def deserialize_data_format(s: bytes, data_format: int, client) -> Any:
     if data_format == api_pb2.DATA_FORMAT_PICKLE:
         return deserialize(s, client)
     if data_format == api_pb2.DATA_FORMAT_PROTO:
-        return
+        proto_payload = api_pb2.ClassParameterValue()
+        proto_payload.FromString(s)
+        return decode_proto_payload(proto_payload)
     elif data_format == api_pb2.DATA_FORMAT_ASGI:
         return _deserialize_asgi(api_pb2.Asgi.FromString(s))
     elif data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE:
@@ -677,6 +670,19 @@ class UnknownTypeHandler(PayloadHandler):
 
     def decode(self, struct: api_pb2.ClassParameterValue) -> Any:
         raise NotImplementedError(f"Can't decode unknown value {struct.type}")
+
+
+@type_register.register_encoder(type(None))
+@type_register.register_decoder(api_pb2.PARAM_TYPE_NONE)
+class NoneTypeHandler(PayloadHandler):
+    def encode(self, v):
+        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_NONE)
+
+    def decode(self, p):
+        return None
+
+    def proto_type_def(self, declared_python_type: type) -> api_pb2.GenericPayloadType:
+        return api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_NONE)
 
 
 @type_register.register_encoder(list)  # might want to do tuple separately
