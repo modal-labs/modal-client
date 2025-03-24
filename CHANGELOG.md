@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.121 (2025-03-24)
+
+- Adds a new "commit info" column to the `modal app history` command. It shows the short git hash at the time of deployment, with an asterisk `*` if the repository had uncommitted changes.
+
+
+
 ### 0.73.115 (2025-03-19)
 
 * Adds support for new strict `bytes` type for  `modal.parameter`
