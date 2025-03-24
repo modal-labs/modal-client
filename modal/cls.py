@@ -225,7 +225,7 @@ class _Obj:
 
         # user cls instances are only created locally, so we have all partial functions available
         instance_methods = {}
-        for method_name in _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.FUNCTION):
+        for method_name in _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.interface_flags()):
             instance_methods[method_name] = getattr(self, method_name)
 
         user_cls_instance._modal_functions = instance_methods
@@ -475,7 +475,7 @@ class _Cls(_Object, type_prefix="cs"):
         _Cls.validate_construction_mechanism(user_cls)
 
         method_partials: dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
-            user_cls, _PartialFunctionFlags.FUNCTION
+            user_cls, _PartialFunctionFlags.interface_flags()
         )
 
         for method_name, partial_function in method_partials.items():
@@ -485,7 +485,9 @@ class _Cls(_Object, type_prefix="cs"):
             partial_function.wrapped = True
 
         # Disable the warning that lifecycle methods are not wrapped
-        for partial_function in _find_partial_methods_for_user_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():
+        for partial_function in _find_partial_methods_for_user_cls(
+            user_cls, ~_PartialFunctionFlags.interface_flags()
+        ).values():
             partial_function.wrapped = True
 
         # Get all callables
