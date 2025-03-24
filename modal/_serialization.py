@@ -352,6 +352,9 @@ def serialize_data_format(obj: Any, data_format: int) -> bytes:
     """Similar to serialize(), but supports other data formats."""
     if data_format == api_pb2.DATA_FORMAT_PICKLE:
         return serialize(obj)
+    elif data_format == api_pb2.DATA_FORMAT_PROTO:
+        args, kwargs = obj
+        return encode_proto_payload(args, kwargs).SerializeToString()
     elif data_format == api_pb2.DATA_FORMAT_ASGI:
         return _serialize_asgi(obj).SerializeToString(deterministic=True)
     elif data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE:
@@ -361,9 +364,27 @@ def serialize_data_format(obj: Any, data_format: int) -> bytes:
         raise InvalidError(f"Unknown data format {data_format!r}")
 
 
+def encode_proto_payload(args: tuple, kwargs: dict[str, Any]) -> api_pb2.Payload:
+    list_args = list(args)
+    args_value = type_register.get_encoder(list_args).encode(list_args)
+    kwargs_value = type_register.get_encoder(kwargs).encode(kwargs)
+    return api_pb2.Payload(
+        args=args_value.list_value,
+        kwargs=kwargs_value.dict_value,
+    )
+
+
+def decode_proto_payload(payload: api_pb2.Payload) -> tuple[typing.Sequence[Any], dict[str, Any]]:
+    args = ListType()._decode_list_value(payload.args)
+    kwargs = DictType()._decode_dict_value(payload.kwargs)
+    return (args, kwargs)
+
+
 def deserialize_data_format(s: bytes, data_format: int, client) -> Any:
     if data_format == api_pb2.DATA_FORMAT_PICKLE:
         return deserialize(s, client)
+    if data_format == api_pb2.DATA_FORMAT_PROTO:
+        return
     elif data_format == api_pb2.DATA_FORMAT_ASGI:
         return _deserialize_asgi(api_pb2.Asgi.FromString(s))
     elif data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE:
@@ -514,6 +535,8 @@ class TypeRegistry:
 
     def register_encoder(self, python_base_type: type) -> typing.Callable[[PH], PH]:
         def deco(ph: type[PayloadHandler]):
+            if python_base_type in self._py_base_type_to_handler:
+                raise ValueError("Can't register the same encoder type twice")
             self._py_base_type_to_handler[python_base_type] = ph.singleton()
             return ph
 
@@ -521,6 +544,8 @@ class TypeRegistry:
 
     def register_decoder(self, enum_type_value: "api_pb2.ParameterType.ValueType"):
         def deco(ph: type[PayloadHandler]):
+            if enum_type_value in self._proto_type_to_handler:
+                raise ValueError("Can't register the same decoder type twice")
             self._proto_type_to_handler[enum_type_value] = ph.singleton()
             return ph
 
@@ -648,21 +673,31 @@ class UnknownTypeHandler(PayloadHandler):
 
     def encode(self, python_value: Any) -> api_pb2.ClassParameterValue:
         # TODO: we could use pickle here?
-        raise NotImplementedError("Can't encode unknown type")
+        raise NotImplementedError(f"Can't encode unknown type {type(python_value)}")
 
     def decode(self, struct: api_pb2.ClassParameterValue) -> Any:
-        raise NotImplementedError("Can't decode unknown value")
+        raise NotImplementedError(f"Can't decode unknown value {struct.type}")
 
 
 @type_register.register_encoder(list)  # might want to do tuple separately
 @type_register.register_decoder(api_pb2.PARAM_TYPE_LIST)
 class ListType(PayloadHandler):
-    def encode(self, b: list) -> api_pb2.ClassParameterValue:
-        raise NotImplementedError("TODO: implement list")
-        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_LIST)
+    def encode(self, value: list) -> api_pb2.ClassParameterValue:
+        item_values = []
+        for item in value:
+            item_values.append(type_register.get_encoder(item).encode(item))
+        return api_pb2.ClassParameterValue(
+            type=api_pb2.PARAM_TYPE_LIST, list_value=api_pb2.PayloadListValue(items=item_values)
+        )
+
+    def _decode_list_value(self, list_value: api_pb2.PayloadListValue) -> list:
+        item_values = []
+        for item in list_value.items:
+            item_values.append(type_register.get_decoder(item.type).decode(item))
+        return item_values
 
     def decode(self, p: api_pb2.ClassParameterValue) -> list:
-        raise NotImplementedError("TODO: implement list")
+        return self._decode_list_value(p.list_value)
 
     def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
         origin = typing_extensions.get_origin(full_python_type)  # expected to be `list`
@@ -676,6 +711,49 @@ class ListType(PayloadHandler):
 
         return api_pb2.GenericPayloadType(
             base_type=api_pb2.PARAM_TYPE_LIST, sub_types=[sub_type_handler.proto_type_def(arg)]
+        )
+
+
+@type_register.register_encoder(dict)
+@type_register.register_decoder(api_pb2.PARAM_TYPE_DICT)
+class DictType(PayloadHandler):
+    def encode(self, value: dict[str, Any]) -> api_pb2.ClassParameterValue:
+        item_values = []
+        for key, item in value.items():
+            item = type_register.get_encoder(item).encode(item)
+            item.name = key
+            item_values.append(item)
+
+        return api_pb2.ClassParameterValue(
+            type=api_pb2.PARAM_TYPE_DICT,
+            dict_value=api_pb2.PayloadDictValue(
+                entries=item_values,
+            ),
+        )
+
+    def _decode_dict_value(self, dict_value: api_pb2.PayloadDictValue) -> dict[str, Any]:
+        item_values = {}
+        for item in dict_value.entries:
+            item_values[item.name] = type_register.get_decoder(item.type).decode(item)
+        return item_values
+
+    def decode(self, p: api_pb2.ClassParameterValue) -> dict[str, Any]:
+        return self._decode_dict_value(p.dict_value)
+
+    def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
+        origin = typing_extensions.get_origin(full_python_type)  # expected to be `dict`
+        args = typing_extensions.get_args(full_python_type)
+        if origin and len(args) == 2:
+            if args[0] is not str:
+                raise InvalidError("Dict arguments only allow str keys")
+            sub_type_handler = type_register.get_for_declared_type(args[1])
+            arg = args[1]
+        else:
+            sub_type_handler = UnknownTypeHandler()
+            arg = typing.Any
+
+        return api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_DICT, sub_types=[sub_type_handler.proto_type_def(arg)]
         )
 
 

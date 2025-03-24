@@ -106,6 +106,7 @@ enum DataFormat {
   DATA_FORMAT_PICKLE = 1; // Cloudpickle
   DATA_FORMAT_ASGI = 2; // "Asgi" protobuf message
   DATA_FORMAT_GENERATOR_DONE = 3; // "GeneratorDone" protobuf message
+  DATA_FORMAT_PROTO = 4;
 }
 
 enum DeploymentNamespace {
@@ -174,6 +175,7 @@ enum ParameterType {
   PARAM_TYPE_BYTES = 4;
   PARAM_TYPE_UNKNOWN = 5;  // used in schemas to signify unrecognized or un-annotated types
   PARAM_TYPE_LIST = 6;
+  PARAM_TYPE_DICT = 7;
 }
 
 enum ProgressType {
@@ -713,17 +715,19 @@ message ClassParameterSpec { // TODO: rename into NamedPayloadArgument or simila
 }
 
 
-message ClassParameterValue {  // TODO: rename into PayloadValue
+message ClassParameterValue {  // TODO: rename into NamedPayloadValue
   // NOTE: adding additional *fields* here can invalidate function lookups
   //  since we use the serialized message as the bound function identifier
   //  for parameter-bound classes. Modify with *caution*
-  string name = 1;  // TODO: would be nice to move this into a parent wrapper message
+  optional string name = 1;  // this is optional - only used when values are added to dict-like structs
   ParameterType type = 2;
   oneof value_oneof {
     string string_value = 3;
     int64 int_value = 4;
     bytes pickle_value = 5;
     bytes bytes_value = 6;
+    PayloadListValue list_value = 7;
+    PayloadDictValue dict_value = 8;
   }
 }
 
@@ -949,6 +953,10 @@ message CustomDomainConfig {
 
 message CustomDomainInfo {
   string url = 1;
+}
+
+message PayloadDictValue {
+  repeated ClassParameterValue entries = 1;
 }
 
 message DNSRecord {
@@ -1881,7 +1889,7 @@ message InputInfo {
   bool task_first_input = 7;
 }
 
-message ListValue {
+message PayloadListValue {
   // corresponds to PARAMETER_TYPE_LIST base type
   repeated ClassParameterValue items = 1;
 }
@@ -2033,6 +2041,11 @@ message Object {
 
 message ObjectDependency {
   string object_id = 1;
+}
+
+message Payload {
+  PayloadListValue args = 1;
+  PayloadDictValue kwargs = 2;
 }
 
 message PTYInfo {

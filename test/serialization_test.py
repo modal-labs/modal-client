@@ -7,9 +7,11 @@ import typing
 from modal import Queue
 from modal._serialization import (
     apply_defaults,
+    decode_proto_payload,
     deserialize,
     deserialize_data_format,
     deserialize_proto_params,
+    encode_proto_payload,
     serialize,
     serialize_data_format,
     serialize_proto_params,
@@ -234,3 +236,10 @@ def test_schema_extraction_nested_list():
         ),
         has_default=False,
     )
+
+
+def test_payloads():
+    test_arg = {"t": [b"hej", "san"]}
+    p = encode_proto_payload((test_arg,), {})
+    (recovered_arg,), _ = decode_proto_payload(p)
+    assert recovered_arg == test_arg
