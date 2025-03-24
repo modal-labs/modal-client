@@ -125,7 +125,7 @@ async def test_webhook_decorator_in_wrong_order(servicer, client):
         async def g(x):
             pass
 
-    assert "wrong order" in str(excinfo.value).lower()
+    assert "swap the order" in str(excinfo.value).lower()
 
 
 @pytest.mark.asyncio
