@@ -9,7 +9,7 @@ from modal_proto import api_pb2
 from .._clustered_functions import ClusterInfo, get_cluster_info as _get_cluster_info
 from .._functions import _Function
 from .._object import _get_environment_name
-from .._partial_function import _PartialFunction, _PartialFunctionFlags
+from .._partial_function import _PartialFunction, _PartialFunctionFlags, _PartialFunctionParams
 from .._runtime.container_io_manager import _ContainerIOManager
 from .._utils.async_utils import synchronizer
 from ..client import _Client
@@ -55,6 +55,12 @@ def clustered(size: int, broadcast: bool = True):
     if size <= 0:
         raise ValueError("cluster size must be greater than 0")
 
+    return _PartialFunction.from_wrapper(
+        "clustered",
+        _PartialFunctionFlags.CALLABLE_INTERFACE | _PartialFunctionFlags.CLUSTERED,
+        _PartialFunctionParams(cluster_size=size),
+    )
+
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         if isinstance(raw_f, _Function):
             raw_f = raw_f.get_raw_f()
@@ -63,7 +69,7 @@ def clustered(size: int, broadcast: bool = True):
                 "@app.function()\n@modal.clustered()\ndef clustered_function():\n    ..."
             )
         return _PartialFunction(
-            raw_f, _PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.CLUSTERED, cluster_size=size
+            raw_f, _PartialFunctionFlags.CALLABLE_INTERFACE | _PartialFunctionFlags.CLUSTERED, cluster_size=size
         )
 
     return wrapper
