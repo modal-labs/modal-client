@@ -347,7 +347,7 @@ async def _map_invocation(
 
     async def log_debug_stats():
         def log_stats():
-            print(
+            logger.debug(
                 f"Map stats: sync_client_retries_enabled={sync_client_retries_enabled} "
                 f"have_all_inputs={have_all_inputs} inputs_created={inputs_created} input_sent={inputs_sent} "
                 f"inputs_retried={inputs_retried} outputs_received={outputs_received} "
