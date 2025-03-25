@@ -14,9 +14,9 @@ from modal._serialization import (
     serialize_data_format,
     serialize_proto_params,
     signature_to_parameter_specs,
-    type_register,
     validate_parameter_values,
 )
+from modal._type_manager import type_registry
 from modal._utils.rand_pb_testing import rand_pb
 from modal.exception import DeserializationError, InvalidError
 from modal_proto import api_pb2
@@ -116,10 +116,10 @@ def test_apply_defaults():
 
 def test_non_implemented_proto_type():
     with pytest.raises(InvalidError, match="No payload handler implemented for payload type PARAM_TYPE_UNKNOWN"):
-        type_register.get_handler_for_proto_enum(api_pb2.PARAM_TYPE_UNKNOWN)
+        type_registry.for_proto_enum(api_pb2.PARAM_TYPE_UNKNOWN)
 
     with pytest.raises(InvalidError, match="recognize payload type 1000"):
-        type_register.get_handler_for_proto_enum(1000)  # type: ignore
+        type_registry.for_proto_enum(1000)  # type: ignore
 
 
 def test_schema_extraction_unknown():
