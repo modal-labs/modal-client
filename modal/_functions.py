@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2023
+import asyncio
 import dataclasses
 import inspect
 import textwrap
@@ -261,9 +262,13 @@ class _Invocation:
             try:
                 return await self._get_single_output(ctx.input_jwt)
             except (UserCodeException, FunctionTimeoutError) as exc:
-                await user_retry_manager.raise_or_sleep(exc)
+                delay_ms = user_retry_manager.get_delay_ms()
+                if delay_ms is None:
+                    raise exc
+                await asyncio.sleep(delay_ms / 1000)
             except InternalFailure:
-                # For system failures on the server, we retry immediately.
+                # For system failures on the server, we retry immediately,
+                # and the failure does not count towards the retry policy.
                 pass
             await self._retry_input()
 
@@ -1312,6 +1317,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 order_outputs,
                 return_exceptions,
                 count_update_callback,
+                api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
             )
         ) as stream:
             async for item in stream:
