@@ -145,13 +145,7 @@ def test_schema_extraction_unknown():
     fields = signature_to_parameter_specs(inspect.signature(with_default))
     assert fields == [
         api_pb2.ClassParameterSpec(
-            name="a",
-            full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN),
-            has_default=True,
-            default_value=api_pb2.ClassParameterValue(
-                type=api_pb2.PARAM_TYPE_INT,
-                int_value=5,
-            ),
+            name="a", full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN), has_default=True
         )
     ]
 
@@ -166,7 +160,6 @@ def test_schema_extraction_int():
         type=api_pb2.PARAM_TYPE_INT,
         full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_INT),
         has_default=True,
-        default_value=api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_INT, int_value=1337),
         int_default=1337,
     )
 
@@ -181,7 +174,6 @@ def test_schema_extraction_str():
         type=api_pb2.PARAM_TYPE_STRING,
         full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_STRING),
         has_default=True,
-        default_value=api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_STRING, string_value="foo"),
         string_default="foo",
     )
 
@@ -197,7 +189,6 @@ def test_schema_extraction_bytes():
         has_default=True,
         bytes_default=b"foo",  # for backward compatibility
         full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_BYTES),
-        default_value=api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_BYTES, bytes_value=b"foo"),
     )
 
 

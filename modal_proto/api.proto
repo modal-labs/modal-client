@@ -700,18 +700,18 @@ message ClassParameterSet {
   repeated ClassParameterValue parameters = 1;
 }
 
-message ClassParameterSpec { // TODO: rename into NamedPayloadArgument or similar
+message ClassParameterSpec { // TODO: rename into NamedPayloadType or similar
   string name = 1;
   ParameterType type = 2; // TODO: deprecate - use full_type instead
   bool has_default = 3;
-  oneof default_oneof {  // TODO: deprecate - use default_value instead
+  oneof default_oneof {
+    // Default *values* are only registered for class parameters
     string string_default = 4;
     int64 int_default = 5;
     bytes pickle_default = 6;
     bytes bytes_default = 7;
   }
-  GenericPayloadType full_type = 8; // supersedes type
-  optional ClassParameterValue default_value = 9; // supersedes default_oneof
+  GenericPayloadType full_type = 8; // supersedes `type`
 }
 
 
@@ -1881,11 +1881,6 @@ message InputInfo {
   double finished_at = 5;
   double task_startup_time = 6;
   bool task_first_input = 7;
-}
-
-message ListValue {
-  // corresponds to PARAMETER_TYPE_LIST base type
-  repeated ClassParameterValue items = 1;
 }
 
 message MethodDefinition {

@@ -433,21 +433,10 @@ def serialize_proto_params(python_params: dict[str, Any]) -> bytes:
 
 
 def deserialize_proto_params(serialized_params: bytes) -> dict[str, Any]:
-    proto_struct = api_pb2.ClassParameterSet()
-    proto_struct.ParseFromString(serialized_params)
+    proto_struct = api_pb2.ClassParameterSet.FromString(serialized_params)
     python_params = {}
     for param in proto_struct.parameters:
-        python_value: Any
-        if param.type == api_pb2.PARAM_TYPE_STRING:
-            python_value = param.string_value
-        elif param.type == api_pb2.PARAM_TYPE_INT:
-            python_value = param.int_value
-        elif param.type == api_pb2.PARAM_TYPE_BYTES:
-            python_value = param.bytes_value
-        else:
-            raise NotImplementedError(f"Unimplemented parameter type: {param.type}.")
-
-        python_params[param.name] = python_value
+        python_params[param.name] = type_register.get_decoder(param.type).decode(param)
 
     return python_params
 
@@ -574,11 +563,11 @@ class PayloadHandler(metaclass=abc.ABCMeta):
     allow_as_class_parameter = False
     _singleton: typing.ClassVar[typing.Optional[typing_extensions.Self]] = None
 
-    @abstractmethod
-    def encode(self, python_value: Any) -> api_pb2.ClassParameterValue: ...
+    def encode(self, python_value: Any) -> api_pb2.ClassParameterValue:
+        raise NotImplementedError(f"encode not implemented for {self.__class__.__name__}")
 
-    @abstractmethod
-    def decode(self, struct: api_pb2.ClassParameterValue) -> Any: ...
+    def decode(self, struct: api_pb2.ClassParameterValue) -> Any:
+        raise NotImplementedError(f"decode not implemented for {self.__class__.__name__}")
 
     @abstractmethod
     def proto_type_def(self, declared_python_type: type) -> api_pb2.GenericPayloadType: ...
@@ -650,23 +639,10 @@ class UnknownTypeHandler(PayloadHandler):
     def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
         return api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN)
 
-    def encode(self, python_value: Any) -> api_pb2.ClassParameterValue:
-        # TODO: we could use pickle here?
-        raise NotImplementedError(f"Can't encode unknown type {type(python_value)}")
-
-    def decode(self, struct: api_pb2.ClassParameterValue) -> Any:
-        raise NotImplementedError(f"Can't decode unknown value {struct.type}")
-
 
 @type_register.register_encoder(type(None))
 @type_register.register_decoder(api_pb2.PARAM_TYPE_NONE)
 class NoneTypeHandler(PayloadHandler):
-    def encode(self, v):
-        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_NONE)
-
-    def decode(self, p):
-        return None
-
     def proto_type_def(self, declared_python_type: type) -> api_pb2.GenericPayloadType:
         return api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_NONE)
 
@@ -674,23 +650,6 @@ class NoneTypeHandler(PayloadHandler):
 @type_register.register_encoder(list)  # might want to do tuple separately
 @type_register.register_decoder(api_pb2.PARAM_TYPE_LIST)
 class ListType(PayloadHandler):
-    def encode(self, value: list) -> api_pb2.ClassParameterValue:
-        item_values = []
-        for item in value:
-            item_values.append(type_register.get_encoder(item).encode(item))
-        return api_pb2.ClassParameterValue(
-            type=api_pb2.PARAM_TYPE_LIST, list_value=api_pb2.PayloadListValue(items=item_values)
-        )
-
-    def _decode_list_value(self, list_value: api_pb2.PayloadListValue) -> list:
-        item_values = []
-        for item in list_value.items:
-            item_values.append(type_register.get_decoder(item.type).decode(item))
-        return item_values
-
-    def decode(self, p: api_pb2.ClassParameterValue) -> list:
-        return self._decode_list_value(p.list_value)
-
     def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
         origin = typing_extensions.get_origin(full_python_type)  # expected to be `list`
         args = typing_extensions.get_args(full_python_type)
@@ -709,29 +668,6 @@ class ListType(PayloadHandler):
 @type_register.register_encoder(dict)
 @type_register.register_decoder(api_pb2.PARAM_TYPE_DICT)
 class DictType(PayloadHandler):
-    def encode(self, value: dict[str, Any]) -> api_pb2.ClassParameterValue:
-        item_values = []
-        for key, item in value.items():
-            item = type_register.get_encoder(item).encode(item)
-            item.name = key
-            item_values.append(item)
-
-        return api_pb2.ClassParameterValue(
-            type=api_pb2.PARAM_TYPE_DICT,
-            dict_value=api_pb2.PayloadDictValue(
-                entries=item_values,
-            ),
-        )
-
-    def _decode_dict_value(self, dict_value: api_pb2.PayloadDictValue) -> dict[str, Any]:
-        item_values = {}
-        for item in dict_value.entries:
-            item_values[item.name] = type_register.get_decoder(item.type).decode(item)
-        return item_values
-
-    def decode(self, p: api_pb2.ClassParameterValue) -> dict[str, Any]:
-        return self._decode_dict_value(p.dict_value)
-
     def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
         origin = typing_extensions.get_origin(full_python_type)  # expected to be `dict`
         args = typing_extensions.get_args(full_python_type)
@@ -765,24 +701,14 @@ def _signature_parameter_to_spec(
     full_proto_type = payload_handler.proto_type_def(python_type)
     has_default = python_signature_parameter.default is not Parameter.empty
 
-    if has_default:
-        maybe_default_value = type_register.get_encoder(python_signature_parameter.default).encode(
-            python_signature_parameter.default
-        )
-    else:
-        maybe_default_value = None
-
     field_spec = api_pb2.ClassParameterSpec(
         name=python_signature_parameter.name,
         full_type=full_proto_type,
         has_default=has_default,
-        default_value=maybe_default_value,
     )
     if include_legacy_parameter_fields:
-        # For backward compatibility reasons with clients that don't look at .default_value:
-        # We need to still provide defaults for int, str and bytes in the base object
-        # We can remove this when all supported clients + backend only look at .default_value and .full_type
-
+        # add the .{type}_default and `.type` values as required by legacy clients
+        # looking at class parameter specs
         if full_proto_type.base_type == api_pb2.PARAM_TYPE_INT:
             if has_default:
                 field_spec.int_default = python_signature_parameter.default
