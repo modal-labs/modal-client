@@ -25,13 +25,16 @@ def timer(name):
     # print(f"{name}: {dt:_}")
 
 
-num_inputs = 50
+num_inputs = 20
+payload = ["a"] * 100_000
+# payload = "a" * 1000_000
+# payload = "a" * 100_000_000  # 100 mb - blobbed
 
 
 @app.function(min_containers=num_inputs, region="us-east", max_inputs=1)
 def serialize_stuff():
     stat["function"] = "serialize_stuff"
-    return ["a"] * 100_000
+    return payload
 
 
 @app.function(region="us-east", min_containers=num_inputs)
@@ -68,5 +71,7 @@ def d():
 
     df = pandas.DataFrame(output_rows)
     print(df)
-    print(df.describe().loc[["mean", "std", "50%", "max"]])
+    stats = df.describe()[["serialized_bytes", "serialize", "deserialize", "send_outputs", "e2e"]].loc[["mean"]]
+    stats["ratio"] = (stats["serialize"] + stats["deserialize"]) / stats["e2e"]
+    print(stats.map(lambda x: f"{x:,}"))
     print(f"Total duration: {dt:_}")

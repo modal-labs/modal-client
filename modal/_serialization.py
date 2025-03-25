@@ -356,8 +356,12 @@ def serialize_data_format(obj: Any, data_format: int) -> bytes:
     elif data_format == api_pb2.DATA_FORMAT_PROTO:
         out_payload = encode_proto_payload(obj)
         return out_payload.SerializeToString()
+    elif data_format == api_pb2.DATA_FORMAT_VANILLA_PICKLE:
+        return pickle.dumps(obj)
     elif data_format == api_pb2.DATA_FORMAT_CBOR:
         return cbor2.dumps(obj)
+    elif data_format == api_pb2.DATA_FORMAT_CBOR_CUSTOM:
+        return cbor2.dumps(obj, default=_encode_modal_obj)
     elif data_format == api_pb2.DATA_FORMAT_ASGI:
         return _serialize_asgi(obj).SerializeToString(deterministic=True)
     elif data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE:
@@ -375,13 +379,33 @@ def decode_proto_payload(payload: api_pb2.ClassParameterValue) -> Any:
     return type_register.get_decoder(payload.type).decode(payload)
 
 
+class Custom:
+    pass
+
+
+def _encode_modal_obj(obj):
+    if isinstance(obj, Custom):
+        return cbor2.CBORTag(42, "dummy")
+    raise TypeError("Cannot serialize object")
+
+
+def _decode_modal_obj(tag):
+    if tag.tag == 42:
+        assert tag.value == "dummy"
+        return Custom()
+
+
 def deserialize_data_format(s: bytes, data_format: int, client) -> Any:
     if data_format == api_pb2.DATA_FORMAT_PICKLE:
         return deserialize(s, client)
-    if data_format == api_pb2.DATA_FORMAT_PROTO:
+    elif data_format == api_pb2.DATA_FORMAT_PROTO:
         return decode_proto_payload(api_pb2.ClassParameterValue.FromString(s))
-    if data_format == api_pb2.DATA_FORMAT_CBOR:
+    elif data_format == api_pb2.DATA_FORMAT_CBOR:
         return cbor2.loads(s)
+    elif data_format == api_pb2.DATA_FORMAT_CBOR_CUSTOM:
+        return cbor2.loads(s, tag_hook=_decode_modal_obj)
+    elif data_format == api_pb2.DATA_FORMAT_VANILLA_PICKLE:
+        return pickle.loads(s)
     elif data_format == api_pb2.DATA_FORMAT_ASGI:
         return _deserialize_asgi(api_pb2.Asgi.FromString(s))
     elif data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE:

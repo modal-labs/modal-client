@@ -37,6 +37,10 @@ if config.get("data_format") == "proto":
     DATA_FORMAT = api_pb2.DATA_FORMAT_PROTO
 elif config.get("data_format") == "cbor":
     DATA_FORMAT = api_pb2.DATA_FORMAT_CBOR
+elif config.get("data_format") == "vanilla-pickle":
+    DATA_FORMAT = api_pb2.DATA_FORMAT_VANILLA_PICKLE
+elif config.get("data_format") == "cbor-custom":
+    DATA_FORMAT = api_pb2.DATA_FORMAT_CBOR_CUSTOM
 
 
 class Service(metaclass=ABCMeta):

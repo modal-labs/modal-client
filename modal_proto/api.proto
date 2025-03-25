@@ -108,6 +108,8 @@ enum DataFormat {
   DATA_FORMAT_GENERATOR_DONE = 3; // "GeneratorDone" protobuf message
   DATA_FORMAT_PROTO = 4;
   DATA_FORMAT_CBOR = 5;
+  DATA_FORMAT_VANILLA_PICKLE = 6;
+  DATA_FORMAT_CBOR_CUSTOM = 7;
 }
 
 enum DeploymentNamespace {
