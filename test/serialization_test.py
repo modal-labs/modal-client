@@ -115,7 +115,8 @@ def test_apply_defaults():
 
 
 def test_non_implemented_proto_type():
-    with pytest.raises(InvalidError, match="No payload handler implemented for payload type PARAM_TYPE_UNKNOWN"):
+    with pytest.raises(InvalidError, match="No type manager implemented for payload type PARAM_TYPE_UNKNOWN"):
+        # This tests if attempt to get the manager for a type we don't know about
         type_registry.for_proto_enum(api_pb2.PARAM_TYPE_UNKNOWN)
 
     with pytest.raises(InvalidError, match="recognize payload type 1000"):
