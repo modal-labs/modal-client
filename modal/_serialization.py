@@ -416,9 +416,8 @@ def apply_defaults(
 
 
 def encode_parameter_value(name: str, python_value: Any) -> api_pb2.ClassParameterValue:
-    """Map to proto payload struct using python runtime type information"""
-    payload_handler = type_register.get_encoder(python_value)
-    assert payload_handler.allow_as_class_parameter  # this should have been tested for earlier
+    """Map to proto parameter representation using python runtime type information"""
+    payload_handler = type_register.get_handler_for_runtime_value(python_value)
     struct = payload_handler.encode(python_value)
     struct.name = name
     return struct
@@ -436,7 +435,7 @@ def deserialize_proto_params(serialized_params: bytes) -> dict[str, Any]:
     proto_struct = api_pb2.ClassParameterSet.FromString(serialized_params)
     python_params = {}
     for param in proto_struct.parameters:
-        python_params[param.name] = type_register.get_decoder(param.type).decode(param)
+        python_params[param.name] = type_register.get_handler_for_proto_enum(param.type).decode(param)
 
     return python_params
 
@@ -453,9 +452,9 @@ def validate_parameter_values(payload: dict[str, Any], schema: typing.Sequence[a
         if schema_param.name not in payload:
             raise InvalidError(f"Missing required parameter: {schema_param.name}")
         python_value = payload[schema_param.name]
-        decoder = type_register.get_decoder(schema_param.type)  # use the schema's expected decoder
-        encoder = type_register.get_encoder(python_value)
-        if decoder != encoder:
+        decoder = type_register.get_handler_for_proto_enum(schema_param.type)  # use the schema's expected decoder
+        encoder = type_register.get_handler_for_runtime_value(python_value)  # get the encoder based on the runtime type
+        if decoder != encoder:  # should be the same type if the types line up
             got_type = type(python_value)
             compatible_types = type_register._python_types_for_handler(decoder)
             compatible_types_str = "|".join(t.__name__ for t in compatible_types)
@@ -526,7 +525,10 @@ class TypeRegistry:
 
         return UnknownTypeHandler.singleton()
 
-    def get_for_declared_type(self, python_declared_type: type) -> "PayloadHandler":
+    def get_proto_generic_type(self, python_declared_type: type) -> api_pb2.GenericPayloadType:
+        return self._get_handler_for_declared_type(python_declared_type).proto_type_def(python_declared_type)
+
+    def _get_handler_for_declared_type(self, python_declared_type: type) -> "PayloadHandler":
         """PayloadHandler for a type annotation (that could be a generic type)"""
         if origin := typing_extensions.get_origin(python_declared_type):
             base_type = origin  # look up by generic type, not exact type
@@ -535,10 +537,10 @@ class TypeRegistry:
 
         return self._get_for_base_type(base_type)
 
-    def get_encoder(self, python_runtime_value: Any) -> "PayloadHandler":
+    def get_handler_for_runtime_value(self, python_runtime_value: Any) -> "PayloadHandler":
         return self._get_for_base_type(type(python_runtime_value))
 
-    def get_decoder(self, proto_type_enum: "api_pb2.ParameterType.ValueType") -> "PayloadHandler":
+    def get_handler_for_proto_enum(self, proto_type_enum: "api_pb2.ParameterType.ValueType") -> "PayloadHandler":
         if handler := self._proto_type_to_handler.get(proto_type_enum):
             return handler
 
@@ -592,7 +594,6 @@ class IntType(PayloadHandler):
         return p.int_value
 
     def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
-        assert full_python_type is int
         return api_pb2.GenericPayloadType(
             base_type=api_pb2.PARAM_TYPE_INT,
         )
@@ -610,7 +611,6 @@ class StringType(PayloadHandler):
         return p.string_value
 
     def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
-        assert full_python_type is str
         return api_pb2.GenericPayloadType(
             base_type=api_pb2.PARAM_TYPE_STRING,
         )
@@ -628,14 +628,13 @@ class BytesType(PayloadHandler):
         return p.bytes_value
 
     def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
-        assert full_python_type is bytes
         return api_pb2.GenericPayloadType(
             base_type=api_pb2.PARAM_TYPE_BYTES,
         )
 
 
 class UnknownTypeHandler(PayloadHandler):
-    # we could potentially use this to encode/decode values as pickle bytes
+    # undecorated fields or those decorated with unrecognized types
     def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
         return api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN)
 
@@ -651,17 +650,10 @@ class NoneTypeHandler(PayloadHandler):
 @type_register.register_decoder(api_pb2.PARAM_TYPE_LIST)
 class ListType(PayloadHandler):
     def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
-        origin = typing_extensions.get_origin(full_python_type)  # expected to be `list`
         args = typing_extensions.get_args(full_python_type)
-        if origin and len(args) == 1:
-            sub_type_handler = type_register.get_for_declared_type(args[0])
-            arg = args[0]
-        else:
-            sub_type_handler = UnknownTypeHandler()
-            arg = typing.Any
 
         return api_pb2.GenericPayloadType(
-            base_type=api_pb2.PARAM_TYPE_LIST, sub_types=[sub_type_handler.proto_type_def(arg)]
+            base_type=api_pb2.PARAM_TYPE_LIST, sub_types=[type_register.get_proto_generic_type(arg) for arg in args]
         )
 
 
@@ -669,36 +661,25 @@ class ListType(PayloadHandler):
 @type_register.register_decoder(api_pb2.PARAM_TYPE_DICT)
 class DictType(PayloadHandler):
     def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
-        origin = typing_extensions.get_origin(full_python_type)  # expected to be `dict`
         args = typing_extensions.get_args(full_python_type)
-        if origin and len(args) == 2:
-            if args[0] is not str:
-                raise InvalidError("Dict arguments only allow str keys")
-            sub_type_handler = type_register.get_for_declared_type(args[1])
-            arg = args[1]
-        else:
-            sub_type_handler = UnknownTypeHandler()
-            arg = typing.Any
 
         return api_pb2.GenericPayloadType(
-            base_type=api_pb2.PARAM_TYPE_DICT, sub_types=[sub_type_handler.proto_type_def(arg)]
+            base_type=api_pb2.PARAM_TYPE_DICT,
+            sub_types=[type_register.get_proto_generic_type(arg_type) for arg_type in args],
         )
 
 
 def _signature_parameter_to_spec(
     python_signature_parameter: inspect.Parameter, include_legacy_parameter_fields: bool = False
 ) -> api_pb2.ClassParameterSpec:
+    """Returns proto representation of Parameter as returned by inspect.signature()
+
+    Setting include_legacy_parameter_fields makes the output backwards compatible with
+    pre v0.74 clients looking at class parameter specifications, and should not be used
+    when registering *function* schemas.
+    """
     python_type = python_signature_parameter.annotation
-
-    origin = typing_extensions.get_origin(python_type)
-    if origin:
-        base_type = origin
-    else:
-        base_type = python_type
-
-    payload_handler = type_register.get_for_declared_type(base_type)
-
-    full_proto_type = payload_handler.proto_type_def(python_type)
+    full_proto_type = type_register.get_proto_generic_type(python_type)
     has_default = python_signature_parameter.default is not Parameter.empty
 
     field_spec = api_pb2.ClassParameterSpec(
@@ -744,7 +725,7 @@ def validate_parameter_type(declared_type: type):
     supported_str = ", ".join(t.__name__ for t in supported_types)
 
     if (
-        not (payload_handler := type_register.get_for_declared_type(declared_type))
+        not (payload_handler := type_register._get_handler_for_declared_type(declared_type))
         or not payload_handler.allow_as_class_parameter
     ):
         raise TypeError(

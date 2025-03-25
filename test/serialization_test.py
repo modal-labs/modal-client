@@ -116,10 +116,10 @@ def test_apply_defaults():
 
 def test_non_implemented_proto_type():
     with pytest.raises(InvalidError, match="No payload handler implemented for payload type PARAM_TYPE_UNKNOWN"):
-        type_register.get_decoder(api_pb2.PARAM_TYPE_UNKNOWN)
+        type_register.get_handler_for_proto_enum(api_pb2.PARAM_TYPE_UNKNOWN)
 
     with pytest.raises(InvalidError, match="recognize payload type 1000"):
-        type_register.get_decoder(1000)  # type: ignore
+        type_register.get_handler_for_proto_enum(1000)  # type: ignore
 
 
 def test_schema_extraction_unknown():
@@ -224,4 +224,42 @@ def test_schema_extraction_nested_list():
             ],
         ),
         has_default=False,
+    )
+
+
+def test_schema_extraction_nested_dict():
+    def f(nested_dict: dict[str, dict[str, bytes]] = {}): ...
+
+    (dict_spec,) = signature_to_parameter_specs(inspect.signature(f))
+    assert dict_spec == api_pb2.ClassParameterSpec(
+        name="nested_dict",
+        full_type=api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_DICT,
+            sub_types=[
+                api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_STRING,
+                ),
+                api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_DICT,
+                    sub_types=[
+                        api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_STRING),
+                        api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_BYTES),
+                    ],
+                ),
+            ],
+        ),
+        has_default=True,
+    )
+
+
+def test_schema_extraction_dict_with_non_str_key_is_unknown():
+    def f(dct: dict): ...
+
+    (dict_spec,) = signature_to_parameter_specs(inspect.signature(f))
+    print(dict_spec)
+    assert dict_spec == api_pb2.ClassParameterSpec(
+        name="dct",
+        full_type=api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_DICT,
+        ),
     )
