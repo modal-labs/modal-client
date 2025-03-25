@@ -217,7 +217,7 @@ async def _blob_upload(
 
 
 async def blob_upload(payload: bytes, stub: ModalClientModal) -> str:
-    print("BLOB UPLOAD")
+    print("BLOB UPLOAD", len(payload))
     size_mib = len(payload) / 1024 / 1024
     logger.debug(f"Uploading large blob of size {size_mib:.2f} MiB")
     t0 = time.time()

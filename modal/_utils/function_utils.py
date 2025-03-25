@@ -497,9 +497,9 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
         raise RemoteError(result.exception)
 
     try:
-        from .._runtime.container_io_manager import timer
+        from remote_bench import timer
 
-        with timer("deserialize data"):
+        with timer("deserialize"):
             return deserialize_data_format(data, data_format, client)
     except ModuleNotFoundError as deser_exc:
         raise ExecutionError(
