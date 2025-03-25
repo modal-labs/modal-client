@@ -19,38 +19,38 @@ class TypeRegistry:
     cleanly incorporate the `modal run` CLI parsing logic and other potential things.
     """
 
-    _py_base_type_to_handler: dict[type, "TypeManager"]
-    _proto_type_to_handler: dict["api_pb2.ParameterType.ValueType", "TypeManager"]
+    _py_base_type_to_manager: dict[type, "TypeManager"]
+    _proto_type_to_manager: dict["api_pb2.ParameterType.ValueType", "TypeManager"]
 
     def __init__(self):
-        self._py_base_type_to_handler = {}
-        self._proto_type_to_handler = {}
+        self._py_base_type_to_manager = {}
+        self._proto_type_to_manager = {}
 
     def register_encoder(self, python_base_type: type) -> typing.Callable[[PH], PH]:
         def deco(ph: type[TypeManager]):
-            if python_base_type in self._py_base_type_to_handler:
+            if python_base_type in self._py_base_type_to_manager:
                 raise ValueError("Can't register the same encoder type twice")
-            self._py_base_type_to_handler[python_base_type] = ph.singleton()
+            self._py_base_type_to_manager[python_base_type] = ph.singleton()
             return ph
 
         return deco
 
     def register_decoder(self, enum_type_value: "api_pb2.ParameterType.ValueType"):
         def deco(ph: type[TypeManager]):
-            if enum_type_value in self._proto_type_to_handler:
+            if enum_type_value in self._proto_type_to_manager:
                 raise ValueError("Can't register the same decoder type twice")
-            self._proto_type_to_handler[enum_type_value] = ph.singleton()
+            self._proto_type_to_manager[enum_type_value] = ph.singleton()
             return ph
 
         return deco
 
     def _for_base_type(self, python_base_type: type) -> "TypeManager":
         # private helper method
-        if handler := self._py_base_type_to_handler.get(python_base_type):
-            return handler
+        if type_manager := self._py_base_type_to_manager.get(python_base_type):
+            return type_manager
 
         # use UnknownType for unknown types
-        return UnknownTypeHandler.singleton()
+        return UnknownType.singleton()
 
     def _for_declared_type(self, python_declared_type: type) -> "TypeManager":
         """TypeManager for a type annotation (that could be a generic type)"""
@@ -69,8 +69,8 @@ class TypeRegistry:
         return self._for_base_type(type(python_runtime_value))
 
     def for_proto_enum(self, proto_type_enum: "api_pb2.ParameterType.ValueType") -> "TypeManager":
-        if handler := self._proto_type_to_handler.get(proto_type_enum):
-            return handler
+        if manager := self._proto_type_to_manager.get(proto_type_enum):
+            return manager
 
         if proto_type_enum not in api_pb2.ParameterType.values():
             raise InvalidError(
@@ -79,11 +79,11 @@ class TypeRegistry:
             )
 
         enum_name = api_pb2.ParameterType.Name(proto_type_enum)
-        raise InvalidError(f"No payload handler implemented for payload type {enum_name}")
+        raise InvalidError(f"No type manager implemented for payload type {enum_name}")
 
-    def base_types_for_handler(self, payload_handler: "TypeManager") -> set[type]:
-        # reverse lookup of which types map to a specific handler
-        return {k for k, h in self._py_base_type_to_handler.items() if h == payload_handler}
+    def base_types_for_manager(self, type_manager: "TypeManager") -> set[type]:
+        # reverse lookup of which types map to a specific type manager
+        return {k for k, h in self._py_base_type_to_manager.items() if h == type_manager}
 
 
 class TypeManager(metaclass=abc.ABCMeta):
@@ -166,7 +166,7 @@ class BytesType(TypeManager):
         )
 
 
-class UnknownTypeHandler(TypeManager):
+class UnknownType(TypeManager):
     # undecorated fields or those decorated with unrecognized types
     def proto_type_def(self, full_python_type: type) -> api_pb2.GenericPayloadType:
         return api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN)
@@ -174,7 +174,7 @@ class UnknownTypeHandler(TypeManager):
 
 @type_registry.register_encoder(type(None))
 @type_registry.register_decoder(api_pb2.PARAM_TYPE_NONE)
-class NoneTypeHandler(TypeManager):
+class NoneType(TypeManager):
     def proto_type_def(self, declared_python_type: type) -> api_pb2.GenericPayloadType:
         return api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_NONE)
 

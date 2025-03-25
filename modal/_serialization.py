@@ -452,7 +452,7 @@ def validate_parameter_values(payload: dict[str, Any], schema: typing.Sequence[a
         encoder = type_registry.for_runtime_value(python_value)  # get the encoder based on the runtime type
         if decoder != encoder:  # should be the same type if the types line up
             got_type = type(python_value)
-            compatible_types = type_registry.base_types_for_handler(decoder)
+            compatible_types = type_registry.base_types_for_manager(decoder)
             compatible_types_str = "|".join(t.__name__ for t in compatible_types)
             raise TypeError(
                 f"Parameter '{schema_param.name}' type error: Expected {compatible_types_str}, got {got_type.__name__}"
@@ -535,14 +535,14 @@ def validate_parameter_type(declared_type: type):
     """Raises a helpful TypeError if the supplied type isn't supported by class parameters"""
     supported_types = [
         base_type
-        for base_type, handler in type_registry._py_base_type_to_handler.items()
-        if handler.allow_as_class_parameter
+        for base_type, type_manager in type_registry._py_base_type_to_manager.items()
+        if type_manager.allow_as_class_parameter
     ]
     supported_str = ", ".join(t.__name__ for t in supported_types)
 
     if (
-        not (payload_handler := type_registry._for_declared_type(declared_type))
-        or not payload_handler.allow_as_class_parameter
+        not (type_manager := type_registry._for_declared_type(declared_type))
+        or not type_manager.allow_as_class_parameter
     ):
         raise TypeError(
             f"{declared_type.__name__} is not a supported modal.parameter() type. Use one of: {supported_str}"
