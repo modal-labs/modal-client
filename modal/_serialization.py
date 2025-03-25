@@ -8,6 +8,7 @@ from abc import abstractmethod
 from inspect import Parameter
 from typing import Any
 
+import cbor2
 import typing_extensions
 
 from modal._utils.async_utils import synchronizer
@@ -353,7 +354,10 @@ def serialize_data_format(obj: Any, data_format: int) -> bytes:
     if data_format == api_pb2.DATA_FORMAT_PICKLE:
         return serialize(obj)
     elif data_format == api_pb2.DATA_FORMAT_PROTO:
-        return encode_proto_payload(obj).SerializeToString()
+        out_payload = encode_proto_payload(obj)
+        return out_payload.SerializeToString()
+    elif data_format == api_pb2.DATA_FORMAT_CBOR:
+        return cbor2.dumps(obj)
     elif data_format == api_pb2.DATA_FORMAT_ASGI:
         return _serialize_asgi(obj).SerializeToString(deterministic=True)
     elif data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE:
@@ -375,9 +379,9 @@ def deserialize_data_format(s: bytes, data_format: int, client) -> Any:
     if data_format == api_pb2.DATA_FORMAT_PICKLE:
         return deserialize(s, client)
     if data_format == api_pb2.DATA_FORMAT_PROTO:
-        proto_payload = api_pb2.ClassParameterValue()
-        proto_payload.FromString(s)
-        return decode_proto_payload(proto_payload)
+        return decode_proto_payload(api_pb2.ClassParameterValue.FromString(s))
+    if data_format == api_pb2.DATA_FORMAT_CBOR:
+        return cbor2.loads(s)
     elif data_format == api_pb2.DATA_FORMAT_ASGI:
         return _deserialize_asgi(api_pb2.Asgi.FromString(s))
     elif data_format == api_pb2.DATA_FORMAT_GENERATOR_DONE:

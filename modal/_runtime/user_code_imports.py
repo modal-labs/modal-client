@@ -35,6 +35,8 @@ class FinalizedFunction:
 DATA_FORMAT = api_pb2.DATA_FORMAT_PICKLE
 if config.get("data_format") == "proto":
     DATA_FORMAT = api_pb2.DATA_FORMAT_PROTO
+elif config.get("data_format") == "cbor":
+    DATA_FORMAT = api_pb2.DATA_FORMAT_CBOR
 
 
 class Service(metaclass=ABCMeta):
