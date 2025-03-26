@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal import App, asgi_app, batched, concurrent, fastapi_endpoint, method, wsgi_app
+from modal import App, asgi_app, batched, fastapi_endpoint, method, wsgi_app
 from modal.exception import InvalidError
 
 
@@ -94,17 +94,5 @@ def test_batch_method():
         class Container:
             @method()  # type: ignore
             @batched(max_batch_size=2, wait_ms=0)
-            def generate(self):
-                pass
-
-
-def test_concurrent_method():
-    app = App()
-
-    with pytest.raises(InvalidError, match="decorate the class"):
-
-        @app.cls()
-        class Whatever:
-            @concurrent(max_inputs=2)  # type: ignore
             def generate(self):
                 pass

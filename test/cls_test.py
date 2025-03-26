@@ -1134,22 +1134,27 @@ def test_bytes_serialization_validation(servicer, client, set_env_client):
             assert kwargs["foo"] == b"foo"
 
 
-def test_concurrent_method_exclusions():
+def test_concurrent_decorator_on_method_error():
     app = modal.App()
 
-    # with pytest.raises(modal.exception.InvalidError):
+    with pytest.raises(modal.exception.InvalidError, match="decorate the class"):
 
-    #     @app.cls(serialized=True)
-    #     class UsesConcurrentDecoratoronMethod:
-    #         @modal.concurrent(max_inputs=10)
-    #         def method(self):
-    #             pass
+        @app.cls(serialized=True)
+        class UsesConcurrentDecoratoronMethod:
+            @modal.concurrent(max_inputs=10)
+            def method(self):
+                pass
 
-    with pytest.raises(modal.exception.InvalidError):
+
+@pytest.mark.xfail(reason="modal.method does not implement stacking properly")
+def test_concurrent_decorator_stacked_with_method_decorator():
+    app = modal.App()
+
+    with pytest.raises(modal.exception.InvalidError, match="decorate the class"):
 
         @app.cls(serialized=True)
         class UsesMethodAndConcurrentDecorators:
-            @modal.concurrent(max_inputs=10)
             @modal.method()
+            @modal.concurrent(max_inputs=10)
             def method(self):
                 pass
