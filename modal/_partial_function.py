@@ -163,7 +163,6 @@ def _find_partial_methods_for_user_cls(user_cls: type[Any], flags: int) -> dict[
     for parent_cls in reversed(user_cls.mro()):
         if parent_cls is not object:
             for k, v in parent_cls.__dict__.items():
-                print(f">>>> {k} {v}")
                 if isinstance(v, PartialFunction):  # type: ignore[reportArgumentType]   # synchronicity wrapper types
                     _partial_function: _PartialFunction = typing.cast(_PartialFunction, synchronizer._translate_in(v))
                     print(f">>> {_partial_function.flags}")
@@ -765,7 +764,6 @@ def _concurrent(
 
     def wrapper(obj: Union[Callable[..., Any], _PartialFunction]) -> _PartialFunction:
         if isinstance(obj, _PartialFunction):
-            # This fees quite janky,,,
             obj.max_concurrent_inputs = max_inputs
             obj.target_concurrent_inputs = target_inputs
             obj.add_flags(_PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.CONCURRENT)
