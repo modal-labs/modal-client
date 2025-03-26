@@ -18,7 +18,7 @@ from modal_proto.modal_api_grpc import ModalClientModal
 from ..exception import ExecutionError
 from .async_utils import TaskContext, retry
 from .grpc_utils import retry_transient_errors
-from .hash_utils import UploadHashes, get_upload_hashes
+from .hash_utils import DUMMY_HASH_HEX, UploadHashes, get_upload_hashes
 from .http_utils import ClientSessionRegistry
 from .logger import logger
 
@@ -307,6 +307,7 @@ def _get_file_upload_spec(
     source_description: Any,
     mount_filename: PurePosixPath,
     mode: int,
+    multipart_hash: bool = True,
 ) -> FileUploadSpec:
     with source() as fp:
         # Current position is ignored - we always upload from position 0
@@ -316,10 +317,11 @@ def _get_file_upload_spec(
 
         if size >= LARGE_FILE_LIMIT:
             # TODO(dano): remove the placeholder md5 once we stop requiring md5 for blobs
-            md5_hex = "baadbaadbaadbaadbaadbaadbaadbaad" if size > MULTIPART_UPLOAD_THRESHOLD else None
+            md5_hex = DUMMY_HASH_HEX if size > MULTIPART_UPLOAD_THRESHOLD else None
+            sha256_hex = DUMMY_HASH_HEX if size > MULTIPART_UPLOAD_THRESHOLD and not multipart_hash else None
             use_blob = True
             content = None
-            hashes = get_upload_hashes(fp, md5_hex=md5_hex)
+            hashes = get_upload_hashes(fp, md5_hex=md5_hex, sha256_hex=sha256_hex)
         else:
             use_blob = False
             content = fp.read()
@@ -339,7 +341,10 @@ def _get_file_upload_spec(
 
 
 def get_file_upload_spec_from_path(
-    filename: Path, mount_filename: PurePosixPath, mode: Optional[int] = None
+    filename: Path,
+    mount_filename: PurePosixPath,
+    mode: Optional[int] = None,
+    multipart_hash: bool = True,
 ) -> FileUploadSpec:
     # Python appears to give files 0o666 bits on Windows (equal for user, group, and global),
     # so we mask those out to 0o755 for compatibility with POSIX-based permissions.
@@ -349,10 +354,16 @@ def get_file_upload_spec_from_path(
         filename,
         mount_filename,
         mode,
+        multipart_hash=multipart_hash,
     )
 
 
-def get_file_upload_spec_from_fileobj(fp: BinaryIO, mount_filename: PurePosixPath, mode: int) -> FileUploadSpec:
+def get_file_upload_spec_from_fileobj(
+    fp: BinaryIO,
+    mount_filename: PurePosixPath,
+    mode: int,
+    multipart_hash: bool = True,
+) -> FileUploadSpec:
     @contextmanager
     def source():
         # We ignore position in stream and always upload from position 0
@@ -364,6 +375,7 @@ def get_file_upload_spec_from_fileobj(fp: BinaryIO, mount_filename: PurePosixPat
         str(fp),
         mount_filename,
         mode,
+        multipart_hash=multipart_hash,
     )
 
 
