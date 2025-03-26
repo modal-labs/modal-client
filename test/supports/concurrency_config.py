@@ -37,7 +37,7 @@ def has_no_config():
 
 
 @app.cls(allow_concurrent_inputs=CONFIG_VALS["OLD_MAX"])
-class HasOldConfg:
+class HasOldConfig:
     @modal.method()
     def method(self): ...
 
@@ -52,4 +52,11 @@ class HasNewConfig:
 @app.cls()
 class HasNoConfig:
     @modal.method()
+    def method(self): ...
+
+
+@app.cls()
+@modal.concurrent(max_inputs=CONFIG_VALS["NEW_MAX"], target_inputs=CONFIG_VALS["TARGET"])
+class HasNewConfigAndFastapiEndpoint:
+    @modal.fastapi_endpoint()
     def method(self): ...

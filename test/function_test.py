@@ -1254,10 +1254,13 @@ def test_concurrency_migration(client, servicer):
 
     function_create_requests = ctx.get_requests("FunctionCreate")
     for request in function_create_requests:
-        if request.function.function_name in {"has_new_config", "HasNewConfig.*"}:
-            assert request.function.max_concurrent_inputs == CONFIG_VALS["NEW_MAX"]
-            assert request.function.target_concurrent_inputs == CONFIG_VALS["TARGET"]
-        elif request.function.function_name in {"has_new_config_and_web_endpoint", "has_web_endpoint_and_new_config"}:
+        if request.function.function_name in {
+            "has_new_config",
+            "HasNewConfig.*",
+            "has_new_config_and_fastapi_endpoint",
+            "has_fastapi_endpoint_and_new_config",
+            "HasNewConfigAndFastapiEndpoint.*",
+        }:
             assert request.function.max_concurrent_inputs == CONFIG_VALS["NEW_MAX"]
             assert request.function.target_concurrent_inputs == CONFIG_VALS["TARGET"]
             assert request.function.webhook_config is not None
@@ -1267,3 +1270,5 @@ def test_concurrency_migration(client, servicer):
         elif request.function.function_name in {"has_no_config", "HasNoConfig.*"}:
             assert request.function.max_concurrent_inputs == 0
             assert request.function.target_concurrent_inputs == 0
+        else:
+            raise RuntimeError(f"Unexpected function name: {request.function.function_name}")
