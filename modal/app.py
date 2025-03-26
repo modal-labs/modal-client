@@ -678,6 +678,12 @@ class _App:
                 is_generator = f.is_generator
                 batch_max_size = f.batch_max_size
                 batch_wait_ms = f.batch_wait_ms
+                if f.max_concurrent_inputs:  # Using @modal.concurrent()
+                    max_concurrent_inputs = f.max_concurrent_inputs
+                    target_concurrent_inputs = f.target_concurrent_inputs
+                else:
+                    max_concurrent_inputs = allow_concurrent_inputs
+                    target_concurrent_inputs = None
             else:
                 if not is_global_object(f.__qualname__) and not serialized:
                     raise InvalidError(
@@ -709,10 +715,12 @@ class _App:
                     )
 
                 info = FunctionInfo(f, serialized=serialized, name_override=name)
+                raw_f = f
                 webhook_config = None
                 batch_max_size = None
                 batch_wait_ms = None
-                raw_f = f
+                max_concurrent_inputs = allow_concurrent_inputs
+                target_concurrent_inputs = None
 
                 cluster_size = None  # Experimental: Clustered functions
                 i6pn_enabled = i6pn
@@ -753,7 +761,8 @@ class _App:
                 max_containers=max_containers,
                 buffer_containers=buffer_containers,
                 scaledown_window=scaledown_window,
-                allow_concurrent_inputs=allow_concurrent_inputs,
+                max_concurrent_inputs=max_concurrent_inputs,
+                target_concurrent_inputs=target_concurrent_inputs,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
                 timeout=timeout,
@@ -832,7 +841,7 @@ class _App:
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
-    ) -> Callable[[CLS_T], CLS_T]:
+    ) -> Callable[[Union[CLS_T, _PartialFunction]], CLS_T]:
         """
         Decorator to register a new Modal [Cls](/docs/reference/modal.Cls) with this App.
         """
@@ -845,8 +854,21 @@ class _App:
                 raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
             scheduler_placement = SchedulerPlacement(region=region)
 
-        def wrapper(user_cls: CLS_T) -> CLS_T:
+        def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
             # Check if the decorated object is a class
+            if isinstance(wrapped_cls, _PartialFunction):
+                wrapped_cls.wrapped = True
+                user_cls = wrapped_cls.raw_f
+                if wrapped_cls.max_concurrent_inputs:  # Using @modal.concurrent()
+                    max_concurrent_inputs = wrapped_cls.max_concurrent_inputs
+                    target_concurrent_inputs = wrapped_cls.target_concurrent_inputs
+                else:
+                    max_concurrent_inputs = allow_concurrent_inputs
+                    target_concurrent_inputs = None
+            else:
+                user_cls = wrapped_cls
+                max_concurrent_inputs = allow_concurrent_inputs
+                target_concurrent_inputs = None
             if not inspect.isclass(user_cls):
                 raise TypeError("The @app.cls decorator must be used on a class.")
 
@@ -871,6 +893,12 @@ class _App:
             ):
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
 
+            for method in _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.FUNCTION).values():
+                if method.max_concurrent_inputs:
+                    raise InvalidError(
+                        "The `@modal.concurrent` decorator cannot be used on methods; decorate the class instead."
+                    )
+
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
             cls_func = _Function.from_local(
@@ -892,7 +920,8 @@ class _App:
                 scaledown_window=scaledown_window,
                 proxy=proxy,
                 retries=retries,
-                allow_concurrent_inputs=allow_concurrent_inputs,
+                max_concurrent_inputs=max_concurrent_inputs,
+                target_concurrent_inputs=target_concurrent_inputs,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
                 timeout=timeout,

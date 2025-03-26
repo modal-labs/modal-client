@@ -1132,3 +1132,29 @@ def test_bytes_serialization_validation(servicer, client, set_env_client):
             bind_req: api_pb2.FunctionBindParamsRequest = ctx.pop_request("FunctionBindParams")
             args, kwargs = deserialize_params(bind_req.serialized_params, create_function_req.function, client)
             assert kwargs["foo"] == b"foo"
+
+
+def test_concurrent_decorator_on_method_error():
+    app = modal.App()
+
+    with pytest.raises(modal.exception.InvalidError, match="decorate the class"):
+
+        @app.cls(serialized=True)
+        class UsesConcurrentDecoratoronMethod:
+            @modal.concurrent(max_inputs=10)
+            def method(self):
+                pass
+
+
+@pytest.mark.xfail(reason="modal.method does not implement stacking properly")
+def test_concurrent_decorator_stacked_with_method_decorator():
+    app = modal.App()
+
+    with pytest.raises(modal.exception.InvalidError, match="decorate the class"):
+
+        @app.cls(serialized=True)
+        class UsesMethodAndConcurrentDecorators:
+            @modal.method()
+            @modal.concurrent(max_inputs=10)
+            def method(self):
+                pass
