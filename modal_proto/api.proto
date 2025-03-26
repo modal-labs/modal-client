@@ -719,7 +719,7 @@ message ClassParameterValue {  // TODO: rename into NamedPayloadValue
   // NOTE: adding additional *fields* here can invalidate function lookups
   //  since we use the serialized message as the bound function identifier
   //  for parameter-bound classes. Modify with *caution*
-  optional string name = 1;  // in a dict-like structure, this has the name of the value - otherwise empty
+  string name = 1;
   ParameterType type = 2;
   oneof value_oneof {
     string string_value = 3;

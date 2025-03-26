@@ -1,3 +1,4 @@
+# Copyright Modal Labs 2025
 import typing
 from typing import Any
 
