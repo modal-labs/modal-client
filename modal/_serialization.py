@@ -10,7 +10,7 @@ from modal._utils.async_utils import synchronizer
 from modal_proto import api_pb2
 
 from ._object import _Object
-from ._type_manager import type_registry
+from ._type_manager import parameter_serde_registry, schema_registry
 from ._vendor import cloudpickle
 from .config import logger
 from .exception import DeserializationError, ExecutionError, InvalidError
@@ -413,8 +413,7 @@ def apply_defaults(
 
 def encode_parameter_value(name: str, python_value: Any) -> api_pb2.ClassParameterValue:
     """Map to proto parameter representation using python runtime type information"""
-    payload_handler = type_registry.for_runtime_value(python_value)
-    struct = payload_handler.to_class_parameter_value(python_value)
+    struct = parameter_serde_registry.encode(python_value)
     struct.name = name
     return struct
 
@@ -431,7 +430,7 @@ def deserialize_proto_params(serialized_params: bytes) -> dict[str, Any]:
     proto_struct = api_pb2.ClassParameterSet.FromString(serialized_params)
     python_params = {}
     for param in proto_struct.parameters:
-        python_params[param.name] = type_registry.for_proto_enum(param.type).from_class_parameter_value(param)
+        python_params[param.name] = parameter_serde_registry.decode(param)
 
     return python_params
 
@@ -448,14 +447,16 @@ def validate_parameter_values(payload: dict[str, Any], schema: typing.Sequence[a
         if schema_param.name not in payload:
             raise InvalidError(f"Missing required parameter: {schema_param.name}")
         python_value = payload[schema_param.name]
-        decoder = type_registry.for_proto_enum(schema_param.type)  # use the schema's expected decoder
-        encoder = type_registry.for_runtime_value(python_value)  # get the encoder based on the runtime type
+
+        decoder = parameter_serde_registry.get_decoder(schema_param.type)  # use the schema's expected decoder
+        python_type = type(python_value)
+        encoder = parameter_serde_registry.get_encoder(python_type)  # get the encoder based on the runtime type
         if decoder != encoder:  # should be the same type if the types line up
-            got_type = type(python_value)
-            compatible_types = type_registry.base_types_for_manager(decoder)
+            compatible_types = parameter_serde_registry.base_types_for_serde(decoder)
             compatible_types_str = "|".join(t.__name__ for t in compatible_types)
             raise TypeError(
-                f"Parameter '{schema_param.name}' type error: Expected {compatible_types_str}, got {got_type.__name__}"
+                f"Parameter '{schema_param.name}' type error: Expected {compatible_types_str}, "
+                f"got {python_type.__name__}"
             )
 
     schema_fields = {p.name for p in schema}
@@ -494,8 +495,8 @@ def _signature_parameter_to_spec(
     pre v0.74 clients looking at class parameter specifications, and should not be used
     when registering *function* schemas.
     """
-    python_type = python_signature_parameter.annotation
-    full_proto_type = type_registry.get_proto_generic_type(python_type)
+    declared_type = python_signature_parameter.annotation
+    full_proto_type = schema_registry.get_proto_generic_type(declared_type)
     has_default = python_signature_parameter.default is not Parameter.empty
 
     field_spec = api_pb2.ClassParameterSpec(
@@ -533,17 +534,12 @@ def signature_to_parameter_specs(signature: inspect.Signature) -> list[api_pb2.C
 
 def validate_parameter_type(declared_type: type):
     """Raises a helpful TypeError if the supplied type isn't supported by class parameters"""
-    supported_types = [
-        base_type
-        for base_type, type_manager in type_registry._py_base_type_to_manager.items()
-        if type_manager.allow_as_class_parameter
-    ]
-    supported_str = ", ".join(t.__name__ for t in supported_types)
+    try:
+        parameter_serde_registry.get_encoder(declared_type)
+    except KeyError:
+        supported_types = parameter_serde_registry.supported_base_types()
+        supported_str = ", ".join(t.__name__ for t in supported_types)
 
-    if (
-        not (type_manager := type_registry._for_declared_type(declared_type))
-        or not type_manager.allow_as_class_parameter
-    ):
         raise TypeError(
             f"{declared_type.__name__} is not a supported modal.parameter() type. Use one of: {supported_str}"
         )

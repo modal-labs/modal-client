@@ -16,7 +16,7 @@ from modal._serialization import (
     signature_to_parameter_specs,
     validate_parameter_values,
 )
-from modal._type_manager import type_registry
+from modal._type_manager import parameter_serde_registry
 from modal._utils.rand_pb_testing import rand_pb
 from modal.exception import DeserializationError, InvalidError
 from modal_proto import api_pb2
@@ -115,12 +115,12 @@ def test_apply_defaults():
 
 
 def test_non_implemented_proto_type():
-    with pytest.raises(InvalidError, match="No type manager implemented for payload type PARAM_TYPE_UNKNOWN"):
-        # This tests if attempt to get the manager for a type we don't know about
-        type_registry.for_proto_enum(api_pb2.PARAM_TYPE_UNKNOWN)
+    with pytest.raises(InvalidError, match="No decoder implemented for parameter type PARAM_TYPE_LIST"):
+        # This tests if attempt to get the manager for a type we don't support
+        parameter_serde_registry.get_decoder(api_pb2.PARAM_TYPE_LIST)
 
-    with pytest.raises(InvalidError, match="recognize payload type 1000"):
-        type_registry.for_proto_enum(1000)  # type: ignore
+    with pytest.raises(InvalidError, match="No decoder implemented for parameter type 1000"):
+        parameter_serde_registry.get_decoder(1000)  # type: ignore
 
 
 def test_schema_extraction_unknown():
