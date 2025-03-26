@@ -36,7 +36,6 @@ class _PartialFunctionFlags(enum.IntFlag):
     EXIT = 16
     BATCHED = 32
     CLUSTERED = 64  # Experimental: Clustered functions
-    CONCURRENT = 128
 
     @staticmethod
     def all() -> int:
@@ -763,14 +762,15 @@ def _concurrent(
 
     def wrapper(obj: Union[Callable[..., Any], _PartialFunction]) -> _PartialFunction:
         if isinstance(obj, _PartialFunction):
+            # Risky that we need to mutate the parameters here; should make this safer
             obj.max_concurrent_inputs = max_inputs
             obj.target_concurrent_inputs = target_inputs
-            obj.add_flags(_PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.CONCURRENT)
+            obj.add_flags(_PartialFunctionFlags.FUNCTION)
             return obj
 
         return _PartialFunction(
             obj,
-            _PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.CONCURRENT,
+            _PartialFunctionFlags.FUNCTION,
             max_concurrent_inputs=max_inputs,
             target_concurrent_inputs=target_inputs,
         )
