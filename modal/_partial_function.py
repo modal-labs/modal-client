@@ -165,7 +165,6 @@ def _find_partial_methods_for_user_cls(user_cls: type[Any], flags: int) -> dict[
             for k, v in parent_cls.__dict__.items():
                 if isinstance(v, PartialFunction):  # type: ignore[reportArgumentType]   # synchronicity wrapper types
                     _partial_function: _PartialFunction = typing.cast(_PartialFunction, synchronizer._translate_in(v))
-                    print(f">>> {_partial_function.flags}")
                     if _partial_function.flags & flags:
                         partial_functions[k] = _partial_function
 
