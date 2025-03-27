@@ -273,7 +273,7 @@ def call_function(
                 )
         reset_context()
 
-    if container_io_manager.target_concurrency > 1:
+    if container_io_manager.max_concurrency > 1:
         with DaemonizedThreadPool(max_threads=container_io_manager.max_concurrency) as thread_pool:
 
             def make_async_cancel_callback(task):

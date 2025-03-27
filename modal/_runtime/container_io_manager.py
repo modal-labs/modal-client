@@ -296,14 +296,14 @@ class _ContainerIOManager:
         self.current_input_started_at = None
 
         if container_args.function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
-            target_concurrency = 1
             max_concurrency = 1
+            target_concurrency = 1
         else:
-            target_concurrency = container_args.function_def.target_concurrent_inputs or 1
-            max_concurrency = container_args.function_def.max_concurrent_inputs or target_concurrency
+            max_concurrency = container_args.function_def.max_concurrent_inputs or 1
+            target_concurrency = container_args.function_def.target_concurrent_inputs or max_concurrency
 
-        self._target_concurrency = target_concurrency
         self._max_concurrency = max_concurrency
+        self._target_concurrency = target_concurrency
         self._concurrency_loop = None
         self._stop_concurrency_loop = False
         self._input_slots = InputSlots(target_concurrency)
