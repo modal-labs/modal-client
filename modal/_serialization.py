@@ -459,7 +459,8 @@ def validate_parameter_values(payload: dict[str, Any], schema: typing.Sequence[a
     non_declared_fields = payload.keys() - schema_fields
     if non_declared_fields:
         raise InvalidError(
-            f"The following parameter names were provided but are not present in the schema: {non_declared_fields}"
+            f"The following parameter names were provided but are not defined class modal.parameters for the class: "
+            f"{', '.join(non_declared_fields)}"
         )
 
 
