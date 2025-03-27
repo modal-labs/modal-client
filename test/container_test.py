@@ -1829,7 +1829,7 @@ def test_cancellation_stops_subset_of_async_concurrent_inputs(servicer, tmp_path
             "test.supports.functions",
             "delay_async",
             inputs=[("", (1,), {})] * num_inputs,
-            target_concurrent_inputs=num_inputs,
+            max_concurrent_inputs=num_inputs,
         )
         input_lock.wait()
         input_lock.wait()

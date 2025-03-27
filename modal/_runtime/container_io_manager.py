@@ -264,6 +264,7 @@ class _ContainerIOManager:
     current_inputs: dict[str, IOContext]  # input_id -> IOContext
     current_input_started_at: Optional[float]
 
+    _input_concurrency_enabled: bool
     _target_concurrency: int
     _max_concurrency: int
     _concurrency_loop: Optional[asyncio.Task]
@@ -975,6 +976,10 @@ class _ContainerIOManager:
     @property
     def max_concurrency(self) -> int:
         return self._max_concurrency
+
+    @property
+    def input_concurrency_enabled(self) -> int:
+        return max(self._max_concurrency, self._target_concurrency) > 1
 
     @classmethod
     def get_input_concurrency(cls) -> int:
