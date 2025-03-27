@@ -9,11 +9,11 @@ from modal_proto import api_pb2
 
 
 class ParameterProtoSerde(typing.Protocol):
-    def encode(self, value: Any, name: typing.Optional[str] = None) -> api_pb2.ClassParameterValue:
-        pass
+    def encode(self, value: Any, name: typing.Optional[str] = None) -> api_pb2.ClassParameterValue: ...
 
-    def decode(self, proto: api_pb2.ClassParameterValue) -> Any:
-        pass
+    def decode(self, proto: api_pb2.ClassParameterValue) -> Any: ...
+
+    def validate(self, python_value: Any): ...
 
 
 class ProtoParameterSerdeRegistry:
@@ -42,16 +42,40 @@ class ProtoParameterSerdeRegistry:
 
         return deco
 
-    def get_encoder(self, python_base_type: type) -> ParameterProtoSerde:
+    def encode(self, python_value: type) -> api_pb2.ClassParameterValue:
+        return self._get_encoder(type(python_value)).encode(python_value)
+
+    def supports_type(self, declared_type: type) -> bool:
+        try:
+            self._get_encoder(declared_type)
+            return True
+        except InvalidError:
+            return False
+
+    def decode(self, param_value: api_pb2.ClassParameterValue) -> Any:
+        return self._get_decoder(param_value.type).decode(param_value)
+
+    def validate_parameter_type(self, declared_type: type):
+        """Raises a helpful TypeError if the supplied type isn't supported by class parameters"""
+        if not parameter_serde_registry.supports_type(declared_type):
+            supported_types = self._py_base_type_to_serde.keys()
+            supported_str = ", ".join(t.__name__ for t in supported_types)
+
+            raise TypeError(
+                f"{declared_type.__name__} is not a supported modal.parameter() type. Use one of: {supported_str}"
+            )
+
+    def validate_value_for_enum_type(self, enum_value: "api_pb2.ParameterType.ValueType", python_value: Any):
+        serde = self._get_decoder(enum_value)  # use the schema's expected decoder
+        serde.validate(python_value)
+
+    def _get_encoder(self, python_base_type: type) -> ParameterProtoSerde:
         try:
             return self._py_base_type_to_serde[python_base_type]
-        except InvalidError:
-            raise KeyError(f"No decoder implemented for python type {python_base_type.__name__}")
+        except KeyError:
+            raise InvalidError(f"No decoder implemented for python type {python_base_type.__name__}")
 
-    def encode(self, python_value: type) -> api_pb2.ClassParameterValue:
-        return self.get_encoder(type(python_value)).encode(python_value)
-
-    def get_decoder(self, enum_value: "api_pb2.ParameterType.ValueType") -> ParameterProtoSerde:
+    def _get_decoder(self, enum_value: "api_pb2.ParameterType.ValueType") -> ParameterProtoSerde:
         try:
             return self._proto_type_to_serde[enum_value]
         except KeyError:
@@ -61,16 +85,6 @@ class ProtoParameterSerdeRegistry:
                 enum_name = str(enum_value)
 
             raise InvalidError(f"No decoder implemented for parameter type {enum_name}")
-
-    def decode(self, param_value: api_pb2.ClassParameterValue) -> Any:
-        return self.get_decoder(param_value.type).decode(param_value)
-
-    def base_types_for_serde(self, serde: ParameterProtoSerde) -> set[type]:
-        # reverse lookup of python base types that map to a specific serde
-        return {t for t, s in self._py_base_type_to_serde.items() if s == serde}
-
-    def supported_base_types(self) -> typing.Collection[type]:
-        return self._py_base_type_to_serde.keys()
 
 
 parameter_serde_registry = ProtoParameterSerdeRegistry()
@@ -87,6 +101,11 @@ class IntParameter:
     def decode(p: api_pb2.ClassParameterValue) -> int:
         return p.int_value
 
+    @staticmethod
+    def validate(python_value: Any):
+        if not isinstance(python_value, int):
+            raise TypeError(f"Expected int, got {type(python_value).__name__}")
+
 
 @parameter_serde_registry.register_encoder(str)
 @parameter_serde_registry.register_decoder(api_pb2.PARAM_TYPE_STRING)
@@ -99,6 +118,11 @@ class StringParameter:
     def decode(p: api_pb2.ClassParameterValue) -> str:
         return p.string_value
 
+    @staticmethod
+    def validate(python_value: Any):
+        if not isinstance(python_value, str):
+            raise TypeError(f"Expected str, got {type(python_value).__name__}")
+
 
 @parameter_serde_registry.register_encoder(bytes)
 @parameter_serde_registry.register_decoder(api_pb2.PARAM_TYPE_BYTES)
@@ -110,6 +134,11 @@ class BytesParameter:
     @staticmethod
     def decode(p: api_pb2.ClassParameterValue) -> bytes:
         return p.bytes_value
+
+    @staticmethod
+    def validate(python_value: Any):
+        if not isinstance(python_value, bytes):
+            raise TypeError(f"Expected bytes, got {type(python_value).__name__}")
 
 
 SCHEMA_FACTORY_TYPE = typing.Callable[[type], api_pb2.GenericPayloadType]

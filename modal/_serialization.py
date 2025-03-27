@@ -443,21 +443,11 @@ def validate_parameter_values(payload: dict[str, Any], schema: typing.Sequence[a
     * No extra fields are specified
     * The type of each field is correct
     """
-    for schema_param in schema:
-        if schema_param.name not in payload:
-            raise InvalidError(f"Missing required parameter: {schema_param.name}")
-        python_value = payload[schema_param.name]
-
-        decoder = parameter_serde_registry.get_decoder(schema_param.type)  # use the schema's expected decoder
-        python_type = type(python_value)
-        encoder = parameter_serde_registry.get_encoder(python_type)  # get the encoder based on the runtime type
-        if decoder != encoder:  # should be the same type if the types line up
-            compatible_types = parameter_serde_registry.base_types_for_serde(decoder)
-            compatible_types_str = "|".join(t.__name__ for t in compatible_types)
-            raise TypeError(
-                f"Parameter '{schema_param.name}' type error: Expected {compatible_types_str}, "
-                f"got {python_type.__name__}"
-            )
+    for param_spec in schema:
+        if param_spec.name not in payload:
+            raise InvalidError(f"Missing required parameter: {param_spec.name}")
+        python_value = payload[param_spec.name]
+        parameter_serde_registry.validate_value_for_enum_type(param_spec.type, python_value)
 
     schema_fields = {p.name for p in schema}
     # then check that no extra values are provided
@@ -530,16 +520,3 @@ def signature_to_parameter_specs(signature: inspect.Signature) -> list[api_pb2.C
         field_spec = _signature_parameter_to_spec(param, include_legacy_parameter_fields=True)
         modal_parameters.append(field_spec)
     return modal_parameters
-
-
-def validate_parameter_type(declared_type: type):
-    """Raises a helpful TypeError if the supplied type isn't supported by class parameters"""
-    try:
-        parameter_serde_registry.get_encoder(declared_type)
-    except KeyError:
-        supported_types = parameter_serde_registry.supported_base_types()
-        supported_str = ", ".join(t.__name__ for t in supported_types)
-
-        raise TypeError(
-            f"{declared_type.__name__} is not a supported modal.parameter() type. Use one of: {supported_str}"
-        )
