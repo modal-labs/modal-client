@@ -447,7 +447,12 @@ def validate_parameter_values(payload: dict[str, Any], schema: typing.Sequence[a
         if param_spec.name not in payload:
             raise InvalidError(f"Missing required parameter: {param_spec.name}")
         python_value = payload[param_spec.name]
-        parameter_serde_registry.validate_value_for_enum_type(param_spec.type, python_value)
+        if param_spec.HasField("full_type") and param_spec.full_type.base_type:
+            type_enum_value = param_spec.full_type.base_type
+        else:
+            type_enum_value = param_spec.type  # backwards compatibility pre-full_type
+
+        parameter_serde_registry.validate_value_for_enum_type(type_enum_value, python_value)
 
     schema_fields = {p.name for p in schema}
     # then check that no extra values are provided
@@ -514,7 +519,7 @@ def _signature_parameter_to_spec(
 
 
 def signature_to_parameter_specs(signature: inspect.Signature) -> list[api_pb2.ClassParameterSpec]:
-    # only used for modal.parameter() specs, uses backwards compatible
+    # only used for modal.parameter() specs, uses backwards compatible fields and types
     modal_parameters: list[api_pb2.ClassParameterSpec] = []
     for param in signature.parameters.values():
         field_spec = _signature_parameter_to_spec(param, include_legacy_parameter_fields=True)

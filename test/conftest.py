@@ -688,7 +688,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def ClassGet(self, stream):
         request: api_pb2.ClassGetRequest = await stream.recv_message()
-        app_id = self.deployed_apps.get(request.app_name)
+        if not (app_id := self.deployed_apps.get(request.app_name)):
+            raise GRPCError(Status.NOT_FOUND, f"can't find app {request.app_name}")
         app_objects = self.app_objects[app_id]
         object_id = app_objects.get(request.object_tag)
         if object_id is None:
@@ -1048,7 +1049,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def FunctionGet(self, stream):
         request: api_pb2.FunctionGetRequest = await stream.recv_message()
-        app_id = self.deployed_apps.get(request.app_name)
+        if not (app_id := self.deployed_apps.get(request.app_name)):
+            raise GRPCError(Status.NOT_FOUND, f"can't find app {request.app_name}")
+
         app_objects = self.app_objects[app_id]
         object_id = app_objects.get(request.object_tag)
         if object_id is None:
