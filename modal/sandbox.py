@@ -44,7 +44,11 @@ _default_image: _Image = _Image.debian_slim()
 # The maximum number of bytes that can be passed to an exec on Linux.
 # Though this is technically a 'server side' limit, it is unlikely to change.
 # getconf ARG_MAX will show this value on a host.
-ARG_MAX_BYTES = 2_097_152  # 2MiB
+#
+# By probing in production, the limit is 131072 bytes (2**17).
+# We need some bytes of overhead for the rest of the command line besides the args,
+# e.g. 'runsc exec ...'. So we use 2**16 as the limit.
+ARG_MAX_BYTES = 2**16
 
 if TYPE_CHECKING:
     import modal.app
