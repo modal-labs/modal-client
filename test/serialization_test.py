@@ -98,7 +98,7 @@ def test_proto_serde_failure_incomplete_params():
     with pytest.raises(TypeError, match="Expected str, got bytes"):
         validate_parameter_values({"x": b"b"}, schema)
 
-    with pytest.raises(InvalidError, match="provided but are not present in the schema"):
+    with pytest.raises(InvalidError, match="provided but are not defined"):
         validate_parameter_values({"x": "y", "a": "b"}, schema)
 
     # this should pass:
