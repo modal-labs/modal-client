@@ -9,9 +9,9 @@ from modal_proto import api_pb2
 
 
 class ParameterProtoSerde(typing.Protocol):
-    def encode(self, value: Any, name: typing.Optional[str] = None) -> api_pb2.ClassParameterValue: ...
+    def encode(self, value: Any) -> api_pb2.ClassParameterValue: ...
 
-    def decode(self, proto: api_pb2.ClassParameterValue) -> Any: ...
+    def decode(self, proto_value: api_pb2.ClassParameterValue) -> Any: ...
 
     def validate(self, python_value: Any): ...
 
@@ -33,7 +33,9 @@ class ProtoParameterSerdeRegistry:
 
         return deco
 
-    def register_decoder(self, enum_type_value: "api_pb2.ParameterType.ValueType"):
+    def register_decoder(
+        self, enum_type_value: "api_pb2.ParameterType.ValueType"
+    ) -> typing.Callable[[ParameterProtoSerde], ParameterProtoSerde]:
         def deco(ph: ParameterProtoSerde) -> ParameterProtoSerde:
             if enum_type_value in self._proto_type_to_serde:
                 raise ValueError("Can't register the same decoder type twice")
@@ -42,7 +44,7 @@ class ProtoParameterSerdeRegistry:
 
         return deco
 
-    def encode(self, python_value: type) -> api_pb2.ClassParameterValue:
+    def encode(self, python_value: Any) -> api_pb2.ClassParameterValue:
         return self._get_encoder(type(python_value)).encode(python_value)
 
     def supports_type(self, declared_type: type) -> bool:
@@ -94,12 +96,12 @@ parameter_serde_registry = ProtoParameterSerdeRegistry()
 @parameter_serde_registry.register_decoder(api_pb2.PARAM_TYPE_INT)
 class IntParameter:
     @staticmethod
-    def encode(i: int) -> api_pb2.ClassParameterValue:
-        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_INT, int_value=i)
+    def encode(value: Any) -> api_pb2.ClassParameterValue:
+        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_INT, int_value=value)
 
     @staticmethod
-    def decode(p: api_pb2.ClassParameterValue) -> int:
-        return p.int_value
+    def decode(proto_value: api_pb2.ClassParameterValue) -> int:
+        return proto_value.int_value
 
     @staticmethod
     def validate(python_value: Any):
@@ -111,12 +113,12 @@ class IntParameter:
 @parameter_serde_registry.register_decoder(api_pb2.PARAM_TYPE_STRING)
 class StringParameter:
     @staticmethod
-    def encode(s: str) -> api_pb2.ClassParameterValue:
-        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_STRING, string_value=s)
+    def encode(value: Any) -> api_pb2.ClassParameterValue:
+        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_STRING, string_value=value)
 
     @staticmethod
-    def decode(p: api_pb2.ClassParameterValue) -> str:
-        return p.string_value
+    def decode(proto_value: api_pb2.ClassParameterValue) -> str:
+        return proto_value.string_value
 
     @staticmethod
     def validate(python_value: Any):
@@ -128,12 +130,12 @@ class StringParameter:
 @parameter_serde_registry.register_decoder(api_pb2.PARAM_TYPE_BYTES)
 class BytesParameter:
     @staticmethod
-    def encode(b: bytes) -> api_pb2.ClassParameterValue:
-        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_BYTES, bytes_value=b)
+    def encode(value: Any) -> api_pb2.ClassParameterValue:
+        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_BYTES, bytes_value=value)
 
     @staticmethod
-    def decode(p: api_pb2.ClassParameterValue) -> bytes:
-        return p.bytes_value
+    def decode(proto_value: api_pb2.ClassParameterValue) -> bytes:
+        return proto_value.bytes_value
 
     @staticmethod
     def validate(python_value: Any):
