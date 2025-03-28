@@ -8,6 +8,7 @@ import time
 import typing
 from contextlib import contextmanager
 
+import typing_extensions
 from grpclib import Status
 from synchronicity.exceptions import UserCodeException
 
@@ -1170,6 +1171,7 @@ def f():
 _map_retry_servicer = None
 _map_attempt_count = 0
 
+
 def _maybe_fail(i):
     global _map_attempt_count
     if _map_attempt_count >= 10:
@@ -1188,7 +1190,7 @@ def test_map_retry_with_internal_error(client, servicer, monkeypatch, caplog):
     global _map_retry_servicer, _map_attempt_count
     monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
     app = App()
-    _map_retry_servicer= servicer
+    _map_retry_servicer = servicer
     # reset count from any previous tests
     _map_attempt_count = 0
     maybe_fail = app.function()(_maybe_fail)
@@ -1200,6 +1202,7 @@ def test_map_retry_with_internal_error(client, servicer, monkeypatch, caplog):
     # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
     assert not [r for r in caplog.records if r.levelno == logging.WARNING]
 
+
 def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog):
     """
     This test forces pump_inputs to fail with RESOURCE_EXHAUSTED for 10 times, and then succeed. This tests that
@@ -1208,7 +1211,7 @@ def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog
     global _map_retry_servicer, _map_attempt_count
     monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
     app = App()
-    _map_retry_servicer= servicer
+    _map_retry_servicer = servicer
     # reset count from any previous tests
     _map_attempt_count = 0
     maybe_fail = app.function()(_maybe_fail)
@@ -1221,6 +1224,7 @@ def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 1
 
+
 def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, caplog):
     """
     This test forces pump_inputs to fail with StreamTerminatedError for 10 times, and then succeed. This tests that
@@ -1229,7 +1233,7 @@ def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, c
     global _map_retry_servicer, _map_attempt_count
     monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
     app = App()
-    _map_retry_servicer= servicer
+    _map_retry_servicer = servicer
     # reset count from any previous tests
     _map_attempt_count = 0
     maybe_fail = app.function()(_maybe_fail)
@@ -1240,3 +1244,87 @@ def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, c
             pass
     # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
     assert not [r for r in caplog.records if r.levelno == logging.WARNING]
+
+
+@pytest.fixture()
+def record_function_schemas(monkeypatch):
+    monkeypatch.setenv("MODAL_FUNCTION_SCHEMAS", "1")
+
+
+@pytest.mark.usefixtures("record_function_schemas", "set_env_client")
+def test_function_schema_recording(client, servicer):
+    app = App("app")
+
+    @app.function(name="f", serialized=True)
+    def f(a: int) -> list[str]: ...
+
+    deploy_app(app, client=client)
+    expected_schema = api_pb2.FunctionSchema(
+        arguments=[
+            api_pb2.ClassParameterSpec(
+                name="a",
+                full_type=api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_INT,
+                ),
+            )
+        ],
+        return_type=api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_LIST,
+            sub_types=[
+                api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_STRING,
+                )
+            ],
+        ),
+    )
+    assert f._get_schema() == expected_schema
+    # test lazy lookup
+    assert Function.from_name("app", "f")._get_schema() == expected_schema
+
+
+@pytest.mark.usefixtures("record_function_schemas", "set_env_client")
+def test_class_schema_recording(client, servicer):
+    app = App("app")
+
+    @app.cls(serialized=True)
+    class F:
+        b: str = modal.parameter()
+
+        @modal.method()
+        def f(self, a: int) -> list[str]: ...
+
+    expected_method_schema = api_pb2.FunctionSchema(
+        arguments=[
+            api_pb2.ClassParameterSpec(
+                name="a",
+                full_type=api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_INT,
+                ),
+            )
+        ],
+        return_type=api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_LIST,
+            sub_types=[
+                api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_STRING,
+                )
+            ],
+        ),
+    )
+
+    deploy_app(app)
+    (constructor_arg,) = typing.cast(modal.Cls, F)._get_constructor_args()
+    assert constructor_arg.name == "b"
+    assert constructor_arg.full_type == api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_STRING)
+
+    method_schemas = typing.cast(modal.Cls, F)._get_method_schemas()
+    typing_extensions.reveal_type(F)
+    method_schema = F(b="hello").f._get_schema()  # type: ignore  # mypy dataclass_transform bug
+
+    assert method_schema == expected_method_schema
+    assert method_schemas["f"] == expected_method_schema
+
+    # Test lazy lookups
+    assert modal.Cls.from_name("app", "F")._get_method_schemas() == method_schemas
+    (looked_up_construct_arg,) = modal.Cls.from_name("app", "F")._get_constructor_args()
+    assert looked_up_construct_arg == constructor_arg

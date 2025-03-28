@@ -1308,7 +1308,7 @@ message Function {
   bool _experimental_enable_gpu_snapshot = 78; // Experimental support for GPU snapshotting
 
   AutoscalerSettings autoscaler_settings = 79;  // Bundle of parameters related to autoscaling
-
+  FunctionSchema function_schema = 80;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1457,7 +1457,7 @@ message FunctionData {
   bool runtime_perf_record = 29; // For internal debugging use only.
 
   AutoscalerSettings autoscaler_settings = 31;  // Bundle of parameters related to autoscaling
-
+  FunctionSchema function_schema = 32;
 }
 
 message FunctionExtended {
@@ -1591,6 +1591,7 @@ message FunctionHandleMetadata {
   ClassParameterInfo class_parameter_info = 43;
   // Mapping of method names to their metadata, only non-empty for class service functions
   map<string, FunctionHandleMetadata> method_handle_metadata = 44;
+  FunctionSchema function_schema = 45;
 }
 
 message FunctionInput {
@@ -1646,6 +1647,7 @@ message FunctionPrecreateRequest {
   string use_method_name = 7;  // for class methods - this method name needs to be included in the FunctionInput
   // Mapping of method names to method definitions, only non-empty for class service functions
   map<string, MethodDefinition> method_definitions = 8;
+  FunctionSchema function_schema = 9;
 }
 
 message FunctionPrecreateResponse {
@@ -1709,6 +1711,11 @@ message FunctionRetryPolicy {
   uint32 max_delay_ms = 3;
   // NOTE: two-byte field number not used for special reason. copy-paste error. Ref: PR #2542
   uint32 retries = 18;
+}
+
+message FunctionSchema {
+  repeated ClassParameterSpec arguments = 1;
+  GenericPayloadType return_type = 2;
 }
 
 message FunctionStats {
@@ -1890,6 +1897,7 @@ message MethodDefinition {
   string web_url = 4;
   WebUrlInfo web_url_info = 5;
   repeated CustomDomainInfo custom_domain_info = 6;
+  FunctionSchema function_schema = 7;
 }
 
 message MountFile {
