@@ -751,6 +751,27 @@ def _concurrent(
     When `target_inputs` is set, Modal's autoscaler will try to provision resources such
     that each container is running that many inputs concurrently. Containers may burst up to
     up to `max_inputs` if resources are insufficient to remain at the target concurrency.
+
+    **Examples:**
+    # Stack the decorator under `@app.function()` to enable input concurrency
+    ```python
+    @app.function()
+    @modal.concurrent(max_inputs=100)
+    async def f(data):
+        # Async function; will be scheduled as asyncio task
+        ...
+
+    # Note that the decorator should be applied to an *entire class*, not an individual method
+    @app.cls()
+    @modal.concurrent(max_inputs=100, target_inputs=80)
+    class C:
+        @modal.method()
+        def f(self, data):
+            # Sync function; must be thread-safe
+            ...
+
+    ```
+
     """
     if _warn_parentheses_missing is not None:
         raise InvalidError(
