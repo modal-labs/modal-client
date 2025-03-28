@@ -1038,7 +1038,7 @@ def test_unannotated_parameters_are_invalid():
 
 
 def test_unsupported_type_parameters_raise_errors():
-    with pytest.raises(InvalidError, match="float is not a supported parameter type"):
+    with pytest.raises(InvalidError, match=r"float is not a supported modal.parameter\(\) type"):
 
         @app.cls(serialized=True)
         class C:
@@ -1119,7 +1119,7 @@ def test_bytes_serialization_validation(servicer, client, set_env_client):
 
     with servicer.intercept() as ctx:
         with app.run():
-            with pytest.raises(TypeError, match="expected bytes"):
+            with pytest.raises(TypeError, match="Expected bytes"):
                 C(foo="this is a string").get_foo.spawn()  # type: ignore   # string should not be allowed, unspecified encoding
 
             C(foo=b"this is bytes").get_foo.spawn()  # bytes are allowed
@@ -1132,3 +1132,71 @@ def test_bytes_serialization_validation(servicer, client, set_env_client):
             bind_req: api_pb2.FunctionBindParamsRequest = ctx.pop_request("FunctionBindParams")
             args, kwargs = deserialize_params(bind_req.serialized_params, create_function_req.function, client)
             assert kwargs["foo"] == b"foo"
+
+
+def test_class_can_not_use_list_parameter(client):
+    # we might want to allow lists in the future though...
+    app = modal.App()
+
+    with pytest.raises(InvalidError, match="list is not a supported modal.parameter"):
+
+        @app.cls(serialized=True)
+        class A:
+            p: list[int] = modal.parameter()
+
+
+def test_class_can_use_073_schema_definition(servicer, set_env_client):
+    # in ~0.74, we introduced the new full_type type generic that supersedes
+    # the .type "flat" type. This tests that lookups on classes deployed with
+    # the old proto can still be validated when instantiated.
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("ClassGet", api_pb2.ClassGetResponse(class_id="cs-123"))
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-123",
+                handle_metadata=api_pb2.FunctionHandleMetadata(
+                    class_parameter_info=api_pb2.ClassParameterInfo(
+                        format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
+                        schema=[api_pb2.ClassParameterSpec(name="p", type=api_pb2.PARAM_TYPE_STRING)],
+                    ),
+                    method_handle_metadata={"some_method": api_pb2.FunctionHandleMetadata()},
+                ),
+            ),
+        )
+        with pytest.raises(TypeError, match="Expected str, got int"):
+            # wrong type for p triggers when .remote goes off
+            obj = Cls.from_name("some_app", "SomeCls")(p=10)
+            obj.some_method.remote(1)
+
+
+def test_class_can_use_future_full_type_only_schema(servicer, set_env_client):
+    # in ~0.74, we introduced the new full_type type generic that supersedes
+    # the .type "flat" type. This tests that the client can use a *future
+    # version* that drops support for the .type attribute and only fills the
+    # full_type in the schema
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("ClassGet", api_pb2.ClassGetResponse(class_id="cs-123"))
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-123",
+                handle_metadata=api_pb2.FunctionHandleMetadata(
+                    class_parameter_info=api_pb2.ClassParameterInfo(
+                        format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
+                        schema=[
+                            api_pb2.ClassParameterSpec(
+                                name="p", full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_STRING)
+                            )
+                        ],
+                    ),
+                    method_handle_metadata={"some_method": api_pb2.FunctionHandleMetadata()},
+                ),
+            ),
+        )
+        with pytest.raises(TypeError, match="Expected str, got int"):
+            # wrong type for p triggers when .remote goes off
+            obj = Cls.from_name("some_app", "SomeCls")(p=10)
+            obj.some_method.remote(1)

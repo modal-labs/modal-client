@@ -164,6 +164,7 @@ def type_check(ctx):
         "modal/snapshot.py",
         "modal/config.py",
         "modal/object.py",
+        "modal/_type_manager.py",
     ]
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
 
