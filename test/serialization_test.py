@@ -115,11 +115,11 @@ def test_apply_defaults():
 
 
 def test_non_implemented_proto_type():
-    with pytest.raises(InvalidError, match="No decoder implemented for parameter type PARAM_TYPE_LIST"):
+    with pytest.raises(InvalidError, match="No class parameter decoder implemented for type PARAM_TYPE_LIST"):
         # This tests if attempt to get the manager for a type we don't support, like list
         parameter_serde_registry.decode(api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_LIST))
 
-    with pytest.raises(InvalidError, match="No decoder implemented for parameter type 1000"):
+    with pytest.raises(InvalidError, match="No class parameter decoder implemented for type 1000"):
         # Test for an enum value that isn't even defined in this version
         parameter_serde_registry.decode(api_pb2.ClassParameterValue(type=1000))  # type: ignore
 
