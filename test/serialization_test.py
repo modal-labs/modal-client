@@ -265,3 +265,19 @@ def test_schema_extraction_dict_with_non_str_key_is_unknown():
             base_type=api_pb2.PARAM_TYPE_DICT,
         ),
     )
+
+
+def test_schema_extraction_bool():
+    def f(bool_val: bool = True): ...
+
+    (bool_spec,) = signature_to_parameter_specs(inspect.signature(f))
+    print(bool_spec)
+    assert bool_spec == api_pb2.ClassParameterSpec(
+        name="bool_val",
+        type=api_pb2.PARAM_TYPE_BOOL,
+        full_type=api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_BOOL,
+        ),
+        has_default=True,
+        bool_default=True,
+    )
