@@ -1,0 +1,9 @@
+blank_issues_enabled: false
+contact_links:
+  - name: User Support
+    url: https://modal.com/slack
+    about: Please ask for support using Modal on Slack (#general)
+  - name: Feature Requests
+    url: https://modal.com/slack
+    about: Please reach out with feature requests on Slack (#feature-requests)
+
