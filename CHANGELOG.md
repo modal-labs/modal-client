@@ -12,10 +12,6 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-### 0.73.128 (2025-03-26)
-
-- Adds the `@modal.concurrent` decorator, which will be replacing the beta `allow_concurrent_inputs=` parameter of `@app.function` and `@app.cls` for enabling input concurrency. Notably, `@modal.concurrent` introduces a distinction between `max_inputs` and `target_inputs`, allowing containers to burst over the concurrency level targeted by the Modal autoscaler during periods of high load.
-
 
 
 ### 0.73.121 (2025-03-24)
