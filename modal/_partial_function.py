@@ -748,9 +748,12 @@ def _concurrent(
     (e.g., making network requests) or when running an inference server that supports
     dynamic batching.
 
-    When `target_inputs` is set, Modal's autoscaler will try to provision resources such
-    that each container is running that many inputs concurrently. Containers may burst up to
-    up to `max_inputs` if resources are insufficient to remain at the target concurrency.
+    When `target_inputs` is set, Modal's autoscaler will try to provision resources
+    such that each container is running that many inputs concurrently, rather than
+    autoscaling based on `max_inputs`. Containers may burst up to up to `max_inputs`
+    if resources are insufficient to remain at the target concurrency, e.g. when the
+    arrival rate of inputs increases. This can trade-off a small increase in average
+    latency to avoid larger tail latencies from input queuing.
 
     **Examples:**
     # Stack the decorator under `@app.function()` to enable input concurrency
