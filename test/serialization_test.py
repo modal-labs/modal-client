@@ -281,3 +281,16 @@ def test_schema_extraction_bool():
         has_default=True,
         bool_default=True,
     )
+
+
+@pytest.mark.parametrize("v", [True, False])
+def test_parameter_value_serde_bool(v):
+    encoded = parameter_serde_registry.encode(v)
+    assert encoded == api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_BOOL, bool_value=v)
+    decoded = parameter_serde_registry.decode(encoded)
+    assert decoded is v
+
+
+def test_parameter_validate_bool():
+    with pytest.raises(TypeError):
+        parameter_serde_registry.validate_value_for_enum_type(api_pb2.PARAM_TYPE_BOOL, 1)
