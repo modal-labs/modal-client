@@ -19,7 +19,6 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 
 
-
 ### 0.73.121 (2025-03-24)
 
 - Adds a new "commit info" column to the `modal app history` command. It shows the short git hash at the time of deployment, with an asterisk `*` if the repository had uncommitted changes.
