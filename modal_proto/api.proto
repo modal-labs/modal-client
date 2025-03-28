@@ -176,6 +176,7 @@ enum ParameterType {
   PARAM_TYPE_LIST = 6;
   PARAM_TYPE_DICT = 7;
   PARAM_TYPE_NONE = 8;
+  PARAM_TYPE_BOOL = 9;
 }
 
 enum ProgressType {
@@ -710,6 +711,7 @@ message ClassParameterSpec { // TODO: rename into NamedPayloadType or similar
     int64 int_default = 5;
     bytes pickle_default = 6;
     bytes bytes_default = 7;
+    bool bool_default = 9;
   }
   GenericPayloadType full_type = 8; // supersedes `type`
 }
@@ -726,6 +728,7 @@ message ClassParameterValue {  // TODO: rename into NamedPayloadValue
     int64 int_value = 4;
     bytes pickle_value = 5;
     bytes bytes_value = 6;
+    bool bool_value = 7;
   }
 }
 
