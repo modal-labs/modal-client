@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2022
+import inspect
 import pytest
 import random
+import typing
 
 from modal import Queue
 from modal._serialization import (
@@ -11,8 +13,10 @@ from modal._serialization import (
     serialize,
     serialize_data_format,
     serialize_proto_params,
-    validate_params,
+    signature_to_parameter_specs,
+    validate_parameter_values,
 )
+from modal._type_manager import parameter_serde_registry
 from modal._utils.rand_pb_testing import rand_pb
 from modal.exception import DeserializationError, InvalidError
 from modal_proto import api_pb2
@@ -89,16 +93,16 @@ def test_proto_serde_failure_incomplete_params():
     # construct an incorrect serialization:
     schema = [api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_STRING)]
     with pytest.raises(InvalidError, match="Missing required parameter: x"):
-        validate_params({"a": "b"}, schema)
+        validate_parameter_values({"a": "b"}, schema)
 
-    with pytest.raises(TypeError, match="expected str, got bytes"):
-        validate_params({"x": b"b"}, schema)
+    with pytest.raises(TypeError, match="Expected str, got bytes"):
+        validate_parameter_values({"x": b"b"}, schema)
 
-    with pytest.raises(InvalidError, match="provided but are not present in the schema"):
-        validate_params({"x": "y", "a": "b"}, schema)
+    with pytest.raises(InvalidError, match="provided but are not defined"):
+        validate_parameter_values({"x": "y", "a": "b"}, schema)
 
     # this should pass:
-    validate_params({"x": "y"}, schema)
+    validate_parameter_values({"x": "y"}, schema)
 
 
 def test_apply_defaults():
@@ -108,3 +112,156 @@ def test_apply_defaults():
     assert apply_defaults({}, schema) == {"x": "hello"}
     assert apply_defaults({"x": "goodbye"}, schema) == {"x": "goodbye"}
     assert apply_defaults({"y": "goodbye"}, schema) == {"x": "hello", "y": "goodbye"}
+
+
+def test_non_implemented_proto_type():
+    with pytest.raises(InvalidError, match="No class parameter decoder implemented for type PARAM_TYPE_LIST"):
+        # This tests if attempt to get the manager for a type we don't support, like list
+        parameter_serde_registry.decode(api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_LIST))
+
+    with pytest.raises(InvalidError, match="No class parameter decoder implemented for type 1000"):
+        # Test for an enum value that isn't even defined in this version
+        parameter_serde_registry.decode(api_pb2.ClassParameterValue(type=1000))  # type: ignore
+
+
+def test_schema_extraction_unknown():
+    def with_empty(a): ...
+
+    def with_any(a: typing.Any): ...
+
+    class Custom:
+        pass
+
+    def with_custom(a: Custom): ...
+
+    for func in [with_empty, with_any, with_custom]:
+        fields = signature_to_parameter_specs(inspect.signature(func))
+        assert fields == [
+            api_pb2.ClassParameterSpec(
+                name="a", has_default=False, full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN)
+            )
+        ]
+
+    def with_default(a=5): ...
+
+    fields = signature_to_parameter_specs(inspect.signature(with_default))
+    assert fields == [
+        api_pb2.ClassParameterSpec(
+            name="a", full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN), has_default=True
+        )
+    ]
+
+
+def test_schema_extraction_int():
+    def f(int_value: int = 1337): ...
+
+    sig = inspect.signature(f)
+    (int_spec,) = signature_to_parameter_specs(sig)
+    assert int_spec == api_pb2.ClassParameterSpec(
+        name="int_value",
+        type=api_pb2.PARAM_TYPE_INT,
+        full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_INT),
+        has_default=True,
+        int_default=1337,
+    )
+
+
+def test_schema_extraction_str():
+    def foo(str_value: str = "foo"):
+        pass
+
+    (str_spec,) = signature_to_parameter_specs(inspect.signature(foo))
+    assert str_spec == api_pb2.ClassParameterSpec(
+        name="str_value",
+        type=api_pb2.PARAM_TYPE_STRING,
+        full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_STRING),
+        has_default=True,
+        string_default="foo",
+    )
+
+
+def test_schema_extraction_bytes():
+    def foo(a: bytes = b"foo"):
+        pass
+
+    (bytes_spec,) = signature_to_parameter_specs(inspect.signature(foo))
+    assert bytes_spec == api_pb2.ClassParameterSpec(
+        name="a",
+        type=api_pb2.PARAM_TYPE_BYTES,  # for backward compatibility
+        has_default=True,
+        bytes_default=b"foo",  # for backward compatibility
+        full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_BYTES),
+    )
+
+
+def test_schema_extraction_list():
+    def new_f(simple_list: list[int]): ...
+    def old_f(simple_list: typing.List[int]): ...
+
+    for f in [new_f, old_f]:
+        (list_spec,) = signature_to_parameter_specs(inspect.signature(f))
+        assert list_spec == api_pb2.ClassParameterSpec(
+            name="simple_list",
+            full_type=api_pb2.GenericPayloadType(
+                base_type=api_pb2.PARAM_TYPE_LIST,
+                sub_types=[api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_INT)],
+            ),
+            has_default=False,
+        )
+
+
+def test_schema_extraction_nested_list():
+    def f(nested_list: list[list[bytes]]): ...
+
+    (list_spec,) = signature_to_parameter_specs(inspect.signature(f))
+    assert list_spec == api_pb2.ClassParameterSpec(
+        name="nested_list",
+        full_type=api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_LIST,
+            sub_types=[
+                api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_LIST,
+                    sub_types=[api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_BYTES)],
+                )
+            ],
+        ),
+        has_default=False,
+    )
+
+
+def test_schema_extraction_nested_dict():
+    def f(nested_dict: dict[str, dict[str, bytes]] = {}): ...
+
+    (dict_spec,) = signature_to_parameter_specs(inspect.signature(f))
+    assert dict_spec == api_pb2.ClassParameterSpec(
+        name="nested_dict",
+        full_type=api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_DICT,
+            sub_types=[
+                api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_STRING,
+                ),
+                api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_DICT,
+                    sub_types=[
+                        api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_STRING),
+                        api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_BYTES),
+                    ],
+                ),
+            ],
+        ),
+        has_default=True,
+    )
+
+
+def test_schema_extraction_dict_with_non_str_key_is_unknown():
+    def f(dct: dict): ...
+
+    (dict_spec,) = signature_to_parameter_specs(inspect.signature(f))
+    print(dict_spec)
+    assert dict_spec == api_pb2.ClassParameterSpec(
+        name="dct",
+        full_type=api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_DICT,
+        ),
+    )
