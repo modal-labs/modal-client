@@ -75,7 +75,7 @@ class ProtoParameterSerdeRegistry:
         try:
             return self._py_base_type_to_serde[python_base_type]
         except KeyError:
-            raise InvalidError(f"No encoder implemented for python type {python_base_type.__name__}")
+            raise InvalidError(f"No class parameter encoder implemented for type `{python_base_type.__name__}`")
 
     def _get_decoder(self, enum_value: "api_pb2.ParameterType.ValueType") -> ParameterProtoSerde:
         try:
@@ -86,7 +86,7 @@ class ProtoParameterSerdeRegistry:
             except ValueError:
                 enum_name = str(enum_value)
 
-            raise InvalidError(f"No decoder implemented for parameter type {enum_name}")
+            raise InvalidError(f"No class parameter decoder implemented for type {enum_name}.")
 
 
 parameter_serde_registry = ProtoParameterSerdeRegistry()
