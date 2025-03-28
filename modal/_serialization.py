@@ -532,7 +532,7 @@ def get_callable_schema(
     callable: typing.Callable, ignore_first_argument: bool = False
 ) -> typing.Optional[api_pb2.FunctionSchema]:
     # ignore_first_argument can be used in case of unbound methods where we want to ignore the first (self) argument
-    if not config.get("record_annotations"):
+    if not config.get("function_schemas"):
         return None
 
     sig = inspect.signature(callable)

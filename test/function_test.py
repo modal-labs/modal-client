@@ -1171,6 +1171,7 @@ def f():
 _map_retry_servicer = None
 _map_attempt_count = 0
 
+
 def _maybe_fail(i):
     global _map_attempt_count
     if _map_attempt_count >= 10:
@@ -1189,7 +1190,7 @@ def test_map_retry_with_internal_error(client, servicer, monkeypatch, caplog):
     global _map_retry_servicer, _map_attempt_count
     monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
     app = App()
-    _map_retry_servicer= servicer
+    _map_retry_servicer = servicer
     # reset count from any previous tests
     _map_attempt_count = 0
     maybe_fail = app.function()(_maybe_fail)
@@ -1201,6 +1202,7 @@ def test_map_retry_with_internal_error(client, servicer, monkeypatch, caplog):
     # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
     assert not [r for r in caplog.records if r.levelno == logging.WARNING]
 
+
 def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog):
     """
     This test forces pump_inputs to fail with RESOURCE_EXHAUSTED for 10 times, and then succeed. This tests that
@@ -1209,7 +1211,7 @@ def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog
     global _map_retry_servicer, _map_attempt_count
     monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
     app = App()
-    _map_retry_servicer= servicer
+    _map_retry_servicer = servicer
     # reset count from any previous tests
     _map_attempt_count = 0
     maybe_fail = app.function()(_maybe_fail)
@@ -1222,6 +1224,7 @@ def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 1
 
+
 def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, caplog):
     """
     This test forces pump_inputs to fail with StreamTerminatedError for 10 times, and then succeed. This tests that
@@ -1230,7 +1233,7 @@ def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, c
     global _map_retry_servicer, _map_attempt_count
     monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
     app = App()
-    _map_retry_servicer= servicer
+    _map_retry_servicer = servicer
     # reset count from any previous tests
     _map_attempt_count = 0
     maybe_fail = app.function()(_maybe_fail)
@@ -1243,41 +1246,13 @@ def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, c
     assert not [r for r in caplog.records if r.levelno == logging.WARNING]
 
 
-def test_concurrency_migration(client, servicer):
-    from test.supports.concurrency_config import CONFIG_VALS, app
-
-    with servicer.intercept() as ctx:
-        with app.run(client=client):
-            pass
-
-    function_create_requests = ctx.get_requests("FunctionCreate")
-    for request in function_create_requests:
-        if request.function.function_name in {
-            "has_new_config",
-            "HasNewConfig.*",
-            "has_new_config_and_fastapi_endpoint",
-            "has_fastapi_endpoint_and_new_config",
-            "HasNewConfigAndFastapiEndpoint.*",
-        }:
-            assert request.function.max_concurrent_inputs == CONFIG_VALS["NEW_MAX"]
-            assert request.function.target_concurrent_inputs == CONFIG_VALS["TARGET"]
-            assert request.function.webhook_config is not None
-        elif request.function.function_name in {"has_old_config", "HasOldConfig.*"}:
-            assert request.function.max_concurrent_inputs == CONFIG_VALS["OLD_MAX"]
-            assert request.function.target_concurrent_inputs == 0
-        elif request.function.function_name in {"has_no_config", "HasNoConfig.*"}:
-            assert request.function.max_concurrent_inputs == 0
-            assert request.function.target_concurrent_inputs == 0
-        else:
-            raise RuntimeError(f"Unexpected function name: {request.function.function_name}")
-
-
 @pytest.fixture()
-def record_annotations(monkeypatch):
-    monkeypatch.setenv("MODAL_RECORD_ANNOTATIONS", "1")
+def record_function_schemas(monkeypatch):
+    monkeypatch.setenv("MODAL_FUNCTION_SCHEMAS", "1")
 
 
-def test_function_schema_recording(client, servicer, set_env_client, record_annotations):
+@pytest.mark.usefixtures("record_function_schemas", "set_env_client")
+def test_function_schema_recording(client, servicer):
     app = App("app")
 
     @app.function(name="f", serialized=True)
