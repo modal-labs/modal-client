@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.131 (2025-03-28)
+
+* Instantiation of classes using keyword arguments that are not defined as as `modal.parameter()` will now raise an error on the calling side rather than in the receiving container. Note that this only applies if there is at least one modal.parameter() defined on the class, but this will likely apply to parameter-less classes in the future as well.
+
+
+
 
 
 ### 0.73.121 (2025-03-24)
