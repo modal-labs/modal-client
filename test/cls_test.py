@@ -1200,3 +1200,29 @@ def test_class_can_use_future_full_type_only_schema(servicer, set_env_client):
             # wrong type for p triggers when .remote goes off
             obj = Cls.from_name("some_app", "SomeCls")(p=10)
             obj.some_method.remote(1)
+
+
+def test_concurrent_decorator_on_method_error():
+    app = modal.App()
+
+    with pytest.raises(modal.exception.InvalidError, match="decorate the class"):
+
+        @app.cls(serialized=True)
+        class UsesConcurrentDecoratoronMethod:
+            @modal.concurrent(max_inputs=10)
+            def method(self):
+                pass
+
+
+@pytest.mark.xfail(reason="modal.method does not implement stacking properly")
+def test_concurrent_decorator_stacked_with_method_decorator():
+    app = modal.App()
+
+    with pytest.raises(modal.exception.InvalidError, match="decorate the class"):
+
+        @app.cls(serialized=True)
+        class UsesMethodAndConcurrentDecorators:
+            @modal.method()
+            @modal.concurrent(max_inputs=10)
+            def method(self):
+                pass
