@@ -756,15 +756,15 @@ def _concurrent(
     latency to avoid larger tail latencies from input queuing.
 
     **Examples:**
-    # Stack the decorator under `@app.function()` to enable input concurrency
     ```python
+    # Stack the decorator under `@app.function()` to enable input concurrency
     @app.function()
     @modal.concurrent(max_inputs=100)
     async def f(data):
         # Async function; will be scheduled as asyncio task
         ...
 
-    # Note that the decorator should be applied to an *entire class*, not an individual method
+    # With `@app.cls()`, apply the decorator at the class level, not on individual methods
     @app.cls()
     @modal.concurrent(max_inputs=100, target_inputs=80)
     class C:
