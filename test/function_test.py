@@ -1282,7 +1282,8 @@ def test_function_schema_recording(client, servicer):
     assert Function.from_name("app", "f")._get_schema() == expected_schema
 
 
-def test_class_schema_recording(client, servicer, set_env_client, record_annotations):
+@pytest.mark.usefixtures("record_function_schemas", "set_env_client")
+def test_class_schema_recording(client, servicer):
     app = App("app")
 
     @app.cls(serialized=True)
