@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2023
 import pytest
+import time
 import typing
+from unittest import mock
 
 import modal
 from modal.client import Client
@@ -20,6 +22,24 @@ def test_run_app(servicer, client):
     ctx.pop_request("AppCreate")
     ctx.pop_request("AppPublish")
     ctx.pop_request("AppClientDisconnect")
+
+
+def test_run_app_shutdown_cleanliness(servicer, client, caplog):
+    dummy_app = modal.App()
+
+    heartbeat_interval_secs = 1.0
+
+    # Introduce jittery response delay to catch race conditions between
+    # concurrently executing RPCs.
+    servicer.set_resp_jitter(heartbeat_interval_secs)
+
+    with mock.patch("modal.runner.HEARTBEAT_INTERVAL", heartbeat_interval_secs):
+        with modal.enable_output(), run_app(dummy_app, client=client):
+            time.sleep(heartbeat_interval_secs)
+
+    # Verify no ERROR logs were emitted, during shutdown or otherwise.
+    error_logs = [record for record in caplog.records if record.levelname == "ERROR"]
+    assert len(error_logs) == 0, f"Found unexpected error logs: {error_logs}"
 
 
 def test_run_app_unauthenticated(servicer):
