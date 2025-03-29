@@ -28,7 +28,6 @@ from modal._partial_function import (
     _find_callables_for_obj,
     _PartialFunctionFlags,
 )
-from modal._proxy_tunnel import proxy_tunnel
 from modal._serialization import deserialize_params
 from modal._utils.async_utils import TaskContext, synchronizer
 from modal._utils.function_utils import (
@@ -594,11 +593,9 @@ if __name__ == "__main__":
     client = Client.from_env()
 
     try:
-        with proxy_tunnel(container_args.proxy_info):
-            try:
-                main(container_args, client)
-            except UserException:
-                logger.info("User exception caught, exiting")
+        main(container_args, client)
+    except UserException:
+        logger.info("User exception caught, exiting")
     except KeyboardInterrupt:
         logger.debug("Container: interrupted")
 
