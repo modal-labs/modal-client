@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2023
 import asyncio
 import contextlib
-import traceback
 import typing
 from asyncio import Future
 from collections.abc import Hashable
@@ -154,11 +153,7 @@ class Resolver:
                 self._deduplication_cache[deduplication_key] = cached_future
 
         # TODO(elias): print original exception/trace rather than the Resolver-internal trace
-        try:
-            return await cached_future
-        except Exception:
-            traceback.print_exc()
-            raise
+        return await cached_future
 
     def objects(self) -> list["modal._object._Object"]:
         unique_objects: dict[str, "modal._object._Object"] = {}
