@@ -20,7 +20,7 @@ class ModalMagics(Magics):
 
         **Example:**
 
-        ```python
+        ```python notest
         %modal from main/my-app import my_function, MyClass as Foo
 
         # Now you can call my_function() and Foo from your notebook.
