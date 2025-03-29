@@ -624,7 +624,7 @@ class _Image(_Object, type_prefix="im"):
                 builder_version=builder_version,
                 # Failsafe mechanism to prevent inadvertant updates to the global images.
                 # Only admins can publish to the global namespace, but they have to additionally request it.
-                allow_global_deployment=os.environ.get("MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT", "0") == "1",
+                allow_global_deployment=os.environ.get("MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT") == "1",
                 ignore_cache=config.get("ignore_cache"),
             )
             resp = await retry_transient_errors(resolver.client.stub.ImageGetOrCreate, req)
