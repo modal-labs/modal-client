@@ -7,7 +7,9 @@ Use in a notebook with `%load_ext modal.experimental.ipython`.
 
 from IPython.core.magic import Magics, line_magic, magics_class
 
-import modal
+from ..cls import Cls
+from ..exception import NotFoundError
+from ..functions import Function
 
 
 @magics_class
@@ -61,12 +63,12 @@ class ModalMagics(Magics):
                 print(f"Invalid syntax in import item: '{item}'. Expected format: Model [as alias]")
                 return
 
-            # Try to load using modal.Function; if not found, fallback to modal.Cls
+            # Try to load using Function; if not found, fallback to Cls
             try:
-                obj = modal.Function.from_name(app, model_name, environment_name=environment)
+                obj: Function | Cls = Function.from_name(app, model_name, environment_name=environment)
                 obj.hydrate()
-            except modal.exception.NotFoundError:
-                obj = modal.Cls.from_name(app, model_name, environment_name=environment)
+            except NotFoundError:
+                obj = Cls.from_name(app, model_name, environment_name=environment)
                 obj.hydrate()
 
             # Set the loaded object in the notebook namespace
