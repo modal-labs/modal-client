@@ -21,7 +21,7 @@ class ModalMagics(Magics):
         ```python
         %modal from main/my-app import my_function, MyClass as Foo
 
-        # Now you can use my_function() and Foo in your notebook.
+        # Now you can call my_function() and Foo from your notebook.
         my_function.remote()
         Foo().my_method.remote()
         ```
