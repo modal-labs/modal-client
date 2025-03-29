@@ -318,7 +318,7 @@ async def _run_app(
         def heartbeat():
             return _heartbeat(client, running_app.app_id)
 
-        tc.infinite_loop(heartbeat, sleep=HEARTBEAT_INTERVAL, log_exception=not detach)
+        heartbeat_loop = tc.infinite_loop(heartbeat, sleep=HEARTBEAT_INTERVAL, log_exception=not detach)
         logs_loop: Optional[asyncio.Task] = None
 
         if output_mgr is not None:
@@ -370,6 +370,7 @@ async def _run_app(
             else:
                 yield app
             # successful completion!
+            heartbeat_loop.cancel()
             await _status_based_disconnect(client, running_app.app_id, exc_info=None)
         except KeyboardInterrupt as e:
             # this happens only if sigint comes in during the yield block above
