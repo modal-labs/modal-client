@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2023
 import asyncio
 import contextlib
-import traceback
 import typing
 from asyncio import Future
 from collections.abc import Hashable
