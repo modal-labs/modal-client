@@ -1283,6 +1283,20 @@ def test_function_schema_recording(client, servicer):
 
 
 @pytest.mark.usefixtures("record_function_schemas", "set_env_client")
+def test_function_schema_excludes_web_endpoints(client, servicer):
+    # for now we exclude web endpoints - could reconsider this in the future
+    # but it would require some additional considerations to be useful
+    app = App("app")
+
+    @app.function(name="f", serialized=True)
+    @modal.fastapi_endpoint()
+    def webbie(query_param: int): ...
+
+    deploy_app(app, client=client)
+    assert webbie._get_schema() is None
+
+
+@pytest.mark.usefixtures("record_function_schemas", "set_env_client")
 def test_class_schema_recording(client, servicer):
     app = App("app")
 
