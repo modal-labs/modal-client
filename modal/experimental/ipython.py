@@ -35,16 +35,16 @@ class ModalMagics(Magics):
 
         # Remove the initial "from "
         line_without_from = line[5:]
-        env_pkg_part, sep, import_part = line_without_from.partition(" import ")
+        env_app_part, sep, import_part = line_without_from.partition(" import ")
         if not sep:
             print("Invalid syntax. Missing 'import' keyword.")
             return
 
         # Parse environment and app from "env/app"
-        if "/" not in env_pkg_part:
+        if "/" not in env_app_part:
             print("Invalid app specification. Expected format: <env>/<app>")
             return
-        environment, app = env_pkg_part.split("/", 1)
+        environment, app = env_app_part.split("/", 1)
 
         # Parse the import items (multiple imports separated by commas)
         import_items = [item.strip() for item in import_part.split(",")]
@@ -60,7 +60,7 @@ class ModalMagics(Magics):
             if len(parts) == 3 and parts[1] == "as":
                 alias = parts[2]
             elif len(parts) > 1:
-                print(f"Invalid syntax in import item: '{item}'. Expected format: Model [as alias]")
+                print(f"Invalid syntax in import item: {item!r}. Expected format: <function|Class> [as alias]")
                 return
 
             # Try to load using Function; if not found, fallback to Cls
