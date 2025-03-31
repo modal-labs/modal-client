@@ -78,7 +78,15 @@ class _PartialFunctionParams:
     target_concurrent_inputs: Optional[int] = None
     build_timeout: Optional[int] = None
 
+    def update(self, other: "_PartialFunctionParams") -> "_PartialFunctionParams":
+        """Update self with params set in other."""
+        for key, val in asdict(other).items():
+            if val is not None:
+                setattr(self, key, val)
 
+
+P = typing_extensions.ParamSpec("P")
+ReturnType = typing_extensions.TypeVar("ReturnType", covariant=True)
 P = typing_extensions.ParamSpec("P")
 ReturnType = typing_extensions.TypeVar("ReturnType", covariant=True)
 OriginalReturnType = typing_extensions.TypeVar("OriginalReturnType", covariant=True)
@@ -112,7 +120,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     def stack(self, flags: _PartialFunctionFlags, params: _PartialFunctionParams) -> typing_extensions.Self:
         """Implement decorator composition by combining the flags and params."""
         self.flags |= flags
-        self.params = _PartialFunctionParams(**(asdict(self.params) | asdict(params)))
+        self.params.update(params)
         self.validate_flag_composition()
         return self
 
