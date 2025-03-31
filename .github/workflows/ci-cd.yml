@@ -30,12 +30,12 @@ jobs:
     steps:
       - name: Generate token for Github PR Bot
         id: generate_token
-        uses: tibdex/github-app-token@v1
+        uses: tibdex/github-app-token@32691ba7c9e7063bd457bd8f2a5703138591fa58 # v1
         with:
           app_id: ${{ secrets.GH_PRBOT_APP_ID }}
           private_key: ${{ secrets.GH_PRBOT_APP_PRIVATE_KEY }}
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
         with:
           token: ${{ steps.generate_token.outputs.token }}
 
@@ -53,7 +53,7 @@ jobs:
         id: version
         run: echo "client_version=`python -m modal_version`" >> "$GITHUB_OUTPUT"
 
-      - uses: EndBug/add-and-commit@v9
+      - uses: EndBug/add-and-commit@a94899bca583c204427a224a7af87c02f9b325d5 # v9
         with:
           add: modal_version/_version_generated.py CHANGELOG.md
           tag: v${{ steps.version.outputs.client_version }}
@@ -100,7 +100,7 @@ jobs:
 
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
 
       - uses: ./.github/actions/setup-cached-python
         with:
@@ -148,9 +148,9 @@ jobs:
             python-version: "3.13"
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55 # v5
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -187,7 +187,7 @@ jobs:
     concurrency: publish-client
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
         with:
           ref: v${{ needs.client-versioning.outputs.client-version}}
 
@@ -229,7 +229,7 @@ jobs:
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
         with:
           ref: v${{ needs.client-versioning.outputs.client-version}}
 
@@ -263,7 +263,7 @@ jobs:
         image-name: ["debian_slim", "micromamba"]
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
         with:
           ref: v${{ needs.client-versioning.outputs.client-version}}
 
