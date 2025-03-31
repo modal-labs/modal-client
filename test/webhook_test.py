@@ -6,6 +6,7 @@ import sys
 
 from fastapi.testclient import TestClient
 
+import modal
 from modal import App, asgi_app, fastapi_endpoint, wsgi_app
 from modal._runtime.asgi import magic_fastapi_app
 from modal.exception import DeprecationError, InvalidError
@@ -115,17 +116,35 @@ async def test_webhook_forgot_function(servicer, client):
 
 
 @pytest.mark.asyncio
-async def test_webhook_decorator_in_wrong_order(servicer, client):
+@pytest.mark.parametrize("decorator", [fastapi_endpoint, asgi_app, wsgi_app])
+async def test_webhook_decorator_in_wrong_order(decorator):
     app = App()
 
-    with pytest.raises(InvalidError, match="fastapi_endpoint") as excinfo:
+    with pytest.raises(InvalidError, match=decorator.__name__) as excinfo:
 
-        @fastapi_endpoint()  # type: ignore
+        @decorator()  # type: ignore
         @app.function(serialized=True)
         async def g(x):
             pass
 
     assert "swap the order" in str(excinfo.value).lower()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("decorator", [fastapi_endpoint, asgi_app, wsgi_app])
+async def test_webhook_decorator_on_class(decorator):
+    app = App()
+
+    with pytest.raises(InvalidError, match=decorator.__name__) as excinfo:
+
+        @app.cls(serialized=True)
+        @decorator()  # type: ignore
+        class C:
+            @modal.method()
+            def f(self):
+                pass
+
+    assert "method instead" in str(excinfo.value).lower()
 
 
 @pytest.mark.asyncio

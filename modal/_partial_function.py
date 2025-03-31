@@ -141,28 +141,53 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         uses_interface_flags = self.flags & _PartialFunctionFlags.interface_flags()
         uses_lifecycle_flags = self.flags & _PartialFunctionFlags.lifecycle_flags()
         if uses_interface_flags and uses_lifecycle_flags:
+            self.wrapped = True  # Hacky, avoid false-positive warning
             raise InvalidError("Interface decorators cannot be combined with lifecycle decorators.")
 
         has_web_interface = self.flags & _PartialFunctionFlags.WEB_INTERFACE
         has_callable_interface = self.flags & _PartialFunctionFlags.CALLABLE_INTERFACE
         if has_web_interface and has_callable_interface:
+            self.wrapped = True  # Hacky, avoid false-positive warning
             raise InvalidError("Callable decorators cannot be combined with web interface decorators.")
 
-    def validate_wrapped_obj(
+    def validate_wrapped_obj(  # TODO better name
         self, decorator_name: str, require_sync: bool = False, require_nullary: bool = False
     ) -> None:
         """Enforce compatibility with the underlying callable."""
+        from .cls import _Cls  # Avoid circular import
+
+        uses_lifecycle_flags = self.flags & _PartialFunctionFlags.lifecycle_flags()
+        uses_interface_flags = self.flags & _PartialFunctionFlags.interface_flags()
+        if isinstance(self.wrapped_obj, type) and (uses_lifecycle_flags or uses_interface_flags):
+            self.wrapped = True  # Hacky, avoid false-positive warning
+            raise InvalidError(
+                f"Cannot apply `@modal.{decorator_name}` to a class. Hint: consider applying to a method instead."
+            )
+        if isinstance(self.wrapped_obj, _Function):
+            self.wrapped = True  # Hacky, avoid false-positive warning
+            raise InvalidError(
+                f"Cannot stack `@modal.{decorator_name}` on top of `@app.function`."
+                " Hint: swap the order of the decorators."
+            )
+        elif isinstance(self.wrapped_obj, _Cls):
+            self.wrapped = True  # Hacky, avoid false-positive warning
+            raise InvalidError(
+                f"Cannot stack `@modal.{decorator_name}` on top of `@app.cls()`."
+                " Hint: swap the order of the decorators."
+            )
         if require_sync and inspect.iscoroutinefunction(self.wrapped_obj):
-            raise InvalidError(f"{decorator_name} can't be applied to an async function.")
+            raise InvalidError(f"`@modal.{decorator_name}` can't be applied to an async function.")
+
         if require_nullary and callable_has_non_self_params(self.wrapped_obj):
+            self.wrapped = True  # Hacky, avoid false-positive warning
             if callable_has_non_self_non_default_params(self.wrapped_obj):
-                raise InvalidError(f"Functions wrapped by {decorator_name} can't have parameters.")
+                raise InvalidError(f"Functions wrapped by `@modal.{decorator_name}` can't have parameters.")
             else:
                 # TODO(michael): probably fine to just make this an error at this point
                 # but best to do it in a separate PR
                 deprecation_warning(
                     (2024, 9, 4),
-                    f"The function wrapped by {decorator_name} has default parameters, "
+                    f"The function wrapped by `@modal.{decorator_name}` has default parameters, "
                     "but shouldn't have any parameters - Modal will drop support for "
                     "default parameters in a future release.",
                 )
@@ -293,6 +318,7 @@ def _method(
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
+        pf.validate_wrapped_obj("method")
         return pf
 
     # TODO(michael) verify that we still need the type: ignore
@@ -363,6 +389,7 @@ def _fastapi_endpoint(
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
+        pf.validate_wrapped_obj("fastapi_endpoint")
         return pf
 
     return wrapper
@@ -427,6 +454,7 @@ def _web_endpoint(
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
+        pf.validate_wrapped_obj("web_endpoint")
         return pf
 
     return wrapper
@@ -656,6 +684,7 @@ def _build(
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
+        pf.validate_wrapped_obj("build")
         return pf
 
     return wrapper
@@ -683,6 +712,7 @@ def _enter(
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
+        pf.validate_wrapped_obj("enter")  # TODO require_nullary?
         return pf
 
     return wrapper
@@ -700,10 +730,13 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[NullaryMethod], _PartialF
     flags = _PartialFunctionFlags.EXIT
     params = _PartialFunctionParams()
 
-    def wrapper(obj: NullaryMethod) -> _PartialFunction:
+    def wrapper(obj: Union[_PartialFunction, NullaryMethod]) -> _PartialFunction:
         if isinstance(obj, _PartialFunction):
-            raise InvalidError("The `@modal.exit` decorator cannot be stacked with other decorators.")
-        return _PartialFunction(obj, flags, params)
+            pf = obj.stack(flags, params)
+        else:
+            pf = _PartialFunction(obj, flags, params)
+        pf.validate_wrapped_obj("exit")  # TODO require_nullary?
+        return pf
 
     return wrapper
 
@@ -756,6 +789,7 @@ def _batched(
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
+        pf.validate_wrapped_obj("batched")
         return pf
 
     return wrapper
@@ -830,6 +864,7 @@ def _concurrent(
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
+        pf.validate_wrapped_obj("concurrent")
         return pf
 
     return wrapper
@@ -863,6 +898,7 @@ def _clustered(size: int, broadcast: bool = True):
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
+        pf.validate_wrapped_obj("clustered")
         return pf
 
     return wrapper
