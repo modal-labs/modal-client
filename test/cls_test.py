@@ -891,8 +891,8 @@ def test_partial_function_descriptors(client):
 
     # ensure that webhook metadata is kept
     web_partial_function: _PartialFunction = synchronizer._translate_in(revived_class.web)  # type: ignore
-    assert web_partial_function.webhook_config
-    assert web_partial_function.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
+    assert web_partial_function.params.webhook_config
+    assert web_partial_function.params.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
 
 
 def test_cross_process_userclass_serde(supports_dir):

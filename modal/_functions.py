@@ -564,7 +564,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     network_file_systems=network_file_systems,
                     volumes=volumes,
                     memory=memory,
-                    timeout=pf.build_timeout,
+                    timeout=pf.params.build_timeout,
                     cpu=cpu,
                     ephemeral_disk=ephemeral_disk,
                     is_builder_function=True,
@@ -575,7 +575,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 image = _Image._from_args(
                     base_images={"base": image},
                     build_function=snapshot_function,
-                    force_build=image.force_build or pf.force_build,
+                    force_build=image.force_build or bool(pf.params.force_build),
                 )
 
         # Note that we also do these checks in FunctionCreate; could drop them here
@@ -648,10 +648,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 info.user_cls, _PartialFunctionFlags.interface_flags()
             )
             for method_name, partial_function in interface_methods.items():
-                function_type = get_function_type(partial_function.is_generator)
+                function_type = get_function_type(partial_function.params.is_generator)
                 function_name = f"{info.user_cls.__name__}.{method_name}"
                 method_definition = api_pb2.MethodDefinition(
-                    webhook_config=partial_function.webhook_config,
+                    webhook_config=partial_function.params.webhook_config,
                     function_type=function_type,
                     function_name=function_name,
                 )

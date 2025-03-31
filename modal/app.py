@@ -670,17 +670,17 @@ class _App:
                         "```\n"
                     )
                 i6pn_enabled = i6pn or (f.flags & _PartialFunctionFlags.CLUSTERED)
-                cluster_size = f.cluster_size  # Experimental: Clustered functions
+                cluster_size = f.params.cluster_size  # Experimental: Clustered functions
 
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
-                webhook_config = f.webhook_config
-                is_generator = f.is_generator
-                batch_max_size = f.batch_max_size
-                batch_wait_ms = f.batch_wait_ms
-                if f.max_concurrent_inputs:  # Using @modal.concurrent()
-                    max_concurrent_inputs = f.max_concurrent_inputs
-                    target_concurrent_inputs = f.target_concurrent_inputs
+                webhook_config = f.params.webhook_config
+                is_generator = f.params.is_generator
+                batch_max_size = f.params.batch_max_size
+                batch_wait_ms = f.params.batch_wait_ms
+                if f.flags & _PartialFunctionFlags.CONCURRENT:
+                    max_concurrent_inputs = f.params.max_concurrent_inputs
+                    target_concurrent_inputs = f.params.target_concurrent_inputs
                 else:
                     max_concurrent_inputs = allow_concurrent_inputs
                     target_concurrent_inputs = None
@@ -859,9 +859,9 @@ class _App:
             if isinstance(wrapped_cls, _PartialFunction):
                 wrapped_cls.wrapped = True
                 user_cls = wrapped_cls.raw_f
-                if wrapped_cls.max_concurrent_inputs:  # Using @modal.concurrent()
-                    max_concurrent_inputs = wrapped_cls.max_concurrent_inputs
-                    target_concurrent_inputs = wrapped_cls.target_concurrent_inputs
+                if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
+                    max_concurrent_inputs = wrapped_cls.params.max_concurrent_inputs
+                    target_concurrent_inputs = wrapped_cls.params.target_concurrent_inputs
                 else:
                     max_concurrent_inputs = allow_concurrent_inputs
                     target_concurrent_inputs = None

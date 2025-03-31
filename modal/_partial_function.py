@@ -94,15 +94,6 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     params: _PartialFunctionParams
     wrapped: bool  # TODO rename ("registered?")
 
-    # --- # TODO delete these after other typing issues are sorted out
-    webhook_config: Optional[api_pb2.WebhookConfig]
-    is_generator: bool
-    batch_max_size: Optional[int]
-    batch_wait_ms: Optional[int]
-    cluster_size: Optional[int]  # Experimental: Clustered functions
-    build_timeout: Optional[int]
-    force_build: bool
-
     def __init__(
         self,
         wrapped_obj: Callable[P, ReturnType],
@@ -119,10 +110,6 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     def raw_f(self) -> Callable[P, ReturnType]:
         # TODO(michael): temporary to avoid needing changes elsewhere in the library
         return self.wrapped_obj
-
-    def __getattr__(self, name: str) -> Any:
-        # TODO(michael): temporary to avoid needing changes elsewhere in the library
-        return getattr(self.params, name)
 
     @property
     def wrapped_function(self) -> Callable[P, ReturnType]:
@@ -198,9 +185,9 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         return self.wrapped_obj
 
     def _is_web_endpoint(self) -> bool:
-        if self.webhook_config is None:
+        if self.params.webhook_config is None:
             return False
-        return self.webhook_config.type != api_pb2.WEBHOOK_TYPE_UNSPECIFIED
+        return self.params.webhook_config.type != api_pb2.WEBHOOK_TYPE_UNSPECIFIED
 
     def __get__(self, obj, objtype=None) -> _Function[P, ReturnType, OriginalReturnType]:
         # to type checkers, any @method or similar function on a modal class, would appear to be
