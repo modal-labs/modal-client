@@ -289,7 +289,7 @@ def _create_context_mount(
 
 
 def _create_context_mount_function(
-    ignore: Union[Sequence[str], Callable[[Path], bool]],
+    ignore: Union[Sequence[str], Callable[[Path], bool], _AutoDockerIgnoreSentinel],
     dockerfile_cmds: list[str] = [],
     dockerfile_path: Optional[Path] = None,
     context_mount: Optional[_Mount] = None,
