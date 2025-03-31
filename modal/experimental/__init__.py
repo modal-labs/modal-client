@@ -2,16 +2,15 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Literal, Optional, Union
+from typing import Literal, Optional, Union
 
 from modal_proto import api_pb2
 
 from .._clustered_functions import ClusterInfo, get_cluster_info as _get_cluster_info
-from .._functions import _Function
 from .._object import _get_environment_name
-from .._partial_function import _PartialFunction, _PartialFunctionFlags, _PartialFunctionParams
+from .._partial_function import _clustered
 from .._runtime.container_io_manager import _ContainerIOManager
-from .._utils.async_utils import synchronizer
+from .._utils.async_utils import synchronize_api, synchronizer
 from ..client import _Client
 from ..exception import InvalidError
 from ..image import DockerfileSpec, ImageBuilderVersion, _Image, _ImageRegistryConfig
@@ -38,45 +37,11 @@ def set_local_input_concurrency(concurrency: int):
     _ContainerIOManager.set_input_concurrency(concurrency)
 
 
-def clustered(size: int, broadcast: bool = True):
-    """Provision clusters of colocated and networked containers for the Function.
-
-    Parameters:
-    size: int
-        Number of containers spun up to handle each input.
-    broadcast: bool = True
-        If True, inputs will be sent simultaneously to each container. Otherwise,
-        inputs will be sent only to the rank-0 container, which is responsible for
-        delegating to the workers.
-    """
-
-    assert broadcast, "broadcast=False has not been implemented yet!"
-
-    if size <= 0:
-        raise ValueError("cluster size must be greater than 0")
-
-    return _PartialFunction.from_wrapper(
-        "clustered",
-        _PartialFunctionFlags.CALLABLE_INTERFACE | _PartialFunctionFlags.CLUSTERED,
-        _PartialFunctionParams(cluster_size=size),
-    )
-
-    def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
-        if isinstance(raw_f, _Function):
-            raw_f = raw_f.get_raw_f()
-            raise InvalidError(
-                f"Applying decorators for {raw_f} in the wrong order!\nUsage:\n\n"
-                "@app.function()\n@modal.clustered()\ndef clustered_function():\n    ..."
-            )
-        return _PartialFunction(
-            raw_f, _PartialFunctionFlags.CALLABLE_INTERFACE | _PartialFunctionFlags.CLUSTERED, cluster_size=size
-        )
-
-    return wrapper
-
-
 def get_cluster_info() -> ClusterInfo:
     return _get_cluster_info()
+
+
+clustered = synchronize_api(_clustered, target_module=__name__)
 
 
 @dataclass

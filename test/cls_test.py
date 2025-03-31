@@ -1221,7 +1221,6 @@ def test_concurrent_decorator_on_method_error():
                 pass
 
 
-@pytest.mark.xfail(reason="modal.method does not implement stacking properly")
 def test_concurrent_decorator_stacked_with_method_decorator():
     app = modal.App()
 

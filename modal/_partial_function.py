@@ -9,7 +9,6 @@ from typing import (
     Callable,
     Optional,
     Union,
-    cast,
 )
 
 import typing_extensions
@@ -39,9 +38,15 @@ class _PartialFunctionFlags(enum.IntFlag):
     # Interface flags
     CALLABLE_INTERFACE = 16
     WEB_INTERFACE = 32
-    # Service decorator (?) flags (unclear if we need these or can infer based on params)
+    # Service decorator flags
+    # It's, unclear if we need these, as we can also generally infer based on some params being set
+    # In the current state where @modal.batched is used _insead_ of `@modal.method`, we need to give
+    # `@modal.batched` two roles (exposing the callable interface, adding batching semantics).
+    # But it's probably better to make `@modal.batched` and `@modal.method` stackable, or to move
+    # `@modal.batched` to be a class-level decorator since it primarily governs service behavior.
     BATCHED = 64
-    CLUSTERED = 128  # Experimental: Clustered functions
+    CONCURRENT = 128
+    CLUSTERED = 256  # Experimental: Clustered functions
 
     @staticmethod
     def all() -> int:
@@ -77,16 +82,17 @@ class _PartialFunctionParams:
 P = typing_extensions.ParamSpec("P")
 ReturnType = typing_extensions.TypeVar("ReturnType", covariant=True)
 OriginalReturnType = typing_extensions.TypeVar("OriginalReturnType", covariant=True)
-Wrapped = Union[type, Callable[P, ReturnType]]
+NullaryFuncOrMethod = Union[Callable[[], Any], Callable[[Any], Any]]
+NullaryMethod = Callable[[Any], Any]
 
 
 class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     """Intermediate function, produced by @enter, @build, @method, @web_endpoint, or @batched"""
 
-    wrapped_obj: Wrapped
+    wrapped_obj: Callable[P, ReturnType]
     flags: _PartialFunctionFlags
     params: _PartialFunctionParams
-    wrapped: bool
+    wrapped: bool  # TODO rename ("registered?")
 
     # --- # TODO delete these after other typing issues are sorted out
     webhook_config: Optional[api_pb2.WebhookConfig]
@@ -99,7 +105,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
 
     def __init__(
         self,
-        wrapped_obj: Wrapped,
+        wrapped_obj: Callable[P, ReturnType],
         flags: _PartialFunctionFlags,
         params: _PartialFunctionParams,
     ):
@@ -110,7 +116,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         self.validate_flag_composition()
 
     @property
-    def raw_f(self) -> Wrapped:
+    def raw_f(self) -> Callable[P, ReturnType]:
         # TODO(michael): temporary to avoid needing changes elsewhere in the library
         return self.wrapped_obj
 
@@ -123,66 +129,15 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         assert not isinstance(self.wrapped_obj, type)
         return self.wrapped_obj
 
-    @staticmethod
-    def from_wrapper(
-        decorator_name: str,
-        flags: _PartialFunctionFlags,
-        params: _PartialFunctionParams,
-        *,
-        require_sync: bool = False,
-        require_nullary: bool = False,
-    ) -> Callable[[Union["_PartialFunction", type, Callable[P, ReturnType]]], "_PartialFunction"]:
-        from .cls import _Cls  # Avoid circular import
-
-        def wrapper(obj: Union["_PartialFunction", Wrapped]) -> "_PartialFunction":
-            # Always disallow using a partial decorator on a "final" Modal object
-            if isinstance(obj, (_Function, _Cls)):
-                other_decorator = "@app.function" if isinstance(obj, _Function) else "@app.cls"
-                raise InvalidError(
-                    f"The `{decorator_name}` decorator cannot be applied on top of `{other_decorator}`. "
-                    "Suggestion: swap the order of the decorators."
-                )
-
-            # Support decorator stacking
-            use_flags = flags
-            use_params = params
-            if isinstance(obj, _PartialFunction):
-                use_flags = obj.flags | flags
-                use_params = _PartialFunctionParams(**(asdict(obj.params) | asdict(params)))
-
-            # Validate decorator <--> wrapped object compatibility
-            if not isinstance(obj, _PartialFunction):
-                base_obj = obj  # TODO: better name?
-                if not isinstance(obj, type) and params.is_generator is None:
-                    # auto detect - doesn't work if the function *returns* a generator
-                    params.is_generator = inspect.isgeneratorfunction(base_obj) or inspect.isasyncgenfunction(base_obj)
-            else:
-                # TODO For type safety maybe statically distinguish between the wrapped object
-                # and the underlying callable thingie, since we "know" there's max one wrapping layer
-                base_obj = cast(Callable, obj.wrapped_obj)
-
-            # Enforce compatibility with the underlying callable
-            if require_sync and inspect.iscoroutinefunction(base_obj):
-                raise InvalidError(f"{decorator_name} can't be applied to an async function.")
-            if require_nullary and callable_has_non_self_params(base_obj):
-                if callable_has_non_self_non_default_params(base_obj):
-                    raise InvalidError(f"Functions wrapped by {decorator_name} can't have parameters.")
-                else:
-                    # TODO(michael): probably fine to just make this an error at this point
-                    # but best to do it in a separate PR
-                    deprecation_warning(
-                        (2024, 9, 4),
-                        f"The function wrapped by {decorator_name} has default parameters, "
-                        "but shouldn't have any parameters - Modal will drop support for "
-                        "default parameters in a future release.",
-                    )
-
-            return _PartialFunction(base_obj, use_flags, use_params)
-
-        return wrapper
+    def stack(self, flags: _PartialFunctionFlags, params: _PartialFunctionParams) -> typing_extensions.Self:
+        """TODO"""
+        self.flags |= flags
+        self.params = _PartialFunctionParams(**(asdict(self.params) | asdict(params)))
+        self.validate_flag_composition()
+        return self
 
     def validate_flag_composition(self) -> None:
-        # TODO explain
+        """Validate decorator composition based on PartialFunctionFlags."""
         uses_interface_flags = self.flags & _PartialFunctionFlags.interface_flags()
         uses_lifecycle_flags = self.flags & _PartialFunctionFlags.lifecycle_flags()
         if uses_interface_flags and uses_lifecycle_flags:
@@ -192,6 +147,25 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         has_callable_interface = self.flags & _PartialFunctionFlags.CALLABLE_INTERFACE
         if has_web_interface and has_callable_interface:
             raise InvalidError("Callable decorators cannot be combined with web interface decorators.")
+
+    def validate_wrapped_obj(
+        self, decorator_name: str, require_sync: bool = False, require_nullary: bool = False
+    ) -> None:
+        """Enforce compatibility with the underlying callable."""
+        if require_sync and inspect.iscoroutinefunction(self.wrapped_obj):
+            raise InvalidError(f"{decorator_name} can't be applied to an async function.")
+        if require_nullary and callable_has_non_self_params(self.wrapped_obj):
+            if callable_has_non_self_non_default_params(self.wrapped_obj):
+                raise InvalidError(f"Functions wrapped by {decorator_name} can't have parameters.")
+            else:
+                # TODO(michael): probably fine to just make this an error at this point
+                # but best to do it in a separate PR
+                deprecation_warning(
+                    (2024, 9, 4),
+                    f"The function wrapped by {decorator_name} has default parameters, "
+                    "but shouldn't have any parameters - Modal will drop support for "
+                    "default parameters in a future release.",
+                )
 
     def _get_raw_f(self) -> Callable[P, ReturnType]:
         # TODO(michael): temporary to avoid needing changes elsewhere in the library
@@ -306,11 +280,23 @@ def _method(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.method()`."
         )
 
-    return _PartialFunction.from_wrapper(
-        "method",
-        _PartialFunctionFlags.CALLABLE_INTERFACE,
-        _PartialFunctionParams(is_generator=is_generator),
-    )  # type: ignore  # synchronicity issue with wrapped vs unwrapped types and protocols
+    def wrapper(obj: Union[Callable[..., Any], _PartialFunction]) -> _PartialFunction:
+        flags = _PartialFunctionFlags.CALLABLE_INTERFACE
+
+        nonlocal is_generator  # TODO(michael): we are likely to deprecate the explicit is_generator param
+        if is_generator is None:
+            callable = obj.wrapped_obj if isinstance(obj, _PartialFunction) else obj
+            is_generator = inspect.isgeneratorfunction(callable) or inspect.isasyncgenfunction(callable)
+        params = _PartialFunctionParams(is_generator=is_generator)
+
+        if isinstance(obj, _PartialFunction):
+            pf = obj.stack(flags, params)
+        else:
+            pf = _PartialFunction(obj, flags, params)
+        return pf
+
+    # TODO(michael) verify that we still need the type: ignore
+    return wrapper  # type: ignore  # synchronicity issue with wrapped vs unwrapped types and protocols
 
 
 def _parse_custom_domains(custom_domains: Optional[Iterable[str]] = None) -> list[api_pb2.CustomDomainConfig]:
@@ -357,21 +343,29 @@ def _fastapi_endpoint(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.fastapi_endpoint()`."
         )
 
-    return _PartialFunction.from_wrapper(
-        "fastapi_endpoint",
-        _PartialFunctionFlags.WEB_INTERFACE,
-        _PartialFunctionParams(
-            webhook_config=api_pb2.WebhookConfig(
-                type=api_pb2.WEBHOOK_TYPE_FUNCTION,
-                method=method,
-                web_endpoint_docs=docs,
-                requested_suffix=label or "",
-                async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
-                custom_domains=_parse_custom_domains(custom_domains),
-                requires_proxy_auth=requires_proxy_auth,
-            ),
-        ),
+    webhook_config = api_pb2.WebhookConfig(
+        type=api_pb2.WEBHOOK_TYPE_FUNCTION,
+        method=method,
+        web_endpoint_docs=docs,
+        requested_suffix=label or "",
+        async_mode=api_pb2.WEBHOOK_ASYNC_MODE_AUTO,
+        custom_domains=_parse_custom_domains(custom_domains),
+        requires_proxy_auth=requires_proxy_auth,
     )
+
+    flags = _PartialFunctionFlags.WEB_INTERFACE
+    params = _PartialFunctionParams(webhook_config=webhook_config)
+
+    def wrapper(
+        obj: Union[_PartialFunction[P, ReturnType, ReturnType], Callable[P, ReturnType]],
+    ) -> _PartialFunction[P, ReturnType, ReturnType]:
+        if isinstance(obj, _PartialFunction):
+            pf = obj.stack(flags, params)
+        else:
+            pf = _PartialFunction(obj, flags, params)
+        return pf
+
+    return wrapper
 
 
 def _web_endpoint(
@@ -423,11 +417,19 @@ def _web_endpoint(
         requires_proxy_auth=requires_proxy_auth,
     )
 
-    return _PartialFunction.from_wrapper(
-        "web_endpoint",
-        _PartialFunctionFlags.WEB_INTERFACE,
-        _PartialFunctionParams(webhook_config=webhook_config),
-    )
+    flags = _PartialFunctionFlags.WEB_INTERFACE
+    params = _PartialFunctionParams(webhook_config=webhook_config)
+
+    def wrapper(
+        obj: Union[_PartialFunction[P, ReturnType, ReturnType], Callable[P, ReturnType]],
+    ) -> _PartialFunction[P, ReturnType, ReturnType]:
+        if isinstance(obj, _PartialFunction):
+            pf = obj.stack(flags, params)
+        else:
+            pf = _PartialFunction(obj, flags, params)
+        return pf
+
+    return wrapper
 
 
 def _asgi_app(
@@ -436,7 +438,7 @@ def _asgi_app(
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
     requires_proxy_auth: bool = False,  # Require Modal-Key and Modal-Secret HTTP Headers on requests.
-) -> Callable[[Callable[..., Any]], _PartialFunction]:
+) -> Callable[[Union[_PartialFunction, NullaryFuncOrMethod]], _PartialFunction]:
     """Decorator for registering an ASGI app with a Modal function.
 
     Asynchronous Server Gateway Interface (ASGI) is a standard for Python
@@ -473,13 +475,18 @@ def _asgi_app(
         requires_proxy_auth=requires_proxy_auth,
     )
 
-    return _PartialFunction.from_wrapper(
-        "asgi_app",
-        _PartialFunctionFlags.WEB_INTERFACE,
-        _PartialFunctionParams(webhook_config=webhook_config),
-        require_nullary=True,
-        require_sync=True,
-    )
+    flags = _PartialFunctionFlags.WEB_INTERFACE
+    params = _PartialFunctionParams(webhook_config=webhook_config)
+
+    def wrapper(obj: Union[_PartialFunction, NullaryFuncOrMethod]) -> _PartialFunction:
+        if isinstance(obj, _PartialFunction):
+            pf = obj.stack(flags, params)
+        else:
+            pf = _PartialFunction(obj, flags, params)
+        pf.validate_wrapped_obj("asgi_app", require_sync=True, require_nullary=True)
+        return pf
+
+    return wrapper
 
 
 def _wsgi_app(
@@ -488,7 +495,7 @@ def _wsgi_app(
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
     requires_proxy_auth: bool = False,  # Require Modal-Key and Modal-Secret HTTP Headers on requests.
-) -> Callable[[Callable[..., Any]], _PartialFunction]:
+) -> Callable[[Union[_PartialFunction, NullaryFuncOrMethod]], _PartialFunction]:
     """Decorator for registering a WSGI app with a Modal function.
 
     Web Server Gateway Interface (WSGI) is a standard for synchronous Python web apps.
@@ -525,13 +532,18 @@ def _wsgi_app(
         requires_proxy_auth=requires_proxy_auth,
     )
 
-    return _PartialFunction.from_wrapper(
-        "wsgi_app",
-        _PartialFunctionFlags.WEB_INTERFACE,
-        _PartialFunctionParams(webhook_config=webhook_config),
-        require_nullary=True,
-        require_sync=True,
-    )
+    flags = _PartialFunctionFlags.WEB_INTERFACE
+    params = _PartialFunctionParams(webhook_config=webhook_config)
+
+    def wrapper(obj: Union[_PartialFunction, NullaryFuncOrMethod]) -> _PartialFunction:
+        if isinstance(obj, _PartialFunction):
+            pf = obj.stack(flags, params)
+        else:
+            pf = _PartialFunction(obj, flags, params)
+        pf.validate_wrapped_obj("wsgi_app", require_sync=True, require_nullary=True)
+        return pf
+
+    return wrapper
 
 
 def _web_server(
@@ -541,7 +553,7 @@ def _web_server(
     label: Optional[str] = None,  # Label for created endpoint. Final subdomain will be <workspace>--<label>.modal.run.
     custom_domains: Optional[Iterable[str]] = None,  # Deploy this endpoint on a custom domain.
     requires_proxy_auth: bool = False,  # Require Modal-Key and Modal-Secret HTTP Headers on requests.
-) -> Callable[[Callable[..., Any]], _PartialFunction]:
+) -> Callable[[Union[_PartialFunction, NullaryFuncOrMethod]], _PartialFunction]:
     """Decorator that registers an HTTP web server inside the container.
 
     This is similar to `@asgi_app` and `@wsgi_app`, but it allows you to expose a full HTTP server
@@ -583,23 +595,23 @@ def _web_server(
         requires_proxy_auth=requires_proxy_auth,
     )
 
-    return _PartialFunction.from_wrapper(
-        "web_server",
-        _PartialFunctionFlags.WEB_INTERFACE,
-        _PartialFunctionParams(webhook_config=webhook_config),
-    )
+    flags = _PartialFunctionFlags.WEB_INTERFACE
+    params = _PartialFunctionParams(webhook_config=webhook_config)
 
+    def wrapper(obj: Union[_PartialFunction, NullaryFuncOrMethod]) -> _PartialFunction:
+        if isinstance(obj, _PartialFunction):
+            pf = obj.stack(flags, params)
+        else:
+            pf = _PartialFunction(obj, flags, params)
+        pf.validate_wrapped_obj("web_server", require_sync=True, require_nullary=True)
+        return pf
 
-def _disallow_wrapping_method(f: _PartialFunction, wrapper: str) -> None:
-    return  # TODO transfer relevant logic to validate_decorators()
-    if f.flags & _PartialFunctionFlags.CALLABLE_INTERFACE:
-        f.wrapped = True  # Hack to avoid warning about not using @app.cls()
-        raise InvalidError(f"Cannot use `@{wrapper}` decorator with `@method`.")
+    return wrapper
 
 
 def _build(
     _warn_parentheses_missing=None, *, force: bool = False, timeout: int = 86400
-) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
+) -> Callable[[Union[_PartialFunction, NullaryMethod]], _PartialFunction]:
     """
     Decorator for methods that execute at _build time_ to create a new Image layer.
 
@@ -636,18 +648,24 @@ def _build(
         "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
     )
 
-    return _PartialFunction.from_wrapper(
-        "build",
-        _PartialFunctionFlags.BUILD,
-        _PartialFunctionParams(force_build=force, build_timeout=timeout),
-    )
+    flags = _PartialFunctionFlags.BUILD
+    params = _PartialFunctionParams(force_build=force, build_timeout=timeout)
+
+    def wrapper(obj: Union[_PartialFunction, NullaryMethod]) -> _PartialFunction:
+        if isinstance(obj, _PartialFunction):
+            pf = obj.stack(flags, params)
+        else:
+            pf = _PartialFunction(obj, flags, params)
+        return pf
+
+    return wrapper
 
 
 def _enter(
     _warn_parentheses_missing=None,
     *,
     snap: bool = False,
-) -> Callable[[Union[Callable[[Any], Any], _PartialFunction]], _PartialFunction]:
+) -> Callable[[Union[_PartialFunction, NullaryMethod]], _PartialFunction]:
     """Decorator for methods which should be executed when a new container is started.
 
     See the [lifeycle function guide](https://modal.com/docs/guide/lifecycle-functions#enter) for more information."""
@@ -656,15 +674,21 @@ def _enter(
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.enter()`."
         )
 
-    flag = _PartialFunctionFlags.ENTER_PRE_SNAPSHOT if snap else _PartialFunctionFlags.ENTER_POST_SNAPSHOT
-    return _PartialFunction.from_wrapper(
-        "enter",
-        flag,
-        _PartialFunctionParams(),
-    )
+    flags = _PartialFunctionFlags.ENTER_PRE_SNAPSHOT if snap else _PartialFunctionFlags.ENTER_POST_SNAPSHOT
+    params = _PartialFunctionParams()
+
+    def wrapper(obj: Union[_PartialFunction, NullaryMethod]) -> _PartialFunction:
+        # TODO: reject stacking once depreceate @modal.build
+        if isinstance(obj, _PartialFunction):
+            pf = obj.stack(flags, params)
+        else:
+            pf = _PartialFunction(obj, flags, params)
+        return pf
+
+    return wrapper
 
 
-def _exit(_warn_parentheses_missing=None) -> Callable[[Callable[[Any], Any]], _PartialFunction]:
+def _exit(_warn_parentheses_missing=None) -> Callable[[NullaryMethod], _PartialFunction]:
     """Decorator for methods which should be executed when a container is about to exit.
 
     See the [lifeycle function guide](https://modal.com/docs/guide/lifecycle-functions#exit) for more information."""
@@ -673,12 +697,15 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[Callable[[Any], Any]], _P
             "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.exit()`."
         )
 
-    # TODO(michael) this should have require_nullary right?
-    return _PartialFunction.from_wrapper(
-        "exit",
-        _PartialFunctionFlags.EXIT,
-        _PartialFunctionParams(),
-    )
+    flags = _PartialFunctionFlags.EXIT
+    params = _PartialFunctionParams()
+
+    def wrapper(obj: NullaryMethod) -> _PartialFunction:
+        if isinstance(obj, _PartialFunction):
+            raise InvalidError("The `@modal.exit` decorator cannot be stacked with other decorators.")
+        return _PartialFunction(obj, flags, params)
+
+    return wrapper
 
 
 def _batched(
@@ -686,7 +713,10 @@ def _batched(
     *,
     max_batch_size: int,
     wait_ms: int,
-) -> Callable[[Callable[..., Any]], _PartialFunction]:
+) -> Callable[
+    [Union[_PartialFunction[P, ReturnType, ReturnType], Callable[P, ReturnType]]],
+    _PartialFunction[P, ReturnType, ReturnType],
+]:
     """Decorator for functions or class methods that should be batched.
 
     **Usage**
@@ -716,11 +746,19 @@ def _batched(
     if wait_ms >= MAX_BATCH_WAIT_MS:
         raise InvalidError(f"wait_ms must be less than {MAX_BATCH_WAIT_MS}.")
 
-    return _PartialFunction.from_wrapper(
-        "batched",
-        _PartialFunctionFlags.CALLABLE_INTERFACE | _PartialFunctionFlags.BATCHED,
-        _PartialFunctionParams(batch_max_size=max_batch_size, batch_wait_ms=wait_ms),
-    )
+    flags = _PartialFunctionFlags.CALLABLE_INTERFACE | _PartialFunctionFlags.BATCHED
+    params = _PartialFunctionParams(batch_max_size=max_batch_size, batch_wait_ms=wait_ms)
+
+    def wrapper(
+        obj: Union[_PartialFunction[P, ReturnType, ReturnType], Callable[P, ReturnType]],
+    ) -> _PartialFunction[P, ReturnType, ReturnType]:
+        if isinstance(obj, _PartialFunction):
+            pf = obj.stack(flags, params)
+        else:
+            pf = _PartialFunction(obj, flags, params)
+        return pf
+
+    return wrapper
 
 
 def _concurrent(
@@ -728,7 +766,10 @@ def _concurrent(
     *,
     max_inputs: int,  # Hard limit on each container's input concurrency
     target_inputs: Optional[int] = None,  # Input concurrency that Modal's autoscaler should target
-) -> Callable[[Union[Callable[..., Any], _PartialFunction]], _PartialFunction]:
+) -> Callable[
+    [Union[Callable[P, ReturnType], _PartialFunction[P, ReturnType, ReturnType]]],
+    _PartialFunction[P, ReturnType, ReturnType],
+]:
     """Decorator that allows individual containers to handle multiple inputs concurrently.
 
     The concurrency mechanism depends on whether the function is async or not:
@@ -775,8 +816,53 @@ def _concurrent(
     if target_inputs and target_inputs > max_inputs:
         raise InvalidError("`target_inputs` parameter cannot be greater than `max_inputs`.")
 
-    return _PartialFunction.from_wrapper(
-        "concurrent",
-        _PartialFunctionFlags.CALLABLE_INTERFACE,
-        _PartialFunctionParams(max_concurrent_inputs=max_inputs, target_concurrent_inputs=target_inputs),
-    )
+    flags = _PartialFunctionFlags.CONCURRENT
+    params = _PartialFunctionParams(max_concurrent_inputs=max_inputs, target_concurrent_inputs=target_inputs)
+
+    # Note: ideally we would have some way of declaring that this decorator cannot be used on an individual method.
+    # I don't think there's any clear way for the wrapper function to know it's been passed "a method" rather than
+    # a normal function. So we need to run that check in the `@app.cls` decorator, which is a little far removed.
+
+    def wrapper(
+        obj: Union[_PartialFunction[P, ReturnType, ReturnType], Callable[P, ReturnType]],
+    ) -> _PartialFunction[P, ReturnType, ReturnType]:
+        if isinstance(obj, _PartialFunction):
+            pf = obj.stack(flags, params)
+        else:
+            pf = _PartialFunction(obj, flags, params)
+        return pf
+
+    return wrapper
+
+
+# NOTE: clustered is currently exposed through modal.experimental, not the top-level namespace
+def _clustered(size: int, broadcast: bool = True):
+    """Provision clusters of colocated and networked containers for the Function.
+
+    Parameters:
+    size: int
+        Number of containers spun up to handle each input.
+    broadcast: bool = True
+        If True, inputs will be sent simultaneously to each container. Otherwise,
+        inputs will be sent only to the rank-0 container, which is responsible for
+        delegating to the workers.
+    """
+
+    assert broadcast, "broadcast=False has not been implemented yet!"
+
+    if size <= 0:
+        raise ValueError("cluster size must be greater than 0")
+
+    flags = _PartialFunctionFlags.CLUSTERED
+    params = _PartialFunctionParams(cluster_size=size)
+
+    def wrapper(
+        obj: Union[_PartialFunction[P, ReturnType, ReturnType], Callable[P, ReturnType]],
+    ) -> _PartialFunction[P, ReturnType, ReturnType]:
+        if isinstance(obj, _PartialFunction):
+            pf = obj.stack(flags, params)
+        else:
+            pf = _PartialFunction(obj, flags, params)
+        return pf
+
+    return wrapper
