@@ -479,7 +479,7 @@ class _Cls(_Object, type_prefix="cs"):
         )
 
         for method_name, partial_function in method_partials.items():
-            if partial_function.webhook_config is not None:
+            if partial_function.params.webhook_config is not None:
                 full_name = f"{user_cls.__name__}.{method_name}"
                 app._web_endpoints.append(full_name)
             partial_function.wrapped = True
