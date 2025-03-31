@@ -92,7 +92,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     wrapped_obj: Callable[P, ReturnType]
     flags: _PartialFunctionFlags
     params: _PartialFunctionParams
-    wrapped: bool  # TODO rename ("registered?")
+    registered: bool
 
     def __init__(
         self,
@@ -103,7 +103,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         self.wrapped_obj = wrapped_obj
         self.flags = flags
         self.params = params
-        self.wrapped = False
+        self.registered = False
         self.validate_flag_composition()
 
     @property
@@ -128,13 +128,13 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         uses_interface_flags = self.flags & _PartialFunctionFlags.interface_flags()
         uses_lifecycle_flags = self.flags & _PartialFunctionFlags.lifecycle_flags()
         if uses_interface_flags and uses_lifecycle_flags:
-            self.wrapped = True  # Hacky, avoid false-positive warning
+            self.registered = True  # Hacky, avoid false-positive warning
             raise InvalidError("Interface decorators cannot be combined with lifecycle decorators.")
 
         has_web_interface = self.flags & _PartialFunctionFlags.WEB_INTERFACE
         has_callable_interface = self.flags & _PartialFunctionFlags.CALLABLE_INTERFACE
         if has_web_interface and has_callable_interface:
-            self.wrapped = True  # Hacky, avoid false-positive warning
+            self.registered = True  # Hacky, avoid false-positive warning
             raise InvalidError("Callable decorators cannot be combined with web interface decorators.")
 
     def validate_wrapped_obj(  # TODO better name
@@ -146,18 +146,18 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         uses_lifecycle_flags = self.flags & _PartialFunctionFlags.lifecycle_flags()
         uses_interface_flags = self.flags & _PartialFunctionFlags.interface_flags()
         if isinstance(self.wrapped_obj, type) and (uses_lifecycle_flags or uses_interface_flags):
-            self.wrapped = True  # Hacky, avoid false-positive warning
+            self.registered = True  # Hacky, avoid false-positive warning
             raise InvalidError(
                 f"Cannot apply `@modal.{decorator_name}` to a class. Hint: consider applying to a method instead."
             )
         if isinstance(self.wrapped_obj, _Function):
-            self.wrapped = True  # Hacky, avoid false-positive warning
+            self.registered = True  # Hacky, avoid false-positive warning
             raise InvalidError(
                 f"Cannot stack `@modal.{decorator_name}` on top of `@app.function`."
                 " Hint: swap the order of the decorators."
             )
         elif isinstance(self.wrapped_obj, _Cls):
-            self.wrapped = True  # Hacky, avoid false-positive warning
+            self.registered = True  # Hacky, avoid false-positive warning
             raise InvalidError(
                 f"Cannot stack `@modal.{decorator_name}` on top of `@app.cls()`."
                 " Hint: swap the order of the decorators."
@@ -166,7 +166,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
             raise InvalidError(f"`@modal.{decorator_name}` can't be applied to an async function.")
 
         if require_nullary and callable_has_non_self_params(self.wrapped_obj):
-            self.wrapped = True  # Hacky, avoid false-positive warning
+            self.registered = True  # Hacky, avoid false-positive warning
             if callable_has_non_self_non_default_params(self.wrapped_obj):
                 raise InvalidError(f"Functions wrapped by `@modal.{decorator_name}` can't have parameters.")
             else:

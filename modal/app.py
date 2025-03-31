@@ -652,7 +652,7 @@ class _App:
 
             if isinstance(f, _PartialFunction):
                 # typically for @function-wrapped @web_endpoint, @asgi_app, or @batched
-                f.wrapped = True
+                f.registered = True
 
                 # but we don't support @app.function wrapping a method.
                 if is_method_fn(f.raw_f.__qualname__):
@@ -857,7 +857,7 @@ class _App:
         def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
             # Check if the decorated object is a class
             if isinstance(wrapped_cls, _PartialFunction):
-                wrapped_cls.wrapped = True
+                wrapped_cls.registered = True
                 user_cls = wrapped_cls.raw_f
                 if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
                     max_concurrent_inputs = wrapped_cls.params.max_concurrent_inputs
@@ -894,7 +894,7 @@ class _App:
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
 
             for method in _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.CONCURRENT).values():
-                method.wrapped = True  # Avoid warning about not registering the method (hacky!)
+                method.registered = True  # Avoid warning about not registering the method (hacky!)
                 raise InvalidError(
                     "The `@modal.concurrent` decorator cannot be used on methods; decorate the class instead."
                 )
