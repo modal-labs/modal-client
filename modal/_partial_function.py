@@ -78,15 +78,13 @@ class _PartialFunctionParams:
     target_concurrent_inputs: Optional[int] = None
     build_timeout: Optional[int] = None
 
-    def update(self, other: "_PartialFunctionParams") -> "_PartialFunctionParams":
+    def update(self, other: "_PartialFunctionParams") -> None:
         """Update self with params set in other."""
         for key, val in asdict(other).items():
             if val is not None:
                 setattr(self, key, val)
 
 
-P = typing_extensions.ParamSpec("P")
-ReturnType = typing_extensions.TypeVar("ReturnType", covariant=True)
 P = typing_extensions.ParamSpec("P")
 ReturnType = typing_extensions.TypeVar("ReturnType", covariant=True)
 OriginalReturnType = typing_extensions.TypeVar("OriginalReturnType", covariant=True)
@@ -326,7 +324,10 @@ def _fastapi_endpoint(
     custom_domains: Optional[Iterable[str]] = None,  # Custom fully-qualified domain name (FQDN) for the endpoint.
     docs: bool = False,  # Whether to enable interactive documentation for this endpoint at /docs.
     requires_proxy_auth: bool = False,  # Require Modal-Key and Modal-Secret HTTP Headers on requests.
-) -> Callable[[Callable[P, ReturnType]], _PartialFunction[P, ReturnType, ReturnType]]:
+) -> Callable[
+    [Union[_PartialFunction[P, ReturnType, ReturnType], Callable[P, ReturnType]]],
+    _PartialFunction[P, ReturnType, ReturnType],
+]:
     """Convert a function into a basic web endpoint by wrapping it with a FastAPI App.
 
     Modal will internally use [FastAPI](https://fastapi.tiangolo.com/) to expose a
@@ -388,7 +389,10 @@ def _web_endpoint(
         Iterable[str]
     ] = None,  # Create an endpoint using a custom domain fully-qualified domain name (FQDN).
     requires_proxy_auth: bool = False,  # Require Modal-Key and Modal-Secret HTTP Headers on requests.
-) -> Callable[[Callable[P, ReturnType]], _PartialFunction[P, ReturnType, ReturnType]]:
+) -> Callable[
+    [Union[_PartialFunction[P, ReturnType, ReturnType], Callable[P, ReturnType]]],
+    _PartialFunction[P, ReturnType, ReturnType],
+]:
     """Register a basic web endpoint with this application.
 
     DEPRECATED: This decorator has been renamed to `@modal.fastapi_endpoint`.

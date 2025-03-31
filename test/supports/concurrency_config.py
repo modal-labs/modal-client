@@ -25,8 +25,8 @@ def has_new_config_and_fastapi_endpoint():
 
 
 @app.function()
-@modal.concurrent(max_inputs=CONFIG_VALS["NEW_MAX"], target_inputs=CONFIG_VALS["TARGET"])
 @modal.fastapi_endpoint()
+@modal.concurrent(max_inputs=CONFIG_VALS["NEW_MAX"], target_inputs=CONFIG_VALS["TARGET"])
 def has_fastapi_endpoint_and_new_config():
     pass
 
