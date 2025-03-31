@@ -87,37 +87,30 @@ NullaryMethod = Callable[[Any], Any]
 
 
 class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
-    """Intermediate function, produced by @enter, @build, @method, @web_endpoint, or @batched"""
+    """Object produced by a decorator in the `modal` namespace
 
-    wrapped_obj: Callable[P, ReturnType]
+    The object will eventually by consumed by an App decorator.
+    """
+
+    obj: Callable[P, ReturnType]  # function, method, or class
     flags: _PartialFunctionFlags
     params: _PartialFunctionParams
     registered: bool
 
     def __init__(
         self,
-        wrapped_obj: Callable[P, ReturnType],
+        obj: Callable[P, ReturnType],
         flags: _PartialFunctionFlags,
         params: _PartialFunctionParams,
     ):
-        self.wrapped_obj = wrapped_obj
+        self.obj = obj
         self.flags = flags
         self.params = params
         self.registered = False
         self.validate_flag_composition()
 
-    @property
-    def raw_f(self) -> Callable[P, ReturnType]:
-        # TODO(michael): temporary to avoid needing changes elsewhere in the library
-        return self.wrapped_obj
-
-    @property
-    def wrapped_function(self) -> Callable[P, ReturnType]:
-        assert not isinstance(self.wrapped_obj, type)
-        return self.wrapped_obj
-
     def stack(self, flags: _PartialFunctionFlags, params: _PartialFunctionParams) -> typing_extensions.Self:
-        """TODO"""
+        """Implement decorator composition by combining the flags and params."""
         self.flags |= flags
         self.params = _PartialFunctionParams(**(asdict(self.params) | asdict(params)))
         self.validate_flag_composition()
@@ -137,7 +130,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
             self.registered = True  # Hacky, avoid false-positive warning
             raise InvalidError("Callable decorators cannot be combined with web interface decorators.")
 
-    def validate_wrapped_obj(  # TODO better name
+    def validate_obj_compatibility(
         self, decorator_name: str, require_sync: bool = False, require_nullary: bool = False
     ) -> None:
         """Enforce compatibility with the underlying callable."""
@@ -145,44 +138,39 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
 
         uses_lifecycle_flags = self.flags & _PartialFunctionFlags.lifecycle_flags()
         uses_interface_flags = self.flags & _PartialFunctionFlags.interface_flags()
-        if isinstance(self.wrapped_obj, type) and (uses_lifecycle_flags or uses_interface_flags):
+        if isinstance(self.obj, type) and (uses_lifecycle_flags or uses_interface_flags):
             self.registered = True  # Hacky, avoid false-positive warning
             raise InvalidError(
                 f"Cannot apply `@modal.{decorator_name}` to a class. Hint: consider applying to a method instead."
             )
-        if isinstance(self.wrapped_obj, _Function):
+        if isinstance(self.obj, _Function):
             self.registered = True  # Hacky, avoid false-positive warning
             raise InvalidError(
                 f"Cannot stack `@modal.{decorator_name}` on top of `@app.function`."
                 " Hint: swap the order of the decorators."
             )
-        elif isinstance(self.wrapped_obj, _Cls):
+        elif isinstance(self.obj, _Cls):
             self.registered = True  # Hacky, avoid false-positive warning
             raise InvalidError(
                 f"Cannot stack `@modal.{decorator_name}` on top of `@app.cls()`."
                 " Hint: swap the order of the decorators."
             )
-        if require_sync and inspect.iscoroutinefunction(self.wrapped_obj):
+        if require_sync and inspect.iscoroutinefunction(self.obj):
             raise InvalidError(f"`@modal.{decorator_name}` can't be applied to an async function.")
 
-        if require_nullary and callable_has_non_self_params(self.wrapped_obj):
+        if require_nullary and callable_has_non_self_params(self.obj):
             self.registered = True  # Hacky, avoid false-positive warning
-            if callable_has_non_self_non_default_params(self.wrapped_obj):
-                raise InvalidError(f"Functions wrapped by `@modal.{decorator_name}` can't have parameters.")
+            if callable_has_non_self_non_default_params(self.obj):
+                raise InvalidError(f"Functions obj by `@modal.{decorator_name}` can't have parameters.")
             else:
                 # TODO(michael): probably fine to just make this an error at this point
                 # but best to do it in a separate PR
                 deprecation_warning(
                     (2024, 9, 4),
-                    f"The function wrapped by `@modal.{decorator_name}` has default parameters, "
+                    f"The function obj by `@modal.{decorator_name}` has default parameters, "
                     "but shouldn't have any parameters - Modal will drop support for "
                     "default parameters in a future release.",
                 )
-
-    def _get_raw_f(self) -> Callable[P, ReturnType]:
-        # TODO(michael): temporary to avoid needing changes elsewhere in the library
-        # return self.raw_f
-        return self.wrapped_obj
 
     def _is_web_endpoint(self) -> bool:
         if self.params.webhook_config is None:
@@ -196,7 +184,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         # However, modal classes are *actually* Cls instances (which isn't reflected in type checkers
         # due to Python's lack of type chekcing intersection types), so at runtime the Cls instance would
         # use its __getattr__ rather than this descriptor.
-        k = self.raw_f.__name__
+        k = self.obj.__name__
         if obj:  # accessing the method on an instance of a class, e.g. `MyClass().fun``
             if hasattr(obj, "_modal_functions"):
                 # This happens inside "local" user methods when they refer to other methods,
@@ -208,25 +196,25 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
                 # not sure what would be useful here, but let's return a bound version of the underlying function,
                 # since the class is just a vanilla class at this point
                 # This wouldn't let the user access `.remote()` and `.local()` etc. on the function
-                return self.raw_f.__get__(obj, objtype)
+                return self.obj.__get__(obj, objtype)
 
         else:  # accessing a method directly on the class, e.g. `MyClass.fun`
-            # This happens mainly during serialization of the wrapped underlying class of a Cls
+            # This happens mainly during serialization of the obj underlying class of a Cls
             # since we don't have the instance info here we just return the PartialFunction itself
             # to let it be bound to a variable and become a Function later on
             return self  # type: ignore  # this returns a PartialFunction in a special internal case
 
     def __del__(self):
-        if (self.flags & _PartialFunctionFlags.interface_flags()) and self.wrapped is False:
+        if self.registered is False:
             logger.warning(
-                f"Method or web function {self.raw_f} was never turned into a function."
+                f"Method or web function {self.obj} was never registered with the App."
                 " Did you forget a @app.function or @app.cls decorator?"
             )
 
 
 def _find_partial_methods_for_user_cls(user_cls: type[Any], flags: int) -> dict[str, _PartialFunction]:
     """Grabs all method on a user class, and returns partials. Includes legacy methods."""
-    from .partial_function import PartialFunction  # wrapped type
+    from .partial_function import PartialFunction  # obj type
 
     partial_functions: dict[str, _PartialFunction] = {}
     for parent_cls in reversed(user_cls.mro()):
@@ -243,7 +231,7 @@ def _find_partial_methods_for_user_cls(user_cls: type[Any], flags: int) -> dict[
 def _find_callables_for_obj(user_obj: Any, flags: int) -> dict[str, Callable[..., Any]]:
     """Grabs all methods for an object, and binds them to the class"""
     user_cls: type = type(user_obj)
-    return {k: pf.raw_f.__get__(user_obj) for k, pf in _find_partial_methods_for_user_cls(user_cls, flags).items()}
+    return {k: pf.obj.__get__(user_obj) for k, pf in _find_partial_methods_for_user_cls(user_cls, flags).items()}
 
 
 class _MethodDecoratorType:
@@ -297,7 +285,7 @@ def _method(
 
         nonlocal is_generator  # TODO(michael): we are likely to deprecate the explicit is_generator param
         if is_generator is None:
-            callable = obj.wrapped_obj if isinstance(obj, _PartialFunction) else obj
+            callable = obj.obj if isinstance(obj, _PartialFunction) else obj
             is_generator = inspect.isgeneratorfunction(callable) or inspect.isasyncgenfunction(callable)
         params = _PartialFunctionParams(is_generator=is_generator)
 
@@ -305,11 +293,11 @@ def _method(
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
-        pf.validate_wrapped_obj("method")
+        pf.validate_obj_compatibility("method")
         return pf
 
     # TODO(michael) verify that we still need the type: ignore
-    return wrapper  # type: ignore  # synchronicity issue with wrapped vs unwrapped types and protocols
+    return wrapper  # type: ignore  # synchronicity issue with obj vs unwrapped types and protocols
 
 
 def _parse_custom_domains(custom_domains: Optional[Iterable[str]] = None) -> list[api_pb2.CustomDomainConfig]:
@@ -376,7 +364,7 @@ def _fastapi_endpoint(
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
-        pf.validate_wrapped_obj("fastapi_endpoint")
+        pf.validate_obj_compatibility("fastapi_endpoint")
         return pf
 
     return wrapper
@@ -441,7 +429,7 @@ def _web_endpoint(
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
-        pf.validate_wrapped_obj("web_endpoint")
+        pf.validate_obj_compatibility("web_endpoint")
         return pf
 
     return wrapper
@@ -498,7 +486,7 @@ def _asgi_app(
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
-        pf.validate_wrapped_obj("asgi_app", require_sync=True, require_nullary=True)
+        pf.validate_obj_compatibility("asgi_app", require_sync=True, require_nullary=True)
         return pf
 
     return wrapper
@@ -555,7 +543,7 @@ def _wsgi_app(
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
-        pf.validate_wrapped_obj("wsgi_app", require_sync=True, require_nullary=True)
+        pf.validate_obj_compatibility("wsgi_app", require_sync=True, require_nullary=True)
         return pf
 
     return wrapper
@@ -618,7 +606,7 @@ def _web_server(
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
-        pf.validate_wrapped_obj("web_server", require_sync=True, require_nullary=True)
+        pf.validate_obj_compatibility("web_server", require_sync=True, require_nullary=True)
         return pf
 
     return wrapper
@@ -671,7 +659,7 @@ def _build(
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
-        pf.validate_wrapped_obj("build")
+        pf.validate_obj_compatibility("build")
         return pf
 
     return wrapper
@@ -699,7 +687,7 @@ def _enter(
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
-        pf.validate_wrapped_obj("enter")  # TODO require_nullary?
+        pf.validate_obj_compatibility("enter")  # TODO require_nullary?
         return pf
 
     return wrapper
@@ -722,7 +710,7 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[NullaryMethod], _PartialF
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
-        pf.validate_wrapped_obj("exit")  # TODO require_nullary?
+        pf.validate_obj_compatibility("exit")  # TODO require_nullary?
         return pf
 
     return wrapper
@@ -776,7 +764,7 @@ def _batched(
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
-        pf.validate_wrapped_obj("batched")
+        pf.validate_obj_compatibility("batched")
         return pf
 
     return wrapper
@@ -851,7 +839,7 @@ def _concurrent(
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
-        pf.validate_wrapped_obj("concurrent")
+        pf.validate_obj_compatibility("concurrent")
         return pf
 
     return wrapper
@@ -885,7 +873,7 @@ def _clustered(size: int, broadcast: bool = True):
             pf = obj.stack(flags, params)
         else:
             pf = _PartialFunction(obj, flags, params)
-        pf.validate_wrapped_obj("clustered")
+        pf.validate_obj_compatibility("clustered")
         return pf
 
     return wrapper
