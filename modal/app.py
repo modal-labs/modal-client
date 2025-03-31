@@ -893,11 +893,11 @@ class _App:
             ):
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
 
-            for method in _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.FUNCTION).values():
-                if method.max_concurrent_inputs:
-                    raise InvalidError(
-                        "The `@modal.concurrent` decorator cannot be used on methods; decorate the class instead."
-                    )
+            for method in _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.CONCURRENT).values():
+                method.wrapped = True  # Avoid warning about not registering the method (hacky!)
+                raise InvalidError(
+                    "The `@modal.concurrent` decorator cannot be used on methods; decorate the class instead."
+                )
 
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 

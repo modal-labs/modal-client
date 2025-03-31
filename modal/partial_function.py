@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2025
-from modal._utils.async_utils import synchronize_api
 
 from ._partial_function import (
     _asgi_app,
@@ -15,6 +14,7 @@ from ._partial_function import (
     _web_server,
     _wsgi_app,
 )
+from ._utils.async_utils import synchronize_api
 
 # The only reason these are wrapped is to get translated type stubs, they
 # don't actually run any async code as of 2025-02-04:
