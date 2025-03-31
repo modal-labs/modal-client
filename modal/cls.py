@@ -482,13 +482,13 @@ class _Cls(_Object, type_prefix="cs"):
             if partial_function.params.webhook_config is not None:
                 full_name = f"{user_cls.__name__}.{method_name}"
                 app._web_endpoints.append(full_name)
-            partial_function.wrapped = True
+            partial_function.registered = True
 
         # Disable the warning that lifecycle methods are not wrapped
         for partial_function in _find_partial_methods_for_user_cls(
             user_cls, ~_PartialFunctionFlags.interface_flags()
         ).values():
-            partial_function.wrapped = True
+            partial_function.registered = True
 
         # Get all callables
         callables: dict[str, Callable] = {
