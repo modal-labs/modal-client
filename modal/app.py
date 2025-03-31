@@ -655,7 +655,7 @@ class _App:
                 f.registered = True
 
                 # but we don't support @app.function wrapping a method.
-                if is_method_fn(f.raw_f.__qualname__):
+                if is_method_fn(f.obj.__qualname__):
                     raise InvalidError(
                         "The `@app.function` decorator cannot be used on class methods. "
                         "Swap with `@modal.method` or one of the web endpoint decorators. "
@@ -672,8 +672,8 @@ class _App:
                 i6pn_enabled = i6pn or (f.flags & _PartialFunctionFlags.CLUSTERED)
                 cluster_size = f.params.cluster_size  # Experimental: Clustered functions
 
-                info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
-                raw_f = f.raw_f
+                info = FunctionInfo(f.obj, serialized=serialized, name_override=name)
+                raw_f = f.obj
                 webhook_config = f.params.webhook_config
                 is_generator = f.params.is_generator
                 batch_max_size = f.params.batch_max_size
@@ -858,7 +858,7 @@ class _App:
             # Check if the decorated object is a class
             if isinstance(wrapped_cls, _PartialFunction):
                 wrapped_cls.registered = True
-                user_cls = wrapped_cls.raw_f
+                user_cls = wrapped_cls.obj
                 if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
                     max_concurrent_inputs = wrapped_cls.params.max_concurrent_inputs
                     target_concurrent_inputs = wrapped_cls.params.target_concurrent_inputs
