@@ -137,7 +137,7 @@ def test_schema_extraction_unknown(record_function_schemas):
 
     for func in [with_empty, with_any, with_custom]:
         print(func.__name__)
-        fields = get_callable_schema(func).arguments
+        fields = list(get_callable_schema(func).arguments)
         assert fields == [
             api_pb2.ClassParameterSpec(
                 name="a",
