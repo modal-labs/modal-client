@@ -35,7 +35,9 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 - Adds a new "commit info" column to the `modal app history` command. It shows the short git hash at the time of deployment, with an asterisk `*` if the repository had uncommitted changes.
 
+### 0.73.119 (2025-03-21)
 
+- Class parameters are no longer automatically cast into their declared type. If the wrong type is provided to a class parameter, method calls to that class instance will now fail with an exception.
 
 ### 0.73.115 (2025-03-19)
 
