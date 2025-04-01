@@ -651,7 +651,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_type = get_function_type(partial_function.is_generator)
                 function_name = f"{info.user_cls.__name__}.{method_name}"
 
-                if not partial_function._is_web_endpoint():
+                if config.get("function_schemas") and not partial_function._is_web_endpoint():
                     method_schema = get_callable_schema(partial_function.raw_f, ignore_first_argument=True)
                 else:
                     method_schema = None
@@ -697,12 +697,17 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             assert resolver.client and resolver.client.stub
 
             assert resolver.app_id
+            if config.get("function_schemas") and info.raw_f and not webhook_config:
+                function_schema = get_callable_schema(info.raw_f)
+            else:
+                function_schema = None
+
             req = api_pb2.FunctionPrecreateRequest(
                 app_id=resolver.app_id,
                 function_name=info.function_name,
                 function_type=function_type,
                 existing_function_id=existing_object_id or "",
-                function_schema=get_callable_schema(info.raw_f) if info.raw_f and not webhook_config else None,
+                function_schema=function_schema,
             )
             if method_definitions:
                 for method_name, method_definition in method_definitions.items():
@@ -772,7 +777,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
                 function_data: Optional[api_pb2.FunctionData] = None
                 function_definition: Optional[api_pb2.Function] = None
-                function_schema = get_callable_schema(info.raw_f) if info.raw_f and not webhook_config else None
+                if config.get("function_schemas") and info.raw_f and not webhook_config:
+                    function_schema = get_callable_schema(info.raw_f)
+                else:
+                    function_schema = None
                 # Create function remotely
                 function_definition = api_pb2.Function(
                     module_name=info.module_name or "",

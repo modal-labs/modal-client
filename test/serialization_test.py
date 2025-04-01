@@ -203,7 +203,7 @@ def test_schema_extraction_list():
     def old_f(simple_list: typing.List[int]): ...
 
     for f in [new_f, old_f]:
-        (list_spec,) = signature_to_parameter_specs(inspect.signature(f))
+        (list_spec,) = get_callable_schema(f).arguments
         assert list_spec == api_pb2.ClassParameterSpec(
             name="simple_list",
             full_type=api_pb2.GenericPayloadType(
@@ -217,7 +217,7 @@ def test_schema_extraction_list():
 def test_schema_extraction_nested_list():
     def f(nested_list: list[list[bytes]]): ...
 
-    (list_spec,) = signature_to_parameter_specs(inspect.signature(f))
+    (list_spec,) = get_callable_schema(f).arguments
     assert list_spec == api_pb2.ClassParameterSpec(
         name="nested_list",
         full_type=api_pb2.GenericPayloadType(
@@ -236,7 +236,7 @@ def test_schema_extraction_nested_list():
 def test_schema_extraction_nested_dict():
     def f(nested_dict: dict[str, dict[str, bytes]] = {}): ...
 
-    (dict_spec,) = signature_to_parameter_specs(inspect.signature(f))
+    (dict_spec,) = get_callable_schema(f).arguments
     assert dict_spec == api_pb2.ClassParameterSpec(
         name="nested_dict",
         full_type=api_pb2.GenericPayloadType(
@@ -261,7 +261,7 @@ def test_schema_extraction_nested_dict():
 def test_schema_extraction_dict_with_non_str_key_is_unknown():
     def f(dct: dict): ...
 
-    (dict_spec,) = signature_to_parameter_specs(inspect.signature(f))
+    (dict_spec,) = get_callable_schema(f).arguments
     print(dict_spec)
     assert dict_spec == api_pb2.ClassParameterSpec(
         name="dct",
