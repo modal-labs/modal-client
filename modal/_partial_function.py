@@ -178,6 +178,11 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
                     "default parameters in a future release.",
                 )
 
+    def get_wrapped_obj(self) -> Callable[P, ReturnType]:
+        # Consider having separate get_wrapped_func / get_wrapped_cls (/ get_wrapped_method?)
+        # with stricter type annotation / runtime check.
+        return self.obj
+
     def _is_web_endpoint(self) -> bool:
         if self.params.webhook_config is None:
             return False
