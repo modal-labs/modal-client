@@ -1275,11 +1275,6 @@ def test_concurrency_migration(client, servicer):
             raise RuntimeError(f"Unexpected function name: {request.function.function_name}")
 
 
-@pytest.fixture()
-def record_function_schemas(monkeypatch):
-    monkeypatch.setenv("MODAL_FUNCTION_SCHEMAS", "1")
-
-
 @pytest.mark.usefixtures("record_function_schemas", "set_env_client")
 def test_function_schema_recording(client, servicer):
     app = App("app")

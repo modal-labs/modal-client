@@ -2277,3 +2277,8 @@ def tmp_cwd(tmp_path, monkeypatch):
     with monkeypatch.context() as m:
         m.chdir(tmp_path)
         yield
+
+
+@pytest.fixture()
+def record_function_schemas(monkeypatch):
+    monkeypatch.setenv("MODAL_FUNCTION_SCHEMAS", "1")
