@@ -1714,8 +1714,9 @@ message FunctionRetryPolicy {
 }
 
 message FunctionSchema {
-  repeated ClassParameterSpec arguments = 1;
-  GenericPayloadType return_type = 2;
+  int32 schema_version = 1; // 1 | 0 for now, allows easy disambiguation between empty schema and no schema collection
+  repeated ClassParameterSpec arguments = 2;
+  GenericPayloadType return_type = 3;
 }
 
 message FunctionStats {

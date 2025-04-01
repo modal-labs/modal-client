@@ -1260,6 +1260,7 @@ def test_function_schema_recording(client, servicer):
 
     deploy_app(app, client=client)
     expected_schema = api_pb2.FunctionSchema(
+        schema_version=1,
         arguments=[
             api_pb2.ClassParameterSpec(
                 name="a",
@@ -1284,8 +1285,8 @@ def test_function_schema_recording(client, servicer):
 
 @pytest.mark.usefixtures("record_function_schemas", "set_env_client")
 def test_function_schema_excludes_web_endpoints(client, servicer):
-    # for now we exclude web endpoints - could reconsider this in the future
-    # but it would require some additional considerations to be useful
+    # for now we exclude web endpoints since they don't use straight-forward arguments
+    # in the same way as regular modal functions
     app = App("app")
 
     @app.function(name="f", serialized=True)
@@ -1293,7 +1294,8 @@ def test_function_schema_excludes_web_endpoints(client, servicer):
     def webbie(query_param: int): ...
 
     deploy_app(app, client=client)
-    assert webbie._get_schema() is None
+    schema = webbie._get_schema()
+    assert schema is None
 
 
 @pytest.mark.usefixtures("record_function_schemas", "set_env_client")
@@ -1308,6 +1310,7 @@ def test_class_schema_recording(client, servicer):
         def f(self, a: int) -> list[str]: ...
 
     expected_method_schema = api_pb2.FunctionSchema(
+        schema_version=1,
         arguments=[
             api_pb2.ClassParameterSpec(
                 name="a",

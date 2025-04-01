@@ -546,6 +546,7 @@ def get_callable_schema(
         arguments.append(_signature_parameter_to_spec(p))
 
     return api_pb2.FunctionSchema(
+        schema_version=1,
         arguments=arguments,
         return_type=return_type_proto,
     )
