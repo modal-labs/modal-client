@@ -40,7 +40,7 @@ class _PartialFunctionFlags(enum.IntFlag):
     WEB_INTERFACE = 32
     # Service decorator flags
     # It's, unclear if we need these, as we can also generally infer based on some params being set
-    # In the current state where @modal.batched is used _insead_ of `@modal.method`, we need to give
+    # In the current state where @modal.batched is used _instead_ of `@modal.method`, we need to give
     # `@modal.batched` two roles (exposing the callable interface, adding batching semantics).
     # But it's probably better to make `@modal.batched` and `@modal.method` stackable, or to move
     # `@modal.batched` to be a class-level decorator since it primarily governs service behavior.
@@ -82,6 +82,8 @@ class _PartialFunctionParams:
         """Update self with params set in other."""
         for key, val in asdict(other).items():
             if val is not None:
+                if getattr(self, key, None) is not None:
+                    raise InvalidError(f"Cannot set `{key}` twice.")
                 setattr(self, key, val)
 
 
