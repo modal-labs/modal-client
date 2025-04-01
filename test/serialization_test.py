@@ -148,7 +148,7 @@ def test_schema_extraction_unknown(record_function_schemas):
 
     def with_default(a=5): ...
 
-    fields = get_callable_schema(with_default).arguments
+    fields = list(get_callable_schema(with_default).arguments)
     assert fields == [
         api_pb2.ClassParameterSpec(
             name="a", full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN), has_default=True
