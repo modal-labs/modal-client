@@ -11,6 +11,7 @@ import inspect
 import os
 import platform
 import pytest
+import random
 import shutil
 import sys
 import tempfile
@@ -292,10 +293,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.last_metadata = None
 
         self.function_get_server_warnings = None
+        self.resp_jitter_secs: float = 0.0
 
         @self.function_body
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
+
+    def set_resp_jitter(self, secs: float) -> None:
+        # TODO: It'd be great to make this easy to apply to all gRPC method handlers.
+        # Some way to decorate `stream.send_message`.
+        self.resp_jitter_secs = secs
 
     async def recv_request(self, event: RecvRequest):
         # Make sure metadata is correct
@@ -477,6 +484,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if state_history[-1] not in [api_pb2.APP_STATE_DETACHED, api_pb2.APP_STATE_DEPLOYED]:
             state_history.append(api_pb2.APP_STATE_STOPPED)
         await stream.send_message(Empty())
+        # introduce jitter to simulate network latency
+        await asyncio.sleep(random.uniform(0.0, self.resp_jitter_secs))
 
     async def AppGetLayout(self, stream):
         request: api_pb2.AppGetLayoutRequest = await stream.recv_message()
@@ -571,8 +580,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def AppHeartbeat(self, stream):
         request: api_pb2.AppHeartbeatRequest = await stream.recv_message()
         self.requests.append(request)
-        self.app_heartbeats[request.app_id] += 1
-        await stream.send_message(Empty())
+        if self.app_state_history[request.app_id][-1] == api_pb2.APP_STATE_STOPPED:
+            raise GRPCError(Status.FAILED_PRECONDITION, "App is stopped")
+        else:
+            self.app_heartbeats[request.app_id] += 1
+            await stream.send_message(Empty())
 
     async def AppDeploymentHistory(self, stream):
         request: api_pb2.AppHeartbeatRequest = await stream.recv_message()

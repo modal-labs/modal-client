@@ -1222,7 +1222,7 @@ message Function {
 
   repeated VolumeMount volume_mounts = 33;
 
-  uint32 target_concurrent_inputs = 34;
+  uint32 max_concurrent_inputs = 34;
 
   repeated CustomDomainInfo custom_domain_info = 35;
 
@@ -1272,7 +1272,7 @@ message Function {
   uint64 batch_linger_ms = 61; // Miliseconds to block before a response is needed
   bool i6pn_enabled = 62;
   bool _experimental_concurrent_cancellations = 63;
-  uint32 max_concurrent_inputs = 64;
+  uint32 target_concurrent_inputs = 64;
 
   // TODO(irfansharif): Remove, once https://github.com/modal-labs/modal/pull/15645 lands.
   bool _experimental_task_templates_enabled = 65;  // forces going through the new gpu-fallbacks integration path, even if no fallback options are specified
