@@ -10,6 +10,7 @@ from modal._serialization import (
     deserialize,
     deserialize_data_format,
     deserialize_proto_params,
+    get_callable_schema,
     serialize,
     serialize_data_format,
     serialize_proto_params,
@@ -124,7 +125,7 @@ def test_non_implemented_proto_type():
         parameter_serde_registry.decode(api_pb2.ClassParameterValue(type=1000))  # type: ignore
 
 
-def test_schema_extraction_unknown():
+def test_schema_extraction_unknown(record_function_schemas):
     def with_empty(a): ...
 
     def with_any(a: typing.Any): ...
@@ -135,16 +136,19 @@ def test_schema_extraction_unknown():
     def with_custom(a: Custom): ...
 
     for func in [with_empty, with_any, with_custom]:
-        fields = signature_to_parameter_specs(inspect.signature(func))
+        print(func.__name__)
+        fields = get_callable_schema(func).arguments
         assert fields == [
             api_pb2.ClassParameterSpec(
-                name="a", has_default=False, full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN)
+                name="a",
+                has_default=False,
+                full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN),
             )
         ]
 
     def with_default(a=5): ...
 
-    fields = signature_to_parameter_specs(inspect.signature(with_default))
+    fields = get_callable_schema(with_default).arguments
     assert fields == [
         api_pb2.ClassParameterSpec(
             name="a", full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN), has_default=True
