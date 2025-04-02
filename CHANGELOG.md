@@ -12,6 +12,21 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.139 (2025-04-02)
+
+- Added `modal.experimental.ipython` module, which can be loaded in Jupyter notebooks with `%load_ext modal.experimental.ipython`. Currently it provides the `%modal` line magic for looking up functions:
+
+  ```python
+  %modal from main/my-app import my_function, MyClass as Foo
+
+  # Now you can use my_function() and Foo in your notebook.
+  my_function.remote()
+  Foo().my_method.remote()
+  ```
+- Removed the legacy `modal.extensions.ipython` module from 2022.
+
+
+
 ### 0.73.135 (2025-03-29)
 
 * Fix shutdown race bug that emitted spurious error-level logs.
