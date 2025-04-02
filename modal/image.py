@@ -1309,8 +1309,7 @@ class _Image(_Object, type_prefix="im"):
         context_files: dict[str, str] = {},
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
-        # modal.Mount with local files to supply as build context for COPY commands
-        context_mount: Optional[_Mount] = None,
+        context_mount: Optional[_Mount] = None,  # Deprecated: the context is now inferred
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         ignore: Union[Sequence[str], Callable[[Path], bool]] = AUTO_DOCKERIGNORE,
     ) -> "_Image":
@@ -1706,9 +1705,7 @@ class _Image(_Object, type_prefix="im"):
     def from_dockerfile(
         # Filepath to Dockerfile.
         path: Union[str, Path],
-        # modal.Mount with local files to supply as build context for COPY commands.
-        # NOTE: The remote_path of the Mount should match the Dockerfile's WORKDIR.
-        context_mount: Optional[_Mount] = None,
+        context_mount: Optional[_Mount] = None,  # Deprecated: the context is now inferred
         # Ignore cached builds, similar to 'docker build --no-cache'
         force_build: bool = False,
         *,
