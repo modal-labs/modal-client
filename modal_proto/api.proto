@@ -1619,6 +1619,7 @@ message FunctionMapResponse {
   FunctionRetryPolicy retry_policy = 3;
   string function_call_jwt = 4;
   bool sync_client_retries_enabled = 5;
+  uint32 max_inputs_outstanding = 6;
 }
 
 message FunctionOptions {
