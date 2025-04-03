@@ -113,7 +113,7 @@ async def list_deployed_apps(environment_name: str = "", client: Optional[_Clien
 async def raw_dockerfile_image(
     path: Union[str, Path],
     registry_secret: Optional[_Secret] = None,
-    registry_type: Literal["gcp", "aws", None] = None,
+    registry_auth_type: Literal["static", "aws", "gcp", None] = None,
     force_build: bool = False,
 ) -> _Image:
     """
@@ -123,6 +123,9 @@ async def raw_dockerfile_image(
     steps to install dependencies for the Modal client package. As a consequence, the resulting
     Image cannot be used with a modal Function unless those dependencies are added in a subsequent
     layer. It _can_ be directly used with a modal Sandbox, which does not need the Modal client.
+
+    When the Dockerfile pulls from a private registry, use `registry_secret` and `registry_auth_type`
+    to supply credentials. See documentation for `modal.Image
 
     We expect to support this experimental function until the `2025.04` Modal Image Builder is
     stable, at which point Modal Image recipes will no longer install the client dependencies
@@ -137,13 +140,19 @@ async def raw_dockerfile_image(
         return DockerfileSpec(commands=commands, context_files={})
 
     if registry_secret:
-        if registry_type == "aws":
+        if registry_auth_type is None:
+            raise ValueError("registry_auth_type must be provided when using a registry_secret")
+        elif registry_auth_type == "static":
+            auth_type = api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS
+        elif registry_auth_type == "aws":
             auth_type = api_pb2.REGISTRY_AUTH_TYPE_AWS
-        elif registry_type == "gcp":
+        elif registry_auth_type == "gcp":
             auth_type = api_pb2.REGISTRY_AUTH_TYPE_GCP
         else:
-            auth_type = api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS
+            raise ValueError(f"Invalid registry_auth_type: {registry_auth_type!r}")
         registry_config = _ImageRegistryConfig(auth_type, registry_secret)
+    else:
+        registry_config = None
 
     return _Image._from_args(
         dockerfile_function=build_dockerfile,
