@@ -1878,13 +1878,20 @@ def test_raw_dockerfile_image(servicer, client):
         "ENV AGE=old",
         "RUN pip install seaborn==0.6.0",
     ]
-    Path("Dockerfile").write_text("\n".join(dockerfile_commands))
 
-    image = raw_dockerfile_image("Dockerfile")
+    extra_commands = ["echo 'hello'", "echo 'goodbye'"]
+
+    Path("Dockerfile").write_text("\n".join(dockerfile_commands))
+    image = raw_dockerfile_image("Dockerfile").run_commands(extra_commands)
+
     app = App()
     app.function(image=image)(dummy)
     with app.run(client=client):
         layers = get_image_layers(image.object_id, servicer)
-        assert len(layers) == 1
-        assert layers[0].dockerfile_commands == dockerfile_commands
-        assert layers[0].context_files == []
+        assert len(layers) == 2
+
+        assert layers[1].dockerfile_commands == dockerfile_commands
+        assert not layers[1].context_files
+
+        assert layers[0].dockerfile_commands == ["FROM base"] + [f"RUN {c}" for c in extra_commands]
+        assert not layers[0].context_files
