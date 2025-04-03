@@ -18,6 +18,7 @@ from modal._serialization import serialize
 from modal._utils.async_utils import synchronizer
 from modal.client import Client
 from modal.exception import DeprecationError, InvalidError, ModuleNotMountable, VersionError
+from modal.experimental import raw_dockerfile_image
 from modal.file_pattern_matcher import FilePatternMatcher
 from modal.image import (
     SUPPORTED_PYTHON_SERIES,
@@ -1867,3 +1868,23 @@ def test_image_add_local_dir_ignore_from_file(servicer, client, tmp_path_with_co
             assert len(img._mount_layers) == 1
             mount_id = img._mount_layers[0].object_id
             assert servicer.mount_contents[mount_id].keys() == expected
+
+
+@pytest.mark.usefixtures("tmp_cwd")
+def test_raw_dockerfile_image(servicer, client):
+    dockerfile_commands = [
+        "FROM python:3.6",
+        "COPY . .",
+        "ENV AGE=old",
+        "RUN pip install seaborn==0.6.0",
+    ]
+    Path("Dockerfile").write_text("\n".join(dockerfile_commands))
+
+    image = raw_dockerfile_image("Dockerfile")
+    app = App()
+    app.function(image=image)(dummy)
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        assert len(layers) == 1
+        assert layers[0].dockerfile_commands == dockerfile_commands
+        assert layers[0].context_files == []

@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2025
+import os
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from pathlib import Path
+from typing import Any, Callable, Optional, Union
 
 from modal_proto import api_pb2
 
@@ -12,6 +14,7 @@ from .._runtime.container_io_manager import _ContainerIOManager
 from .._utils.async_utils import synchronizer
 from ..client import _Client
 from ..exception import InvalidError
+from ..image import DockerfileSpec, ImageBuilderVersion, _Image
 
 
 def stop_fetching_inputs():
@@ -103,3 +106,31 @@ async def list_deployed_apps(environment_name: str = "", client: Optional[_Clien
                 )
             )
     return app_infos
+
+
+@synchronizer.create_blocking
+async def raw_dockerfile_image(path: Union[str, Path], force_build: bool = False) -> _Image:
+    """
+    Build a Modal Image from a local Dockerfile recipe without any changes.
+
+    Unlike for `modal.Image.from_dockerfile`, the provided recipe will not be embellished with
+    steps to install dependencies for the Modal client package. As a consequence, the resulting
+    Image cannot be used with a modal Function unless those dependencies are added in a subsequent
+    layer. It _can_ be directly used with a modal Sandbox, which does not need the Modal client.
+
+    We expect to support this experimental function until the `2025.04` Modal Image Builder is
+    stable, at which point Modal Image recipes will no longer install the client dependencies
+    by default. At that point, users can upgrade their Image Builder Version and migrate to
+    `modal.Image.from_dockerfile` for usecases supported by this function.
+
+    """
+
+    def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+        with open(os.path.expanduser(path)) as f:
+            commands = f.read().split("\n")
+        return DockerfileSpec(commands=commands, context_files={})
+
+    return _Image._from_args(
+        dockerfile_function=build_dockerfile,
+        force_build=force_build,
+    )
