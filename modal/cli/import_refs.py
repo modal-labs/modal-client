@@ -69,7 +69,6 @@ def import_file_or_module(import_ref: ImportRef, base_cmd: str = ""):
                 (2025, 2, 6),
                 f"Using Python module paths will require using the -m flag in a future version of Modal.\n"
                 f"Use `{base_cmd} -m {import_ref.file_or_module}` instead.",
-                pending=True,
                 show_source=False,
             )
         try:
