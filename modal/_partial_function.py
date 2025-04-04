@@ -59,6 +59,8 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     force_build: bool
     cluster_size: Optional[int]  # Experimental: Clustered functions
     build_timeout: Optional[int]
+    max_concurrent_inputs: Optional[int]
+    target_concurrent_inputs: Optional[int]
 
     def __init__(
         self,
@@ -72,6 +74,8 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         cluster_size: Optional[int] = None,  # Experimental: Clustered functions
         force_build: bool = False,
         build_timeout: Optional[int] = None,
+        max_concurrent_inputs: Optional[int] = None,
+        target_concurrent_inputs: Optional[int] = None,
     ):
         self.raw_f = raw_f
         self.flags = flags
@@ -89,6 +93,8 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         self.cluster_size = cluster_size  # Experimental: Clustered functions
         self.force_build = force_build
         self.build_timeout = build_timeout
+        self.max_concurrent_inputs = max_concurrent_inputs
+        self.target_concurrent_inputs = target_concurrent_inputs
 
     def _get_raw_f(self) -> Callable[P, ReturnType]:
         return self.raw_f
@@ -143,6 +149,8 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
             batch_wait_ms=self.batch_wait_ms,
             force_build=self.force_build,
             build_timeout=self.build_timeout,
+            max_concurrent_inputs=self.max_concurrent_inputs,
+            target_concurrent_inputs=self.target_concurrent_inputs,
         )
 
 
@@ -210,7 +218,9 @@ def _method(
     ```
     """
     if _warn_parentheses_missing is not None:
-        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@method()`.")
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.method()`."
+        )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
         nonlocal is_generator
@@ -250,28 +260,29 @@ def _fastapi_endpoint(
     docs: bool = False,  # Whether to enable interactive documentation for this endpoint at /docs.
     requires_proxy_auth: bool = False,  # Require Modal-Key and Modal-Secret HTTP Headers on requests.
 ) -> Callable[[Callable[P, ReturnType]], _PartialFunction[P, ReturnType, ReturnType]]:
-    """Register a basic web endpoint with this application.
+    """Convert a function into a basic web endpoint by wrapping it with a FastAPI App.
 
-    This is the simple way to create a web endpoint on Modal. The function
-    behaves as a [FastAPI](https://fastapi.tiangolo.com/) handler and should
-    return a response object to the caller.
+    Modal will internally use [FastAPI](https://fastapi.tiangolo.com/) to expose a
+    simple, single request handler. If you are defining your own `FastAPI` application
+    (e.g. if you want to define multiple routes), use `@modal.asgi_app` instead.
 
-    Endpoints created with `@modal.fastapi_endpoint` are meant to be simple, single
-    request handlers and automatically have
-    [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) enabled.
-    For more flexibility, use `@modal.asgi_app`.
+    The endpoint created with this decorator will automatically have
+    [CORS](https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS) enabled
+    and can leverage many of FastAPI's features.
 
-    To learn how to use Modal with popular web frameworks, see the
+    For more information on using Modal with popular web frameworks, see our
     [guide on web endpoints](https://modal.com/docs/guide/webhooks).
 
     *Added in v0.73.82*: This function replaces the deprecated `@web_endpoint` decorator.
     """
     if isinstance(_warn_parentheses_missing, str):
         # Probably passing the method string as a positional argument.
-        raise InvalidError('Positional arguments are not allowed. Suggestion: `@fastapi_endpoint(method="GET")`.')
+        raise InvalidError(
+            f'Positional arguments are not allowed. Suggestion: `@modal.fastapi_endpoint(method="{method}")`.'
+        )
     elif _warn_parentheses_missing is not None:
         raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@fastapi_endpoint()`."
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.fastapi_endpoint()`."
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
@@ -328,10 +339,10 @@ def _web_endpoint(
     """
     if isinstance(_warn_parentheses_missing, str):
         # Probably passing the method string as a positional argument.
-        raise InvalidError('Positional arguments are not allowed. Suggestion: `@web_endpoint(method="GET")`.')
+        raise InvalidError('Positional arguments are not allowed. Suggestion: `@modal.web_endpoint(method="GET")`.')
     elif _warn_parentheses_missing is not None:
         raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@web_endpoint()`."
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.web_endpoint()`."
         )
 
     deprecation_warning(
@@ -392,10 +403,10 @@ def _asgi_app(
     [guide on web endpoints](https://modal.com/docs/guide/webhooks).
     """
     if isinstance(_warn_parentheses_missing, str):
-        raise InvalidError('Positional arguments are not allowed. Suggestion: `@asgi_app(label="foo")`.')
+        raise InvalidError(f'Positional arguments are not allowed. Suggestion: `@modal.asgi_app(label="{label}")`.')
     elif _warn_parentheses_missing is not None:
         raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@asgi_app()`."
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.asgi_app()`."
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
@@ -460,10 +471,10 @@ def _wsgi_app(
     [guide on web endpoints](https://modal.com/docs/guide/webhooks).
     """
     if isinstance(_warn_parentheses_missing, str):
-        raise InvalidError('Positional arguments are not allowed. Suggestion: `@wsgi_app(label="foo")`.')
+        raise InvalidError(f'Positional arguments are not allowed. Suggestion: `@modal.wsgi_app(label="{label}")`.')
     elif _warn_parentheses_missing is not None:
         raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@wsgi_app()`."
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.wsgi_app()`."
         )
 
     def wrapper(raw_f: Callable[..., Any]) -> _PartialFunction:
@@ -588,7 +599,9 @@ def _build(
     ```
     """
     if _warn_parentheses_missing is not None:
-        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@build()`.")
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.build()`."
+        )
 
     deprecation_warning(
         (2025, 1, 15),
@@ -620,7 +633,9 @@ def _enter(
 
     See the [lifeycle function guide](https://modal.com/docs/guide/lifecycle-functions#enter) for more information."""
     if _warn_parentheses_missing is not None:
-        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@enter()`.")
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.enter()`."
+        )
 
     if snap:
         flag = _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
@@ -652,7 +667,9 @@ def _exit(_warn_parentheses_missing=None) -> Callable[[ExitHandlerType], _Partia
 
     See the [lifeycle function guide](https://modal.com/docs/guide/lifecycle-functions#exit) for more information."""
     if _warn_parentheses_missing is not None:
-        raise InvalidError("Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@exit()`.")
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.exit()`."
+        )
 
     def wrapper(f: ExitHandlerType) -> _PartialFunction:
         if isinstance(f, _PartialFunction):
@@ -687,7 +704,7 @@ def _batched(
     """
     if _warn_parentheses_missing is not None:
         raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@batched()`."
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.batched()`."
         )
     if max_batch_size < 1:
         raise InvalidError("max_batch_size must be a positive integer.")
@@ -710,6 +727,76 @@ def _batched(
             _PartialFunctionFlags.FUNCTION | _PartialFunctionFlags.BATCHED,
             batch_max_size=max_batch_size,
             batch_wait_ms=wait_ms,
+        )
+
+    return wrapper
+
+
+def _concurrent(
+    _warn_parentheses_missing=None,
+    *,
+    max_inputs: int,  # Hard limit on each container's input concurrency
+    target_inputs: Optional[int] = None,  # Input concurrency that Modal's autoscaler should target
+) -> Callable[[Union[Callable[..., Any], _PartialFunction]], _PartialFunction]:
+    """Decorator that allows individual containers to handle multiple inputs concurrently.
+
+    The concurrency mechanism depends on whether the function is async or not:
+    - Async functions will run inputs on a single thread as asyncio tasks.
+    - Synchronous functions will use multi-threading. The code must be thread-safe.
+
+    Input concurrency will be most useful for workflows that are IO-bound
+    (e.g., making network requests) or when running an inference server that supports
+    dynamic batching.
+
+    When `target_inputs` is set, Modal's autoscaler will try to provision resources
+    such that each container is running that many inputs concurrently, rather than
+    autoscaling based on `max_inputs`. Containers may burst up to up to `max_inputs`
+    if resources are insufficient to remain at the target concurrency, e.g. when the
+    arrival rate of inputs increases. This can trade-off a small increase in average
+    latency to avoid larger tail latencies from input queuing.
+
+    **Examples:**
+    ```python
+    # Stack the decorator under `@app.function()` to enable input concurrency
+    @app.function()
+    @modal.concurrent(max_inputs=100)
+    async def f(data):
+        # Async function; will be scheduled as asyncio task
+        ...
+
+    # With `@app.cls()`, apply the decorator at the class level, not on individual methods
+    @app.cls()
+    @modal.concurrent(max_inputs=100, target_inputs=80)
+    class C:
+        @modal.method()
+        def f(self, data):
+            # Sync function; must be thread-safe
+            ...
+
+    ```
+
+    """
+    if _warn_parentheses_missing is not None:
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.concurrent()`."
+        )
+
+    if target_inputs and target_inputs > max_inputs:
+        raise InvalidError("`target_inputs` parameter cannot be greater than `max_inputs`.")
+
+    def wrapper(obj: Union[Callable[..., Any], _PartialFunction]) -> _PartialFunction:
+        if isinstance(obj, _PartialFunction):
+            # Risky that we need to mutate the parameters here; should make this safer
+            obj.max_concurrent_inputs = max_inputs
+            obj.target_concurrent_inputs = target_inputs
+            obj.add_flags(_PartialFunctionFlags.FUNCTION)
+            return obj
+
+        return _PartialFunction(
+            obj,
+            _PartialFunctionFlags.FUNCTION,
+            max_concurrent_inputs=max_inputs,
+            target_concurrent_inputs=target_inputs,
         )
 
     return wrapper

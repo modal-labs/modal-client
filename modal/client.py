@@ -108,14 +108,14 @@ class _Client:
         self._closed = False
         assert self._stub is None
         metadata = _get_metadata(self.client_type, self._credentials, self.version)
+        self._cancellation_context = TaskContext(grace=0.5)  # allow running rpcs to finish in 0.5s when closing client
+        self._cancellation_context_event_loop = asyncio.get_running_loop()
+        await self._cancellation_context.__aenter__()
         self._channel = create_channel(self.server_url, metadata=metadata)
         try:
             await connect_channel(self._channel)
         except OSError as exc:
-            raise ConnectionError(str(exc))
-        self._cancellation_context = TaskContext(grace=0.5)  # allow running rpcs to finish in 0.5s when closing client
-        self._cancellation_context_event_loop = asyncio.get_running_loop()
-        await self._cancellation_context.__aenter__()
+            raise ConnectionError("Could not connect to the Modal server.") from exc
         self._grpclib_stub = api_grpc.ModalClientStub(self._channel)
         self._stub = modal_api_grpc.ModalClientModal(self._grpclib_stub, client=self)
         self._owner_pid = os.getpid()
@@ -123,7 +123,8 @@ class _Client:
     async def _close(self, prep_for_restore: bool = False):
         logger.debug(f"Client ({id(self)}): closing")
         self._closed = True
-        await self._cancellation_context.__aexit__(None, None, None)  # wait for all rpcs to be finished/cancelled
+        if hasattr(self, "_cancellation_context"):
+            await self._cancellation_context.__aexit__(None, None, None)  # wait for all rpcs to be finished/cancelled
         if self._channel is not None:
             self._channel.close()
 

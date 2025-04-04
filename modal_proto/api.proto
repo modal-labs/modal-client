@@ -170,7 +170,12 @@ enum ParameterType {
   PARAM_TYPE_UNSPECIFIED = 0;
   PARAM_TYPE_STRING = 1;
   PARAM_TYPE_INT = 2;
-  PARAM_TYPE_PICKLE = 3;
+  PARAM_TYPE_PICKLE = 3; // currently unused
+  PARAM_TYPE_BYTES = 4;
+  PARAM_TYPE_UNKNOWN = 5;  // used in schemas to signify unrecognized or un-annotated types
+  PARAM_TYPE_LIST = 6;
+  PARAM_TYPE_DICT = 7;
+  PARAM_TYPE_NONE = 8;
 }
 
 enum ProgressType {
@@ -308,6 +313,7 @@ message AppDeploymentHistory {
   string tag = 6;
   uint32 rollback_version = 7;
   bool rollback_allowed = 8;
+  optional CommitInfo commit_info = 10;
 }
 
 message AppDeploymentHistoryRequest {
@@ -418,6 +424,7 @@ message AppPublishRequest {
   map<string, string> definition_ids = 7;  // function_id -> definition_id
   uint32 rollback_version = 8;  // Unused by client, but used internally
   string client_version = 9;  // Unused by client, but used internally
+  CommitInfo commit_info = 10;  // Git information for deployment tracking
 }
 
 message AppPublishResponse {
@@ -693,18 +700,22 @@ message ClassParameterSet {
   repeated ClassParameterValue parameters = 1;
 }
 
-message ClassParameterSpec {
+message ClassParameterSpec { // TODO: rename into NamedPayloadType or similar
   string name = 1;
-  ParameterType type = 2;
+  ParameterType type = 2; // TODO: deprecate - use full_type instead
   bool has_default = 3;
   oneof default_oneof {
+    // Default *values* are only registered for class parameters
     string string_default = 4;
     int64 int_default = 5;
     bytes pickle_default = 6;
+    bytes bytes_default = 7;
   }
+  GenericPayloadType full_type = 8; // supersedes `type`
 }
 
-message ClassParameterValue {
+
+message ClassParameterValue {  // TODO: rename into NamedPayloadValue
   // NOTE: adding additional *fields* here can invalidate function lookups
   //  since we use the serialized message as the bound function identifier
   //  for parameter-bound classes. Modify with *caution*
@@ -714,6 +725,7 @@ message ClassParameterValue {
     string string_value = 3;
     int64 int_value = 4;
     bytes pickle_value = 5;
+    bytes bytes_value = 6;
   }
 }
 
@@ -740,6 +752,17 @@ message CloudBucketMount {
   optional string bucket_endpoint_url = 7;
   optional string key_prefix = 8;
   optional string oidc_auth_role_arn = 9;
+}
+
+message CommitInfo {
+  string vcs = 1; // Only git is supported for now
+  string branch = 2;
+  string commit_hash = 3;
+  int64 commit_timestamp = 4;
+  bool dirty = 5;
+  string author_name = 6;
+  string author_email = 7;
+  string repo_url = 8;
 }
 
 message ContainerArguments {  // This is used to pass data from the worker to the container
@@ -1199,7 +1222,7 @@ message Function {
 
   repeated VolumeMount volume_mounts = 33;
 
-  uint32 target_concurrent_inputs = 34;
+  uint32 max_concurrent_inputs = 34;
 
   repeated CustomDomainInfo custom_domain_info = 35;
 
@@ -1249,7 +1272,7 @@ message Function {
   uint64 batch_linger_ms = 61; // Miliseconds to block before a response is needed
   bool i6pn_enabled = 62;
   bool _experimental_concurrent_cancellations = 63;
-  uint32 max_concurrent_inputs = 64;
+  uint32 target_concurrent_inputs = 64;
 
   // TODO(irfansharif): Remove, once https://github.com/modal-labs/modal/pull/15645 lands.
   bool _experimental_task_templates_enabled = 65;  // forces going through the new gpu-fallbacks integration path, even if no fallback options are specified
@@ -1361,10 +1384,7 @@ message FunctionCreateRequest {
   string app_id = 2  [ (modal.options.audit_target_attr) = true ];
   Schedule schedule = 6 [deprecated=true]; // Deprecated: now passed in the Function definition
   string existing_function_id = 7;
-  // This flag tells the server to avoid doing updates in FunctionCreate that should now
-  // be done in AppPublish. Provides a smoother migration onto atomic deployments with 0.64,
-  // and can be deprecated once we no longer support ealier versions.
-  bool defer_updates = 8;
+  reserved 8;  // defer_updates
   FunctionData function_data = 9;  // supersedes 'function' field above
 }
 
@@ -1598,6 +1618,8 @@ message FunctionMapResponse {
   repeated FunctionPutInputsResponseItem pipelined_inputs = 2;
   FunctionRetryPolicy retry_policy = 3;
   string function_call_jwt = 4;
+  bool sync_client_retries_enabled = 5;
+  uint32 max_inputs_outstanding = 6;
 }
 
 message FunctionOptions {
@@ -1711,6 +1733,11 @@ message GPUConfig {
 
 message GeneratorDone {  // Sent as the output when a generator finishes running.
   uint64 items_total = 1;
+}
+
+message GenericPayloadType {
+  ParameterType base_type = 1;
+  repeated GenericPayloadType sub_types = 2;  // sub-type for generic types like lists
 }
 
 message GenericResult {  // Used for both tasks and function outputs
@@ -1927,6 +1954,7 @@ message NotebookKernelPublishResultsRequest {
   message ExecuteReply {
     string status = 1;
     uint32 execution_count = 2;
+    double duration = 3;
   }
 
   // IOPub message or reply received from the kernel for a cell.
@@ -2312,6 +2340,17 @@ message SandboxGetLogsRequest {
   string last_entry_id = 4;
 }
 
+message SandboxGetResourceUsageRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxGetResourceUsageResponse {
+  uint64 cpu_core_nanosecs = 1;
+  uint64 mem_gib_nanosecs = 2;
+  uint64 gpu_nanosecs = 3;
+  optional string gpu_type = 4;
+}
+
 message SandboxGetTaskIdRequest {
   string sandbox_id = 1;
   optional float timeout = 2; // Legacy clients do not provide a timeout. New clients must always provide a timeout.
@@ -2633,7 +2672,7 @@ message TaskInfo {
   double finished_at = 3;
   modal.client.GenericResult result = 4;
   double enqueued_at = 5;
-  string task_type = 6;
+  string gpu_type = 6;
 }
 
 message TaskListRequest {
@@ -2837,6 +2876,7 @@ message VolumeMount {
   string volume_id = 1;
   string mount_path = 2;
   bool allow_background_commits = 3;
+  bool read_only = 4;
 }
 
 message VolumePutFilesRequest {
@@ -3026,6 +3066,7 @@ service ModalClient {
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
+  rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
   rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse); // needed for modal container exec
   rpc SandboxGetTunnels(SandboxGetTunnelsRequest) returns (SandboxGetTunnelsResponse);
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);

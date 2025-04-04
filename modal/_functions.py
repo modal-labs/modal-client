@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2023
+import asyncio
 import dataclasses
 import inspect
 import textwrap
@@ -24,7 +25,12 @@ from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._runtime.execution_context import current_input_id, is_local
-from ._serialization import serialize, serialize_proto_params
+from ._serialization import (
+    apply_defaults,
+    serialize,
+    serialize_proto_params,
+    validate_parameter_values,
+)
 from ._traceback import print_server_warnings
 from ._utils.async_utils import (
     TaskContext,
@@ -99,6 +105,7 @@ class _RetryContext:
     input_jwt: str
     input_id: str
     item: api_pb2.FunctionPutInputsItem
+    sync_client_retries_enabled: bool
 
 
 class _Invocation:
@@ -151,6 +158,7 @@ class _Invocation:
                 input_jwt=input.input_jwt,
                 input_id=input.input_id,
                 item=item,
+                sync_client_retries_enabled=response.sync_client_retries_enabled,
             )
             return _Invocation(client.stub, function_call_id, client, retry_context)
 
@@ -172,6 +180,7 @@ class _Invocation:
             input_jwt=input.input_jwt,
             input_id=input.input_id,
             item=item,
+            sync_client_retries_enabled=response.sync_client_retries_enabled,
         )
         return _Invocation(client.stub, function_call_id, client, retry_context)
 
@@ -242,6 +251,7 @@ class _Invocation:
             or not ctx.retry_policy
             or ctx.retry_policy.retries == 0
             or ctx.function_call_invocation_type != api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
+            or not ctx.sync_client_retries_enabled
         ):
             return await self._get_single_output()
 
@@ -252,9 +262,13 @@ class _Invocation:
             try:
                 return await self._get_single_output(ctx.input_jwt)
             except (UserCodeException, FunctionTimeoutError) as exc:
-                await user_retry_manager.raise_or_sleep(exc)
+                delay_ms = user_retry_manager.get_delay_ms()
+                if delay_ms is None:
+                    raise exc
+                await asyncio.sleep(delay_ms / 1000)
             except InternalFailure:
-                # For system failures on the server, we retry immediately.
+                # For system failures on the server, we retry immediately,
+                # and the failure does not count towards the retry policy.
                 pass
             await self._retry_input()
 
@@ -426,7 +440,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         max_containers: Optional[int] = None,
         buffer_containers: Optional[int] = None,
         scaledown_window: Optional[int] = None,
-        allow_concurrent_inputs: Optional[int] = None,
+        max_concurrent_inputs: Optional[int] = None,
+        target_concurrent_inputs: Optional[int] = None,
         batch_max_size: Optional[int] = None,
         batch_wait_ms: Optional[int] = None,
         cloud: Optional[str] = None,
@@ -777,7 +792,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     runtime_perf_record=config.get("runtime_perf_record"),
                     app_name=app_name,
                     is_builder_function=is_builder_function,
-                    target_concurrent_inputs=allow_concurrent_inputs or 0,
+                    max_concurrent_inputs=max_concurrent_inputs or 0,
+                    target_concurrent_inputs=target_concurrent_inputs or 0,
                     batch_max_size=batch_max_size or 0,
                     batch_linger_ms=batch_wait_ms or 0,
                     worker_id=config.get("worker_id"),
@@ -872,7 +888,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     function=function_definition,
                     function_data=function_data,
                     existing_function_id=existing_object_id or "",
-                    defer_updates=True,
                 )
                 try:
                     response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
@@ -965,8 +980,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         "Can't use positional arguments with modal.parameter-based synthetic constructors.\n"
                         "Use (<parameter_name>=value) keyword arguments when constructing classes instead."
                     )
-                serialized_params = serialize_proto_params(kwargs, parent._class_parameter_info.schema)
-                can_use_parent = len(parent._class_parameter_info.schema) == 0
+                schema = parent._class_parameter_info.schema
+                kwargs_with_defaults = apply_defaults(kwargs, schema)
+                validate_parameter_values(kwargs_with_defaults, schema)
+                serialized_params = serialize_proto_params(kwargs_with_defaults)
+                can_use_parent = len(parent._class_parameter_info.schema) == 0  # no parameters
             else:
                 can_use_parent = len(args) + len(kwargs) == 0 and options is None
                 serialized_params = serialize((args, kwargs))
@@ -1301,22 +1319,19 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 order_outputs,
                 return_exceptions,
                 count_update_callback,
+                api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
             )
         ) as stream:
             async for item in stream:
                 yield item
 
     async def _call_function(self, args, kwargs) -> ReturnType:
-        if config.get("client_retries"):
-            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
-        else:
-            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY
         invocation = await _Invocation.create(
             self,
             args,
             kwargs,
             client=self.client,
-            function_call_invocation_type=function_call_invocation_type,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
         )
 
         return await invocation.run_function()

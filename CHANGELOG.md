@@ -12,6 +12,97 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.139 (2025-04-02)
+
+- Added `modal.experimental.ipython` module, which can be loaded in Jupyter notebooks with `%load_ext modal.experimental.ipython`. Currently it provides the `%modal` line magic for looking up functions:
+
+  ```python
+  %modal from main/my-app import my_function, MyClass as Foo
+
+  # Now you can use my_function() and Foo in your notebook.
+  my_function.remote()
+  Foo().my_method.remote()
+  ```
+- Removed the legacy `modal.extensions.ipython` module from 2022.
+
+
+
+### 0.73.135 (2025-03-29)
+
+* Fix shutdown race bug that emitted spurious error-level logs.
+
+
+
+### 0.73.132 (2025-03-28)
+
+- Adds the `@modal.concurrent` decorator, which will be replacing the beta `allow_concurrent_inputs=` parameter of `@app.function` and `@app.cls` for enabling input concurrency. Notably, `@modal.concurrent` introduces a distinction between `max_inputs` and `target_inputs`, allowing containers to burst over the concurrency level targeted by the Modal autoscaler during periods of high load.
+
+
+
+### 0.73.131 (2025-03-28)
+
+* Instantiation of classes using keyword arguments that are not defined as as `modal.parameter()` will now raise an error on the calling side rather than in the receiving container. Note that this only applies if there is at least one modal.parameter() defined on the class, but this will likely apply to parameter-less classes in the future as well.
+
+
+
+
+### 0.73.121 (2025-03-24)
+
+- Adds a new "commit info" column to the `modal app history` command. It shows the short git hash at the time of deployment, with an asterisk `*` if the repository had uncommitted changes.
+
+### 0.73.119 (2025-03-21)
+
+- Class parameters are no longer automatically cast into their declared type. If the wrong type is provided to a class parameter, method calls to that class instance will now fail with an exception.
+
+### 0.73.115 (2025-03-19)
+
+* Adds support for new strict `bytes` type for  `modal.parameter`
+
+Usage:
+```py
+import typing
+import modal
+
+app = modal.App()
+
+
+@app.cls()
+class Foo:
+    a: bytes = modal.parameter(default=b"hello")
+
+    @modal.method()
+    def bar(self):
+        return f"hello {self.a}"
+
+
+@app.local_entrypoint()
+def main():
+    foo = Foo(a=b"world")
+    foo.bar.remote()
+```
+
+**Note**: For parameterized web endoints you must base64 encode the bytes before passing them in as a query parameter.
+
+
+
+### 0.73.107 (2025-03-14)
+
+* Include git commit info at the time of app deployment.
+
+
+
+### 0.73.105 (2025-03-14)
+
+- Added `Image.cmd()` for setting image default entrypoint args (a.k.a. `CMD`).
+
+
+
+### 0.73.95 (2025-03-12)
+
+* Fixes a bug which could cause `Function.map` and sibling methods to stall indefinitely if there was an exception in the input iterator itself (i.e. not the mapper function)
+
+
+
 ### 0.73.89 (2025-03-05)
 
 - The `@modal.web_endpoint` decorator is now deprecated. We are replacing it with `@modal.fastapi_endpoint`. This can be a simple name substitution in your code; the two decorators have identical semantics.

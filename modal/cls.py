@@ -10,7 +10,6 @@ from typing import Any, Callable, Optional, TypeVar, Union
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
-from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP, FunctionInfo
 from modal_proto import api_pb2
 
 from ._functions import _Function, _parse_retries
@@ -25,6 +24,7 @@ from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._serialization import check_valid_cls_constructor_arg
 from ._traceback import print_server_warnings
+from ._type_manager import parameter_serde_registry
 from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.deprecation import deprecation_warning, renamed_parameter, warn_on_renamed_autoscaler_settings
 from ._utils.grpc_utils import retry_transient_errors
@@ -134,6 +134,8 @@ def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name:
 
     if cls._is_local():
         partial_function = cls._method_partials[method_name]
+        from modal._utils.function_utils import FunctionInfo
+
         fun._info = FunctionInfo(
             # ugly - needed for .local()  TODO (elias): Clean up!
             partial_function.raw_f,
@@ -474,16 +476,14 @@ class _Cls(_Object, type_prefix="cs"):
         annotations = user_cls.__dict__.get("__annotations__", {})  # compatible with older pythons
         missing_annotations = params.keys() - annotations.keys()
         if missing_annotations:
-            raise InvalidError("All modal.parameter() specifications need to be type annotated")
+            raise InvalidError("All modal.parameter() specifications need to be type-annotated")
 
         annotated_params = {k: t for k, t in annotations.items() if k in params}
         for k, t in annotated_params.items():
-            if t not in CLASS_PARAM_TYPE_MAP:
-                t_name = getattr(t, "__name__", repr(t))
-                supported = ", ".join(t.__name__ for t in CLASS_PARAM_TYPE_MAP.keys())
-                raise InvalidError(
-                    f"{user_cls.__name__}.{k}: {t_name} is not a supported parameter type. Use one of: {supported}"
-                )
+            try:
+                parameter_serde_registry.validate_parameter_type(t)
+            except TypeError as exc:
+                raise InvalidError(f"Class parameter '{k}': {exc}")
 
     @staticmethod
     def from_local(user_cls, app: "modal.app._App", class_service_function: _Function) -> "_Cls":
@@ -580,7 +580,7 @@ class _Cls(_Object, type_prefix="cs"):
             await resolver.load(self._class_service_function)
             self._hydrate(response.class_id, resolver.client, response.handle_metadata)
 
-        rep = f"Ref({app_name})"
+        rep = f"Cls.from_name({app_name!r}, {name!r})"
         cls = cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
 
         class_service_name = f"{name}.*"  # special name of the base service function for the class

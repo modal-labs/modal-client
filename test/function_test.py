@@ -1,12 +1,14 @@
 # Copyright Modal Labs 2022
 import asyncio
 import inspect
+import logging
 import os
 import pytest
 import time
 import typing
 from contextlib import contextmanager
 
+from grpclib import Status
 from synchronicity.exceptions import UserCodeException
 
 import modal
@@ -84,6 +86,32 @@ def test_map(client, servicer, slow_put_inputs):
         assert len(servicer.cleared_function_calls) == 1
         assert set(dummy_modal.map([5, 2], [4, 3], order_outputs=False)) == {13, 41}
         assert len(servicer.cleared_function_calls) == 2
+
+
+def test_nested_map(client):
+    app = App()
+    dummy_modal = app.function()(dummy)
+
+    with app.run(client=client):
+        res1 = dummy_modal.map([1, 2])
+        final_results = list(dummy_modal.map(res1))
+        assert final_results == [1, 16]
+
+
+def test_map_with_exception_in_input_iterator(client):
+    class CustomException(Exception):
+        pass
+
+    def input_gen():
+        yield 1
+        raise CustomException()
+
+    app = App()
+    dummy_modal = app.function()(dummy)
+
+    with app.run(client=client):
+        with pytest.raises(CustomException):
+            list(dummy_modal.map(input_gen()))
 
 
 @pytest.mark.asyncio
@@ -1137,3 +1165,110 @@ def f():
     mounts = servicer.mounts_excluding_published_client()
 
     assert len(mounts) == expected_mounts
+
+
+_map_retry_servicer = None
+_map_attempt_count = 0
+
+
+def _maybe_fail(i):
+    global _map_attempt_count
+    if _map_attempt_count >= 10:
+        assert _map_retry_servicer
+        _map_retry_servicer.fail_put_inputs_with_grpc_error = None
+        _map_retry_servicer.fail_put_inputs_with_stream_terminated_error = False
+    _map_attempt_count += 1
+    return i
+
+
+def test_map_retry_with_internal_error(client, servicer, monkeypatch, caplog):
+    """
+    This test forces pump_inputs to fail with INTERNAL for 10 times, and then succeed. This tests that the error
+    is caught and retried error, and does not propagate up.
+    """
+    global _map_retry_servicer, _map_attempt_count
+    monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
+    app = App()
+    _map_retry_servicer = servicer
+    # reset count from any previous tests
+    _map_attempt_count = 0
+    maybe_fail = app.function()(_maybe_fail)
+    servicer.function_body(_maybe_fail)
+    servicer.fail_put_inputs_with_grpc_error = Status.INTERNAL
+    with app.run(client=client):
+        for _ in maybe_fail.map(range(1), order_outputs=False):
+            pass
+    # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
+    assert not [r for r in caplog.records if r.levelno == logging.WARNING]
+
+
+def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog):
+    """
+    This test forces pump_inputs to fail with RESOURCE_EXHAUSTED for 10 times, and then succeed. This tests that
+    the error is caught and retried error, and does not propagate up.
+    """
+    global _map_retry_servicer, _map_attempt_count
+    monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
+    app = App()
+    _map_retry_servicer = servicer
+    # reset count from any previous tests
+    _map_attempt_count = 0
+    maybe_fail = app.function()(_maybe_fail)
+    servicer.function_body(_maybe_fail)
+    servicer.fail_put_inputs_with_grpc_error = Status.RESOURCE_EXHAUSTED
+    with app.run(client=client):
+        for _ in maybe_fail.map(range(1), order_outputs=False):
+            pass
+    # Verify we log the warning for RESOURCE_EXHAUSTED
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+
+
+def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, caplog):
+    """
+    This test forces pump_inputs to fail with StreamTerminatedError for 10 times, and then succeed. This tests that
+    the error is caught and retried error, and does not propagate up.
+    """
+    global _map_retry_servicer, _map_attempt_count
+    monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
+    app = App()
+    _map_retry_servicer = servicer
+    # reset count from any previous tests
+    _map_attempt_count = 0
+    maybe_fail = app.function()(_maybe_fail)
+    servicer.function_body(_maybe_fail)
+    servicer.fail_put_inputs_with_stream_terminated_error = True
+    with app.run(client=client):
+        for _ in maybe_fail.map(range(1), order_outputs=False):
+            pass
+    # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
+    assert not [r for r in caplog.records if r.levelno == logging.WARNING]
+
+
+def test_concurrency_migration(client, servicer):
+    from test.supports.concurrency_config import CONFIG_VALS, app
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            pass
+
+    function_create_requests = ctx.get_requests("FunctionCreate")
+    for request in function_create_requests:
+        if request.function.function_name in {
+            "has_new_config",
+            "HasNewConfig.*",
+            "has_new_config_and_fastapi_endpoint",
+            "has_fastapi_endpoint_and_new_config",
+            "HasNewConfigAndFastapiEndpoint.*",
+        }:
+            assert request.function.max_concurrent_inputs == CONFIG_VALS["NEW_MAX"]
+            assert request.function.target_concurrent_inputs == CONFIG_VALS["TARGET"]
+            assert request.function.webhook_config is not None
+        elif request.function.function_name in {"has_old_config", "HasOldConfig.*"}:
+            assert request.function.max_concurrent_inputs == CONFIG_VALS["OLD_MAX"]
+            assert request.function.target_concurrent_inputs == 0
+        elif request.function.function_name in {"has_no_config", "HasNoConfig.*"}:
+            assert request.function.max_concurrent_inputs == 0
+            assert request.function.target_concurrent_inputs == 0
+        else:
+            raise RuntimeError(f"Unexpected function name: {request.function.function_name}")

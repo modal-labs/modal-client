@@ -87,7 +87,7 @@ def some_function():
     console.print(
         f"""Created a new secret '{secret_name}' with the key{plural_s} {", ".join(repr(k) for k in env_dict.keys())}"""
     )
-    console.print("\nUse it in to your Modal app using:\n")
+    console.print("\nUse it in your Modal app:\n")
     console.print(Syntax(example_code, "python"))
 
 

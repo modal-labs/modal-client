@@ -1,7 +1,5 @@
 # Copyright Modal Labs 2023
 import pytest
-import types
-from typing import cast
 
 from modal.app import App, LocalEntrypoint
 from modal.cli.import_refs import (
@@ -189,15 +187,14 @@ def test_invalid_source_file_exception():
 
 
 def test_list_cli_commands():
-    class FakeModule:
-        app = App()
-        other_app = App()
+    app = App()
+    other_app = App()
 
-    @FakeModule.app.function(serialized=True, name="foo")
+    @app.function(serialized=True, name="foo")
     def foo():
         pass
 
-    @FakeModule.app.cls(serialized=True)
+    @app.cls(serialized=True)
     class Cls:
         @method()
         def method_1(self):
@@ -210,11 +207,9 @@ def test_list_cli_commands():
     def non_modal_func():
         pass
 
-    FakeModule.non_modal_func = non_modal_func  # type: ignore[attr-defined]
-    FakeModule.foo = foo  # type: ignore[attr-defined]
-    FakeModule.Cls = Cls  # type: ignore[attr-defined]
+    fake_module = {"app": app, "other_app": other_app, "non_modal_func": non_modal_func, "foo": foo, "Cls": Cls}
 
-    res = list_cli_commands(cast(types.ModuleType, FakeModule))
+    res = list_cli_commands(fake_module)
 
     assert res == [
         CLICommand(["foo", "app.foo"], foo, False, priority=AutoRunPriority.MODULE_FUNCTION),  # type: ignore

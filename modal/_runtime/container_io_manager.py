@@ -63,7 +63,9 @@ class IOContext:
     """
 
     input_ids: list[str]
+    retry_counts: list[int]
     function_call_ids: list[str]
+    function_inputs: list[api_pb2.FunctionInput]
     finalized_function: "modal._runtime.user_code_imports.FinalizedFunction"
 
     _cancel_issued: bool = False
@@ -72,6 +74,7 @@ class IOContext:
     def __init__(
         self,
         input_ids: list[str],
+        retry_counts: list[int],
         function_call_ids: list[str],
         finalized_function: "modal._runtime.user_code_imports.FinalizedFunction",
         function_inputs: list[api_pb2.FunctionInput],
@@ -79,9 +82,10 @@ class IOContext:
         client: _Client,
     ):
         self.input_ids = input_ids
+        self.retry_counts = retry_counts
         self.function_call_ids = function_call_ids
         self.finalized_function = finalized_function
-        self._function_inputs = function_inputs
+        self.function_inputs = function_inputs
         self._is_batched = is_batched
         self._client = client
 
@@ -90,11 +94,11 @@ class IOContext:
         cls,
         client: _Client,
         finalized_functions: dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
-        inputs: list[tuple[str, str, api_pb2.FunctionInput]],
+        inputs: list[tuple[str, int, str, api_pb2.FunctionInput]],
         is_batched: bool,
     ) -> "IOContext":
         assert len(inputs) >= 1 if is_batched else len(inputs) == 1
-        input_ids, function_call_ids, function_inputs = zip(*inputs)
+        input_ids, retry_counts, function_call_ids, function_inputs = zip(*inputs)
 
         async def _populate_input_blobs(client: _Client, input: api_pb2.FunctionInput) -> api_pb2.FunctionInput:
             # If we got a pointer to a blob, download it from S3.
@@ -111,7 +115,7 @@ class IOContext:
         method_name = function_inputs[0].method_name
         assert all(method_name == input.method_name for input in function_inputs)
         finalized_function = finalized_functions[method_name]
-        return cls(input_ids, function_call_ids, finalized_function, function_inputs, is_batched, client)
+        return cls(input_ids, retry_counts, function_call_ids, finalized_function, function_inputs, is_batched, client)
 
     def set_cancel_callback(self, cb: Callable[[], None]):
         self._cancel_callback = cb
@@ -135,7 +139,7 @@ class IOContext:
         # to make sure we handle user exceptions properly
         # and don't retry
         deserialized_args = [
-            deserialize(input.args, self._client) if input.args else ((), {}) for input in self._function_inputs
+            deserialize(input.args, self._client) if input.args else ((), {}) for input in self.function_inputs
         ]
         if not self._is_batched:
             return deserialized_args[0]
@@ -260,6 +264,7 @@ class _ContainerIOManager:
     current_inputs: dict[str, IOContext]  # input_id -> IOContext
     current_input_started_at: Optional[float]
 
+    _input_concurrency_enabled: bool
     _target_concurrency: int
     _max_concurrency: int
     _concurrency_loop: Optional[asyncio.Task]
@@ -292,14 +297,14 @@ class _ContainerIOManager:
         self.current_input_started_at = None
 
         if container_args.function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
-            target_concurrency = 1
             max_concurrency = 1
+            target_concurrency = 1
         else:
-            target_concurrency = container_args.function_def.target_concurrent_inputs or 1
-            max_concurrency = container_args.function_def.max_concurrent_inputs or target_concurrency
+            max_concurrency = container_args.function_def.max_concurrent_inputs or 1
+            target_concurrency = container_args.function_def.target_concurrent_inputs or max_concurrency
 
-        self._target_concurrency = target_concurrency
         self._max_concurrency = max_concurrency
+        self._target_concurrency = target_concurrency
         self._concurrency_loop = None
         self._stop_concurrency_loop = False
         self._input_slots = InputSlots(target_concurrency)
@@ -551,7 +556,7 @@ class _ContainerIOManager:
         self,
         batch_max_size: int,
         batch_wait_ms: int,
-    ) -> AsyncIterator[list[tuple[str, str, api_pb2.FunctionInput]]]:
+    ) -> AsyncIterator[list[tuple[str, int, str, api_pb2.FunctionInput]]]:
         request = api_pb2.FunctionGetInputsRequest(function_id=self.function_id)
         iteration = 0
         while self._fetching_inputs:
@@ -586,8 +591,7 @@ class _ContainerIOManager:
                         if item.kill_switch:
                             logger.debug(f"Task {self.task_id} input kill signal input.")
                             return
-
-                        inputs.append((item.input_id, item.function_call_id, item.input))
+                        inputs.append((item.input_id, item.retry_count, item.function_call_id, item.input))
                         if item.input.final_input:
                             if request.batch_max_size > 0:
                                 logger.debug(f"Task {self.task_id} Final input not expected in batch input stream")
@@ -648,8 +652,9 @@ class _ContainerIOManager:
                 output_created_at=output_created_at,
                 result=result,
                 data_format=data_format,
+                retry_count=retry_count,
             )
-            for input_id, result in zip(io_context.input_ids, results)
+            for input_id, retry_count, result in zip(io_context.input_ids, io_context.retry_counts, results)
         ]
         await retry_transient_errors(
             self._client.stub.FunctionPutOutputs,
@@ -971,6 +976,10 @@ class _ContainerIOManager:
     @property
     def max_concurrency(self) -> int:
         return self._max_concurrency
+
+    @property
+    def input_concurrency_enabled(self) -> int:
+        return max(self._max_concurrency, self._target_concurrency) > 1
 
     @classmethod
     def get_input_concurrency(cls) -> int:

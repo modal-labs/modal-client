@@ -164,6 +164,7 @@ def type_check(ctx):
         "modal/snapshot.py",
         "modal/config.py",
         "modal/object.py",
+        "modal/_type_manager.py",
     ]
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
 
@@ -210,19 +211,39 @@ def check_copyright(ctx, fix=False):
         raise Exception(f"{len(invalid_files)} are missing copyright headers! Please run `inv check-copyright --fix`")
 
 
-@task
-def publish_base_mounts(ctx, no_confirm=False):
+def _check_prod(no_confirm: bool):
     from urllib.parse import urlparse
 
     from modal import config
 
     server_url = config.config["server_url"]
     if "localhost" not in urlparse(server_url).netloc and not no_confirm:
-        answer = input(f"Modal server URL is '{server_url}' not localhost. Continue operation? [y/N]: ")
+        answer = input(f"🚨 Modal server URL is '{server_url}' not localhost. Continue operation? [y/N]: ")
         if answer.upper() not in ["Y", "YES"]:
             exit("Aborting task.")
+    return server_url
+
+
+@task
+def publish_base_mounts(ctx, no_confirm: bool = False):
+    """Publish the client mount and other mounts."""
+    _check_prod(no_confirm)
     for mount in ["modal_client_package", "python_standalone"]:
         ctx.run(f"{sys.executable} modal_global_objects/mounts/{mount}.py", pty=True)
+
+
+@task
+def publish_base_images(ctx, name: str, builder_version: str = "2024.10", no_confirm: bool = False) -> None:
+    """Publish base images. For example, `inv publish-base-images debian_slim`."""
+    _check_prod(no_confirm)
+    ctx.run(
+        f"python -m modal_global_objects.images.base_images {name}",
+        pty=True,
+        env={
+            "MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT": "1",
+            "MODAL_IMAGE_BUILDER_VERSION": builder_version,
+        },
+    )
 
 
 @task

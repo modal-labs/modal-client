@@ -56,13 +56,14 @@ if typing.TYPE_CHECKING:
     import modal._functions
 
 # This is used for both type checking and runtime validation
-ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10"]
+ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10", "PREVIEW"]
 
 # Note: we also define supported Python versions via logic at the top of the package __init__.py
 # so that we fail fast / clearly in unsupported containers. Additionally, we enumerate the supported
 # Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
 # Consider consolidating these multiple sources of truth?
 SUPPORTED_PYTHON_SERIES: dict[ImageBuilderVersion, list[str]] = {
+    "PREVIEW": ["3.9", "3.10", "3.11", "3.12", "3.13"],
     "2024.10": ["3.9", "3.10", "3.11", "3.12", "3.13"],
     "2024.04": ["3.9", "3.10", "3.11", "3.12"],
     "2023.12": ["3.9", "3.10", "3.11", "3.12"],
@@ -248,9 +249,11 @@ def _get_image_builder_version(server_version: ImageBuilderVersion) -> ImageBuil
             update_suggestion = "your image builder version using the Modal dashboard"
         else:
             update_suggestion = "your client library (pip install --upgrade modal)"
+        preview_versions: set[ImageBuilderVersion] = {"PREVIEW"}
+        suggested_versions = supported_versions - preview_versions
         raise VersionError(
             "This version of the modal client supports the following image builder versions:"
-            f" {supported_versions!r}."
+            f" {suggested_versions!r}."
             f"\n\nYou are using {version!r}{version_source}."
             f" Please update {update_suggestion}."
         )
@@ -858,6 +861,8 @@ class _Image(_Object, type_prefix="im"):
 
         *Added in v0.67.28*: This method replaces the deprecated `modal.Mount.from_local_python_packages` pattern.
         """
+        if not all(isinstance(module, str) for module in modules):
+            raise InvalidError("Local Python modules must be specified as strings.")
         mount = _Mount._from_local_python_packages(*modules, ignore=ignore)
         img = self._add_mount_layer_or_copy(mount, copy=copy)
         img._added_python_source_set |= set(modules)
@@ -947,7 +952,7 @@ class _Image(_Object, type_prefix="im"):
             resp = await retry_transient_errors(client.stub.ImageFromId, api_pb2.ImageFromIdRequest(image_id=image_id))
             self._hydrate(resp.image_id, resolver.client, resp.metadata)
 
-        rep = "Image()"
+        rep = f"Image.from_id({image_id!r})"
         obj = _Image._from_loader(_load, rep)
 
         return obj
@@ -1304,8 +1309,7 @@ class _Image(_Object, type_prefix="im"):
         context_files: dict[str, str] = {},
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
-        # modal.Mount with local files to supply as build context for COPY commands
-        context_mount: Optional[_Mount] = None,
+        context_mount: Optional[_Mount] = None,  # Deprecated: the context is now inferred
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         ignore: Union[Sequence[str], Callable[[Path], bool]] = AUTO_DOCKERIGNORE,
     ) -> "_Image":
@@ -1380,7 +1384,9 @@ class _Image(_Object, type_prefix="im"):
         entrypoint_commands: list[str],
     ) -> "_Image":
         """Set the entrypoint for the image."""
-        args_str = _flatten_str_args("entrypoint", "entrypoint_files", entrypoint_commands)
+        if not isinstance(entrypoint_commands, list) or not all(isinstance(x, str) for x in entrypoint_commands):
+            raise InvalidError("entrypoint_commands must be a list of strings.")
+        args_str = _flatten_str_args("entrypoint", "entrypoint_commands", entrypoint_commands)
         args_str = '"' + '", "'.join(args_str) + '"' if args_str else ""
         dockerfile_cmd = f"ENTRYPOINT [{args_str}]"
 
@@ -1391,6 +1397,8 @@ class _Image(_Object, type_prefix="im"):
         shell_commands: list[str],
     ) -> "_Image":
         """Overwrite default shell for the image."""
+        if not isinstance(shell_commands, list) or not all(isinstance(x, str) for x in shell_commands):
+            raise InvalidError("shell_commands must be a list of strings.")
         args_str = _flatten_str_args("shell", "shell_commands", shell_commands)
         args_str = '"' + '", "'.join(args_str) + '"' if args_str else ""
         dockerfile_cmd = f"SHELL [{args_str}]"
@@ -1441,6 +1449,9 @@ class _Image(_Object, type_prefix="im"):
                 f"RUN micromamba install -n base -y python={validated_python_version} pip -c conda-forge",
             ]
             commands = _Image._registry_setup_commands(tag, version, setup_commands)
+            if version > "2024.10":
+                # for convenience when launching in a sandbox: sleep for 48h
+                commands.append(f'CMD ["sleep", "{48 * 3600}"]')
             context_files = {CONTAINER_REQUIREMENTS_PATH: _get_modal_requirements_path(version, python_version)}
             return DockerfileSpec(commands=commands, context_files=context_files)
 
@@ -1694,9 +1705,7 @@ class _Image(_Object, type_prefix="im"):
     def from_dockerfile(
         # Filepath to Dockerfile.
         path: Union[str, Path],
-        # modal.Mount with local files to supply as build context for COPY commands.
-        # NOTE: The remote_path of the Mount should match the Dockerfile's WORKDIR.
-        context_mount: Optional[_Mount] = None,
+        context_mount: Optional[_Mount] = None,  # Deprecated: the context is now inferred
         # Ignore cached builds, similar to 'docker build --no-cache'
         force_build: bool = False,
         *,
@@ -1830,6 +1839,9 @@ class _Image(_Object, type_prefix="im"):
             ]
             if version > "2023.12":
                 commands.append(f"RUN rm {CONTAINER_REQUIREMENTS_PATH}")
+            if version > "2024.10":
+                # for convenience when launching in a sandbox: sleep for 48h
+                commands.append(f'CMD ["sleep", "{48 * 3600}"]')
             return DockerfileSpec(commands=commands, context_files=context_files)
 
         return _Image._from_args(
@@ -2017,6 +2029,27 @@ class _Image(_Object, type_prefix="im"):
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
         )
+
+    def cmd(self, cmd: list[str]) -> "_Image":
+        """Set the default entrypoint argument (`CMD`) for the image.
+
+        **Example**
+
+        ```python
+        image = (
+            modal.Image.debian_slim().cmd(["python", "app.py"])
+        )
+        ```
+        """
+
+        if not isinstance(cmd, list) or not all(isinstance(x, str) for x in cmd):
+            raise InvalidError("Image CMD must be a list of strings.")
+
+        cmd_str = _flatten_str_args("cmd", "cmd", cmd)
+        cmd_str = '"' + '", "'.join(cmd_str) + '"' if cmd_str else ""
+        dockerfile_cmd = f"CMD [{cmd_str}]"
+
+        return self.dockerfile_commands(dockerfile_cmd)
 
     # Live handle methods
 
