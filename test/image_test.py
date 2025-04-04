@@ -18,7 +18,7 @@ from modal._serialization import serialize
 from modal._utils.async_utils import synchronizer
 from modal.client import Client
 from modal.exception import DeprecationError, InvalidError, ModuleNotMountable, VersionError
-from modal.experimental import raw_dockerfile_image
+from modal.experimental import raw_dockerfile_image, raw_registry_image
 from modal.file_pattern_matcher import FilePatternMatcher
 from modal.image import (
     SUPPORTED_PYTHON_SERIES,
@@ -1895,3 +1895,30 @@ def test_raw_dockerfile_image(servicer, client):
 
         assert layers[0].dockerfile_commands == ["FROM base"] + [f"RUN {c}" for c in extra_commands]
         assert not layers[0].context_files
+
+
+@pytest.mark.usefixtures("tmp_cwd")
+def test_raw_registry_image(servicer, client):
+    tag = "python:3.6"
+    extra_commands = ["echo 'hello'", "echo 'goodbye'"]
+
+    image = raw_registry_image(tag).run_commands(extra_commands)
+
+    app = App()
+    app.function(image=image)(dummy)
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        assert len(layers) == 2
+
+        assert layers[1].dockerfile_commands == [f"FROM {tag}"]
+        assert not layers[1].context_files
+
+        assert layers[0].dockerfile_commands == ["FROM base"] + [f"RUN {c}" for c in extra_commands]
+        assert not layers[0].context_files
+
+    registry_secret = Secret.from_name("registry-secret")
+    with pytest.raises(InvalidError, match="credential_type"):
+        raw_registry_image(tag, registry_secret=registry_secret)
+
+    with pytest.raises(InvalidError, match="whatever"):
+        raw_registry_image(tag, registry_secret=registry_secret, credential_type="whatever")  # type: ignore

@@ -112,8 +112,6 @@ async def list_deployed_apps(environment_name: str = "", client: Optional[_Clien
 @synchronizer.create_blocking
 async def raw_dockerfile_image(
     path: Union[str, Path],
-    registry_secret: Optional[_Secret] = None,
-    registry_auth_type: Literal["static", "aws", "gcp", None] = None,
     force_build: bool = False,
 ) -> _Image:
     """
@@ -123,9 +121,6 @@ async def raw_dockerfile_image(
     steps to install dependencies for the Modal client package. As a consequence, the resulting
     Image cannot be used with a modal Function unless those dependencies are added in a subsequent
     layer. It _can_ be directly used with a modal Sandbox, which does not need the Modal client.
-
-    When the Dockerfile pulls from a private registry, use `registry_secret` and `registry_auth_type`
-    to supply credentials. See documentation for `modal.Image
 
     We expect to support this experimental function until the `2025.04` Modal Image Builder is
     stable, at which point Modal Image recipes will no longer install the client dependencies
@@ -139,17 +134,49 @@ async def raw_dockerfile_image(
             commands = f.read().split("\n")
         return DockerfileSpec(commands=commands, context_files={})
 
+    return _Image._from_args(
+        dockerfile_function=build_dockerfile,
+        force_build=force_build,
+    )
+
+
+@synchronizer.create_blocking
+async def raw_registry_image(
+    tag: str,
+    registry_secret: Optional[_Secret] = None,
+    credential_type: Literal["static", "aws", "gcp", None] = None,
+    force_build: bool = False,
+) -> _Image:
+    """
+    Build a Modal Image from a public or private image registry without any changes.
+
+    Unlike for `modal.Image.from_registry`, the provided recipe will not be embellished with
+    steps to install dependencies for the Modal client package. As a consequence, the resulting
+    Image cannot be used with a modal Function unless those dependencies are added in a subsequent
+    layer. It _can_ be directly used with a modal Sandbox, which does not need the Modal client.
+
+    We expect to support this experimental function until the `2025.04` Modal Image Builder is
+    stable, at which point Modal Image recipes will no longer install the client dependencies
+    by default. At that point, users can upgrade their Image Builder Version and migrate to
+    `modal.Image.from_registry` for usecases supported by this function.
+
+    """
+
+    def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+        commands = [f"FROM {tag}"]
+        return DockerfileSpec(commands=commands, context_files={})
+
     if registry_secret:
-        if registry_auth_type is None:
-            raise ValueError("registry_auth_type must be provided when using a registry_secret")
-        elif registry_auth_type == "static":
+        if credential_type is None:
+            raise InvalidError("credential_type must be provided when using a registry_secret")
+        elif credential_type == "static":
             auth_type = api_pb2.REGISTRY_AUTH_TYPE_STATIC_CREDS
-        elif registry_auth_type == "aws":
+        elif credential_type == "aws":
             auth_type = api_pb2.REGISTRY_AUTH_TYPE_AWS
-        elif registry_auth_type == "gcp":
+        elif credential_type == "gcp":
             auth_type = api_pb2.REGISTRY_AUTH_TYPE_GCP
         else:
-            raise ValueError(f"Invalid registry_auth_type: {registry_auth_type!r}")
+            raise InvalidError(f"Invalid credential_type: {credential_type!r}")
         registry_config = _ImageRegistryConfig(auth_type, registry_secret)
     else:
         registry_config = None
