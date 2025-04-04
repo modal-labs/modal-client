@@ -1925,7 +1925,7 @@ def test_lifecycle_full(servicer, tmp_path):
         "test.supports.functions",
         "LifecycleCls.*",
         inputs=[("f_sync", (), {})],
-        cls_params=((True,), {}),
+        cls_params=((), {"print_at_exit": 1}),
         is_class=True,
     )
     stdout, _ = container_process.communicate(timeout=5)
@@ -1939,7 +1939,7 @@ def test_lifecycle_full(servicer, tmp_path):
         "test.supports.functions",
         "LifecycleCls.*",
         inputs=[("f_async", (), {})],
-        cls_params=((True,), {}),
+        cls_params=((), {"print_at_exit": 1}),
         is_class=True,
     )
     stdout, _ = container_process.communicate(timeout=5)
@@ -2050,7 +2050,7 @@ def test_sigint_termination_input_concurrent(servicer, tmp_path):
             "test.supports.functions",
             "LifecycleCls.*",
             inputs=[("delay", (10,), {})] * 3,
-            cls_params=((), {"print_at_exit": True}),
+            cls_params=((), {"print_at_exit": 1}),
             max_concurrent_inputs=2,
             is_class=True,
         )
@@ -2086,7 +2086,7 @@ def test_sigint_termination_input(servicer, tmp_path, method):
             "test.supports.functions",
             "LifecycleCls.*",
             inputs=[(method, (5,), {})],
-            cls_params=((), {"print_at_exit": True}),
+            cls_params=((), {"print_at_exit": 1}),
             is_class=True,
         )
         input_barrier.wait()  # get input
@@ -2126,7 +2126,7 @@ def test_sigint_termination_enter_handler(servicer, tmp_path, method, enter_type
         "test.supports.functions",
         "LifecycleCls.*",
         inputs=[(method, (5,), {})],
-        cls_params=((), {"print_at_exit": True, f"{enter_type}_duration": 10}),
+        cls_params=((), {"print_at_exit": 1, f"{enter_type}_duration": 10}),
         is_class=True,
     )
     time.sleep(1)  # should be enough to start the enter method
@@ -2159,7 +2159,7 @@ def test_sigint_termination_exit_handler(servicer, tmp_path, exit_type):
             "test.supports.functions",
             "LifecycleCls.*",
             inputs=[("delay", (0,), {})],
-            cls_params=((), {"print_at_exit": True, f"{exit_type}_duration": 2}),
+            cls_params=((), {"print_at_exit": 1, f"{exit_type}_duration": 2}),
             is_class=True,
         )
         outputs.wait()  # wait for first output to be emitted
@@ -2190,8 +2190,7 @@ def test_is_local(servicer, event_loop):
 
 
 class Foo:
-    def __init__(self, x):
-        self.x = x
+    x: str = modal.parameter()
 
     @enter()
     def some_enter(self):
