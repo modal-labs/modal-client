@@ -70,6 +70,7 @@ class _OutputValue:
     value: Any
 
 
+MAX_INPUTS_OUTSTANDING_DEFAULT = 1000
 
 # maximum number of inputs to send to the server in a single request
 MAP_INVOCATION_CHUNK_SIZE = 49
@@ -101,7 +102,9 @@ async def _map_invocation(
     function_call_jwt = response.function_call_jwt
     retry_policy = response.retry_policy
     sync_client_retries_enabled = response.sync_client_retries_enabled
-    max_inputs_outstanding = response.max_inputs_outstanding
+    # The server should always send a value back for max_inputs_outstanding.
+    # Falling back to a default just in case something very unexpected happens.
+    max_inputs_outstanding = response.max_inputs_outstanding or MAX_INPUTS_OUTSTANDING_DEFAULT
 
     have_all_inputs = False
     inputs_created = 0
