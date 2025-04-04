@@ -70,10 +70,7 @@ class _OutputValue:
     value: Any
 
 
-# maximum number of inputs that can be in progress (either queued to be sent,
-# or waiting for completion). if this limit is reached, we will block sending
-# more inputs to the server until some of the existing inputs are completed.
-MAP_MAX_INPUTS_OUTSTANDING = 1000
+MAX_INPUTS_OUTSTANDING_DEFAULT = 1000
 
 # maximum number of inputs to send to the server in a single request
 MAP_INVOCATION_CHUNK_SIZE = 49
@@ -105,6 +102,9 @@ async def _map_invocation(
     function_call_jwt = response.function_call_jwt
     retry_policy = response.retry_policy
     sync_client_retries_enabled = response.sync_client_retries_enabled
+    # The server should always send a value back for max_inputs_outstanding.
+    # Falling back to a default just in case something very unexpected happens.
+    max_inputs_outstanding = response.max_inputs_outstanding or MAX_INPUTS_OUTSTANDING_DEFAULT
 
     have_all_inputs = False
     inputs_created = 0
@@ -127,7 +127,7 @@ async def _map_invocation(
     completed_outputs: set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
     input_queue: asyncio.Queue[api_pb2.FunctionPutInputsItem | None] = asyncio.Queue()
     map_items_manager = _MapItemsManager(
-        retry_policy, function_call_invocation_type, retry_queue, sync_client_retries_enabled
+        retry_policy, function_call_invocation_type, retry_queue, sync_client_retries_enabled, max_inputs_outstanding
     )
 
     async def create_input(argskwargs):
@@ -700,13 +700,17 @@ class _MapItemsManager:
         retry_policy: api_pb2.FunctionRetryPolicy,
         function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
         retry_queue: TimestampPriorityQueue,
-        sync_client_retries_enabled: bool
+        sync_client_retries_enabled: bool,
+        max_inputs_outstanding: int
+
     ):
         self._retry_policy = retry_policy
         self.function_call_invocation_type = function_call_invocation_type
         self._retry_queue = retry_queue
-        # semaphore to limit the number of inputs that can be in progress at once
-        self._inputs_outstanding = asyncio.BoundedSemaphore(MAP_MAX_INPUTS_OUTSTANDING)
+        # semaphore to control the maximum number of inputs that can be in progress (either queued to be sent,
+        # or waiting for completion). if this limit is reached, we will block sending more inputs to the server
+        # until some of the existing inputs are completed.
+        self._inputs_outstanding = asyncio.BoundedSemaphore(max_inputs_outstanding)
         self._item_context: dict[int, _MapItemContext] = {}
         self._sync_client_retries_enabled = sync_client_retries_enabled
 
