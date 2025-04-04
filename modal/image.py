@@ -293,6 +293,7 @@ def _create_context_mount_function(
     dockerfile_cmds: list[str] = [],
     dockerfile_path: Optional[Path] = None,
     context_mount: Optional[_Mount] = None,
+    context_dir: Optional[Union[Path, str]] = None,
 ):
     if dockerfile_path and dockerfile_cmds:
         raise InvalidError("Cannot provide both dockerfile and docker commands")
@@ -300,6 +301,8 @@ def _create_context_mount_function(
     if context_mount:
         if ignore is not AUTO_DOCKERIGNORE:
             raise InvalidError("Cannot set both `context_mount` and `ignore`")
+        if context_dir is not None:
+            raise InvalidError("Cannot set both `context_mount` and `context_dir`")
 
         def identity_context_mount_fn() -> Optional[_Mount]:
             return context_mount
@@ -308,7 +311,8 @@ def _create_context_mount_function(
     elif ignore is AUTO_DOCKERIGNORE:
 
         def auto_created_context_mount_fn() -> Optional[_Mount]:
-            context_dir = Path.cwd()
+            nonlocal context_dir
+            context_dir = Path.cwd() if context_dir is None else Path(context_dir)
             dockerignore_file = find_dockerignore_file(context_dir, dockerfile_path)
             ignore_fn = (
                 FilePatternMatcher(*dockerignore_file.read_text("utf8").splitlines())
@@ -1310,6 +1314,7 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
         context_mount: Optional[_Mount] = None,  # Deprecated: the context is now inferred
+        context_dir: Optional[Union[Path, str]] = None,  # Context for relative COPY commands
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         ignore: Union[Sequence[str], Callable[[Path], bool]] = AUTO_DOCKERIGNORE,
     ) -> "_Image":
@@ -1374,7 +1379,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu),
             context_mount_function=_create_context_mount_function(
-                ignore=ignore, dockerfile_cmds=cmds, context_mount=context_mount
+                ignore=ignore, dockerfile_cmds=cmds, context_mount=context_mount, context_dir=context_dir
             ),
             force_build=self.force_build or force_build,
         )
@@ -1709,6 +1714,7 @@ class _Image(_Object, type_prefix="im"):
         # Ignore cached builds, similar to 'docker build --no-cache'
         force_build: bool = False,
         *,
+        context_dir: Optional[Union[Path, str]] = None,  # Context for relative COPY commands
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
         add_python: Optional[str] = None,
@@ -1782,7 +1788,7 @@ class _Image(_Object, type_prefix="im"):
         base_image = _Image._from_args(
             dockerfile_function=build_dockerfile_base,
             context_mount_function=_create_context_mount_function(
-                ignore=ignore, dockerfile_path=Path(path), context_mount=context_mount
+                ignore=ignore, dockerfile_path=Path(path), context_mount=context_mount, context_dir=context_dir
             ),
             gpu_config=gpu_config,
             secrets=secrets,
