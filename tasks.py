@@ -123,8 +123,49 @@ def lint_protos(ctx):
 
 
 @task
+def type_stubs(ctx):
+    # We only generate type stubs for modules that contain synchronicity wrapped types
+    from synchronicity.synchronizer import SYNCHRONIZER_ATTR
+
+    stubs_to_remove = []
+    for root, _, files in os.walk("modal"):
+        for file in files:
+            if file.endswith(".pyi"):
+                stubs_to_remove.append(os.path.abspath(os.path.join(root, file)))
+    for path in sorted(stubs_to_remove):
+        os.remove(path)
+        print(f"Removed {path}")
+
+    def find_modal_modules(root: str = "modal"):
+        modules = []
+        path = importlib.import_module(root).__path__
+        for _, name, is_pkg in pkgutil.iter_modules(path):
+            full_name = f"{root}.{name}"
+            if is_pkg:
+                modules.extend(find_modal_modules(full_name))
+            else:
+                modules.append(full_name)
+        return modules
+
+    def get_wrapped_types(module_name: str) -> list[str]:
+        module = importlib.import_module(module_name)
+        return [
+            name
+            for name, obj in vars(module).items()
+            if not module_name.startswith("modal.cli.")  # TODO we don't handle typer-wrapped functions well
+            and hasattr(obj, "__module__")
+            and obj.__module__ == module_name
+            and not name.startswith("_")  # Avoid deprecation of _App.__getattr__
+            and hasattr(obj, SYNCHRONIZER_ATTR)
+        ]
+
+    modules = [m for m in find_modal_modules() if len(get_wrapped_types(m))]
+    subprocess.check_call(["python", "-m", "synchronicity.type_stubs", *modules])
+    ctx.run("ruff format modal/ --exclude=*.py --no-respect-gitignore", pty=True)
+
+
+@task(type_stubs)
 def type_check(ctx):
-    type_stubs(ctx)
     # mypy will not check the *implementation* (.py) for files that also have .pyi type stubs
     mypy_exclude_list = [
         "playground",
@@ -266,48 +307,6 @@ def update_build_number(ctx, new_build_number: Optional[int] = None):
 build_number = {new_build_number}  # git: {git_sha}
 """
         )
-
-
-@task
-def type_stubs(ctx):
-    # We only generate type stubs for modules that contain synchronicity wrapped types
-    from synchronicity.synchronizer import SYNCHRONIZER_ATTR
-
-    stubs_to_remove = []
-    for root, _, files in os.walk("modal"):
-        for file in files:
-            if file.endswith(".pyi"):
-                stubs_to_remove.append(os.path.abspath(os.path.join(root, file)))
-    for path in sorted(stubs_to_remove):
-        os.remove(path)
-        print(f"Removed {path}")
-
-    def find_modal_modules(root: str = "modal"):
-        modules = []
-        path = importlib.import_module(root).__path__
-        for _, name, is_pkg in pkgutil.iter_modules(path):
-            full_name = f"{root}.{name}"
-            if is_pkg:
-                modules.extend(find_modal_modules(full_name))
-            else:
-                modules.append(full_name)
-        return modules
-
-    def get_wrapped_types(module_name: str) -> list[str]:
-        module = importlib.import_module(module_name)
-        return [
-            name
-            for name, obj in vars(module).items()
-            if not module_name.startswith("modal.cli.")  # TODO we don't handle typer-wrapped functions well
-            and hasattr(obj, "__module__")
-            and obj.__module__ == module_name
-            and not name.startswith("_")  # Avoid deprecation of _App.__getattr__
-            and hasattr(obj, SYNCHRONIZER_ATTR)
-        ]
-
-    modules = [m for m in find_modal_modules() if len(get_wrapped_types(m))]
-    subprocess.check_call(["python", "-m", "synchronicity.type_stubs", *modules])
-    ctx.run("ruff format modal/ --exclude=*.py --no-respect-gitignore", pty=True)
 
 
 @task

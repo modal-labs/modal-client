@@ -17,6 +17,7 @@ from typing import (
     Callable,
     ClassVar,
     Optional,
+    cast,
 )
 
 from google.protobuf.empty_pb2 import Empty
@@ -115,7 +116,16 @@ class IOContext:
         method_name = function_inputs[0].method_name
         assert all(method_name == input.method_name for input in function_inputs)
         finalized_function = finalized_functions[method_name]
-        return cls(input_ids, retry_counts, function_call_ids, finalized_function, function_inputs, is_batched, client)
+        return cls(
+            # Do explicit cast since type checker doesn't understand zip(*inputs)
+            cast(list[str], input_ids),
+            cast(list[int], retry_counts),
+            cast(list[str], function_call_ids),
+            finalized_function,
+            cast(list[api_pb2.FunctionInput], function_inputs),
+            is_batched,
+            client,
+        )
 
     def set_cancel_callback(self, cb: Callable[[], None]):
         self._cancel_callback = cb
