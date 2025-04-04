@@ -8,7 +8,7 @@ import sys
 import threading
 from hashlib import sha256
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Callable, Literal, Sequence, Union, get_args
 from unittest import mock
 
@@ -937,6 +937,23 @@ def test_image_dockerfile_copy_ignore(builder_version, servicer, client, use_cal
         mount_id = layers[layer].context_mount_id
         files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
         assert files == {Path("/") / rel_top_dir / "Dockerfile", Path("/") / rel_top_dir / "file.py"}
+
+
+@pytest.mark.usefixtures("tmp_cwd")
+def test_dockerfile_context_dir(builder_version, servicer, client):
+    # Write a file to a different temporary directory
+    with TemporaryDirectory() as context_dir:
+        (Path(context_dir) / "data.txt").write_text("hello")
+        (Path(context_dir) / "file.py").write_text("world")
+
+        image = Image.debian_slim().dockerfile_commands(["COPY . /"], context_dir=context_dir)
+        app = App()
+        app.function(image=image)(dummy)
+        with app.run(client=client):
+            layers = get_image_layers(image.object_id, servicer)
+            mount_id = layers[0].context_mount_id
+            files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
+            assert files == {Path("/data.txt"), Path("/file.py")}
 
 
 def test_image_docker_command_entrypoint(builder_version, servicer, client, tmp_path_with_content):
