@@ -285,7 +285,7 @@ def _create_context_mount(
 
         return False
 
-    return _Mount._add_local_dir(Path("./"), PurePosixPath("/"), ignore=ignore_with_include)
+    return _Mount._add_local_dir(context_dir, PurePosixPath("/"), ignore=ignore_with_include)
 
 
 def _create_context_mount_function(
@@ -308,11 +308,12 @@ def _create_context_mount_function(
             return context_mount
 
         return identity_context_mount_fn
+
     elif ignore is AUTO_DOCKERIGNORE:
 
         def auto_created_context_mount_fn() -> Optional[_Mount]:
             nonlocal context_dir
-            context_dir = Path.cwd() if context_dir is None else Path(context_dir)
+            context_dir = Path.cwd() if context_dir is None else Path(context_dir).absolute()
             dockerignore_file = find_dockerignore_file(context_dir, dockerfile_path)
             ignore_fn = (
                 FilePatternMatcher(*dockerignore_file.read_text("utf8").splitlines())
@@ -325,12 +326,16 @@ def _create_context_mount_function(
 
         return auto_created_context_mount_fn
 
-    def auto_created_context_mount_fn() -> Optional[_Mount]:
-        # use COPY commands and ignore patterns to construct implicit context mount
-        cmds = dockerfile_path.read_text("utf8").splitlines() if dockerfile_path else dockerfile_cmds
-        return _create_context_mount(cmds, ignore_fn=_ignore_fn(ignore), context_dir=Path.cwd())
+    else:
 
-    return auto_created_context_mount_fn
+        def auto_created_context_mount_fn() -> Optional[_Mount]:
+            # use COPY commands and ignore patterns to construct implicit context mount
+            nonlocal context_dir
+            context_dir = Path.cwd() if context_dir is None else Path(context_dir).absolute()
+            cmds = dockerfile_path.read_text("utf8").splitlines() if dockerfile_path else dockerfile_cmds
+            return _create_context_mount(cmds, ignore_fn=_ignore_fn(ignore), context_dir=context_dir)
+
+        return auto_created_context_mount_fn
 
 
 class _ImageRegistryConfig:
