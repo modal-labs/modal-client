@@ -27,6 +27,7 @@ from ._resources import convert_fn_config_to_resources_config
 from ._runtime.execution_context import current_input_id, is_local
 from ._serialization import (
     apply_defaults,
+    get_callable_schema,
     serialize,
     serialize_proto_params,
     validate_parameter_values,
@@ -415,6 +416,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _method_handle_metadata: Optional[dict[str, "api_pb2.FunctionHandleMetadata"]] = (
         None  # set for 0.67+ class service functions
     )
+    _metadata: Optional[api_pb2.FunctionHandleMetadata] = None
 
     @staticmethod
     def from_local(
@@ -648,10 +650,17 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             for method_name, partial_function in partial_functions.items():
                 function_type = get_function_type(partial_function.is_generator)
                 function_name = f"{info.user_cls.__name__}.{method_name}"
+
+                if not partial_function._is_web_endpoint():
+                    method_schema = get_callable_schema(partial_function.raw_f, ignore_first_argument=True)
+                else:
+                    method_schema = None
+
                 method_definition = api_pb2.MethodDefinition(
                     webhook_config=partial_function.webhook_config,
                     function_type=function_type,
                     function_name=function_name,
+                    function_schema=method_schema,
                 )
                 method_definitions[method_name] = method_definition
 
@@ -693,6 +702,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_name=info.function_name,
                 function_type=function_type,
                 existing_function_id=existing_object_id or "",
+                function_schema=get_callable_schema(info.raw_f) if info.raw_f and not webhook_config else None,
             )
             if method_definitions:
                 for method_name, method_definition in method_definitions.items():
@@ -762,7 +772,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
                 function_data: Optional[api_pb2.FunctionData] = None
                 function_definition: Optional[api_pb2.Function] = None
-
+                function_schema = get_callable_schema(info.raw_f) if info.raw_f and not webhook_config else None
                 # Create function remotely
                 function_definition = api_pb2.Function(
                     module_name=info.module_name or "",
@@ -821,6 +831,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     _experimental_buffer_containers=buffer_containers or 0,
                     task_idle_timeout_secs=scaledown_window or 0,
                     # ---
+                    function_schema=function_schema,
                 )
 
                 if isinstance(gpu, list):
@@ -853,6 +864,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         _experimental_proxy_ip=function_definition._experimental_proxy_ip,
                         snapshot_debug=function_definition.snapshot_debug,
                         runtime_perf_record=function_definition.runtime_perf_record,
+                        function_schema=function_schema,
                     )
 
                     ranked_functions = []
@@ -1223,12 +1235,15 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._function_name = None
         self._info = None
         self._serve_mounts = frozenset()
+        self._metadata = None
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
         assert metadata and isinstance(metadata, api_pb2.FunctionHandleMetadata), (
             f"{type(metadata)} is not FunctionHandleMetadata"
         )
+        self._metadata = metadata
+        # TODO: replace usage of all below with direct ._metadata access
         self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
@@ -1250,6 +1265,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             class_parameter_info=self._class_parameter_info,
             definition_id=self._definition_id,
             method_handle_metadata=self._method_handle_metadata,
+            function_schema=self._metadata.function_schema if self._metadata else None,
         )
 
     def _check_no_web_url(self, fn_name: str):
@@ -1532,6 +1548,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             total_timeout=10.0,
         )
         return FunctionStats(backlog=resp.backlog, num_total_runners=resp.num_total_tasks)
+
+    @live_method
+    async def _get_schema(self) -> Optional[api_pb2.FunctionSchema]:
+        """Returns recorded schema for function, internal use only for now"""
+        assert self._metadata
+        return self._metadata.function_schema if self._metadata.function_schema.schema_version > 0 else None
 
     # A bit hacky - but the map-style functions need to not be synchronicity-wrapped
     # in order to not execute their input iterators on the synchronicity event loop.
