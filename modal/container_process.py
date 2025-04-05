@@ -59,6 +59,9 @@ class _ContainerProcess(Generic[T]):
         )
         self._stdin = _StreamWriter(process_id, "container_process", self._client)
 
+    def __repr__(self) -> str:
+        return f"ContainerProcess(process_id={self._process_id!r})"
+
     @property
     def stdout(self) -> _StreamReader[T]:
         """StreamReader for the container process's stdout stream."""
@@ -107,7 +110,7 @@ class _ContainerProcess(Generic[T]):
             return self._returncode
 
         while True:
-            req = api_pb2.ContainerExecWaitRequest(exec_id=self._process_id, timeout=50)
+            req = api_pb2.ContainerExecWaitRequest(exec_id=self._process_id, timeout=10)
             resp: api_pb2.ContainerExecWaitResponse = await retry_transient_errors(
                 self._client.stub.ContainerExecWait, req
             )
