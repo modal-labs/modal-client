@@ -1245,7 +1245,23 @@ def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, c
     assert not [r for r in caplog.records if r.levelno == logging.WARNING]
 
 
-def test_concurrency_migration(client, servicer):
+def test_batching_config(client, servicer):
+    from test.supports.batching_config import CONFIG_VALS, app
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            pass
+
+    function_create_requests = ctx.get_requests("FunctionCreate")
+    for request in function_create_requests:
+        if request.function.function_name in {"has_batch_config", "HasBatchConfig.*"}:
+            assert request.function.batch_max_size == CONFIG_VALS["MAX_SIZE"]
+            assert request.function.batch_linger_ms == CONFIG_VALS["WAIT_MS"]
+        else:
+            raise RuntimeError(f"Unexpected function name: {request.function.function_name}")
+
+
+def test_concurrency_config_migration(client, servicer):
     from test.supports.concurrency_config import CONFIG_VALS, app
 
     with servicer.intercept() as ctx:
