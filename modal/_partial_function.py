@@ -100,18 +100,24 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     The object will eventually by consumed by an App decorator.
     """
 
-    obj: Callable[P, ReturnType]  # function, method, or class
+    raw_f: Optional[Callable[P, ReturnType]]  # function or method
+    user_cls: Optional[type] = None  # class
     flags: _PartialFunctionFlags
     params: _PartialFunctionParams
     registered: bool
 
     def __init__(
         self,
-        obj: Callable[P, ReturnType],
+        obj: Union[Callable[P, ReturnType], type],
         flags: _PartialFunctionFlags,
         params: _PartialFunctionParams,
     ):
-        self.obj = obj
+        if isinstance(obj, type):
+            self.user_cls = obj
+            self.raw_f = None
+        else:
+            self.raw_f = obj
+            self.user_cls = None
         self.flags = flags
         self.params = params
         self.registered = False
@@ -141,49 +147,56 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
     def validate_obj_compatibility(
         self, decorator_name: str, require_sync: bool = False, require_nullary: bool = False
     ) -> None:
-        """Enforce compatibility with the underlying callable."""
+        """Enforce compatibility with the wrapped object; called from individual decorator functions."""
         from .cls import _Cls  # Avoid circular import
 
         uses_lifecycle_flags = self.flags & _PartialFunctionFlags.lifecycle_flags()
         uses_interface_flags = self.flags & _PartialFunctionFlags.interface_flags()
-        if isinstance(self.obj, type) and (uses_lifecycle_flags or uses_interface_flags):
+        if self.user_cls is not None and (uses_lifecycle_flags or uses_interface_flags):
             self.registered = True  # Hacky, avoid false-positive warning
             raise InvalidError(
                 f"Cannot apply `@modal.{decorator_name}` to a class. Hint: consider applying to a method instead."
             )
-        if isinstance(self.obj, _Function):
+
+        # Run some assertions about a callable wrappee defined by the specific decorator used
+        if self.raw_f is not None:
+            if require_sync and inspect.iscoroutinefunction(self.raw_f):
+                raise InvalidError(f"`@modal.{decorator_name}` can't be applied to an async function.")
+
+            if require_nullary and callable_has_non_self_params(self.raw_f):
+                self.registered = True  # Hacky, avoid false-positive warning
+                if callable_has_non_self_non_default_params(self.raw_f):
+                    raise InvalidError(f"Functions obj by `@modal.{decorator_name}` can't have parameters.")
+                else:
+                    # TODO(michael): probably fine to just make this an error at this point
+                    # but best to do it in a separate PR
+                    deprecation_warning(
+                        (2024, 9, 4),
+                        f"The function obj by `@modal.{decorator_name}` has default parameters, "
+                        "but shouldn't have any parameters - Modal will drop support for "
+                        "default parameters in a future release.",
+                    )
+
+        wrapped_object = self.raw_f or self.user_cls
+        if isinstance(wrapped_object, _Function):
             self.registered = True  # Hacky, avoid false-positive warning
             raise InvalidError(
                 f"Cannot stack `@modal.{decorator_name}` on top of `@app.function`."
                 " Hint: swap the order of the decorators."
             )
-        elif isinstance(self.obj, _Cls):
+        elif isinstance(wrapped_object, _Cls):
             self.registered = True  # Hacky, avoid false-positive warning
             raise InvalidError(
                 f"Cannot stack `@modal.{decorator_name}` on top of `@app.cls()`."
                 " Hint: swap the order of the decorators."
             )
-        if require_sync and inspect.iscoroutinefunction(self.obj):
-            raise InvalidError(f"`@modal.{decorator_name}` can't be applied to an async function.")
 
-        if require_nullary and callable_has_non_self_params(self.obj):
-            self.registered = True  # Hacky, avoid false-positive warning
-            if callable_has_non_self_non_default_params(self.obj):
-                raise InvalidError(f"Functions obj by `@modal.{decorator_name}` can't have parameters.")
-            else:
-                # TODO(michael): probably fine to just make this an error at this point
-                # but best to do it in a separate PR
-                deprecation_warning(
-                    (2024, 9, 4),
-                    f"The function obj by `@modal.{decorator_name}` has default parameters, "
-                    "but shouldn't have any parameters - Modal will drop support for "
-                    "default parameters in a future release.",
-                )
+        if self.raw_f is not None and not callable(self.raw_f):
+            raise InvalidError(f"The object wrapped by `@modal.{decorator_name}` must be callable.")
 
-    def get_wrapped_obj(self) -> Callable[P, ReturnType]:
-        # Consider having separate get_wrapped_func / get_wrapped_cls (/ get_wrapped_method?)
-        # with stricter type annotation / runtime check.
-        return self.obj
+    def _get_raw_f(self) -> Callable[P, ReturnType]:
+        assert self.raw_f is not None
+        return self.raw_f
 
     def _is_web_endpoint(self) -> bool:
         if self.params.webhook_config is None:
@@ -197,7 +210,8 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
         # However, modal classes are *actually* Cls instances (which isn't reflected in type checkers
         # due to Python's lack of type chekcing intersection types), so at runtime the Cls instance would
         # use its __getattr__ rather than this descriptor.
-        k = self.obj.__name__
+        assert self.raw_f is not None  # Should only be relevant in a method context
+        k = self.raw_f.__name__
         if obj:  # accessing the method on an instance of a class, e.g. `MyClass().fun``
             if hasattr(obj, "_modal_functions"):
                 # This happens inside "local" user methods when they refer to other methods,
@@ -209,7 +223,7 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
                 # not sure what would be useful here, but let's return a bound version of the underlying function,
                 # since the class is just a vanilla class at this point
                 # This wouldn't let the user access `.remote()` and `.local()` etc. on the function
-                return self.obj.__get__(obj, objtype)
+                return self.raw_f.__get__(obj, objtype)
 
         else:  # accessing a method directly on the class, e.g. `MyClass.fun`
             # This happens mainly during serialization of the obj underlying class of a Cls
@@ -219,9 +233,13 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
 
     def __del__(self):
         if self.registered is False:
+            if self.raw_f is not None:
+                name, object_type, suggestion = self.raw_f.__name__, "function", "@app.function or @app.cls"
+            elif self.user_cls is not None:
+                name, object_type, suggestion = self.user_cls.__name__, "class", "@app.cls"
             logger.warning(
-                f"Method or web function {self.obj} was never registered with the App."
-                " Did you forget a @app.function or @app.cls decorator?"
+                f"The `{name}` {object_type} was never registered with the App."
+                f" Did you forget an {suggestion} decorator?"
             )
 
 
@@ -244,7 +262,11 @@ def _find_partial_methods_for_user_cls(user_cls: type[Any], flags: int) -> dict[
 def _find_callables_for_obj(user_obj: Any, flags: int) -> dict[str, Callable[..., Any]]:
     """Grabs all methods for an object, and binds them to the class"""
     user_cls: type = type(user_obj)
-    return {k: pf.obj.__get__(user_obj) for k, pf in _find_partial_methods_for_user_cls(user_cls, flags).items()}
+    return {
+        k: pf.raw_f.__get__(user_obj)
+        for k, pf in _find_partial_methods_for_user_cls(user_cls, flags).items()
+        if pf.raw_f is not None  # Should be true for output of _find_partial_methods_for_user_cls, but hard to annotate
+    }
 
 
 class _MethodDecoratorType:
@@ -298,7 +320,7 @@ def _method(
 
         nonlocal is_generator  # TODO(michael): we are likely to deprecate the explicit is_generator param
         if is_generator is None:
-            callable = obj.obj if isinstance(obj, _PartialFunction) else obj
+            callable = obj.raw_f if isinstance(obj, _PartialFunction) else obj
             is_generator = inspect.isgeneratorfunction(callable) or inspect.isasyncgenfunction(callable)
         params = _PartialFunctionParams(is_generator=is_generator)
 

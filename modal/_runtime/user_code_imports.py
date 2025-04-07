@@ -146,7 +146,7 @@ class ImportedClass(Service):
         finalized_functions = {}
         for method_name, partial in self._partial_functions.items():
             partial = synchronizer._translate_in(partial)  # ugly
-            user_func = partial.obj
+            user_func = partial.raw_f
             # Check this property before we turn it into a method (overriden by webhooks)
             is_async = get_is_async(user_func)
             # Use the function definition for whether this is a generator (overriden by webhooks)

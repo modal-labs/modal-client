@@ -552,7 +552,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if info.user_cls and not is_auto_snapshot:
             build_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.BUILD).items()
             for k, pf in build_functions:
-                build_function = pf.obj
+                build_function = pf.raw_f
                 snapshot_info = FunctionInfo(build_function, user_cls=info.user_cls)
                 snapshot_function = _Function.from_local(
                     snapshot_info,

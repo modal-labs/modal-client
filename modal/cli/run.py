@@ -241,7 +241,7 @@ def _get_click_command_for_cls(app: App, method_ref: MethodReference):
             )
 
     partial_function = partial_functions[method_name]
-    fun_signature = _get_signature(partial_function.get_wrapped_obj(), is_method=True)
+    fun_signature = _get_signature(partial_function._get_raw_f(), is_method=True)
 
     # TODO(erikbern): assert there's no overlap?
     parameters = dict(**cls_signature.parameters, **fun_signature.parameters)  # Pool all arguments
