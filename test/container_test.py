@@ -37,6 +37,7 @@ from modal._serialization import (
     deserialize_data_format,
     serialize,
     serialize_data_format,
+    serialize_proto_params,
 )
 from modal._utils import async_utils
 from modal._utils.async_utils import synchronize_api
@@ -634,6 +635,51 @@ def test_serialized_function(servicer):
         definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
     )
     assert _unwrap_scalar(ret) == 3 * 42
+
+
+@skip_github_non_linux
+def test_serialized_class_with_parameters(servicer):
+    class SerializedClassWithParams:
+        p: int = modal.parameter()
+
+        @modal.method()
+        def method(self):
+            return "hello"
+
+        # TODO: expand this test to check that self.other_method.remote() can be called
+        #  this would require feeding the servicer with more information about the function
+        #  since it would re-bind parameters to the class service function etc.
+
+    app = modal.App()
+    app.cls(serialized=True)(SerializedClassWithParams)  # gets rid of warning
+
+    servicer.class_serialized = serialize(SerializedClassWithParams)
+    ret = _run_container(
+        servicer,
+        "",
+        "SerializedClassWithParams.*",
+        is_class=True,
+        inputs=_get_inputs(((), {}), method_name="method"),
+        definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
+        class_parameter_info=api_pb2.ClassParameterInfo(
+            format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
+        ),
+        serialized_params=serialize_proto_params({"p": 10}),
+        app_layout=api_pb2.AppLayout(
+            objects=[
+                api_pb2.Object(
+                    object_id="fu-123",
+                    function_handle_metadata=api_pb2.FunctionHandleMetadata(
+                        function_name="SerializedClassWithParams.*",
+                        method_handle_metadata={
+                            "method": api_pb2.FunctionHandleMetadata(),
+                        },
+                    ),
+                )
+            ]
+        ),
+    )
+    assert _unwrap_scalar(ret) == "hello"
 
 
 @skip_github_non_linux
