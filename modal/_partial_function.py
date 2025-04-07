@@ -867,6 +867,9 @@ def _concurrent(
 
     ```
 
+    *Added in v0.73.148:* This decorator replaces the `allow_concurrent_inputs` parameter
+    in `@app.function()` and `@app.cls()`.
+
     """
     if _warn_parentheses_missing is not None:
         raise InvalidError(
