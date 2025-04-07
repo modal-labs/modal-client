@@ -2879,6 +2879,70 @@ message VolumeMount {
   bool read_only = 4;
 }
 
+message VolumePutFiles2Request {
+  // Id of volume to put files into.
+  string volume_id = 1;
+
+  // List of files, sorted lexicographically by `path`.
+  repeated File files = 2;
+
+  message File {
+    // Destination path of the file to be uploaded, including any parent dirs
+    // etc.; for example "foo/bar/baz.txt"
+    string path = 1;
+
+    // The total size of the file, in bytes.
+    uint64 size = 2;
+
+    // SHA-256 checksum of each 8MiB chunk of the file's contents, in binary
+    // (ie 32 raw bytes) format for compactness.
+    repeated bytes chunks_sha256 = 3;
+
+    // The last time the client called `VolumePutFiles2` for this file, it was
+    // told that some chunks were missing. This field contains information
+    // about the client having uploaded those missing chunks.
+    repeated NewChunk new_chunks = 4;
+  }
+
+  message NewChunk {
+    // The index of the chunk, ie. offset into the file in units of 8MiB.
+    uint64 index = 1;
+
+    // The raw bytes of the body that was returned from the HTTP PUT request
+    // when the client made a request for the `put_url` returned in the
+    // previous `VolumePutFiles2Response`.
+    bytes put_response = 2;
+  }
+}
+
+message VolumePutFiles2Response {
+  // Id from the original `VolumePutFiles2Request`
+  string volume_id = 1;
+
+  // Chunks that are currently missing in the volume, because the file did not
+  // exist, or because the chunk checksum from `chunks_sha256` in the request
+  // did not match the current contents of the file.
+  //
+  // Values will be returned sorted by `(file_index, chunk_index)`.
+  //
+  // If this field is empty, it means that the files were uploaded successfully
+  // and/or that the request was an idempotent no-op.
+  repeated MissingChunk missing_chunks = 2;
+
+  message MissingChunk {
+    // Index of the file in the original `files` field of the request.
+    uint64 file_index = 1;
+
+    // The index of the chunk in the original
+    // `files[file_index].chunks_sha256`.
+    uint64 chunk_index = 2;
+
+    // Make a HTTP PUT request to this endpoint with the chunks' contents as
+    // the body.
+    string put_url = 3;
+  }
+}
+
 message VolumePutFilesRequest {
   string volume_id = 1;
   // TODO(staffan): This is obviously unfortunately named, but provides what we need - consider renaming.
@@ -3120,6 +3184,7 @@ service ModalClient {
   rpc VolumeList(VolumeListRequest) returns (VolumeListResponse);
   rpc VolumeListFiles(VolumeListFilesRequest) returns (stream VolumeListFilesResponse);
   rpc VolumePutFiles(VolumePutFilesRequest) returns (google.protobuf.Empty);
+  rpc VolumePutFiles2(VolumePutFiles2Request) returns (VolumePutFiles2Response);
   rpc VolumeReload(VolumeReloadRequest) returns (google.protobuf.Empty);
   rpc VolumeRemoveFile(VolumeRemoveFileRequest) returns (google.protobuf.Empty);
   rpc VolumeRename(VolumeRenameRequest) returns (google.protobuf.Empty);
