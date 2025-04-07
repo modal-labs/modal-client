@@ -2,7 +2,13 @@
 # ruff: noqa: E402
 import os
 
-from modal._runtime.user_code_imports import Service, import_class_service, import_single_function_service
+from modal._runtime.user_code_imports import (
+    Service,
+    get_active_app_fallback,
+    import_class_service,
+    import_single_function_service,
+)
+from modal.functions import Function
 
 telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
 if telemetry_socket:
@@ -349,32 +355,6 @@ def call_function(
                     signal.signal(signal.SIGUSR1, usr1_handler)  # reset signal handler
 
 
-def get_active_app_fallback(function_def: api_pb2.Function) -> _App:
-    # This branch is reached in the special case that the imported function/class is:
-    # 1) not serialized, and
-    # 2) isn't a FunctionHandle - i.e, not decorated at definition time
-    # Look at all instantiated apps - if there is only one with the indicated name, use that one
-    app_name: Optional[str] = function_def.app_name or None  # coalesce protobuf field to None
-    matching_apps = _App._all_apps.get(app_name, [])
-    if len(matching_apps) == 1:
-        active_app: _App = matching_apps[0]
-        return active_app
-
-    if len(matching_apps) > 1:
-        if app_name is not None:
-            warning_sub_message = f"app with the same name ('{app_name}')"
-        else:
-            warning_sub_message = "unnamed app"
-        logger.warning(
-            f"You have more than one {warning_sub_message}. "
-            "It's recommended to name all your Apps uniquely when using multiple apps"
-        )
-
-    # If we don't have an active app, create one on the fly
-    # The app object is used to carry the app layout etc
-    return _App()
-
-
 def call_lifecycle_functions(
     event_loop: UserCodeEventLoop,
     container_io_manager,  #: ContainerIOManager,  TODO: this type is generated at runtime
@@ -416,9 +396,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     with container_io_manager.heartbeats(is_snapshotting_function), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
         if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-            ser_cls, ser_fun = container_io_manager.get_serialized_function()
+            ser_usr_cls, ser_fun = container_io_manager.get_serialized_function()
         else:
-            ser_cls, ser_fun = None, None
+            ser_usr_cls, ser_fun = None, None
 
         # Initialize the function, importing user code.
         with container_io_manager.handle_user_exception():
@@ -428,17 +408,34 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 param_args = ()
                 param_kwargs = {}
 
+            service_function_hydration_data: Optional[api_pb2.Object] = None
+
+            for app_object in container_args.app_layout.objects:
+                if not Function._is_id_type(app_object.object_id):
+                    continue
+                # this is a bit ugly - match the function based on function name since
+                # the function def doesn't have the function id
+                if app_object.function_handle_metadata.function_name == function_def.function_name:
+                    assert service_function_hydration_data is None  # should be only one
+                    service_function_hydration_data = app_object
+                    break
+            else:
+                raise InvalidError("No service function metadata found")
+
             if function_def.is_class:
                 service = import_class_service(
                     function_def,
-                    ser_cls,
+                    service_function_hydration_data,
+                    client,
+                    ser_usr_cls,
                     param_args,
                     param_kwargs,
                 )
             else:
                 service = import_single_function_service(
                     function_def,
-                    ser_cls,
+                    service_function_hydration_data,
+                    ser_usr_cls,
                     ser_fun,
                     param_args,
                     param_kwargs,

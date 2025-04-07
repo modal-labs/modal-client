@@ -139,7 +139,7 @@ def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name:
             # ugly - needed for .local()  TODO (elias): Clean up!
             partial_function.raw_f,
             user_cls=cls._user_cls,
-            serialized=service_function.info.is_serialized(),
+            serialized=True,  # service_function.info.is_serialized(),
         )
 
     fun._obj = service_function._obj

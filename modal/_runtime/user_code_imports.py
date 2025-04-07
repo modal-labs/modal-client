@@ -10,9 +10,10 @@ import modal._runtime.container_io_manager
 import modal.cls
 from modal import Function
 from modal._functions import _Function
-from modal._partial_function import _find_partial_methods_for_user_cls, _PartialFunctionFlags
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import LocalFunctionError, is_async as get_is_async, is_global_object
+from modal.app import _App
+from modal.config import logger
 from modal.exception import ExecutionError, InvalidError
 from modal_proto import api_pb2
 
@@ -178,22 +179,17 @@ class ImportedClass(Service):
         return finalized_functions
 
 
-def get_user_class_instance(cls: typing.Union[type, modal.cls.Cls], args: tuple, kwargs: dict[str, Any]) -> typing.Any:
+def get_user_class_instance(cls: modal.cls.Cls, args: tuple, kwargs: dict[str, Any]) -> typing.Any:
     """Returns instance of the underlying class to be used as the `self`
 
     The input `cls` can either be the raw Python class the user has declared ("user class"),
     or an @app.cls-decorated version of it which is a modal.Cls-instance wrapping the user class.
     """
-    if isinstance(cls, modal.cls.Cls):
-        # globally @app.cls-decorated class
-        modal_obj: modal.cls.Obj = cls(*args, **kwargs)
-        modal_obj._entered = True  # ugly but prevents .local() from triggering additional enter-logic
-        # TODO: unify lifecycle logic between .local() and container_entrypoint
-        user_cls_instance = modal_obj._cached_user_cls_instance()
-    else:
-        # undecorated class (non-global decoration or serialized)
-        user_cls_instance = cls(*args, **kwargs)
-
+    assert isinstance(cls, modal.cls.Cls)
+    modal_obj: modal.cls.Obj = cls(*args, **kwargs)
+    modal_obj._entered = True  # ugly but prevents .local() from triggering additional enter-logic
+    # TODO: unify lifecycle logic between .local() and container_entrypoint
+    user_cls_instance = modal_obj._cached_user_cls_instance()
     return user_cls_instance
 
 
@@ -293,7 +289,9 @@ def import_single_function_service(
 
 def import_class_service(
     function_def: api_pb2.Function,
-    ser_cls,
+    service_function_hydration_data: api_pb2.Object,
+    client: "modal.client.Client",
+    ser_user_cls: Optional[type],
     cls_args,
     cls_kwargs,
 ) -> Service:
@@ -307,8 +305,8 @@ def import_class_service(
     cls: typing.Union[type, modal.cls.Cls]
 
     if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-        assert ser_cls is not None
-        cls = ser_cls
+        assert ser_user_cls is not None
+        cls = ser_user_cls
     else:
         # Load the module dynamically
         module = importlib.import_module(function_def.module_name)
@@ -337,10 +335,19 @@ def import_class_service(
         service_deps = service_function.deps(only_explicit_mounts=True)
         active_app = service_function.app
     else:
-        # Undecorated user class - find all methods
-        method_partials = _find_partial_methods_for_user_cls(cls, _PartialFunctionFlags.all())
-        service_deps = None
-        active_app = None
+        # Undecorated user class (serialized or local scope-decoration)
+        # First make it a Cls
+        service_deps = None  # we can't infer service deps for now
+        active_app = get_active_app_fallback(function_def)
+        class_service_function = modal.Function._new_hydrated(
+            service_function_hydration_data.object_id, client, service_function_hydration_data.function_handle_metadata
+        )
+        cls = modal.cls.Cls.from_local(cls, active_app, class_service_function)
+
+        # ugly - there are required side effects in cls._hydrate_metadata that don't even
+        # make use of the provided metadata...
+        cls._hydrate_metadata(api_pb2.ClassHandleMetadata())
+        method_partials = cls._get_partial_functions()
 
     user_cls_instance = get_user_class_instance(cls, cls_args, cls_kwargs)
 
@@ -351,3 +358,29 @@ def import_class_service(
         # TODO (elias/deven): instead of using method_partials here we should use a set of api_pb2.MethodDefinition
         method_partials,
     )
+
+
+def get_active_app_fallback(function_def: api_pb2.Function) -> _App:
+    # This branch is reached in the special case that the imported function/class is:
+    # 1) not serialized, and
+    # 2) isn't a FunctionHandle - i.e, not decorated at definition time
+    # Look at all instantiated apps - if there is only one with the indicated name, use that one
+    app_name: Optional[str] = function_def.app_name or None  # coalesce protobuf field to None
+    matching_apps = _App._all_apps.get(app_name, [])
+    if len(matching_apps) == 1:
+        active_app: _App = matching_apps[0]
+        return active_app
+
+    if len(matching_apps) > 1:
+        if app_name is not None:
+            warning_sub_message = f"app with the same name ('{app_name}')"
+        else:
+            warning_sub_message = "unnamed app"
+        logger.warning(
+            f"You have more than one {warning_sub_message}. "
+            "It's recommended to name all your Apps uniquely when using multiple apps"
+        )
+
+    # If we don't have an active app, create one on the fly
+    # The app object is used to carry the app layout etc
+    return _App()
