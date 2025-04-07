@@ -881,8 +881,8 @@ class _App:
                         f"Modal class {user_cls.__name__} with a modal batched function cannot have other modal methods."  # noqa
                     )
                 batch_function = next(iter(batch_functions.values()))
-                batch_max_size = batch_function.batch_max_size
-                batch_wait_ms = batch_function.batch_wait_ms
+                batch_max_size = batch_function.params.batch_max_size
+                batch_wait_ms = batch_function.params.batch_wait_ms
             else:
                 batch_max_size = None
                 batch_wait_ms = None
