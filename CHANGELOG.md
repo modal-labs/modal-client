@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.148 (2025-04-07)
+
+- Fixes a bug introduced in 0.73.147 that broke App builds when using `@modal.batched` on a class method.
+
+
+
 ### 0.73.147 (2025-04-07)
 
 - Improved handling of cases where `@modal.concurrent` is stacked with other decorators.
