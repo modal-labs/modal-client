@@ -340,7 +340,10 @@ def import_class_service(
         service_deps = None  # we can't infer service deps for now
         active_app = get_active_app_fallback(function_def)
         class_service_function = modal.Function._new_hydrated(
-            service_function_hydration_data.object_id, client, service_function_hydration_data.function_handle_metadata
+            service_function_hydration_data.object_id,
+            client,
+            service_function_hydration_data.function_handle_metadata,
+            is_another_app=True,
         )
         cls = modal.cls.Cls.from_local(cls, active_app, class_service_function)
 
