@@ -158,9 +158,28 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
                 f"Cannot apply `@modal.{decorator_name}` to a class. Hint: consider applying to a method instead."
             )
 
+        wrapped_object = self.raw_f or self.user_cls
+        if isinstance(wrapped_object, _Function):
+            self.registered = True  # Hacky, avoid false-positive warning
+            raise InvalidError(
+                f"Cannot stack `@modal.{decorator_name}` on top of `@app.function`."
+                " Hint: swap the order of the decorators."
+            )
+        elif isinstance(wrapped_object, _Cls):
+            self.registered = True  # Hacky, avoid false-positive warning
+            raise InvalidError(
+                f"Cannot stack `@modal.{decorator_name}` on top of `@app.cls()`."
+                " Hint: swap the order of the decorators."
+            )
+
         # Run some assertions about a callable wrappee defined by the specific decorator used
         if self.raw_f is not None:
+            if not callable(self.raw_f):
+                self.registered = True  # Hacky, avoid false-positive warning
+                raise InvalidError(f"The object wrapped by `@modal.{decorator_name}` must be callable.")
+
             if require_sync and inspect.iscoroutinefunction(self.raw_f):
+                self.registered = True  # Hacky, avoid false-positive warning
                 raise InvalidError(f"`@modal.{decorator_name}` can't be applied to an async function.")
 
             if require_nullary and callable_has_non_self_params(self.raw_f):
@@ -176,23 +195,6 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
                         "but shouldn't have any parameters - Modal will drop support for "
                         "default parameters in a future release.",
                     )
-
-        wrapped_object = self.raw_f or self.user_cls
-        if isinstance(wrapped_object, _Function):
-            self.registered = True  # Hacky, avoid false-positive warning
-            raise InvalidError(
-                f"Cannot stack `@modal.{decorator_name}` on top of `@app.function`."
-                " Hint: swap the order of the decorators."
-            )
-        elif isinstance(wrapped_object, _Cls):
-            self.registered = True  # Hacky, avoid false-positive warning
-            raise InvalidError(
-                f"Cannot stack `@modal.{decorator_name}` on top of `@app.cls()`."
-                " Hint: swap the order of the decorators."
-            )
-
-        if self.raw_f is not None and not callable(self.raw_f):
-            raise InvalidError(f"The object wrapped by `@modal.{decorator_name}` must be callable.")
 
     def _get_raw_f(self) -> Callable[P, ReturnType]:
         assert self.raw_f is not None
