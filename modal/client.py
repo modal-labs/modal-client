@@ -2,6 +2,7 @@
 import asyncio
 import os
 import platform
+import sys
 import warnings
 from collections.abc import AsyncGenerator, AsyncIterator, Collection, Mapping
 from typing import (
@@ -42,10 +43,13 @@ def _get_metadata(client_type: int, credentials: Optional[tuple[str, str]], vers
         system, release = uname.system, uname.release
     platform_str = "-".join(s.replace("-", "_") for s in (system, release, uname.machine))
 
+    # sys.version_info is structured unlike sys.version or platform.python_version()
+    python_version = "%d.%d.%d" % (sys.version_info.major, sys.version_info.minor, sys.version_info.micro)
+
     metadata = {
         "x-modal-client-version": version,
         "x-modal-client-type": str(client_type),
-        "x-modal-python-version": platform.python_version(),
+        "x-modal-python-version": python_version,
         "x-modal-node": platform.node(),
         "x-modal-platform": platform_str,
     }
