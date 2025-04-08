@@ -156,11 +156,12 @@ async def _map_invocation(
 
         # close queue iterator
         await input_queue.put(None)
+        have_all_inputs = True
         yield
 
     async def pump_inputs():
         assert client.stub
-        nonlocal have_all_inputs, inputs_created, inputs_sent
+        nonlocal inputs_created, inputs_sent
         async for items in queue_batch_iterator(input_queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
             # Add items to the manager. Their state will be SENDING.
             await map_items_manager.add_items(items)
@@ -182,7 +183,6 @@ async def _map_invocation(
                 f"Successfully pushed {len(items)} inputs to server. "
                 f"Num queued inputs awaiting push is {input_queue.qsize()}."
             )
-        have_all_inputs = True
         yield
 
     async def retry_inputs():
