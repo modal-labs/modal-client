@@ -145,14 +145,13 @@ class ImportedClass(Service):
         self, fun_def: api_pb2.Function, container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager"
     ) -> dict[str, "FinalizedFunction"]:
         finalized_functions = {}
-        for method_name, partial in self._partial_functions.items():
-            partial = synchronizer._translate_in(partial)  # ugly
-            user_func = partial.raw_f
+        for method_name, _partial in self._partial_functions.items():
+            user_func = _partial.raw_f
             # Check this property before we turn it into a method (overriden by webhooks)
             is_async = get_is_async(user_func)
             # Use the function definition for whether this is a generator (overriden by webhooks)
-            is_generator = partial.is_generator
-            webhook_config = partial.webhook_config
+            is_generator = _partial.is_generator
+            webhook_config = _partial.webhook_config
 
             bound_func = user_func.__get__(self.user_cls_instance)
 
@@ -179,13 +178,13 @@ class ImportedClass(Service):
         return finalized_functions
 
 
-def get_user_class_instance(cls: modal.cls.Cls, args: tuple, kwargs: dict[str, Any]) -> typing.Any:
+def get_user_class_instance(_cls: modal.cls._Cls, args: tuple, kwargs: dict[str, Any]) -> typing.Any:
     """Returns instance of the underlying class to be used as the `self`
 
     The input `cls` can either be the raw Python class the user has declared ("user class"),
     or an @app.cls-decorated version of it which is a modal.Cls-instance wrapping the user class.
     """
-    assert isinstance(cls, modal.cls.Cls)
+    cls = synchronizer._translate_out(_cls)  # ugly
     modal_obj: modal.cls.Obj = cls(*args, **kwargs)
     modal_obj._entered = True  # ugly but prevents .local() from triggering additional enter-logic
     # TODO: unify lifecycle logic between .local() and container_entrypoint
@@ -303,11 +302,11 @@ def import_class_service(
     """
     active_app: Optional["modal.app._App"]
     service_deps: Optional[Sequence["modal._object._Object"]]
-    cls: typing.Union[type, modal.cls.Cls]
+    cls_or_user_cls: typing.Union[type, modal.cls.Cls]
 
     if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
         assert ser_user_cls is not None
-        cls = ser_user_cls
+        cls_or_user_cls = ser_user_cls
     else:
         # Load the module dynamically
         module = importlib.import_module(function_def.module_name)
@@ -326,35 +325,31 @@ def import_class_service(
 
         assert not function_def.use_method_name  # new "placeholder methods" should not be invoked directly!
         cls_name = parts[0]
-        cls = getattr(module, cls_name)
+        cls_or_user_cls = getattr(module, cls_name)
 
-    class_service_function: _Function
-    service_deps: Optional[Sequence["modal._object._Object"]]
-    active_app: _App
-
-    if isinstance(cls, modal.cls.Cls):
-        _cls = synchronizer._translate_in(cls)
-        class_service_function = _cls._get_class_service_function()
+    if isinstance(cls_or_user_cls, modal.cls.Cls):
+        _cls = synchronizer._translate_in(cls_or_user_cls)
+        class_service_function: _Function = _cls._get_class_service_function()
         service_deps = class_service_function.deps(only_explicit_mounts=True)
         active_app = class_service_function.app
     else:
         # Undecorated user class (serialized or local scope-decoration).
         service_deps = None  # we can't infer service deps for now
         active_app = get_active_app_fallback(function_def)
-        _service_function = modal._functions._Function._new_hydrated(
+        _client: "modal.client._Client" = synchronizer._translate_in(client)
+        _service_function: modal._functions._Function[Any, Any, Any] = modal._functions._Function._new_hydrated(
             service_function_hydration_data.object_id,
-            client,
+            _client,
             service_function_hydration_data.function_handle_metadata,
-            is_another_app=True,  # this skips re-hydrating the function
+            is_another_app=True,  # this skips re-loading the function, which is required since it doesn't have a loader
         )
-        cls = modal.cls.Cls.from_local(cls, active_app, _service_function)
+        _cls = modal.cls._Cls.from_local(cls_or_user_cls, active_app, _service_function)
         # hydration of the class itself - just sets the id and triggers some side effects
         # that transfers metadata from the service function to the class. TODO: cleanup!
-        cls._hydrate(class_id, client, api_pb2.ClassHandleMetadata())
-        _cls = synchronizer._translate_in(cls)  # ugly
+        _cls._hydrate(class_id, _client, api_pb2.ClassHandleMetadata())
 
-    method_partials: dict[str, "modal.partial_function._PartialFunction"] = _cls._get_partial_functions()
-    user_cls_instance = get_user_class_instance(cls, cls_args, cls_kwargs)
+    method_partials: dict[str, "modal._partial_function._PartialFunction"] = _cls._get_partial_functions()
+    user_cls_instance = get_user_class_instance(_cls, cls_args, cls_kwargs)
 
     return ImportedClass(
         user_cls_instance,
