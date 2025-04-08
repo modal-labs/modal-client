@@ -61,11 +61,7 @@ SLEEP_DELAY = 0.1
 blob_upload = synchronize_api(_blob_upload)
 blob_download = synchronize_api(_blob_download)
 
-DEFAULT_APP_LAYOUT = api_pb2.AppLayout(
-    objects=[
-        api_pb2.Object(object_id="im-1"),
-    ],
-)
+DEFAULT_APP_LAYOUT_SENTINEL: Any = object()
 
 
 def _get_inputs(
@@ -196,10 +192,29 @@ def _container_args(
         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
     ),
     app_id: str = "ap-1",
-    app_layout: api_pb2.AppLayout = DEFAULT_APP_LAYOUT,
+    app_layout: api_pb2.AppLayout = DEFAULT_APP_LAYOUT_SENTINEL,
     web_server_port: Optional[int] = None,
     web_server_startup_timeout: Optional[float] = None,
 ):
+    if app_layout is DEFAULT_APP_LAYOUT_SENTINEL:
+        app_layout = api_pb2.AppLayout(
+            objects=[
+                api_pb2.Object(object_id="im-1"),
+                api_pb2.Object(
+                    object_id="fu-123",
+                    function_handle_metadata=api_pb2.FunctionHandleMetadata(
+                        function_name=function_name,
+                    ),
+                ),
+            ],
+            function_ids={function_name: "fu-123"},
+        )
+        if is_class:
+            app_layout.objects.append(
+                api_pb2.Object(object_id="cs-123", class_handle_metadata=api_pb2.ClassHandleMetadata())
+            )
+            app_layout.class_ids[function_name.removesuffix(".*")] = "cs-123"
+
     if webhook_type:
         webhook_config = api_pb2.WebhookConfig(
             type=webhook_type,
@@ -274,7 +289,7 @@ def _run_container(
     class_parameter_info=api_pb2.ClassParameterInfo(
         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
     ),
-    app_layout=DEFAULT_APP_LAYOUT,
+    app_layout=DEFAULT_APP_LAYOUT_SENTINEL,
     web_server_port: Optional[int] = None,
     web_server_startup_timeout: Optional[float] = None,
 ) -> ContainerResult:
@@ -676,7 +691,9 @@ def test_serialized_class_with_parameters(servicer):
                         },
                     ),
                 )
-            ]
+            ],
+            function_ids={"SerializedClassWithParams.*": "fu-123"},
+            class_ids={"SerializedClassWithParams": "cs-123"},
         ),
     )
     assert _unwrap_scalar(ret) == "hello"
@@ -1081,10 +1098,19 @@ def test_cls_web_asgi_construction(servicer):
     app_layout = api_pb2.AppLayout(
         objects=[
             api_pb2.Object(object_id="im-1"),
+            # square function:
             api_pb2.Object(object_id="fu-2", function_handle_metadata=api_pb2.FunctionHandleMetadata()),
+            # class service function:
+            api_pb2.Object(object_id="fu-123", function_handle_metadata=api_pb2.FunctionHandleMetadata()),
+            # class itself:
+            api_pb2.Object(object_id="cs-123", class_handle_metadata=api_pb2.ClassHandleMetadata()),
         ],
         function_ids={
-            "square": "fu-2",
+            "square": "fu-2",  # used to hydrate sibling function
+            "NonParamCls.*": "fu-123",
+        },
+        class_ids={
+            "NonParamCls": "cs-123",
         },
     )
     inputs = _get_web_inputs(method_name="asgi_web")
