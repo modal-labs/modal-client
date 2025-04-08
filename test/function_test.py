@@ -8,7 +8,6 @@ import time
 import typing
 from contextlib import contextmanager
 
-import typing_extensions
 from grpclib import Status
 from synchronicity.exceptions import UserCodeException
 
@@ -1359,18 +1358,17 @@ def test_class_schema_recording(client, servicer):
     )
 
     deploy_app(app)
-    (constructor_arg,) = typing.cast(modal.Cls, F)._get_constructor_args()
+    (constructor_arg,) = modal.cls._get_constructor_args(typing.cast(modal.Cls, F))
     assert constructor_arg.name == "b"
     assert constructor_arg.full_type == api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_STRING)
 
-    method_schemas = typing.cast(modal.Cls, F)._get_method_schemas()
-    typing_extensions.reveal_type(F)
+    method_schemas = modal.cls._get_method_schemas(typing.cast(modal.Cls, F))
     method_schema = F(b="hello").f._get_schema()  # type: ignore  # mypy dataclass_transform bug
 
     assert method_schema == expected_method_schema
     assert method_schemas["f"] == expected_method_schema
 
     # Test lazy lookups
-    assert modal.Cls.from_name("app", "F")._get_method_schemas() == method_schemas
-    (looked_up_construct_arg,) = modal.Cls.from_name("app", "F")._get_constructor_args()
+    assert modal.cls._get_method_schemas(modal.Cls.from_name("app", "F")) == method_schemas
+    (looked_up_construct_arg,) = modal.cls._get_constructor_args(modal.Cls.from_name("app", "F"))
     assert looked_up_construct_arg == constructor_arg
