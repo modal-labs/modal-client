@@ -1550,10 +1550,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return FunctionStats(backlog=resp.backlog, num_total_runners=resp.num_total_tasks)
 
     @live_method
-    async def _get_schema(self) -> Optional[api_pb2.FunctionSchema]:
+    async def _get_schema(self) -> api_pb2.FunctionSchema:
         """Returns recorded schema for function, internal use only for now"""
         assert self._metadata
-        return self._metadata.function_schema if self._metadata.function_schema.schema_version > 0 else None
+        return self._metadata.function_schema
 
     # A bit hacky - but the map-style functions need to not be synchronicity-wrapped
     # in order to not execute their input iterators on the synchronicity event loop.

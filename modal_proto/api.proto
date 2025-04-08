@@ -1714,7 +1714,11 @@ message FunctionRetryPolicy {
 }
 
 message FunctionSchema {
-  int32 schema_version = 1; // 1 | 0 for now, allows easy disambiguation between empty schema and no schema collection
+  enum FunctionSchemaType {
+    FUNCTION_SCHEMA_UNSPECIFIED = 0;
+    FUNCTION_SCHEMA_V1 = 1;
+  }
+  FunctionSchemaType schema_type = 1; // allows easy disambiguation between empty schema and no schema collection etc.
   repeated ClassParameterSpec arguments = 2;
   GenericPayloadType return_type = 3;
 }

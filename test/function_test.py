@@ -1288,7 +1288,7 @@ def test_function_schema_recording(client, servicer):
 
     deploy_app(app, client=client)
     expected_schema = api_pb2.FunctionSchema(
-        schema_version=1,
+        schema_type=api_pb2.FunctionSchema.FUNCTION_SCHEMA_V1,
         arguments=[
             api_pb2.ClassParameterSpec(
                 name="a",
@@ -1338,7 +1338,7 @@ def test_class_schema_recording(client, servicer):
         def f(self, a: int) -> list[str]: ...
 
     expected_method_schema = api_pb2.FunctionSchema(
-        schema_version=1,
+        schema_type=api_pb2.FunctionSchema.FUNCTION_SCHEMA_V1,
         arguments=[
             api_pb2.ClassParameterSpec(
                 name="a",
