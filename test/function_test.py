@@ -1288,3 +1288,103 @@ def test_concurrency_config_migration(client, servicer):
             assert request.function.target_concurrent_inputs == 0
         else:
             raise RuntimeError(f"Unexpected function name: {request.function.function_name}")
+
+
+@pytest.fixture()
+def record_function_schemas(monkeypatch):
+    monkeypatch.setenv("MODAL_FUNCTION_SCHEMAS", "1")
+
+
+@pytest.mark.usefixtures("record_function_schemas", "set_env_client")
+def test_function_schema_recording(client, servicer):
+    app = App("app")
+
+    @app.function(name="f", serialized=True)
+    def f(a: int) -> list[str]: ...
+
+    deploy_app(app, client=client)
+    expected_schema = api_pb2.FunctionSchema(
+        schema_type=api_pb2.FunctionSchema.FUNCTION_SCHEMA_V1,
+        arguments=[
+            api_pb2.ClassParameterSpec(
+                name="a",
+                full_type=api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_INT,
+                ),
+            )
+        ],
+        return_type=api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_LIST,
+            sub_types=[
+                api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_STRING,
+                )
+            ],
+        ),
+    )
+    assert f._get_schema() == expected_schema
+    # test lazy lookup
+    assert Function.from_name("app", "f")._get_schema() == expected_schema
+
+
+@pytest.mark.usefixtures("record_function_schemas", "set_env_client")
+def test_function_schema_excludes_web_endpoints(client, servicer):
+    # for now we exclude web endpoints since they don't use straight-forward arguments
+    # in the same way as regular modal functions
+    app = App("app")
+
+    @app.function(name="f", serialized=True)
+    @modal.fastapi_endpoint()
+    def webbie(query_param: int): ...
+
+    deploy_app(app, client=client)
+    schema = webbie._get_schema()
+    assert schema.schema_type == api_pb2.FunctionSchema.FUNCTION_SCHEMA_UNSPECIFIED
+
+
+@pytest.mark.usefixtures("record_function_schemas", "set_env_client")
+def test_class_schema_recording(client, servicer):
+    app = App("app")
+
+    @app.cls(serialized=True)
+    class F:
+        b: str = modal.parameter()
+
+        @modal.method()
+        def f(self, a: int) -> list[str]: ...
+
+    expected_method_schema = api_pb2.FunctionSchema(
+        schema_type=api_pb2.FunctionSchema.FUNCTION_SCHEMA_V1,
+        arguments=[
+            api_pb2.ClassParameterSpec(
+                name="a",
+                full_type=api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_INT,
+                ),
+            )
+        ],
+        return_type=api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_LIST,
+            sub_types=[
+                api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_STRING,
+                )
+            ],
+        ),
+    )
+
+    deploy_app(app)
+    (constructor_arg,) = modal.cls._get_constructor_args(typing.cast(modal.Cls, F))
+    assert constructor_arg.name == "b"
+    assert constructor_arg.full_type == api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_STRING)
+
+    method_schemas = modal.cls._get_method_schemas(typing.cast(modal.Cls, F))
+    method_schema = F(b="hello").f._get_schema()  # type: ignore  # mypy dataclass_transform bug
+
+    assert method_schema == expected_method_schema
+    assert method_schemas["f"] == expected_method_schema
+
+    # Test lazy lookups
+    assert modal.cls._get_method_schemas(modal.Cls.from_name("app", "F")) == method_schemas
+    (looked_up_construct_arg,) = modal.cls._get_constructor_args(modal.Cls.from_name("app", "F"))
+    assert looked_up_construct_arg == constructor_arg

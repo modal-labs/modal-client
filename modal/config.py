@@ -231,6 +231,7 @@ _SETTINGS = {
     "strict_parameters": _Setting(False, transform=_to_boolean),  # For internal/experimental use
     "snapshot_debug": _Setting(False, transform=_to_boolean),
     "cuda_checkpoint_path": _Setting("/__modal/.bin/cuda-checkpoint"),  # Used for snapshotting GPU memory.
+    "function_schemas": _Setting(False, transform=_to_boolean),
 }
 
 
