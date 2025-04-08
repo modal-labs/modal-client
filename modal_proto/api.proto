@@ -2894,18 +2894,18 @@ message VolumePutFiles2Request {
     // The total size of the file, in bytes.
     uint64 size = 2;
 
-    // SHA-256 checksum of each 8MiB chunk of the file's contents, in binary
+    // SHA-256 checksum of each 8MiB block of the file's contents, in binary
     // (ie 32 raw bytes) format for compactness.
-    repeated bytes chunks_sha256 = 3;
+    repeated bytes blocks_sha256 = 3;
 
     // The last time the client called `VolumePutFiles2` for this file, it was
-    // told that some chunks were missing. This field contains information
-    // about the client having uploaded those missing chunks.
-    repeated NewChunk new_chunks = 4;
+    // told that some blocks were missing. This field contains information
+    // about the client having uploaded those missing blocks.
+    repeated NewBlock new_blocks = 4;
   }
 
-  message NewChunk {
-    // The index of the chunk, ie. offset into the file in units of 8MiB.
+  message NewBlock {
+    // The index of the block, ie. offset into the file in units of 8MiB.
     uint64 index = 1;
 
     // The raw bytes of the body that was returned from the HTTP PUT request
@@ -2919,25 +2919,25 @@ message VolumePutFiles2Response {
   // Id from the original `VolumePutFiles2Request`
   string volume_id = 1;
 
-  // Chunks that are currently missing in the volume, because the file did not
-  // exist, or because the chunk checksum from `chunks_sha256` in the request
+  // Blocks that are currently missing in the volume, because the file did not
+  // exist, or because the block checksum from `blocks_sha256` in the request
   // did not match the current contents of the file.
   //
-  // Values will be returned sorted by `(file_index, chunk_index)`.
+  // Values will be returned sorted by `(file_index, block_index)`.
   //
   // If this field is empty, it means that the files were uploaded successfully
   // and/or that the request was an idempotent no-op.
-  repeated MissingChunk missing_chunks = 2;
+  repeated MissingBlock missing_blocks = 2;
 
-  message MissingChunk {
+  message MissingBlock {
     // Index of the file in the original `files` field of the request.
     uint64 file_index = 1;
 
-    // The index of the chunk in the original
-    // `files[file_index].chunks_sha256`.
-    uint64 chunk_index = 2;
+    // The index of the block in the original
+    // `files[file_index].blocks_sha256`.
+    uint64 block_index = 2;
 
-    // Make a HTTP PUT request to this endpoint with the chunks' contents as
+    // Make a HTTP PUT request to this endpoint with the blocks' contents as
     // the body.
     string put_url = 3;
   }
