@@ -529,10 +529,11 @@ def signature_to_parameter_specs(signature: inspect.Signature) -> list[api_pb2.C
 
 
 def get_callable_schema(
-    callable: typing.Callable, ignore_first_argument: bool = False
+    callable: typing.Callable, *, is_web_endpoint: bool, ignore_first_argument: bool = False
 ) -> typing.Optional[api_pb2.FunctionSchema]:
     # ignore_first_argument can be used in case of unbound methods where we want to ignore the first (self) argument
-    if not config.get("function_schemas"):
+    if is_web_endpoint or not config.get("function_schemas"):
+        # we don't support schemas on web endpoints for now
         return None
 
     sig = inspect.signature(callable)

@@ -650,11 +650,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             for method_name, partial_function in partial_functions.items():
                 function_type = get_function_type(partial_function.is_generator)
                 function_name = f"{info.user_cls.__name__}.{method_name}"
-
-                if not partial_function._is_web_endpoint():
-                    method_schema = get_callable_schema(partial_function.raw_f, ignore_first_argument=True)
-                else:
-                    method_schema = None
+                method_schema = get_callable_schema(
+                    partial_function.raw_f,
+                    is_web_endpoint=partial_function._is_web_endpoint(),
+                    ignore_first_argument=True,
+                )
 
                 method_definition = api_pb2.MethodDefinition(
                     webhook_config=partial_function.webhook_config,
@@ -702,7 +702,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_name=info.function_name,
                 function_type=function_type,
                 existing_function_id=existing_object_id or "",
-                function_schema=get_callable_schema(info.raw_f) if info.raw_f and not webhook_config else None,
+                function_schema=get_callable_schema(info.raw_f, is_web_endpoint=bool(webhook_config))
+                if info.raw_f
+                else None,
             )
             if method_definitions:
                 for method_name, method_definition in method_definitions.items():
@@ -771,8 +773,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     object_dependencies.append(api_pb2.ObjectDependency(object_id=dep.object_id))
 
                 function_data: Optional[api_pb2.FunctionData] = None
-                function_definition: Optional[api_pb2.Function] = None
-                function_schema = get_callable_schema(info.raw_f) if info.raw_f and not webhook_config else None
+                function_schema = (
+                    get_callable_schema(info.raw_f, is_web_endpoint=bool(webhook_config)) if info.raw_f else None
+                )
                 # Create function remotely
                 function_definition = api_pb2.Function(
                     module_name=info.module_name or "",
