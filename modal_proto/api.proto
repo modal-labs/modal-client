@@ -2880,11 +2880,17 @@ message VolumeMount {
 }
 
 message VolumePutFiles2Request {
-  // Id of volume to put files into.
-  string volume_id = 1;
-
   // List of files, sorted lexicographically by `path`.
-  repeated File files = 2;
+  repeated File files = 1;
+
+  // The last time the client called `VolumePutFiles2` for this file, it was
+  // told that some blocks were missing. This field contains information
+  // about the client having uploaded those missing blocks.
+  repeated NewBlock new_blocks = 2;
+
+  // If set to true, prevent overwriting existing files. (Note that we don't
+  // allow overwriting existing directories with uploaded files regardless.)
+  bool disallow_overwrite_existing_files = 3;
 
   message File {
     // Destination path of the file to be uploaded, including any parent dirs
@@ -2897,28 +2903,23 @@ message VolumePutFiles2Request {
     // SHA-256 checksum of each 8MiB block of the file's contents, in binary
     // (ie 32 raw bytes) format for compactness.
     repeated bytes blocks_sha256 = 3;
-
-    // The last time the client called `VolumePutFiles2` for this file, it was
-    // told that some blocks were missing. This field contains information
-    // about the client having uploaded those missing blocks.
-    repeated NewBlock new_blocks = 4;
   }
 
   message NewBlock {
-    // The index of the block, ie. offset into the file in units of 8MiB.
-    uint64 index = 1;
+    // Index of the file in the `files` field.
+    uint64 file_index = 1;
+
+    // The index of the block in `files[file_index].blocks_sha256`.
+    uint64 block_index = 2;
 
     // The raw bytes of the body that was returned from the HTTP PUT request
     // when the client made a request for the `put_url` returned in the
     // previous `VolumePutFiles2Response`.
-    bytes put_response = 2;
+    bytes put_response = 3;
   }
 }
 
 message VolumePutFiles2Response {
-  // Id from the original `VolumePutFiles2Request`
-  string volume_id = 1;
-
   // Blocks that are currently missing in the volume, because the file did not
   // exist, or because the block checksum from `blocks_sha256` in the request
   // did not match the current contents of the file.
@@ -2927,7 +2928,7 @@ message VolumePutFiles2Response {
   //
   // If this field is empty, it means that the files were uploaded successfully
   // and/or that the request was an idempotent no-op.
-  repeated MissingBlock missing_blocks = 2;
+  repeated MissingBlock missing_blocks = 1;
 
   message MissingBlock {
     // Index of the file in the original `files` field of the request.
