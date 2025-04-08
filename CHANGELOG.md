@@ -12,6 +12,39 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.148 (2025-04-07)
+
+- Fixes a bug introduced in 0.73.147 that broke App builds when using `@modal.batched` on a class method.
+
+
+
+### 0.73.147 (2025-04-07)
+
+- Improved handling of cases where `@modal.concurrent` is stacked with other decorators.
+
+
+
+### 0.73.144 (2025-04-04)
+
+- Adds a `context_dir` parameter to `modal.Image.from_dockerfile` and `modal.Image.dockerfile_commands`. This parameter can be used to provide a local reference for relative COPY commands.
+
+
+
+### 0.73.139 (2025-04-02)
+
+- Added `modal.experimental.ipython` module, which can be loaded in Jupyter notebooks with `%load_ext modal.experimental.ipython`. Currently it provides the `%modal` line magic for looking up functions:
+
+  ```python
+  %modal from main/my-app import my_function, MyClass as Foo
+
+  # Now you can use my_function() and Foo in your notebook.
+  my_function.remote()
+  Foo().my_method.remote()
+  ```
+- Removed the legacy `modal.extensions.ipython` module from 2022.
+
+
+
 ### 0.73.135 (2025-03-29)
 
 * Fix shutdown race bug that emitted spurious error-level logs.
@@ -35,7 +68,9 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 - Adds a new "commit info" column to the `modal app history` command. It shows the short git hash at the time of deployment, with an asterisk `*` if the repository had uncommitted changes.
 
+### 0.73.119 (2025-03-21)
 
+- Class parameters are no longer automatically cast into their declared type. If the wrong type is provided to a class parameter, method calls to that class instance will now fail with an exception.
 
 ### 0.73.115 (2025-03-19)
 

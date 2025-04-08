@@ -1620,6 +1620,7 @@ message FunctionMapResponse {
   FunctionRetryPolicy retry_policy = 3;
   string function_call_jwt = 4;
   bool sync_client_retries_enabled = 5;
+  uint32 max_inputs_outstanding = 6;
 }
 
 message FunctionOptions {
@@ -2888,6 +2889,7 @@ message VolumeMount {
   string volume_id = 1;
   string mount_path = 2;
   bool allow_background_commits = 3;
+  bool read_only = 4;
 }
 
 message VolumePutFilesRequest {

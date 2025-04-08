@@ -33,7 +33,8 @@ def reset_state():
         retry_policy=retry_policy,
         function_call_invocation_type=api_pb2.FunctionCallInvocationType.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
         retry_queue=retry_queue,
-        sync_client_retries_enabled=True
+        sync_client_retries_enabled=True,
+        max_inputs_outstanding=1000
     )
 
 
@@ -214,6 +215,7 @@ async def test_get_outputs_completes_before_put_inputs():
         function_call_invocation_type=api_pb2.FunctionCallInvocationType.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
         retry_queue=retry_queue,
         sync_client_retries_enabled=True,
+        max_inputs_outstanding=1000,
     )
     # pump_inputs - retry_count 0 - send request
     await add_items()
