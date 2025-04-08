@@ -1339,7 +1339,7 @@ def test_function_schema_excludes_web_endpoints(client, servicer):
 
     deploy_app(app, client=client)
     schema = webbie._get_schema()
-    assert schema is None
+    assert schema.schema_type == api_pb2.FunctionSchema.FUNCTION_SCHEMA_UNSPECIFIED
 
 
 @pytest.mark.usefixtures("record_function_schemas", "set_env_client")
