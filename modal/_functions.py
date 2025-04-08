@@ -653,7 +653,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_type = get_function_type(partial_function.params.is_generator)
                 function_name = f"{info.user_cls.__name__}.{method_name}"
                 method_schema = get_callable_schema(
-                    partial_function.raw_f,
+                    partial_function._get_raw_f(),
                     is_web_endpoint=partial_function._is_web_endpoint(),
                     ignore_first_argument=True,
                 )
