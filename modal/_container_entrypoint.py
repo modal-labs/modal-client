@@ -8,7 +8,6 @@ from modal._runtime.user_code_imports import (
     import_class_service,
     import_single_function_service,
 )
-from modal.functions import Function
 
 telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
 if telemetry_socket:
@@ -410,22 +409,20 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 
             service_function_hydration_data: Optional[api_pb2.Object] = None
 
-            for app_object in container_args.app_layout.objects:
-                if not Function._is_id_type(app_object.object_id):
-                    continue
-                # this is a bit ugly - match the function based on function name since
-                # the function def doesn't have the function id
-                if app_object.function_handle_metadata.function_name == function_def.function_name:
-                    assert service_function_hydration_data is None  # should be only one
-                    service_function_hydration_data = app_object
-                    break
-            else:
-                raise InvalidError("No service function metadata found")
-
             if function_def.is_class:
+                # this is a bit ugly - match the function and class based on function name to get metadata
+                # This metadata is required in order to hydrate the class in case it's not globally
+                # decorated (or serialized)
+                service_base_function_id = container_args.app_layout.function_ids[function_def.function_name]
+                service_function_hydration_data = [
+                    o for o in container_args.app_layout.objects if o.object_id == service_base_function_id
+                ][0]
+                class_id = container_args.app_layout.class_ids[function_def.function_name.removesuffix(".*")]
+
                 service = import_class_service(
                     function_def,
                     service_function_hydration_data,
+                    class_id,
                     client,
                     ser_usr_cls,
                     param_args,
@@ -434,7 +431,6 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             else:
                 service = import_single_function_service(
                     function_def,
-                    service_function_hydration_data,
                     ser_usr_cls,
                     ser_fun,
                     param_args,

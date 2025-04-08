@@ -290,6 +290,7 @@ def import_single_function_service(
 def import_class_service(
     function_def: api_pb2.Function,
     service_function_hydration_data: api_pb2.Object,
+    class_id: str,
     client: "modal.client.Client",
     ser_user_cls: Optional[type],
     cls_args,
@@ -327,31 +328,32 @@ def import_class_service(
         cls_name = parts[0]
         cls = getattr(module, cls_name)
 
+    class_service_function: _Function
+    service_deps: Optional[Sequence["modal._object._Object"]]
+    active_app: _App
+
     if isinstance(cls, modal.cls.Cls):
-        # The cls decorator is in global scope
         _cls = synchronizer._translate_in(cls)
-        method_partials = _cls._get_partial_functions()
-        service_function: _Function = _cls._class_service_function
-        service_deps = service_function.deps(only_explicit_mounts=True)
-        active_app = service_function.app
+        class_service_function = _cls._get_class_service_function()
+        service_deps = class_service_function.deps(only_explicit_mounts=True)
+        active_app = class_service_function.app
     else:
-        # Undecorated user class (serialized or local scope-decoration)
-        # First make it a Cls
+        # Undecorated user class (serialized or local scope-decoration).
         service_deps = None  # we can't infer service deps for now
         active_app = get_active_app_fallback(function_def)
-        class_service_function = modal.Function._new_hydrated(
+        _service_function = modal._functions._Function._new_hydrated(
             service_function_hydration_data.object_id,
             client,
             service_function_hydration_data.function_handle_metadata,
-            is_another_app=True,
+            is_another_app=True,  # this skips re-hydrating the function
         )
-        cls = modal.cls.Cls.from_local(cls, active_app, class_service_function)
+        cls = modal.cls.Cls.from_local(cls, active_app, _service_function)
+        # hydration of the class itself - just sets the id and triggers some side effects
+        # that transfers metadata from the service function to the class. TODO: cleanup!
+        cls._hydrate(class_id, client, api_pb2.ClassHandleMetadata())
+        _cls = synchronizer._translate_in(cls)  # ugly
 
-        # ugly - there are required side effects in cls._hydrate_metadata that don't even
-        # make use of the provided metadata...
-        cls._hydrate_metadata(api_pb2.ClassHandleMetadata())
-        method_partials = cls._get_partial_functions()
-
+    method_partials: dict[str, "modal.partial_function._PartialFunction"] = _cls._get_partial_functions()
     user_cls_instance = get_user_class_instance(cls, cls_args, cls_kwargs)
 
     return ImportedClass(
