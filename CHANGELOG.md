@@ -12,6 +12,24 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.148 (2025-04-07)
+
+- Fixes a bug introduced in 0.73.147 that broke App builds when using `@modal.batched` on a class method.
+
+
+
+### 0.73.147 (2025-04-07)
+
+- Improved handling of cases where `@modal.concurrent` is stacked with other decorators.
+
+
+
+### 0.73.144 (2025-04-04)
+
+- Adds a `context_dir` parameter to `modal.Image.from_dockerfile` and `modal.Image.dockerfile_commands`. This parameter can be used to provide a local reference for relative COPY commands.
+
+
+
 ### 0.73.139 (2025-04-02)
 
 - Added `modal.experimental.ipython` module, which can be loaded in Jupyter notebooks with `%load_ext modal.experimental.ipython`. Currently it provides the `%modal` line magic for looking up functions:

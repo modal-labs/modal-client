@@ -150,8 +150,8 @@ class ImportedClass(Service):
             # Check this property before we turn it into a method (overriden by webhooks)
             is_async = get_is_async(user_func)
             # Use the function definition for whether this is a generator (overriden by webhooks)
-            is_generator = _partial.is_generator
-            webhook_config = _partial.webhook_config
+            is_generator = _partial.params.is_generator
+            webhook_config = _partial.params.webhook_config
 
             bound_func = user_func.__get__(self.user_cls_instance)
 
