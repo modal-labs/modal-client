@@ -2893,12 +2893,15 @@ message VolumeMount {
 }
 
 message VolumePutFiles2Request {
+  // The ID of the volume to put/upload files into.
+  string volume_id = 1;
+
   // List of files to put/upload.
-  repeated File files = 1;
+  repeated File files = 2;
 
   // If set to true, prevent overwriting existing files. (Note that we don't
   // allow overwriting existing directories with uploaded files regardless.)
-  bool disallow_overwrite_existing_files = 2;
+  bool disallow_overwrite_existing_files = 3;
 
   message File {
     // Destination path of the file to be uploaded, including any parent dirs
