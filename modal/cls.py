@@ -225,7 +225,7 @@ class _Obj:
 
         # user cls instances are only created locally, so we have all partial functions available
         instance_methods = {}
-        for method_name in _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.FUNCTION):
+        for method_name in _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.interface_flags()):
             instance_methods[method_name] = getattr(self, method_name)
 
         user_cls_instance._modal_functions = instance_methods
@@ -493,22 +493,26 @@ class _Cls(_Object, type_prefix="cs"):
         _Cls.validate_construction_mechanism(user_cls)
 
         method_partials: dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
-            user_cls, _PartialFunctionFlags.FUNCTION
+            user_cls, _PartialFunctionFlags.interface_flags()
         )
 
         for method_name, partial_function in method_partials.items():
-            if partial_function.webhook_config is not None:
+            if partial_function.params.webhook_config is not None:
                 full_name = f"{user_cls.__name__}.{method_name}"
                 app._web_endpoints.append(full_name)
-            partial_function.wrapped = True
+            partial_function.registered = True
 
         # Disable the warning that lifecycle methods are not wrapped
-        for partial_function in _find_partial_methods_for_user_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():
-            partial_function.wrapped = True
+        for partial_function in _find_partial_methods_for_user_cls(
+            user_cls, ~_PartialFunctionFlags.interface_flags()
+        ).values():
+            partial_function.registered = True
 
         # Get all callables
         callables: dict[str, Callable] = {
-            k: pf.raw_f for k, pf in _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.all()).items()
+            k: pf.raw_f
+            for k, pf in _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.all()).items()
+            if pf.raw_f is not None  # Should be true for _find_partial_methods output, but hard to annotate
         }
 
         def _deps() -> list[_Function]:
@@ -731,6 +735,28 @@ class _Cls(_Object, type_prefix="cs"):
 
 
 Cls = synchronize_api(_Cls)
+
+
+@synchronize_api
+async def _get_constructor_args(cls: _Cls) -> typing.Sequence[api_pb2.ClassParameterSpec]:
+    # for internal use only - defined separately to not clutter Cls namespace
+    await cls.hydrate()
+    service_function = cls._get_class_service_function()
+    metadata = service_function._metadata
+    assert metadata
+    if metadata.class_parameter_info.format != metadata.class_parameter_info.PARAM_SERIALIZATION_FORMAT_PROTO:
+        raise InvalidError("Can only get constructor args for strictly parameterized classes")
+    return metadata.class_parameter_info.schema
+
+
+@synchronize_api
+async def _get_method_schemas(cls: _Cls) -> dict[str, api_pb2.FunctionSchema]:
+    # for internal use only - defined separately to not clutter Cls namespace
+    await cls.hydrate()
+    assert cls._method_metadata
+    return {
+        method_name: method_metadata.function_schema for method_name, method_metadata in cls._method_metadata.items()
+    }
 
 
 class _NO_DEFAULT:

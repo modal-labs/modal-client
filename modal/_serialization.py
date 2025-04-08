@@ -12,7 +12,7 @@ from modal_proto import api_pb2
 from ._object import _Object
 from ._type_manager import parameter_serde_registry, schema_registry
 from ._vendor import cloudpickle
-from .config import logger
+from .config import config, logger
 from .exception import DeserializationError, ExecutionError, InvalidError
 from .object import Object
 
@@ -529,9 +529,13 @@ def signature_to_parameter_specs(signature: inspect.Signature) -> list[api_pb2.C
 
 
 def get_callable_schema(
-    callable: typing.Callable, ignore_first_argument: bool = False
+    callable: typing.Callable, *, is_web_endpoint: bool, ignore_first_argument: bool = False
 ) -> typing.Optional[api_pb2.FunctionSchema]:
     # ignore_first_argument can be used in case of unbound methods where we want to ignore the first (self) argument
+    if is_web_endpoint or not config.get("function_schemas"):
+        # we don't support schemas on web endpoints for now
+        return None
+
     sig = inspect.signature(callable)
     # TODO: treat no return value annotation as None return?
     return_type_proto = schema_registry.get_proto_generic_type(sig.return_annotation)
@@ -543,7 +547,7 @@ def get_callable_schema(
         arguments.append(_signature_parameter_to_spec(p))
 
     return api_pb2.FunctionSchema(
-        schema_version=1,
+        schema_type=api_pb2.FunctionSchema.FUNCTION_SCHEMA_V1,
         arguments=arguments,
         return_type=return_type_proto,
     )

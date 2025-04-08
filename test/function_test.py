@@ -8,7 +8,6 @@ import time
 import typing
 from contextlib import contextmanager
 
-import typing_extensions
 from grpclib import Status
 from synchronicity.exceptions import UserCodeException
 
@@ -1246,7 +1245,23 @@ def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, c
     assert not [r for r in caplog.records if r.levelno == logging.WARNING]
 
 
-def test_concurrency_migration(client, servicer):
+def test_batching_config(client, servicer):
+    from test.supports.batching_config import CONFIG_VALS, app
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            pass
+
+    function_create_requests = ctx.get_requests("FunctionCreate")
+    for request in function_create_requests:
+        if request.function.function_name in {"has_batch_config", "HasBatchConfig.*"}:
+            assert request.function.batch_max_size == CONFIG_VALS["MAX_SIZE"]
+            assert request.function.batch_linger_ms == CONFIG_VALS["WAIT_MS"]
+        else:
+            raise RuntimeError(f"Unexpected function name: {request.function.function_name}")
+
+
+def test_concurrency_config_migration(client, servicer):
     from test.supports.concurrency_config import CONFIG_VALS, app
 
     with servicer.intercept() as ctx:
@@ -1275,6 +1290,11 @@ def test_concurrency_migration(client, servicer):
             raise RuntimeError(f"Unexpected function name: {request.function.function_name}")
 
 
+@pytest.fixture()
+def record_function_schemas(monkeypatch):
+    monkeypatch.setenv("MODAL_FUNCTION_SCHEMAS", "1")
+
+
 @pytest.mark.usefixtures("record_function_schemas", "set_env_client")
 def test_function_schema_recording(client, servicer):
     app = App("app")
@@ -1284,7 +1304,7 @@ def test_function_schema_recording(client, servicer):
 
     deploy_app(app, client=client)
     expected_schema = api_pb2.FunctionSchema(
-        schema_version=1,
+        schema_type=api_pb2.FunctionSchema.FUNCTION_SCHEMA_V1,
         arguments=[
             api_pb2.ClassParameterSpec(
                 name="a",
@@ -1319,7 +1339,7 @@ def test_function_schema_excludes_web_endpoints(client, servicer):
 
     deploy_app(app, client=client)
     schema = webbie._get_schema()
-    assert schema is None
+    assert schema.schema_type == api_pb2.FunctionSchema.FUNCTION_SCHEMA_UNSPECIFIED
 
 
 @pytest.mark.usefixtures("record_function_schemas", "set_env_client")
@@ -1334,7 +1354,7 @@ def test_class_schema_recording(client, servicer):
         def f(self, a: int) -> list[str]: ...
 
     expected_method_schema = api_pb2.FunctionSchema(
-        schema_version=1,
+        schema_type=api_pb2.FunctionSchema.FUNCTION_SCHEMA_V1,
         arguments=[
             api_pb2.ClassParameterSpec(
                 name="a",
@@ -1354,18 +1374,17 @@ def test_class_schema_recording(client, servicer):
     )
 
     deploy_app(app)
-    (constructor_arg,) = typing.cast(modal.Cls, F)._get_constructor_args()
+    (constructor_arg,) = modal.cls._get_constructor_args(typing.cast(modal.Cls, F))
     assert constructor_arg.name == "b"
     assert constructor_arg.full_type == api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_STRING)
 
-    method_schemas = typing.cast(modal.Cls, F)._get_method_schemas()
-    typing_extensions.reveal_type(F)
+    method_schemas = modal.cls._get_method_schemas(typing.cast(modal.Cls, F))
     method_schema = F(b="hello").f._get_schema()  # type: ignore  # mypy dataclass_transform bug
 
     assert method_schema == expected_method_schema
     assert method_schemas["f"] == expected_method_schema
 
     # Test lazy lookups
-    assert modal.Cls.from_name("app", "F")._get_method_schemas() == method_schemas
-    (looked_up_construct_arg,) = modal.Cls.from_name("app", "F")._get_constructor_args()
+    assert modal.cls._get_method_schemas(modal.Cls.from_name("app", "F")) == method_schemas
+    (looked_up_construct_arg,) = modal.cls._get_constructor_args(modal.Cls.from_name("app", "F"))
     assert looked_up_construct_arg == constructor_arg

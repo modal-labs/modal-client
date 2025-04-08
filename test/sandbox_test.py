@@ -285,6 +285,7 @@ def test_sandbox_exec(app, servicer):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("bash", "-c", "while read line; do echo $line; done")
+    assert str(cp) == "ContainerProcess(process_id='container_exec_id')"
 
     cp.stdin.write(b"foo\n")
     cp.stdin.write(b"bar\n")

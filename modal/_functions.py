@@ -566,7 +566,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     network_file_systems=network_file_systems,
                     volumes=volumes,
                     memory=memory,
-                    timeout=pf.build_timeout,
+                    timeout=pf.params.build_timeout,
                     cpu=cpu,
                     ephemeral_disk=ephemeral_disk,
                     is_builder_function=True,
@@ -577,7 +577,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 image = _Image._from_args(
                     base_images={"base": image},
                     build_function=snapshot_function,
-                    force_build=image.force_build or pf.force_build,
+                    force_build=image.force_build or bool(pf.params.force_build),
                 )
 
         # Note that we also do these checks in FunctionCreate; could drop them here
@@ -646,18 +646,20 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         if info.user_cls:
             method_definitions = {}
-            partial_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.FUNCTION)
-            for method_name, partial_function in partial_functions.items():
-                function_type = get_function_type(partial_function.is_generator)
+            interface_methods = _find_partial_methods_for_user_cls(
+                info.user_cls, _PartialFunctionFlags.interface_flags()
+            )
+            for method_name, partial_function in interface_methods.items():
+                function_type = get_function_type(partial_function.params.is_generator)
                 function_name = f"{info.user_cls.__name__}.{method_name}"
-
-                if config.get("function_schemas") and not partial_function._is_web_endpoint():
-                    method_schema = get_callable_schema(partial_function.raw_f, ignore_first_argument=True)
-                else:
-                    method_schema = None
+                method_schema = get_callable_schema(
+                    partial_function._get_raw_f(),
+                    is_web_endpoint=partial_function._is_web_endpoint(),
+                    ignore_first_argument=True,
+                )
 
                 method_definition = api_pb2.MethodDefinition(
-                    webhook_config=partial_function.webhook_config,
+                    webhook_config=partial_function.params.webhook_config,
                     function_type=function_type,
                     function_name=function_name,
                     function_schema=method_schema,
@@ -697,8 +699,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             assert resolver.client and resolver.client.stub
 
             assert resolver.app_id
-            if config.get("function_schemas") and info.raw_f and not webhook_config:
-                function_schema = get_callable_schema(info.raw_f)
+            if config.get("function_schemas") and info.raw_f:
+                function_schema = get_callable_schema(info.raw_f, is_web_endpoint=bool(webhook_config))
             else:
                 function_schema = None
 
@@ -776,11 +778,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     object_dependencies.append(api_pb2.ObjectDependency(object_id=dep.object_id))
 
                 function_data: Optional[api_pb2.FunctionData] = None
-                function_definition: Optional[api_pb2.Function] = None
-                if config.get("function_schemas") and info.raw_f and not webhook_config:
-                    function_schema = get_callable_schema(info.raw_f)
-                else:
-                    function_schema = None
+                function_schema = (
+                    get_callable_schema(info.raw_f, is_web_endpoint=bool(webhook_config)) if info.raw_f else None
+                )
                 # Create function remotely
                 function_definition = api_pb2.Function(
                     module_name=info.module_name or "",
@@ -1558,10 +1558,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return FunctionStats(backlog=resp.backlog, num_total_runners=resp.num_total_tasks)
 
     @live_method
-    async def _get_schema(self) -> Optional[api_pb2.FunctionSchema]:
+    async def _get_schema(self) -> api_pb2.FunctionSchema:
         """Returns recorded schema for function, internal use only for now"""
         assert self._metadata
-        return self._metadata.function_schema if self._metadata.function_schema.schema_version > 0 else None
+        return self._metadata.function_schema
 
     # A bit hacky - but the map-style functions need to not be synchronicity-wrapped
     # in order to not execute their input iterators on the synchronicity event loop.
