@@ -800,7 +800,10 @@ message ContainerExecPutInputRequest {
 message ContainerExecRequest {
   string task_id = 1;
   repeated string command = 2;
-  PTYInfo pty_info = 3;
+  // If pty_info is provided, open a PTY, but also this container exec is treated an
+  // "interactive shell" request, and it will be terminated if messages are not periodically
+  // sent on the stdin stream on some interval (currently 40 seconds).
+  optional PTYInfo pty_info = 3;
   // Send SIGTERM to running container on exit of exec command.
   bool terminate_container_on_exit = 4 [deprecated=true];
   bool runtime_debug = 5; // For internal debugging use only.
