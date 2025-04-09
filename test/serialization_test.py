@@ -137,7 +137,7 @@ def test_schema_extraction_unknown(record_function_schemas):
 
     for func in [with_empty, with_any, with_custom]:
         print(func.__name__)
-        fields = list(get_callable_schema(func).arguments)
+        fields = list(get_callable_schema(func, is_web_endpoint=False).arguments)
         assert fields == [
             api_pb2.ClassParameterSpec(
                 name="a",
@@ -148,7 +148,7 @@ def test_schema_extraction_unknown(record_function_schemas):
 
     def with_default(a=5): ...
 
-    fields = list(get_callable_schema(with_default).arguments)
+    fields = list(get_callable_schema(with_default, is_web_endpoint=False).arguments)
     assert fields == [
         api_pb2.ClassParameterSpec(
             name="a", full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN), has_default=True
@@ -198,12 +198,13 @@ def test_schema_extraction_bytes():
     )
 
 
+@pytest.mark.usefixtures("record_function_schemas")
 def test_schema_extraction_list():
     def new_f(simple_list: list[int]): ...
     def old_f(simple_list: typing.List[int]): ...
 
     for f in [new_f, old_f]:
-        (list_spec,) = get_callable_schema(f).arguments
+        (list_spec,) = get_callable_schema(f, is_web_endpoint=False).arguments
         assert list_spec == api_pb2.ClassParameterSpec(
             name="simple_list",
             full_type=api_pb2.GenericPayloadType(
@@ -214,10 +215,11 @@ def test_schema_extraction_list():
         )
 
 
+@pytest.mark.usefixtures("record_function_schemas")
 def test_schema_extraction_nested_list():
     def f(nested_list: list[list[bytes]]): ...
 
-    (list_spec,) = get_callable_schema(f).arguments
+    (list_spec,) = get_callable_schema(f, is_web_endpoint=False).arguments
     assert list_spec == api_pb2.ClassParameterSpec(
         name="nested_list",
         full_type=api_pb2.GenericPayloadType(
@@ -233,10 +235,11 @@ def test_schema_extraction_nested_list():
     )
 
 
+@pytest.mark.usefixtures("record_function_schemas")
 def test_schema_extraction_nested_dict():
     def f(nested_dict: dict[str, dict[str, bytes]] = {}): ...
 
-    (dict_spec,) = get_callable_schema(f).arguments
+    (dict_spec,) = get_callable_schema(f, is_web_endpoint=False).arguments
     assert dict_spec == api_pb2.ClassParameterSpec(
         name="nested_dict",
         full_type=api_pb2.GenericPayloadType(
@@ -258,10 +261,11 @@ def test_schema_extraction_nested_dict():
     )
 
 
+@pytest.mark.usefixtures("record_function_schemas")
 def test_schema_extraction_dict_with_non_str_key_is_unknown():
     def f(dct: dict): ...
 
-    (dict_spec,) = get_callable_schema(f).arguments
+    (dict_spec,) = get_callable_schema(f, is_web_endpoint=False).arguments
     print(dict_spec)
     assert dict_spec == api_pb2.ClassParameterSpec(
         name="dct",
