@@ -598,7 +598,6 @@ class _App:
         scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         name: Optional[str] = None,  # Sets the Modal name of the function within the app
         is_generator: Optional[
@@ -625,6 +624,7 @@ class _App:
         keep_warm: Optional[int] = None,  # Replaced with `min_containers`
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
+        allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
     ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal [Function](/docs/reference/modal.Function) with this App."""
@@ -636,6 +636,14 @@ class _App:
 
         if image is None:
             image = self._get_default_image()
+
+        if allow_concurrent_inputs is not None:
+            deprecation_warning(
+                (2025, 4, 9),
+                "The `allow_concurrent_inputs` parameter is deprecated."
+                " Please use the `@modal.concurrent` decorator instead."
+                "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+            )
 
         secrets = [*self._secrets, *secrets]
 
@@ -819,7 +827,6 @@ class _App:
         scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
@@ -840,6 +847,7 @@ class _App:
         keep_warm: Optional[int] = None,  # Replaced with `min_containers`
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
+        allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
     ) -> Callable[[Union[CLS_T, _PartialFunction]], CLS_T]:
         """
@@ -853,6 +861,14 @@ class _App:
             if scheduler_placement:
                 raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
             scheduler_placement = SchedulerPlacement(region=region)
+
+        if allow_concurrent_inputs is not None:
+            deprecation_warning(
+                (2025, 4, 9),
+                "The `allow_concurrent_inputs` parameter is deprecated."
+                " Please use the `@modal.concurrent` decorator instead."
+                "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+            )
 
         def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
             # Check if the decorated object is a class
