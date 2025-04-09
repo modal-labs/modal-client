@@ -460,6 +460,14 @@ def test_lookup_lazy_spawn(client, servicer):
     assert function_call.get() == 7693
 
 
+def test_failed_lookup_error(client, servicer):
+    with pytest.raises(NotFoundError, match="Lookup failed for Cls 'Foo' from the 'my-cls-app' app"):
+        Cls.from_name("my-cls-app", "Foo").hydrate(client=client)
+
+    with pytest.raises(NotFoundError, match="in the 'some-env' environment"):
+        Cls.from_name("my-cls-app", "Foo", environment_name="some-env").hydrate(client=client)
+
+
 baz_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
