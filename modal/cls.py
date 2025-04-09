@@ -719,6 +719,28 @@ class _Cls(_Object, type_prefix="cs"):
 Cls = synchronize_api(_Cls)
 
 
+@synchronize_api
+async def _get_constructor_args(cls: _Cls) -> typing.Sequence[api_pb2.ClassParameterSpec]:
+    # for internal use only - defined separately to not clutter Cls namespace
+    await cls.hydrate()
+    service_function = cls._get_class_service_function()
+    metadata = service_function._metadata
+    assert metadata
+    if metadata.class_parameter_info.format != metadata.class_parameter_info.PARAM_SERIALIZATION_FORMAT_PROTO:
+        raise InvalidError("Can only get constructor args for strictly parameterized classes")
+    return metadata.class_parameter_info.schema
+
+
+@synchronize_api
+async def _get_method_schemas(cls: _Cls) -> dict[str, api_pb2.FunctionSchema]:
+    # for internal use only - defined separately to not clutter Cls namespace
+    await cls.hydrate()
+    assert cls._method_metadata
+    return {
+        method_name: method_metadata.function_schema for method_name, method_metadata in cls._method_metadata.items()
+    }
+
+
 class _NO_DEFAULT:
     def __repr__(self):
         return "modal.cls._NO_DEFAULT()"
