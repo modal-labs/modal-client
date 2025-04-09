@@ -181,8 +181,11 @@ class ImportedClass(Service):
 def get_user_class_instance(_cls: modal.cls._Cls, args: tuple, kwargs: dict[str, Any]) -> typing.Any:
     """Returns instance of the underlying class to be used as the `self`
 
-    The input `cls` can either be the raw Python class the user has declared ("user class"),
-    or an @app.cls-decorated version of it which is a modal.Cls-instance wrapping the user class.
+    For the time being, this is an instance of the underlying user defined type, with
+    some extra attributes like parameter values and _modal_functions set, allowing
+    its methods to be used as modal Function objects with .remote() and .local() etc.
+
+    TODO: Could possibly change this to use an Obj to clean up the data model? would invalidate isinstance checks though
     """
     cls = synchronizer._translate_out(_cls)  # ugly
     modal_obj: modal.cls.Obj = cls(*args, **kwargs)
