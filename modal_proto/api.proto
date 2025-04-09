@@ -2896,13 +2896,11 @@ message VolumeMount {
 }
 
 message VolumePutFiles2Request {
-  // List of files, sorted lexicographically by `path`.
-  repeated File files = 1;
+  // The ID of the volume to put/upload files into.
+  string volume_id = 1;
 
-  // The last time the client called `VolumePutFiles2` for this file, it was
-  // told that some blocks were missing. This field contains information
-  // about the client having uploaded those missing blocks.
-  repeated NewBlock new_blocks = 2;
+  // List of files to put/upload.
+  repeated File files = 2;
 
   // If set to true, prevent overwriting existing files. (Note that we don't
   // allow overwriting existing directories with uploaded files regardless.)
@@ -2916,22 +2914,22 @@ message VolumePutFiles2Request {
     // The total size of the file, in bytes.
     uint64 size = 2;
 
-    // SHA-256 checksum of each 8MiB block of the file's contents, in binary
-    // (ie 32 raw bytes) format for compactness.
-    repeated bytes blocks_sha256 = 3;
+    // The blocks, in units of 8MiB, that this file consists of.
+    repeated Block blocks = 3;
   }
 
-  message NewBlock {
-    // Index of the file in the `files` field.
-    uint64 file_index = 1;
+  message Block {
+    // The SHA256 digest of the contents of this block, in raw (ie. 32 bytes)
+    // form for compactness.
+    bytes contents_sha256 = 1;
 
-    // The index of the block in `files[file_index].blocks_sha256`.
-    uint64 block_index = 2;
-
-    // The raw bytes of the body that was returned from the HTTP PUT request
-    // when the client made a request for the `put_url` returned in the
-    // previous `VolumePutFiles2Response`.
-    bytes put_response = 3;
+    // From a previous call to `VolumePutFiles2`, we might have gotten a
+    // response indicating that this block was missing.
+    //
+    // For such a block, this field contains the raw bytes of the body that
+    // was returned from the HTTP PUT request when the client made a request
+    // for the `put_url` returned in the previous `VolumePutFiles2Response`.
+    optional bytes put_response = 2;
   }
 }
 
@@ -2950,8 +2948,8 @@ message VolumePutFiles2Response {
     // Index of the file in the original `files` field of the request.
     uint64 file_index = 1;
 
-    // The index of the block in the original
-    // `files[file_index].blocks_sha256`.
+    // The index of the block in the original `files[file_index].blocks` of the
+    // request.
     uint64 block_index = 2;
 
     // Make a HTTP PUT request to this endpoint with the blocks' contents as
