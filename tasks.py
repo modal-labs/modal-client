@@ -233,14 +233,29 @@ def publish_base_mounts(ctx, no_confirm: bool = False):
 
 
 @task
-def publish_base_images(ctx, name: str, builder_version: str = "2024.10", no_confirm: bool = False) -> None:
-    """Publish base images. For example, `inv publish-base-images debian_slim`."""
+def publish_base_images(
+    ctx,
+    name: str,
+    builder_version: str = "2024.10",
+    allow_global_deployment: bool = False,
+    no_confirm: bool = False,
+) -> None:
+    """Publish base images. For example, `inv publish-base-images debian_slim`.
+
+    These should be published as global deployments. However, publishing global
+    deployments is *risky* because it would affect all workspaces. Pass the
+    `--allow-global-deployment` flag to confirm this behavior.
+    """
+    if not allow_global_deployment:
+        console = Console()
+        console.print("This is a dry run. Rerun with `--allow-global-deployment` to publish.", style="yellow")
+
     _check_prod(no_confirm)
     ctx.run(
         f"python -m modal_global_objects.images.base_images {name}",
         pty=True,
         env={
-            "MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT": "1",
+            "MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT": "1" if allow_global_deployment else "",
             "MODAL_IMAGE_BUILDER_VERSION": builder_version,
         },
     )
