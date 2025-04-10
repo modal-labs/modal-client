@@ -699,17 +699,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             assert resolver.client and resolver.client.stub
 
             assert resolver.app_id
-            if config.get("function_schemas") and info.raw_f:
-                function_schema = get_callable_schema(info.raw_f, is_web_endpoint=bool(webhook_config))
-            else:
-                function_schema = None
-
             req = api_pb2.FunctionPrecreateRequest(
                 app_id=resolver.app_id,
                 function_name=info.function_name,
                 function_type=function_type,
                 existing_function_id=existing_object_id or "",
-                function_schema=function_schema,
+                function_schema=get_callable_schema(info.raw_f, is_web_endpoint=bool(webhook_config))
+                if info.raw_f
+                else None,
             )
             if method_definitions:
                 for method_name, method_definition in method_definitions.items():
@@ -1113,7 +1110,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 response = await retry_transient_errors(resolver.client.stub.FunctionGet, request)
             except GRPCError as exc:
                 if exc.status == Status.NOT_FOUND:
-                    raise NotFoundError(exc.message)
+                    env_context = f" (in the '{environment_name}' environment)" if environment_name else ""
+                    raise NotFoundError(
+                        f"Lookup failed for Function '{name}' from the '{app_name}' app{env_context}: {exc.message}."
+                    )
                 else:
                     raise
 

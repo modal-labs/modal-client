@@ -12,7 +12,7 @@ from grpclib import GRPCError, Status
 from modal_proto import api_pb2
 
 from ._functions import _Function, _parse_retries
-from ._object import _Object, live_method
+from ._object import _Object
 from ._partial_function import (
     _find_callables_for_obj,
     _find_partial_methods_for_user_cls,
@@ -428,24 +428,6 @@ class _Cls(_Object, type_prefix="cs"):
         # returns method names for a *local* class only for now (used by cli)
         return self._method_partials.keys()
 
-    @live_method
-    async def _get_constructor_args(self) -> typing.Sequence[api_pb2.ClassParameterSpec]:
-        # for internal use only
-        service_function = self._get_class_service_function()
-        metadata = service_function._metadata
-        assert metadata
-        if metadata.class_parameter_info.format != metadata.class_parameter_info.PARAM_SERIALIZATION_FORMAT_PROTO:
-            raise InvalidError("Can only get constructor args for strictly parameterized classes")
-        return metadata.class_parameter_info.schema
-
-    @live_method
-    async def _get_method_schemas(self) -> dict[str, api_pb2.FunctionSchema]:
-        assert self._method_metadata
-        return {
-            method_name: method_metadata.function_schema
-            for method_name, method_metadata in self._method_metadata.items()
-        }
-
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
         class_service_function = self._get_class_service_function()
@@ -575,7 +557,10 @@ class _Cls(_Object, type_prefix="cs"):
                 response = await retry_transient_errors(resolver.client.stub.ClassGet, request)
             except GRPCError as exc:
                 if exc.status == Status.NOT_FOUND:
-                    raise NotFoundError(exc.message)
+                    env_context = f" (in the '{environment_name}' environment)" if environment_name else ""
+                    raise NotFoundError(
+                        f"Lookup failed for Cls '{name}' from the '{app_name}' app{env_context}: {exc.message}."
+                    )
                 elif exc.status == Status.FAILED_PRECONDITION:
                     raise InvalidError(exc.message)
                 else:
