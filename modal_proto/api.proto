@@ -2247,6 +2247,7 @@ message Resources {
   uint32 memory_mb_max = 5; // MiB
   uint32 ephemeral_disk_mb = 6;  // MiB
   uint32 milli_cpu_max = 7; // milli CPU cores
+  bool rdma = 8; // Whether to use RDMA interfaces
 }
 
 message RuntimeInputMessage {
