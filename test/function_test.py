@@ -15,7 +15,7 @@ import modal
 from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, fastapi_endpoint
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
-from modal.exception import DeprecationError, ExecutionError, InvalidError
+from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.functions import Function, FunctionCall
 from modal.runner import deploy_app
 from modal_proto import api_pb2
@@ -1367,3 +1367,11 @@ def test_class_schema_recording(client, servicer):
     assert modal.cls._get_method_schemas(modal.Cls.from_name("app", "F")) == method_schemas
     (looked_up_construct_arg,) = modal.cls._get_constructor_args(modal.Cls.from_name("app", "F"))
     assert looked_up_construct_arg == constructor_arg
+
+
+def test_failed_lookup_error(client, servicer):
+    with pytest.raises(NotFoundError, match="Lookup failed for Function 'f' from the 'app' app"):
+        Function.from_name("app", "f").hydrate(client=client)
+
+    with pytest.raises(NotFoundError, match="in the 'some-env' environment"):
+        Function.from_name("app", "f", environment_name="some-env").hydrate(client=client)
