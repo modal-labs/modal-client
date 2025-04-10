@@ -557,7 +557,10 @@ class _Cls(_Object, type_prefix="cs"):
                 response = await retry_transient_errors(resolver.client.stub.ClassGet, request)
             except GRPCError as exc:
                 if exc.status == Status.NOT_FOUND:
-                    raise NotFoundError(exc.message)
+                    env_context = f" (in the '{environment_name}' environment)" if environment_name else ""
+                    raise NotFoundError(
+                        f"Lookup failed for Cls '{name}' from the '{app_name}' app{env_context}: {exc.message}."
+                    )
                 elif exc.status == Status.FAILED_PRECONDITION:
                     raise InvalidError(exc.message)
                 else:
