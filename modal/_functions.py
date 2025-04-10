@@ -1672,7 +1672,10 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         return fc
 
     @staticmethod
-    async def gather(*function_calls: "_FunctionCall[Any]") -> list[Any]:
+    async def gather(
+        *function_calls: "_FunctionCall[Any]",
+        return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
+    ) -> list[Any]:
         """Wait until all Modal FunctionCall objects have results before returning.
 
         Accepts a variable number of `FunctionCall` objects, as returned by `Function.spawn()`.
@@ -1691,6 +1694,9 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
         *Added in v0.73.69*: This method replaces the deprecated `modal.functions.gather` function.
         """
+        if return_exceptions:
+            return await asyncio.gather(*[fc.get() for fc in function_calls], return_exceptions=True)
+
         try:
             return await TaskContext.gather(*[fc.get() for fc in function_calls])
         except Exception as exc:
