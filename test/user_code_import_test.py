@@ -50,17 +50,22 @@ def test_import_function_undecorated(supports_dir, monkeypatch):
     assert service.app is None
 
 
-def test_import_class(monkeypatch, supports_dir):
+def test_import_class(monkeypatch, supports_dir, client):
     monkeypatch.syspath_prepend(supports_dir)
-    fun = api_pb2.Function(
+    function_def = api_pb2.Function(
         module_name="user_code_import_samples.cls",
         function_name="C.*",
     )
     service = user_code_imports.import_class_service(
-        fun,
-        None,
-        (),
-        {},
+        function_def,
+        service_function_hydration_data=api_pb2.Object(
+            object_id="fu-123",
+        ),
+        class_id="cs-123",
+        client=client,
+        ser_user_cls=None,
+        cls_args=(),
+        cls_kwargs={},
     )
     assert len(service.service_deps) == 1
     assert type(service.service_deps[0]) is _Image
@@ -73,9 +78,9 @@ def test_import_class(monkeypatch, supports_dir):
 
     # TODO (elias): shouldn't have to pass the function definition again!
     io_manager = MagicMock()  # shouldn't actually be used except by web endpoints - indicates some need for refactoring
-    finalized_funcs = service.get_finalized_functions(fun, container_io_manager=io_manager)
+    finalized_funcs = service.get_finalized_functions(function_def, container_io_manager=io_manager)
     io_manager.assert_not_called()
-    assert len(finalized_funcs) == 3
+    assert len(finalized_funcs) == 4
 
     for finalized in finalized_funcs.values():
         assert finalized.is_async is False
@@ -83,9 +88,11 @@ def test_import_class(monkeypatch, supports_dir):
         assert finalized.data_format == api_pb2.DATA_FORMAT_PICKLE
         assert finalized.lifespan_manager is None
 
-    finalized_1, finalized_2 = finalized_funcs["f"], finalized_funcs["f2"]
+    finalized_1, finalized_2, self_ref = finalized_funcs["f"], finalized_funcs["f2"], finalized_funcs["self_ref"]
     assert finalized_1.callable("world") == "hello world"
     assert finalized_2.callable("world") == "other world"
+    callable_self = self_ref.callable()
+    assert isinstance(callable_self, UndecoratedC)  # Arguably this could/should be an Obj instead?
 
 
 # TODO: add test cases for serialized functions, web endpoints, explicit/implicit generators etc.
