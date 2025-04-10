@@ -1246,7 +1246,8 @@ def test_batching_config(client, servicer):
 
 
 def test_concurrency_config_migration(client, servicer):
-    from test.supports.concurrency_config import CONFIG_VALS, app
+    with pytest.warns(DeprecationError, match="@modal.concurrent"):
+        from test.supports.concurrency_config import CONFIG_VALS, app
 
     with servicer.intercept() as ctx:
         with app.run(client=client):
