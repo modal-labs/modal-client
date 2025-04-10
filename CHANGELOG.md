@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.158 (2025-04-10)
+
+* Adds support for `bool` type to class parameters using `name: bool = modal.parameter()`. Note that older clients can't instantiate classes with bool parameters unless those have default values which are not modified. Bool parameters are also not supported by web endpoints at this time.
+
+
+
 ### 0.73.148 (2025-04-07)
 
 - Fixes a bug introduced in 0.73.147 that broke App builds when using `@modal.batched` on a class method.
