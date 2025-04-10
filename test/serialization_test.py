@@ -10,6 +10,7 @@ from modal._serialization import (
     deserialize,
     deserialize_data_format,
     deserialize_proto_params,
+    get_callable_schema,
     serialize,
     serialize_data_format,
     serialize_proto_params,
@@ -124,7 +125,7 @@ def test_non_implemented_proto_type():
         parameter_serde_registry.decode(api_pb2.ClassParameterValue(type=1000))  # type: ignore
 
 
-def test_schema_extraction_unknown():
+def test_schema_extraction_unknown(record_function_schemas):
     def with_empty(a): ...
 
     def with_any(a: typing.Any): ...
@@ -135,16 +136,19 @@ def test_schema_extraction_unknown():
     def with_custom(a: Custom): ...
 
     for func in [with_empty, with_any, with_custom]:
-        fields = signature_to_parameter_specs(inspect.signature(func))
+        print(func.__name__)
+        fields = list(get_callable_schema(func, is_web_endpoint=False).arguments)
         assert fields == [
             api_pb2.ClassParameterSpec(
-                name="a", has_default=False, full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN)
+                name="a",
+                has_default=False,
+                full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN),
             )
         ]
 
     def with_default(a=5): ...
 
-    fields = signature_to_parameter_specs(inspect.signature(with_default))
+    fields = list(get_callable_schema(with_default, is_web_endpoint=False).arguments)
     assert fields == [
         api_pb2.ClassParameterSpec(
             name="a", full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_UNKNOWN), has_default=True
@@ -194,12 +198,13 @@ def test_schema_extraction_bytes():
     )
 
 
+@pytest.mark.usefixtures("record_function_schemas")
 def test_schema_extraction_list():
     def new_f(simple_list: list[int]): ...
     def old_f(simple_list: typing.List[int]): ...
 
     for f in [new_f, old_f]:
-        (list_spec,) = signature_to_parameter_specs(inspect.signature(f))
+        (list_spec,) = get_callable_schema(f, is_web_endpoint=False).arguments
         assert list_spec == api_pb2.ClassParameterSpec(
             name="simple_list",
             full_type=api_pb2.GenericPayloadType(
@@ -210,10 +215,11 @@ def test_schema_extraction_list():
         )
 
 
+@pytest.mark.usefixtures("record_function_schemas")
 def test_schema_extraction_nested_list():
     def f(nested_list: list[list[bytes]]): ...
 
-    (list_spec,) = signature_to_parameter_specs(inspect.signature(f))
+    (list_spec,) = get_callable_schema(f, is_web_endpoint=False).arguments
     assert list_spec == api_pb2.ClassParameterSpec(
         name="nested_list",
         full_type=api_pb2.GenericPayloadType(
@@ -229,10 +235,11 @@ def test_schema_extraction_nested_list():
     )
 
 
+@pytest.mark.usefixtures("record_function_schemas")
 def test_schema_extraction_nested_dict():
     def f(nested_dict: dict[str, dict[str, bytes]] = {}): ...
 
-    (dict_spec,) = signature_to_parameter_specs(inspect.signature(f))
+    (dict_spec,) = get_callable_schema(f, is_web_endpoint=False).arguments
     assert dict_spec == api_pb2.ClassParameterSpec(
         name="nested_dict",
         full_type=api_pb2.GenericPayloadType(
@@ -254,10 +261,11 @@ def test_schema_extraction_nested_dict():
     )
 
 
+@pytest.mark.usefixtures("record_function_schemas")
 def test_schema_extraction_dict_with_non_str_key_is_unknown():
     def f(dct: dict): ...
 
-    (dict_spec,) = signature_to_parameter_specs(inspect.signature(f))
+    (dict_spec,) = get_callable_schema(f, is_web_endpoint=False).arguments
     print(dict_spec)
     assert dict_spec == api_pb2.ClassParameterSpec(
         name="dct",
@@ -265,3 +273,32 @@ def test_schema_extraction_dict_with_non_str_key_is_unknown():
             base_type=api_pb2.PARAM_TYPE_DICT,
         ),
     )
+
+
+def test_schema_extraction_bool():
+    def f(bool_val: bool = True): ...
+
+    (bool_spec,) = signature_to_parameter_specs(inspect.signature(f))
+    print(bool_spec)
+    assert bool_spec == api_pb2.ClassParameterSpec(
+        name="bool_val",
+        type=api_pb2.PARAM_TYPE_BOOL,
+        full_type=api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_BOOL,
+        ),
+        has_default=True,
+        bool_default=True,
+    )
+
+
+@pytest.mark.parametrize("v", [True, False])
+def test_parameter_value_serde_bool(v):
+    encoded = parameter_serde_registry.encode(v)
+    assert encoded == api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_BOOL, bool_value=v)
+    decoded = parameter_serde_registry.decode(encoded)
+    assert decoded is v
+
+
+def test_parameter_validate_bool():
+    with pytest.raises(TypeError):
+        parameter_serde_registry.validate_value_for_enum_type(api_pb2.PARAM_TYPE_BOOL, 1)

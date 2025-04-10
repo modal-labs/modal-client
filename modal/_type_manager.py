@@ -143,6 +143,23 @@ class BytesParameter:
             raise TypeError(f"Expected bytes, got {type(python_value).__name__}")
 
 
+@parameter_serde_registry.register_encoder(bool)
+@parameter_serde_registry.register_decoder(api_pb2.PARAM_TYPE_BOOL)
+class BoolParameter:
+    @staticmethod
+    def encode(value: Any) -> api_pb2.ClassParameterValue:
+        return api_pb2.ClassParameterValue(type=api_pb2.PARAM_TYPE_BOOL, bool_value=value)
+
+    @staticmethod
+    def decode(proto_value: api_pb2.ClassParameterValue) -> bool:
+        return proto_value.bool_value
+
+    @staticmethod
+    def validate(python_value: Any):
+        if not isinstance(python_value, bool):
+            raise TypeError(f"Expected bool, got {type(python_value).__name__}")
+
+
 SCHEMA_FACTORY_TYPE = typing.Callable[[type], api_pb2.GenericPayloadType]
 
 
@@ -202,6 +219,13 @@ def unknown_type_schema(declared_python_type: type) -> api_pb2.GenericPayloadTyp
 def str_schema(full_python_type: type) -> api_pb2.GenericPayloadType:
     return api_pb2.GenericPayloadType(
         base_type=api_pb2.PARAM_TYPE_STRING,
+    )
+
+
+@schema_registry.add(bool)
+def bool_schema(full_python_type: type) -> api_pb2.GenericPayloadType:
+    return api_pb2.GenericPayloadType(
+        base_type=api_pb2.PARAM_TYPE_BOOL,
     )
 
 
