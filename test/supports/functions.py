@@ -5,6 +5,7 @@ import pytest
 import threading
 import time
 
+import modal
 from modal import (
     App,
     Sandbox,
@@ -247,7 +248,8 @@ lifespan_global_asgi_app_cls: list[str] = []
 @app.cls(scaledown_window=300, max_containers=1)
 @concurrent(max_inputs=100)
 class fastapi_class_multiple_asgi_apps_lifespans:
-    def __init__(self):
+    @modal.enter()
+    def enter_assertion(self):
         assert len(lifespan_global_asgi_app_cls) == 0
 
     @asgi_app()
@@ -299,7 +301,8 @@ lifespan_global_asgi_app_cls_fail: list[str] = []
 @app.cls(scaledown_window=300, max_containers=1)
 @concurrent(max_inputs=100)
 class fastapi_class_lifespan_shutdown_failure:
-    def __init__(self):
+    @modal.enter()
+    def enter_assertion(self):
         assert len(lifespan_global_asgi_app_cls_fail) == 0
 
     @asgi_app()
@@ -397,21 +400,15 @@ def basic_wsgi_app():
 class LifecycleCls:
     """Ensures that {sync,async} lifecycle hooks work with {sync,async} functions."""
 
-    def __init__(
-        self,
-        print_at_exit: bool = False,
-        sync_enter_duration=0,
-        async_enter_duration=0,
-        sync_exit_duration=0,
-        async_exit_duration=0,
-    ):
-        self.events: list[str] = []
-        self.sync_enter_duration = sync_enter_duration
-        self.async_enter_duration = async_enter_duration
-        self.sync_exit_duration = sync_exit_duration
-        self.async_exit_duration = async_exit_duration
-        if print_at_exit:
-            self._print_at_exit()
+    print_at_exit: int = modal.parameter(default=0)
+    sync_enter_duration: int = modal.parameter(default=0)
+    async_enter_duration: int = modal.parameter(default=0)
+    sync_exit_duration: int = modal.parameter(default=0)
+    async_exit_duration: int = modal.parameter(default=0)
+
+    @property
+    def events(self) -> list[str]:
+        return self.__dict__.setdefault("_events", [])
 
     def _print_at_exit(self):
         import atexit
@@ -420,6 +417,8 @@ class LifecycleCls:
 
     @enter()
     def enter_sync(self):
+        if self.print_at_exit:
+            self._print_at_exit()
         self.events.append("enter_sync")
         time.sleep(self.sync_enter_duration)
 
@@ -546,8 +545,13 @@ with pytest.warns(DeprecationError, match="@modal.build"):
 
     @app.cls()
     class BuildCls:
-        def __init__(self):
-            self._k = 1
+        @property
+        def _k(self):
+            return self.__dict__.setdefault("__k", 1)
+
+        @_k.setter
+        def _k(self, v):
+            self.__dict__["__k"] = v
 
         @enter()
         def enter1(self):
@@ -574,8 +578,9 @@ with pytest.warns(DeprecationError, match="@modal.build"):
 
 @app.cls(enable_memory_snapshot=True)
 class SnapshottingCls:
-    def __init__(self):
-        self._vals = []
+    @property
+    def _vals(self) -> list[str]:
+        return self.__dict__.setdefault("__vals", [])
 
     @enter(snap=True)
     def enter1(self):
