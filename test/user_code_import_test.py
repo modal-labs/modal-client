@@ -13,8 +13,6 @@ def test_import_function(supports_dir, monkeypatch):
         fun,
         None,
         None,
-        None,
-        None,
     )
     assert len(service.service_deps) == 1
     assert type(service.service_deps[0]) is _Image
@@ -40,8 +38,6 @@ def test_import_function_undecorated(supports_dir, monkeypatch):
     fun = api_pb2.Function(module_name="user_code_import_samples.func", function_name="undecorated_f")
     service = user_code_imports.import_single_function_service(
         fun,
-        None,
-        None,
         None,
         None,
     )

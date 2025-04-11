@@ -185,6 +185,7 @@ def type_check(ctx):
     pyright_allowlist = [
         "modal/_functions.py",
         "modal/_runtime/asgi.py",
+        "modal/_runtime/user_code_imports.py",
         "modal/_utils/__init__.py",
         "modal/_utils/async_utils.py",
         "modal/_utils/grpc_testing.py",
