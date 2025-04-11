@@ -88,29 +88,29 @@ dir_containing_python_package = {
 
 
 @pytest.mark.parametrize(
-    ["dir_structure", "ref", "returned_runnable_type", "num_error_choices"],
+    ["dir_structure", "ref", "returned_runnable_type", "num_error_choices", "use_module_mode"],
     [
         # # file syntax
-        (empty_dir_with_python_file, "mod000.py", type(None), 2),
-        (empty_dir_with_python_file, "mod000.py::app", MethodReference, 2),
-        (empty_dir_with_python_file, "mod000.py::other_app", Function, 2),
-        (dir_containing_python_package, "pack005/file006.py", Function, 1),
-        (dir_containing_python_package, "pack005/sub009/subfile011.py", Function, 1),
-        (dir_containing_python_package, "dir001/sub002/subfile004.py", Function, 1),
+        (empty_dir_with_python_file, "mod000.py", type(None), 2, False),
+        (empty_dir_with_python_file, "mod000.py::app", MethodReference, 2, False),
+        (empty_dir_with_python_file, "mod000.py::other_app", Function, 2, False),
+        (dir_containing_python_package, "pack005/file006.py", Function, 1, False),
+        (dir_containing_python_package, "pack005/sub009/subfile011.py", Function, 1, False),
+        (dir_containing_python_package, "dir001/sub002/subfile004.py", Function, 1, False),
+        (dir_containing_python_package, "pack005/local008.py::app.main", LocalEntrypoint, 1, False),
         # # python module syntax
-        (empty_dir_with_python_file, "mod000::func", Function, 2),
-        (empty_dir_with_python_file, "mod000::other_app.func", Function, 2),
-        (empty_dir_with_python_file, "mod000::app.func", type(None), 2),
-        (empty_dir_with_python_file, "mod000::Parent.meth", MethodReference, 2),
-        (empty_dir_with_python_file, "mod000::other_app", Function, 2),
-        (dir_containing_python_package, "pack005.mod007", Function, 1),
-        (dir_containing_python_package, "pack005.mod007::other_app", Function, 1),
-        (dir_containing_python_package, "pack005/local008.py::app.main", LocalEntrypoint, 1),
+        (empty_dir_with_python_file, "mod000::func", Function, 2, True),
+        (empty_dir_with_python_file, "mod000::other_app.func", Function, 2, True),
+        (empty_dir_with_python_file, "mod000::app.func", type(None), 2, True),
+        (empty_dir_with_python_file, "mod000::Parent.meth", MethodReference, 2, True),
+        (empty_dir_with_python_file, "mod000::other_app", Function, 2, True),
+        (dir_containing_python_package, "pack005.mod007", Function, 1, True),
+        (dir_containing_python_package, "pack005.mod007::other_app", Function, 1, True),
     ],
 )
-def test_import_and_filter(dir_structure, ref, mock_dir, returned_runnable_type, num_error_choices):
+def test_import_and_filter(dir_structure, ref, mock_dir, returned_runnable_type, num_error_choices, use_module_mode):
     with mock_dir(dir_structure):
-        import_ref = parse_import_ref(ref)
+        import_ref = parse_import_ref(ref, use_module_mode=use_module_mode)
         runnable, all_usable_commands = import_and_filter(
             import_ref, base_cmd="dummy", accept_local_entrypoint=True, accept_webhook=False
         )
