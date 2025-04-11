@@ -1,0 +1,34 @@
+name: Bug report
+description: Report an error or unexpected behavior
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping to improve Modal!
+        We generally prefer to receive bug reports over [Slack](https://modal.com/slack), which is monitored by a larger support team and plugs into our internal ticketing system.
+        If that is not an option, you can file a bug report here, although we may be slower to respond.
+
+  - type: textarea
+    attributes:
+      label: Summary
+      description: |
+        A clear and concise description of the bug, ideally including a minimal reproducible example (e.g. a script that we can `modal run` to observe the defective behavior).
+    validations:
+      required: true
+
+  - type: input
+    attributes:
+      label: Version
+      description: The version of the modal client you are using (`modal --version`)
+      placeholder: e.g., 0.70.123
+    validations:
+      required: true
+
+  - type: input
+    attributes:
+      label: App ID
+      description: If the bug pertains to an existing App, please share the ID. Sharing an ID implies permission for Modal engineers to view the App logs.
+      placeholder: e.g., ap-123abc567xyz
+    validations:
+      required: false

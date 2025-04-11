@@ -8,7 +8,7 @@ import sys
 import threading
 from hashlib import sha256
 from pathlib import Path
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from typing import Callable, Literal, Sequence, Union, get_args
 from unittest import mock
 
@@ -18,6 +18,7 @@ from modal._serialization import serialize
 from modal._utils.async_utils import synchronizer
 from modal.client import Client
 from modal.exception import DeprecationError, InvalidError, ModuleNotMountable, VersionError
+from modal.experimental import raw_dockerfile_image, raw_registry_image
 from modal.file_pattern_matcher import FilePatternMatcher
 from modal.image import (
     SUPPORTED_PYTHON_SERIES,
@@ -122,7 +123,9 @@ def test_python_version_validation(builder_version):
 def test_dockerhub_python_version(builder_version):
     assert _dockerhub_python_version(builder_version, "3.9.1") == "3.9.1"
 
-    expected_39_full = {"2023.12": "3.9.15", "2024.04": "3.9.19", "2024.10": "3.9.20"}[builder_version]
+    expected_39_full = {"2023.12": "3.9.15", "2024.04": "3.9.19", "2024.10": "3.9.20", "PREVIEW": "3.9.20"}[
+        builder_version
+    ]
     assert _dockerhub_python_version(builder_version, "3.9") == expected_39_full
 
     v = _dockerhub_python_version(builder_version, None).split(".")
@@ -937,6 +940,23 @@ def test_image_dockerfile_copy_ignore(builder_version, servicer, client, use_cal
         assert files == {Path("/") / rel_top_dir / "Dockerfile", Path("/") / rel_top_dir / "file.py"}
 
 
+@pytest.mark.usefixtures("tmp_cwd")
+def test_dockerfile_context_dir(builder_version, servicer, client):
+    # Write a file to a different temporary directory
+    with TemporaryDirectory() as context_dir:
+        (Path(context_dir) / "data.txt").write_text("hello")
+        (Path(context_dir) / "file.py").write_text("world")
+
+        image = Image.debian_slim().dockerfile_commands(["COPY . /"], context_dir=context_dir)
+        app = App()
+        app.function(image=image)(dummy)
+        with app.run(client=client):
+            layers = get_image_layers(image.object_id, servicer)
+            mount_id = layers[0].context_mount_id
+            files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
+            assert files == {Path("/data.txt"), Path("/file.py")}
+
+
 def test_image_docker_command_entrypoint(builder_version, servicer, client, tmp_path_with_content):
     app = App()
     app.image = Image.debian_slim().entrypoint([])
@@ -968,6 +988,13 @@ def test_image_docker_command_entrypoint_nonempty(builder_version, servicer, cli
         assert 'ENTRYPOINT ["/temp.sh"]' in layers[0].dockerfile_commands
 
 
+def test_image_docker_command_entrypoint_malformed():
+    with pytest.raises(InvalidError, match="must be a list of strings"):
+        Image.debian_slim().entrypoint("this is not a list of strings")  # type: ignore
+    with pytest.raises(InvalidError, match="must be a list of strings"):
+        Image.debian_slim().entrypoint(4711)  # type: ignore
+
+
 def test_image_docker_command_shell(builder_version, servicer, client, tmp_path_with_content):
     app = App()
     app.image = Image.debian_slim().shell(["/bin/sh", "-c"])
@@ -976,6 +1003,13 @@ def test_image_docker_command_shell(builder_version, servicer, client, tmp_path_
     with app.run(client=client):
         layers = get_image_layers(app.image.object_id, servicer)
         assert 'SHELL ["/bin/sh", "-c"]' in layers[0].dockerfile_commands
+
+
+def test_image_docker_command_shell_malformed():
+    with pytest.raises(InvalidError, match="must be a list of strings"):
+        Image.debian_slim().shell("this is not a list of strings")  # type: ignore
+    with pytest.raises(InvalidError, match="must be a list of strings"):
+        Image.debian_slim().shell(4711)  # type: ignore
 
 
 def test_image_env(builder_version, servicer, client):
@@ -992,6 +1026,57 @@ def test_image_env(builder_version, servicer, client):
         app.function()(dummy)
         with app.run(client=client):
             pass
+
+
+def test_image_cmd_empty(builder_version, servicer, client, tmp_path_with_content):
+    app = App()
+    app.image = Image.debian_slim().cmd([])
+    app.function()(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(app.image.object_id, servicer)
+        assert "CMD []" in layers[0].dockerfile_commands
+
+
+def test_image_cmd_nonempty(builder_version, servicer, client, tmp_path_with_content):
+    app = App()
+    app.image = Image.debian_slim().cmd(["echo", "hello"])
+    app.function()(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(app.image.object_id, servicer)
+        assert 'CMD ["echo", "hello"]' in layers[0].dockerfile_commands
+
+
+def test_image_cmd_malformed():
+    with pytest.raises(InvalidError, match="must be a list of strings"):
+        Image.debian_slim().cmd("this is not a list of strings")  # type: ignore
+    with pytest.raises(InvalidError, match="must be a list of strings"):
+        Image.debian_slim().cmd(4711)  # type: ignore
+
+
+def test_image_debian_slim_default_cmd(builder_version, servicer, client, test_dir):
+    app = App(image=Image.debian_slim())
+    app.function()(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(app.image.object_id, servicer)
+        if builder_version > "2024.10":
+            assert 'CMD ["sleep", "172800"]' in layers[0].dockerfile_commands
+        else:
+            assert "CMD" not in layers[0].dockerfile_commands
+
+
+def test_image_micromamba_default_cmd(builder_version, servicer, client, test_dir):
+    app = App(image=Image.micromamba())
+    app.function()(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(app.image.object_id, servicer)
+        if builder_version > "2024.10":
+            assert 'CMD ["sleep", "172800"]' in layers[0].dockerfile_commands
+        else:
+            assert "CMD" not in layers[0].dockerfile_commands
 
 
 def test_image_gpu(builder_version, servicer, client):
@@ -1605,6 +1690,11 @@ def test_from_local_python_packages_missing_module(servicer, client, test_dir, s
             pass
 
 
+def test_from_local_python_packages_wrong_type():
+    with pytest.raises(InvalidError, match="specified as strings"):
+        Image.debian_slim().add_local_python_source(os, sys)  # type: ignore
+
+
 @skip_windows("servicer sandbox implementation not working on windows")
 def test_add_locals_are_attached_to_sandboxes(servicer, client, supports_on_path):
     deb_slim = Image.debian_slim()
@@ -1795,3 +1885,57 @@ def test_image_add_local_dir_ignore_from_file(servicer, client, tmp_path_with_co
             assert len(img._mount_layers) == 1
             mount_id = img._mount_layers[0].object_id
             assert servicer.mount_contents[mount_id].keys() == expected
+
+
+@pytest.mark.usefixtures("tmp_cwd")
+def test_raw_dockerfile_image(servicer, client):
+    dockerfile_commands = [
+        "FROM python:3.6",
+        "COPY . .",
+        "ENV AGE=old",
+        "RUN pip install seaborn==0.6.0",
+    ]
+
+    extra_commands = ["echo 'hello'", "echo 'goodbye'"]
+
+    Path("Dockerfile").write_text("\n".join(dockerfile_commands))
+    image = raw_dockerfile_image("Dockerfile").run_commands(extra_commands)
+
+    app = App()
+    app.function(image=image)(dummy)
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        assert len(layers) == 2
+
+        assert layers[1].dockerfile_commands == dockerfile_commands
+        assert not layers[1].context_files
+
+        assert layers[0].dockerfile_commands == ["FROM base"] + [f"RUN {c}" for c in extra_commands]
+        assert not layers[0].context_files
+
+
+@pytest.mark.usefixtures("tmp_cwd")
+def test_raw_registry_image(servicer, client):
+    tag = "python:3.6"
+    extra_commands = ["echo 'hello'", "echo 'goodbye'"]
+
+    image = raw_registry_image(tag).run_commands(extra_commands)
+
+    app = App()
+    app.function(image=image)(dummy)
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        assert len(layers) == 2
+
+        assert layers[1].dockerfile_commands == [f"FROM {tag}"]
+        assert not layers[1].context_files
+
+        assert layers[0].dockerfile_commands == ["FROM base"] + [f"RUN {c}" for c in extra_commands]
+        assert not layers[0].context_files
+
+    registry_secret = Secret.from_name("registry-secret")
+    with pytest.raises(InvalidError, match="credential_type"):
+        raw_registry_image(tag, registry_secret=registry_secret)
+
+    with pytest.raises(InvalidError, match="whatever"):
+        raw_registry_image(tag, registry_secret=registry_secret, credential_type="whatever")  # type: ignore

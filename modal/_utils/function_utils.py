@@ -15,7 +15,12 @@ from synchronicity.exceptions import UserCodeException
 import modal_proto
 from modal_proto import api_pb2
 
-from .._serialization import deserialize, deserialize_data_format, serialize
+from .._serialization import (
+    deserialize,
+    deserialize_data_format,
+    serialize,
+    signature_to_parameter_specs,
+)
 from .._traceback import append_modal_tb
 from ..config import config, logger
 from ..exception import (
@@ -36,13 +41,6 @@ class FunctionInfoType(Enum):
     FILE = "file"
     SERIALIZED = "serialized"
     NOTEBOOK = "notebook"
-
-
-# TODO(elias): Add support for quoted/str annotations
-CLASS_PARAM_TYPE_MAP: dict[type, tuple["api_pb2.ParameterType.ValueType", str]] = {
-    str: (api_pb2.PARAM_TYPE_STRING, "string_default"),
-    int: (api_pb2.PARAM_TYPE_INT, "int_default"),
-}
 
 
 class LocalFunctionError(InvalidError):
@@ -207,6 +205,7 @@ class FunctionInfo:
             if serialized:  # if explicit
                 self._type = FunctionInfoType.SERIALIZED
             else:
+                # notebook, or in general any exec() on a function definition
                 self._type = FunctionInfoType.NOTEBOOK
 
         if not self.is_serialized():
@@ -290,21 +289,13 @@ class FunctionInfo:
 
         # annotation parameters trigger strictly typed parametrization
         # which enables web endpoint for parametrized classes
-
-        modal_parameters: list[api_pb2.ClassParameterSpec] = []
         signature = _get_class_constructor_signature(self.user_cls)
-        for param in signature.parameters.values():
-            has_default = param.default is not param.empty
-            if param.annotation not in CLASS_PARAM_TYPE_MAP:
-                raise InvalidError("modal.parameter() currently only support str or int types")
-            param_type, default_field = CLASS_PARAM_TYPE_MAP[param.annotation]
-            class_param_spec = api_pb2.ClassParameterSpec(name=param.name, has_default=has_default, type=param_type)
-            if has_default:
-                setattr(class_param_spec, default_field, param.default)
-            modal_parameters.append(class_param_spec)
+        # at this point, the types in the signature should already have been validated (see Cls.from_local())
+        parameter_specs = signature_to_parameter_specs(signature)
 
         return api_pb2.ClassParameterInfo(
-            format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO, schema=modal_parameters
+            format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
+            schema=parameter_specs,
         )
 
     def get_entrypoint_mount(self) -> dict[str, _Mount]:

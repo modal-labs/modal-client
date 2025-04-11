@@ -10,17 +10,16 @@ runs:
   using: composite
   steps:
     - name: Install Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55 # v5
       with:
         python-version: ${{ inputs.version }}
 
     - name: Get cached python dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4
       with:
         path: ${{ env.pythonLocation }}
         key: |
-          ${{ runner.os }}-${{ env.pythonLocation }}-${{ hashFiles('**/setup.cfg', 'requirements.dev.txt', 'pyproject.toml') }}
-        restore-keys: ${{ runner.os }}-${{ env.pythonLocation }}-
+          ${{ runner.os }}-${{ env.pythonLocation }}-${{ hashFiles('**/setup.cfg', 'requirements.dev.txt', 'pyproject.toml') }}-v2
 
     - name: Install Python packages
       shell: bash

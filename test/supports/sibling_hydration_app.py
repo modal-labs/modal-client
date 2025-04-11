@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2025
 import modal
-from modal import asgi_app, enter, method, web_endpoint
+from modal import asgi_app, enter, fastapi_endpoint, method
 
 app = modal.App()
 
@@ -61,7 +61,7 @@ class NonParamCls:
     def f(self, x):
         return self._k * x
 
-    @web_endpoint()
+    @fastapi_endpoint()
     def web(self, arg):
         return {"ret": arg * self._k}
 

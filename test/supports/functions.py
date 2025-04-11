@@ -11,13 +11,14 @@ from modal import (
     asgi_app,
     batched,
     build,
+    concurrent,
     current_function_call_id,
     current_input_id,
     enter,
     exit,
+    fastapi_endpoint,
     is_local,
     method,
-    web_endpoint,
     web_server,
     wsgi_app,
 )
@@ -101,7 +102,7 @@ def deprecated_function(x):
 
 
 @app.function()
-@web_endpoint()
+@fastapi_endpoint()
 def webhook(arg="world"):
     return {"hello": arg}
 
@@ -113,7 +114,7 @@ def stream():
 
 
 @app.function()
-@web_endpoint()
+@fastapi_endpoint()
 def webhook_streaming():
     from fastapi.responses import StreamingResponse
 
@@ -127,7 +128,7 @@ async def stream_async():
 
 
 @app.function()
-@web_endpoint()
+@fastapi_endpoint()
 async def webhook_streaming_async():
     from fastapi.responses import StreamingResponse
 
@@ -243,7 +244,8 @@ def fastapi_app_with_lifespan_failing_shutdown():
 lifespan_global_asgi_app_cls: list[str] = []
 
 
-@app.cls(container_idle_timeout=300, concurrency_limit=1, allow_concurrent_inputs=100)
+@app.cls(scaledown_window=300, max_containers=1)
+@concurrent(max_inputs=100)
 class fastapi_class_multiple_asgi_apps_lifespans:
     def __init__(self):
         assert len(lifespan_global_asgi_app_cls) == 0
@@ -294,7 +296,8 @@ class fastapi_class_multiple_asgi_apps_lifespans:
 lifespan_global_asgi_app_cls_fail: list[str] = []
 
 
-@app.cls(container_idle_timeout=300, concurrency_limit=1, allow_concurrent_inputs=100)
+@app.cls(scaledown_window=300, max_containers=1)
+@concurrent(max_inputs=100)
 class fastapi_class_lifespan_shutdown_failure:
     def __init__(self):
         assert len(lifespan_global_asgi_app_cls_fail) == 0
@@ -466,13 +469,15 @@ class LifecycleCls:
         return self.events
 
 
-@app.function(allow_concurrent_inputs=5)
+@app.function()
+@concurrent(max_inputs=5)
 def sleep_700_sync(x):
     time.sleep(0.7)
     return x * x, current_input_id(), current_function_call_id()
 
 
-@app.function(allow_concurrent_inputs=5)
+@app.function()
+@concurrent(max_inputs=5)
 async def sleep_700_async(x):
     await asyncio.sleep(0.7)
     return x * x, current_input_id(), current_function_call_id()

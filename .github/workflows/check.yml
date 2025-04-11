@@ -14,10 +14,10 @@ concurrency:
 jobs:
   link:
     name: Ruff linting
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
 
       - uses: ./.github/actions/setup-cached-python
         with:
@@ -29,10 +29,10 @@ jobs:
 
   type_check:
     name: Static type checks
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
 
       - uses: ./.github/actions/setup-cached-python
         with:
@@ -49,10 +49,10 @@ jobs:
 
   check-copyright:
     name: Check copyright
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
 
       - uses: ./.github/actions/setup-cached-python
         with:

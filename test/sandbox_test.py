@@ -285,6 +285,7 @@ def test_sandbox_exec(app, servicer):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
     cp = sb.exec("bash", "-c", "while read line; do echo $line; done")
+    assert str(cp) == "ContainerProcess(process_id='container_exec_id')"
 
     cp.stdin.write(b"foo\n")
     cp.stdin.write(b"bar\n")
@@ -311,15 +312,18 @@ def test_sandbox_exec_wait(app, servicer):
 
 @skip_non_subprocess
 def test_sandbox_create_and_exec_with_bad_args(app, servicer):
+    too_big = 130_000
+    single_arg_size = too_big // 10
+    too_big_args = ["a" * single_arg_size for _ in range(10)]
     with pytest.raises(InvalidError):
-        too_big = 2_097_152 + 10
-        single_arg_size = too_big // 10
-        args = ["a" * single_arg_size for _ in range(10)]
-        Sandbox.create(*args, app=app)
+        Sandbox.create(*too_big_args, app=app)
 
     sb = Sandbox.create("sleep", "infinity", app=app)
     with pytest.raises(InvalidError):
         sb.exec("echo", 1)  # type: ignore
+
+    with pytest.raises(InvalidError):
+        sb.exec(*too_big_args)
 
 
 @skip_non_subprocess

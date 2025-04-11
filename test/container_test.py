@@ -37,6 +37,7 @@ from modal._serialization import (
     deserialize_data_format,
     serialize,
     serialize_data_format,
+    serialize_proto_params,
 )
 from modal._utils import async_utils
 from modal._utils.async_utils import synchronize_api
@@ -60,11 +61,7 @@ SLEEP_DELAY = 0.1
 blob_upload = synchronize_api(_blob_upload)
 blob_download = synchronize_api(_blob_download)
 
-DEFAULT_APP_LAYOUT = api_pb2.AppLayout(
-    objects=[
-        api_pb2.Object(object_id="im-1"),
-    ],
-)
+DEFAULT_APP_LAYOUT_SENTINEL: Any = object()
 
 
 def _get_inputs(
@@ -180,8 +177,8 @@ def _container_args(
     definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
     app_name: str = "",
     is_builder_function: bool = False,
-    allow_concurrent_inputs: Optional[int] = None,
     max_concurrent_inputs: Optional[int] = None,
+    target_concurrent_inputs: Optional[int] = None,
     batch_max_size: Optional[int] = None,
     batch_wait_ms: Optional[int] = None,
     serialized_params: Optional[bytes] = None,
@@ -195,10 +192,29 @@ def _container_args(
         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
     ),
     app_id: str = "ap-1",
-    app_layout: api_pb2.AppLayout = DEFAULT_APP_LAYOUT,
+    app_layout: api_pb2.AppLayout = DEFAULT_APP_LAYOUT_SENTINEL,
     web_server_port: Optional[int] = None,
     web_server_startup_timeout: Optional[float] = None,
 ):
+    if app_layout is DEFAULT_APP_LAYOUT_SENTINEL:
+        app_layout = api_pb2.AppLayout(
+            objects=[
+                api_pb2.Object(object_id="im-1"),
+                api_pb2.Object(
+                    object_id="fu-123",
+                    function_handle_metadata=api_pb2.FunctionHandleMetadata(
+                        function_name=function_name,
+                    ),
+                ),
+            ],
+            function_ids={function_name: "fu-123"},
+        )
+        if is_class:
+            app_layout.objects.append(
+                api_pb2.Object(object_id="cs-123", class_handle_metadata=api_pb2.ClassHandleMetadata())
+            )
+            app_layout.class_ids[function_name.removesuffix(".*")] = "cs-123"
+
     if webhook_type:
         webhook_config = api_pb2.WebhookConfig(
             type=webhook_type,
@@ -219,7 +235,7 @@ def _container_args(
         app_name=app_name or "",
         is_builder_function=is_builder_function,
         is_auto_snapshot=is_auto_snapshot,
-        target_concurrent_inputs=allow_concurrent_inputs,
+        target_concurrent_inputs=target_concurrent_inputs,
         max_concurrent_inputs=max_concurrent_inputs,
         batch_max_size=batch_max_size,
         batch_linger_ms=batch_wait_ms,
@@ -259,8 +275,8 @@ def _run_container(
     definition_type=api_pb2.Function.DEFINITION_TYPE_FILE,
     app_name: str = "",
     is_builder_function: bool = False,
-    allow_concurrent_inputs: Optional[int] = None,
     max_concurrent_inputs: Optional[int] = None,
+    target_concurrent_inputs: Optional[int] = None,
     batch_max_size: int = 0,
     batch_wait_ms: int = 0,
     serialized_params: Optional[bytes] = None,
@@ -273,28 +289,28 @@ def _run_container(
     class_parameter_info=api_pb2.ClassParameterInfo(
         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED, schema=[]
     ),
-    app_layout=DEFAULT_APP_LAYOUT,
+    app_layout=DEFAULT_APP_LAYOUT_SENTINEL,
     web_server_port: Optional[int] = None,
     web_server_startup_timeout: Optional[float] = None,
 ) -> ContainerResult:
     container_args = _container_args(
-        module_name,
-        function_name,
-        function_type,
-        webhook_type,
-        definition_type,
-        app_name,
-        is_builder_function,
-        allow_concurrent_inputs,
-        max_concurrent_inputs,
-        batch_max_size,
-        batch_wait_ms,
-        serialized_params,
-        is_checkpointing_function,
-        deps,
-        volume_mounts,
-        is_auto_snapshot,
-        max_inputs,
+        module_name=module_name,
+        function_name=function_name,
+        function_type=function_type,
+        webhook_type=webhook_type,
+        definition_type=definition_type,
+        app_name=app_name,
+        is_builder_function=is_builder_function,
+        max_concurrent_inputs=max_concurrent_inputs,
+        target_concurrent_inputs=target_concurrent_inputs,
+        batch_max_size=batch_max_size,
+        batch_wait_ms=batch_wait_ms,
+        serialized_params=serialized_params,
+        is_checkpointing_function=is_checkpointing_function,
+        deps=deps,
+        volume_mounts=volume_mounts,
+        is_auto_snapshot=is_auto_snapshot,
+        max_inputs=max_inputs,
         is_class=is_class,
         class_parameter_info=class_parameter_info,
         app_layout=app_layout,
@@ -644,6 +660,53 @@ def test_serialized_function(servicer):
         definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
     )
     assert _unwrap_scalar(ret) == 3 * 42
+
+
+@skip_github_non_linux
+def test_serialized_class_with_parameters(servicer):
+    class SerializedClassWithParams:
+        p: int = modal.parameter()
+
+        @modal.method()
+        def method(self):
+            return "hello"
+
+        # TODO: expand this test to check that self.other_method.remote() can be called
+        #  this would require feeding the servicer with more information about the function
+        #  since it would re-bind parameters to the class service function etc.
+
+    app = modal.App()
+    app.cls(serialized=True)(SerializedClassWithParams)  # gets rid of warning
+
+    servicer.class_serialized = serialize(SerializedClassWithParams)
+    ret = _run_container(
+        servicer,
+        "",
+        "SerializedClassWithParams.*",
+        is_class=True,
+        inputs=_get_inputs(((), {}), method_name="method"),
+        definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
+        class_parameter_info=api_pb2.ClassParameterInfo(
+            format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
+        ),
+        serialized_params=serialize_proto_params({"p": 10}),
+        app_layout=api_pb2.AppLayout(
+            objects=[
+                api_pb2.Object(
+                    object_id="fu-123",
+                    function_handle_metadata=api_pb2.FunctionHandleMetadata(
+                        function_name="SerializedClassWithParams.*",
+                        method_handle_metadata={
+                            "method": api_pb2.FunctionHandleMetadata(),
+                        },
+                    ),
+                )
+            ],
+            function_ids={"SerializedClassWithParams.*": "fu-123"},
+            class_ids={"SerializedClassWithParams": "cs-123"},
+        ),
+    )
+    assert _unwrap_scalar(ret) == "hello"
 
 
 @skip_github_non_linux
@@ -1010,11 +1073,7 @@ def test_param_cls_function(servicer):
 
 @skip_github_non_linux
 def test_param_cls_function_strict_params(servicer):
-    schema = [
-        api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_INT),
-        api_pb2.ClassParameterSpec(name="y", type=api_pb2.PARAM_TYPE_STRING),
-    ]
-    serialized_params = modal._serialization.serialize_proto_params({"x": 111, "y": "foo"}, schema)
+    serialized_params = modal._serialization.serialize_proto_params({"x": 111, "y": "foo"})
     ret = _run_container(
         servicer,
         "test.supports.sibling_hydration_app",
@@ -1024,10 +1083,6 @@ def test_param_cls_function_strict_params(servicer):
         inputs=_get_inputs(method_name="f"),
         class_parameter_info=api_pb2.ClassParameterInfo(
             format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
-            schema=[
-                api_pb2.ClassParameterSpec(name="x", type=api_pb2.PARAM_TYPE_INT),
-                api_pb2.ClassParameterSpec(name="y", type=api_pb2.PARAM_TYPE_STRING),
-            ],
         ),
     )
     assert _unwrap_scalar(ret) == "111 foo 42"
@@ -1053,10 +1108,19 @@ def test_cls_web_asgi_construction(servicer):
     app_layout = api_pb2.AppLayout(
         objects=[
             api_pb2.Object(object_id="im-1"),
+            # square function:
             api_pb2.Object(object_id="fu-2", function_handle_metadata=api_pb2.FunctionHandleMetadata()),
+            # class service function:
+            api_pb2.Object(object_id="fu-123", function_handle_metadata=api_pb2.FunctionHandleMetadata()),
+            # class itself:
+            api_pb2.Object(object_id="cs-123", class_handle_metadata=api_pb2.ClassHandleMetadata()),
         ],
         function_ids={
-            "square": "fu-2",
+            "square": "fu-2",  # used to hydrate sibling function
+            "NonParamCls.*": "fu-123",
+        },
+        class_ids={
+            "NonParamCls": "cs-123",
         },
     )
     inputs = _get_web_inputs(method_name="asgi_web")
@@ -1346,7 +1410,7 @@ def test_concurrent_inputs_sync_function(servicer):
         "test.supports.functions",
         "sleep_700_sync",
         inputs=_get_inputs(n=n_inputs),
-        allow_concurrent_inputs=n_parallel,
+        max_concurrent_inputs=n_parallel,
     )
 
     expected_execution = n_inputs / n_parallel * SLEEP_TIME
@@ -1369,7 +1433,7 @@ def test_concurrent_inputs_async_function(servicer):
         "test.supports.functions",
         "sleep_700_async",
         inputs=_get_inputs(n=n_inputs),
-        allow_concurrent_inputs=n_parallel,
+        max_concurrent_inputs=n_parallel,
     )
 
     expected_execution = n_inputs / n_parallel * SLEEP_TIME
@@ -1740,8 +1804,8 @@ def _run_container_process(
     function_name,
     *,
     inputs: list[tuple[str, tuple, dict[str, Any]]],
-    allow_concurrent_inputs: Optional[int] = None,
     max_concurrent_inputs: Optional[int] = None,
+    target_concurrent_inputs: Optional[int] = None,
     cls_params: tuple[tuple, dict[str, Any]] = ((), {}),
     _print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
     env={},
@@ -1750,8 +1814,8 @@ def _run_container_process(
     container_args = _container_args(
         module_name,
         function_name,
-        allow_concurrent_inputs=allow_concurrent_inputs,
         max_concurrent_inputs=max_concurrent_inputs,
+        target_concurrent_inputs=target_concurrent_inputs,
         serialized_params=serialize(cls_params),
         is_class=is_class,
     )
@@ -1847,7 +1911,7 @@ def test_cancellation_stops_subset_of_async_concurrent_inputs(servicer, tmp_path
             "test.supports.functions",
             "delay_async",
             inputs=[("", (1,), {})] * num_inputs,
-            allow_concurrent_inputs=num_inputs,
+            max_concurrent_inputs=num_inputs,
         )
         input_lock.wait()
         input_lock.wait()
@@ -1878,7 +1942,7 @@ def test_sigint_concurrent_async_cancel_doesnt_reraise(servicer, tmp_path):
             "test.supports.functions",
             "async_cancel_doesnt_reraise",
             inputs=[("", (1,), {})] * 2,  # two inputs
-            allow_concurrent_inputs=2,
+            max_concurrent_inputs=2,
         )
         input_lock.wait()
         input_lock.wait()
@@ -1903,7 +1967,7 @@ def test_cancellation_stops_task_with_concurrent_inputs(servicer, tmp_path):
             "test.supports.functions",
             "delay",
             inputs=[("", (20,), {})] * 2,  # two inputs
-            allow_concurrent_inputs=2,
+            max_concurrent_inputs=2,
         )
         input_lock.wait()
         input_lock.wait()
@@ -2069,7 +2133,7 @@ def test_sigint_termination_input_concurrent(servicer, tmp_path):
             "LifecycleCls.*",
             inputs=[("delay", (10,), {})] * 3,
             cls_params=((), {"print_at_exit": True}),
-            allow_concurrent_inputs=2,
+            max_concurrent_inputs=2,
             is_class=True,
         )
         input_barrier.wait()  # get one input
@@ -2283,10 +2347,10 @@ def test_no_warn_on_remote_local_volume_mount(client, servicer, recwarn, set_env
     assert len(recwarn) == 0
 
 
-@pytest.mark.parametrize("concurrency_limit", [1, 2])
-def test_container_io_manager_concurrency_tracking(client, servicer, concurrency_limit):
+@pytest.mark.parametrize("concurrency", [1, 2])
+def test_container_io_manager_concurrency_tracking(client, servicer, concurrency):
     dummy_container_args = api_pb2.ContainerArguments(
-        function_id="fu-123", function_def=api_pb2.Function(target_concurrent_inputs=concurrency_limit)
+        function_id="fu-123", function_def=api_pb2.Function(target_concurrent_inputs=concurrency)
     )
     from modal._utils.async_utils import synchronizer
 
@@ -2315,7 +2379,7 @@ def test_container_io_manager_concurrency_tracking(client, servicer, concurrency
         active_input_ids |= set(io_context.input_ids)
         processed_inputs += len(io_context.input_ids)
 
-        while active_inputs and (len(active_inputs) == concurrency_limit or processed_inputs == total_inputs):
+        while active_inputs and (len(active_inputs) == concurrency or processed_inputs == total_inputs):
             input_to_process = active_inputs.pop(0)
             send_failure = processed_inputs % 2 == 1
             # return values for inputs
@@ -2380,8 +2444,8 @@ def test_max_concurrency(servicer):
         "test.supports.functions",
         "get_input_concurrency",
         inputs=_get_inputs(((1,), {}), n=n_inputs),
-        allow_concurrent_inputs=target_concurrency,
         max_concurrent_inputs=max_concurrency,
+        target_concurrent_inputs=target_concurrency,
     )
 
     outputs = [deserialize(item.result.data, ret.client) for item in ret.items]
@@ -2400,8 +2464,8 @@ def test_set_local_input_concurrency(servicer):
         "test.supports.functions",
         "set_input_concurrency",
         inputs=_get_inputs(((now,), {}), n=n_inputs),
-        allow_concurrent_inputs=target_concurrency,
         max_concurrent_inputs=max_concurrency,
+        target_concurrent_inputs=target_concurrency,
     )
 
     outputs = [int(deserialize(item.result.data, ret.client)) for item in ret.items]

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import (
     Any,
     Callable,
+    Generic,
     Optional,
     TypeVar,
     Union,
@@ -25,6 +26,10 @@ from typing_extensions import ParamSpec, assert_type
 
 from ..exception import InvalidError
 from .logger import logger
+
+T = TypeVar("T")
+P = ParamSpec("P")
+V = TypeVar("V")
 
 synchronizer = synchronicity.Synchronizer()
 
@@ -260,7 +265,72 @@ def run_coro_blocking(coro):
         return fut.result()
 
 
-async def queue_batch_iterator(q: asyncio.Queue, max_batch_size=100, debounce_time=0.015):
+class TimestampPriorityQueue(Generic[T]):
+    """
+    A priority queue that schedules items to be processed at specific timestamps.
+    """
+
+    _MAX_PRIORITY = float("inf")
+
+    def __init__(self, maxsize: int = 0):
+        self.condition = asyncio.Condition()
+        self._queue: asyncio.PriorityQueue[tuple[float, Union[T, None]]] = asyncio.PriorityQueue(maxsize=maxsize)
+
+    async def close(self):
+        await self.put(self._MAX_PRIORITY, None)
+
+    async def put(self, timestamp: float, item: Union[T, None]):
+        """
+        Add an item to the queue to be processed at a specific timestamp.
+        """
+        await self._queue.put((timestamp, item))
+        async with self.condition:
+            self.condition.notify_all()  # notify any waiting coroutines
+
+    async def get(self) -> Union[T, None]:
+        """
+        Get the next item from the queue that is ready to be processed.
+        """
+        while True:
+            async with self.condition:
+                while self.empty():
+                    await self.condition.wait()
+                # peek at the next item
+                timestamp, item = await self._queue.get()
+                now = time.time()
+                if timestamp < now:
+                    return item
+                if timestamp == self._MAX_PRIORITY:
+                    return None
+                # not ready yet, calculate sleep time
+                sleep_time = timestamp - now
+                self._queue.put_nowait((timestamp, item))  # put it back
+                # wait until either the timeout or a new item is added
+                try:
+                    await asyncio.wait_for(self.condition.wait(), timeout=sleep_time)
+                except asyncio.TimeoutError:
+                    continue
+
+    def empty(self) -> bool:
+        return self._queue.empty()
+
+    def qsize(self) -> int:
+        return self._queue.qsize()
+
+    async def clear(self):
+        """
+        Clear the retry queue. Used for testing to simulate reading all elements from queue using queue_batch_iterator.
+        """
+        while not self.empty():
+            await self.get()
+
+    def __len__(self):
+        return self._queue.qsize()
+
+
+async def queue_batch_iterator(
+    q: Union[asyncio.Queue, TimestampPriorityQueue], max_batch_size=100, debounce_time=0.015
+):
     """
     Read from a queue but return lists of items when queue is large
 
@@ -385,6 +455,10 @@ class AsyncOrSyncIterable:
         except NestedEventLoops:
             raise InvalidError(self.nested_async_message)
 
+    async def aclose(self):
+        if hasattr(self._async_iterable, "aclose"):
+            await self._async_iterable.aclose()
+
 
 _shutdown_tasks = []
 
@@ -399,11 +473,6 @@ def on_shutdown(coro):
             raise
 
     _shutdown_tasks.append(asyncio.create_task(wrapper()))
-
-
-T = TypeVar("T")
-P = ParamSpec("P")
-V = TypeVar("V")
 
 
 def asyncify(f: Callable[P, T]) -> Callable[P, typing.Coroutine[None, None, T]]:

@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal import App, asgi_app, batched, method, web_endpoint, wsgi_app
+from modal import App, asgi_app, fastapi_endpoint, method, wsgi_app
 from modal.exception import InvalidError
 
 
@@ -50,10 +50,10 @@ def test_method_forgot_parentheses():
 def test_invalid_web_decorator_usage():
     app = App()
 
-    with pytest.raises(InvalidError, match="web_endpoint()"):
+    with pytest.raises(InvalidError, match="fastapi_endpoint()"):
 
         @app.function()  # type: ignore
-        @web_endpoint  # type: ignore
+        @fastapi_endpoint  # type: ignore
         def my_handle():
             pass
 
@@ -72,27 +72,14 @@ def test_invalid_web_decorator_usage():
             pass
 
 
-def test_web_endpoint_method():
+def test_fastapi_endpoint_method():
     app = App()
 
-    with pytest.raises(InvalidError, match="remove the `@method`"):
+    with pytest.raises(InvalidError, match="cannot be combined"):
 
-        @app.cls()
+        @app.cls(serialized=True)
         class Container:
             @method()  # type: ignore
-            @web_endpoint()
-            def generate(self):
-                pass
-
-
-def test_batch_method():
-    app = App()
-
-    with pytest.raises(InvalidError, match="remove the `@method`"):
-
-        @app.cls()
-        class Container:
-            @method()  # type: ignore
-            @batched(max_batch_size=2, wait_ms=0)
+            @fastapi_endpoint()
             def generate(self):
                 pass
