@@ -655,8 +655,6 @@ class _Mount(_Object, type_prefix="mo"):
         condition: Optional[Callable[[str], bool]] = None,
         ignore: Optional[Union[Sequence[str], Callable[[Path], bool]]] = None,
     ) -> "_Mount":
-        # Don't re-run inside container.
-
         if condition is not None:
             if ignore is not None:
                 raise InvalidError("Cannot specify both `ignore` and `condition`")
@@ -669,10 +667,6 @@ class _Mount(_Object, type_prefix="mo"):
             ignore = FilePatternMatcher(*ignore)
 
         mount = _Mount._new()
-        from ._runtime.execution_context import is_local
-
-        if not is_local():
-            return mount  # empty/non-mountable mount in case it's used from within a container
         for module_name in module_names:
             mount = mount._extend(_MountedPythonModule(module_name, remote_dir, ignore))
         return mount
