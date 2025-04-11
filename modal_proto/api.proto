@@ -757,13 +757,6 @@ message CloudBucketMount {
   optional string oidc_auth_role_arn = 9;
 }
 
-message ClusterStats {
-  string app_id = 1;
-  repeated string task_ids = 2;
-  string region = 3;
-  double started_at = 4; // Defined as start time of the first task in the cluster
-}
-
 message ClusterGetRequest {
   string cluster_id = 1;
 }
@@ -778,6 +771,13 @@ message ClusterListRequest {
 
 message ClusterListResponse {
   repeated ClusterStats clusters = 1;
+}
+
+message ClusterStats {
+  string app_id = 1;
+  repeated string task_ids = 2;
+  string region = 3;
+  double started_at = 4; // Defined as start time of the first task in the cluster
 }
 
 message CommitInfo {
