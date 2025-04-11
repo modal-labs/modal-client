@@ -12,7 +12,7 @@ from modal_proto import api_pb2
 from ._object import _Object
 from ._type_manager import parameter_serde_registry, schema_registry
 from ._vendor import cloudpickle
-from .config import logger
+from .config import config, logger
 from .exception import DeserializationError, ExecutionError, InvalidError
 from .object import Object
 
@@ -501,20 +501,20 @@ def _signature_parameter_to_spec(
         has_default=has_default,
     )
     if include_legacy_parameter_fields:
+        # Specific to *class parameters*:
         # add the .{type}_default and `.type` values as required by legacy clients
         # looking at class parameter specs
-        if full_proto_type.base_type == api_pb2.PARAM_TYPE_INT:
-            if has_default:
+        field_spec.type = field_spec.full_type.base_type
+
+        if has_default:
+            if full_proto_type.base_type == api_pb2.PARAM_TYPE_INT:
                 field_spec.int_default = python_signature_parameter.default
-            field_spec.type = api_pb2.PARAM_TYPE_INT
-        elif full_proto_type.base_type == api_pb2.PARAM_TYPE_STRING:
-            if has_default:
+            elif full_proto_type.base_type == api_pb2.PARAM_TYPE_STRING:
                 field_spec.string_default = python_signature_parameter.default
-            field_spec.type = api_pb2.PARAM_TYPE_STRING
-        elif full_proto_type.base_type == api_pb2.PARAM_TYPE_BYTES:
-            if has_default:
+            elif full_proto_type.base_type == api_pb2.PARAM_TYPE_BYTES:
                 field_spec.bytes_default = python_signature_parameter.default
-            field_spec.type = api_pb2.PARAM_TYPE_BYTES
+            elif full_proto_type.base_type == api_pb2.PARAM_TYPE_BOOL:
+                field_spec.bool_default = python_signature_parameter.default
 
     return field_spec
 
@@ -526,3 +526,28 @@ def signature_to_parameter_specs(signature: inspect.Signature) -> list[api_pb2.C
         field_spec = _signature_parameter_to_spec(param, include_legacy_parameter_fields=True)
         modal_parameters.append(field_spec)
     return modal_parameters
+
+
+def get_callable_schema(
+    callable: typing.Callable, *, is_web_endpoint: bool, ignore_first_argument: bool = False
+) -> typing.Optional[api_pb2.FunctionSchema]:
+    # ignore_first_argument can be used in case of unbound methods where we want to ignore the first (self) argument
+    if is_web_endpoint or not config.get("function_schemas"):
+        # we don't support schemas on web endpoints for now
+        return None
+
+    sig = inspect.signature(callable)
+    # TODO: treat no return value annotation as None return?
+    return_type_proto = schema_registry.get_proto_generic_type(sig.return_annotation)
+    arguments = []
+    for i, p in enumerate(sig.parameters.values()):
+        if i == 0 and ignore_first_argument:
+            continue
+
+        arguments.append(_signature_parameter_to_spec(p))
+
+    return api_pb2.FunctionSchema(
+        schema_type=api_pb2.FunctionSchema.FUNCTION_SCHEMA_V1,
+        arguments=arguments,
+        return_type=return_type_proto,
+    )

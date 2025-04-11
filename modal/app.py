@@ -598,7 +598,6 @@ class _App:
         scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         name: Optional[str] = None,  # Sets the Modal name of the function within the app
         is_generator: Optional[
@@ -625,6 +624,7 @@ class _App:
         keep_warm: Optional[int] = None,  # Replaced with `min_containers`
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
+        allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
     ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal [Function](/docs/reference/modal.Function) with this App."""
@@ -636,6 +636,14 @@ class _App:
 
         if image is None:
             image = self._get_default_image()
+
+        if allow_concurrent_inputs is not None:
+            deprecation_warning(
+                (2025, 4, 9),
+                "The `allow_concurrent_inputs` parameter is deprecated."
+                " Please use the `@modal.concurrent` decorator instead."
+                "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+            )
 
         secrets = [*self._secrets, *secrets]
 
@@ -652,7 +660,7 @@ class _App:
 
             if isinstance(f, _PartialFunction):
                 # typically for @function-wrapped @web_endpoint, @asgi_app, or @batched
-                f.wrapped = True
+                f.registered = True
 
                 # but we don't support @app.function wrapping a method.
                 if is_method_fn(f.raw_f.__qualname__):
@@ -670,17 +678,17 @@ class _App:
                         "```\n"
                     )
                 i6pn_enabled = i6pn or (f.flags & _PartialFunctionFlags.CLUSTERED)
-                cluster_size = f.cluster_size  # Experimental: Clustered functions
+                cluster_size = f.params.cluster_size  # Experimental: Clustered functions
 
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
-                webhook_config = f.webhook_config
-                is_generator = f.is_generator
-                batch_max_size = f.batch_max_size
-                batch_wait_ms = f.batch_wait_ms
-                if f.max_concurrent_inputs:  # Using @modal.concurrent()
-                    max_concurrent_inputs = f.max_concurrent_inputs
-                    target_concurrent_inputs = f.target_concurrent_inputs
+                webhook_config = f.params.webhook_config
+                is_generator = f.params.is_generator
+                batch_max_size = f.params.batch_max_size
+                batch_wait_ms = f.params.batch_wait_ms
+                if f.flags & _PartialFunctionFlags.CONCURRENT:
+                    max_concurrent_inputs = f.params.max_concurrent_inputs
+                    target_concurrent_inputs = f.params.target_concurrent_inputs
                 else:
                     max_concurrent_inputs = allow_concurrent_inputs
                     target_concurrent_inputs = None
@@ -819,7 +827,6 @@ class _App:
         scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
@@ -840,6 +847,7 @@ class _App:
         keep_warm: Optional[int] = None,  # Replaced with `min_containers`
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
+        allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
     ) -> Callable[[Union[CLS_T, _PartialFunction]], CLS_T]:
         """
@@ -854,14 +862,22 @@ class _App:
                 raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
             scheduler_placement = SchedulerPlacement(region=region)
 
+        if allow_concurrent_inputs is not None:
+            deprecation_warning(
+                (2025, 4, 9),
+                "The `allow_concurrent_inputs` parameter is deprecated."
+                " Please use the `@modal.concurrent` decorator instead."
+                "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+            )
+
         def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
             # Check if the decorated object is a class
             if isinstance(wrapped_cls, _PartialFunction):
-                wrapped_cls.wrapped = True
-                user_cls = wrapped_cls.raw_f
-                if wrapped_cls.max_concurrent_inputs:  # Using @modal.concurrent()
-                    max_concurrent_inputs = wrapped_cls.max_concurrent_inputs
-                    target_concurrent_inputs = wrapped_cls.target_concurrent_inputs
+                wrapped_cls.registered = True
+                user_cls = wrapped_cls.user_cls
+                if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
+                    max_concurrent_inputs = wrapped_cls.params.max_concurrent_inputs
+                    target_concurrent_inputs = wrapped_cls.params.target_concurrent_inputs
                 else:
                     max_concurrent_inputs = allow_concurrent_inputs
                     target_concurrent_inputs = None
@@ -876,13 +892,13 @@ class _App:
             if batch_functions:
                 if len(batch_functions) > 1:
                     raise InvalidError(f"Modal class {user_cls.__name__} can only have one batched function.")
-                if len(_find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.FUNCTION)) > 1:
+                if len(_find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.interface_flags())) > 1:
                     raise InvalidError(
                         f"Modal class {user_cls.__name__} with a modal batched function cannot have other modal methods."  # noqa
                     )
                 batch_function = next(iter(batch_functions.values()))
-                batch_max_size = batch_function.batch_max_size
-                batch_wait_ms = batch_function.batch_wait_ms
+                batch_max_size = batch_function.params.batch_max_size
+                batch_wait_ms = batch_function.params.batch_wait_ms
             else:
                 batch_max_size = None
                 batch_wait_ms = None
@@ -893,11 +909,11 @@ class _App:
             ):
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
 
-            for method in _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.FUNCTION).values():
-                if method.max_concurrent_inputs:
-                    raise InvalidError(
-                        "The `@modal.concurrent` decorator cannot be used on methods; decorate the class instead."
-                    )
+            for method in _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.CONCURRENT).values():
+                method.registered = True  # Avoid warning about not registering the method (hacky!)
+                raise InvalidError(
+                    "The `@modal.concurrent` decorator cannot be used on methods; decorate the class instead."
+                )
 
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 

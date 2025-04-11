@@ -12,6 +12,42 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.160 (2025-04-10)
+
+- The `allow_concurrent_inputs` parameter of `@app.function` and `@app.cls` is now deprecated in favor of the `@modal.concurrent` decorator. See the [Modal 1.0 Migration Guide](https://modal.com/docs/guide/modal-1-0-migration#replacing-allow_concurrent_inputs-with-modalconcurrent) and documentation on [input concurrency](https://modal.com/docs/guide/concurrent-inputs) for more information.
+
+
+
+### 0.73.159 (2025-04-10)
+
+* Fixes a bug where `serialized=True` classes could not `self.` reference other methods on the class, or use `modal.parameter()` synthetic constructors
+
+
+
+### 0.73.158 (2025-04-10)
+
+* Adds support for `bool` type to class parameters using `name: bool = modal.parameter()`. Note that older clients can't instantiate classes with bool parameters unless those have default values which are not modified. Bool parameters are also not supported by web endpoints at this time.
+
+
+
+### 0.73.148 (2025-04-07)
+
+- Fixes a bug introduced in 0.73.147 that broke App builds when using `@modal.batched` on a class method.
+
+
+
+### 0.73.147 (2025-04-07)
+
+- Improved handling of cases where `@modal.concurrent` is stacked with other decorators.
+
+
+
+### 0.73.144 (2025-04-04)
+
+- Adds a `context_dir` parameter to `modal.Image.from_dockerfile` and `modal.Image.dockerfile_commands`. This parameter can be used to provide a local reference for relative COPY commands.
+
+
+
 ### 0.73.139 (2025-04-02)
 
 - Added `modal.experimental.ipython` module, which can be loaded in Jupyter notebooks with `%load_ext modal.experimental.ipython`. Currently it provides the `%modal` line magic for looking up functions:

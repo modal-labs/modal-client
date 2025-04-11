@@ -15,10 +15,11 @@ import modal
 from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, fastapi_endpoint
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
-from modal.exception import DeprecationError, ExecutionError, InvalidError
+from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.functions import Function, FunctionCall
 from modal.runner import deploy_app
 from modal_proto import api_pb2
+from test.conftest import GrpcErrorAndCount
 from test.helpers import deploy_app_externally
 
 app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
@@ -1167,37 +1168,22 @@ def f():
     assert len(mounts) == expected_mounts
 
 
-_map_retry_servicer = None
-_map_attempt_count = 0
-
-
-def _maybe_fail(i):
-    global _map_attempt_count
-    if _map_attempt_count >= 10:
-        assert _map_retry_servicer
-        _map_retry_servicer.fail_put_inputs_with_grpc_error = None
-        _map_retry_servicer.fail_put_inputs_with_stream_terminated_error = False
-    _map_attempt_count += 1
-    return i
-
-
 def test_map_retry_with_internal_error(client, servicer, monkeypatch, caplog):
     """
     This test forces pump_inputs to fail with INTERNAL for 10 times, and then succeed. This tests that the error
-    is caught and retried error, and does not propagate up.
+    is caught and retried error, and does not propagate up. It also tests that we don't log the warning
+    intended for RESOURCE_EXHAUSTED only. The warning is logged every 8 attempts, which is why we retry 10 times.
     """
-    global _map_retry_servicer, _map_attempt_count
     monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
     app = App()
-    _map_retry_servicer = servicer
-    # reset count from any previous tests
-    _map_attempt_count = 0
-    maybe_fail = app.function()(_maybe_fail)
-    servicer.function_body(_maybe_fail)
-    servicer.fail_put_inputs_with_grpc_error = Status.INTERNAL
+    pow2 = app.function()(_pow2)
+    servicer.function_body(_pow2)
+    servicer.fail_put_inputs_with_grpc_error = GrpcErrorAndCount(Status.INTERNAL, 10)
     with app.run(client=client):
-        for _ in maybe_fail.map(range(1), order_outputs=False):
+        for _ in pow2.map(range(1)):
             pass
+    # Verify there are zero attempts remaining
+    assert servicer.fail_put_inputs_with_grpc_error.count == 0
     # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
     assert not [r for r in caplog.records if r.levelno == logging.WARNING]
 
@@ -1205,20 +1191,19 @@ def test_map_retry_with_internal_error(client, servicer, monkeypatch, caplog):
 def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog):
     """
     This test forces pump_inputs to fail with RESOURCE_EXHAUSTED for 10 times, and then succeed. This tests that
-    the error is caught and retried error, and does not propagate up.
+    the error is caught and retried error, and does not propagate up. It also tests that we don't log the warning
+    intended for RESOURCE_EXHAUSTED only. The warning is logged every 8 attempts, which is why we retry 10 times.
     """
-    global _map_retry_servicer, _map_attempt_count
     monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
     app = App()
-    _map_retry_servicer = servicer
-    # reset count from any previous tests
-    _map_attempt_count = 0
-    maybe_fail = app.function()(_maybe_fail)
-    servicer.function_body(_maybe_fail)
-    servicer.fail_put_inputs_with_grpc_error = Status.RESOURCE_EXHAUSTED
+    pow2 = app.function()(_pow2)
+    servicer.function_body(_pow2)
+    servicer.fail_put_inputs_with_grpc_error = GrpcErrorAndCount(Status.RESOURCE_EXHAUSTED, 10)
     with app.run(client=client):
-        for _ in maybe_fail.map(range(1), order_outputs=False):
+        for _ in pow2.map(range(1), order_outputs=False):
             pass
+    # Verify there are zero attempts remaining
+    assert servicer.fail_put_inputs_with_grpc_error.count == 0
     # Verify we log the warning for RESOURCE_EXHAUSTED
     warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
     assert len(warnings) == 1
@@ -1227,26 +1212,42 @@ def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog
 def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, caplog):
     """
     This test forces pump_inputs to fail with StreamTerminatedError for 10 times, and then succeed. This tests that
-    the error is caught and retried error, and does not propagate up.
+    the error is caught and retried error, and does not propagate up. It also tests that we don't log the warning
+    intended for RESOURCE_EXHAUSTED only. The warning is logged every 8 attempts, which is why we retry 10 times.
     """
-    global _map_retry_servicer, _map_attempt_count
     monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
     app = App()
-    _map_retry_servicer = servicer
-    # reset count from any previous tests
-    _map_attempt_count = 0
-    maybe_fail = app.function()(_maybe_fail)
-    servicer.function_body(_maybe_fail)
-    servicer.fail_put_inputs_with_stream_terminated_error = True
+    pow2 = app.function()(_pow2)
+    servicer.function_body(_pow2)
+    servicer.fail_put_inputs_with_stream_terminated_error = 10
     with app.run(client=client):
-        for _ in maybe_fail.map(range(1), order_outputs=False):
+        for _ in pow2.map(range(1), order_outputs=False):
             pass
+    # Verify there are zero attempts remaining
+    assert servicer.fail_put_inputs_with_stream_terminated_error == 0
     # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
     assert not [r for r in caplog.records if r.levelno == logging.WARNING]
 
 
-def test_concurrency_migration(client, servicer):
-    from test.supports.concurrency_config import CONFIG_VALS, app
+def test_batching_config(client, servicer):
+    from test.supports.batching_config import CONFIG_VALS, app
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            pass
+
+    function_create_requests = ctx.get_requests("FunctionCreate")
+    for request in function_create_requests:
+        if request.function.function_name in {"has_batch_config", "HasBatchConfig.*"}:
+            assert request.function.batch_max_size == CONFIG_VALS["MAX_SIZE"]
+            assert request.function.batch_linger_ms == CONFIG_VALS["WAIT_MS"]
+        else:
+            raise RuntimeError(f"Unexpected function name: {request.function.function_name}")
+
+
+def test_concurrency_config_migration(client, servicer):
+    with pytest.warns(DeprecationError, match="@modal.concurrent"):
+        from test.supports.concurrency_config import CONFIG_VALS, app
 
     with servicer.intercept() as ctx:
         with app.run(client=client):
@@ -1272,3 +1273,106 @@ def test_concurrency_migration(client, servicer):
             assert request.function.target_concurrent_inputs == 0
         else:
             raise RuntimeError(f"Unexpected function name: {request.function.function_name}")
+
+
+@pytest.mark.usefixtures("record_function_schemas", "set_env_client")
+def test_function_schema_recording(client, servicer):
+    app = App("app")
+
+    @app.function(name="f", serialized=True)
+    def f(a: int) -> list[str]: ...
+
+    deploy_app(app, client=client)
+    expected_schema = api_pb2.FunctionSchema(
+        schema_type=api_pb2.FunctionSchema.FUNCTION_SCHEMA_V1,
+        arguments=[
+            api_pb2.ClassParameterSpec(
+                name="a",
+                full_type=api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_INT,
+                ),
+            )
+        ],
+        return_type=api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_LIST,
+            sub_types=[
+                api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_STRING,
+                )
+            ],
+        ),
+    )
+    assert f._get_schema() == expected_schema
+    # test lazy lookup
+    assert Function.from_name("app", "f")._get_schema() == expected_schema
+
+
+@pytest.mark.usefixtures("record_function_schemas", "set_env_client")
+def test_function_schema_excludes_web_endpoints(client, servicer):
+    # for now we exclude web endpoints since they don't use straight-forward arguments
+    # in the same way as regular modal functions
+    app = App("app")
+
+    @app.function(name="f", serialized=True)
+    @modal.fastapi_endpoint()
+    def webbie(query_param: int): ...
+
+    deploy_app(app, client=client)
+    schema = webbie._get_schema()
+    assert schema.schema_type == api_pb2.FunctionSchema.FUNCTION_SCHEMA_UNSPECIFIED
+
+
+@pytest.mark.usefixtures("record_function_schemas", "set_env_client")
+def test_class_schema_recording(client, servicer):
+    app = App("app")
+
+    @app.cls(serialized=True)
+    class F:
+        b: str = modal.parameter()
+
+        @modal.method()
+        def f(self, a: int) -> list[str]: ...
+
+    expected_method_schema = api_pb2.FunctionSchema(
+        schema_type=api_pb2.FunctionSchema.FUNCTION_SCHEMA_V1,
+        arguments=[
+            api_pb2.ClassParameterSpec(
+                name="a",
+                full_type=api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_INT,
+                ),
+            )
+        ],
+        return_type=api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_LIST,
+            sub_types=[
+                api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_STRING,
+                )
+            ],
+        ),
+    )
+
+    deploy_app(app)
+    (constructor_arg,) = modal.cls._get_constructor_args(typing.cast(modal.Cls, F))
+    assert constructor_arg.name == "b"
+    assert constructor_arg.full_type == api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_STRING)
+
+    method_schemas = modal.cls._get_method_schemas(typing.cast(modal.Cls, F))
+    method_schema = F(b="hello").f._get_schema()  # type: ignore  # mypy dataclass_transform bug
+
+    assert method_schema == expected_method_schema
+    assert method_schemas["f"] == expected_method_schema
+
+    # Test lazy lookups
+    assert modal.cls._get_method_schemas(modal.Cls.from_name("app", "F")) == method_schemas
+    (looked_up_construct_arg,) = modal.cls._get_constructor_args(modal.Cls.from_name("app", "F"))
+    assert looked_up_construct_arg == constructor_arg
+
+
+def test_failed_lookup_error(client, servicer):
+    with pytest.raises(NotFoundError, match="Lookup failed for Function 'f' from the 'app' app"):
+        Function.from_name("app", "f").hydrate(client=client)
+
+    with pytest.raises(NotFoundError, match="in the 'some-env' environment"):
+        Function.from_name("app", "f", environment_name="some-env").hydrate(client=client)

@@ -2,7 +2,12 @@
 # ruff: noqa: E402
 import os
 
-from modal._runtime.user_code_imports import Service, import_class_service, import_single_function_service
+from modal._runtime.user_code_imports import (
+    Service,
+    get_active_app_fallback,
+    import_class_service,
+    import_single_function_service,
+)
 
 telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
 if telemetry_socket:
@@ -349,32 +354,6 @@ def call_function(
                     signal.signal(signal.SIGUSR1, usr1_handler)  # reset signal handler
 
 
-def get_active_app_fallback(function_def: api_pb2.Function) -> _App:
-    # This branch is reached in the special case that the imported function/class is:
-    # 1) not serialized, and
-    # 2) isn't a FunctionHandle - i.e, not decorated at definition time
-    # Look at all instantiated apps - if there is only one with the indicated name, use that one
-    app_name: Optional[str] = function_def.app_name or None  # coalesce protobuf field to None
-    matching_apps = _App._all_apps.get(app_name, [])
-    if len(matching_apps) == 1:
-        active_app: _App = matching_apps[0]
-        return active_app
-
-    if len(matching_apps) > 1:
-        if app_name is not None:
-            warning_sub_message = f"app with the same name ('{app_name}')"
-        else:
-            warning_sub_message = "unnamed app"
-        logger.warning(
-            f"You have more than one {warning_sub_message}. "
-            "It's recommended to name all your Apps uniquely when using multiple apps"
-        )
-
-    # If we don't have an active app, create one on the fly
-    # The app object is used to carry the app layout etc
-    return _App()
-
-
 def call_lifecycle_functions(
     event_loop: UserCodeEventLoop,
     container_io_manager,  #: ContainerIOManager,  TODO: this type is generated at runtime
@@ -405,7 +384,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     # The worker sets this flag to "1" for snapshot and restore tasks. Otherwise, this flag is unset,
     # in which case snapshots should be disabled.
     is_snapshotting_function = (
-        function_def.is_checkpointing_function and os.environ.get("MODAL_ENABLE_SNAP_RESTORE", "0") == "1"
+        function_def.is_checkpointing_function and os.environ.get("MODAL_ENABLE_SNAP_RESTORE") == "1"
     )
 
     _client: _Client = synchronizer._translate_in(client)  # TODO(erikbern): ugly
@@ -416,9 +395,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     with container_io_manager.heartbeats(is_snapshotting_function), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
         if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-            ser_cls, ser_fun = container_io_manager.get_serialized_function()
+            ser_usr_cls, ser_fun = container_io_manager.get_serialized_function()
         else:
-            ser_cls, ser_fun = None, None
+            ser_usr_cls, ser_fun = None, None
 
         # Initialize the function, importing user code.
         with container_io_manager.handle_user_exception():
@@ -429,16 +408,28 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 param_kwargs = {}
 
             if function_def.is_class:
+                # this is a bit ugly - match the function and class based on function name to get metadata
+                # This metadata is required in order to hydrate the class in case it's not globally
+                # decorated (or serialized)
+                service_base_function_id = container_args.app_layout.function_ids[function_def.function_name]
+                service_function_hydration_data = [
+                    o for o in container_args.app_layout.objects if o.object_id == service_base_function_id
+                ][0]
+                class_id = container_args.app_layout.class_ids[function_def.function_name.removesuffix(".*")]
+
                 service = import_class_service(
                     function_def,
-                    ser_cls,
+                    service_function_hydration_data,
+                    class_id,
+                    client,
+                    ser_usr_cls,
                     param_args,
                     param_kwargs,
                 )
             else:
                 service = import_single_function_service(
                     function_def,
-                    ser_cls,
+                    ser_usr_cls,
                     ser_fun,
                     param_args,
                     param_kwargs,

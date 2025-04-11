@@ -176,6 +176,7 @@ enum ParameterType {
   PARAM_TYPE_LIST = 6;
   PARAM_TYPE_DICT = 7;
   PARAM_TYPE_NONE = 8;
+  PARAM_TYPE_BOOL = 9;
 }
 
 enum ProgressType {
@@ -710,6 +711,7 @@ message ClassParameterSpec { // TODO: rename into NamedPayloadType or similar
     int64 int_default = 5;
     bytes pickle_default = 6;
     bytes bytes_default = 7;
+    bool bool_default = 9;
   }
   GenericPayloadType full_type = 8; // supersedes `type`
 }
@@ -726,6 +728,7 @@ message ClassParameterValue {  // TODO: rename into NamedPayloadValue
     int64 int_value = 4;
     bytes pickle_value = 5;
     bytes bytes_value = 6;
+    bool bool_value = 7;
   }
 }
 
@@ -800,9 +803,12 @@ message ContainerExecPutInputRequest {
 message ContainerExecRequest {
   string task_id = 1;
   repeated string command = 2;
-  PTYInfo pty_info = 3;
+  // If pty_info is provided, open a PTY, but also this container exec is treated an
+  // "interactive shell" request, and it will be terminated if messages are not periodically
+  // sent on the stdin stream on some interval (currently 40 seconds).
+  optional PTYInfo pty_info = 3;
   // Send SIGTERM to running container on exit of exec command.
-  bool terminate_container_on_exit = 4;
+  bool terminate_container_on_exit = 4 [deprecated=true];
   bool runtime_debug = 5; // For internal debugging use only.
   ExecOutputOption stdout_output = 6;
   ExecOutputOption stderr_output = 7;
@@ -1308,7 +1314,7 @@ message Function {
   bool _experimental_enable_gpu_snapshot = 78; // Experimental support for GPU snapshotting
 
   AutoscalerSettings autoscaler_settings = 79;  // Bundle of parameters related to autoscaling
-
+  FunctionSchema function_schema = 80;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1457,7 +1463,7 @@ message FunctionData {
   bool runtime_perf_record = 29; // For internal debugging use only.
 
   AutoscalerSettings autoscaler_settings = 31;  // Bundle of parameters related to autoscaling
-
+  FunctionSchema function_schema = 32;
 }
 
 message FunctionExtended {
@@ -1591,6 +1597,7 @@ message FunctionHandleMetadata {
   ClassParameterInfo class_parameter_info = 43;
   // Mapping of method names to their metadata, only non-empty for class service functions
   map<string, FunctionHandleMetadata> method_handle_metadata = 44;
+  FunctionSchema function_schema = 45;
 }
 
 message FunctionInput {
@@ -1647,6 +1654,7 @@ message FunctionPrecreateRequest {
   string use_method_name = 7;  // for class methods - this method name needs to be included in the FunctionInput
   // Mapping of method names to method definitions, only non-empty for class service functions
   map<string, MethodDefinition> method_definitions = 8;
+  FunctionSchema function_schema = 9;
 }
 
 message FunctionPrecreateResponse {
@@ -1710,6 +1718,16 @@ message FunctionRetryPolicy {
   uint32 max_delay_ms = 3;
   // NOTE: two-byte field number not used for special reason. copy-paste error. Ref: PR #2542
   uint32 retries = 18;
+}
+
+message FunctionSchema {
+  enum FunctionSchemaType {
+    FUNCTION_SCHEMA_UNSPECIFIED = 0;
+    FUNCTION_SCHEMA_V1 = 1;
+  }
+  FunctionSchemaType schema_type = 1; // allows easy disambiguation between empty schema and no schema collection etc.
+  repeated ClassParameterSpec arguments = 2;
+  GenericPayloadType return_type = 3;
 }
 
 message FunctionStats {
@@ -1891,6 +1909,7 @@ message MethodDefinition {
   string web_url = 4;
   WebUrlInfo web_url_info = 5;
   repeated CustomDomainInfo custom_domain_info = 6;
+  FunctionSchema function_schema = 7;
 }
 
 message MountFile {
@@ -2228,6 +2247,7 @@ message Resources {
   uint32 memory_mb_max = 5; // MiB
   uint32 ephemeral_disk_mb = 6;  // MiB
   uint32 milli_cpu_max = 7; // milli CPU cores
+  bool rdma = 8; // Whether to use RDMA interfaces
 }
 
 message RuntimeInputMessage {
@@ -2879,6 +2899,69 @@ message VolumeMount {
   bool read_only = 4;
 }
 
+message VolumePutFiles2Request {
+  // The ID of the volume to put/upload files into.
+  string volume_id = 1;
+
+  // List of files to put/upload.
+  repeated File files = 2;
+
+  // If set to true, prevent overwriting existing files. (Note that we don't
+  // allow overwriting existing directories with uploaded files regardless.)
+  bool disallow_overwrite_existing_files = 3;
+
+  message File {
+    // Destination path of the file to be uploaded, including any parent dirs
+    // etc.; for example "foo/bar/baz.txt"
+    string path = 1;
+
+    // The total size of the file, in bytes.
+    uint64 size = 2;
+
+    // The blocks, in units of 8MiB, that this file consists of.
+    repeated Block blocks = 3;
+  }
+
+  message Block {
+    // The SHA256 digest of the contents of this block, in raw (ie. 32 bytes)
+    // form for compactness.
+    bytes contents_sha256 = 1;
+
+    // From a previous call to `VolumePutFiles2`, we might have gotten a
+    // response indicating that this block was missing.
+    //
+    // For such a block, this field contains the raw bytes of the body that
+    // was returned from the HTTP PUT request when the client made a request
+    // for the `put_url` returned in the previous `VolumePutFiles2Response`.
+    optional bytes put_response = 2;
+  }
+}
+
+message VolumePutFiles2Response {
+  // Blocks that are currently missing in the volume, because the file did not
+  // exist, or because the block checksum from `blocks_sha256` in the request
+  // did not match the current contents of the file.
+  //
+  // Values will be returned sorted by `(file_index, block_index)`.
+  //
+  // If this field is empty, it means that the files were uploaded successfully
+  // and/or that the request was an idempotent no-op.
+  repeated MissingBlock missing_blocks = 1;
+
+  message MissingBlock {
+    // Index of the file in the original `files` field of the request.
+    uint64 file_index = 1;
+
+    // The index of the block in the original `files[file_index].blocks` of the
+    // request.
+    uint64 block_index = 2;
+
+    // Make a HTTP PUT request to this endpoint with the blocks' contents as
+    // the body.
+    string put_url = 3;
+  }
+}
+
 message VolumePutFilesRequest {
   string volume_id = 1;
   // TODO(staffan): This is obviously unfortunately named, but provides what we need - consider renaming.
@@ -3120,6 +3203,7 @@ service ModalClient {
   rpc VolumeList(VolumeListRequest) returns (VolumeListResponse);
   rpc VolumeListFiles(VolumeListFilesRequest) returns (stream VolumeListFilesResponse);
   rpc VolumePutFiles(VolumePutFilesRequest) returns (google.protobuf.Empty);
+  rpc VolumePutFiles2(VolumePutFiles2Request) returns (VolumePutFiles2Response);
   rpc VolumeReload(VolumeReloadRequest) returns (google.protobuf.Empty);
   rpc VolumeRemoveFile(VolumeRemoveFileRequest) returns (google.protobuf.Empty);
   rpc VolumeRename(VolumeRenameRequest) returns (google.protobuf.Empty);

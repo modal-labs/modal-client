@@ -408,7 +408,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         """Wait for the Sandbox to finish running."""
 
         while True:
-            req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=50)
+            req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=10)
             resp = await retry_transient_errors(self._client.stub.SandboxWait, req)
             if resp.result.status:
                 self._result = resp.result

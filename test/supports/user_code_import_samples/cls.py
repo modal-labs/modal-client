@@ -18,6 +18,10 @@ class C:
     def calls_f_remote(self, arg):
         return self.f.remote(arg)
 
+    @modal.method()
+    def self_ref(self):
+        return self
+
 
 UndecoratedC = C  # keep a reference to original class before overwriting
 

@@ -57,7 +57,7 @@ def wait_for_port(url: str, q: Queue):
     timeout=args.get("timeout"),
     secrets=[Secret.from_dict({"MODAL_LAUNCH_ARGS": json.dumps(args)})],
     volumes=volumes,
-    concurrency_limit=1 if volume else None,
+    max_containers=1 if volume else None,
 )
 def run_jupyter(q: Queue):
     os.makedirs("/root/lab", exist_ok=True)

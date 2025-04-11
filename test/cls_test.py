@@ -460,6 +460,14 @@ def test_lookup_lazy_spawn(client, servicer):
     assert function_call.get() == 7693
 
 
+def test_failed_lookup_error(client, servicer):
+    with pytest.raises(NotFoundError, match="Lookup failed for Cls 'Foo' from the 'my-cls-app' app"):
+        Cls.from_name("my-cls-app", "Foo").hydrate(client=client)
+
+    with pytest.raises(NotFoundError, match="in the 'some-env' environment"):
+        Cls.from_name("my-cls-app", "Foo", environment_name="some-env").hydrate(client=client)
+
+
 baz_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
@@ -819,12 +827,19 @@ def test_build_timeout_image(client, servicer):
 
 @pytest.mark.parametrize("decorator", [enter, exit])
 def test_disallow_lifecycle_decorators_with_method(decorator):
-    name = decorator.__name__.split("_")[-1]  # remove synchronicity prefix
-    with pytest.raises(InvalidError, match=f"Cannot use `@{name}` decorator with `@method`."):
+    with pytest.raises(InvalidError, match="cannot be combined with lifecycle decorators"):
 
-        class ClsDecoratorMethodStack:
+        class HasLifecycleOnMethod:
             @decorator()
             @method()
+            def f(self):
+                pass
+
+    with pytest.raises(InvalidError, match="cannot be combined with lifecycle decorators"):
+
+        class HasMethodOnLifecycle:
+            @method()
+            @decorator()
             def f(self):
                 pass
 
@@ -884,8 +899,8 @@ def test_partial_function_descriptors(client):
 
     # ensure that webhook metadata is kept
     web_partial_function: _PartialFunction = synchronizer._translate_in(revived_class.web)  # type: ignore
-    assert web_partial_function.webhook_config
-    assert web_partial_function.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
+    assert web_partial_function.params.webhook_config
+    assert web_partial_function.params.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
 
 
 def test_cross_process_userclass_serde(supports_dir):
@@ -1214,7 +1229,6 @@ def test_concurrent_decorator_on_method_error():
                 pass
 
 
-@pytest.mark.xfail(reason="modal.method does not implement stacking properly")
 def test_concurrent_decorator_stacked_with_method_decorator():
     app = modal.App()
 
