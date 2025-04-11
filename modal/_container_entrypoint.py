@@ -34,7 +34,7 @@ from modal._partial_function import (
     _PartialFunctionFlags,
 )
 from modal._proxy_tunnel import proxy_tunnel
-from modal._serialization import deserialize_params
+from modal._serialization import deserialize, deserialize_params
 from modal._utils.async_utils import TaskContext, synchronizer
 from modal._utils.function_utils import (
     callable_has_non_self_params,
@@ -395,7 +395,8 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
     with container_io_manager.heartbeats(is_snapshotting_function), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
         if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-            ser_usr_cls, ser_fun = container_io_manager.get_serialized_function()
+            ser_fun = deserialize(function_def.function_serialized, _client)
+            ser_usr_cls = deserialize(function_def.class_serialized, _client)
         else:
             ser_usr_cls, ser_fun = None, None
 
