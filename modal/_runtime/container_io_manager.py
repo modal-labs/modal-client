@@ -450,28 +450,6 @@ class _ContainerIOManager:
 
             await asyncio.sleep(DYNAMIC_CONCURRENCY_INTERVAL_SECS)
 
-    async def get_serialized_function(self) -> tuple[Optional[Any], Optional[Callable[..., Any]]]:
-        # Fetch the serialized function definition
-        request = api_pb2.FunctionGetSerializedRequest(function_id=self.function_id)
-        response = await self._client.stub.FunctionGetSerialized(request)
-        if response.function_serialized:
-            fun = self.deserialize(response.function_serialized)
-        else:
-            fun = None
-
-        if response.class_serialized:
-            cls = self.deserialize(response.class_serialized)
-        else:
-            cls = None
-
-        return cls, fun
-
-    def serialize(self, obj: Any) -> bytes:
-        return serialize(obj)
-
-    def deserialize(self, data: bytes) -> Any:
-        return deserialize(data, self._client)
-
     @synchronizer.no_io_translation
     def serialize_data_format(self, obj: Any, data_format: int) -> bytes:
         return serialize_data_format(obj, data_format)
@@ -675,20 +653,20 @@ class _ContainerIOManager:
 
     def serialize_exception(self, exc: BaseException) -> bytes:
         try:
-            return self.serialize(exc)
+            return serialize(exc)
         except Exception as serialization_exc:
             # We can't always serialize exceptions.
             err = f"Failed to serialize exception {exc} of type {type(exc)}: {serialization_exc}"
             logger.info(err)
-            return self.serialize(SerializationError(err))
+            return serialize(SerializationError(err))
 
     def serialize_traceback(self, exc: BaseException) -> tuple[Optional[bytes], Optional[bytes]]:
         serialized_tb, tb_line_cache = None, None
 
         try:
             tb_dict, line_cache = extract_traceback(exc, self.task_id)
-            serialized_tb = self.serialize(tb_dict)
-            tb_line_cache = self.serialize(line_cache)
+            serialized_tb = serialize(tb_dict)
+            tb_line_cache = serialize(line_cache)
         except Exception:
             logger.info("Failed to serialize exception traceback.")
 
