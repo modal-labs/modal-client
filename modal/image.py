@@ -820,7 +820,8 @@ class _Image(_Object, type_prefix="im"):
         works in a `Dockerfile`.
         """
         deprecation_warning(
-            (2025, 1, 13), COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"), pending=True
+            (2025, 1, 13),
+            COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"),
         )
         basename = str(Path(local_path).name)
 
@@ -934,7 +935,8 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
         deprecation_warning(
-            (2025, 1, 13), COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"), pending=True
+            (2025, 1, 13),
+            COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"),
         )
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
@@ -1367,9 +1369,8 @@ class _Image(_Object, type_prefix="im"):
         if context_mount is not None:
             deprecation_warning(
                 (2025, 1, 13),
-                "`context_mount` is deprecated."
-                + " Files are now automatically added to the build context based on the commands.",
-                pending=True,
+                "The `context_mount` parameter of `Image.dockerfile_commands` is deprecated."
+                " Files are now automatically added to the build context based on the commands.",
             )
         cmds = _flatten_str_args("dockerfile_commands", "dockerfile_commands", dockerfile_commands)
         if not cmds:
@@ -1777,9 +1778,8 @@ class _Image(_Object, type_prefix="im"):
         if context_mount is not None:
             deprecation_warning(
                 (2025, 1, 13),
-                "`context_mount` is deprecated."
-                + " Files are now automatically added to the build context based on the commands in the Dockerfile.",
-                pending=True,
+                "The `context_mount` parameter of `Image.from_dockerfile` is deprecated."
+                " Files are now automatically added to the build context based on the commands in the Dockerfile.",
             )
 
         # --- Build the base dockerfile
