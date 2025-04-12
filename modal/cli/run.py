@@ -70,7 +70,7 @@ class NoParserAvailable(InvalidError):
 
 
 @dataclass
-class FnSignature:
+class CliRunnableSignature:
     parameters: dict[str, ParameterMetadata]
     has_variadic_args: bool
 
@@ -84,7 +84,7 @@ def safe_get_type_hints(func_or_cls: typing.Union[Callable[..., Any], type]) -> 
         raise ExecutionError(msg) from exc
 
 
-def _get_signature(sig: inspect.Signature, type_hints: dict[str, type]) -> FnSignature:
+def _get_cli_runnable_signature(sig: inspect.Signature, type_hints: dict[str, type]) -> CliRunnableSignature:
     has_variadic_args = False
     signature: dict[str, ParameterMetadata] = {}
     for param in sig.parameters.values():
@@ -102,7 +102,7 @@ def _get_signature(sig: inspect.Signature, type_hints: dict[str, type]) -> FnSig
     if has_variadic_args and len(signature) > 0:
         raise InvalidError("Functions with variable-length positional arguments (*args) cannot have other parameters.")
 
-    return FnSignature(signature, has_variadic_args)
+    return CliRunnableSignature(signature, has_variadic_args)
 
 
 def _get_param_type_as_str(annot: Any) -> str:
@@ -171,7 +171,7 @@ def _write_local_result(result_path: str, res: Any):
         fid.write(res)
 
 
-def _make_click_function(app, signature: FnSignature, inner: Callable[[tuple[str, ...], dict[str, Any]], Any]):
+def _make_click_function(app, signature: CliRunnableSignature, inner: Callable[[tuple[str, ...], dict[str, Any]], Any]):
     @click.pass_context
     def f(ctx, **kwargs):
         if signature.has_variadic_args:
@@ -202,7 +202,7 @@ def _get_click_command_for_function(app: App, function: Function):
 
     sig: inspect.Signature = inspect.signature(function.info.raw_f)
     type_hints = typing.get_type_hints(function.info.raw_f)
-    signature: FnSignature = _get_signature(sig, type_hints)
+    signature: CliRunnableSignature = _get_cli_runnable_signature(sig, type_hints)
 
     def _inner(args, click_kwargs):
         return function.remote(*args, **click_kwargs)
@@ -227,7 +227,7 @@ def _get_click_command_for_cls(app: App, method_ref: MethodReference):
     user_cls = cls._get_user_cls()
     type_hints = typing.get_type_hints(user_cls)
     sig: inspect.Signature = _get_class_constructor_signature(user_cls)
-    cls_signature: FnSignature = _get_signature(sig, type_hints)
+    cls_signature: CliRunnableSignature = _get_cli_runnable_signature(sig, type_hints)
 
     if cls_signature.has_variadic_args:
         raise InvalidError("Modal classes cannot have variable-length positional arguments (*args).")
@@ -247,7 +247,7 @@ def _get_click_command_for_cls(app: App, method_ref: MethodReference):
     partial_function = partial_functions[method_name]
     raw_f = partial_function._get_raw_f()
     sig_without_self = inspect.signature(functools.partial(raw_f, None))
-    fun_signature = _get_signature(sig_without_self, typing.get_type_hints(raw_f))
+    fun_signature = _get_cli_runnable_signature(sig_without_self, safe_get_type_hints(raw_f))
 
     # TODO(erikbern): assert there's no overlap?
     parameters = dict(**cls_signature.parameters, **fun_signature.parameters)  # Pool all arguments
@@ -277,7 +277,7 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
     func = entrypoint.info.raw_f
     isasync = inspect.iscoroutinefunction(func)
 
-    signature = _get_signature(inspect.signature(func), typing.get_type_hints(func))
+    signature = _get_cli_runnable_signature(inspect.signature(func), safe_get_type_hints(func))
 
     @click.pass_context
     def f(ctx, *args, **kwargs):
