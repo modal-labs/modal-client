@@ -26,6 +26,7 @@ from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
 
 from modal.exception import AuthError, ConnectionError
+from modal_proto.api_grpc import ModalClientStub
 from modal_version import __version__
 
 from .logger import logger
@@ -78,15 +79,40 @@ class RetryWarningMessage:
     errors_to_warn_for: typing.List[Status]
 
 
+class ConnectionPool:
+    def __init__(self, metadata: dict[str, str] = {}):
+        self._metadata = metadata
+        self._channels: map[str, grpclib.client.Channel] = {}
+        self._stubs: map[str, ModalClientStub] = {}
+
+    async def _get_or_create_channel(self, server_url: str) -> grpclib.client.Channel:
+        if server_url not in self._channels:
+            self._channels[server_url] = create_channel(server_url, self._metadata)
+            try:
+                await connect_channel(self._channels[server_url])
+            except OSError as exc:
+                raise ConnectionError("Could not connect to the Modal server.") from exc
+        return self._channels[server_url]
+
+    # todo: decide if we should expose this, or if stubs should be hidden
+    async def get_grpclib_stub(self, api_endpoint: str) -> ModalClientStub:
+        if api_endpoint not in self._stubs:
+            channel = await self._get_or_create_channel(api_endpoint)
+            self._stubs[api_endpoint] = ModalClientStub(channel)
+        return self._stubs[api_endpoint]
+
+    def close(self):
+        for channel in self._channels.values():
+            channel.close()
+        self._channels.clear()
+        self._stubs.clear()
+
+
 def create_channel(
     server_url: str,
     metadata: dict[str, str] = {},
 ) -> grpclib.client.Channel:
-    """Creates a grpclib.Channel.
-
-    Either to be used directly by a GRPC stub, or indirectly used through the channel pool.
-    See `create_channel`.
-    """
+    """Creates a grpclib.Channel to be used by a GRPC stub."""
     o = urllib.parse.urlparse(server_url)
 
     channel: grpclib.client.Channel

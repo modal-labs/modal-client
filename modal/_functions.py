@@ -109,6 +109,8 @@ class _RetryContext:
     sync_client_retries_enabled: bool
 
 
+# My tentative thoughts: Only _Invocation actually needs a different stub.
+# Does it need a completely different stub or can we just tack it on to api_pb2?
 class _Invocation:
     """Internal client representation of a single-input call to a Modal Function or Generator"""
 
@@ -135,9 +137,10 @@ class _Invocation:
         client: _Client,
         function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
     ) -> "_Invocation":
-        assert client.stub
+        stub = client.stub
+
         function_id = function.object_id
-        item = await _create_input(args, kwargs, client, method_name=function._use_method_name)
+        item = await _create_input(args, kwargs, stub, method_name=function._use_method_name)
 
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
@@ -146,7 +149,7 @@ class _Invocation:
             pipelined_inputs=[item],
             function_call_invocation_type=function_call_invocation_type,
         )
-        response = await retry_transient_errors(client.stub.FunctionMap, request)
+        response = await retry_transient_errors(stub.FunctionMap, request)
         function_call_id = response.function_call_id
 
         if response.pipelined_inputs:
@@ -161,7 +164,7 @@ class _Invocation:
                 item=item,
                 sync_client_retries_enabled=response.sync_client_retries_enabled,
             )
-            return _Invocation(client.stub, function_call_id, client, retry_context)
+            return _Invocation(stub, function_call_id, client, retry_context)
 
         request_put = api_pb2.FunctionPutInputsRequest(
             function_id=function_id, inputs=[item], function_call_id=function_call_id
@@ -183,7 +186,7 @@ class _Invocation:
             item=item,
             sync_client_retries_enabled=response.sync_client_retries_enabled,
         )
-        return _Invocation(client.stub, function_call_id, client, retry_context)
+        return _Invocation(stub, function_call_id, client, retry_context)
 
     async def pop_function_call_outputs(
         self, timeout: Optional[float], clear_on_success: bool, input_jwts: Optional[list[str]] = None
@@ -417,6 +420,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         None  # set for 0.67+ class service functions
     )
     _metadata: Optional[api_pb2.FunctionHandleMetadata] = None
+
+    _api_endpoint: Optional[str] = None  # todo
 
     @staticmethod
     def from_local(
