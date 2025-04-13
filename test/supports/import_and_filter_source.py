@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2025
-from modal import App, asgi_app, method, web_endpoint
+from modal import App, asgi_app, fastapi_endpoint, method
 
 app_with_one_web_function = App(
     include_source=True
@@ -7,7 +7,7 @@ app_with_one_web_function = App(
 
 
 @app_with_one_web_function.function()
-@web_endpoint()
+@fastapi_endpoint()
 def web1():
     pass
 
@@ -23,7 +23,7 @@ def f1():
 
 
 @app_with_one_function_one_web_endpoint.function()
-@web_endpoint()
+@fastapi_endpoint()
 def web2():
     pass
 

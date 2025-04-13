@@ -255,6 +255,8 @@ class _Object:
         It is rarely necessary to call this method explicitly, as most operations
         will lazily hydrate when needed. The main use case is when you need to
         access object metadata, such as its ID.
+
+        *Added in v0.72.39*: This method replaces the deprecated `.resolve()` method.
         """
         if self._is_hydrated:
             if self.client._snapshotted and not self._is_rehydrated:

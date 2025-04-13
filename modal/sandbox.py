@@ -44,7 +44,11 @@ _default_image: _Image = _Image.debian_slim()
 # The maximum number of bytes that can be passed to an exec on Linux.
 # Though this is technically a 'server side' limit, it is unlikely to change.
 # getconf ARG_MAX will show this value on a host.
-ARG_MAX_BYTES = 2_097_152  # 2MiB
+#
+# By probing in production, the limit is 131072 bytes (2**17).
+# We need some bytes of overhead for the rest of the command line besides the args,
+# e.g. 'runsc exec ...'. So we use 2**16 as the limit.
+ARG_MAX_BYTES = 2**16
 
 if TYPE_CHECKING:
     import modal.app
@@ -187,6 +191,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 ),
                 cloud_provider_str=cloud if cloud else None,  # Supersedes cloud_provider
                 nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
+                runtime=config.get("function_runtime"),
                 runtime_debug=config.get("function_runtime_debug"),
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                 volume_mounts=volume_mounts,
@@ -403,7 +408,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         """Wait for the Sandbox to finish running."""
 
         while True:
-            req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=50)
+            req = api_pb2.SandboxWaitRequest(sandbox_id=self.object_id, timeout=10)
             resp = await retry_transient_errors(self._client.stub.SandboxWait, req)
             if resp.result.status:
                 self._result = resp.result
@@ -520,8 +525,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         # Internal option to set terminal size and metadata
         _pty_info: Optional[api_pb2.PTYInfo] = None,
     ):
-        """Execute a command in the Sandbox and return
-        a [`ContainerProcess`](/docs/reference/modal.ContainerProcess#modalcontainer_process) handle.
+        """Execute a command in the Sandbox and return a ContainerProcess handle.
+
+        See the [`ContainerProcess`](/docs/reference/modal.container_process#modalcontainer_processcontainerprocess)
+        docs for more information.
 
         **Usage**
 
@@ -623,8 +630,9 @@ class _Sandbox(_Object, type_prefix="sb"):
         path: str,
         mode: Union["_typeshed.OpenTextMode", "_typeshed.OpenBinaryMode"] = "r",
     ):
-        """Open a file in the Sandbox and return
-        a [`FileIO`](/docs/reference/modal.FileIO#modalfile_io) handle.
+        """Open a file in the Sandbox and return a FileIO handle.
+
+        See the [`FileIO`](/docs/reference/modal.file_io#modalfile_iofileio) docs for more information.
 
         **Usage**
 

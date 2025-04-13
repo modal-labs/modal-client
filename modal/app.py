@@ -29,7 +29,12 @@ from ._partial_function import (
     _PartialFunctionFlags,
 )
 from ._utils.async_utils import synchronize_api
-from ._utils.deprecation import deprecation_error, deprecation_warning, renamed_parameter
+from ._utils.deprecation import (
+    deprecation_error,
+    deprecation_warning,
+    renamed_parameter,
+    warn_on_renamed_autoscaler_settings,
+)
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
@@ -559,6 +564,7 @@ class _App:
 
         return wrapped
 
+    @warn_on_renamed_autoscaler_settings
     def function(
         self,
         _warn_parentheses_missing: Any = None,
@@ -586,17 +592,13 @@ class _App:
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: Optional[Union[int, tuple[int, int]]] = None,
         ephemeral_disk: Optional[int] = None,  # Specify, in MiB, the ephemeral disk size for the Function.
+        min_containers: Optional[int] = None,  # Minimum number of containers to keep warm, even when Function is idle.
+        max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
+        buffer_containers: Optional[int] = None,  # Number of additional idle containers to maintain under active load.
+        scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        concurrency_limit: Optional[
-            int
-        ] = None,  # An optional maximum number of concurrent containers running the function (keep_warm sets minimum).
-        allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
-        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        keep_warm: Optional[
-            int
-        ] = None,  # An optional minimum number of containers to always keep warm (use concurrency_limit for maximum).
         name: Optional[str] = None,  # Sets the Modal name of the function within the app
         is_generator: Optional[
             bool
@@ -610,15 +612,20 @@ class _App:
         max_inputs: Optional[int] = None,
         i6pn: Optional[bool] = None,  # Whether to enable IPv6 container networking within the region.
         # Whether the function's home package should be included in the image - defaults to True
-        include_source: Optional[bool] = None,
+        include_source: Optional[bool] = None,  # When `False`, don't automatically add the App source to the container.
         # Parameters below here are experimental. Use with caution!
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
-        _experimental_buffer_containers: Optional[int] = None,  # Number of additional, idle containers to keep around.
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
         _experimental_enable_gpu_snapshot: bool = False,  # Experimentally enable GPU memory snapshots.
+        # Parameters below here are deprecated. Please update your code as suggested
+        keep_warm: Optional[int] = None,  # Replaced with `min_containers`
+        concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
+        container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
+        allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
+        _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
     ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal [Function](/docs/reference/modal.Function) with this App."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -630,12 +637,20 @@ class _App:
         if image is None:
             image = self._get_default_image()
 
+        if allow_concurrent_inputs is not None:
+            deprecation_warning(
+                (2025, 4, 9),
+                "The `allow_concurrent_inputs` parameter is deprecated."
+                " Please use the `@modal.concurrent` decorator instead."
+                "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+            )
+
         secrets = [*self._secrets, *secrets]
 
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any], None],
         ) -> _Function:
-            nonlocal keep_warm, is_generator, cloud, serialized
+            nonlocal is_generator, cloud, serialized
 
             # Check if the decorated object is a class
             if inspect.isclass(f):
@@ -645,33 +660,38 @@ class _App:
 
             if isinstance(f, _PartialFunction):
                 # typically for @function-wrapped @web_endpoint, @asgi_app, or @batched
-                f.wrapped = True
+                f.registered = True
 
                 # but we don't support @app.function wrapping a method.
                 if is_method_fn(f.raw_f.__qualname__):
                     raise InvalidError(
                         "The `@app.function` decorator cannot be used on class methods. "
-                        "Swap with `@modal.method` or `@modal.web_endpoint`, or drop the `@app.function` decorator. "
+                        "Swap with `@modal.method` or one of the web endpoint decorators. "
                         "Example: "
                         "\n\n"
                         "```python\n"
                         "@app.cls()\n"
                         "class MyClass:\n"
-                        "    @modal.web_endpoint()\n"
+                        "    @modal.method()\n"
                         "    def f(self, x):\n"
                         "        ...\n"
                         "```\n"
                     )
                 i6pn_enabled = i6pn or (f.flags & _PartialFunctionFlags.CLUSTERED)
-                cluster_size = f.cluster_size  # Experimental: Clustered functions
+                cluster_size = f.params.cluster_size  # Experimental: Clustered functions
 
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
-                webhook_config = f.webhook_config
-                is_generator = f.is_generator
-                keep_warm = f.keep_warm or keep_warm
-                batch_max_size = f.batch_max_size
-                batch_wait_ms = f.batch_wait_ms
+                webhook_config = f.params.webhook_config
+                is_generator = f.params.is_generator
+                batch_max_size = f.params.batch_max_size
+                batch_wait_ms = f.params.batch_wait_ms
+                if f.flags & _PartialFunctionFlags.CONCURRENT:
+                    max_concurrent_inputs = f.params.max_concurrent_inputs
+                    target_concurrent_inputs = f.params.target_concurrent_inputs
+                else:
+                    max_concurrent_inputs = allow_concurrent_inputs
+                    target_concurrent_inputs = None
             else:
                 if not is_global_object(f.__qualname__) and not serialized:
                     raise InvalidError(
@@ -703,10 +723,12 @@ class _App:
                     )
 
                 info = FunctionInfo(f, serialized=serialized, name_override=name)
+                raw_f = f
                 webhook_config = None
                 batch_max_size = None
                 batch_wait_ms = None
-                raw_f = f
+                max_concurrent_inputs = allow_concurrent_inputs
+                target_concurrent_inputs = None
 
                 cluster_size = None  # Experimental: Clustered functions
                 i6pn_enabled = i6pn
@@ -743,20 +765,21 @@ class _App:
                 ephemeral_disk=ephemeral_disk,
                 proxy=proxy,
                 retries=retries,
-                concurrency_limit=concurrency_limit,
-                allow_concurrent_inputs=allow_concurrent_inputs,
+                min_containers=min_containers,
+                max_containers=max_containers,
+                buffer_containers=buffer_containers,
+                scaledown_window=scaledown_window,
+                max_concurrent_inputs=max_concurrent_inputs,
+                target_concurrent_inputs=target_concurrent_inputs,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
-                container_idle_timeout=container_idle_timeout,
                 timeout=timeout,
-                keep_warm=keep_warm,
                 cloud=cloud,
                 webhook_config=webhook_config,
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
-                _experimental_buffer_containers=_experimental_buffer_containers,
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,  # Experimental: Clustered functions
@@ -771,6 +794,7 @@ class _App:
         return wrapped
 
     @typing_extensions.dataclass_transform(field_specifiers=(parameter,), kw_only_default=True)
+    @warn_on_renamed_autoscaler_settings
     def cls(
         self,
         _warn_parentheses_missing: Optional[bool] = None,
@@ -797,13 +821,13 @@ class _App:
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
         memory: Optional[Union[int, tuple[int, int]]] = None,
         ephemeral_disk: Optional[int] = None,  # Specify, in MiB, the ephemeral disk size for the Function.
+        min_containers: Optional[int] = None,  # Minimum number of containers to keep warm, even when Function is idle.
+        max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
+        buffer_containers: Optional[int] = None,  # Number of additional idle containers to maintain under active load.
+        scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
-        allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
-        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
@@ -811,16 +835,21 @@ class _App:
         # Limits the number of inputs a container handles before shutting down.
         # Use `max_inputs = 1` for single-use containers.
         max_inputs: Optional[int] = None,
-        include_source: Optional[bool] = None,
+        include_source: Optional[bool] = None,  # When `False`, don't automatically add the App source to the container.
         # Parameters below here are experimental. Use with caution!
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
-        _experimental_buffer_containers: Optional[int] = None,  # Number of additional, idle containers to keep around.
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
         _experimental_enable_gpu_snapshot: bool = False,  # Experimentally enable GPU memory snapshots.
-    ) -> Callable[[CLS_T], CLS_T]:
+        # Parameters below here are deprecated. Please update your code as suggested
+        keep_warm: Optional[int] = None,  # Replaced with `min_containers`
+        concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
+        container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
+        allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
+        _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
+    ) -> Callable[[Union[CLS_T, _PartialFunction]], CLS_T]:
         """
         Decorator to register a new Modal [Cls](/docs/reference/modal.Cls) with this App.
         """
@@ -833,10 +862,29 @@ class _App:
                 raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
             scheduler_placement = SchedulerPlacement(region=region)
 
-        def wrapper(user_cls: CLS_T) -> CLS_T:
-            nonlocal keep_warm
+        if allow_concurrent_inputs is not None:
+            deprecation_warning(
+                (2025, 4, 9),
+                "The `allow_concurrent_inputs` parameter is deprecated."
+                " Please use the `@modal.concurrent` decorator instead."
+                "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+            )
 
+        def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
             # Check if the decorated object is a class
+            if isinstance(wrapped_cls, _PartialFunction):
+                wrapped_cls.registered = True
+                user_cls = wrapped_cls.user_cls
+                if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
+                    max_concurrent_inputs = wrapped_cls.params.max_concurrent_inputs
+                    target_concurrent_inputs = wrapped_cls.params.target_concurrent_inputs
+                else:
+                    max_concurrent_inputs = allow_concurrent_inputs
+                    target_concurrent_inputs = None
+            else:
+                user_cls = wrapped_cls
+                max_concurrent_inputs = allow_concurrent_inputs
+                target_concurrent_inputs = None
             if not inspect.isclass(user_cls):
                 raise TypeError("The @app.cls decorator must be used on a class.")
 
@@ -844,13 +892,13 @@ class _App:
             if batch_functions:
                 if len(batch_functions) > 1:
                     raise InvalidError(f"Modal class {user_cls.__name__} can only have one batched function.")
-                if len(_find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.FUNCTION)) > 1:
+                if len(_find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.interface_flags())) > 1:
                     raise InvalidError(
                         f"Modal class {user_cls.__name__} with a modal batched function cannot have other modal methods."  # noqa
                     )
                 batch_function = next(iter(batch_functions.values()))
-                batch_max_size = batch_function.batch_max_size
-                batch_wait_ms = batch_function.batch_wait_ms
+                batch_max_size = batch_function.params.batch_max_size
+                batch_wait_ms = batch_function.params.batch_wait_ms
             else:
                 batch_max_size = None
                 batch_wait_ms = None
@@ -860,6 +908,12 @@ class _App:
                 and not enable_memory_snapshot
             ):
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
+
+            for method in _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.CONCURRENT).values():
+                method.registered = True  # Avoid warning about not registering the method (hacky!)
+                raise InvalidError(
+                    "The `@modal.concurrent` decorator cannot be used on methods; decorate the class instead."
+                )
 
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
@@ -873,25 +927,26 @@ class _App:
                 network_file_systems=network_file_systems,
                 allow_cross_region_volumes=allow_cross_region_volumes,
                 volumes={**self._volumes, **volumes},
+                cpu=cpu,
                 memory=memory,
                 ephemeral_disk=ephemeral_disk,
+                min_containers=min_containers,
+                max_containers=max_containers,
+                buffer_containers=buffer_containers,
+                scaledown_window=scaledown_window,
                 proxy=proxy,
                 retries=retries,
-                concurrency_limit=concurrency_limit,
-                allow_concurrent_inputs=allow_concurrent_inputs,
+                max_concurrent_inputs=max_concurrent_inputs,
+                target_concurrent_inputs=target_concurrent_inputs,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
-                container_idle_timeout=container_idle_timeout,
                 timeout=timeout,
-                cpu=cpu,
-                keep_warm=keep_warm,
                 cloud=cloud,
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
                 include_source=include_source if include_source is not None else self._include_source_default,
-                _experimental_buffer_containers=_experimental_buffer_containers,
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
                 _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,

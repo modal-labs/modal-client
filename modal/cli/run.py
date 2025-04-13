@@ -526,6 +526,9 @@ def shell(
         ),
     ),
     pty: Optional[bool] = typer.Option(default=None, help="Run the command using a PTY."),
+    use_module_mode: bool = typer.Option(
+        False, "-m", help="Interpret argument as a Python module path instead of a file/script path"
+    ),
 ):
     """Run a command or interactive shell inside a Modal container.
 
@@ -584,7 +587,7 @@ def shell(
             exec(container_id=container_or_function, command=shlex.split(cmd), pty=pty)
             return
 
-        import_ref = parse_import_ref(container_or_function)
+        import_ref = parse_import_ref(container_or_function, use_module_mode=use_module_mode)
         runnable, all_usable_commands = import_and_filter(
             import_ref, base_cmd="modal shell", accept_local_entrypoint=False, accept_webhook=True
         )

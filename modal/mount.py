@@ -410,7 +410,8 @@ class _Mount(_Object, type_prefix="mo"):
         ```
         """
         deprecation_warning(
-            (2025, 1, 8), MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"), pending=True
+            (2025, 1, 8),
+            MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"),
         )
         return _Mount._from_local_dir(local_path, remote_path=remote_path, condition=condition, recursive=recursive)
 
@@ -467,7 +468,8 @@ class _Mount(_Object, type_prefix="mo"):
         ```
         """
         deprecation_warning(
-            (2025, 1, 8), MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"), pending=True
+            (2025, 1, 8),
+            MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"),
         )
         return _Mount._from_local_file(local_path, remote_path)
 
@@ -640,7 +642,6 @@ class _Mount(_Object, type_prefix="mo"):
         deprecation_warning(
             (2025, 1, 8),
             MOUNT_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_python_source"),
-            pending=True,
         )
         return _Mount._from_local_python_packages(
             *module_names, remote_dir=remote_dir, condition=condition, ignore=ignore
@@ -655,8 +656,6 @@ class _Mount(_Object, type_prefix="mo"):
         condition: Optional[Callable[[str], bool]] = None,
         ignore: Optional[Union[Sequence[str], Callable[[Path], bool]]] = None,
     ) -> "_Mount":
-        # Don't re-run inside container.
-
         if condition is not None:
             if ignore is not None:
                 raise InvalidError("Cannot specify both `ignore` and `condition`")
@@ -669,10 +668,6 @@ class _Mount(_Object, type_prefix="mo"):
             ignore = FilePatternMatcher(*ignore)
 
         mount = _Mount._new()
-        from ._runtime.execution_context import is_local
-
-        if not is_local():
-            return mount  # empty/non-mountable mount in case it's used from within a container
         for module_name in module_names:
             mount = mount._extend(_MountedPythonModule(module_name, remote_dir, ignore))
         return mount

@@ -71,7 +71,7 @@ def test_app_deploy_success(servicer, mock_dir, set_env_client):
         _run(["deploy", "myapp.py"])
 
         # Deploy as a module
-        _run(["deploy", "myapp"])
+        _run(["deploy", "-m", "myapp"])
 
         # Deploy as a script with an absolute path
         _run(["deploy", os.path.abspath("myapp.py")])
@@ -470,24 +470,27 @@ def mock_shell_pty(servicer):
 
 
 app_file = Path("app_run_tests") / "default_app.py"
+app_file_as_module = "app_run_tests.default_app"
 webhook_app_file = Path("app_run_tests") / "webhook.py"
 cls_app_file = Path("app_run_tests") / "cls.py"
 
 
 @skip_windows("modal shell is not supported on Windows.")
 @pytest.mark.parametrize(
-    ["rel_file", "suffix"],
+    ["flags", "rel_file", "suffix"],
     [
-        (app_file, "::foo"),  # Function is explicitly specified
-        (webhook_app_file, "::foo"),  # Function is explicitly specified
-        (webhook_app_file, ""),  # Function must be inferred
+        ([], app_file, "::foo"),  # Function is explicitly specified
+        (["-m"], app_file_as_module, "::foo"),  # Function is explicitly specified - module mode
+        ([], webhook_app_file, "::foo"),  # Function is explicitly specified
+        ([], webhook_app_file, ""),  # Function must be inferred
         # TODO: fix modal shell auto-detection of a single class, even if it has multiple methods
-        # (cls_app_file, ""),  # Class must be inferred
-        # (cls_app_file, "AParametrized"),  # class name
-        (cls_app_file, "::AParametrized.some_method"),  # method name
+        # ([], cls_app_file, ""),  # Class must be inferred
+        # ([], cls_app_file, "AParametrized"),  # class name
+        ([], cls_app_file, "::AParametrized.some_method"),  # method name
     ],
 )
-def test_shell(servicer, set_env_client, supports_dir, mock_shell_pty, rel_file, suffix):
+def test_shell(servicer, set_env_client, mock_shell_pty, suffix, monkeypatch, supports_dir, rel_file, flags):
+    monkeypatch.chdir(supports_dir)
     fake_stdin, captured_out = mock_shell_pty
 
     fake_stdin.clear()
@@ -495,9 +498,7 @@ def test_shell(servicer, set_env_client, supports_dir, mock_shell_pty, rel_file,
 
     shell_prompt = servicer.shell_prompt
 
-    fn = (supports_dir / rel_file).as_posix()
-
-    _run(["shell", fn + suffix])
+    _run(["shell"] + flags + [str(rel_file) + suffix])
 
     # first captured message is the empty message the mock server sends
     assert captured_out == [(1, shell_prompt), (1, b"Hello World\n")]
@@ -588,7 +589,7 @@ def test_logs(servicer, server_url_env, set_env_client, mock_dir):
 def test_app_stop(servicer, mock_dir, set_env_client):
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
         # Deploy as a module
-        _run(["deploy", "myapp"])
+        _run(["deploy", "-m", "myapp"])
 
     res = _run(["app", "list"])
     assert re.search("my_app .+ deployed", res.stdout)
@@ -903,6 +904,12 @@ def test_app_history(servicer, mock_dir, set_env_client):
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
         _run(["deploy", "myapp.py", "--name", "my_app_foo"])
 
+    app_id = servicer.deployed_apps.get("my_app_foo")
+
+    servicer.app_deployment_history[app_id][-1]["commit_info"] = api_pb2.CommitInfo(
+        vcs="git", branch="main", commit_hash="abc123"
+    )
+
     # app should be deployed once it exists
     res = _run(["app", "history", "my_app_foo"])
     assert "v1" in res.stdout, res.stdout
@@ -914,9 +921,15 @@ def test_app_history(servicer, mock_dir, set_env_client):
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
         _run(["deploy", "myapp.py", "--name", "my_app_foo"])
 
+    servicer.app_deployment_history[app_id][-1]["commit_info"] = api_pb2.CommitInfo(
+        vcs="git", branch="main", commit_hash="def456", dirty=True
+    )
+
     res = _run(["app", "history", "my_app_foo"])
     assert "v1" in res.stdout
     assert "v2" in res.stdout, f"{res.stdout=}"
+    assert "abc123" in res.stdout
+    assert "def456*" in res.stdout
 
     # can't fetch history for stopped apps
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
@@ -1171,7 +1184,7 @@ def test_container_exec(servicer, set_env_client, mock_shell_pty, app):
 def test_can_run_all_listed_functions_with_includes(supports_on_path, monkeypatch, set_env_client, disable_auto_mount):
     monkeypatch.setenv("TERM", "dumb")  # prevents looking at ansi escape sequences
 
-    res = _run(["run", "multifile_project.main"], expected_exit_code=1)
+    res = _run(["run", "-m", "multifile_project.main"], expected_exit_code=1)
     print("err", res.stderr)
     # there are no runnables directly in the target module, so references need to go via the app
     func_listing = res.stderr.split("functions and local entrypoints:")[1]
@@ -1191,7 +1204,7 @@ def test_can_run_all_listed_functions_with_includes(supports_on_path, monkeypatc
 
     for runnable in expected_runnables:
         assert runnable in res.stderr
-        _run(["run", f"multifile_project.main::{runnable}"], expected_exit_code=0)
+        _run(["run", "-m", f"multifile_project.main::{runnable}"], expected_exit_code=0)
 
 
 def test_modal_launch_vscode(monkeypatch, set_env_client, servicer):
@@ -1219,7 +1232,7 @@ def test_run_file_with_global_lookups(servicer, set_env_client, supports_dir):
 
 def test_run_auto_infer_prefer_target_module(servicer, supports_dir, set_env_client, monkeypatch, disable_auto_mount):
     monkeypatch.syspath_prepend(supports_dir / "app_run_tests")
-    res = _run(["run", "multifile.util"])
+    res = _run(["run", "-m", "multifile.util"])
     assert "ran util\nmain func" in res.stdout
 
 

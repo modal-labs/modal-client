@@ -31,7 +31,7 @@ from ._resolver import Resolver
 from ._serialization import serialize
 from ._utils.async_utils import synchronize_api
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
-from ._utils.deprecation import deprecation_error, deprecation_warning
+from ._utils.deprecation import deprecation_warning
 from ._utils.docker_utils import (
     extract_copy_command_patterns,
     find_dockerignore_file,
@@ -56,13 +56,14 @@ if typing.TYPE_CHECKING:
     import modal._functions
 
 # This is used for both type checking and runtime validation
-ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10"]
+ImageBuilderVersion = Literal["2023.12", "2024.04", "2024.10", "PREVIEW"]
 
 # Note: we also define supported Python versions via logic at the top of the package __init__.py
 # so that we fail fast / clearly in unsupported containers. Additionally, we enumerate the supported
 # Python versions in mount.py where we specify the "standalone Python versions" we create mounts for.
 # Consider consolidating these multiple sources of truth?
 SUPPORTED_PYTHON_SERIES: dict[ImageBuilderVersion, list[str]] = {
+    "PREVIEW": ["3.9", "3.10", "3.11", "3.12", "3.13"],
     "2024.10": ["3.9", "3.10", "3.11", "3.12", "3.13"],
     "2024.04": ["3.9", "3.10", "3.11", "3.12"],
     "2023.12": ["3.9", "3.10", "3.11", "3.12"],
@@ -248,9 +249,11 @@ def _get_image_builder_version(server_version: ImageBuilderVersion) -> ImageBuil
             update_suggestion = "your image builder version using the Modal dashboard"
         else:
             update_suggestion = "your client library (pip install --upgrade modal)"
+        preview_versions: set[ImageBuilderVersion] = {"PREVIEW"}
+        suggested_versions = supported_versions - preview_versions
         raise VersionError(
             "This version of the modal client supports the following image builder versions:"
-            f" {supported_versions!r}."
+            f" {suggested_versions!r}."
             f"\n\nYou are using {version!r}{version_source}."
             f" Please update {update_suggestion}."
         )
@@ -282,14 +285,15 @@ def _create_context_mount(
 
         return False
 
-    return _Mount._add_local_dir(Path("./"), PurePosixPath("/"), ignore=ignore_with_include)
+    return _Mount._add_local_dir(context_dir, PurePosixPath("/"), ignore=ignore_with_include)
 
 
 def _create_context_mount_function(
-    ignore: Union[Sequence[str], Callable[[Path], bool]],
+    ignore: Union[Sequence[str], Callable[[Path], bool], _AutoDockerIgnoreSentinel],
     dockerfile_cmds: list[str] = [],
     dockerfile_path: Optional[Path] = None,
     context_mount: Optional[_Mount] = None,
+    context_dir: Optional[Union[Path, str]] = None,
 ):
     if dockerfile_path and dockerfile_cmds:
         raise InvalidError("Cannot provide both dockerfile and docker commands")
@@ -297,15 +301,19 @@ def _create_context_mount_function(
     if context_mount:
         if ignore is not AUTO_DOCKERIGNORE:
             raise InvalidError("Cannot set both `context_mount` and `ignore`")
+        if context_dir is not None:
+            raise InvalidError("Cannot set both `context_mount` and `context_dir`")
 
         def identity_context_mount_fn() -> Optional[_Mount]:
             return context_mount
 
         return identity_context_mount_fn
+
     elif ignore is AUTO_DOCKERIGNORE:
 
         def auto_created_context_mount_fn() -> Optional[_Mount]:
-            context_dir = Path.cwd()
+            nonlocal context_dir
+            context_dir = Path.cwd() if context_dir is None else Path(context_dir).absolute()
             dockerignore_file = find_dockerignore_file(context_dir, dockerfile_path)
             ignore_fn = (
                 FilePatternMatcher(*dockerignore_file.read_text("utf8").splitlines())
@@ -318,12 +326,16 @@ def _create_context_mount_function(
 
         return auto_created_context_mount_fn
 
-    def auto_created_context_mount_fn() -> Optional[_Mount]:
-        # use COPY commands and ignore patterns to construct implicit context mount
-        cmds = dockerfile_path.read_text("utf8").splitlines() if dockerfile_path else dockerfile_cmds
-        return _create_context_mount(cmds, ignore_fn=_ignore_fn(ignore), context_dir=Path.cwd())
+    else:
 
-    return auto_created_context_mount_fn
+        def auto_created_context_mount_fn() -> Optional[_Mount]:
+            # use COPY commands and ignore patterns to construct implicit context mount
+            nonlocal context_dir
+            context_dir = Path.cwd() if context_dir is None else Path(context_dir).absolute()
+            cmds = dockerfile_path.read_text("utf8").splitlines() if dockerfile_path else dockerfile_cmds
+            return _create_context_mount(cmds, ignore_fn=_ignore_fn(ignore), context_dir=context_dir)
+
+        return auto_created_context_mount_fn
 
 
 class _ImageRegistryConfig:
@@ -621,7 +633,8 @@ class _Image(_Object, type_prefix="im"):
                 builder_version=builder_version,
                 # Failsafe mechanism to prevent inadvertant updates to the global images.
                 # Only admins can publish to the global namespace, but they have to additionally request it.
-                allow_global_deployment=os.environ.get("MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT", "0") == "1",
+                allow_global_deployment=os.environ.get("MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT") == "1",
+                ignore_cache=config.get("ignore_cache"),
             )
             resp = await retry_transient_errors(resolver.client.stub.ImageGetOrCreate, req)
             image_id = resp.image_id
@@ -713,6 +726,8 @@ class _Image(_Object, type_prefix="im"):
         copy=True can slow down iteration since it requires a rebuild of the Image and any subsequent
         build steps whenever the included files change, but it is required if you want to run additional
         build steps after this one.
+
+        *Added in v0.66.40*: This method replaces the deprecated `modal.Image.copy_local_file` method.
         """
         if not PurePosixPath(remote_path).is_absolute():
             # TODO(elias): implement relative to absolute resolution using image workdir metadata
@@ -787,6 +802,8 @@ class _Image(_Object, type_prefix="im"):
             ignore=FilePatternMatcher.from_file("/path/to/ignorefile"),
         )
         ```
+
+        *Added in v0.66.40*: This method replaces the deprecated `modal.Image.copy_local_dir` method.
         """
         if not PurePosixPath(remote_path).is_absolute():
             # TODO(elias): implement relative to absolute resolution using image workdir metadata
@@ -803,7 +820,8 @@ class _Image(_Object, type_prefix="im"):
         works in a `Dockerfile`.
         """
         deprecation_warning(
-            (2025, 1, 13), COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"), pending=True
+            (2025, 1, 13),
+            COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"),
         )
         basename = str(Path(local_path).name)
 
@@ -850,7 +868,11 @@ class _Image(_Object, type_prefix="im"):
             ignore=lambda p: p.stat().st_size > 1e9
         )
         ```
+
+        *Added in v0.67.28*: This method replaces the deprecated `modal.Mount.from_local_python_packages` pattern.
         """
+        if not all(isinstance(module, str) for module in modules):
+            raise InvalidError("Local Python modules must be specified as strings.")
         mount = _Mount._from_local_python_packages(*modules, ignore=ignore)
         img = self._add_mount_layer_or_copy(mount, copy=copy)
         img._added_python_source_set |= set(modules)
@@ -913,7 +935,8 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
         deprecation_warning(
-            (2025, 1, 13), COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"), pending=True
+            (2025, 1, 13),
+            COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"),
         )
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
@@ -940,7 +963,7 @@ class _Image(_Object, type_prefix="im"):
             resp = await retry_transient_errors(client.stub.ImageFromId, api_pb2.ImageFromIdRequest(image_id=image_id))
             self._hydrate(resp.image_id, resolver.client, resp.metadata)
 
-        rep = "Image()"
+        rep = f"Image.from_id({image_id!r})"
         obj = _Image._from_loader(_load, rep)
 
         return obj
@@ -1297,8 +1320,8 @@ class _Image(_Object, type_prefix="im"):
         context_files: dict[str, str] = {},
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
-        # modal.Mount with local files to supply as build context for COPY commands
-        context_mount: Optional[_Mount] = None,
+        context_mount: Optional[_Mount] = None,  # Deprecated: the context is now inferred
+        context_dir: Optional[Union[Path, str]] = None,  # Context for relative COPY commands
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         ignore: Union[Sequence[str], Callable[[Path], bool]] = AUTO_DOCKERIGNORE,
     ) -> "_Image":
@@ -1346,9 +1369,8 @@ class _Image(_Object, type_prefix="im"):
         if context_mount is not None:
             deprecation_warning(
                 (2025, 1, 13),
-                "`context_mount` is deprecated."
-                + " Files are now automatically added to the build context based on the commands.",
-                pending=True,
+                "The `context_mount` parameter of `Image.dockerfile_commands` is deprecated."
+                " Files are now automatically added to the build context based on the commands.",
             )
         cmds = _flatten_str_args("dockerfile_commands", "dockerfile_commands", dockerfile_commands)
         if not cmds:
@@ -1363,7 +1385,7 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
             gpu_config=parse_gpu_config(gpu),
             context_mount_function=_create_context_mount_function(
-                ignore=ignore, dockerfile_cmds=cmds, context_mount=context_mount
+                ignore=ignore, dockerfile_cmds=cmds, context_mount=context_mount, context_dir=context_dir
             ),
             force_build=self.force_build or force_build,
         )
@@ -1373,7 +1395,9 @@ class _Image(_Object, type_prefix="im"):
         entrypoint_commands: list[str],
     ) -> "_Image":
         """Set the entrypoint for the image."""
-        args_str = _flatten_str_args("entrypoint", "entrypoint_files", entrypoint_commands)
+        if not isinstance(entrypoint_commands, list) or not all(isinstance(x, str) for x in entrypoint_commands):
+            raise InvalidError("entrypoint_commands must be a list of strings.")
+        args_str = _flatten_str_args("entrypoint", "entrypoint_commands", entrypoint_commands)
         args_str = '"' + '", "'.join(args_str) + '"' if args_str else ""
         dockerfile_cmd = f"ENTRYPOINT [{args_str}]"
 
@@ -1384,6 +1408,8 @@ class _Image(_Object, type_prefix="im"):
         shell_commands: list[str],
     ) -> "_Image":
         """Overwrite default shell for the image."""
+        if not isinstance(shell_commands, list) or not all(isinstance(x, str) for x in shell_commands):
+            raise InvalidError("shell_commands must be a list of strings.")
         args_str = _flatten_str_args("shell", "shell_commands", shell_commands)
         args_str = '"' + '", "'.join(args_str) + '"' if args_str else ""
         dockerfile_cmd = f"SHELL [{args_str}]"
@@ -1414,45 +1440,6 @@ class _Image(_Object, type_prefix="im"):
         )
 
     @staticmethod
-    def conda(python_version: Optional[str] = None, force_build: bool = False):
-        """mdmd:hidden"""
-        message = (
-            "`Image.conda` is deprecated."
-            " Please use the faster and more reliable `Image.micromamba` constructor instead."
-        )
-        deprecation_error((2025, 5, 2), message)
-
-    def conda_install(
-        self,
-        *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
-        channels: list[str] = [],  # A list of Conda channels, eg. ["conda-forge", "nvidia"]
-        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        secrets: Sequence[_Secret] = [],
-        gpu: GPU_T = None,
-    ):
-        """mdmd:hidden"""
-        message = (
-            "`Image.conda_install` is deprecated."
-            " Please use the faster and more reliable `Image.micromamba_install` instead."
-        )
-        deprecation_error((2025, 5, 2), message)
-
-    def conda_update_from_environment(
-        self,
-        environment_yml: str,
-        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        *,
-        secrets: Sequence[_Secret] = [],
-        gpu: GPU_T = None,
-    ):
-        """mdmd:hidden"""
-        message = (
-            "Image.conda_update_from_environment` is deprecated."
-            " Please use the `Image.micromamba_install` method (with the `spec_file` parameter) instead."
-        )
-        deprecation_error((2025, 5, 2), message)
-
-    @staticmethod
     def micromamba(
         python_version: Optional[str] = None,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
@@ -1473,6 +1460,9 @@ class _Image(_Object, type_prefix="im"):
                 f"RUN micromamba install -n base -y python={validated_python_version} pip -c conda-forge",
             ]
             commands = _Image._registry_setup_commands(tag, version, setup_commands)
+            if version > "2024.10":
+                # for convenience when launching in a sandbox: sleep for 48h
+                commands.append(f'CMD ["sleep", "{48 * 3600}"]')
             context_files = {CONTAINER_REQUIREMENTS_PATH: _get_modal_requirements_path(version, python_version)}
             return DockerfileSpec(commands=commands, context_files=context_files)
 
@@ -1573,7 +1563,7 @@ class _Image(_Object, type_prefix="im"):
         add_python: Optional[str] = None,
         **kwargs,
     ) -> "_Image":
-        """Build a Modal image from a public or private image registry, such as Docker Hub.
+        """Build a Modal Image from a public or private image registry, such as Docker Hub.
 
         The image must be built for the `linux/amd64` platform.
 
@@ -1726,12 +1716,11 @@ class _Image(_Object, type_prefix="im"):
     def from_dockerfile(
         # Filepath to Dockerfile.
         path: Union[str, Path],
-        # modal.Mount with local files to supply as build context for COPY commands.
-        # NOTE: The remote_path of the Mount should match the Dockerfile's WORKDIR.
-        context_mount: Optional[_Mount] = None,
+        context_mount: Optional[_Mount] = None,  # Deprecated: the context is now inferred
         # Ignore cached builds, similar to 'docker build --no-cache'
         force_build: bool = False,
         *,
+        context_dir: Optional[Union[Path, str]] = None,  # Context for relative COPY commands
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
         add_python: Optional[str] = None,
@@ -1789,9 +1778,8 @@ class _Image(_Object, type_prefix="im"):
         if context_mount is not None:
             deprecation_warning(
                 (2025, 1, 13),
-                "`context_mount` is deprecated."
-                + " Files are now automatically added to the build context based on the commands in the Dockerfile.",
-                pending=True,
+                "The `context_mount` parameter of `Image.from_dockerfile` is deprecated."
+                " Files are now automatically added to the build context based on the commands in the Dockerfile.",
             )
 
         # --- Build the base dockerfile
@@ -1805,7 +1793,7 @@ class _Image(_Object, type_prefix="im"):
         base_image = _Image._from_args(
             dockerfile_function=build_dockerfile_base,
             context_mount_function=_create_context_mount_function(
-                ignore=ignore, dockerfile_path=Path(path), context_mount=context_mount
+                ignore=ignore, dockerfile_path=Path(path), context_mount=context_mount, context_dir=context_dir
             ),
             gpu_config=gpu_config,
             secrets=secrets,
@@ -1862,6 +1850,9 @@ class _Image(_Object, type_prefix="im"):
             ]
             if version > "2023.12":
                 commands.append(f"RUN rm {CONTAINER_REQUIREMENTS_PATH}")
+            if version > "2024.10":
+                # for convenience when launching in a sandbox: sleep for 48h
+                commands.append(f'CMD ["sleep", "{48 * 3600}"]')
             return DockerfileSpec(commands=commands, context_files=context_files)
 
         return _Image._from_args(
@@ -2049,6 +2040,27 @@ class _Image(_Object, type_prefix="im"):
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
         )
+
+    def cmd(self, cmd: list[str]) -> "_Image":
+        """Set the default entrypoint argument (`CMD`) for the image.
+
+        **Example**
+
+        ```python
+        image = (
+            modal.Image.debian_slim().cmd(["python", "app.py"])
+        )
+        ```
+        """
+
+        if not isinstance(cmd, list) or not all(isinstance(x, str) for x in cmd):
+            raise InvalidError("Image CMD must be a list of strings.")
+
+        cmd_str = _flatten_str_args("cmd", "cmd", cmd)
+        cmd_str = '"' + '", "'.join(cmd_str) + '"' if cmd_str else ""
+        dockerfile_cmd = f"CMD [{cmd_str}]"
+
+        return self.dockerfile_commands(dockerfile_cmd)
 
     # Live handle methods
 

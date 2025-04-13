@@ -19,11 +19,11 @@ from modal._partial_function import (
 from modal._serialization import deserialize, deserialize_params, serialize
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import FunctionInfo
-from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError, PendingDeprecationError
+from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import (
     PartialFunction,
     asgi_app,
-    web_endpoint,
+    fastapi_endpoint,
 )
 from modal.runner import deploy_app
 from modal.running_app import RunningApp
@@ -122,20 +122,30 @@ def test_call_class_sync(client, servicer, set_env_client):
 
 
 def test_class_with_options(client, servicer):
+    unhydrated_volume = modal.Volume.from_name("some_volume", create_if_missing=True)
+    unhydrated_secret = modal.Secret.from_dict({"foo": "bar"})
+    with servicer.intercept() as ctx:
+        foo = Foo.with_options(  # type: ignore
+            cpu=48, retries=5, volumes={"/vol": unhydrated_volume}, secrets=[unhydrated_secret]
+        )()
+        assert len(ctx.calls) == 0  # no rpcs in with_options
+
     with app.run(client=client):
         with servicer.intercept() as ctx:
-            foo = Foo.with_options(cpu=48, retries=5)()  # type: ignore
-            assert len(ctx.calls) == 0  # no rpcs
-
             res = foo.bar.remote(2)
             function_bind_params: api_pb2.FunctionBindParamsRequest
             (function_bind_params,) = ctx.get_requests("FunctionBindParams")
             assert function_bind_params.function_options.retry_policy.retries == 5
             assert function_bind_params.function_options.resources.milli_cpu == 48000
 
+            assert len(ctx.get_requests("VolumeGetOrCreate")) == 1
+            assert len(ctx.get_requests("SecretGetOrCreate")) == 1
+
         with servicer.intercept() as ctx:
             res = foo.bar.remote(2)
             assert len(ctx.get_requests("FunctionBindParams")) == 0  # no need to rebind
+            assert len(ctx.get_requests("VolumeGetOrCreate")) == 0  # no need to rehydrate
+            assert len(ctx.get_requests("SecretGetOrCreate")) == 0  # no need to rehydrate
 
         assert res == 4
         assert len(servicer.function_options) == 1
@@ -143,10 +153,48 @@ def test_class_with_options(client, servicer):
         assert options.resources.milli_cpu == 48_000
         assert options.retry_policy.retries == 5
 
+        with pytest.warns(DeprecationError, match="max_containers"):
+            Foo.with_options(concurrency_limit=10)()  # type: ignore
 
-def test_class_with_options_need_hydrating(client, servicer):
-    with pytest.raises(ExecutionError, match="hydrate"):
-        Foo.with_options()  # type: ignore
+
+def test_with_options_from_name(servicer):
+    unhydrated_volume = modal.Volume.from_name("some_volume", create_if_missing=True)
+    unhydrated_secret = modal.Secret.from_dict({"foo": "bar"})
+
+    with servicer.intercept() as ctx:
+        SomeClass = modal.Cls.from_name("some_app", "SomeClass")
+        OptionedClass = SomeClass.with_options(cpu=10, secrets=[unhydrated_secret], volumes={"/vol": unhydrated_volume})
+        inst = OptionedClass(x=10)
+        assert len(ctx.calls) == 0
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("VolumeGetOrCreate", api_pb2.VolumeGetOrCreateResponse(volume_id="vo-123"))
+        ctx.add_response("SecretGetOrCreate", api_pb2.SecretGetOrCreateResponse(secret_id="st-123"))
+        ctx.add_response("ClassGet", api_pb2.ClassGetResponse(class_id="cs-123"))
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-123",
+                handle_metadata=api_pb2.FunctionHandleMetadata(
+                    method_handle_metadata={
+                        "some_method": api_pb2.FunctionHandleMetadata(
+                            use_function_id="fu-123",
+                            use_method_name="some_method",
+                            function_name="SomeClass.some_method",
+                        )
+                    }
+                ),
+            ),
+        )
+        ctx.add_response("FunctionBindParams", api_pb2.FunctionBindParamsResponse(bound_function_id="fu-124"))
+        inst.some_method.remote()
+
+    function_bind_params: api_pb2.FunctionBindParamsRequest
+    (function_bind_params,) = ctx.get_requests("FunctionBindParams")
+    assert len(function_bind_params.function_options.volume_mounts) == 1
+    function_map: api_pb2.FunctionMapRequest
+    (function_map,) = ctx.get_requests("FunctionMap")
+    assert function_map.function_id == "fu-124"  # the bound function
 
 
 # Reusing the app runs into an issue with stale function handles.
@@ -412,6 +460,14 @@ def test_lookup_lazy_spawn(client, servicer):
     assert function_call.get() == 7693
 
 
+def test_failed_lookup_error(client, servicer):
+    with pytest.raises(NotFoundError, match="Lookup failed for Cls 'Foo' from the 'my-cls-app' app"):
+        Cls.from_name("my-cls-app", "Foo").hydrate(client=client)
+
+    with pytest.raises(NotFoundError, match="in the 'some-env' environment"):
+        Cls.from_name("my-cls-app", "Foo", environment_name="some-env").hydrate(client=client)
+
+
 baz_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
@@ -581,12 +637,12 @@ def test_unhydrated():
 app_method_args = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
-@app_method_args.cls(keep_warm=5)
+@app_method_args.cls(min_containers=5)
 class XYZ:
-    @method()  # warns - keep_warm is not supported on methods anymore
+    @method()
     def foo(self): ...
 
-    @method()  # warns - keep_warm is not supported on methods anymore
+    @method()
     def bar(self): ...
 
 
@@ -594,26 +650,8 @@ def test_method_args(servicer, client):
     with app_method_args.run(client=client):
         funcs = servicer.app_functions.values()
         assert {f.function_name for f in funcs} == {"XYZ.*"}
-        warm_pools = {f.function_name: f.warm_pool_size for f in funcs}
+        warm_pools = {f.function_name: f.autoscaler_settings.min_containers for f in funcs}
         assert warm_pools == {"XYZ.*": 5}
-
-
-def test_keep_warm_depr(client, set_env_client):
-    app = App()
-
-    with pytest.warns(PendingDeprecationError, match="keep_warm"):
-
-        @app.cls(serialized=True)
-        class ClsWithKeepWarmMethod:
-            @method(keep_warm=2)
-            def foo(self): ...
-
-            @method()
-            def bar(self): ...
-
-    with app.run(client=client):
-        with pytest.raises(modal.exception.InvalidError, match="keep_warm"):
-            ClsWithKeepWarmMethod().bar.keep_warm(2)  # should not be usable on methods
 
 
 def test_cls_keep_warm(client, servicer):
@@ -689,7 +727,7 @@ web_app_app = App(include_source=True)  # TODO: remove include_source=True when 
 
 @web_app_app.cls()
 class WebCls:
-    @web_endpoint()
+    @fastapi_endpoint()
     def endpoint(self):
         pass
 
@@ -789,12 +827,19 @@ def test_build_timeout_image(client, servicer):
 
 @pytest.mark.parametrize("decorator", [enter, exit])
 def test_disallow_lifecycle_decorators_with_method(decorator):
-    name = decorator.__name__.split("_")[-1]  # remove synchronicity prefix
-    with pytest.raises(InvalidError, match=f"Cannot use `@{name}` decorator with `@method`."):
+    with pytest.raises(InvalidError, match="cannot be combined with lifecycle decorators"):
 
-        class ClsDecoratorMethodStack:
+        class HasLifecycleOnMethod:
             @decorator()
             @method()
+            def f(self):
+                pass
+
+    with pytest.raises(InvalidError, match="cannot be combined with lifecycle decorators"):
+
+        class HasMethodOnLifecycle:
+            @method()
+            @decorator()
             def f(self):
                 pass
 
@@ -827,7 +872,7 @@ def test_partial_function_descriptors(client):
         def bar(self):
             return "a"
 
-        @modal.web_endpoint()
+        @modal.fastapi_endpoint()
         def web(self):
             pass
 
@@ -854,8 +899,8 @@ def test_partial_function_descriptors(client):
 
     # ensure that webhook metadata is kept
     web_partial_function: _PartialFunction = synchronizer._translate_in(revived_class.web)  # type: ignore
-    assert web_partial_function.webhook_config
-    assert web_partial_function.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
+    assert web_partial_function.params.webhook_config
+    assert web_partial_function.params.webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION
 
 
 def test_cross_process_userclass_serde(supports_dir):
@@ -875,6 +920,7 @@ class UsingAnnotationParameters:
     a: int = modal.parameter()
     b: str = modal.parameter(default="hello")
     c: float = modal.parameter(init=False)
+    d: bytes = modal.parameter(default=b"world")
 
     @method()
     def get_value(self):
@@ -904,11 +950,13 @@ def test_implicit_constructor(client, set_env_client):
     assert c.a == 10
     assert c.get_value.local() == 10
     assert c.b == "hello"
+    assert c.d == b"world"
 
-    d = UsingAnnotationParameters(a=11, b="goodbye")
+    d = UsingAnnotationParameters(a=11, b="goodbye", d=b"bye")
     assert d.b == "goodbye"
+    assert d.d == b"bye"
 
-    with pytest.raises(ValueError, match="Missing required parameter: a"):
+    with pytest.raises(InvalidError, match="Missing required parameter: a"):
         with app2.run(client=client):
             UsingAnnotationParameters().get_value.remote()  # type: ignore
 
@@ -1005,7 +1053,7 @@ def test_unannotated_parameters_are_invalid():
 
 
 def test_unsupported_type_parameters_raise_errors():
-    with pytest.raises(InvalidError, match="float"):
+    with pytest.raises(InvalidError, match=r"float is not a supported modal.parameter\(\) type"):
 
         @app.cls(serialized=True)
         class C:
@@ -1018,7 +1066,7 @@ def test_unsupported_function_decorators_on_methods():
         @app.cls(serialized=True)
         class M:
             @app.function(serialized=True)
-            @modal.web_endpoint()
+            @modal.fastapi_endpoint()
             def f(self):
                 pass
 
@@ -1069,10 +1117,126 @@ def test_using_method_on_uninstantiated_cls(recwarn, disable_auto_mount):
     # TODO: this will be an AttributeError or return a non-modal unbound function in the future:
     assert len(recwarn) == 1
     warning_string = str(recwarn[0].message)
-    assert "instantiate classes before using methods" in warning_string
+    assert "instantiate the class first" in warning_string
     assert "C().method instead of C.method" in warning_string
 
 
-def test_method_on_cls_access_warns():
-    with pytest.warns(match="instantiate classes before using methods"):
-        print(Foo.bar)
+def test_bytes_serialization_validation(servicer, client, set_env_client):
+    app = modal.App()
+
+    @app.cls(serialized=True)
+    class C:
+        foo: bytes = modal.parameter(default=b"foo")
+
+        @method()
+        def get_foo(self):
+            return self.foo
+
+    with servicer.intercept() as ctx:
+        with app.run():
+            with pytest.raises(TypeError, match="Expected bytes"):
+                C(foo="this is a string").get_foo.spawn()  # type: ignore   # string should not be allowed, unspecified encoding
+
+            C(foo=b"this is bytes").get_foo.spawn()  # bytes are allowed
+            create_function_req: api_pb2.FunctionCreateRequest = ctx.pop_request("FunctionCreate")
+            bind_req: api_pb2.FunctionBindParamsRequest = ctx.pop_request("FunctionBindParams")
+            args, kwargs = deserialize_params(bind_req.serialized_params, create_function_req.function, client)
+            assert kwargs["foo"] == b"this is bytes"
+
+            C().get_foo.spawn()  # omission when using default is allowed
+            bind_req: api_pb2.FunctionBindParamsRequest = ctx.pop_request("FunctionBindParams")
+            args, kwargs = deserialize_params(bind_req.serialized_params, create_function_req.function, client)
+            assert kwargs["foo"] == b"foo"
+
+
+def test_class_can_not_use_list_parameter(client):
+    # we might want to allow lists in the future though...
+    app = modal.App()
+
+    with pytest.raises(InvalidError, match="list is not a supported modal.parameter"):
+
+        @app.cls(serialized=True)
+        class A:
+            p: list[int] = modal.parameter()
+
+
+def test_class_can_use_073_schema_definition(servicer, set_env_client):
+    # in ~0.74, we introduced the new full_type type generic that supersedes
+    # the .type "flat" type. This tests that lookups on classes deployed with
+    # the old proto can still be validated when instantiated.
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("ClassGet", api_pb2.ClassGetResponse(class_id="cs-123"))
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-123",
+                handle_metadata=api_pb2.FunctionHandleMetadata(
+                    class_parameter_info=api_pb2.ClassParameterInfo(
+                        format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
+                        schema=[api_pb2.ClassParameterSpec(name="p", type=api_pb2.PARAM_TYPE_STRING)],
+                    ),
+                    method_handle_metadata={"some_method": api_pb2.FunctionHandleMetadata()},
+                ),
+            ),
+        )
+        with pytest.raises(TypeError, match="Expected str, got int"):
+            # wrong type for p triggers when .remote goes off
+            obj = Cls.from_name("some_app", "SomeCls")(p=10)
+            obj.some_method.remote(1)
+
+
+def test_class_can_use_future_full_type_only_schema(servicer, set_env_client):
+    # in ~0.74, we introduced the new full_type type generic that supersedes
+    # the .type "flat" type. This tests that the client can use a *future
+    # version* that drops support for the .type attribute and only fills the
+    # full_type in the schema
+
+    with servicer.intercept() as ctx:
+        ctx.add_response("ClassGet", api_pb2.ClassGetResponse(class_id="cs-123"))
+        ctx.add_response(
+            "FunctionGet",
+            api_pb2.FunctionGetResponse(
+                function_id="fu-123",
+                handle_metadata=api_pb2.FunctionHandleMetadata(
+                    class_parameter_info=api_pb2.ClassParameterInfo(
+                        format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
+                        schema=[
+                            api_pb2.ClassParameterSpec(
+                                name="p", full_type=api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_STRING)
+                            )
+                        ],
+                    ),
+                    method_handle_metadata={"some_method": api_pb2.FunctionHandleMetadata()},
+                ),
+            ),
+        )
+        with pytest.raises(TypeError, match="Expected str, got int"):
+            # wrong type for p triggers when .remote goes off
+            obj = Cls.from_name("some_app", "SomeCls")(p=10)
+            obj.some_method.remote(1)
+
+
+def test_concurrent_decorator_on_method_error():
+    app = modal.App()
+
+    with pytest.raises(modal.exception.InvalidError, match="decorate the class"):
+
+        @app.cls(serialized=True)
+        class UsesConcurrentDecoratoronMethod:
+            @modal.concurrent(max_inputs=10)
+            def method(self):
+                pass
+
+
+def test_concurrent_decorator_stacked_with_method_decorator():
+    app = modal.App()
+
+    with pytest.raises(modal.exception.InvalidError, match="decorate the class"):
+
+        @app.cls(serialized=True)
+        class UsesMethodAndConcurrentDecorators:
+            @modal.method()
+            @modal.concurrent(max_inputs=10)
+            def method(self):
+                pass

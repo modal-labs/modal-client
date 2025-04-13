@@ -170,7 +170,13 @@ enum ParameterType {
   PARAM_TYPE_UNSPECIFIED = 0;
   PARAM_TYPE_STRING = 1;
   PARAM_TYPE_INT = 2;
-  PARAM_TYPE_PICKLE = 3;
+  PARAM_TYPE_PICKLE = 3; // currently unused
+  PARAM_TYPE_BYTES = 4;
+  PARAM_TYPE_UNKNOWN = 5;  // used in schemas to signify unrecognized or un-annotated types
+  PARAM_TYPE_LIST = 6;
+  PARAM_TYPE_DICT = 7;
+  PARAM_TYPE_NONE = 8;
+  PARAM_TYPE_BOOL = 9;
 }
 
 enum ProgressType {
@@ -308,6 +314,7 @@ message AppDeploymentHistory {
   string tag = 6;
   uint32 rollback_version = 7;
   bool rollback_allowed = 8;
+  optional CommitInfo commit_info = 10;
 }
 
 message AppDeploymentHistoryRequest {
@@ -418,6 +425,7 @@ message AppPublishRequest {
   map<string, string> definition_ids = 7;  // function_id -> definition_id
   uint32 rollback_version = 8;  // Unused by client, but used internally
   string client_version = 9;  // Unused by client, but used internally
+  CommitInfo commit_info = 10;  // Git information for deployment tracking
 }
 
 message AppPublishResponse {
@@ -628,8 +636,8 @@ message CheckpointInfo {
   int64 size = 5;
   bool checksum_is_file_index = 6;
   string original_task_id = 7;
-  // snapshot version used to take the checkpoint
-  uint32 snapshot_version = 8;
+  reserved 8;
+  string runsc_runtime_version = 9;
 }
 
 message ClassCreateRequest {
@@ -652,7 +660,7 @@ message ClassGetRequest {
   string environment_name = 4;
 
   bool lookup_published = 8; // Lookup class on app published by another workspace
-  string workspace_name = 9;
+  reserved 9; // workspace_name
   bool only_class_function = 10; // True starting with 0.67.x clients, which don't create method placeholder functions
 }
 
@@ -693,18 +701,23 @@ message ClassParameterSet {
   repeated ClassParameterValue parameters = 1;
 }
 
-message ClassParameterSpec {
+message ClassParameterSpec { // TODO: rename into NamedPayloadType or similar
   string name = 1;
-  ParameterType type = 2;
+  ParameterType type = 2; // TODO: deprecate - use full_type instead
   bool has_default = 3;
   oneof default_oneof {
+    // Default *values* are only registered for class parameters
     string string_default = 4;
     int64 int_default = 5;
     bytes pickle_default = 6;
+    bytes bytes_default = 7;
+    bool bool_default = 9;
   }
+  GenericPayloadType full_type = 8; // supersedes `type`
 }
 
-message ClassParameterValue {
+
+message ClassParameterValue {  // TODO: rename into NamedPayloadValue
   // NOTE: adding additional *fields* here can invalidate function lookups
   //  since we use the serialized message as the bound function identifier
   //  for parameter-bound classes. Modify with *caution*
@@ -714,6 +727,8 @@ message ClassParameterValue {
     string string_value = 3;
     int64 int_value = 4;
     bytes pickle_value = 5;
+    bytes bytes_value = 6;
+    bool bool_value = 7;
   }
 }
 
@@ -740,6 +755,40 @@ message CloudBucketMount {
   optional string bucket_endpoint_url = 7;
   optional string key_prefix = 8;
   optional string oidc_auth_role_arn = 9;
+}
+
+message ClusterGetRequest {
+  string cluster_id = 1;
+}
+
+message ClusterGetResponse {
+  ClusterStats cluster = 1;
+}
+
+message ClusterListRequest {
+  string environment_name = 1;
+}
+
+message ClusterListResponse {
+  repeated ClusterStats clusters = 1;
+}
+
+message ClusterStats {
+  string app_id = 1;
+  repeated string task_ids = 2;
+  string region = 3;
+  double started_at = 4; // Defined as start time of the first task in the cluster
+}
+
+message CommitInfo {
+  string vcs = 1; // Only git is supported for now
+  string branch = 2;
+  string commit_hash = 3;
+  int64 commit_timestamp = 4;
+  bool dirty = 5;
+  string author_name = 6;
+  string author_email = 7;
+  string repo_url = 8;
 }
 
 message ContainerArguments {  // This is used to pass data from the worker to the container
@@ -777,9 +826,12 @@ message ContainerExecPutInputRequest {
 message ContainerExecRequest {
   string task_id = 1;
   repeated string command = 2;
-  PTYInfo pty_info = 3;
+  // If pty_info is provided, open a PTY, but also this container exec is treated an
+  // "interactive shell" request, and it will be terminated if messages are not periodically
+  // sent on the stdin stream on some interval (currently 40 seconds).
+  optional PTYInfo pty_info = 3;
   // Send SIGTERM to running container on exit of exec command.
-  bool terminate_container_on_exit = 4;
+  bool terminate_container_on_exit = 4 [deprecated=true];
   bool runtime_debug = 5; // For internal debugging use only.
   ExecOutputOption stdout_output = 6;
   ExecOutputOption stderr_output = 7;
@@ -1199,7 +1251,7 @@ message Function {
 
   repeated VolumeMount volume_mounts = 33;
 
-  uint32 target_concurrent_inputs = 34;
+  uint32 max_concurrent_inputs = 34;
 
   repeated CustomDomainInfo custom_domain_info = 35;
 
@@ -1249,7 +1301,7 @@ message Function {
   uint64 batch_linger_ms = 61; // Miliseconds to block before a response is needed
   bool i6pn_enabled = 62;
   bool _experimental_concurrent_cancellations = 63;
-  uint32 max_concurrent_inputs = 64;
+  uint32 target_concurrent_inputs = 64;
 
   // TODO(irfansharif): Remove, once https://github.com/modal-labs/modal/pull/15645 lands.
   bool _experimental_task_templates_enabled = 65;  // forces going through the new gpu-fallbacks integration path, even if no fallback options are specified
@@ -1285,7 +1337,7 @@ message Function {
   bool _experimental_enable_gpu_snapshot = 78; // Experimental support for GPU snapshotting
 
   AutoscalerSettings autoscaler_settings = 79;  // Bundle of parameters related to autoscaling
-
+  FunctionSchema function_schema = 80;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1361,10 +1413,7 @@ message FunctionCreateRequest {
   string app_id = 2  [ (modal.options.audit_target_attr) = true ];
   Schedule schedule = 6 [deprecated=true]; // Deprecated: now passed in the Function definition
   string existing_function_id = 7;
-  // This flag tells the server to avoid doing updates in FunctionCreate that should now
-  // be done in AppPublish. Provides a smoother migration onto atomic deployments with 0.64,
-  // and can be deprecated once we no longer support ealier versions.
-  bool defer_updates = 8;
+  reserved 8;  // defer_updates
   FunctionData function_data = 9;  // supersedes 'function' field above
 }
 
@@ -1437,7 +1486,7 @@ message FunctionData {
   bool runtime_perf_record = 29; // For internal debugging use only.
 
   AutoscalerSettings autoscaler_settings = 31;  // Bundle of parameters related to autoscaling
-
+  FunctionSchema function_schema = 32;
 }
 
 message FunctionExtended {
@@ -1571,6 +1620,7 @@ message FunctionHandleMetadata {
   ClassParameterInfo class_parameter_info = 43;
   // Mapping of method names to their metadata, only non-empty for class service functions
   map<string, FunctionHandleMetadata> method_handle_metadata = 44;
+  FunctionSchema function_schema = 45;
 }
 
 message FunctionInput {
@@ -1598,6 +1648,8 @@ message FunctionMapResponse {
   repeated FunctionPutInputsResponseItem pipelined_inputs = 2;
   FunctionRetryPolicy retry_policy = 3;
   string function_call_jwt = 4;
+  bool sync_client_retries_enabled = 5;
+  uint32 max_inputs_outstanding = 6;
 }
 
 message FunctionOptions {
@@ -1625,6 +1677,7 @@ message FunctionPrecreateRequest {
   string use_method_name = 7;  // for class methods - this method name needs to be included in the FunctionInput
   // Mapping of method names to method definitions, only non-empty for class service functions
   map<string, MethodDefinition> method_definitions = 8;
+  FunctionSchema function_schema = 9;
 }
 
 message FunctionPrecreateResponse {
@@ -1690,6 +1743,16 @@ message FunctionRetryPolicy {
   uint32 retries = 18;
 }
 
+message FunctionSchema {
+  enum FunctionSchemaType {
+    FUNCTION_SCHEMA_UNSPECIFIED = 0;
+    FUNCTION_SCHEMA_V1 = 1;
+  }
+  FunctionSchemaType schema_type = 1; // allows easy disambiguation between empty schema and no schema collection etc.
+  repeated ClassParameterSpec arguments = 2;
+  GenericPayloadType return_type = 3;
+}
+
 message FunctionStats {
   uint32 backlog = 1;
   uint32 num_total_tasks = 3;
@@ -1711,6 +1774,11 @@ message GPUConfig {
 
 message GeneratorDone {  // Sent as the output when a generator finishes running.
   uint64 items_total = 1;
+}
+
+message GenericPayloadType {
+  ParameterType base_type = 1;
+  repeated GenericPayloadType sub_types = 2;  // sub-type for generic types like lists
 }
 
 message GenericResult {  // Used for both tasks and function outputs
@@ -1790,6 +1858,8 @@ message ImageGetOrCreateRequest {
   string builder_version = 9;
   // Only admins can publish global images, but this provides an extra failsafe
   bool allow_global_deployment = 10;
+  // Force the Image to build but don't clobber any Images with the same recipe in the cache
+  bool ignore_cache = 11;
 }
 
 message ImageGetOrCreateResponse {
@@ -1862,6 +1932,7 @@ message MethodDefinition {
   string web_url = 4;
   WebUrlInfo web_url_info = 5;
   repeated CustomDomainInfo custom_domain_info = 6;
+  FunctionSchema function_schema = 7;
 }
 
 message MountFile {
@@ -1925,6 +1996,7 @@ message NotebookKernelPublishResultsRequest {
   message ExecuteReply {
     string status = 1;
     uint32 execution_count = 2;
+    double duration = 3;
   }
 
   // IOPub message or reply received from the kernel for a cell.
@@ -2198,6 +2270,7 @@ message Resources {
   uint32 memory_mb_max = 5; // MiB
   uint32 ephemeral_disk_mb = 6;  // MiB
   uint32 milli_cpu_max = 7; // milli CPU cores
+  bool rdma = 8; // Whether to use RDMA interfaces
 }
 
 message RuntimeInputMessage {
@@ -2288,6 +2361,9 @@ message Sandbox {
   // Specifies container runtime behavior for sandboxes which are restored from a snapshot.
   // Set by the backend at snapshot creation time.
   optional string runsc_runtime_version = 27;
+
+  // If set, overrides the runtime used by the function, either "runc" or "gvisor".
+  optional string runtime = 28;
 }
 
 message SandboxCreateRequest {
@@ -2305,6 +2381,17 @@ message SandboxGetLogsRequest {
   FileDescriptor file_descriptor = 2;
   float timeout = 3;
   string last_entry_id = 4;
+}
+
+message SandboxGetResourceUsageRequest {
+  string sandbox_id = 1;
+}
+
+message SandboxGetResourceUsageResponse {
+  uint64 cpu_core_nanosecs = 1;
+  uint64 mem_gib_nanosecs = 2;
+  uint64 gpu_nanosecs = 3;
+  optional string gpu_type = 4;
 }
 
 message SandboxGetTaskIdRequest {
@@ -2336,6 +2423,7 @@ message SandboxInfo {
   string id = 1;
   double created_at = 3;
   TaskInfo task_info = 4;
+  string app_id = 5;
 
   reserved 2; // modal.client.Sandbox definition
 }
@@ -2627,6 +2715,7 @@ message TaskInfo {
   double finished_at = 3;
   modal.client.GenericResult result = 4;
   double enqueued_at = 5;
+  string gpu_type = 6;
 }
 
 message TaskListRequest {
@@ -2830,6 +2919,70 @@ message VolumeMount {
   string volume_id = 1;
   string mount_path = 2;
   bool allow_background_commits = 3;
+  bool read_only = 4;
+}
+
+message VolumePutFiles2Request {
+  // The ID of the volume to put/upload files into.
+  string volume_id = 1;
+
+  // List of files to put/upload.
+  repeated File files = 2;
+
+  // If set to true, prevent overwriting existing files. (Note that we don't
+  // allow overwriting existing directories with uploaded files regardless.)
+  bool disallow_overwrite_existing_files = 3;
+
+  message File {
+    // Destination path of the file to be uploaded, including any parent dirs
+    // etc.; for example "foo/bar/baz.txt"
+    string path = 1;
+
+    // The total size of the file, in bytes.
+    uint64 size = 2;
+
+    // The blocks, in units of 8MiB, that this file consists of.
+    repeated Block blocks = 3;
+  }
+
+  message Block {
+    // The SHA256 digest of the contents of this block, in raw (ie. 32 bytes)
+    // form for compactness.
+    bytes contents_sha256 = 1;
+
+    // From a previous call to `VolumePutFiles2`, we might have gotten a
+    // response indicating that this block was missing.
+    //
+    // For such a block, this field contains the raw bytes of the body that
+    // was returned from the HTTP PUT request when the client made a request
+    // for the `put_url` returned in the previous `VolumePutFiles2Response`.
+    optional bytes put_response = 2;
+  }
+}
+
+message VolumePutFiles2Response {
+  // Blocks that are currently missing in the volume, because the file did not
+  // exist, or because the block checksum from `blocks_sha256` in the request
+  // did not match the current contents of the file.
+  //
+  // Values will be returned sorted by `(file_index, block_index)`.
+  //
+  // If this field is empty, it means that the files were uploaded successfully
+  // and/or that the request was an idempotent no-op.
+  repeated MissingBlock missing_blocks = 1;
+
+  message MissingBlock {
+    // Index of the file in the original `files` field of the request.
+    uint64 file_index = 1;
+
+    // The index of the block in the original `files[file_index].blocks` of the
+    // request.
+    uint64 block_index = 2;
+
+    // Make a HTTP PUT request to this endpoint with the blocks' contents as
+    // the body.
+    string put_url = 3;
+  }
 }
 
 message VolumePutFilesRequest {
@@ -2921,6 +3074,10 @@ service ModalClient {
 
   // Clients
   rpc ClientHello(google.protobuf.Empty) returns (ClientHelloResponse);
+
+  // Clusters
+  rpc ClusterGet(ClusterGetRequest) returns (ClusterGetResponse);
+  rpc ClusterList(ClusterListRequest) returns (ClusterListResponse);
 
   // Container
   rpc ContainerCheckpoint(ContainerCheckpointRequest) returns (google.protobuf.Empty);
@@ -3019,6 +3176,7 @@ service ModalClient {
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
+  rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
   rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse); // needed for modal container exec
   rpc SandboxGetTunnels(SandboxGetTunnelsRequest) returns (SandboxGetTunnelsResponse);
   rpc SandboxList(SandboxListRequest) returns (SandboxListResponse);
@@ -3072,6 +3230,7 @@ service ModalClient {
   rpc VolumeList(VolumeListRequest) returns (VolumeListResponse);
   rpc VolumeListFiles(VolumeListFilesRequest) returns (stream VolumeListFilesResponse);
   rpc VolumePutFiles(VolumePutFilesRequest) returns (google.protobuf.Empty);
+  rpc VolumePutFiles2(VolumePutFiles2Request) returns (VolumePutFiles2Response);
   rpc VolumeReload(VolumeReloadRequest) returns (google.protobuf.Empty);
   rpc VolumeRemoveFile(VolumeRemoveFileRequest) returns (google.protobuf.Empty);
   rpc VolumeRename(VolumeRenameRequest) returns (google.protobuf.Empty);

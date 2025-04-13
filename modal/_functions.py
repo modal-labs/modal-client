@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2023
+import asyncio
 import dataclasses
 import inspect
 import textwrap
@@ -24,7 +25,13 @@ from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._runtime.execution_context import current_input_id, is_local
-from ._serialization import serialize, serialize_proto_params
+from ._serialization import (
+    apply_defaults,
+    get_callable_schema,
+    serialize,
+    serialize_proto_params,
+    validate_parameter_values,
+)
 from ._traceback import print_server_warnings
 from ._utils.async_utils import (
     TaskContext,
@@ -99,6 +106,7 @@ class _RetryContext:
     input_jwt: str
     input_id: str
     item: api_pb2.FunctionPutInputsItem
+    sync_client_retries_enabled: bool
 
 
 class _Invocation:
@@ -151,6 +159,7 @@ class _Invocation:
                 input_jwt=input.input_jwt,
                 input_id=input.input_id,
                 item=item,
+                sync_client_retries_enabled=response.sync_client_retries_enabled,
             )
             return _Invocation(client.stub, function_call_id, client, retry_context)
 
@@ -172,6 +181,7 @@ class _Invocation:
             input_jwt=input.input_jwt,
             input_id=input.input_id,
             item=item,
+            sync_client_retries_enabled=response.sync_client_retries_enabled,
         )
         return _Invocation(client.stub, function_call_id, client, retry_context)
 
@@ -242,6 +252,7 @@ class _Invocation:
             or not ctx.retry_policy
             or ctx.retry_policy.retries == 0
             or ctx.function_call_invocation_type != api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
+            or not ctx.sync_client_retries_enabled
         ):
             return await self._get_single_output()
 
@@ -252,9 +263,13 @@ class _Invocation:
             try:
                 return await self._get_single_output(ctx.input_jwt)
             except (UserCodeException, FunctionTimeoutError) as exc:
-                await user_retry_manager.raise_or_sleep(exc)
+                delay_ms = user_retry_manager.get_delay_ms()
+                if delay_ms is None:
+                    raise exc
+                await asyncio.sleep(delay_ms / 1000)
             except InternalFailure:
-                # For system failures on the server, we retry immediately.
+                # For system failures on the server, we retry immediately,
+                # and the failure does not count towards the retry policy.
                 pass
             await self._retry_input()
 
@@ -401,6 +416,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _method_handle_metadata: Optional[dict[str, "api_pb2.FunctionHandleMetadata"]] = (
         None  # set for 0.67+ class service functions
     )
+    _metadata: Optional[api_pb2.FunctionHandleMetadata] = None
 
     @staticmethod
     def from_local(
@@ -417,18 +433,19 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         allow_cross_region_volumes: bool = False,
         volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
         memory: Optional[Union[int, tuple[int, int]]] = None,
         proxy: Optional[_Proxy] = None,
         retries: Optional[Union[int, Retries]] = None,
         timeout: Optional[int] = None,
-        concurrency_limit: Optional[int] = None,
-        allow_concurrent_inputs: Optional[int] = None,
+        min_containers: Optional[int] = None,
+        max_containers: Optional[int] = None,
+        buffer_containers: Optional[int] = None,
+        scaledown_window: Optional[int] = None,
+        max_concurrent_inputs: Optional[int] = None,
+        target_concurrent_inputs: Optional[int] = None,
         batch_max_size: Optional[int] = None,
         batch_wait_ms: Optional[int] = None,
-        container_idle_timeout: Optional[int] = None,
-        cpu: Optional[Union[float, tuple[float, float]]] = None,
-        # keep_warm=True is equivalent to keep_warm=1
-        keep_warm: Optional[int] = None,
         cloud: Optional[str] = None,
         scheduler_placement: Optional[SchedulerPlacement] = None,
         is_builder_function: bool = False,
@@ -442,7 +459,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         ephemeral_disk: Optional[int] = None,
         # current default: first-party, future default: main-package
         include_source: Optional[bool] = None,
-        _experimental_buffer_containers: Optional[int] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
         _experimental_enable_gpu_snapshot: bool = False,
@@ -544,7 +560,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     network_file_systems=network_file_systems,
                     volumes=volumes,
                     memory=memory,
-                    timeout=pf.build_timeout,
+                    timeout=pf.params.build_timeout,
                     cpu=cpu,
                     ephemeral_disk=ephemeral_disk,
                     is_builder_function=True,
@@ -555,23 +571,24 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 image = _Image._from_args(
                     base_images={"base": image},
                     build_function=snapshot_function,
-                    force_build=image.force_build or pf.force_build,
+                    force_build=image.force_build or bool(pf.params.force_build),
                 )
 
-        if keep_warm is not None and not isinstance(keep_warm, int):
-            raise TypeError(f"`keep_warm` must be an int or bool, not {type(keep_warm).__name__}")
-
-        if (keep_warm is not None) and (concurrency_limit is not None) and concurrency_limit < keep_warm:
+        # Note that we also do these checks in FunctionCreate; could drop them here
+        if min_containers is not None and not isinstance(min_containers, int):
+            raise InvalidError(f"`min_containers` must be an int, not {type(min_containers).__name__}")
+        if min_containers is not None and max_containers is not None and max_containers < min_containers:
             raise InvalidError(
-                f"Function `{info.function_name}` has `{concurrency_limit=}`, "
-                f"strictly less than its `{keep_warm=}` parameter."
+                f"`min_containers` ({min_containers}) cannot be greater than `max_containers` ({max_containers})"
             )
+        if scaledown_window is not None and scaledown_window <= 0:
+            raise InvalidError("`scaledown_window` must be > 0")
 
         autoscaler_settings = api_pb2.AutoscalerSettings(
-            max_containers=concurrency_limit,
-            min_containers=keep_warm,
-            buffer_containers=_experimental_buffer_containers,
-            scaledown_window=container_idle_timeout,
+            min_containers=min_containers,
+            max_containers=max_containers,
+            buffer_containers=buffer_containers,
+            scaledown_window=scaledown_window,
         )
 
         if _experimental_custom_scaling_factor is not None and (
@@ -599,9 +616,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 if arg.default is not inspect.Parameter.empty:
                     raise InvalidError(f"Modal batched function {func_name} does not accept default arguments.")
 
-        if container_idle_timeout is not None and container_idle_timeout <= 0:
-            raise InvalidError("`container_idle_timeout` must be > 0")
-
         if max_inputs is not None:
             if not isinstance(max_inputs, int):
                 raise InvalidError(f"`max_inputs` must be an int, not {type(max_inputs).__name__}")
@@ -626,14 +640,23 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         if info.user_cls:
             method_definitions = {}
-            partial_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.FUNCTION)
-            for method_name, partial_function in partial_functions.items():
-                function_type = get_function_type(partial_function.is_generator)
+            interface_methods = _find_partial_methods_for_user_cls(
+                info.user_cls, _PartialFunctionFlags.interface_flags()
+            )
+            for method_name, partial_function in interface_methods.items():
+                function_type = get_function_type(partial_function.params.is_generator)
                 function_name = f"{info.user_cls.__name__}.{method_name}"
+                method_schema = get_callable_schema(
+                    partial_function._get_raw_f(),
+                    is_web_endpoint=partial_function._is_web_endpoint(),
+                    ignore_first_argument=True,
+                )
+
                 method_definition = api_pb2.MethodDefinition(
-                    webhook_config=partial_function.webhook_config,
+                    webhook_config=partial_function.params.webhook_config,
                     function_type=function_type,
                     function_name=function_name,
+                    function_schema=method_schema,
                 )
                 method_definitions[method_name] = method_definition
 
@@ -675,6 +698,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 function_name=info.function_name,
                 function_type=function_type,
                 existing_function_id=existing_object_id or "",
+                function_schema=get_callable_schema(info.raw_f, is_web_endpoint=bool(webhook_config))
+                if info.raw_f
+                else None,
             )
             if method_definitions:
                 for method_name, method_definition in method_definitions.items():
@@ -743,8 +769,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     object_dependencies.append(api_pb2.ObjectDependency(object_id=dep.object_id))
 
                 function_data: Optional[api_pb2.FunctionData] = None
-                function_definition: Optional[api_pb2.Function] = None
-
+                function_schema = (
+                    get_callable_schema(info.raw_f, is_web_endpoint=bool(webhook_config)) if info.raw_f else None
+                )
                 # Create function remotely
                 function_definition = api_pb2.Function(
                     module_name=info.module_name or "",
@@ -767,17 +794,15 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     proxy_id=(proxy.object_id if proxy else None),
                     retry_policy=retry_policy,
                     timeout_secs=timeout_secs or 0,
-                    task_idle_timeout_secs=container_idle_timeout or 0,
-                    concurrency_limit=concurrency_limit or 0,
                     pty_info=pty_info,
                     cloud_provider_str=cloud if cloud else "",
-                    warm_pool_size=keep_warm or 0,
                     runtime=config.get("function_runtime"),
                     runtime_debug=config.get("function_runtime_debug"),
                     runtime_perf_record=config.get("runtime_perf_record"),
                     app_name=app_name,
                     is_builder_function=is_builder_function,
-                    target_concurrent_inputs=allow_concurrent_inputs or 0,
+                    max_concurrent_inputs=max_concurrent_inputs or 0,
+                    target_concurrent_inputs=target_concurrent_inputs or 0,
                     batch_max_size=batch_max_size or 0,
                     batch_linger_ms=batch_wait_ms or 0,
                     worker_id=config.get("worker_id"),
@@ -796,10 +821,16 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     snapshot_debug=config.get("snapshot_debug"),
                     _experimental_group_size=cluster_size or 0,  # Experimental: Clustered functions
                     _experimental_concurrent_cancellations=True,
-                    _experimental_buffer_containers=_experimental_buffer_containers or 0,
                     _experimental_proxy_ip=_experimental_proxy_ip,
                     _experimental_custom_scaling=_experimental_custom_scaling_factor is not None,
                     _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
+                    # --- These are deprecated in favor of autoscaler_settings
+                    warm_pool_size=min_containers or 0,
+                    concurrency_limit=max_containers or 0,
+                    _experimental_buffer_containers=buffer_containers or 0,
+                    task_idle_timeout_secs=scaledown_window or 0,
+                    # ---
+                    function_schema=function_schema,
                 )
 
                 if isinstance(gpu, list):
@@ -832,6 +863,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         _experimental_proxy_ip=function_definition._experimental_proxy_ip,
                         snapshot_debug=function_definition.snapshot_debug,
                         runtime_perf_record=function_definition.runtime_perf_record,
+                        function_schema=function_schema,
                     )
 
                     ranked_functions = []
@@ -867,7 +899,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     function=function_definition,
                     function_data=function_data,
                     existing_function_id=existing_object_id or "",
-                    defer_updates=True,
                 )
                 try:
                     response: api_pb2.FunctionCreateResponse = await retry_transient_errors(
@@ -922,7 +953,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     def _bind_parameters(
         self,
         obj: "modal.cls._Obj",
-        options: Optional[api_pb2.FunctionOptions],
+        options: Optional["modal.cls._ServiceOptions"],
         args: Sized,
         kwargs: dict[str, Any],
     ) -> "_Function":
@@ -960,8 +991,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         "Can't use positional arguments with modal.parameter-based synthetic constructors.\n"
                         "Use (<parameter_name>=value) keyword arguments when constructing classes instead."
                     )
-                serialized_params = serialize_proto_params(kwargs, parent._class_parameter_info.schema)
-                can_use_parent = len(parent._class_parameter_info.schema) == 0
+                schema = parent._class_parameter_info.schema
+                kwargs_with_defaults = apply_defaults(kwargs, schema)
+                validate_parameter_values(kwargs_with_defaults, schema)
+                serialized_params = serialize_proto_params(kwargs_with_defaults)
+                can_use_parent = len(parent._class_parameter_info.schema) == 0  # no parameters
             else:
                 can_use_parent = len(args) + len(kwargs) == 0 and options is None
                 serialized_params = serialize((args, kwargs))
@@ -973,10 +1007,35 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
             environment_name = _get_environment_name(None, resolver)
             assert parent is not None and parent.is_hydrated
+
+            if options:
+                volume_mounts = [
+                    api_pb2.VolumeMount(
+                        mount_path=path,
+                        volume_id=volume.object_id,
+                        allow_background_commits=True,
+                    )
+                    for path, volume in options.validated_volumes
+                ]
+                options_pb = api_pb2.FunctionOptions(
+                    secret_ids=[s.object_id for s in options.secrets],
+                    replace_secret_ids=bool(options.secrets),
+                    resources=options.resources,
+                    retry_policy=options.retry_policy,
+                    concurrency_limit=options.concurrency_limit,
+                    timeout_secs=options.timeout_secs,
+                    task_idle_timeout_secs=options.task_idle_timeout_secs,
+                    replace_volume_mounts=len(volume_mounts) > 0,
+                    volume_mounts=volume_mounts,
+                    target_concurrent_inputs=options.target_concurrent_inputs,
+                )
+            else:
+                options_pb = None
+
             req = api_pb2.FunctionBindParamsRequest(
                 function_id=parent.object_id,
                 serialized_params=serialized_params,
-                function_options=options,
+                function_options=options_pb,
                 environment_name=environment_name
                 or "",  # TODO: investigate shouldn't environment name always be specified here?
             )
@@ -984,7 +1043,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             response = await retry_transient_errors(parent._client.stub.FunctionBindParams, req)
             param_bound_func._hydrate(response.bound_function_id, parent._client, response.handle_metadata)
 
-        fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True)
+        def _deps():
+            if options:
+                return [v for _, v in options.validated_volumes] + list(options.secrets)
+            return []
+
+        fun: _Function = _Function._from_loader(_load, "Function(parametrized)", hydrate_lazily=True, deps=_deps)
 
         fun._info = self._info
         fun._obj = obj
@@ -1040,7 +1104,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 response = await retry_transient_errors(resolver.client.stub.FunctionGet, request)
             except GRPCError as exc:
                 if exc.status == Status.NOT_FOUND:
-                    raise NotFoundError(exc.message)
+                    env_context = f" (in the '{environment_name}' environment)" if environment_name else ""
+                    raise NotFoundError(
+                        f"Lookup failed for Function '{name}' from the '{app_name}' app{env_context}: {exc.message}."
+                    )
                 else:
                     raise
 
@@ -1170,12 +1237,15 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._function_name = None
         self._info = None
         self._serve_mounts = frozenset()
+        self._metadata = None
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
         assert metadata and isinstance(metadata, api_pb2.FunctionHandleMetadata), (
             f"{type(metadata)} is not FunctionHandleMetadata"
         )
+        self._metadata = metadata
+        # TODO: replace usage of all below with direct ._metadata access
         self._is_generator = metadata.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
         self._web_url = metadata.web_url
         self._function_name = metadata.function_name
@@ -1197,6 +1267,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             class_parameter_info=self._class_parameter_info,
             definition_id=self._definition_id,
             method_handle_metadata=self._method_handle_metadata,
+            function_schema=self._metadata.function_schema if self._metadata else None,
         )
 
     def _check_no_web_url(self, fn_name: str):
@@ -1266,22 +1337,19 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 order_outputs,
                 return_exceptions,
                 count_update_callback,
+                api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
             )
         ) as stream:
             async for item in stream:
                 yield item
 
     async def _call_function(self, args, kwargs) -> ReturnType:
-        if config.get("client_retries"):
-            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
-        else:
-            function_call_invocation_type = api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY
         invocation = await _Invocation.create(
             self,
             args,
             kwargs,
             client=self.client,
-            function_call_invocation_type=function_call_invocation_type,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
         )
 
         return await invocation.run_function()
@@ -1483,6 +1551,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         )
         return FunctionStats(backlog=resp.backlog, num_total_runners=resp.num_total_tasks)
 
+    @live_method
+    async def _get_schema(self) -> api_pb2.FunctionSchema:
+        """Returns recorded schema for function, internal use only for now"""
+        assert self._metadata
+        return self._metadata.function_schema
+
     # A bit hacky - but the map-style functions need to not be synchronicity-wrapped
     # in order to not execute their input iterators on the synchronicity event loop.
     # We still need to wrap them using MethodWithAio to maintain a synchronicity-like
@@ -1591,26 +1665,37 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         fc._is_generator = is_generator
         return fc
 
+    @staticmethod
+    async def gather(*function_calls: "_FunctionCall[Any]") -> list[Any]:
+        """Wait until all Modal FunctionCall objects have results before returning.
+
+        Accepts a variable number of `FunctionCall` objects, as returned by `Function.spawn()`.
+
+        Returns a list of results from each FunctionCall, or raises an exception
+        from the first failing function call.
+
+        Examples:
+
+        ```python notest
+        fc1 = slow_func_1.spawn()
+        fc2 = slow_func_2.spawn()
+
+        result_1, result_2 = modal.FunctionCall.gather(fc1, fc2)
+        ```
+
+        *Added in v0.73.69*: This method replaces the deprecated `modal.functions.gather` function.
+        """
+        try:
+            return await TaskContext.gather(*[fc.get() for fc in function_calls])
+        except Exception as exc:
+            # TODO: kill all running function calls
+            raise exc
+
 
 async def _gather(*function_calls: _FunctionCall[ReturnType]) -> typing.Sequence[ReturnType]:
-    """Wait until all Modal function calls have results before returning
-
-    Accepts a variable number of FunctionCall objects as returned by `Function.spawn()`.
-
-    Returns a list of results from each function call, or raises an exception
-    of the first failing function call.
-
-    E.g.
-
-    ```python notest
-    function_call_1 = slow_func_1.spawn()
-    function_call_2 = slow_func_2.spawn()
-
-    result_1, result_2 = gather(function_call_1, function_call_2)
-    ```
-    """
-    try:
-        return await TaskContext.gather(*[fc.get() for fc in function_calls])
-    except Exception as exc:
-        # TODO: kill all running function calls
-        raise exc
+    """Deprecated: Please use `modal.FunctionCall.gather()` instead."""
+    deprecation_warning(
+        (2025, 2, 24),
+        "`modal.functions.gather()` is deprecated; please use `modal.FunctionCall.gather()` instead.",
+    )
+    return await _FunctionCall.gather(*function_calls)

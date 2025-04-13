@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2024
 import modal
-from modal import enter, method, web_endpoint
+from modal import enter, fastapi_endpoint, method
 
 from . import a, b
 
@@ -15,7 +15,7 @@ def main_function():
 
 
 @app.function()
-@web_endpoint()
+@fastapi_endpoint()
 def web():
     pass
 
@@ -33,6 +33,6 @@ class Cls:
     def method_on_other_app_class(self):
         pass
 
-    @web_endpoint()
+    @fastapi_endpoint()
     def web_endpoint_on_other_app(self):
         pass

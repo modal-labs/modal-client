@@ -23,7 +23,19 @@ try:
     from .mount import Mount
     from .network_file_system import NetworkFileSystem
     from .output import enable_output
-    from .partial_function import asgi_app, batched, build, enter, exit, method, web_endpoint, web_server, wsgi_app
+    from .partial_function import (
+        asgi_app,
+        batched,
+        build,
+        concurrent,
+        enter,
+        exit,
+        fastapi_endpoint,
+        method,
+        web_endpoint,
+        web_server,
+        wsgi_app,
+    )
     from .proxy import Proxy
     from .queue import Queue
     from .retries import Retries
@@ -71,11 +83,13 @@ __all__ = [
     "asgi_app",
     "batched",
     "build",
+    "concurrent",
     "current_function_call_id",
     "current_input_id",
     "enable_output",
     "enter",
     "exit",
+    "fastapi_endpoint",
     "forward",
     "is_local",
     "interact",

@@ -1,22 +1,25 @@
 # Copyright Modal Labs 2022
 import asyncio
 import inspect
+import logging
 import os
 import pytest
 import time
 import typing
 from contextlib import contextmanager
 
+from grpclib import Status
 from synchronicity.exceptions import UserCodeException
 
 import modal
-from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, web_endpoint
+from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, fastapi_endpoint
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
-from modal.exception import DeprecationError, ExecutionError, InvalidError
-from modal.functions import Function, FunctionCall, gather
+from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
+from modal.functions import Function, FunctionCall
 from modal.runner import deploy_app
 from modal_proto import api_pb2
+from test.conftest import GrpcErrorAndCount
 from test.helpers import deploy_app_externally
 
 app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
@@ -84,6 +87,32 @@ def test_map(client, servicer, slow_put_inputs):
         assert len(servicer.cleared_function_calls) == 1
         assert set(dummy_modal.map([5, 2], [4, 3], order_outputs=False)) == {13, 41}
         assert len(servicer.cleared_function_calls) == 2
+
+
+def test_nested_map(client):
+    app = App()
+    dummy_modal = app.function()(dummy)
+
+    with app.run(client=client):
+        res1 = dummy_modal.map([1, 2])
+        final_results = list(dummy_modal.map(res1))
+        assert final_results == [1, 16]
+
+
+def test_map_with_exception_in_input_iterator(client):
+    class CustomException(Exception):
+        pass
+
+    def input_gen():
+        yield 1
+        raise CustomException()
+
+    app = App()
+    dummy_modal = app.function()(dummy)
+
+    with app.run(client=client):
+        with pytest.raises(CustomException):
+            list(dummy_modal.map(input_gen()))
 
 
 @pytest.mark.asyncio
@@ -263,10 +292,10 @@ def test_function_disk_request(client):
     app.function(ephemeral_disk=1_000_000)(dummy)
 
 
-def test_idle_timeout_must_be_positive():
+def test_scaledown_window_must_be_positive():
     app = App()
     with pytest.raises(InvalidError, match="must be > 0"):
-        app.function(container_idle_timeout=0)(dummy)
+        app.function(scaledown_window=0)(dummy)
 
 
 def later():
@@ -431,7 +460,7 @@ def test_sync_parallelism(client, servicer):
     with app.run(client=client):
         t0 = time.time()
         # NOTE tests breaks in macOS CI if the smaller time is smaller than ~300ms
-        res = gather(slo1_modal.spawn(0.31), slo1_modal.spawn(0.3))
+        res = FunctionCall.gather(slo1_modal.spawn(0.31), slo1_modal.spawn(0.3))
         t1 = time.time()
         assert res == [0.31, 0.3]  # results should be ordered as inputs, not by completion time
         assert t1 - t0 < 0.6  # less than the combined runtime, make sure they run in parallel
@@ -591,7 +620,7 @@ def test_local_execution_on_web_endpoint(client, servicer):
     app = App()
 
     @app.function(serialized=True)
-    @web_endpoint()
+    @fastapi_endpoint()
     def foo(x: str):
         return f"{x}!"
 
@@ -638,7 +667,7 @@ def test_invalid_remote_executor_on_web_endpoint(client, servicer, remote_execut
     app = App()
 
     @app.function(serialized=True)
-    @web_endpoint()
+    @fastapi_endpoint()
     def foo():
         pass
 
@@ -746,7 +775,7 @@ def test_allow_cross_region_volumes_webhook(client, servicer):
     vol2 = NetworkFileSystem.from_name("xyz-2", create_if_missing=True)
     # Should pass flag for all the function's NetworkFileSystemMounts
     app.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(
-        web_endpoint()(dummy)
+        fastapi_endpoint()(dummy)
     )
 
     with app.run(client=client):
@@ -763,7 +792,7 @@ def test_serialize_deserialize_function_handle(servicer, client):
     app = App()
 
     @app.function(serialized=True)
-    @web_endpoint()
+    @fastapi_endpoint()
     def my_handle():
         pass
 
@@ -796,9 +825,9 @@ def test_autoscaler_settings(client, servicer):
     app = App()
 
     kwargs: dict[str, typing.Any] = dict(  # No idea why we need that type hint
-        keep_warm=2,
-        concurrency_limit=10,
-        container_idle_timeout=60,
+        min_containers=2,
+        max_containers=10,
+        scaledown_window=60,
     )
     f = app.function(**kwargs)(dummy)
 
@@ -806,9 +835,24 @@ def test_autoscaler_settings(client, servicer):
         defn = servicer.app_functions[f.object_id]
         # Test both backwards and forwards compatibility
         settings = defn.autoscaler_settings
-        assert settings.min_containers == defn.warm_pool_size == kwargs["keep_warm"]
-        assert settings.max_containers == defn.concurrency_limit == kwargs["concurrency_limit"]
-        assert settings.scaledown_window == defn.task_idle_timeout_secs == kwargs["container_idle_timeout"]
+        assert settings.min_containers == defn.warm_pool_size == kwargs["min_containers"]
+        assert settings.max_containers == defn.concurrency_limit == kwargs["max_containers"]
+        assert settings.scaledown_window == defn.task_idle_timeout_secs == kwargs["scaledown_window"]
+
+
+@pytest.mark.parametrize(
+    "new,old",
+    [
+        ("min_containers", "keep_warm"),
+        ("max_containers", "concurrency_limit"),
+        ("scaledown_window", "container_idle_timeout"),
+    ],
+)
+def test_autoscaler_settings_deprecations(new, old):
+    app = App()
+
+    with pytest.warns(DeprecationError, match=f"{old} -> {new}"):
+        app.function(**{old: 10})(dummy)  # type: ignore
 
 
 def test_not_hydrated():
@@ -1122,3 +1166,213 @@ def f():
     mounts = servicer.mounts_excluding_published_client()
 
     assert len(mounts) == expected_mounts
+
+
+def test_map_retry_with_internal_error(client, servicer, monkeypatch, caplog):
+    """
+    This test forces pump_inputs to fail with INTERNAL for 10 times, and then succeed. This tests that the error
+    is caught and retried error, and does not propagate up. It also tests that we don't log the warning
+    intended for RESOURCE_EXHAUSTED only. The warning is logged every 8 attempts, which is why we retry 10 times.
+    """
+    monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
+    app = App()
+    pow2 = app.function()(_pow2)
+    servicer.function_body(_pow2)
+    servicer.fail_put_inputs_with_grpc_error = GrpcErrorAndCount(Status.INTERNAL, 10)
+    with app.run(client=client):
+        for _ in pow2.map(range(1)):
+            pass
+    # Verify there are zero attempts remaining
+    assert servicer.fail_put_inputs_with_grpc_error.count == 0
+    # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
+    assert not [r for r in caplog.records if r.levelno == logging.WARNING]
+
+
+def test_map_retry_with_resource_exhausted(client, servicer, monkeypatch, caplog):
+    """
+    This test forces pump_inputs to fail with RESOURCE_EXHAUSTED for 10 times, and then succeed. This tests that
+    the error is caught and retried error, and does not propagate up. It also tests that we don't log the warning
+    intended for RESOURCE_EXHAUSTED only. The warning is logged every 8 attempts, which is why we retry 10 times.
+    """
+    monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
+    app = App()
+    pow2 = app.function()(_pow2)
+    servicer.function_body(_pow2)
+    servicer.fail_put_inputs_with_grpc_error = GrpcErrorAndCount(Status.RESOURCE_EXHAUSTED, 10)
+    with app.run(client=client):
+        for _ in pow2.map(range(1), order_outputs=False):
+            pass
+    # Verify there are zero attempts remaining
+    assert servicer.fail_put_inputs_with_grpc_error.count == 0
+    # Verify we log the warning for RESOURCE_EXHAUSTED
+    warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+    assert len(warnings) == 1
+
+
+def test_map_retry_with_stream_terminated_error(client, servicer, monkeypatch, caplog):
+    """
+    This test forces pump_inputs to fail with StreamTerminatedError for 10 times, and then succeed. This tests that
+    the error is caught and retried error, and does not propagate up. It also tests that we don't log the warning
+    intended for RESOURCE_EXHAUSTED only. The warning is logged every 8 attempts, which is why we retry 10 times.
+    """
+    monkeypatch.setattr("modal.parallel_map.PUMP_INPUTS_MAX_RETRY_DELAY", 0.0001)
+    app = App()
+    pow2 = app.function()(_pow2)
+    servicer.function_body(_pow2)
+    servicer.fail_put_inputs_with_stream_terminated_error = 10
+    with app.run(client=client):
+        for _ in pow2.map(range(1), order_outputs=False):
+            pass
+    # Verify there are zero attempts remaining
+    assert servicer.fail_put_inputs_with_stream_terminated_error == 0
+    # Verify we don't log the warning that is intended for RESOURCE_EXHAUSTED only
+    assert not [r for r in caplog.records if r.levelno == logging.WARNING]
+
+
+def test_batching_config(client, servicer):
+    from test.supports.batching_config import CONFIG_VALS, app
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            pass
+
+    function_create_requests = ctx.get_requests("FunctionCreate")
+    for request in function_create_requests:
+        if request.function.function_name in {"has_batch_config", "HasBatchConfig.*"}:
+            assert request.function.batch_max_size == CONFIG_VALS["MAX_SIZE"]
+            assert request.function.batch_linger_ms == CONFIG_VALS["WAIT_MS"]
+        else:
+            raise RuntimeError(f"Unexpected function name: {request.function.function_name}")
+
+
+def test_concurrency_config_migration(client, servicer):
+    with pytest.warns(DeprecationError, match="@modal.concurrent"):
+        from test.supports.concurrency_config import CONFIG_VALS, app
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            pass
+
+    function_create_requests = ctx.get_requests("FunctionCreate")
+    for request in function_create_requests:
+        if request.function.function_name in {
+            "has_new_config",
+            "HasNewConfig.*",
+            "has_new_config_and_fastapi_endpoint",
+            "has_fastapi_endpoint_and_new_config",
+            "HasNewConfigAndFastapiEndpoint.*",
+        }:
+            assert request.function.max_concurrent_inputs == CONFIG_VALS["NEW_MAX"]
+            assert request.function.target_concurrent_inputs == CONFIG_VALS["TARGET"]
+            assert request.function.webhook_config is not None
+        elif request.function.function_name in {"has_old_config", "HasOldConfig.*"}:
+            assert request.function.max_concurrent_inputs == CONFIG_VALS["OLD_MAX"]
+            assert request.function.target_concurrent_inputs == 0
+        elif request.function.function_name in {"has_no_config", "HasNoConfig.*"}:
+            assert request.function.max_concurrent_inputs == 0
+            assert request.function.target_concurrent_inputs == 0
+        else:
+            raise RuntimeError(f"Unexpected function name: {request.function.function_name}")
+
+
+@pytest.mark.usefixtures("record_function_schemas", "set_env_client")
+def test_function_schema_recording(client, servicer):
+    app = App("app")
+
+    @app.function(name="f", serialized=True)
+    def f(a: int) -> list[str]: ...
+
+    deploy_app(app, client=client)
+    expected_schema = api_pb2.FunctionSchema(
+        schema_type=api_pb2.FunctionSchema.FUNCTION_SCHEMA_V1,
+        arguments=[
+            api_pb2.ClassParameterSpec(
+                name="a",
+                full_type=api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_INT,
+                ),
+            )
+        ],
+        return_type=api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_LIST,
+            sub_types=[
+                api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_STRING,
+                )
+            ],
+        ),
+    )
+    assert f._get_schema() == expected_schema
+    # test lazy lookup
+    assert Function.from_name("app", "f")._get_schema() == expected_schema
+
+
+@pytest.mark.usefixtures("record_function_schemas", "set_env_client")
+def test_function_schema_excludes_web_endpoints(client, servicer):
+    # for now we exclude web endpoints since they don't use straight-forward arguments
+    # in the same way as regular modal functions
+    app = App("app")
+
+    @app.function(name="f", serialized=True)
+    @modal.fastapi_endpoint()
+    def webbie(query_param: int): ...
+
+    deploy_app(app, client=client)
+    schema = webbie._get_schema()
+    assert schema.schema_type == api_pb2.FunctionSchema.FUNCTION_SCHEMA_UNSPECIFIED
+
+
+@pytest.mark.usefixtures("record_function_schemas", "set_env_client")
+def test_class_schema_recording(client, servicer):
+    app = App("app")
+
+    @app.cls(serialized=True)
+    class F:
+        b: str = modal.parameter()
+
+        @modal.method()
+        def f(self, a: int) -> list[str]: ...
+
+    expected_method_schema = api_pb2.FunctionSchema(
+        schema_type=api_pb2.FunctionSchema.FUNCTION_SCHEMA_V1,
+        arguments=[
+            api_pb2.ClassParameterSpec(
+                name="a",
+                full_type=api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_INT,
+                ),
+            )
+        ],
+        return_type=api_pb2.GenericPayloadType(
+            base_type=api_pb2.PARAM_TYPE_LIST,
+            sub_types=[
+                api_pb2.GenericPayloadType(
+                    base_type=api_pb2.PARAM_TYPE_STRING,
+                )
+            ],
+        ),
+    )
+
+    deploy_app(app)
+    (constructor_arg,) = modal.cls._get_constructor_args(typing.cast(modal.Cls, F))
+    assert constructor_arg.name == "b"
+    assert constructor_arg.full_type == api_pb2.GenericPayloadType(base_type=api_pb2.PARAM_TYPE_STRING)
+
+    method_schemas = modal.cls._get_method_schemas(typing.cast(modal.Cls, F))
+    method_schema = F(b="hello").f._get_schema()  # type: ignore  # mypy dataclass_transform bug
+
+    assert method_schema == expected_method_schema
+    assert method_schemas["f"] == expected_method_schema
+
+    # Test lazy lookups
+    assert modal.cls._get_method_schemas(modal.Cls.from_name("app", "F")) == method_schemas
+    (looked_up_construct_arg,) = modal.cls._get_constructor_args(modal.Cls.from_name("app", "F"))
+    assert looked_up_construct_arg == constructor_arg
+
+
+def test_failed_lookup_error(client, servicer):
+    with pytest.raises(NotFoundError, match="Lookup failed for Function 'f' from the 'app' app"):
+        Function.from_name("app", "f").hydrate(client=client)
+
+    with pytest.raises(NotFoundError, match="in the 'some-env' environment"):
+        Function.from_name("app", "f", environment_name="some-env").hydrate(client=client)
