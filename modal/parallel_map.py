@@ -41,7 +41,8 @@ if typing.TYPE_CHECKING:
 # pump_inputs should retry if it receives any of the standard retryable codes plus RESOURCE_EXHAUSTED.
 PUMP_INPUTS_RETRYABLE_GRPC_STATUS_CODES = RETRYABLE_GRPC_STATUS_CODES + [Status.RESOURCE_EXHAUSTED]
 PUMP_INPUTS_MAX_RETRIES = 8
-PUMP_INPUTS_MAX_RETRY_DELAY=15
+PUMP_INPUTS_MAX_RETRY_DELAY = 15
+
 
 class _SynchronizedQueue:
     """mdmd:hidden"""
@@ -357,6 +358,7 @@ async def _map_invocation(
                 f"retried_outputs={retried_outputs} input_queue_size={input_queue.qsize()} "
                 f"retry_queue_size={retry_queue.qsize()} map_items_manager={len(map_items_manager)}"
             )
+
         while True:
             log_stats()
             try:
@@ -401,7 +403,7 @@ def _map_sync(
         assert list(my_func.map([1, 2, 3, 4])) == [1, 4, 9, 16]
     ```
 
-    If applied to a `stub.function`, `map()` returns one result per input and the output order
+    If applied to a `app.function`, `map()` returns one result per input and the output order
     is guaranteed to be the same as the input order. Set `order_outputs=False` to return results
     in the order that they are completed instead.
 
@@ -570,6 +572,7 @@ class _MapItemState(enum.Enum):
     # The output has been received and was either successful, or failed with no more retries remaining.
     COMPLETE = 5
 
+
 class _OutputType(enum.Enum):
     SUCCESSFUL_COMPLETION = 1
     FAILED_COMPLETION = 2
@@ -578,11 +581,12 @@ class _OutputType(enum.Enum):
     STALE_RETRY_DUPLICATE = 5
     NO_CONTEXT_DUPLICATE = 6
 
+
 class _MapItemContext:
     state: _MapItemState
     input: api_pb2.FunctionInput
     retry_manager: RetryManager
-    sync_client_retries_enabled:bool
+    sync_client_retries_enabled: bool
     # Both these futures are strings. Omitting generic type because
     # it causes an error when running `inv protoc type-stubs`.
     input_id: asyncio.Future
@@ -701,8 +705,7 @@ class _MapItemsManager:
         function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
         retry_queue: TimestampPriorityQueue,
         sync_client_retries_enabled: bool,
-        max_inputs_outstanding: int
-
+        max_inputs_outstanding: int,
     ):
         self._retry_policy = retry_policy
         self.function_call_invocation_type = function_call_invocation_type
