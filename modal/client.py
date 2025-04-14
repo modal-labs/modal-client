@@ -339,7 +339,6 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
     # if that client is closed etc. and possibly introducing Modal-specific retry logic
     wrapped_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType]
     client: _Client
-    server_url: str
 
     def __init__(
         self,
