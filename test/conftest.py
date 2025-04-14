@@ -1478,7 +1478,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SandboxCreate(self, stream):
         request: api_pb2.SandboxCreateRequest = await stream.recv_message()
         self.sandbox = await asyncio.subprocess.create_subprocess_exec(
-            *request.definition.entrypoint_args,
+            *(request.definition.entrypoint_args or ["sleep", f"{48 * 3600}"]),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             stdin=asyncio.subprocess.PIPE,
