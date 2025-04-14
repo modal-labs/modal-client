@@ -78,7 +78,6 @@ class _Client:
     _cancellation_context_event_loop: asyncio.AbstractEventLoop = None
     _stub: Optional[api_grpc.ModalClientStub]
     _snapshotted: bool
-    _connection_pool: ConnectionPool
     server_url: str  # TODO(nathan): remove
 
     def __init__(
@@ -366,7 +365,7 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         if self.client._snapshotted:
             logger.debug(f"refreshing client after snapshot for {self.name.rsplit('/', 1)[1]}")
             self.client = await _Client.from_env()
-        self.wrapped_method.channel = await self.client._connection_pool.get_or_create_channel(self.server_url)
+        self.wrapped_method.channel = await self.client._get_channel(self.server_url)
         return await self.client._call_unary(self.wrapped_method, req, timeout=timeout, metadata=metadata)
 
 
@@ -395,6 +394,6 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
         if self.client._snapshotted:
             logger.debug(f"refreshing client after snapshot for {self.name.rsplit('/', 1)[1]}")
             self.client = await _Client.from_env()
-        self.wrapped_method.channel = await self.client._connection_pool.get_or_create_channel(self.server_url)
+        self.wrapped_method.channel = await self.client._get_channel(self.server_url)
         async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
             yield response
