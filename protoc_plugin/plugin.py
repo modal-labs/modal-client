@@ -109,7 +109,7 @@ def render(
                         raise TypeError(cardinality)
 
                     original_method = f"grpclib_stub.{name}"
-                    buf.add(f"self.{name} = {wrapper_cls}({original_method}, client, self)")
+                    buf.add(f"self.{name} = {wrapper_cls}({original_method}, self)")
                 buf.add("return self")
 
     return buf.content()

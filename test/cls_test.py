@@ -181,10 +181,8 @@ def test_with_options_from_name(servicer):
                             use_function_id="fu-123",
                             use_method_name="some_method",
                             function_name="SomeClass.some_method",
-                            api_hostname="https://api.modal.com",
                         )
-                    },
-                    api_hostname="https://api.modal.com",
+                    }
                 ),
             ),
         )
@@ -1182,12 +1180,7 @@ def test_class_can_use_073_schema_definition(servicer, set_env_client):
                         format=api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO,
                         schema=[api_pb2.ClassParameterSpec(name="p", type=api_pb2.PARAM_TYPE_STRING)],
                     ),
-                    method_handle_metadata={
-                        "some_method": api_pb2.FunctionHandleMetadata(
-                            api_hostname="https://api.modal.com",
-                        )
-                    },
-                    api_hostname="https://api.modal.com",
+                    method_handle_metadata={"some_method": api_pb2.FunctionHandleMetadata()},
                 ),
             ),
         )
@@ -1218,12 +1211,7 @@ def test_class_can_use_future_full_type_only_schema(servicer, set_env_client):
                             )
                         ],
                     ),
-                    method_handle_metadata={
-                        "some_method": api_pb2.FunctionHandleMetadata(
-                            api_hostname="https://api.modal.com",
-                        )
-                    },
-                    api_hostname="https://api.modal.com",
+                    method_handle_metadata={"some_method": api_pb2.FunctionHandleMetadata()},
                 ),
             ),
         )
