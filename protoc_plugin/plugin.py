@@ -83,16 +83,22 @@ def render(
         grpclib_stub_name = f"{service.name}Stub"
         buf.add("class {}Modal:", service.name)
         with buf.indent():
-            buf.add("")
             buf.add("@classmethod")
-            buf.add("""async def create(cls, client: "modal.client._Client", server_url: str):""")
+            buf.add("async def create(cls, client: 'modal.client._Client', server_url: str):")
             with buf.indent():
-                buf.add("self = cls()")
+                buf.add("channel = await client._get_channel(server_url)")
+                buf.add(f"grpclib_stub = {grpclib_module}.{grpclib_stub_name}(channel)")
+                buf.add("return cls(grpclib_stub, client, server_url)")
+
+            buf.add("")
+            buf.add("")
+            buf.add(
+                f"def __init__(self, grpclib_stub: {grpclib_module}.{grpclib_stub_name}, "
+                + """client: "modal.client._Client", server_url: str) -> None:"""
+            )
+            with buf.indent():
                 buf.add("self._client = client")
                 buf.add("self._server_url = server_url")
-                buf.add("")
-                buf.add("channel = await self._client._get_channel(self._server_url)")
-                buf.add(f"grpclib_stub = {grpclib_module}.{grpclib_stub_name}(channel)")
                 buf.add("")
                 for method in service.methods:
                     name, cardinality, request_type, reply_type = method
@@ -109,8 +115,7 @@ def render(
                         raise TypeError(cardinality)
 
                     original_method = f"grpclib_stub.{name}"
-                    buf.add(f"self.{name} = {wrapper_cls}({original_method}, self)")
-                buf.add("return self")
+                    buf.add(f"self.{name} = {wrapper_cls}({original_method}, client, self)")
 
     return buf.content()
 
