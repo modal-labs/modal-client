@@ -141,7 +141,7 @@ class _Invocation:
         from_spawn_map: bool = False,
     ) -> "_Invocation":
         assert function._api_endpoint, "Function not hydrated?"
-        stub = await client._connection_pool.get_stub(function._api_endpoint, ModalClientModal)
+        stub = await ModalClientModal.create(client, function._api_endpoint)
 
         function_id = function.object_id
         item = await _create_input(args, kwargs, stub, method_name=function._use_method_name)
