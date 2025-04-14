@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.170 (2025-04-14)
+
+* Fixes a bug where `modal run` didn't recognize `modal.parameter()` class parameters
+
+
+
 ### 0.73.165 (2025-04-11)
 
 * Allow running new ephemeral apps from **within** Modal containers using `with app.run(): ...`. Use with care, as putting such a run block in global scope of a module could easily lead to infinite app creation recursion
