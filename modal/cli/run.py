@@ -80,7 +80,7 @@ def safe_get_type_hints(func_or_cls: typing.Union[Callable[..., Any], type]) -> 
         return typing.get_type_hints(func_or_cls)
     except Exception as exc:
         # E.g., if entrypoint type hints cannot be evaluated by local Python runtime
-        msg = "Unable to generate command line interface for app entrypoint. See traceback above for details."
+        msg = "Unable to generate command line interface for app entrypoint due to unparseable type hints:\n" + str(exc)
         raise ExecutionError(msg) from exc
 
 
