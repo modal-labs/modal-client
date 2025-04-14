@@ -74,5 +74,5 @@ def unparseable_annot(i: Union[int, str]):
 
 
 @app.local_entrypoint()
-def unevaluatable_annot(i: "nogo"):  # noqa
+def unevaluatable_annot(i: "no go"):  # noqa
     pass
