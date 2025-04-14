@@ -1653,6 +1653,8 @@ message FunctionHandleMetadata {
   // Mapping of method names to their metadata, only non-empty for class service functions
   map<string, FunctionHandleMetadata> method_handle_metadata = 44;
   FunctionSchema function_schema = 45;
+
+  string api_hostname = 46;
 }
 
 message FunctionInput {
