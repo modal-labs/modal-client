@@ -7,6 +7,7 @@ import time
 import typing
 import urllib.parse
 import uuid
+from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import (
@@ -78,16 +79,25 @@ class RetryWarningMessage:
     errors_to_warn_for: typing.List[Status]
 
 
-StubType = TypeVar("StubType")
+class ModalStubWrapper(ABC):
+    _grpclib_stub_type: Any
+    _api_endpoint: str
+
+    @abstractmethod
+    def __init__(self, grpclib_stub: Any, client: "modal.client._Client", api_endpoint: str) -> None:
+        self._api_endpoint = api_endpoint
+
+
+ModalStubType = TypeVar("ModalStubType", bound=ModalStubWrapper)
 
 
 class ConnectionPool:
     def __init__(self, client: "modal.client._Client", metadata: dict[str, str] = {}):
         self._client = client
         self._metadata = metadata
-        self._channels: map[str, grpclib.client.Channel] = {}
-        self._grpclib_stubs: map[(str, typing.Type[StubType]), StubType] = {}
-        self._wrapper_stubs: map[(str, typing.Type[StubType]), StubType] = {}
+        self._channels: dict[str, grpclib.client.Channel] = {}
+        self._grpclib_stubs: dict[tuple[str, Any], Any] = {}
+        self._wrapper_stubs: dict[tuple[str, Any], Any] = {}
 
     async def _get_or_create_channel(self, server_url: str) -> grpclib.client.Channel:
         if server_url not in self._channels:
@@ -99,14 +109,14 @@ class ConnectionPool:
         return self._channels[server_url]
 
     # todo: decide if we should expose this, or if stubs should be hidden
-    async def _get_grpclib_stub(self, api_endpoint: str, cls: typing.Type[StubType]) -> StubType:
+    async def _get_grpclib_stub(self, api_endpoint: str, cls: Any) -> Any:
         key = (api_endpoint, cls)
         if key not in self._grpclib_stubs:
             channel = await self._get_or_create_channel(api_endpoint)
             self._grpclib_stubs[key] = cls(channel)
         return self._grpclib_stubs[key]
 
-    async def get_stub(self, api_endpoint: str, cls: typing.Type[StubType]) -> StubType:
+    async def get_stub(self, api_endpoint: str, cls: typing.Type[ModalStubType]) -> ModalStubType:
         key = (api_endpoint, cls)
         if key not in self._wrapper_stubs:
             grpclib_stub = await self._get_grpclib_stub(api_endpoint, cls._grpclib_stub_type)

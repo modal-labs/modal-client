@@ -140,7 +140,8 @@ class _Invocation:
         function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
         from_spawn_map: bool = False,
     ) -> "_Invocation":
-        stub = await client._connection_pool.get_stub(client.server_url, ModalClientModal)
+        assert function._api_endpoint, "Function not hydrated?"
+        stub = await client._connection_pool.get_stub(function._api_endpoint, ModalClientModal)
 
         function_id = function.object_id
         item = await _create_input(args, kwargs, stub, method_name=function._use_method_name)
@@ -441,7 +442,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     )
     _metadata: Optional[api_pb2.FunctionHandleMetadata] = None
 
-    _api_endpoint: Optional[str] = None  # todo
+    _api_endpoint: Optional[str] = None
 
     @staticmethod
     def from_local(
@@ -1309,6 +1310,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._info = None
         self._serve_mounts = frozenset()
         self._metadata = None
+        self._api_endpoint = None
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
@@ -1325,6 +1327,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._class_parameter_info = metadata.class_parameter_info
         self._method_handle_metadata = dict(metadata.method_handle_metadata)
         self._definition_id = metadata.definition_id
+        self._api_endpoint = "https://api.modal.com"  # todo get this from the server
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
