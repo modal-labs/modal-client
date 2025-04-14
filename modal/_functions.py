@@ -109,8 +109,6 @@ class _RetryContext:
     sync_client_retries_enabled: bool
 
 
-# My tentative thoughts: Only _Invocation actually needs a different stub.
-# Does it need a completely different stub or can we just tack it on to api_pb2?
 class _Invocation:
     """Internal client representation of a single-input call to a Modal Function or Generator"""
 
@@ -137,8 +135,8 @@ class _Invocation:
         client: _Client,
         function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
     ) -> "_Invocation":
-        assert function._api_endpoint, "Function not hydrated?"
-        stub = await ModalClientModal.create(client, function._api_endpoint)
+        io_plane_url = client.server_url  # TODO(nathan): replace with per-function endpoint
+        stub = await ModalClientModal.create(client, io_plane_url)  # TODO(nathan): decide if this is too expensive
 
         function_id = function.object_id
         item = await _create_input(args, kwargs, stub, method_name=function._use_method_name)
@@ -421,8 +419,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         None  # set for 0.67+ class service functions
     )
     _metadata: Optional[api_pb2.FunctionHandleMetadata] = None
-
-    _api_endpoint: Optional[str] = None
 
     @staticmethod
     def from_local(
@@ -1247,7 +1243,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._info = None
         self._serve_mounts = frozenset()
         self._metadata = None
-        self._api_endpoint = None
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         # Overridden concrete implementation of base class method
@@ -1264,8 +1259,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._class_parameter_info = metadata.class_parameter_info
         self._method_handle_metadata = dict(metadata.method_handle_metadata)
         self._definition_id = metadata.definition_id
-        assert metadata.api_hostname, "api_hostname must be set"
-        self._api_endpoint = metadata.api_hostname
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
@@ -1280,7 +1273,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             definition_id=self._definition_id,
             method_handle_metadata=self._method_handle_metadata,
             function_schema=self._metadata.function_schema if self._metadata else None,
-            api_hostname=self._api_endpoint,
         )
 
     def _check_no_web_url(self, fn_name: str):

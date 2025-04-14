@@ -206,7 +206,6 @@ def _container_args(
                     object_id="fu-123",
                     function_handle_metadata=api_pb2.FunctionHandleMetadata(
                         function_name=function_name,
-                        api_hostname="https://api.modal.com",
                     ),
                 ),
             ],
@@ -705,11 +704,8 @@ def test_serialized_class_with_parameters(servicer):
                     function_handle_metadata=api_pb2.FunctionHandleMetadata(
                         function_name="SerializedClassWithParams.*",
                         method_handle_metadata={
-                            "method": api_pb2.FunctionHandleMetadata(
-                                api_hostname="https://api.modal.com",
-                            ),
+                            "method": api_pb2.FunctionHandleMetadata(),
                         },
-                        api_hostname="https://api.modal.com",
                     ),
                 )
             ],
