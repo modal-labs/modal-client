@@ -33,7 +33,6 @@ from modal._partial_function import (
     _find_callables_for_obj,
     _PartialFunctionFlags,
 )
-from modal._proxy_tunnel import proxy_tunnel
 from modal._serialization import deserialize_params
 from modal._utils.async_utils import TaskContext, synchronizer
 from modal._utils.function_utils import (
@@ -46,13 +45,13 @@ from modal.exception import ExecutionError, InputCancellation, InvalidError
 from modal.running_app import RunningApp, running_app_from_layout
 from modal_proto import api_pb2
 
+from ._runtime import execution_context
 from ._runtime.container_io_manager import (
     ContainerIOManager,
     IOContext,
     UserException,
     _ContainerIOManager,
 )
-from ._runtime.execution_context import _set_current_context_ids
 
 if TYPE_CHECKING:
     import modal._object
@@ -190,7 +189,7 @@ def call_function(
     async def run_input_async(io_context: IOContext) -> None:
         started_at = time.time()
         input_ids, function_call_ids = io_context.input_ids, io_context.function_call_ids
-        reset_context = _set_current_context_ids(input_ids, function_call_ids)
+        reset_context = execution_context._set_current_context_ids(input_ids, function_call_ids)
         async with container_io_manager.handle_input_exception.aio(io_context, started_at):
             res = io_context.call_finalized_function()
             # TODO(erikbern): any exception below shouldn't be considered a user exception
@@ -240,7 +239,7 @@ def call_function(
     def run_input_sync(io_context: IOContext) -> None:
         started_at = time.time()
         input_ids, function_call_ids = io_context.input_ids, io_context.function_call_ids
-        reset_context = _set_current_context_ids(input_ids, function_call_ids)
+        reset_context = execution_context._set_current_context_ids(input_ids, function_call_ids)
         with container_io_manager.handle_input_exception(io_context, started_at):
             res = io_context.call_finalized_function()
 
@@ -407,33 +406,34 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 param_args = ()
                 param_kwargs = {}
 
-            if function_def.is_class:
-                # this is a bit ugly - match the function and class based on function name to get metadata
-                # This metadata is required in order to hydrate the class in case it's not globally
-                # decorated (or serialized)
-                service_base_function_id = container_args.app_layout.function_ids[function_def.function_name]
-                service_function_hydration_data = [
-                    o for o in container_args.app_layout.objects if o.object_id == service_base_function_id
-                ][0]
-                class_id = container_args.app_layout.class_ids[function_def.function_name.removesuffix(".*")]
+            with execution_context._import_context():
+                if function_def.is_class:
+                    # this is a bit ugly - match the function and class based on function name to get metadata
+                    # This metadata is required in order to hydrate the class in case it's not globally
+                    # decorated (or serialized)
+                    service_base_function_id = container_args.app_layout.function_ids[function_def.function_name]
+                    service_function_hydration_data = [
+                        o for o in container_args.app_layout.objects if o.object_id == service_base_function_id
+                    ][0]
+                    class_id = container_args.app_layout.class_ids[function_def.function_name.removesuffix(".*")]
 
-                service = import_class_service(
-                    function_def,
-                    service_function_hydration_data,
-                    class_id,
-                    client,
-                    ser_usr_cls,
-                    param_args,
-                    param_kwargs,
-                )
-            else:
-                service = import_single_function_service(
-                    function_def,
-                    ser_usr_cls,
-                    ser_fun,
-                    param_args,
-                    param_kwargs,
-                )
+                    service = import_class_service(
+                        function_def,
+                        service_function_hydration_data,
+                        class_id,
+                        client,
+                        ser_usr_cls,
+                        param_args,
+                        param_kwargs,
+                    )
+                else:
+                    service = import_single_function_service(
+                        function_def,
+                        ser_usr_cls,
+                        ser_fun,
+                        param_args,
+                        param_kwargs,
+                    )
 
             # If the cls/function decorator was applied in local scope, but the app is global, we can look it up
             if service.app is not None:
@@ -585,11 +585,9 @@ if __name__ == "__main__":
     client = Client.from_env()
 
     try:
-        with proxy_tunnel(container_args.proxy_info):
-            try:
-                main(container_args, client)
-            except UserException:
-                logger.info("User exception caught, exiting")
+        main(container_args, client)
+    except UserException:
+        logger.info("User exception caught, exiting")
     except KeyboardInterrupt:
         logger.debug("Container: interrupted")
 

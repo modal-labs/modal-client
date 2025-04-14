@@ -1087,7 +1087,7 @@ def test_using_method_on_uninstantiated_cls(recwarn, disable_auto_mount):
     # TODO: this will be an AttributeError or return a non-modal unbound function in the future:
     assert len(recwarn) == 1
     warning_string = str(recwarn[0].message)
-    assert "instantiate classes before using methods" in warning_string
+    assert "instantiate the class first" in warning_string
     assert "C().method instead of C.method" in warning_string
 
 
