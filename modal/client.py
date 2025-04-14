@@ -344,11 +344,11 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         self,
         wrapped_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType],
         client: _Client,
-        wrapper_stub: Any,
+        server_url: str,
     ):
         self.wrapped_method = wrapped_method
         self.client = client
-        self.server_url = wrapper_stub._server_url
+        self.server_url = server_url
 
     @property
     def name(self) -> str:
@@ -375,11 +375,11 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
         self,
         wrapped_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType],
         client: _Client,
-        wrapper_stub: Any,
+        server_url: str,
     ):
         self.wrapped_method = wrapped_method
         self.client = client
-        self.server_url = wrapper_stub._server_url
+        self.server_url = server_url
 
     @property
     def name(self) -> str:

@@ -97,9 +97,8 @@ def render(
                 + """client: "modal.client._Client", server_url: str) -> None:"""
             )
             with buf.indent():
-                buf.add("self._client = client")
-                buf.add("self._server_url = server_url")
-                buf.add("")
+                if len(service.methods) == 0:
+                    buf.add("pass")
                 for method in service.methods:
                     name, cardinality, request_type, reply_type = method
                     wrapper_cls: str
@@ -115,7 +114,7 @@ def render(
                         raise TypeError(cardinality)
 
                     original_method = f"grpclib_stub.{name}"
-                    buf.add(f"self.{name} = {wrapper_cls}({original_method}, client, self)")
+                    buf.add(f"self.{name} = {wrapper_cls}({original_method}, client, server_url)")
 
     return buf.content()
 
