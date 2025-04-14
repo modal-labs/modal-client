@@ -137,7 +137,7 @@ class _Invocation:
         client: _Client,
         function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
     ) -> "_Invocation":
-        stub = client.stub
+        stub = await client._connection_pool.get_stub(client.server_url, ModalClientModal)
 
         function_id = function.object_id
         item = await _create_input(args, kwargs, stub, method_name=function._use_method_name)
