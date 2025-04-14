@@ -1327,7 +1327,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._class_parameter_info = metadata.class_parameter_info
         self._method_handle_metadata = dict(metadata.method_handle_metadata)
         self._definition_id = metadata.definition_id
-        self._api_endpoint = "https://api.modal.com"  # todo get this from the server
+        assert metadata.api_hostname, "api_hostname must be set"
+        self._api_endpoint = metadata.api_hostname
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
@@ -1342,6 +1343,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             definition_id=self._definition_id,
             method_handle_metadata=self._method_handle_metadata,
             function_schema=self._metadata.function_schema if self._metadata else None,
+            api_hostname=self._api_endpoint,
         )
 
     def _check_no_web_url(self, fn_name: str):
