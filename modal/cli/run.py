@@ -10,7 +10,7 @@ import time
 import typing
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Callable, Optional, get_type_hints
+from typing import Any, Callable, Optional
 
 import click
 import typer
@@ -77,7 +77,7 @@ class CliRunnableSignature:
 
 def safe_get_type_hints(func_or_cls: typing.Union[Callable[..., Any], type]) -> dict[str, type]:
     try:
-        return get_type_hints(func_or_cls)
+        return typing.get_type_hints(func_or_cls)
     except Exception as exc:
         # E.g., if entrypoint type hints cannot be evaluated by local Python runtime
         msg = "Unable to generate command line interface for app entrypoint. See traceback above for details."
@@ -201,7 +201,7 @@ def _get_click_command_for_function(app: App, function: Function):
         raise InvalidError("`modal run` is not supported for generator functions")
 
     sig: inspect.Signature = inspect.signature(function.info.raw_f)
-    type_hints = typing.get_type_hints(function.info.raw_f)
+    type_hints = safe_get_type_hints(function.info.raw_f)
     signature: CliRunnableSignature = _get_cli_runnable_signature(sig, type_hints)
 
     def _inner(args, click_kwargs):
@@ -225,7 +225,7 @@ def _get_click_command_for_cls(app: App, method_ref: MethodReference):
     method_name = method_ref.method_name
 
     user_cls = cls._get_user_cls()
-    type_hints = typing.get_type_hints(user_cls)
+    type_hints = safe_get_type_hints(user_cls)
     sig: inspect.Signature = _get_class_constructor_signature(user_cls)
     cls_signature: CliRunnableSignature = _get_cli_runnable_signature(sig, type_hints)
 
