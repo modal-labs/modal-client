@@ -81,16 +81,19 @@ def render(
         buf.add("")
         buf.add("")
         grpclib_stub_name = f"{service.name}Stub"
-        buf.add("class {}Modal(modal._utils.grpc_utils.ModalStubWrapper):", service.name)
+        buf.add("class {}Modal:", service.name)
         with buf.indent():
-            buf.add(f"_grpclib_stub_type = {grpclib_module}.{grpclib_stub_name}")
             buf.add("")
-            buf.add(
-                f"def __init__(self, grpclib_stub: {grpclib_module}.{grpclib_stub_name}, "
-                + """client: "modal.client._Client", api_endpoint: str) -> None:"""
-            )
+            buf.add("@classmethod")
+            buf.add("""async def create(cls, client: "modal.client._Client", api_endpoint: str):""")
             with buf.indent():
+                buf.add("self = cls()")
+                buf.add("self._client = client")
                 buf.add("self._api_endpoint = api_endpoint")
+                buf.add("")
+                buf.add("channel = await self._client._get_channel(self._api_endpoint)")
+                buf.add(f"grpclib_stub = {grpclib_module}.{grpclib_stub_name}(channel)")
+                buf.add("")
                 for method in service.methods:
                     name, cardinality, request_type, reply_type = method
                     wrapper_cls: str
@@ -107,6 +110,7 @@ def render(
 
                     original_method = f"grpclib_stub.{name}"
                     buf.add(f"self.{name} = {wrapper_cls}({original_method}, client, self)")
+                buf.add("return self")
 
     return buf.content()
 
