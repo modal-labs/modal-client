@@ -81,7 +81,7 @@ def render(
         buf.add("")
         buf.add("")
         grpclib_stub_name = f"{service.name}Stub"
-        buf.add("class {}Modal:", service.name)
+        buf.add("class {}Modal(modal._utils.grpc_utils.ModalStubWrapper):", service.name)
         with buf.indent():
             buf.add(f"_grpclib_stub_type = {grpclib_module}.{grpclib_stub_name}")
             buf.add("")

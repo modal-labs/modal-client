@@ -136,7 +136,7 @@ async def _map_invocation(
         idx = inputs_created
         inputs_created += 1
         (args, kwargs) = argskwargs
-        return await _create_input(args, kwargs, client, idx=idx, method_name=function._use_method_name)
+        return await _create_input(args, kwargs, client.stub, idx=idx, method_name=function._use_method_name)
 
     async def input_iter():
         while 1:
