@@ -83,14 +83,14 @@ def render(
         grpclib_stub_name = f"{service.name}Stub"
         buf.add("class {}Modal:", service.name)
         with buf.indent():
+            buf.add(f"_grpclib_stub_type = {grpclib_module}.{grpclib_stub_name}")
             buf.add("")
             buf.add(
                 f"def __init__(self, grpclib_stub: {grpclib_module}.{grpclib_stub_name}, "
                 + """client: "modal.client._Client", api_endpoint: str) -> None:"""
             )
             with buf.indent():
-                if len(service.methods) == 0:
-                    buf.add("pass")
+                buf.add("self._api_endpoint = api_endpoint")
                 for method in service.methods:
                     name, cardinality, request_type, reply_type = method
                     wrapper_cls: str
@@ -106,7 +106,7 @@ def render(
                         raise TypeError(cardinality)
 
                     original_method = f"grpclib_stub.{name}"
-                    buf.add(f"self.{name} = {wrapper_cls}({original_method}, client, api_endpoint)")
+                    buf.add(f"self.{name} = {wrapper_cls}({original_method}, client, self)")
 
     return buf.content()
 

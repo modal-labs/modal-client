@@ -26,7 +26,6 @@ from grpclib.exceptions import StreamTerminatedError
 from grpclib.protocol import H2Protocol
 
 from modal.exception import AuthError, ConnectionError
-from modal_proto.api_grpc import ModalClientStub
 from modal_version import __version__
 
 from .logger import logger
@@ -79,11 +78,16 @@ class RetryWarningMessage:
     errors_to_warn_for: typing.List[Status]
 
 
+StubType = TypeVar("StubType")
+
+
 class ConnectionPool:
-    def __init__(self, metadata: dict[str, str] = {}):
+    def __init__(self, client: "modal.client._Client", metadata: dict[str, str] = {}):
+        self._client = client
         self._metadata = metadata
         self._channels: map[str, grpclib.client.Channel] = {}
-        self._stubs: map[str, ModalClientStub] = {}
+        self._grpclib_stubs: map[(str, typing.Type[StubType]), StubType] = {}
+        self._wrapper_stubs: map[(str, typing.Type[StubType]), StubType] = {}
 
     async def _get_or_create_channel(self, server_url: str) -> grpclib.client.Channel:
         if server_url not in self._channels:
@@ -95,17 +99,25 @@ class ConnectionPool:
         return self._channels[server_url]
 
     # todo: decide if we should expose this, or if stubs should be hidden
-    async def get_grpclib_stub(self, api_endpoint: str) -> ModalClientStub:
-        if api_endpoint not in self._stubs:
+    async def _get_grpclib_stub(self, api_endpoint: str, cls: typing.Type[StubType]) -> StubType:
+        key = (api_endpoint, cls)
+        if key not in self._grpclib_stubs:
             channel = await self._get_or_create_channel(api_endpoint)
-            self._stubs[api_endpoint] = ModalClientStub(channel)
-        return self._stubs[api_endpoint]
+            self._grpclib_stubs[key] = cls(channel)
+        return self._grpclib_stubs[key]
+
+    async def get_stub(self, api_endpoint: str, cls: typing.Type[StubType]) -> StubType:
+        key = (api_endpoint, cls)
+        if key not in self._wrapper_stubs:
+            grpclib_stub = await self._get_grpclib_stub(api_endpoint, cls._grpclib_stub_type)
+            self._wrapper_stubs[key] = cls(grpclib_stub, self._client, api_endpoint)
+        return self._wrapper_stubs[key]
 
     def close(self):
         for channel in self._channels.values():
             channel.close()
         self._channels.clear()
-        self._stubs.clear()
+        self._grpclib_stubs.clear()
 
 
 def create_channel(
