@@ -289,11 +289,11 @@ class _Client:
             # TODO(elias): reset _cancellation_context in case ?
             await self._open()
 
-    async def _get_channel(self, api_endpoint: str) -> grpclib.client.Channel:
+    async def _get_channel(self, server_url: str) -> grpclib.client.Channel:
         # Get a valid grpclib channel, reusing existing channels if possible.
         # This prevents usage of stale channels across forks of processes.
         await self._reset_on_pid_change()
-        return await self._connection_pool.get_or_create_channel(api_endpoint)
+        return await self._connection_pool.get_or_create_channel(server_url)
 
     @synchronizer.nowrap
     async def _call_unary(
@@ -340,7 +340,7 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
     # if that client is closed etc. and possibly introducing Modal-specific retry logic
     wrapped_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType]
     client: _Client
-    api_endpoint: str
+    server_url: str
 
     def __init__(
         self,
@@ -350,7 +350,7 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
     ):
         self.wrapped_method = wrapped_method
         self.client = client
-        self.api_endpoint = wrapper_stub._api_endpoint
+        self.server_url = wrapper_stub._server_url
 
     @property
     def name(self) -> str:
@@ -366,7 +366,7 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         if self.client._snapshotted:
             logger.debug(f"refreshing client after snapshot for {self.name.rsplit('/', 1)[1]}")
             self.client = await _Client.from_env()
-        self.wrapped_method.channel = await self.client._connection_pool.get_or_create_channel(self.api_endpoint)
+        self.wrapped_method.channel = await self.client._connection_pool.get_or_create_channel(self.server_url)
         return await self.client._call_unary(self.wrapped_method, req, timeout=timeout, metadata=metadata)
 
 
@@ -381,7 +381,7 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
     ):
         self.wrapped_method = wrapped_method
         self.client = client
-        self.api_endpoint = wrapper_stub._api_endpoint
+        self.server_url = wrapper_stub._server_url
 
     @property
     def name(self) -> str:
@@ -395,6 +395,6 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
         if self.client._snapshotted:
             logger.debug(f"refreshing client after snapshot for {self.name.rsplit('/', 1)[1]}")
             self.client = await _Client.from_env()
-        self.wrapped_method.channel = await self.client._connection_pool.get_or_create_channel(self.api_endpoint)
+        self.wrapped_method.channel = await self.client._connection_pool.get_or_create_channel(self.server_url)
         async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
             yield response

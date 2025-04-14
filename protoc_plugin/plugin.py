@@ -85,13 +85,13 @@ def render(
         with buf.indent():
             buf.add("")
             buf.add("@classmethod")
-            buf.add("""async def create(cls, client: "modal.client._Client", api_endpoint: str):""")
+            buf.add("""async def create(cls, client: "modal.client._Client", server_url: str):""")
             with buf.indent():
                 buf.add("self = cls()")
                 buf.add("self._client = client")
-                buf.add("self._api_endpoint = api_endpoint")
+                buf.add("self._server_url = server_url")
                 buf.add("")
-                buf.add("channel = await self._client._get_channel(self._api_endpoint)")
+                buf.add("channel = await self._client._get_channel(self._server_url)")
                 buf.add(f"grpclib_stub = {grpclib_module}.{grpclib_stub_name}(channel)")
                 buf.add("")
                 for method in service.methods:
