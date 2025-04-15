@@ -1445,8 +1445,14 @@ def test_concurrent_inputs_async_function(servicer):
         assert function_call_id and function_call_id == outputs[i - 1][2]
 
 
-def _batch_function_test_helper(batch_func, servicer, args_list, expected_outputs, expected_status="success"):
-    batch_max_size = 4
+def _batch_function_test_helper(
+    batch_func,
+    servicer,
+    args_list,
+    expected_outputs,
+    expected_status="success",
+    batch_max_size=4,
+):
     batch_wait_ms = 500
     inputs = _get_inputs_batched(args_list, batch_max_size)
 
@@ -1529,6 +1535,23 @@ def test_batch_sync_function_multiple_args_error(servicer):
         * 2,
         expected_status="failure",
     )
+
+
+@skip_github_non_linux
+def test_batch_sync_function_large_batch(servicer):
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 5), {}) for _ in range(500)]
+    expected_outputs = [2] * 500
+    _batch_function_test_helper(
+        "batch_function_sync_large_batch",
+        servicer,
+        inputs,
+        expected_outputs,
+        batch_max_size=500,
+    )
+
+    # Ensure that the outputs are pushed in small batches.
+    for req in servicer.container_outputs:
+        assert len(req.outputs) <= 20
 
 
 @skip_github_non_linux

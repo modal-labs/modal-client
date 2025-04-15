@@ -666,12 +666,17 @@ class _ContainerIOManager:
             )
             for input_id, retry_count, result in zip(io_context.input_ids, io_context.retry_counts, results)
         ]
-        await retry_transient_errors(
-            self._client.stub.FunctionPutOutputs,
-            api_pb2.FunctionPutOutputsRequest(outputs=outputs),
-            additional_status_codes=[Status.RESOURCE_EXHAUSTED],
-            max_retries=None,  # Retry indefinitely, trying every 1s.
-        )
+
+        # There are multiple outputs for a single IOContext in the case of @modal.batched.
+        # Limit the batch size to 20 to stay within message size limits and buffer size limits.
+        output_batch_size = 20
+        for i in range(0, len(outputs), output_batch_size):
+            await retry_transient_errors(
+                self._client.stub.FunctionPutOutputs,
+                api_pb2.FunctionPutOutputsRequest(outputs=outputs[i : i + output_batch_size]),
+                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+                max_retries=None,  # Retry indefinitely, trying every 1s.
+            )
 
     def serialize_exception(self, exc: BaseException) -> bytes:
         try:
