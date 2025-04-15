@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2023
 import asyncio
+import contextlib
 import pytest
 import time
 import typing
@@ -112,7 +113,10 @@ def test_deploy_without_rich(servicer, client, no_rich):
 
 
 @pytest.mark.asyncio
-async def test_mid_build_modifications(servicer, client, tmp_path):
+@pytest.mark.parametrize("build_validation", ["error", "warn", "ignore"])
+async def test_mid_build_modifications(servicer, client, tmp_path, monkeypatch, build_validation):
+    monkeypatch.setenv("MODAL_BUILD_VALIDATION", build_validation)
+
     (large_dir := tmp_path / "large_files").mkdir()
     for i in range(512 + 1):  # Equivalent to file upload concurrency
         (large_dir / f"{i:02d}.txt").write_bytes(f"large {i:02d}".encode())
@@ -122,12 +126,20 @@ async def test_mid_build_modifications(servicer, client, tmp_path):
     app = modal.App(image=image, include_source=False)
     app.function()(dummy)
 
-    async def change_file():
-        await asyncio.sleep(0.2)  # "Uploading" large should take 2 seconds
+    async def change_file_after_delay():
+        await asyncio.sleep(0.2)  # "Uploading" large should take 2 seconds; see mock MountPutFile
         for f in large_dir.iterdir():
             f.touch()
 
-    asyncio.create_task(change_file())
-    with pytest.raises(modal.exception.ExecutionError, match="modified during build"):
+    handler_assertion: contextlib.AbstractContextManager
+    if build_validation == "error":
+        handler_assertion = pytest.raises(modal.exception.ExecutionError, match="modified during build")
+    elif build_validation == "warn":
+        handler_assertion = pytest.warns(UserWarning, match="modified during build")
+    else:
+        handler_assertion = contextlib.nullcontext()
+
+    asyncio.create_task(change_file_after_delay())
+    with handler_assertion:
         async with app.run.aio(client=client):
             ...
