@@ -532,11 +532,14 @@ class _Mount(_Object, type_prefix="mo"):
                 n_finished += 1
                 return mount_file
 
-            if file_spec.mtime is not None and file_spec.mtime > resolver.build_start:
-                # TODO do we want a config switch to make this a warning?
-                raise modal.exception.ExecutionError(
-                    f"{file_spec.source_description} was modified during build process."
-                )
+            # Try to catch cases where user modified their local files (e.g. changed git branches)
+            # between triggering a build and Modal actually uploading the file
+            if file_spec.source_is_path:
+                mtime = os.stat(file_spec.source_description).st_mtime
+                if mtime > resolver.build_start:
+                    raise modal.exception.ExecutionError(
+                        f"{file_spec.source_description} was modified during build process."
+                    )
 
             request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
             accounted_hashes.add(file_spec.sha256_hex)

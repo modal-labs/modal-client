@@ -292,6 +292,7 @@ async def blob_iter(blob_id: str, stub: ModalClientModal) -> AsyncIterator[bytes
 class FileUploadSpec:
     source: Callable[[], Union[AbstractContextManager, BinaryIO]]
     source_description: Any
+    source_is_path: bool
     mount_filename: str
 
     use_blob: bool
@@ -300,7 +301,6 @@ class FileUploadSpec:
     md5_hex: str
     mode: int  # file permission bits (last 12 bits of st_mode)
     size: int
-    mtime: Optional[float]
 
 
 def _get_file_upload_spec(
@@ -326,17 +326,10 @@ def _get_file_upload_spec(
             content = fp.read()
             hashes = get_upload_hashes(content)
 
-        try:
-            mtime = os.fstat(fp.fileno()).st_mtime
-        except Exception as err:
-            # Expected if fp does not correspond to an actual file (io.UnsupportedOperation)
-            # Defensively catching other errors as I'm not sure how robust this check is (Windows? etc.)
-            logger.debug(f"Failed to get mtime for {source_description}: {err}")
-            mtime = None
-
     return FileUploadSpec(
         source=source,
         source_description=source_description,
+        source_is_path=isinstance(source_description, Path),
         mount_filename=mount_filename.as_posix(),
         use_blob=use_blob,
         content=content,
@@ -344,7 +337,6 @@ def _get_file_upload_spec(
         md5_hex=hashes.md5_hex(),
         mode=mode & 0o7777,
         size=size,
-        mtime=mtime,
     )
 
 

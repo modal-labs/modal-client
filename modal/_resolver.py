@@ -1,7 +1,8 @@
 # Copyright Modal Labs 2023
 import asyncio
 import contextlib
-import time
+import os
+import tempfile
 import typing
 from asyncio import Future
 from collections.abc import Hashable
@@ -74,7 +75,11 @@ class Resolver:
         self._app_id = app_id
         self._environment_name = environment_name
         self._deduplication_cache = {}
-        self._build_start = time.time()
+
+        with tempfile.TemporaryFile() as temp_file:
+            # Use file mtime to track build start time because we will later compare this baseline
+            # to the mtime on mounted files, and want those measurements to have the same resolution.
+            self._build_start = os.fstat(temp_file.fileno()).st_mtime
 
     @property
     def app_id(self) -> Optional[str]:
