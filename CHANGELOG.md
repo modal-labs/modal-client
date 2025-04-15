@@ -12,6 +12,13 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.73.173 (2025-04-15)
+
+- Fix bug where containers hang with batch sizes above 100 (with `@modal.batched`).
+- Fix bug where containers can fail with large outputs and batch sizes above 49 (with `@modal.batched`)
+
+
+
 ### 0.73.170 (2025-04-14)
 
 * Fixes a bug where `modal run` didn't recognize `modal.parameter()` class parameters
