@@ -62,11 +62,14 @@ class VolumeFile:
     data_blob_id: str
     mode: int
 
+
 @dataclasses.dataclass
 class GrpcErrorAndCount:
-    """ Helper class that holds a gRPC error and the number of times it should be raised. """
+    """Helper class that holds a gRPC error and the number of times it should be raised."""
+
     grpc_error: Status
     count: int
+
 
 # TODO: Isolate all test config from the host
 @pytest.fixture(scope="function", autouse=True)
@@ -1285,8 +1288,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # update function definition
         fn_definition = self.app_functions[req.function_id]
         assert isinstance(fn_definition, api_pb2.Function)
-        fn_definition.warm_pool_size = req.warm_pool_size_override  # hacky
-
+        # Hacky that we're modifying the function definition directly
+        # In the server we track autoscaler updates separately
+        fn_definition.warm_pool_size = req.warm_pool_size_override
+        fn_definition.autoscaler_settings.MergeFrom(req.settings)
         await stream.send_message(api_pb2.FunctionUpdateSchedulingParamsResponse())
 
     ### Image
