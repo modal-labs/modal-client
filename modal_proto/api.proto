@@ -78,11 +78,12 @@ enum CheckpointStatus {
 
 enum ClientType {
   CLIENT_TYPE_UNSPECIFIED = 0;
-  CLIENT_TYPE_CLIENT = 1;
-  CLIENT_TYPE_WORKER = 2;
-  CLIENT_TYPE_CONTAINER = 3;
-  CLIENT_TYPE_WEB_SERVER = 5;
-  CLIENT_TYPE_NOTEBOOK_KERNEL = 6;
+  CLIENT_TYPE_CLIENT = 1; // modal-client: Modal Python SDK
+  CLIENT_TYPE_WORKER = 2; // modal-worker
+  CLIENT_TYPE_CONTAINER = 3; // modal-client from inside containers
+  CLIENT_TYPE_WEB_SERVER = 5; // modal-web
+  CLIENT_TYPE_NOTEBOOK_KERNEL = 6; // kernelshim.py from notebooks
+  CLIENT_TYPE_LIBMODAL = 7; // libmodal: experimental client library
 }
 
 enum CloudProvider {
