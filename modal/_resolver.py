@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import asyncio
 import contextlib
+import time
 import typing
 from asyncio import Future
 from collections.abc import Hashable
@@ -46,6 +47,7 @@ class Resolver:
     _app_id: Optional[str]
     _deduplication_cache: dict[Hashable, Future]
     _client: _Client
+    _build_start: float
 
     def __init__(
         self,
@@ -72,6 +74,7 @@ class Resolver:
         self._app_id = app_id
         self._environment_name = environment_name
         self._deduplication_cache = {}
+        self._build_start = time.time()
 
     @property
     def app_id(self) -> Optional[str]:
@@ -84,6 +87,10 @@ class Resolver:
     @property
     def environment_name(self):
         return self._environment_name
+
+    @property
+    def build_start(self) -> float:
+        return self._build_start
 
     async def preload(self, obj, existing_object_id: Optional[str]):
         if obj._preload is not None:

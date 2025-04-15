@@ -532,6 +532,12 @@ class _Mount(_Object, type_prefix="mo"):
                 n_finished += 1
                 return mount_file
 
+            if file_spec.mtime is not None and file_spec.mtime > resolver.build_start:
+                # TODO do we want a config switch to make this a warning?
+                raise modal.exception.ExecutionError(
+                    f"{file_spec.source_description} was modified during build process."
+                )
+
             request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
             accounted_hashes.add(file_spec.sha256_hex)
             response = await retry_transient_errors(resolver.client.stub.MountPutFile, request, base_delay=1)
