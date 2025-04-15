@@ -458,7 +458,7 @@ class _Cls(_Object, type_prefix="cs"):
             )
         elif has_custom_constructor:
             deprecation_warning(
-                (2025, 3, 11),
+                (2025, 4, 15),
                 textwrap.dedent(f"""
                 {user_cls} uses a non-default constructor (__init__) method.
                 Custom constructors will not be supported in a a future version of Modal.
