@@ -535,14 +535,14 @@ class _Mount(_Object, type_prefix="mo"):
 
             # Try to catch cases where user modified their local files (e.g. changed git branches)
             # between triggering a build and Modal actually uploading the file
-            if config.get("mount_changes") != "ignore" and file_spec.source_is_path:
+            if config.get("build_validation") != "ignore" and file_spec.source_is_path:
                 mtime = os.stat(file_spec.source_description).st_mtime
                 if mtime > resolver.build_start:
-                    if config.get("mount_changes") == "error":
+                    if config.get("build_validation") == "error":
                         raise modal.exception.ExecutionError(
                             f"{file_spec.source_description} was modified during build process."
                         )
-                    elif config.get("mount_changes") == "warn":
+                    elif config.get("build_validation") == "warn":
                         warnings.warn(f"{file_spec.source_description} was modified during build process.")
 
             request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
