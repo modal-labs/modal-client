@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+option go_package = "github.com/modal-labs/modal/go/proto";
+
 package modal.client;
 
 import "modal_proto/options.proto";
