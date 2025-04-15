@@ -538,12 +538,11 @@ class _Mount(_Object, type_prefix="mo"):
             if config.get("build_validation") != "ignore" and file_spec.source_is_path:
                 mtime = os.stat(file_spec.source_description).st_mtime
                 if mtime > resolver.build_start:
+                    msg = f"{file_spec.source_description} was modified during build process."
                     if config.get("build_validation") == "error":
-                        raise modal.exception.ExecutionError(
-                            f"{file_spec.source_description} was modified during build process."
-                        )
+                        raise modal.exception.ExecutionError(msg)
                     elif config.get("build_validation") == "warn":
-                        warnings.warn(f"{file_spec.source_description} was modified during build process.")
+                        warnings.warn(msg)
 
             request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
             accounted_hashes.add(file_spec.sha256_hex)
