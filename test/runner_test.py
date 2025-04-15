@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2023
+import asyncio
 import pytest
 import time
 import typing
@@ -108,3 +109,25 @@ def test_deploy_without_rich(servicer, client, no_rich):
     app = modal.App("dummy-app")
     app.function()(dummy)
     deploy_app(app, client=client)
+
+
+@pytest.mark.asyncio
+async def test_mid_build_modifications(servicer, client, tmp_path):
+    (large_dir := tmp_path / "large_files").mkdir()
+    for i in range(512 + 1):  # Equivalent to file upload concurrency
+        (large_dir / f"{i:02d}.txt").write_bytes(f"large {i:02d}".encode())
+
+    image = modal.Image.debian_slim().add_local_dir(large_dir, "/root/large_files")
+
+    app = modal.App(image=image, include_source=False)
+    app.function()(dummy)
+
+    async def change_file():
+        await asyncio.sleep(0.2)  # "Uploading" large should take 2 seconds
+        for f in large_dir.iterdir():
+            f.touch()
+
+    asyncio.create_task(change_file())
+    with pytest.raises(modal.exception.ExecutionError, match="modified during build"):
+        async with app.run.aio(client=client):
+            ...
