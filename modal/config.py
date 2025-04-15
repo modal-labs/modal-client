@@ -264,7 +264,7 @@ class Config:
         s = _SETTINGS[key]
         env_var_key = "MODAL_" + key.upper()
 
-        def transform(val: Any) -> str:
+        def transform(val: str) -> Any:
             try:
                 return s.transform(val)
             except Exception as e:
