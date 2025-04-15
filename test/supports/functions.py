@@ -492,6 +492,12 @@ def batch_function_sync(x: tuple[int], y: tuple[int]):
 
 
 @app.function()
+@batched(max_batch_size=500, wait_ms=500)
+def batch_function_sync_large_batch(x: tuple[int], y: tuple[int]):
+    return [x_i / y_i for x_i, y_i in zip(x, y)]
+
+
+@app.function()
 @batched(max_batch_size=4, wait_ms=500)
 def batch_function_outputs_not_list(x: tuple[int], y: tuple[int]):
     return str(x)
