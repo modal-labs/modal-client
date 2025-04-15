@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2025
-
 import pytest
+from typing import Union, cast
 
 import modal
 import modal.experimental
@@ -30,11 +30,12 @@ def test_update_autoscaler(client, servicer, which):
     }
 
     with app.run(client=client):
+        obj: Union[modal.Function, modal.cls.Obj]
         if which == "function":
             obj = f
             obj_id = obj.object_id
         else:
-            obj = C()
+            obj = cast(modal.cls.Obj, C())
             # This is ugly
             obj_id = obj._cached_service_function().object_id  # type: ignore
 
