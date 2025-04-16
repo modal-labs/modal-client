@@ -4,6 +4,7 @@ from typing import Union, cast
 
 import modal
 import modal.experimental
+import modal.runner
 
 app = modal.App(include_source=False)
 
@@ -46,3 +47,33 @@ def test_update_autoscaler(client, servicer, which):
         assert settings.max_containers == overrides["max_containers"]
         assert settings.buffer_containers == overrides["buffer_containers"]
         assert settings.scaledown_window == overrides["scaledown_window"]
+
+
+@pytest.mark.parametrize("which", ["function", "cls"])
+def test_update_autoscaler_after_lookup(client, servicer, which):
+    modal.runner.deploy_app(app, name="test", client=client)
+
+    overrides = {
+        "min_containers": 1,
+        "max_containers": 5,
+        "buffer_containers": 2,
+        "scaledown_window": 10,
+    }
+
+    # See above for why we're hardcoding the object ID.
+    # Would be much nicer to be able to look up the internal definition by the *name*...
+    if which == "function":
+        obj = modal.Function.from_name("test", "f")
+        obj_id = "fu-1"
+    else:
+        C = modal.Cls.from_name("test", "C")
+        obj = C()
+        obj_id = "fu-2"
+
+    modal.experimental.update_autoscaler(obj, client=client, **overrides)  # type: ignore
+
+    settings = servicer.app_functions[obj_id].autoscaler_settings  # type: ignore
+    assert settings.min_containers == overrides["min_containers"]
+    assert settings.max_containers == overrides["max_containers"]
+    assert settings.buffer_containers == overrides["buffer_containers"]
+    assert settings.scaledown_window == overrides["scaledown_window"]

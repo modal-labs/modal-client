@@ -189,9 +189,13 @@ async def update_autoscaler(
     if client is None:
         client = await _Client.from_env()
 
-    f = obj if isinstance(obj, _Function) else obj._cached_service_function()
-    if not f.is_hydrated:
-        await f.hydrate(client=client)
+    if isinstance(obj, _Function):
+        f = obj
+    else:
+        assert obj._cls._class_service_function is not None
+        await obj._cls._class_service_function.hydrate(client=client)
+        f = obj._cached_service_function()
+    await f.hydrate(client=client)
 
     request = api_pb2.FunctionUpdateSchedulingParamsRequest(function_id=f.object_id, settings=settings)
     await retry_transient_errors(client.stub.FunctionUpdateSchedulingParams, request)
