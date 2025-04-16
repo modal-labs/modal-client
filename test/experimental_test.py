@@ -31,13 +31,13 @@ def test_update_autoscaler(client, servicer, which):
 
     with app.run(client=client):
         obj: Union[modal.Function, modal.cls.Obj]
+        # Hardcode the object ID based on what we expect from the mock servicer
+        # which is pretty janky, but avoids hydrating the object in the test so that
+        # we can properly assert that update_autoscaler handles unhydrated objects correctly.
         if which == "function":
-            obj = f
-            obj_id = obj.object_id
+            obj, obj_id = f, "fu-1"
         else:
-            obj = cast(modal.cls.Obj, C())
-            # This is ugly
-            obj_id = obj._cached_service_function().object_id  # type: ignore
+            obj, obj_id = cast(modal.cls.Obj, C()), "fu-2"
 
         modal.experimental.update_autoscaler(obj, client=client, **overrides)  # type: ignore
 

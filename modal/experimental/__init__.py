@@ -179,16 +179,19 @@ async def update_autoscaler(
     may look different (i.e., it may be a standalone function or a method).
 
     """
-    f = obj if isinstance(obj, _Function) else obj._cached_service_function()
-
-    if client is None:
-        client = await _Client.from_env()
-
     settings = api_pb2.AutoscalerSettings(
         min_containers=min_containers,
         max_containers=max_containers,
         buffer_containers=buffer_containers,
         scaledown_window=scaledown_window,
     )
+
+    if client is None:
+        client = await _Client.from_env()
+
+    f = obj if isinstance(obj, _Function) else obj._cached_service_function()
+    if not f.is_hydrated:
+        await f.hydrate(client=client)
+
     request = api_pb2.FunctionUpdateSchedulingParamsRequest(function_id=f.object_id, settings=settings)
     await retry_transient_errors(client.stub.FunctionUpdateSchedulingParams, request)
