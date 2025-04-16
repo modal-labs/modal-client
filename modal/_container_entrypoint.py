@@ -140,6 +140,32 @@ class UserCodeEventLoop:
         return task
 
     def run(self, coro):
+        last_heartbeat: Optional[float] = None
+        hearbeat_was_cancelled = threading.Event()
+        event_loop_heartbeat_period = 0.1
+        heartbeat_graceperiod = 0.1
+
+        async def eventloop_heartbeat():
+            nonlocal last_heartbeat
+            while 1:
+                last_heartbeat = time.monotonic()
+                await asyncio.sleep(event_loop_heartbeat_period)
+
+        def heartbeat_checker():
+            while 1:
+                if last_heartbeat is None:
+                    time.sleep(event_loop_heartbeat_period)
+                    continue
+
+                if time.monotonic() - last_heartbeat > event_loop_heartbeat_period + heartbeat_graceperiod:
+                    print(f"WARNING: the event loop has been locked for more than {heartbeat_graceperiod} seconds")
+
+                if hearbeat_was_cancelled.wait(timeout=event_loop_heartbeat_period):
+                    return
+
+        t = threading.Thread(daemon=True, target=heartbeat_checker)
+        t.start()
+        eventloop_heartbeat_task = asyncio.ensure_future(eventloop_heartbeat(), loop=self.loop)
         task = asyncio.ensure_future(coro, loop=self.loop)
         self._sigints = 0
 
@@ -152,6 +178,8 @@ class UserCodeEventLoop:
             self._sigints += 1
             if self._sigints == 1:
                 # first sigint is graceful
+                hearbeat_was_cancelled.set()
+                eventloop_heartbeat_task.cancel()
                 task.cancel()
                 return
 
@@ -174,6 +202,8 @@ class UserCodeEventLoop:
             if self._sigints > 0:
                 raise KeyboardInterrupt()
         finally:
+            hearbeat_was_cancelled.set()
+            eventloop_heartbeat_task.cancel()
             self.loop.remove_signal_handler(signal.SIGUSR1)
             if not ignore_sigint:
                 self.loop.remove_signal_handler(signal.SIGINT)
@@ -578,7 +608,6 @@ if __name__ == "__main__":
     if container_arguments_path is None:
         raise RuntimeError("No path to the container arguments file provided!")
     container_args.ParseFromString(open(container_arguments_path, "rb").read())
-
     # Note that we're creating the client in a synchronous context, but it will be running in a separate thread.
     # This is good because if the function is long running then we the client can still send heartbeats
     # The only caveat is a bunch of calls will now cross threads, which adds a bit of overhead?
