@@ -195,6 +195,8 @@ def _container_args(
     app_layout: api_pb2.AppLayout = DEFAULT_APP_LAYOUT_SENTINEL,
     web_server_port: Optional[int] = None,
     web_server_startup_timeout: Optional[float] = None,
+    function_serialized: Optional[bytes] = None,
+    class_serialized: Optional[bytes] = None,
 ):
     if app_layout is DEFAULT_APP_LAYOUT_SENTINEL:
         app_layout = api_pb2.AppLayout(
@@ -244,6 +246,8 @@ def _container_args(
         max_inputs=max_inputs,
         is_class=is_class,
         class_parameter_info=class_parameter_info,
+        function_serialized=function_serialized,
+        class_serialized=class_serialized,
     )
 
     return api_pb2.ContainerArguments(
@@ -292,6 +296,8 @@ def _run_container(
     app_layout=DEFAULT_APP_LAYOUT_SENTINEL,
     web_server_port: Optional[int] = None,
     web_server_startup_timeout: Optional[float] = None,
+    function_serialized: Optional[bytes] = None,
+    class_serialized: Optional[bytes] = None,
 ) -> ContainerResult:
     container_args = _container_args(
         module_name=module_name,
@@ -316,6 +322,8 @@ def _run_container(
         app_layout=app_layout,
         web_server_port=web_server_port,
         web_server_startup_timeout=web_server_startup_timeout,
+        function_serialized=function_serialized,
+        class_serialized=class_serialized,
     )
     with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
         if inputs is None:
@@ -652,12 +660,12 @@ def test_serialized_function(servicer):
     def triple(x):
         return 3 * x
 
-    servicer.function_serialized = serialize(triple)
     ret = _run_container(
         servicer,
-        "foo.bar.baz",
+        "",  # no module name
         "f",
         definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
+        function_serialized=serialize(triple),
     )
     assert _unwrap_scalar(ret) == 3 * 42
 
@@ -678,7 +686,6 @@ def test_serialized_class_with_parameters(servicer):
     app = modal.App()
     app.cls(serialized=True)(SerializedClassWithParams)  # gets rid of warning
 
-    servicer.class_serialized = serialize(SerializedClassWithParams)
     ret = _run_container(
         servicer,
         "",
@@ -705,6 +712,7 @@ def test_serialized_class_with_parameters(servicer):
             function_ids={"SerializedClassWithParams.*": "fu-123"},
             class_ids={"SerializedClassWithParams": "cs-123"},
         ),
+        class_serialized=serialize(SerializedClassWithParams),
     )
     assert _unwrap_scalar(ret) == "hello"
 
@@ -718,8 +726,6 @@ def test_webhook_serialized(servicer):
     def webhook(arg="world"):
         return f"Hello, {arg}"
 
-    servicer.function_serialized = serialize(webhook)
-
     ret = _run_container(
         servicer,
         "foo.bar.baz",
@@ -727,6 +733,7 @@ def test_webhook_serialized(servicer):
         inputs=inputs,
         webhook_type=api_pb2.WEBHOOK_TYPE_FUNCTION,
         definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
+        function_serialized=serialize(webhook),
     )
 
     _, second_message = _unwrap_asgi(ret)
@@ -1156,8 +1163,6 @@ def test_serialized_cls(servicer):
 
     app = modal.App()
     app.cls(serialized=True)(Cls)  # prevents warnings about not turning methods into functions
-    servicer.class_serialized = serialize(Cls)
-    servicer.function_serialized = None
     ret = _run_container(
         servicer,
         "module.doesnt.matter",
@@ -1165,6 +1170,7 @@ def test_serialized_cls(servicer):
         definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
         is_class=True,
         inputs=_get_inputs(method_name="method"),
+        class_serialized=serialize(Cls),
     )
     assert _unwrap_scalar(ret) == 42**5
 
@@ -1350,12 +1356,12 @@ def test_multiapp_serialized_func(servicer, caplog):
     def dummy(x):
         return x
 
-    servicer.function_serialized = serialize(dummy)
     ret = _run_container(
         servicer,
         "test.supports.multiapp_serialized_func",
         "foo",
         definition_type=api_pb2.Function.DEFINITION_TYPE_SERIALIZED,
+        function_serialized=serialize(dummy),
     )
     assert _unwrap_scalar(ret) == 42
     assert len(caplog.messages) == 0
@@ -2318,11 +2324,6 @@ def test_class_as_service_serialized(servicer):
     app = modal.App()
     app.cls()(Foo)  # avoid errors about methods not being turned into functions
 
-    # Class used by the container entrypoint to instantiate the object tied to the function
-    servicer.class_serialized = serialize(Foo)
-    # serialized versions of each PartialFunction - used by container entrypoint to execute the methods
-    servicer.function_serialized = None
-
     result = _run_container(
         servicer,
         "nomodule",
@@ -2331,6 +2332,7 @@ def test_class_as_service_serialized(servicer):
         is_class=True,
         inputs=_get_multi_inputs_with_methods([("method_a", ("x",), {}), ("method_b", ("y",), {})]),
         serialized_params=serialize(((), {"x": "s"})),
+        class_serialized=serialize(Foo),
     )
     assert len(result.items) == 2
     res_0 = result.items[0].result
