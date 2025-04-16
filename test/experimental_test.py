@@ -60,8 +60,9 @@ def test_update_autoscaler_after_lookup(client, servicer, which):
         "scaledown_window": 10,
     }
 
-    # See above for why we're hardcoding the object ID.
+    # See above for why we're hardcoding the object IDs.
     # Would be much nicer to be able to look up the internal definition by the *name*...
+    obj: Union[modal.Function, modal.cls.Obj]
     if which == "function":
         obj = modal.Function.from_name("test", "f")
         obj_id = "fu-1"
