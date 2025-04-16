@@ -71,7 +71,7 @@ def test_app_deploy_success(servicer, mock_dir, set_env_client):
         _run(["deploy", "myapp.py"])
 
         # Deploy as a module
-        _run(["deploy", "myapp"])
+        _run(["deploy", "-m", "myapp"])
 
         # Deploy as a script with an absolute path
         _run(["deploy", os.path.abspath("myapp.py")])
@@ -352,13 +352,17 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
         assert expected in res.stdout
         assert len(servicer.client_calls) == 0
 
-    if sys.version_info >= (3, 10):
-        res = _run(["run", f"{app_file.as_posix()}::unparseable_annot", "--i=20"], expected_exit_code=1)
-        assert "Parameter `i` has unparseable annotation: typing.Union[int, str]" in str(res.exception)
+    res = _run(["run", f"{app_file.as_posix()}::unparseable_annot", "--i=20"], expected_exit_code=1)
+    assert "Parameter `i` has unparseable annotation: typing.Union[int, str]" in str(res.exception)
+
+    res = _run(["run", f"{app_file.as_posix()}::unevaluatable_annot", "--i=20"], expected_exit_code=1)
+    assert "Unable to generate command line interface" in str(res.exception)
+    assert "no go" in str(res.exception)
 
     if sys.version_info <= (3, 10):
         res = _run(["run", f"{app_file.as_posix()}::optional_arg_pep604"], expected_exit_code=1)
-        assert "Unable to generate command line interface for app entrypoint." in str(res.exception)
+        assert "Unable to generate command line interface for app entrypoint" in str(res.exception)
+        assert "unsupported operand" in str(res.exception)
 
 
 def test_run_parse_args_function(servicer, set_env_client, test_dir, recwarn, disable_auto_mount):
@@ -589,7 +593,7 @@ def test_logs(servicer, server_url_env, set_env_client, mock_dir):
 def test_app_stop(servicer, mock_dir, set_env_client):
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
         # Deploy as a module
-        _run(["deploy", "myapp"])
+        _run(["deploy", "-m", "myapp"])
 
     res = _run(["app", "list"])
     assert re.search("my_app .+ deployed", res.stdout)
@@ -1184,7 +1188,7 @@ def test_container_exec(servicer, set_env_client, mock_shell_pty, app):
 def test_can_run_all_listed_functions_with_includes(supports_on_path, monkeypatch, set_env_client, disable_auto_mount):
     monkeypatch.setenv("TERM", "dumb")  # prevents looking at ansi escape sequences
 
-    res = _run(["run", "multifile_project.main"], expected_exit_code=1)
+    res = _run(["run", "-m", "multifile_project.main"], expected_exit_code=1)
     print("err", res.stderr)
     # there are no runnables directly in the target module, so references need to go via the app
     func_listing = res.stderr.split("functions and local entrypoints:")[1]
@@ -1204,7 +1208,7 @@ def test_can_run_all_listed_functions_with_includes(supports_on_path, monkeypatc
 
     for runnable in expected_runnables:
         assert runnable in res.stderr
-        _run(["run", f"multifile_project.main::{runnable}"], expected_exit_code=0)
+        _run(["run", "-m", f"multifile_project.main::{runnable}"], expected_exit_code=0)
 
 
 def test_modal_launch_vscode(monkeypatch, set_env_client, servicer):
@@ -1232,7 +1236,7 @@ def test_run_file_with_global_lookups(servicer, set_env_client, supports_dir):
 
 def test_run_auto_infer_prefer_target_module(servicer, supports_dir, set_env_client, monkeypatch, disable_auto_mount):
     monkeypatch.syspath_prepend(supports_dir / "app_run_tests")
-    res = _run(["run", "multifile.util"])
+    res = _run(["run", "-m", "multifile.util"])
     assert "ran util\nmain func" in res.stdout
 
 

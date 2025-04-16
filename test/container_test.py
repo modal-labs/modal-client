@@ -341,10 +341,10 @@ def _run_container(
             env["MODAL_RESTORE_STATE_PATH"] = tmp_file_name
 
             # Override server URL to reproduce restore behavior.
-            env["MODAL_SERVER_URL"] = servicer.container_addr
             env["MODAL_ENABLE_SNAP_RESTORE"] = "1"
 
         # These env vars are always present in containers
+        env["MODAL_SERVER_URL"] = servicer.container_addr
         env["MODAL_TASK_ID"] = "ta-123"
         env["MODAL_IS_REMOTE"] = "1"
 
@@ -549,16 +549,26 @@ def test_grpc_failure(servicer, event_loop):
 
 
 @skip_github_non_linux
-def test_missing_main_conditional(servicer, capsys):
+def test_run_from_global_scope(servicer, capsys):
     _run_container(servicer, "test.supports.missing_main_conditional", "square")
     output = capsys.readouterr()
-    assert "Can not run an app from within a container" in output.err
-
+    assert "Can not run an app in global scope within a container" in output.err
     assert servicer.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE
-    assert "modal run" in servicer.task_result.traceback
-
     exc = deserialize(servicer.task_result.data, None)
     assert isinstance(exc, InvalidError)
+
+
+@skip_github_non_linux
+def test_run_from_within_function(servicer, capsys):
+    with servicer.intercept() as ctx:
+        _run_container(servicer, "test.supports.modal_run_from_function", "run_other_app", inputs=_get_inputs(((), {})))
+
+    inner_app_create: api_pb2.AppCreateRequest
+    (inner_app_create,) = ctx.get_requests("AppCreate")
+    assert inner_app_create.description == "app2"
+    inner_function_call: api_pb2.FunctionMapRequest
+    (inner_function_call,) = ctx.get_requests("FunctionMap")
+    assert servicer.app_functions[inner_function_call.function_id].function_name == "foo"
 
 
 @skip_github_non_linux
@@ -1435,8 +1445,14 @@ def test_concurrent_inputs_async_function(servicer):
         assert function_call_id and function_call_id == outputs[i - 1][2]
 
 
-def _batch_function_test_helper(batch_func, servicer, args_list, expected_outputs, expected_status="success"):
-    batch_max_size = 4
+def _batch_function_test_helper(
+    batch_func,
+    servicer,
+    args_list,
+    expected_outputs,
+    expected_status="success",
+    batch_max_size=4,
+):
     batch_wait_ms = 500
     inputs = _get_inputs_batched(args_list, batch_max_size)
 
@@ -1519,6 +1535,23 @@ def test_batch_sync_function_multiple_args_error(servicer):
         * 2,
         expected_status="failure",
     )
+
+
+@skip_github_non_linux
+def test_batch_sync_function_large_batch(servicer):
+    inputs: list[tuple[tuple[Any, ...], dict[str, Any]]] = [((10, 5), {}) for _ in range(500)]
+    expected_outputs = [2] * 500
+    _batch_function_test_helper(
+        "batch_function_sync_large_batch",
+        servicer,
+        inputs,
+        expected_outputs,
+        batch_max_size=500,
+    )
+
+    # Ensure that the outputs are pushed in small batches.
+    for req in servicer.container_outputs:
+        assert len(req.outputs) <= 20
 
 
 @skip_github_non_linux

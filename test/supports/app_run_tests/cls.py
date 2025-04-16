@@ -6,8 +6,7 @@ app = modal.App()
 
 @app.cls()
 class AParametrized:
-    def __init__(self, x: int):
-        self._x = x
+    x: int = modal.parameter()
 
     @modal.method()
     def some_method(self, y: int): ...
