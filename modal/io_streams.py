@@ -46,17 +46,24 @@ async def _sandbox_logs_iterator(
 
 
 async def _container_process_logs_iterator(
-    process_id: str, file_descriptor: "api_pb2.FileDescriptor.ValueType", client: _Client
-) -> AsyncGenerator[Optional[bytes], None]:
+    process_id: str,
+    file_descriptor: "api_pb2.FileDescriptor.ValueType",
+    client: _Client,
+    last_index: int,
+) -> AsyncGenerator[tuple[Optional[bytes], int], None]:
     req = api_pb2.ContainerExecGetOutputRequest(
-        exec_id=process_id, timeout=55, file_descriptor=file_descriptor, get_raw_bytes=True
+        exec_id=process_id,
+        timeout=55,
+        file_descriptor=file_descriptor,
+        get_raw_bytes=True,
+        last_batch_index=last_index,
     )
     async for batch in client.stub.ContainerExecGetOutput.unary_stream(req):
         if batch.HasField("exit_code"):
-            yield None
+            yield None, batch.batch_index
             break
         for item in batch.items:
-            yield item.message_bytes
+            yield item.message_bytes, batch.batch_index
 
 
 T = TypeVar("T", str, bytes)
@@ -178,18 +185,24 @@ class _StreamReader(Generic[T]):
 
         completed = False
         retries_remaining = 10
+        last_index = 0
         while not completed:
             try:
-                iterator = _container_process_logs_iterator(self._object_id, self._file_descriptor, self._client)
+                iterator = _container_process_logs_iterator(
+                    self._object_id, self._file_descriptor, self._client, last_index
+                )
 
-                async for message in iterator:
+                async for message, batch_index in iterator:
                     if self._stream_type == StreamType.STDOUT and message:
                         print(message.decode("utf-8"), end="")
                     elif self._stream_type == StreamType.PIPE:
                         self._container_process_buffer.append(message)
+
                     if message is None:
                         completed = True
                         break
+                    else:
+                        last_index = batch_index
 
             except (GRPCError, StreamTerminatedError, ClientClosed) as exc:
                 if retries_remaining > 0:
