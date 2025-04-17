@@ -2946,6 +2946,9 @@ message VolumePutFiles2Request {
 
     // The blocks, in units of 8MiB, that this file consists of.
     repeated Block blocks = 3;
+
+    // Unix file permission bits `st_mode`.
+    optional uint32 mode = 4;
   }
 
   message Block {
