@@ -2,6 +2,7 @@
 from unittest.mock import MagicMock
 
 from modal._runtime import user_code_imports
+from modal._utils.async_utils import synchronizer
 from modal.image import _Image
 from modal_proto import api_pb2
 
@@ -42,8 +43,10 @@ def test_import_function_undecorated(supports_dir, monkeypatch):
         None,
     )
     assert service.service_deps is None  # undecorated - can't get code deps
-    # can't reliably get app - this is deferred to a name based lookup later in the container entrypoint
-    assert service.app is None
+    # can't get app via the decorator attachment, falls back to checking global registry of apps/names
+    import user_code_import_samples.func
+
+    assert service.app is synchronizer._translate_in(user_code_import_samples.func.app)
 
 
 def test_import_class(monkeypatch, supports_dir, client):
