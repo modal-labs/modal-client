@@ -62,11 +62,14 @@ class VolumeFile:
     data_blob_id: str
     mode: int
 
+
 @dataclasses.dataclass
 class GrpcErrorAndCount:
-    """ Helper class that holds a gRPC error and the number of times it should be raised. """
+    """Helper class that holds a gRPC error and the number of times it should be raised."""
+
     grpc_error: Status
     count: int
+
 
 # TODO: Isolate all test config from the host
 @pytest.fixture(scope="function", autouse=True)
@@ -1332,6 +1335,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def MountPutFile(self, stream):
         request: api_pb2.MountPutFileRequest = await stream.recv_message()
         if request.WhichOneof("data_oneof") is not None:
+            if request.data.startswith(b"large"):
+                # Useful for simulating a slow upload, e.g. to test our checks for mid-deploy modifications
+                await asyncio.sleep(2)
             self.files_sha2data[request.sha256_hex] = {"data": request.data, "data_blob_id": request.data_blob_id}
             self.n_mount_files += 1
             await stream.send_message(api_pb2.MountPutFileResponse(exists=True))
