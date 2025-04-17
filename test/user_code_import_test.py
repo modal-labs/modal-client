@@ -35,8 +35,9 @@ def test_import_function(supports_dir, monkeypatch):
 
 
 def test_import_function_undecorated(supports_dir, monkeypatch):
-    monkeypatch.syspath_prepend(supports_dir)
-    fun = api_pb2.Function(module_name="user_code_import_samples.func", function_name="undecorated_f")
+    import test.supports.user_code_import_samples.func
+
+    fun = api_pb2.Function(module_name="test.supports.user_code_import_samples.func", function_name="undecorated_f")
     service = user_code_imports.import_single_function_service(
         fun,
         None,
@@ -44,9 +45,7 @@ def test_import_function_undecorated(supports_dir, monkeypatch):
     )
     assert service.service_deps is None  # undecorated - can't get code deps
     # can't get app via the decorator attachment, falls back to checking global registry of apps/names
-    import user_code_import_samples.func
-
-    assert service.app is synchronizer._translate_in(user_code_import_samples.func.app)
+    assert service.app is synchronizer._translate_in(test.supports.user_code_import_samples.func.app)
 
 
 def test_import_class(monkeypatch, supports_dir, client):
