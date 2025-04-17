@@ -1288,8 +1288,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # update function definition
         fn_definition = self.app_functions[req.function_id]
         assert isinstance(fn_definition, api_pb2.Function)
-        fn_definition.warm_pool_size = req.warm_pool_size_override  # hacky
-
+        # Hacky that we're modifying the function definition directly
+        # In the server we track autoscaler updates separately
+        fn_definition.warm_pool_size = req.warm_pool_size_override
+        fn_definition.autoscaler_settings.MergeFrom(req.settings)
         await stream.send_message(api_pb2.FunctionUpdateSchedulingParamsResponse())
 
     ### Image
