@@ -78,7 +78,6 @@ class _Client:
     _cancellation_context_event_loop: asyncio.AbstractEventLoop = None
     _stub: Optional[api_grpc.ModalClientStub]
     _snapshotted: bool
-    server_url: str  # TODO(nathan): remove
 
     def __init__(
         self,

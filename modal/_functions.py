@@ -138,8 +138,8 @@ class _Invocation:
         function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
         from_spawn_map: bool = False,
     ) -> "_Invocation":
-        io_plane_url = client.server_url  # TODO(nathan): replace with per-function endpoint
-        stub = await ModalClientModal.create(client, io_plane_url)  # TODO(nathan): decide if this is too expensive
+        assert client.stub
+        stub = client.stub
 
         function_id = function.object_id
         item = await _create_input(args, kwargs, stub, method_name=function._use_method_name)
