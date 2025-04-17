@@ -1046,6 +1046,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         if function_defn.schedule:
             self.function2schedule[function_id] = function_defn.schedule
 
+        warnings = []
+        if int(function_defn.experimental_options["warn_me"]):
+            warnings.append(api_pb2.Warning(message="You have been warned!"))
+
         await stream.send_message(
             api_pb2.FunctionCreateResponse(
                 function_id=function_id,
@@ -1072,6 +1076,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     class_parameter_info=function_defn.class_parameter_info,
                     function_schema=function_defn.function_schema,
                 ),
+                server_warnings=warnings,
             )
         )
 
