@@ -1386,7 +1386,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             args,
             kwargs,
             client=self.client,
-            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC,
         )
 
     @synchronizer.no_io_translation
@@ -1526,9 +1526,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if self._is_generator:
             invocation = await self._call_generator_nowait(args, kwargs)
         else:
-            invocation = await self._call_function_nowait(
-                args, kwargs, api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY
-            )
+            invocation = await self._call_function_nowait(args, kwargs, api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC)
 
         fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(
             invocation.function_call_id, invocation.client, None
