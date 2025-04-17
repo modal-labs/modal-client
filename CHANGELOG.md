@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.6 (2025-04-17)
+
+* Internal change that makes containers for functions/classes with `serialized=True` start up *slightly* faster than before
+
+
+
 ### 0.74.0 (2025-04-15)
 
 * Introduces a deprecation warning when using explicit constructors (`__init__` methods) on `@modal.cls`-decorated classes. Class parameterization should instead be done via [dataclass-style `modal.parameter()` declarations](https://modal.com/docs/guide/parametrized-functions). Initialization logic should run in `@modal.enter()`-decorated [lifecycle methods](https://modal.com/docs/guide/lifecycle-functions).
