@@ -2071,6 +2071,7 @@ message Object {
     MountHandleMetadata mount_handle_metadata = 4;
     ClassHandleMetadata class_handle_metadata = 5;
     SandboxHandleMetadata sandbox_handle_metadata = 6;
+    VolumeMetadata volume_metadata = 7;
   }
 }
 
@@ -2880,7 +2881,8 @@ message VolumeGetOrCreateRequest {
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
   string app_id = 5;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
-  VolumeFsVersion version = 6;
+  VolumeFsVersion version = 6 [deprecated = true];
+  VolumeMetadata metadata = 7;
 }
 
 message VolumeGetOrCreateResponse {
@@ -2916,6 +2918,10 @@ message VolumeListRequest {
 message VolumeListResponse {
   repeated VolumeListItem items = 1;
   string environment_name = 2;
+}
+
+message VolumeMetadata {
+  VolumeFsVersion version = 1;
 }
 
 message VolumeMount {
