@@ -292,6 +292,7 @@ async def blob_iter(blob_id: str, stub: ModalClientModal) -> AsyncIterator[bytes
 class FileUploadSpec:
     source: Callable[[], Union[AbstractContextManager, BinaryIO]]
     source_description: Any
+    source_is_path: bool
     mount_filename: str
 
     use_blob: bool
@@ -328,6 +329,7 @@ def _get_file_upload_spec(
     return FileUploadSpec(
         source=source,
         source_description=source_description,
+        source_is_path=isinstance(source_description, Path),
         mount_filename=mount_filename.as_posix(),
         use_blob=use_blob,
         content=content,

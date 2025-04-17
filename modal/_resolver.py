@@ -1,6 +1,8 @@
 # Copyright Modal Labs 2023
 import asyncio
 import contextlib
+import os
+import tempfile
 import typing
 from asyncio import Future
 from collections.abc import Hashable
@@ -46,6 +48,7 @@ class Resolver:
     _app_id: Optional[str]
     _deduplication_cache: dict[Hashable, Future]
     _client: _Client
+    _build_start: float
 
     def __init__(
         self,
@@ -73,6 +76,11 @@ class Resolver:
         self._environment_name = environment_name
         self._deduplication_cache = {}
 
+        with tempfile.TemporaryFile() as temp_file:
+            # Use file mtime to track build start time because we will later compare this baseline
+            # to the mtime on mounted files, and want those measurements to have the same resolution.
+            self._build_start = os.fstat(temp_file.fileno()).st_mtime
+
     @property
     def app_id(self) -> Optional[str]:
         return self._app_id
@@ -84,6 +92,10 @@ class Resolver:
     @property
     def environment_name(self):
         return self._environment_name
+
+    @property
+    def build_start(self) -> float:
+        return self._build_start
 
     async def preload(self, obj, existing_object_id: Optional[str]):
         if obj._preload is not None:
