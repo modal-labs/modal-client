@@ -12,6 +12,25 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.0 (2025-04-15)
+
+* Introduces a deprecation warning when using explicit constructors (`__init__` methods) on `@modal.cls`-decorated classes. Class parameterization should instead be done via [dataclass-style `modal.parameter()` declarations](https://modal.com/docs/guide/parametrized-functions). Initialization logic should run in `@modal.enter()`-decorated [lifecycle methods](https://modal.com/docs/guide/lifecycle-functions).
+
+
+
+### 0.73.173 (2025-04-15)
+
+- Fix bug where containers hang with batch sizes above 100 (with `@modal.batched`).
+- Fix bug where containers can fail with large outputs and batch sizes above 49 (with `@modal.batched`)
+
+
+
+### 0.73.170 (2025-04-14)
+
+* Fixes a bug where `modal run` didn't recognize `modal.parameter()` class parameters
+
+
+
 ### 0.73.165 (2025-04-11)
 
 * Allow running new ephemeral apps from **within** Modal containers using `with app.run(): ...`. Use with care, as putting such a run block in global scope of a module could easily lead to infinite app creation recursion

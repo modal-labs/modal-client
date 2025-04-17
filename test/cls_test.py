@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from typing_extensions import assert_type
 
 import modal.partial_function
-from modal import App, Cls, Function, Image, Queue, build, enter, exit, method
+from modal import App, Cls, Function, Image, build, enter, exit, method
 from modal._partial_function import (
     _find_partial_methods_for_user_cls,
     _PartialFunction,
@@ -205,9 +205,8 @@ app_remote = App(include_source=True)  # TODO: remove include_source=True when a
 
 @app_remote.cls(cpu=42)
 class FooRemote:
-    def __init__(self, x: int, y: str) -> None:
-        self.x = x
-        self.y = y
+    x: int = modal.parameter()
+    y: str = modal.parameter()
 
     @method()
     def bar(self, z: int):
@@ -216,7 +215,7 @@ class FooRemote:
 
 def test_call_cls_remote_sync(client):
     with app_remote.run(client=client):
-        foo_remote: FooRemote = FooRemote(3, "hello")
+        foo_remote: FooRemote = FooRemote(x=3, y="hello")
         ret: float = foo_remote.bar.remote(8)
         assert ret == 64  # Mock servicer just squares the argument
 
@@ -228,16 +227,10 @@ def test_call_cls_remote_invalid_type(client):
             print("Hello, world!")
 
         with pytest.raises(ValueError) as excinfo:
-            FooRemote(42, my_function)  # type: ignore
+            FooRemote(x=42, y=my_function)  # type: ignore
 
         exc = excinfo.value
         assert "function" in str(exc)
-
-
-def test_call_cls_remote_modal_type(client):
-    with app_remote.run(client=client):
-        with Queue.ephemeral(client) as q:
-            FooRemote(42, q)  # type: ignore
 
 
 app_2 = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
@@ -287,9 +280,8 @@ app_remote_2 = App(include_source=True)  # TODO: remove include_source=True when
 
 @app_remote_2.cls(cpu=42)
 class BarRemote:
-    def __init__(self, x: int, y: str) -> None:
-        self.x = x
-        self.y = y
+    x: int = modal.parameter()
+    y: str = modal.parameter()
 
     @method()
     def baz(self, z: int):
@@ -299,7 +291,7 @@ class BarRemote:
 @pytest.mark.asyncio
 async def test_call_cls_remote_async(client):
     async with app_remote_2.run(client=client):
-        bar_remote = BarRemote(3, "hello")
+        bar_remote = BarRemote(x=3, y="hello")
         assert await bar_remote.baz.remote.aio(8) == 64  # Mock servicer just squares the argument
 
 
@@ -308,8 +300,9 @@ app_local = App(include_source=True)  # TODO: remove include_source=True when au
 
 @app_local.cls(cpu=42, enable_memory_snapshot=True)
 class FooLocal:
-    def __init__(self):
-        self.side_effects = ["__init__"]
+    @property
+    def side_effects(self):
+        return self.__dict__.setdefault("_side_effects", ["__init__"])
 
     @enter(snap=True)
     def presnap(self):
@@ -351,9 +344,6 @@ app_remote_3 = App(include_source=True)  # TODO: remove include_source=True when
 
 @app_remote_3.cls(cpu=42)
 class NoArgRemote:
-    def __init__(self) -> None:
-        pass
-
     @method()
     def baz(self, z: int) -> float:
         return z**3.0
@@ -473,15 +463,14 @@ baz_app = App(include_source=True)  # TODO: remove include_source=True when auto
 
 @baz_app.cls()
 class Baz:
-    def __init__(self, x):
-        self.x = x
+    x: int = modal.parameter()
 
     def not_modal_method(self, y: int) -> int:
         return self.x * y
 
 
 def test_call_not_modal_method():
-    baz: Baz = Baz(5)
+    baz: Baz = Baz(x=5)
     assert baz.x == 5
     assert baz.not_modal_method(7) == 35
 
@@ -495,16 +484,13 @@ def get_thread_id():
 
 @cls_with_enter_app.cls()
 class ClsWithEnter:
-    def __init__(self, thread_id):
-        self.inited = True
-        self.entered = False
-        self.thread_id = thread_id
-        assert get_thread_id() == self.thread_id
+    local_thread_id: str = modal.parameter()
+    entered: bool = modal.parameter(default=False)
 
     @enter()
     def enter(self):
         self.entered = True
-        assert get_thread_id() == self.thread_id
+        assert get_thread_id() == self.local_thread_id
 
     def not_modal_method(self, y: int) -> int:
         return y**2
@@ -515,32 +501,31 @@ class ClsWithEnter:
 
 
 def test_dont_enter_on_local_access():
-    obj = ClsWithEnter(get_thread_id())
+    obj = ClsWithEnter(local_thread_id=get_thread_id())
     with pytest.raises(AttributeError):
         obj.doesnt_exist  # type: ignore
-    assert obj.inited
+    assert obj.local_thread_id == get_thread_id()
     assert not obj.entered
 
 
 def test_dont_enter_on_local_non_modal_call():
-    obj = ClsWithEnter(get_thread_id())
+    obj = ClsWithEnter(local_thread_id=get_thread_id())
     assert obj.not_modal_method(7) == 49
-    assert obj.inited
+    assert obj.local_thread_id == get_thread_id()
     assert not obj.entered
 
 
 def test_enter_on_local_modal_call():
-    obj = ClsWithEnter(get_thread_id())
+    obj = ClsWithEnter(local_thread_id=get_thread_id())
     assert obj.modal_method.local(7) == 49
-    assert obj.inited
+    assert obj.local_thread_id == get_thread_id()
     assert obj.entered
 
 
 @cls_with_enter_app.cls()
 class ClsWithAsyncEnter:
-    def __init__(self):
-        self.inited = True
-        self.entered = False
+    inited: bool = modal.parameter(default=False)
+    entered = False  # non parameter
 
     @enter()
     async def enter(self):
@@ -554,7 +539,7 @@ class ClsWithAsyncEnter:
 @pytest.mark.skip("this doesn't actually work - but issue was hidden by `entered` being an obj property")
 @pytest.mark.asyncio
 async def test_async_enter_on_local_modal_call():
-    obj = ClsWithAsyncEnter()
+    obj = ClsWithAsyncEnter(inited=True)
     assert await obj.modal_method.local(7) == 49
     assert obj.inited
     assert obj.entered
@@ -659,8 +644,7 @@ def test_cls_keep_warm(client, servicer):
 
     @app.cls(serialized=True)
     class ClsWithMethod:
-        def __init__(self, arg=None):
-            self.arg = arg
+        arg: str = modal.parameter(default="")
 
         @method()
         def bar(self): ...
@@ -671,13 +655,17 @@ def test_cls_keep_warm(client, servicer):
         assert cls_service_fun.is_class
         assert cls_service_fun.warm_pool_size == 0
 
-        ClsWithMethod().keep_warm(2)  # type: ignore  # Python can't do type intersection
-        assert cls_service_fun.warm_pool_size == 2
+        empty_args_obj = typing.cast(modal.cls.Obj, ClsWithMethod())
+        empty_args_obj.keep_warm(2)
+        service_function_id = empty_args_obj._cached_service_function().object_id
+        assert servicer.app_functions[service_function_id].warm_pool_size == 2
 
-        ClsWithMethod("other-instance").keep_warm(5)  # type: ignore  # Python can't do type intersection
-        instance_service_function = servicer.function_by_name("ClsWithMethod.*", params=((("other-instance",), {})))
-        assert len(servicer.app_functions) == 2  # + instance service function
-        assert cls_service_fun.warm_pool_size == 2
+        ClsWithMethod(arg="other-instance").keep_warm(5)  # type: ignore  # Python can't do type intersection
+        instance_service_function = servicer.function_by_name(
+            "ClsWithMethod.*", params=(((), {"arg": "other-instance"}))
+        )
+        assert len(servicer.app_functions) == 3  # base + 2 x instance service function
+        assert cls_service_fun.warm_pool_size == 0  # base has no warm
         assert instance_service_function.warm_pool_size == 5
 
 
@@ -861,9 +849,6 @@ def test_snap_method_without_snapshot_enabled():
 
 def test_partial_function_descriptors(client):
     class Foo:
-        def __init__(self):
-            pass
-
         @modal.enter()
         def enter_method(self):
             pass
@@ -930,20 +915,6 @@ class UsingAnnotationParameters:
 init_side_effects = []
 
 
-@app2.cls()
-class UsingCustomConstructor:
-    # might want to deprecate this soon
-    a: int
-
-    def __init__(self, a: int):
-        self._a = a
-        init_side_effects.append("did_run")
-
-    @method()
-    def get_value(self):
-        return self._a
-
-
 def test_implicit_constructor(client, set_env_client):
     c = UsingAnnotationParameters(a=10)
 
@@ -965,7 +936,22 @@ def test_implicit_constructor(client, set_env_client):
     assert function_info.class_parameter_info().format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO
 
 
-def test_custom_constructor():
+def test_custom_constructor_has_deprecation_warning():
+    with pytest.warns(DeprecationError, match="non-default constructor"):
+
+        @app2.cls(serialized=True)
+        class UsingCustomConstructor:
+            # might want to deprecate this soon
+            a: int
+
+            def __init__(self, a: int):
+                self._a = a
+                init_side_effects.append("did_run")
+
+            @method()
+            def get_value(self):
+                return self._a
+
     d = UsingCustomConstructor(10)
     assert not init_side_effects
 
@@ -1079,22 +1065,6 @@ def test_unsupported_function_decorators_on_methods():
                 pass
 
 
-def test_modal_object_param_uses_wrapped_type(servicer, set_env_client, client):
-    with servicer.intercept() as ctx:
-        with modal.Dict.ephemeral() as dct:
-            with baz_app.run():
-                # create bound instance:
-                typing.cast(modal.Cls, Baz(x=dct)).keep_warm(1)
-
-    req: api_pb2.FunctionBindParamsRequest = ctx.pop_request("FunctionBindParams")
-    function_def: api_pb2.Function = servicer.app_functions[req.function_id]
-
-    _client = typing.cast(modal.client._Client, synchronizer._translate_in(client))
-    container_params = deserialize_params(req.serialized_params, function_def, _client)
-    args, kwargs = container_params
-    assert type(kwargs["x"]) is type(dct)
-
-
 def test_using_method_on_uninstantiated_cls(recwarn, disable_auto_mount):
     app = App()
 
@@ -1117,7 +1087,7 @@ def test_using_method_on_uninstantiated_cls(recwarn, disable_auto_mount):
     # TODO: this will be an AttributeError or return a non-modal unbound function in the future:
     assert len(recwarn) == 1
     warning_string = str(recwarn[0].message)
-    assert "instantiate classes before using methods" in warning_string
+    assert "instantiate the class first" in warning_string
     assert "C().method instead of C.method" in warning_string
 
 

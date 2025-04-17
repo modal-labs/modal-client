@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+option go_package = "github.com/modal-labs/modal/go/proto";
+
 package modal.client;
 
 import "modal_proto/options.proto";
@@ -78,11 +80,12 @@ enum CheckpointStatus {
 
 enum ClientType {
   CLIENT_TYPE_UNSPECIFIED = 0;
-  CLIENT_TYPE_CLIENT = 1;
-  CLIENT_TYPE_WORKER = 2;
-  CLIENT_TYPE_CONTAINER = 3;
-  CLIENT_TYPE_WEB_SERVER = 5;
-  CLIENT_TYPE_NOTEBOOK_KERNEL = 6;
+  CLIENT_TYPE_CLIENT = 1; // modal-client: Modal Python SDK
+  CLIENT_TYPE_WORKER = 2; // modal-worker
+  CLIENT_TYPE_CONTAINER = 3; // modal-client from inside containers
+  CLIENT_TYPE_WEB_SERVER = 5; // modal-web
+  CLIENT_TYPE_NOTEBOOK_KERNEL = 6; // kernelshim.py from notebooks
+  CLIENT_TYPE_LIBMODAL = 7; // libmodal: experimental client library
 }
 
 enum CloudProvider {
@@ -755,6 +758,29 @@ message CloudBucketMount {
   optional string bucket_endpoint_url = 7;
   optional string key_prefix = 8;
   optional string oidc_auth_role_arn = 9;
+}
+
+message ClusterGetRequest {
+  string cluster_id = 1;
+}
+
+message ClusterGetResponse {
+  ClusterStats cluster = 1;
+}
+
+message ClusterListRequest {
+  string environment_name = 1;
+}
+
+message ClusterListResponse {
+  repeated ClusterStats clusters = 1;
+}
+
+message ClusterStats {
+  string app_id = 1;
+  repeated string task_ids = 2;
+  string cluster_id = 3;
+  double started_at = 4; // Defined as start time of the first task in the cluster
 }
 
 message CommitInfo {
@@ -2920,6 +2946,9 @@ message VolumePutFiles2Request {
 
     // The blocks, in units of 8MiB, that this file consists of.
     repeated Block blocks = 3;
+
+    // Unix file permission bits `st_mode`.
+    optional uint32 mode = 4;
   }
 
   message Block {
@@ -3051,6 +3080,10 @@ service ModalClient {
 
   // Clients
   rpc ClientHello(google.protobuf.Empty) returns (ClientHelloResponse);
+
+  // Clusters
+  rpc ClusterGet(ClusterGetRequest) returns (ClusterGetResponse);
+  rpc ClusterList(ClusterListRequest) returns (ClusterListResponse);
 
   // Container
   rpc ContainerCheckpoint(ContainerCheckpointRequest) returns (google.protobuf.Empty);

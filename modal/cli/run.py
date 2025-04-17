@@ -7,9 +7,10 @@ import re
 import shlex
 import sys
 import time
+import typing
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Callable, Optional, get_type_hints
+from typing import Any, Callable, Optional
 
 import click
 import typer
@@ -18,6 +19,7 @@ from typing_extensions import TypedDict
 
 from .._functions import _FunctionSpec
 from ..app import App, LocalEntrypoint
+from ..cls import _get_class_constructor_signature
 from ..config import config
 from ..environments import ensure_env
 from ..exception import ExecutionError, InvalidError, _CliUserExecutionError
@@ -42,7 +44,7 @@ class ParameterMetadata(TypedDict):
     name: str
     default: Any
     annotation: Any
-    type_hint: Any
+    type_hint: Any  # same as annotation but evaluated by typing.get_type_hints
     kind: Any
 
 
@@ -68,27 +70,24 @@ class NoParserAvailable(InvalidError):
 
 
 @dataclass
-class FnSignature:
+class CliRunnableSignature:
     parameters: dict[str, ParameterMetadata]
     has_variadic_args: bool
 
 
-def _get_signature(f: Callable[..., Any], is_method: bool = False) -> FnSignature:
+def safe_get_type_hints(func_or_cls: typing.Union[Callable[..., Any], type]) -> dict[str, type]:
     try:
-        type_hints = get_type_hints(f)
+        return typing.get_type_hints(func_or_cls)
     except Exception as exc:
         # E.g., if entrypoint type hints cannot be evaluated by local Python runtime
-        msg = "Unable to generate command line interface for app entrypoint. See traceback above for details."
+        msg = "Unable to generate command line interface for app entrypoint due to unparseable type hints:\n" + str(exc)
         raise ExecutionError(msg) from exc
 
+
+def _get_cli_runnable_signature(sig: inspect.Signature, type_hints: dict[str, type]) -> CliRunnableSignature:
     has_variadic_args = False
-
-    if is_method:
-        self = None  # Dummy, doesn't matter
-        f = functools.partial(f, self)
-
     signature: dict[str, ParameterMetadata] = {}
-    for param in inspect.signature(f).parameters.values():
+    for param in sig.parameters.values():
         if param.kind == inspect.Parameter.VAR_POSITIONAL:
             has_variadic_args = True
         else:
@@ -103,7 +102,7 @@ def _get_signature(f: Callable[..., Any], is_method: bool = False) -> FnSignatur
     if has_variadic_args and len(signature) > 0:
         raise InvalidError("Functions with variable-length positional arguments (*args) cannot have other parameters.")
 
-    return FnSignature(signature, has_variadic_args)
+    return CliRunnableSignature(signature, has_variadic_args)
 
 
 def _get_param_type_as_str(annot: Any) -> str:
@@ -172,7 +171,7 @@ def _write_local_result(result_path: str, res: Any):
         fid.write(res)
 
 
-def _make_click_function(app, signature: FnSignature, inner: Callable[[tuple[str, ...], dict[str, Any]], Any]):
+def _make_click_function(app, signature: CliRunnableSignature, inner: Callable[[tuple[str, ...], dict[str, Any]], Any]):
     @click.pass_context
     def f(ctx, **kwargs):
         if signature.has_variadic_args:
@@ -201,7 +200,9 @@ def _get_click_command_for_function(app: App, function: Function):
     if function.is_generator:
         raise InvalidError("`modal run` is not supported for generator functions")
 
-    signature = _get_signature(function.info.raw_f)
+    sig: inspect.Signature = inspect.signature(function.info.raw_f)
+    type_hints = safe_get_type_hints(function.info.raw_f)
+    signature: CliRunnableSignature = _get_cli_runnable_signature(sig, type_hints)
 
     def _inner(args, click_kwargs):
         return function.remote(*args, **click_kwargs)
@@ -223,7 +224,10 @@ def _get_click_command_for_cls(app: App, method_ref: MethodReference):
     cls = method_ref.cls
     method_name = method_ref.method_name
 
-    cls_signature = _get_signature(cls._get_user_cls())
+    user_cls = cls._get_user_cls()
+    type_hints = safe_get_type_hints(user_cls)
+    sig: inspect.Signature = _get_class_constructor_signature(user_cls)
+    cls_signature: CliRunnableSignature = _get_cli_runnable_signature(sig, type_hints)
 
     if cls_signature.has_variadic_args:
         raise InvalidError("Modal classes cannot have variable-length positional arguments (*args).")
@@ -241,7 +245,9 @@ def _get_click_command_for_cls(app: App, method_ref: MethodReference):
             )
 
     partial_function = partial_functions[method_name]
-    fun_signature = _get_signature(partial_function._get_raw_f(), is_method=True)
+    raw_f = partial_function._get_raw_f()
+    sig_without_self = inspect.signature(functools.partial(raw_f, None))
+    fun_signature = _get_cli_runnable_signature(sig_without_self, safe_get_type_hints(raw_f))
 
     # TODO(erikbern): assert there's no overlap?
     parameters = dict(**cls_signature.parameters, **fun_signature.parameters)  # Pool all arguments
@@ -271,7 +277,7 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
     func = entrypoint.info.raw_f
     isasync = inspect.iscoroutinefunction(func)
 
-    signature = _get_signature(func)
+    signature = _get_cli_runnable_signature(inspect.signature(func), safe_get_type_hints(func))
 
     @click.pass_context
     def f(ctx, *args, **kwargs):

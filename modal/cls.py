@@ -455,7 +455,22 @@ class _Cls(_Object, type_prefix="cs"):
                 "A class can't have both a custom __init__ constructor "
                 "and dataclass-style modal.parameter() annotations"
             )
+        elif has_custom_constructor:
+            deprecation_warning(
+                (2025, 4, 15),
+                f"""
+{user_cls} uses a non-default constructor (__init__) method.
+Custom constructors will not be supported in a a future version of Modal.
 
+To parameterize classes, use dataclass-style modal.parameter() declarations instead,
+e.g.:\n
+
+class {user_cls.__name__}:
+    model_name: str = modal.parameter()
+
+More information on class parameterization can be found here: https://modal.com/docs/guide/parametrized-functions
+""",
+            )
         annotations = user_cls.__dict__.get("__annotations__", {})  # compatible with older pythons
         missing_annotations = params.keys() - annotations.keys()
         if missing_annotations:
@@ -706,10 +721,9 @@ class _Cls(_Object, type_prefix="cs"):
             # if not local (== k *could* be a method) or it is local and we know k is a method
             deprecation_warning(
                 (2025, 1, 13),
-                "Usage of methods directly on the class will soon be deprecated, "
-                "instantiate classes before using methods, e.g.:\n"
+                "Calling a method on an uninstantiated class will soon be deprecated; "
+                "update your code to instantiate the class first, i.e.:\n"
                 f"{self._name}().{k} instead of {self._name}.{k}",
-                pending=True,
             )
             return getattr(self(), k)
         # non-method attribute access on local class - arguably shouldn't be used either:

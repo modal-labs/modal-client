@@ -71,3 +71,8 @@ def optional_arg_fn(i: Optional[int] = None):
 @app.local_entrypoint()
 def unparseable_annot(i: Union[int, str]):
     pass
+
+
+@app.local_entrypoint()
+def unevaluatable_annot(i: "no go"):  # type: ignore  # noqa
+    pass
