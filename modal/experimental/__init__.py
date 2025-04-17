@@ -7,11 +7,14 @@ from typing import Literal, Optional, Union
 from modal_proto import api_pb2
 
 from .._clustered_functions import ClusterInfo, get_cluster_info as _get_cluster_info
+from .._functions import _Function
 from .._object import _get_environment_name
 from .._partial_function import _clustered
 from .._runtime.container_io_manager import _ContainerIOManager
 from .._utils.async_utils import synchronize_api, synchronizer
+from .._utils.grpc_utils import retry_transient_errors
 from ..client import _Client
+from ..cls import _Obj
 from ..exception import InvalidError
 from ..image import DockerfileSpec, ImageBuilderVersion, _Image, _ImageRegistryConfig
 from ..secret import _Secret
@@ -157,3 +160,42 @@ async def raw_registry_image(
         image_registry_config=registry_config,
         force_build=force_build,
     )
+
+
+@synchronizer.create_blocking
+async def update_autoscaler(
+    obj: Union[_Function, _Obj],
+    *,
+    min_containers: Optional[int] = None,
+    max_containers: Optional[int] = None,
+    buffer_containers: Optional[int] = None,
+    scaledown_window: Optional[int] = None,
+    client: Optional[_Client] = None,
+) -> None:
+    """Update the autoscaler settings for a Function or Obj (instance of a Cls).
+
+    This is an experimental interface for a feature that we will be adding to
+    replace the existing `.keep_warm()` method. The stable form of this interface
+    may look different (i.e., it may be a standalone function or a method).
+
+    """
+    settings = api_pb2.AutoscalerSettings(
+        min_containers=min_containers,
+        max_containers=max_containers,
+        buffer_containers=buffer_containers,
+        scaledown_window=scaledown_window,
+    )
+
+    if client is None:
+        client = await _Client.from_env()
+
+    if isinstance(obj, _Function):
+        f = obj
+    else:
+        assert obj._cls._class_service_function is not None
+        await obj._cls._class_service_function.hydrate(client=client)
+        f = obj._cached_service_function()
+    await f.hydrate(client=client)
+
+    request = api_pb2.FunctionUpdateSchedulingParamsRequest(function_id=f.object_id, settings=settings)
+    await retry_transient_errors(client.stub.FunctionUpdateSchedulingParams, request)
