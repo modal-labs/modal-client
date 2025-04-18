@@ -1341,6 +1341,11 @@ message Function {
 
   AutoscalerSettings autoscaler_settings = 79;  // Bundle of parameters related to autoscaling
   FunctionSchema function_schema = 80;
+
+  // For server-side experimental functionality. Prefer using this over individual _experimental_* fields.
+  // Note the value type as string. Internally we'll coerce all values to string with str().
+  // On the server, it's necessary to convert back to the most natural type (e.g. int) when relevant.
+  map<string, string> experimental_options = 81;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1425,6 +1430,7 @@ message FunctionCreateResponse {
   string __deprecated_web_url = 2  [ deprecated = true];  // Used up until 0.62.212
   Function function = 4;
   FunctionHandleMetadata handle_metadata = 5;
+  repeated Warning server_warnings = 6;
 }
 
 message FunctionData {
@@ -1490,6 +1496,8 @@ message FunctionData {
 
   AutoscalerSettings autoscaler_settings = 31;  // Bundle of parameters related to autoscaling
   FunctionSchema function_schema = 32;
+
+  map<string, string> experimental_options = 33;
 }
 
 message FunctionExtended {
@@ -3028,6 +3036,7 @@ message Warning {
     WARNING_TYPE_UNSPECIFIED = 0;
     WARNING_TYPE_CLIENT_DEPRECATION = 1;
     WARNING_TYPE_RESOURCE_LIMIT = 2;
+    WARNING_TYPE_FUNCTION_CONFIGURATION = 3;
   }
   WarningType type = 1;
   string message = 2;

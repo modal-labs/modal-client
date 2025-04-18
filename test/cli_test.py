@@ -1255,3 +1255,8 @@ def test_cli_run_variadic_args(servicer, set_env_client, test_dir, func, disable
     assert "args: ('abc', '--foo=123', '--bar=456')" in res.stdout
 
     _run(["run", f"{app_file.as_posix()}::{func}_invalid", "--foo=123"], expected_exit_code=1)
+
+
+def test_server_warnings(servicer, set_env_client, supports_dir):
+    res = _run(["run", f"{supports_dir / 'app_run_tests' / 'uses_experimental_options.py'}::gets_warning"])
+    assert "You have been warned!" in res.stdout

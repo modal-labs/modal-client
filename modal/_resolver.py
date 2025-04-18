@@ -10,6 +10,8 @@ from typing import TYPE_CHECKING, Optional
 
 from grpclib import GRPCError, Status
 
+from modal_proto import api_pb2
+
 from ._utils.async_utils import TaskContext
 from .client import _Client
 from .exception import NotFoundError
@@ -33,6 +35,10 @@ class StatusRow:
     def message(self, message):
         if self._spinner is not None:
             self._spinner.update(text=message)
+
+    def warning(self, warning: api_pb2.Warning):
+        if self._step_node is not None:
+            self._step_node.add(f"[yellow]:warning:[/yellow] {warning.message}")
 
     def finish(self, message):
         if self._step_node is not None and self._spinner is not None:
