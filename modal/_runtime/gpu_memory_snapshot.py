@@ -6,7 +6,6 @@
 #
 # [1] https://github.com/NVIDIA/cuda-checkpoint
 
-import os
 import subprocess
 import time
 from enum import Enum
@@ -14,6 +13,7 @@ from enum import Enum
 from modal.config import config, logger
 
 CUDA_CHECKPOINT_PATH: str = config.get("cuda_checkpoint_path")
+CUDA_PIDS: list[int] = []  # list of PIDs with active CUDA sessions
 
 
 class CudaCheckpointState(Enum):
@@ -32,44 +32,53 @@ class CudaCheckpointException(Exception):
 def toggle():
     """Toggle CUDA checkpoint state for current process, moving GPU memory to the
     CPU and back depending on the current process state when called."""
-    pid = get_own_pid()
-    logger.debug(f"Toggling CUDA checkpoint state for PID {pid}")
+    global CUDA_PIDS
+    CUDA_PIDS = get_cuda_pids()
 
-    try:
-        subprocess.run(
-            [
-                CUDA_CHECKPOINT_PATH,
-                "--toggle",
-                "--pid",
-                str(pid),
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        logger.debug("Successfully toggled CUDA checkpoint state")
+    for pid in CUDA_PIDS:
+        logger.debug(f"Toggling CUDA checkpoint state for PID {pid}")
 
-    except subprocess.CalledProcessError as e:
-        logger.debug(f"Failed to toggle CUDA checkpoint state: {e.stderr}")
-        raise CudaCheckpointException(e.stderr)
+        try:
+            subprocess.run(
+                [
+                    CUDA_CHECKPOINT_PATH,
+                    "--toggle",
+                    "--pid",
+                    str(pid),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            logger.debug("Successfully toggled CUDA checkpoint state")
+
+        except subprocess.CalledProcessError as e:
+            logger.debug(f"Failed to toggle CUDA checkpoint state: {e.stderr}")
+            raise CudaCheckpointException(e.stderr)
 
 
-def get_state() -> CudaCheckpointState:
+def get_cuda_states() -> list[CudaCheckpointState]:
     """Get current CUDA checkpoint state for this process."""
-    pid = get_own_pid()
+    global CUDA_PIDS
 
-    try:
-        result = subprocess.run(
-            [CUDA_CHECKPOINT_PATH, "--get-state", "--pid", str(pid)], check=True, capture_output=True, text=True
-        )
+    logger.debug(f"Tracking the checkpointing state of {len(CUDA_PIDS)} CUDA sesisons")
 
-        # Parse output to get state
-        state_str = result.stdout.strip().lower()
-        return CudaCheckpointState(state_str)
+    pid_states: list[CudaCheckpointState] = []
+    for pid in CUDA_PIDS:
+        try:
+            result = subprocess.run(
+                [CUDA_CHECKPOINT_PATH, "--get-state", "--pid", str(pid)], check=True, capture_output=True, text=True
+            )
 
-    except subprocess.CalledProcessError as e:
-        logger.debug(f"Failed to get CUDA checkpoint state: {e.stderr}")
-        raise CudaCheckpointException(e.stderr)
+            # Parse output to get state
+            state_str = result.stdout.strip().lower()
+            pid_states.append(CudaCheckpointState(state_str))
+
+        except subprocess.CalledProcessError as e:
+            logger.debug(f"Failed to get CUDA checkpoint state: {e.stderr}")
+            raise CudaCheckpointException(e.stderr)
+
+    return pid_states
 
 
 def wait_for_state(target_state: CudaCheckpointState, timeout_secs: float = 5.0):
@@ -78,14 +87,13 @@ def wait_for_state(target_state: CudaCheckpointState, timeout_secs: float = 5.0)
     start_time = time.monotonic()
 
     while True:
-        current_state = get_state()
-
-        if current_state == target_state:
-            logger.debug(f"Target state {target_state.value} reached")
+        cuda_states = get_cuda_states()
+        if all(cuda_state == target_state for cuda_state in cuda_states):
+            logger.debug(f"All CUDA sessions reached {target_state.value}")
             break
 
-        if current_state == CudaCheckpointState.FAILED:
-            raise CudaCheckpointException(f"CUDA process state is {current_state}")
+        if any(cuda_state == CudaCheckpointState.FAILED for cuda_state in cuda_states):
+            raise CudaCheckpointException("CUDA session in failed state")
 
         elapsed = time.monotonic() - start_time
         if elapsed >= timeout_secs:
@@ -94,8 +102,11 @@ def wait_for_state(target_state: CudaCheckpointState, timeout_secs: float = 5.0)
         time.sleep(0.1)
 
 
-def get_own_pid():
-    """Returns the Process ID (PID) of the current Python process
-    using only the standard library.
-    """
-    return os.getpid()
+def get_cuda_pids() -> list[int]:
+    """Returns the PIDs of processes that have an active CUDA session."""
+    result = subprocess.run(
+        ["nvidia-smi", "--query-compute-apps=pid", "--format=csv,noheader"], capture_output=True, text=True, check=True
+    )
+
+    pids = [int(pid.strip()) for pid in result.stdout.strip().split("\n") if pid.strip()]
+    return pids
