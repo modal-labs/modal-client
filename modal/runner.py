@@ -1,4 +1,9 @@
 # Copyright Modal Labs 2025
+"""Internal module for building and running Apps."""
+# Note: While this is mostly internal code, the `modal.runner.deploy_app` function was
+# the only way to programatically deploy Apps for some time, so users have reached into here.
+# We may eventually deprecate it from the public API, but for now we should keep that in mind.
+
 import asyncio
 import dataclasses
 import os
