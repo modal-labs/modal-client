@@ -79,6 +79,7 @@ async def test_failed_output_zero_retries(retry_queue):
     assert_context_is(ctx, _MapItemState.COMPLETE, 1, "in-0", input_jwt_data, input_data.args)
     assert retry_queue.empty()
 
+
 @pytest.mark.asyncio
 async def test_failed_output_retries_disabled(retry_queue):
     retry_policy = api_pb2.FunctionRetryPolicy(retries=3)
@@ -297,6 +298,7 @@ async def test_get_failed_output_before_put_inputs_completes(retry_queue):
     assert_context_is(ctx, _MapItemState.WAITING_TO_RETRY, 1, "in-0", input_jwt_data, input_data.args)
     assert len(retry_queue) == 1
 
+
 @pytest.mark.asyncio
 async def test_retry_failed_output_before_put_inputs_completes(retry_queue):
     ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy), sync_client_retries_enabled=True)
@@ -341,6 +343,7 @@ async def test_retry_failed_output_before_put_inputs_completes(retry_queue):
     ctx.handle_retry_response(input_jwt_data_1.to_jwt())
     assert_context_is(ctx, _MapItemState.WAITING_FOR_OUTPUT, 1, "in-0", input_jwt_data_1, input_data.args)
 
+
 @pytest.mark.asyncio
 async def test_ignore_stale_failed_output(retry_queue):
     ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy), sync_client_retries_enabled=True)
@@ -374,6 +377,7 @@ async def test_ignore_stale_failed_output(retry_queue):
     # Assert that state has not changed since.
     assert_context_is(ctx, _MapItemState.WAITING_TO_RETRY, 1, "in-0", input_jwt_data, input_data.args)
 
+
 @pytest.mark.asyncio
 async def test_ignore_duplicate_successful_output(retry_queue):
     ctx = _MapItemContext(input=input_data, retry_manager=RetryManager(retry_policy), sync_client_retries_enabled=True)
@@ -406,6 +410,7 @@ async def test_ignore_duplicate_successful_output(retry_queue):
     # The output should have been ignored because it is already complete.
     # Assert that state has not changed since.
     assert_context_is(ctx, _MapItemState.COMPLETE, 0, "in-0", input_jwt_data, input_data.args)
+
 
 @pytest.mark.asyncio
 async def test_ignore_duplicate_failed_output(retry_queue):
