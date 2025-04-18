@@ -34,7 +34,7 @@ def reset_state():
         function_call_invocation_type=api_pb2.FunctionCallInvocationType.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
         retry_queue=retry_queue,
         sync_client_retries_enabled=True,
-        max_inputs_outstanding=1000
+        max_inputs_outstanding=1000,
     )
 
 
