@@ -333,11 +333,11 @@ class _App:
         interactive: bool = False,
         environment_name: Optional[str] = None,
     ) -> AsyncGenerator["_App", None]:
-        """Context manager that runs an app on Modal.
+        """Context manager that runs an ephemeral app on Modal.
 
         Use this as the main entry point for your Modal application. All calls
-        to Modal functions should be made within the scope of this context
-        manager, and they will correspond to the current app.
+        to Modal Functions should be made within the scope of this context
+        manager, and they will correspond to the current App.
 
         **Example**
 
@@ -346,7 +346,7 @@ class _App:
             some_modal_function.remote()
         ```
 
-        To enable output printing, use `modal.enable_output()`:
+        To enable output printing (i.e., to see App logs), use `modal.enable_output()`:
 
         ```python notest
         with modal.enable_output():
@@ -354,10 +354,10 @@ class _App:
                 some_modal_function.remote()
         ```
 
-        Note that you cannot invoke this in global scope of a file where you have
-        Modal functions or Classes, since that would run the block when the function
-        or class is imported in your containers as well. If you want to run it as
-        your entrypoint, consider wrapping it:
+        Note that you should not invoke this in global scope of a file where you have
+        Modal Functions or Classes defined, since that would run the block when the Function
+        or Cls is imported in your containers as well. If you want to run it as your entrypoint,
+        consider protecting it:
 
         ```python
         if __name__ == "__main__":
@@ -371,9 +371,6 @@ class _App:
         python app_module.py
         ```
 
-        Note that this method used to return a separate "App" object. This is
-        no longer useful since you can use the app itself for access to all
-        objects. For backwards compatibility reasons, it returns the same app.
         """
         from .runner import _run_app  # Defer import of runner.py, which imports a lot from Rich
 
@@ -391,6 +388,71 @@ class _App:
             self, client=client, detach=detach, interactive=interactive, environment_name=environment_name
         ):
             yield self
+
+    async def deploy(
+        self,
+        *,
+        name: Optional[str] = None,  # Name for the deployment, overriding any set on the App
+        environment_name: Optional[str] = None,  # Environment to deploy the App in
+        tag: str = "",  # Optional metadata that will be visible in the deployment history
+        client: Optional[_Client] = None,  # Alternate client to use for RPCs
+    ):
+        """Deploy the App so that it is available persistently.
+
+        Deployed Apps will be avaible for lookup or web-based invocations until they are stopped.
+        Unlike with `App.run`, this method will return as soon as the deployment completes.
+
+        This method is a programmatic alternative to the `modal deploy` CLI command.
+
+        Examples:
+
+        ```python notest
+        app = App("my-app")
+        app.deploy()
+        ```
+
+        To enable output printing (i.e., to see build logs), use `modal.enable_output()`:
+
+        ```python notest
+        app = App("my-app")
+        with modal.enable_output():
+            app.deploy()
+        ```
+
+        Unlike with `App.run`, Function logs will not stream back to the local client after the
+        App is deployed.
+
+        Note that you should not invoke this method in global scope, as that would redeploy
+        the App every time the file is imported. If you want to write a programmatic deployment
+        script, protect this call so that it only runs when the file is executed directly:
+
+        ```python notest
+        if __name__ == "__main__":
+            with modal.enable_output():
+                app.deploy()
+        ```
+
+        Then you can deploy your app with:
+
+        ```shell
+        python app_module.py
+        ```
+
+        """
+        from .runner import _deploy_app  # Defer import of runner.py, which imports a lot from Rich
+
+        if name is None and self._name is None:
+            raise InvalidError(
+                "You need to either supply a deployment name or have a name set on the app.\n"
+                "\n"
+                "Examples:\n"
+                'app.deploy(name="some-name")\n\n'
+                "or\n"
+                'app = App("some-name")'
+            )
+        result = await _deploy_app(self, name=name, environment_name=environment_name, tag=tag, client=client)
+        self._app_id = result.app_id
+        return self
 
     def _get_default_image(self):
         if self._image:

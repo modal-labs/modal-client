@@ -444,8 +444,17 @@ def deploy(
     import_ref = parse_import_ref(app_ref, use_module_mode=use_module_mode)
     app = import_app_from_ref(import_ref, base_cmd="modal deploy")
 
-    if name is None:
-        name = app.name
+    name = name or app.name or ""
+    if not name:
+        raise ExecutionError(
+            "You need to either supply an explicit deployment name on the command line "
+            "or have a name set on the app.\n"
+            "\n"
+            "Examples:\n"
+            'app = App("some-name")'
+            "or\n"
+            "modal deploy ... --name=some-name"
+        )
 
     with enable_output():
         res = deploy_app(app, name=name, environment_name=env or "", tag=tag)
