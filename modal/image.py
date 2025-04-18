@@ -285,7 +285,7 @@ def _create_context_mount(
 
         return False
 
-    return _Mount._add_local_dir(context_dir, PurePosixPath("/"), ignore=ignore_with_include)
+    return _Mount._add_local_dir(context_dir, PurePosixPath("/"), ignore=ignore_with_include)  # pyright: ignore [reportGeneralTypeIssues=false]
 
 
 def _create_context_mount_function(
@@ -739,7 +739,7 @@ class _Image(_Object, type_prefix="im"):
         if remote_path.endswith("/"):
             remote_path = remote_path + Path(local_path).name
 
-        mount = _Mount._from_local_file(local_path, remote_path)
+        mount = _Mount._from_local_file(local_path, remote_path)  # pyright: ignore [reportGeneralTypeIssues=false]
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def add_local_dir(
@@ -810,7 +810,7 @@ class _Image(_Object, type_prefix="im"):
             #  + make default remote_path="./"
             raise InvalidError("image.add_local_dir() currently only supports absolute remote_path values")
 
-        mount = _Mount._add_local_dir(Path(local_path), PurePosixPath(remote_path), ignore=_ignore_fn(ignore))
+        mount = _Mount._add_local_dir(Path(local_path), PurePosixPath(remote_path), ignore=_ignore_fn(ignore))  # pyright: ignore [reportGeneralTypeIssues=false]
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
@@ -831,11 +831,14 @@ class _Image(_Object, type_prefix="im"):
         return _Image._from_args(
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
-            context_mount_function=lambda: _Mount._from_local_file(local_path, remote_path=f"/{basename}"),
+            context_mount_function=lambda: _Mount._from_local_file(local_path, remote_path=f"/{basename}"),  # pyright: ignore [reportGeneralTypeIssues=false]
         )
 
     def add_local_python_source(
-        self, *modules: str, copy: bool = False, ignore: Union[Sequence[str], Callable[[Path], bool]] = NON_PYTHON_FILES
+        self,
+        *modules: str,
+        copy: bool = False,
+        ignore: Optional[Union[Sequence[str], Callable[[Path], bool]]] = NON_PYTHON_FILES,
     ) -> "_Image":
         """Adds locally available Python packages/modules to containers
 
@@ -873,7 +876,7 @@ class _Image(_Object, type_prefix="im"):
         """
         if not all(isinstance(module, str) for module in modules):
             raise InvalidError("Local Python modules must be specified as strings.")
-        mount = _Mount._from_local_python_packages(*modules, ignore=ignore)
+        mount = _Mount._from_local_python_packages(*modules, ignore=ignore)  # pyright: ignore [reportGeneralTypeIssues=false]
         img = self._add_mount_layer_or_copy(mount, copy=copy)
         img._added_python_source_set |= set(modules)
         return img
@@ -946,7 +949,9 @@ class _Image(_Object, type_prefix="im"):
             base_images={"base": self},
             dockerfile_function=build_dockerfile,
             context_mount_function=lambda: _Mount._add_local_dir(
-                Path(local_path), PurePosixPath("/"), ignore=_ignore_fn(ignore)
+                Path(local_path),
+                PurePosixPath("/"),
+                ignore=_ignore_fn(ignore),  # pyright: ignore [reportGeneralTypeIssues=false]
             ),
         )
 
