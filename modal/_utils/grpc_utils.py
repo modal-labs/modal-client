@@ -69,11 +69,13 @@ RETRYABLE_GRPC_STATUS_CODES = [
     Status.INTERNAL,
 ]
 
+
 @dataclass
 class RetryWarningMessage:
     message: str
     warning_interval: int
     errors_to_warn_for: typing.List[Status]
+
 
 def create_channel(
     server_url: str,
@@ -150,7 +152,7 @@ async def retry_transient_errors(
     attempt_timeout: Optional[float] = None,  # timeout for each attempt
     total_timeout: Optional[float] = None,  # timeout for the entire function call
     attempt_timeout_floor=2.0,  # always have at least this much timeout (only for total_timeout)
-    retry_warning_message: Optional[RetryWarningMessage] = None
+    retry_warning_message: Optional[RetryWarningMessage] = None,
 ) -> ResponseType:
     """Retry on transient gRPC failures with back-off until max_retries is reached.
     If max_retries is None, retry forever."""
