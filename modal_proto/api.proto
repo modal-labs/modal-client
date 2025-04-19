@@ -2894,7 +2894,7 @@ message VolumeGetOrCreateRequest {
 
 message VolumeGetOrCreateResponse {
   string volume_id = 1;
-  VolumeFsVersion version = 2 [deprecated = true];
+  VolumeFsVersion version = 2;
   VolumeMetadata metadata = 3;
 }
 
