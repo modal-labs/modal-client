@@ -2889,13 +2889,13 @@ message VolumeGetOrCreateRequest {
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
   string app_id = 5;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
-  VolumeFsVersion version = 6 [deprecated = true];
-  VolumeMetadata metadata = 7;
+  VolumeFsVersion version = 6;
 }
 
 message VolumeGetOrCreateResponse {
   string volume_id = 1;
-  VolumeFsVersion version = 2;
+  VolumeFsVersion version = 2 [deprecated = true];
+  VolumeMetadata metadata = 3;
 }
 
 message VolumeHeartbeatRequest {
