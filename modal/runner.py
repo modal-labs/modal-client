@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2025
 """Internal module for building and running Apps."""
 # Note: While this is mostly internal code, the `modal.runner.deploy_app` function was
-# the only way to programatically deploy Apps for some time, so users have reached into here.
+# the only way to programmatically deploy Apps for some time, so users have reached into here.
 # We may eventually deprecate it from the public API, but for now we should keep that in mind.
 
 import asyncio
@@ -491,9 +491,9 @@ async def _deploy_app(
             "You need to either supply a deployment name or have a name set on the app.\n"
             "\n"
             "Examples:\n"
-            'deploy_app(app, name="some_name")\n\n'
+            'modal.runner.deploy_app(app, name="some_name")\n\n'
             "or\n"
-            'app = App("some-name")'
+            'app = modal.App("some-name")'
         )
     else:
         check_object_name(name, "App")

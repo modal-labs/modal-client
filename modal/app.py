@@ -448,7 +448,7 @@ class _App:
                 "Examples:\n"
                 'app.deploy(name="some-name")\n\n'
                 "or\n"
-                'app = App("some-name")'
+                'app = modal.App("some-name")'
             )
         result = await _deploy_app(self, name=name, environment_name=environment_name, tag=tag, client=client)
         self._app_id = result.app_id

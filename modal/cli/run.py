@@ -451,7 +451,7 @@ def deploy(
             "or have a name set on the app.\n"
             "\n"
             "Examples:\n"
-            'app = App("some-name")'
+            'app = modal.App("some-name")'
             "or\n"
             "modal deploy ... --name=some-name"
         )
