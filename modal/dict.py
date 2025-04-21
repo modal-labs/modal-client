@@ -111,6 +111,7 @@ class _Dict(_Object, type_prefix="di"):
     @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
         name: str,
+        *,
         data: Optional[dict] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,

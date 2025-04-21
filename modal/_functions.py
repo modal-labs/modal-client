@@ -1129,6 +1129,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         cls: type["_Function"],
         app_name: str,
         name: str,
+        *,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
     ) -> "_Function":
