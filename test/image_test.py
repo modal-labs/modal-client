@@ -170,7 +170,7 @@ def test_python_version(builder_version, servicer, client, python_version):
     expected_dockerhub_python = _dockerhub_python_version(builder_version, expected_python)
     expected_dockerhub_debian = _base_image_config("debian", builder_version)
     assert expected_dockerhub_python.startswith(expected_python)
-    with app.run(client):
+    with app.run(client=client):
         commands = get_all_dockerfile_commands(image.object_id, servicer)
         assert re.match(rf"FROM python:{expected_dockerhub_python}-slim-{expected_dockerhub_debian}", commands)
 
@@ -178,7 +178,7 @@ def test_python_version(builder_version, servicer, client, python_version):
     app.function(image=image)(dummy)
     if python_version is None and builder_version == "2023.12":
         expected_python = "3.9"
-    with app.run(client):
+    with app.run(client=client):
         commands = get_all_dockerfile_commands(image.object_id, servicer)
         assert re.search(rf"install.* python={expected_python}", commands)
 
