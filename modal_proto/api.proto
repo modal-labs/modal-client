@@ -574,6 +574,27 @@ message Asgi {
   }
 }
 
+message AttemptAwaitRequest {
+  string attempt_token = 1;
+  double requested_at = 2; // Used for waypoints.
+  float timeout_secs = 3;
+}
+
+message AttemptAwaitResponse {
+  optional FunctionGetOutputsItem output = 1;
+}
+
+message AttemptStartRequest {
+  string function_id = 1;
+  string parent_input_id = 2;
+  FunctionPutInputsItem input = 3;
+}
+
+message AttemptStartResponse {
+  string attempt_token = 1;
+  FunctionRetryPolicy retry_policy = 2;
+}
+
 message AutoscalerSettings {
   // A collection of user-configurable settings for Function autoscaling
   // These are used for static configuration and for dynamic autoscaler updates
@@ -3084,6 +3105,12 @@ service ModalClient {
   rpc AppRollback(AppRollbackRequest) returns (google.protobuf.Empty);
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
+
+  // Input Plane
+  // These RPCs are experimental, not deployed to production, and can be changed / removed
+  // without needing to worry about backwards compatibility.
+  rpc AttemptAwait(AttemptAwaitRequest) returns (AttemptAwaitResponse);
+  rpc AttemptStart(AttemptStartRequest) returns (AttemptStartResponse);
 
   // Blobs
   rpc BlobCreate(BlobCreateRequest) returns (BlobCreateResponse);
