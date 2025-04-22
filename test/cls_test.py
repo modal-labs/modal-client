@@ -669,6 +669,26 @@ def test_cls_keep_warm(client, servicer):
         assert instance_service_function.warm_pool_size == 5
 
 
+def test_cls_lookup_keep_warm(client, servicer):
+    app = App(name := "my-cls-app")
+
+    @app.cls(serialized=True)
+    class ClsWithMethod:
+        arg: str = modal.parameter(default="")
+
+        @method()
+        def bar(self): ...
+
+    deploy_app(app, name, client=client)
+
+    C = Cls.from_name(name, "ClsWithMethod")
+    obj = C()
+    obj.keep_warm(3)
+
+    service_function_id = obj._cached_service_function().object_id
+    assert servicer.app_functions[service_function_id].warm_pool_size == 3
+
+
 with pytest.warns(DeprecationError, match="@modal.build"):
 
     class ClsWithHandlers:
