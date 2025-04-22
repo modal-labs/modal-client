@@ -204,7 +204,7 @@ async def test_volume_upload_large_file(client, tmp_path, servicer, blob_server,
         assert servicer.volume_files[object_id]["/a"].data == b""
         assert servicer.volume_files[object_id]["/a"].data_blob_id == "bl-1"
 
-        _, blobs = blob_server
+        _, blobs, _ = blob_server
         assert blobs["bl-1"] == b"hello world, this is a lot of text"
 
 
@@ -222,7 +222,7 @@ async def test_volume_upload_large_stream(client, servicer, blob_server, *args):
         assert servicer.volume_files[object_id]["/a"].data == b""
         assert servicer.volume_files[object_id]["/a"].data_blob_id == "bl-1"
 
-        _, blobs = blob_server
+        _, blobs, _ = blob_server
         assert blobs["bl-1"] == b"hello world, this is a lot of text"
 
 

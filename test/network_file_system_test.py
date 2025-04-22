@@ -92,7 +92,7 @@ async def test_network_file_system_handle_big_file(client, tmp_path, servicer, b
         assert servicer.nfs_files[object_id]["/bigfile"].data == b""
         assert servicer.nfs_files[object_id]["/bigfile"].data_blob_id == "bl-1"
 
-        _, blobs = blob_server
+        _, blobs, _ = blob_server
         assert blobs["bl-1"] == b"hello world, this is a lot of text"
 
 
