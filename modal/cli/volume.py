@@ -19,7 +19,7 @@ from modal.cli._download import _volume_download
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
-from modal.volume import _Volume, _VolumeUploadContextManager
+from modal.volume import _AbstractVolumeUploadContextManager, _Volume
 from modal_proto import api_pb2
 
 volume_cli = Typer(
@@ -198,8 +198,8 @@ async def put(
     if Path(local_path).is_dir():
         with progress_handler.live:
             try:
-                async with _VolumeUploadContextManager(
-                    vol.object_id, vol._client, progress_cb=progress_handler.progress, force=force
+                async with _AbstractVolumeUploadContextManager.resolve(
+                    vol._version, vol.object_id, vol._client, progress_cb=progress_handler.progress, force=force
                 ) as batch:
                     batch.put_directory(local_path, remote_path)
             except FileExistsError as exc:
@@ -210,8 +210,8 @@ async def put(
     else:
         with progress_handler.live:
             try:
-                async with _VolumeUploadContextManager(
-                    vol.object_id, vol._client, progress_cb=progress_handler.progress, force=force
+                async with _AbstractVolumeUploadContextManager.resolve(
+                    vol._version, vol.object_id, vol._client, progress_cb=progress_handler.progress, force=force
                 ) as batch:
                     batch.put_file(local_path, remote_path)
 
