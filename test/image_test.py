@@ -948,7 +948,7 @@ def test_dockerfile_context_dir(builder_version, servicer, client):
         (Path(context_dir) / "file.py").write_text("world")
 
         image = Image.debian_slim().dockerfile_commands(["COPY . /"], context_dir=context_dir)
-        app = App()
+        app = App(include_source=False)
         app.function(image=image)(dummy)
         with app.run(client=client):
             layers = get_image_layers(image.object_id, servicer)
@@ -1812,8 +1812,8 @@ def test_image_local_dir_ignore_patterns(servicer, client, tmp_path_with_content
 
 @pytest.mark.parametrize("copy", [True, False])
 def test_image_add_local_dir_ignore_callable(servicer, client, tmp_path_with_content, copy):
-    def ignore(x):
-        return x != tmp_path_with_content / "data.txt"
+    def ignore(x: Path):
+        return str(x) != "data.txt"
 
     expected = {"/place/data.txt"}
     app = App()
