@@ -78,7 +78,7 @@ class RetryWarningMessage:
     errors_to_warn_for: typing.List[Status]
 
 
-class ConnectionPool:
+class ConnectionManager:
     def __init__(self, client: "modal.client._Client", metadata: dict[str, str] = {}):
         self._client = client
         self._metadata = metadata

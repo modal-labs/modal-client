@@ -26,7 +26,7 @@ from modal_version import __version__
 from ._traceback import print_server_warnings
 from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.grpc_utils import ConnectionPool, retry_transient_errors
+from ._utils.grpc_utils import ConnectionManager, retry_transient_errors
 from .config import _check_config, _is_remote, config, logger
 from .exception import AuthError, ClientClosed
 
@@ -115,7 +115,7 @@ class _Client:
         self._cancellation_context_event_loop = asyncio.get_running_loop()
         await self._cancellation_context.__aenter__()
 
-        self._connection_pool = ConnectionPool(client=self, metadata=metadata)
+        self._connection_manager = ConnectionManager(client=self, metadata=metadata)
         self._stub = await modal_api_grpc.ModalClientModal.create(self, self.server_url)
         self._owner_pid = os.getpid()
 
@@ -124,8 +124,8 @@ class _Client:
         self._closed = True
         if hasattr(self, "_cancellation_context"):
             await self._cancellation_context.__aexit__(None, None, None)  # wait for all rpcs to be finished/cancelled
-        if self._connection_pool:
-            self._connection_pool.close()
+        if self._connection_manager:
+            self._connection_manager.close()
 
         if prep_for_restore:
             self._snapshotted = True
@@ -279,7 +279,7 @@ class _Client:
         if self._owner_pid and self._owner_pid != os.getpid():
             # not calling .close() since that would also interact with stale resources
             # just reset the internal state
-            self._connection_pool = None
+            self._connection_manager = None
             self._stub = None
             self._owner_pid = None
 
@@ -291,7 +291,7 @@ class _Client:
         # Get a valid grpclib channel, reusing existing channels if possible.
         # This prevents usage of stale channels across forks of processes.
         await self._reset_on_pid_change()
-        return await self._connection_pool.get_or_create_channel(server_url)
+        return await self._connection_manager.get_or_create_channel(server_url)
 
     @synchronizer.nowrap
     async def _call_unary(
@@ -363,6 +363,16 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         if self.client._snapshotted:
             logger.debug(f"refreshing client after snapshot for {self.name.rsplit('/', 1)[1]}")
             self.client = await _Client.from_env()
+
+        # Note: We override the grpclib method's channel (see grpclib's code [1]). I think this is fine
+        # since grpclib's code doesn't seem to change very much, but we could also recreate the
+        # grpclib stub if we aren't comfortable with this. The downside is then we need to cache
+        # the grpclib stub so the rest of our code becomes a bit more complicated.
+        #
+        # We need to override the channel because after the process is forked or the client is
+        # snapshotted, the existing channel may be stale / unusable.
+        #
+        # [1]: https://github.com/vmagamedov/grpclib/blob/62f968a4c84e3f64e6966097574ff0a59969ea9b/grpclib/client.py#L844
         self.wrapped_method.channel = await self.client._get_channel(self.server_url)
         return await self.client._call_unary(self.wrapped_method, req, timeout=timeout, metadata=metadata)
 
