@@ -231,7 +231,7 @@ class _Invocation:
         item = api_pb2.FunctionRetryInputsItem(input_jwt=ctx.input_jwt, input=ctx.item.input)
         request = api_pb2.FunctionRetryInputsRequest(function_call_jwt=ctx.function_call_jwt, inputs=[item])
         await retry_transient_errors(
-            self.client.stub.FunctionRetryInputs,
+            self.stub.FunctionRetryInputs,
             request,
         )
 
