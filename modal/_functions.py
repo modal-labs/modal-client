@@ -462,6 +462,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
         _experimental_enable_gpu_snapshot: bool = False,
+        _experimental_rdma_enabled: bool = False,
     ) -> "_Function":
         """mdmd:hidden"""
         # Needed to avoid circular imports
@@ -873,7 +874,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
                         function_definition_copy.resources.CopyFrom(
                             convert_fn_config_to_resources_config(
-                                cpu=cpu, memory=memory, gpu=_gpu, ephemeral_disk=ephemeral_disk
+                                cpu=cpu,
+                                memory=memory,
+                                gpu=_gpu,
+                                ephemeral_disk=ephemeral_disk,
+                                rdma_enabled=_experimental_rdma_enabled,
                             ),
                         )
                         ranked_function = api_pb2.FunctionData.RankedFunction(
@@ -888,7 +893,11 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     # assert isinstance(gpu, GPU_T)  # includes the case where gpu==None case
                     function_definition.resources.CopyFrom(
                         convert_fn_config_to_resources_config(
-                            cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
+                            cpu=cpu,
+                            memory=memory,
+                            gpu=gpu,
+                            ephemeral_disk=ephemeral_disk,
+                            rdma_enabled=_experimental_rdma_enabled,
                         ),
                     )
 
