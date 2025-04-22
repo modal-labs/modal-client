@@ -87,7 +87,7 @@ import os
 import typing
 import warnings
 from textwrap import dedent
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from google.protobuf.empty_pb2 import Empty
 
@@ -199,6 +199,15 @@ def _to_boolean(x: object) -> bool:
     return str(x).lower() not in {"", "0", "false"}
 
 
+def _check_value(options: list[str]) -> Callable[[str], str]:
+    def checker(x: str) -> str:
+        if x not in options:
+            raise ValueError(f"Must be one of {options}.")
+        return x
+
+    return checker
+
+
 class _Setting(typing.NamedTuple):
     default: typing.Any = None
     transform: typing.Callable[[str], typing.Any] = lambda x: x  # noqa: E731
@@ -232,6 +241,7 @@ _SETTINGS = {
     "snapshot_debug": _Setting(False, transform=_to_boolean),
     "cuda_checkpoint_path": _Setting("/__modal/.bin/cuda-checkpoint"),  # Used for snapshotting GPU memory.
     "function_schemas": _Setting(False, transform=_to_boolean),
+    "build_validation": _Setting("error", transform=_check_value(["error", "warn", "ignore"])),
 }
 
 
@@ -253,10 +263,17 @@ class Config:
             profile = _profile
         s = _SETTINGS[key]
         env_var_key = "MODAL_" + key.upper()
+
+        def transform(val: str) -> Any:
+            try:
+                return s.transform(val)
+            except Exception as e:
+                raise InvalidError(f"Invalid value for {key} config ({val!r}): {e}")
+
         if use_env and env_var_key in os.environ:
-            return s.transform(os.environ[env_var_key])
+            return transform(os.environ[env_var_key])
         elif profile in _user_config and key in _user_config[profile]:
-            return s.transform(_user_config[profile][key])
+            return transform(_user_config[profile][key])
         else:
             return s.default
 

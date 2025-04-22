@@ -12,6 +12,37 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.12 (2025-04-18)
+
+- The `@app.function` and `@app.cls` decorators now support `experimental_options`, which we'll use going forward when testing experimental functionality that depends only on server-side configuration.
+
+
+
+### 0.74.7 (2025-04-17)
+
+- Modal will now raise an error if local files included in the App are modified during the build process. This behavior can be controlled with the `MODAL_BUILD_VALIDATION` configuration, which accepts `error` (default), `warning`, or `ignore`.
+
+
+
+### 0.74.6 (2025-04-17)
+
+* Internal change that makes containers for functions/classes with `serialized=True` start up *slightly* faster than before
+
+
+
+### 0.74.0 (2025-04-15)
+
+* Introduces a deprecation warning when using explicit constructors (`__init__` methods) on `@modal.cls`-decorated classes. Class parameterization should instead be done via [dataclass-style `modal.parameter()` declarations](https://modal.com/docs/guide/parametrized-functions). Initialization logic should run in `@modal.enter()`-decorated [lifecycle methods](https://modal.com/docs/guide/lifecycle-functions).
+
+
+
+### 0.73.173 (2025-04-15)
+
+- Fix bug where containers hang with batch sizes above 100 (with `@modal.batched`).
+- Fix bug where containers can fail with large outputs and batch sizes above 49 (with `@modal.batched`)
+
+
+
 ### 0.73.170 (2025-04-14)
 
 * Fixes a bug where `modal run` didn't recognize `modal.parameter()` class parameters

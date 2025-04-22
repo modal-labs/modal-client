@@ -459,6 +459,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         ephemeral_disk: Optional[int] = None,
         # current default: first-party, future default: main-package
         include_source: Optional[bool] = None,
+        experimental_options: Optional[dict[str, str]] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
         _experimental_enable_gpu_snapshot: bool = False,
@@ -819,6 +820,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     i6pn_enabled=i6pn_enabled,
                     schedule=schedule.proto_message if schedule is not None else None,
                     snapshot_debug=config.get("snapshot_debug"),
+                    experimental_options=experimental_options or {},
+                    # ---
                     _experimental_group_size=cluster_size or 0,  # Experimental: Clustered functions
                     _experimental_concurrent_cancellations=True,
                     _experimental_proxy_ip=_experimental_proxy_ip,
@@ -856,6 +859,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         use_method_name=function_definition.use_method_name,
                         method_definitions=function_definition.method_definitions,
                         method_definitions_set=function_definition.method_definitions_set,
+                        experimental_options=experimental_options or {},
                         _experimental_group_size=function_definition._experimental_group_size,
                         _experimental_buffer_containers=function_definition._experimental_buffer_containers,
                         _experimental_custom_scaling=function_definition._experimental_custom_scaling,
@@ -913,6 +917,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         raise InvalidError(f"Function {info.function_name} is too large to deploy.")
                     raise
                 function_creation_status.set_response(response)
+
             # needed for modal.serve file watching
             serve_mounts = {m for m in all_mounts if m.is_local()}
             serve_mounts |= image._serve_mounts
@@ -1386,7 +1391,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             args,
             kwargs,
             client=self.client,
-            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC,
         )
 
     @synchronizer.no_io_translation
@@ -1526,9 +1531,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if self._is_generator:
             invocation = await self._call_generator_nowait(args, kwargs)
         else:
-            invocation = await self._call_function_nowait(
-                args, kwargs, api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY
-            )
+            invocation = await self._call_function_nowait(args, kwargs, api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC)
 
         fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(
             invocation.function_call_id, invocation.client, None

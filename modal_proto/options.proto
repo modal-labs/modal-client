@@ -3,6 +3,8 @@
 // Reference: https://protobuf.dev/programming-guides/proto2/#customoptions
 syntax = "proto3";
 
+option go_package = "github.com/modal-labs/modal/go/proto";
+
 import "google/protobuf/descriptor.proto";
 
 package modal.options;

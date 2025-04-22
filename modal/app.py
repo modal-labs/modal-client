@@ -595,7 +595,7 @@ class _App:
         min_containers: Optional[int] = None,  # Minimum number of containers to keep warm, even when Function is idle.
         max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
         buffer_containers: Optional[int] = None,  # Number of additional idle containers to maintain under active load.
-        scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
+        scaledown_window: Optional[int] = None,  # Max time (in seconds) a container can remain idle while scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
@@ -613,6 +613,7 @@ class _App:
         i6pn: Optional[bool] = None,  # Whether to enable IPv6 container networking within the region.
         # Whether the function's home package should be included in the image - defaults to True
         include_source: Optional[bool] = None,  # When `False`, don't automatically add the App source to the container.
+        experimental_options: Optional[dict[str, Any]] = None,
         # Parameters below here are experimental. Use with caution!
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
@@ -780,10 +781,11 @@ class _App:
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
-                _experimental_proxy_ip=_experimental_proxy_ip,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,  # Experimental: Clustered functions
                 include_source=include_source if include_source is not None else self._include_source_default,
+                experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
+                _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
             )
 
@@ -824,7 +826,7 @@ class _App:
         min_containers: Optional[int] = None,  # Minimum number of containers to keep warm, even when Function is idle.
         max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
         buffer_containers: Optional[int] = None,  # Number of additional idle containers to maintain under active load.
-        scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
+        scaledown_window: Optional[int] = None,  # Max time (in seconds) a container can remain idle while scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
@@ -836,6 +838,7 @@ class _App:
         # Use `max_inputs = 1` for single-use containers.
         max_inputs: Optional[int] = None,
         include_source: Optional[bool] = None,  # When `False`, don't automatically add the App source to the container.
+        experimental_options: Optional[dict[str, Any]] = None,
         # Parameters below here are experimental. Use with caution!
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
@@ -947,6 +950,7 @@ class _App:
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
                 include_source=include_source if include_source is not None else self._include_source_default,
+                experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
                 _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,

@@ -1376,3 +1376,30 @@ def test_failed_lookup_error(client, servicer):
 
     with pytest.raises(NotFoundError, match="in the 'some-env' environment"):
         Function.from_name("app", "f", environment_name="some-env").hydrate(client=client)
+
+
+@pytest.mark.parametrize("decorator", ["function", "cls"])
+def test_experimental_options(client, servicer, decorator):
+    app = App()
+
+    experimental_options = {"foo": 2, "bar": True}
+
+    if decorator == "function":
+
+        @app.function(serialized=True, experimental_options=experimental_options)
+        def f():
+            pass
+
+    else:
+
+        @app.cls(serialized=True, experimental_options=experimental_options)
+        class C:
+            @modal.method()
+            def f(self):
+                pass
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            ...
+
+    assert ctx.get_requests("FunctionCreate")[0].function.experimental_options == {"foo": "2", "bar": "True"}

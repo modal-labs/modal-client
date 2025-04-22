@@ -9,6 +9,7 @@ import sys
 import sysconfig
 import time
 import typing
+import warnings
 from collections.abc import AsyncGenerator
 from pathlib import Path, PurePosixPath
 from typing import Callable, Optional, Sequence, Union
@@ -531,6 +532,17 @@ class _Mount(_Object, type_prefix="mo"):
             if file_spec.sha256_hex in accounted_hashes:
                 n_finished += 1
                 return mount_file
+
+            # Try to catch cases where user modified their local files (e.g. changed git branches)
+            # between triggering a build and Modal actually uploading the file
+            if config.get("build_validation") != "ignore" and file_spec.source_is_path:
+                mtime = os.stat(file_spec.source_description).st_mtime
+                if mtime > resolver.build_start:
+                    msg = f"{file_spec.source_description} was modified during build process."
+                    if config.get("build_validation") == "error":
+                        raise modal.exception.ExecutionError(msg)
+                    elif config.get("build_validation") == "warn":
+                        warnings.warn(msg)
 
             request = api_pb2.MountPutFileRequest(sha256_hex=file_spec.sha256_hex)
             accounted_hashes.add(file_spec.sha256_hex)
