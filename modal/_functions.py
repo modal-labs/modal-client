@@ -316,6 +316,67 @@ class _Invocation:
                     break
 
 
+class _InputPlaneInvocation:
+    """Internal client representation of a single-input call to a Modal Function using the input
+    plane server API. As of 4/22/2025, this class is experimental and not used in production.
+    It is OK to make breaking changes to this class."""
+
+    stub: ModalClientModal
+
+    def __init__(
+        self,
+        stub: ModalClientModal,
+        attempt_token: str,
+        client: _Client,
+    ):
+        self.stub = stub
+        self.client = client  # Used by the deserializer.
+        self.attempt_token = attempt_token
+
+    @staticmethod
+    async def create(
+        function: "_Function",
+        args,
+        kwargs,
+        *,
+        client: _Client,
+        input_plane_url: str,
+    ) -> "_InputPlaneInvocation":
+        stub = await ModalClientModal.create(client, input_plane_url)
+
+        function_id = function.object_id
+        item = await _create_input(args, kwargs, stub, method_name=function._use_method_name)
+
+        request = api_pb2.AttemptStartRequest(
+            function_id=function_id,
+            parent_input_id=current_input_id() or "",
+            input=item,
+        )
+        response = await retry_transient_errors(stub.AttemptStart, request)
+        attempt_token = response.attempt_token
+
+        return _InputPlaneInvocation(stub, attempt_token, client)
+
+    async def run_function(self) -> Any:
+        # TODO(nathan): add retry logic
+        while True:
+            request = api_pb2.AttemptAwaitRequest(
+                attempt_token=self.attempt_token,
+                timeout_secs=OUTPUTS_TIMEOUT,
+                requested_at=time.time(),
+            )
+            response: api_pb2.AttemptAwaitResponse = await retry_transient_errors(
+                self.stub.AttemptAwait,
+                request,
+                attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
+            )
+
+            if response.HasField("output"):
+                return await _process_result(
+                    response.output.result, response.output.data_format, self.stub, self.client
+                )
+
+
 # Wrapper type for api_pb2.FunctionStats
 @dataclass(frozen=True)
 class FunctionStats:
@@ -1349,13 +1410,25 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 yield item
 
     async def _call_function(self, args, kwargs) -> ReturnType:
-        invocation = await _Invocation.create(
-            self,
-            args,
-            kwargs,
-            client=self.client,
-            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
-        )
+        input_plane_url = config.get("input_plane_url")
+
+        invocation: Union[_Invocation, _InputPlaneInvocation]
+        if input_plane_url is not None:
+            invocation = await _InputPlaneInvocation.create(
+                self,
+                args,
+                kwargs,
+                client=self.client,
+                input_plane_url=input_plane_url,
+            )
+        else:
+            invocation = await _Invocation.create(
+                self,
+                args,
+                kwargs,
+                client=self.client,
+                function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
+            )
 
         return await invocation.run_function()
 
