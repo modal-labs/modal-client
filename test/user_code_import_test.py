@@ -34,18 +34,24 @@ def test_import_function(supports_dir, monkeypatch):
     assert container_callable("world") == "hello world"
 
 
-def test_import_function_undecorated(supports_dir, monkeypatch):
-    import test.supports.user_code_import_samples.func
+def test_import_function_undecorated(monkeypatch, supports_on_path):
+    import user_code_import_samples.func
 
-    fun = api_pb2.Function(module_name="test.supports.user_code_import_samples.func", function_name="undecorated_f")
+    fun = api_pb2.Function(
+        module_name="user_code_import_samples.func",
+        function_name="undecorated_f",
+        app_name="user_code_import_samples_func_app",
+    )
     service = user_code_imports.import_single_function_service(
         fun,
         None,
         None,
     )
+    print(service.app.name)
+    print(user_code_import_samples.func.app.name)
     assert service.service_deps is None  # undecorated - can't get code deps
     # can't get app via the decorator attachment, falls back to checking global registry of apps/names
-    assert service.app is synchronizer._translate_in(test.supports.user_code_import_samples.func.app)
+    assert service.app is synchronizer._translate_in(user_code_import_samples.func.app)
 
 
 def test_import_class(monkeypatch, supports_dir, client):
