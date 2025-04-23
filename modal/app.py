@@ -688,7 +688,7 @@ class _App:
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
-        allow_cross_region_volumes: bool = True,  # Always True on the Modal backend now
+        allow_cross_region_volumes: Optional[bool] = None,  # Always True on the Modal backend now
     ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal [Function](/docs/reference/modal.Function) with this App."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -707,6 +707,8 @@ class _App:
                 " Please use the `@modal.concurrent` decorator instead."
                 "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
             )
+        if allow_cross_region_volumes is not None:
+            deprecation_warning((2025, 4, 23), "The `allow_cross_region_volumes` parameter no longer has any effect.")
 
         secrets = [*self._secrets, *secrets]
 
@@ -912,7 +914,7 @@ class _App:
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
-        allow_cross_region_volumes: bool = True,  # Always True on the Modal backend now
+        allow_cross_region_volumes: Optional[bool] = None,  # Always True on the Modal backend now
     ) -> Callable[[Union[CLS_T, _PartialFunction]], CLS_T]:
         """
         Decorator to register a new Modal [Cls](/docs/reference/modal.Cls) with this App.
@@ -933,6 +935,8 @@ class _App:
                 " Please use the `@modal.concurrent` decorator instead."
                 "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
             )
+        if allow_cross_region_volumes is not None:
+            deprecation_warning((2025, 4, 23), "The `allow_cross_region_volumes` parameter no longer has any effect.")
 
         def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
             # Check if the decorated object is a class
@@ -989,7 +993,6 @@ class _App:
                 gpu=gpu,
                 mounts=[*self._mounts, *mounts],
                 network_file_systems=network_file_systems,
-                allow_cross_region_volumes=allow_cross_region_volumes,
                 volumes={**self._volumes, **volumes},
                 cpu=cpu,
                 memory=memory,
