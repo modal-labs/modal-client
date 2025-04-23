@@ -47,8 +47,6 @@ def test_import_function_undecorated(monkeypatch, supports_on_path):
         None,
         None,
     )
-    print(service.app.name)
-    print(user_code_import_samples.func.app.name)
     assert service.service_deps is None  # undecorated - can't get code deps
     # can't get app via the decorator attachment, falls back to checking global registry of apps/names
     assert service.app is synchronizer._translate_in(user_code_import_samples.func.app)

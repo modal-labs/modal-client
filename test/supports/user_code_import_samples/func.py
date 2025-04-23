@@ -3,8 +3,6 @@
 from modal import App
 
 # TODO: remove include_source=True when automount is disabled by default
-
-print("IMPORT", __name__)
 app = App(name="user_code_import_samples_func_app", include_source=True)
 
 
