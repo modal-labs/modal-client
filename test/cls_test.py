@@ -679,6 +679,10 @@ def test_cls_lookup_keep_warm(client, servicer):
         @method()
         def bar(self): ...
 
+    C_pre_deploy = ClsWithMethod()
+    with pytest.raises(ExecutionError, match="has not been hydrated"):
+        C_pre_deploy.keep_warm(1)  # type: ignore
+
     deploy_app(app, name, client=client)
 
     C = Cls.from_name(name, "ClsWithMethod")
@@ -687,6 +691,10 @@ def test_cls_lookup_keep_warm(client, servicer):
 
     service_function_id = obj._cached_service_function().object_id
     assert servicer.app_functions[service_function_id].warm_pool_size == 3
+
+    with servicer.intercept() as ctx:
+        obj.keep_warm(4)
+        assert len(ctx.get_requests("FunctionBindParams")) == 0  # We did not re-bind
 
 
 with pytest.warns(DeprecationError, match="@modal.build"):
