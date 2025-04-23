@@ -376,12 +376,14 @@ class _ContainerIOManager:
                 time_since_heartbeat_success = time.monotonic() - t_last_success
                 error = exc
                 logger.warning(
-                    f"Heartbeat attempt failed ({attempt_dur=:.2f}, {time_since_heartbeat_success=:.2f}, {error=})"
+                    f"Modal Client → Modal Worker Heartbeat attempt failed "
+                    f"({attempt_dur=:.2f}, {time_since_heartbeat_success=:.2f}, {error=})"
                 )
                 if time_since_heartbeat_success > HEARTBEAT_INTERVAL * 50:
                     trouble_mins = time_since_heartbeat_success / 60
                     logger.warning(
-                        f"Heartbeat attempts have been failing for over {trouble_mins:.2f} minutes. "
+                        "Modal Client → Modal Worker heartbeat attempts have been failing for "
+                        f"over {trouble_mins:.2f} minutes. "
                         "Container will eventually be marked unhealthy. "
                         "See https://modal.com/docs/guide/troubleshooting#heartbeat-timeout. "
                     )
