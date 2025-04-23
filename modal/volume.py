@@ -125,7 +125,7 @@ class _Volume(_Object, type_prefix="vo"):
     """
 
     _lock: Optional[asyncio.Lock] = None
-    _version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]"
+    _metadata: "typing.Optional[api_pb2.VolumeMetadata]"
 
     async def _get_lock(self):
         # To (mostly*) prevent multiple concurrent operations on the same volume, which can cause problems under
@@ -184,14 +184,14 @@ class _Volume(_Object, type_prefix="vo"):
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         if metadata and isinstance(metadata, api_pb2.VolumeMetadata):
-            self._version = metadata.version
+            self._metadata = metadata
         else:
             raise TypeError(
-                "_hydrate_metadata() requires an `api_pb2.VolumeGetOrCreateResponse` to determine volume version"
+                "_hydrate_metadata() requires an `api_pb2.VolumeMetadata` to determine volume version"
             )
 
     def _get_metadata(self) -> Optional[Message]:
-        return api_pb2.VolumeMetadata(version=self._version)
+        return self._metadata
 
     @classmethod
     @asynccontextmanager
@@ -517,7 +517,12 @@ class _Volume(_Object, type_prefix="vo"):
             batch.put_file(io.BytesIO(b"some data"), "/foobar")
         ```
         """
-        return _AbstractVolumeUploadContextManager.resolve(self._version, self.object_id, self._client, force=force)
+        return _AbstractVolumeUploadContextManager.resolve(
+            self._metadata.version,
+            self.object_id,
+            self._client,
+            force=force
+        )
 
 
     @live_method
