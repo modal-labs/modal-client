@@ -12,6 +12,18 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.18 (2025-04-23)
+
+- Adds a `.deploy()` method to the `App` object. This method allows you programmatically deploy Apps from Python:
+
+    ```python
+    app = modal.App("programmatic-deploy")
+    ...
+    app.deploy()
+    ```
+
+
+
 ### 0.74.12 (2025-04-18)
 
 - The `@app.function` and `@app.cls` decorators now support `experimental_options`, which we'll use going forward when testing experimental functionality that depends only on server-side configuration.
