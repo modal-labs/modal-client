@@ -581,11 +581,14 @@ class _AbstractVolumeUploadContextManager:
         progress_cb: Optional[Callable[..., Any]] = None,
         force: bool = False
     ) -> "_AbstractVolumeUploadContextManager":
-        from modal_proto.api_pb2 import VolumeFsVersion
 
-        if version in [None, VolumeFsVersion.VOLUME_FS_VERSION_UNSPECIFIED, VolumeFsVersion.VOLUME_FS_VERSION_V1]:
+        if version in [
+            None,
+            api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_UNSPECIFIED,
+            api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_V1
+        ]:
             return _VolumeUploadContextManager(object_id, client, progress_cb=progress_cb, force=force)
-        elif version == VolumeFsVersion.VOLUME_FS_VERSION_V2:
+        elif version == api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_V2:
             return _VolumeUploadContextManager2(object_id, client, progress_cb=progress_cb, force=force)
         else:
             raise RuntimeError(f"unsupported volume version: {version}")
