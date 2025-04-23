@@ -356,7 +356,9 @@ class _ContainerIOManager:
         while 1:
             t0 = time.monotonic()
             try:
-                if await self._heartbeat_handle_cancellations():
+                got_cancellation = await self._heartbeat_handle_cancellations()
+                t_last_success = time.monotonic()
+                if got_cancellation:
                     # Got a cancellation event, so it is fine to start another heartbeat immediately
                     # since the cancellation queue should be empty on the worker server.
                     # However, we wait at least 1s to prevent short-circuiting the heartbeat loop
@@ -365,7 +367,6 @@ class _ContainerIOManager:
                     # same task at the moment.
                     await asyncio.sleep(1.0)
                     continue
-                t_last_success = time.monotonic()
             except ClientClosed:
                 logger.info("Stopping heartbeat loop due to client shutdown")
                 break
