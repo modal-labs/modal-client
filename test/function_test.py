@@ -1009,7 +1009,7 @@ async def test_map_large_inputs(client, servicer, monkeypatch, blob_server):
     app = App()
     dummy_modal = app.function()(dummy)
 
-    _, blobs = blob_server
+    _, blobs, _ = blob_server
     async with app.run.aio(client=client):
         assert len(blobs) == 0
         assert [a async for a in dummy_modal.map.aio(range(100))] == [i**2 for i in range(100)]
