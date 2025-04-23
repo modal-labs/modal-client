@@ -430,7 +430,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # TODO: maybe break this out into a separate decorator for notebooks.
         mounts: Collection[_Mount] = (),
         network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
-        allow_cross_region_volumes: bool = False,
         volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         cpu: Optional[Union[float, tuple[float, float]]] = None,
@@ -788,9 +787,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     autoscaler_settings=autoscaler_settings,
                     method_definitions=method_definitions,
                     method_definitions_set=True,
-                    shared_volume_mounts=network_file_system_mount_protos(
-                        validated_network_file_systems, allow_cross_region_volumes
-                    ),
+                    shared_volume_mounts=network_file_system_mount_protos(validated_network_file_systems),
                     volume_mounts=volume_mounts,
                     proxy_id=(proxy.object_id if proxy else None),
                     retry_policy=retry_policy,

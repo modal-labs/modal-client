@@ -645,7 +645,6 @@ class _App:
         volumes: dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
-        allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         # Specify, in fractional CPU cores, how many CPU cores to request.
         # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
         # CPU throttling will prevent a container from exceeding its specified limit.
@@ -689,6 +688,7 @@ class _App:
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
+        allow_cross_region_volumes: bool = True,  # Always True on the Modal backend now
     ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal [Function](/docs/reference/modal.Function) with this App."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -821,7 +821,6 @@ class _App:
                 gpu=gpu,
                 mounts=[*self._mounts, *mounts],
                 network_file_systems=network_file_systems,
-                allow_cross_region_volumes=allow_cross_region_volumes,
                 volumes={**self._volumes, **volumes},
                 cpu=cpu,
                 memory=memory,
@@ -876,7 +875,6 @@ class _App:
         volumes: dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
-        allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         # Specify, in fractional CPU cores, how many CPU cores to request.
         # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
         # CPU throttling will prevent a container from exceeding its specified limit.
@@ -914,6 +912,7 @@ class _App:
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
+        allow_cross_region_volumes: bool = True,  # Always True on the Modal backend now
     ) -> Callable[[Union[CLS_T, _PartialFunction]], CLS_T]:
         """
         Decorator to register a new Modal [Cls](/docs/reference/modal.Cls) with this App.
