@@ -396,7 +396,7 @@ class _App:
         environment_name: Optional[str] = None,  # Environment to deploy the App in
         tag: str = "",  # Optional metadata that will be visible in the deployment history
         client: Optional[_Client] = None,  # Alternate client to use for RPCs
-    ):
+    ) -> typing_extensions.Self:
         """Deploy the App so that it is available persistently.
 
         Deployed Apps will be avaible for lookup or web-based invocations until they are stopped.
