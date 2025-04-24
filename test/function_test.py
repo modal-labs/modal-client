@@ -753,39 +753,6 @@ def f(x):
     return x**2
 
 
-def test_allow_cross_region_volumes(client, servicer):
-    app = App()
-    vol1 = NetworkFileSystem.from_name("xyz-1", create_if_missing=True)
-    vol2 = NetworkFileSystem.from_name("xyz-2", create_if_missing=True)
-    # Should pass flag for all the function's NetworkFileSystemMounts
-    app.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(dummy)
-
-    with app.run(client=client):
-        assert len(servicer.app_functions) == 1
-        for func in servicer.app_functions.values():
-            assert len(func.shared_volume_mounts) == 2
-            for svm in func.shared_volume_mounts:
-                assert svm.allow_cross_region
-
-
-def test_allow_cross_region_volumes_webhook(client, servicer):
-    # TODO(erikbern): this test seems a bit redundant
-    app = App()
-    vol1 = NetworkFileSystem.from_name("xyz-1", create_if_missing=True)
-    vol2 = NetworkFileSystem.from_name("xyz-2", create_if_missing=True)
-    # Should pass flag for all the function's NetworkFileSystemMounts
-    app.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(
-        fastapi_endpoint()(dummy)
-    )
-
-    with app.run(client=client):
-        assert len(servicer.app_functions) == 1
-        for func in servicer.app_functions.values():
-            assert len(func.shared_volume_mounts) == 2
-            for svm in func.shared_volume_mounts:
-                assert svm.allow_cross_region
-
-
 def test_serialize_deserialize_function_handle(servicer, client):
     from modal._serialization import deserialize, serialize
 
