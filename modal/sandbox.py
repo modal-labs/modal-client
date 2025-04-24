@@ -187,7 +187,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                     cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
                 ),
                 cloud_provider_str=cloud if cloud else None,  # Supersedes cloud_provider
-                nfs_mounts=network_file_system_mount_protos(validated_network_file_systems, False),
+                nfs_mounts=network_file_system_mount_protos(validated_network_file_systems),
                 runtime=config.get("function_runtime"),
                 runtime_debug=config.get("function_runtime_debug"),
                 cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
