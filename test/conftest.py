@@ -61,6 +61,7 @@ class Volume:
     version: "api_pb2.VolumeFsVersion.ValueType"
     files: dict[str, VolumeFile]
 
+
 @dataclasses.dataclass
 class VolumeFile:
     data: bytes
@@ -1633,6 +1634,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Secret
 
+    async def SecretDelete(self, stream):
+        request: api_pb2.SecretDeleteRequest = await stream.recv_message()
+        self.deployed_secrets = {k: v for k, v in self.deployed_secrets.items() if v != request.secret_id}
+        self.secrets.pop(request.secret_id)
+        await stream.send_message(Empty())
+
     async def SecretGetOrCreate(self, stream):
         request: api_pb2.SecretGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, request.namespace, request.environment_name)
@@ -1664,7 +1671,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SecretList(self, stream):
         await stream.recv_message()
-        items = [api_pb2.SecretListItem(label=f"dummy-secret-{i}") for i, _ in enumerate(self.secrets)]
+        # Note: being lazy and not implementing the env filtering
+        items = [api_pb2.SecretListItem(label=name) for name, _, env in self.deployed_secrets]
         await stream.send_message(api_pb2.SecretListResponse(items=items))
 
     ### Snapshot
@@ -1958,7 +1966,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 put_response = block.put_response
                 if put_response:
                     prefix = b"test-put-response:"
-                    expected_block_id = put_response[len(prefix):].decode('utf-8')
+                    expected_block_id = put_response[len(prefix) :].decode("utf-8")
                     valid_put_response = put_response.startswith(prefix) and expected_block_id == actual_block_id
                 else:
                     valid_put_response = False
@@ -1983,7 +1991,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 missing_blocks.extend(file_missing_blocks)
             else:
                 files_to_create[file.path] = VolumeFile(
-                    data=b''.join(blocks),
+                    data=b"".join(blocks),
                     data_blob_id=None,
                     mode=file.mode,
                     block_hashes=block_hashes,
