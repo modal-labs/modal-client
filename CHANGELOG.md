@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.22 (2025-04-24)
+
+- Added a `modal secret delete` command to the CLI.
+
+
+
 ### 0.74.21 (2025-04-24)
 
 - The `allow_cross_region_volumes` parameter of the `@app.function` and `@app.cls` decorators now issues a deprecation warning; the parameter is always treated as `True` on the Modal backend.
