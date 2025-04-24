@@ -86,18 +86,22 @@ def test_app_deploy_with_name(servicer, mock_dir, set_env_client):
     assert "my_app_foo" in servicer.deployed_apps
 
 
-def test_secret_create(servicer, set_env_client):
+def test_secret_create_delete(servicer, set_env_client):
     # fail without any keys
     _run(["secret", "create", "foo"], 2, None)
 
     _run(["secret", "create", "foo", "bar=baz"])
-    assert len(servicer.secrets) == 1
+    assert "foo" in _run(["secret", "list"]).stdout
 
     # Creating the same one again should fail
     _run(["secret", "create", "foo", "bar=baz"], expected_exit_code=1)
 
     # But it should succeed with --force
     _run(["secret", "create", "foo", "bar=baz", "--force"])
+
+    # We can delete it
+    _run(["secret", "delete", "foo", "--yes"])
+    assert "foo" not in _run(["secret", "list"]).stdout
 
 
 def test_secret_list(servicer, set_env_client):
