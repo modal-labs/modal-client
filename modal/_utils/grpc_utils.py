@@ -135,7 +135,17 @@ def create_channel(
 
         logger.debug(f"Sending request to {event.method_name}")
 
+    async def recv_trailing_metadata(trailing_metadata: grpclib.events.RecvTrailingMetadata) -> None:
+        # If we receive an auth token from the server, include it in all future requests.
+        # TODO(nathan): This isn't perfect because the metadata isn't propagated when the
+        # process is forked and a new channel is created. This is OK for now since this
+        # token is only used by the experimental input plane
+        token = trailing_metadata.metadata.get("x-modal-auth-token")
+        if token:
+            metadata["x-modal-auth-token"] = token
+
     grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
+    grpclib.events.listen(channel, grpclib.events.RecvTrailingMetadata, recv_trailing_metadata)
 
     return channel
 
