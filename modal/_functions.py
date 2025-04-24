@@ -970,7 +970,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         parent = self
 
         async def _load(param_bound_func: _Function, resolver: Resolver, existing_object_id: Optional[str]):
-            await parent.hydrate()
+            if not parent.is_hydrated:
+                # While the base Object.hydrate() method appears to be idempotent, it's not always safe
+                await parent.hydrate()
             assert parent._client and parent._client.stub
 
             if (
