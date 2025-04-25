@@ -1157,7 +1157,7 @@ def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, toke
 @pytest.fixture
 def app(client):
     app = App()
-    with app.run(client):
+    with app.run(client=client):
         yield app
 
 

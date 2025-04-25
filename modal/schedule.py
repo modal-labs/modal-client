@@ -74,6 +74,7 @@ class Period(Schedule):
 
     def __init__(
         self,
+        *,
         years: int = 0,
         months: int = 0,
         weeks: int = 0,

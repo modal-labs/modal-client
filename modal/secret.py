@@ -165,6 +165,7 @@ class _Secret(_Object, type_prefix="st"):
     @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
         name: str,
+        *,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         required_keys: list[
