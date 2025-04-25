@@ -12,6 +12,16 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.25 (2025-04-25)
+
+- The `App.include` method now returns `self` so it's possible to build up an App through chained calls:
+
+    ```python
+    app = modal.App("main-app").include(sub_app_1).include(sub_app_2)
+    ```
+
+
+
 ### 0.74.23 (2025-04-25)
 
 - Marked some parameters in a small number of Modal functions as requiring keyword arguments (namely, `modal.App.run`, `modal.Cls.with_options`, all `.from_name` methods, and a few others). Code that calls these functions with positional arguments will now raise an error. This is expected to be minimally disruptive as the affected parameters are mostly "extra" options or positioned after parameters that have previously been deprecated.
