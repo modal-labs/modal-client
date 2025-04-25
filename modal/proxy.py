@@ -18,6 +18,7 @@ class _Proxy(_Object, type_prefix="pr"):
     @staticmethod
     def from_name(
         name: str,
+        *,
         environment_name: Optional[str] = None,
     ) -> "_Proxy":
         """Reference a Proxy by its name.

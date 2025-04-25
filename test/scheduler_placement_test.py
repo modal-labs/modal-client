@@ -57,7 +57,7 @@ def test_fn_scheduler_placement(servicer, client):
 
 @skip_windows("needs subprocess")
 def test_sandbox_scheduler_placement(client, servicer):
-    with app.run(client):
+    with app.run(client=client):
         Sandbox.create(
             "bash",
             "-c",

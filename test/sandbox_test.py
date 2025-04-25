@@ -18,7 +18,7 @@ skip_non_subprocess = skip_windows("Needs subprocess support")
 @pytest.fixture
 def app(client):
     app = App()
-    with app.run(client):
+    with app.run(client=client):
         yield app
 
 
@@ -269,7 +269,7 @@ def test_app_sandbox(client, servicer):
         Sandbox.create("bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret])
 
     app = App()
-    with app.run(client):
+    with app.run(client=client):
         # Create sandbox
         with pytest.raises(DeprecationError, match="`App.spawn_sandbox` is deprecated"):
             app.spawn_sandbox("bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret])
@@ -350,7 +350,7 @@ def test_sandbox_list_app(client, servicer):
 
     app = App()
 
-    with app.run(client):
+    with app.run(client=client):
         # Create sandbox
         sb = Sandbox.create("bash", "-c", "sleep 10000", image=image, secrets=[secret], app=app)
         assert len(list(Sandbox.list(app_id=app.app_id, client=client))) == 1

@@ -254,6 +254,7 @@ class _App:
     @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
         name: str,
+        *,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -327,6 +328,7 @@ class _App:
     @asynccontextmanager
     async def run(
         self,
+        *,
         client: Optional[_Client] = None,
         show_progress: Optional[bool] = None,
         detach: bool = False,

@@ -538,6 +538,7 @@ More information on class parameterization can be found here: https://modal.com/
         cls: type["_Cls"],
         app_name: str,
         name: str,
+        *,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         workspace: Optional[str] = None,  # Deprecated and unused
@@ -601,6 +602,7 @@ More information on class parameterization can be found here: https://modal.com/
     @warn_on_renamed_autoscaler_settings
     def with_options(
         self: "_Cls",
+        *,
         cpu: Optional[Union[float, tuple[float, float]]] = None,
         memory: Optional[Union[int, tuple[int, int]]] = None,
         gpu: GPU_T = None,
