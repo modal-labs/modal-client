@@ -1070,7 +1070,7 @@ class _App:
         )
         deprecation_error((2024, 7, 5), message)
 
-    def include(self, /, other_app: "_App"):
+    def include(self, /, other_app: "_App") -> typing_extensions.Self:
         """Include another App's objects in this one.
 
         Useful for splitting up Modal Apps across different self-contained files.
@@ -1106,6 +1106,7 @@ class _App:
                 )
 
             self._add_class(tag, cls)
+        return self
 
     async def _logs(self, client: Optional[_Client] = None) -> AsyncGenerator[str, None]:
         """Stream logs from the app.
