@@ -933,7 +933,7 @@ async def _put_missing_blocks(
                 progress_report_cb=functools.partial(progress_cb, progress_task_id)
             )
 
-            async with ClientSessionRegistry.get_session().put(
+            async with ClientSessionRegistry.get_session().post(
                 missing_block.put_url,
                 data=payload,
             ) as response:

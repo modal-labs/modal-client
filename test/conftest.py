@@ -2083,7 +2083,7 @@ def blob_server():
     app.add_routes([aiohttp.web.post("/complete_multipart", complete_multipart)])
 
     # API used for volume version 2 blocks:
-    app.add_routes([aiohttp.web.put("/block", put_block)])
+    app.add_routes([aiohttp.web.post("/block", put_block)])
 
     started = threading.Event()
     stop_server = threading.Event()
