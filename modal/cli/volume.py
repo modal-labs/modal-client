@@ -2,7 +2,7 @@
 import os
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import typer
 from click import UsageError
@@ -12,14 +12,14 @@ from rich.syntax import Syntax
 from typer import Argument, Option, Typer
 
 import modal
-from modal._output import ProgressHandler, step_completed
+from modal._output import OutputManager, ProgressHandler
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.cli._download import _volume_download
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
-from modal.volume import _Volume, _VolumeUploadContextManager
+from modal.volume import _AbstractVolumeUploadContextManager, _Volume
 from modal_proto import api_pb2
 
 volume_cli = Typer(
@@ -94,12 +94,12 @@ async def get(
     """
     ensure_env(env)
     destination = Path(local_destination)
-    volume = await _Volume.lookup(volume_name, environment_name=env)
+    volume = _Volume.from_name(volume_name, environment_name=env)
     console = Console()
     progress_handler = ProgressHandler(type="download", console=console)
     with progress_handler.live:
         await _volume_download(volume, remote_path, destination, force, progress_cb=progress_handler.progress)
-    console.print(step_completed("Finished downloading files to local!"))
+    console.print(OutputManager.step_completed("Finished downloading files to local!"))
 
 
 @volume_cli.command(
@@ -108,7 +108,7 @@ async def get(
     rich_help_panel="Management",
 )
 @synchronizer.create_blocking
-async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+async def list_(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     env = ensure_env(env)
     client = await _Client.from_env()
     response = await retry_transient_errors(client.stub.VolumeList, api_pb2.VolumeListRequest(environment_name=env))
@@ -133,9 +133,7 @@ async def ls(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    vol = await _Volume.lookup(volume_name, environment_name=env)
-    if not isinstance(vol, _Volume):
-        raise UsageError("The specified app entity is not a modal.Volume")
+    vol = _Volume.from_name(volume_name, environment_name=env)
 
     try:
         entries = await vol.listdir(path)
@@ -190,9 +188,7 @@ async def put(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    vol = await _Volume.lookup(volume_name, environment_name=env)
-    if not isinstance(vol, _Volume):
-        raise UsageError("The specified app entity is not a modal.Volume")
+    vol = await _Volume.from_name(volume_name, environment_name=env).hydrate()
 
     if remote_path.endswith("/"):
         remote_path = remote_path + os.path.basename(local_path)
@@ -202,26 +198,34 @@ async def put(
     if Path(local_path).is_dir():
         with progress_handler.live:
             try:
-                async with _VolumeUploadContextManager(
-                    vol.object_id, vol._client, progress_cb=progress_handler.progress, force=force
+                async with _AbstractVolumeUploadContextManager.resolve(
+                    vol._metadata.version,
+                    vol.object_id,
+                    vol._client,
+                    progress_cb=progress_handler.progress,
+                    force=force
                 ) as batch:
                     batch.put_directory(local_path, remote_path)
             except FileExistsError as exc:
                 raise UsageError(str(exc))
-        console.print(step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
+        console.print(OutputManager.step_completed(f"Uploaded directory '{local_path}' to '{remote_path}'"))
     elif "*" in local_path:
         raise UsageError("Glob uploads are currently not supported")
     else:
         with progress_handler.live:
             try:
-                async with _VolumeUploadContextManager(
-                    vol.object_id, vol._client, progress_cb=progress_handler.progress, force=force
+                async with _AbstractVolumeUploadContextManager.resolve(
+                    vol._metadata.version,
+                    vol.object_id,
+                    vol._client,
+                    progress_cb=progress_handler.progress,
+                    force=force
                 ) as batch:
                     batch.put_file(local_path, remote_path)
 
             except FileExistsError as exc:
                 raise UsageError(str(exc))
-        console.print(step_completed(f"Uploaded file '{local_path}' to '{remote_path}'"))
+        console.print(OutputManager.step_completed(f"Uploaded file '{local_path}' to '{remote_path}'"))
 
 
 @volume_cli.command(
@@ -235,9 +239,7 @@ async def rm(
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    volume = await _Volume.lookup(volume_name, environment_name=env)
-    if not isinstance(volume, _Volume):
-        raise UsageError("The specified app entity is not a modal.Volume")
+    volume = _Volume.from_name(volume_name, environment_name=env)
     try:
         await volume.remove_file(remote_path, recursive=recursive)
     except GRPCError as exc:
@@ -257,13 +259,11 @@ async def rm(
 @synchronizer.create_blocking
 async def cp(
     volume_name: str,
-    paths: List[str],  # accepts multiple paths, last path is treated as destination path
+    paths: list[str],  # accepts multiple paths, last path is treated as destination path
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
-    volume = await _Volume.lookup(volume_name, environment_name=env)
-    if not isinstance(volume, _Volume):
-        raise UsageError("The specified app entity is not a modal.Volume")
+    volume = _Volume.from_name(volume_name, environment_name=env)
     *src_paths, dst_path = paths
     await volume.copy_files(src_paths, dst_path)
 
@@ -279,6 +279,8 @@ async def delete(
     yes: bool = YES_OPTION,
     env: Optional[str] = ENV_OPTION,
 ):
+    # Lookup first to validate the name, even though delete is a staticmethod
+    await _Volume.from_name(volume_name, environment_name=env).hydrate()
     if not yes:
         typer.confirm(
             f"Are you sure you want to irrevocably delete the modal.Volume '{volume_name}'?",
@@ -286,4 +288,26 @@ async def delete(
             abort=True,
         )
 
-    await _Volume.delete(label=volume_name, environment_name=env)
+    await _Volume.delete(volume_name, environment_name=env)
+
+
+@volume_cli.command(
+    name="rename",
+    help="Rename a modal.Volume.",
+    rich_help_panel="Management",
+)
+@synchronizer.create_blocking
+async def rename(
+    old_name: str,
+    new_name: str,
+    yes: bool = YES_OPTION,
+    env: Optional[str] = ENV_OPTION,
+):
+    if not yes:
+        typer.confirm(
+            f"Are you sure you want rename the modal.Volume '{old_name}'? This may break any Apps currently using it.",
+            default=False,
+            abort=True,
+        )
+
+    await _Volume.rename(old_name, new_name, environment_name=env)

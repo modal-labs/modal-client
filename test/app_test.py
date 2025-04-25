@@ -4,25 +4,16 @@ import logging
 import pytest
 import time
 
-from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
-from modal import App, Dict, Image, Mount, Secret, Stub, Volume, enable_output, web_endpoint
+from modal import App, Image, Mount, Secret, Stub, Volume, enable_output, fastapi_endpoint, web_endpoint
+from modal._partial_function import _parse_custom_domains
 from modal._utils.async_utils import synchronizer
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
-from modal.output import _get_output_manager
-from modal.partial_function import _parse_custom_domains
-from modal.runner import deploy_app, deploy_stub, run_app
+from modal.runner import deploy_stub, run_app
 from modal_proto import api_pb2
 
 from .supports import module_1, module_2
-
-
-@pytest.mark.asyncio
-async def test_attrs(servicer, client):
-    app = App()
-    with pytest.raises(DeprecationError):
-        app.d = Dict.from_name("xyz")
 
 
 def square(x):
@@ -35,26 +26,26 @@ async def test_redeploy(servicer, client):
     app.function()(square)
 
     # Deploy app
-    res = await deploy_app.aio(app, "my-app", client=client)
-    assert res.app_id == "ap-1"
+    await app.deploy.aio(name="my-app", client=client)
+    assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["square"] == "fu-1"
-    assert servicer.app_state_history[res.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
+    assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
 
     # Redeploy, make sure all ids are the same
-    res = await deploy_app.aio(app, "my-app", client=client)
-    assert res.app_id == "ap-1"
+    await app.deploy.aio(name="my-app", client=client)
+    assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["square"] == "fu-1"
-    assert servicer.app_state_history[res.app_id] == [
+    assert servicer.app_state_history[app.app_id] == [
         api_pb2.APP_STATE_INITIALIZING,
         api_pb2.APP_STATE_DEPLOYED,
         api_pb2.APP_STATE_DEPLOYED,
     ]
 
     # Deploy to a different name, ids should change
-    res = await deploy_app.aio(app, "my-app-xyz", client=client)
-    assert res.app_id == "ap-2"
+    await app.deploy.aio(name="my-app-xyz", client=client)
+    assert app.app_id == "ap-2"
     assert servicer.app_objects["ap-2"]["square"] == "fu-2"
-    assert servicer.app_state_history[res.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
+    assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
 
 
 def dummy():
@@ -98,13 +89,13 @@ def test_create_object_invalid_exception(servicer, client):
 
 def test_deploy_falls_back_to_app_name(servicer, client):
     named_app = App(name="foo_app")
-    deploy_app(named_app, client=client)
+    named_app.deploy(client=client)
     assert "foo_app" in servicer.deployed_apps
 
 
 def test_deploy_uses_deployment_name_if_specified(servicer, client):
     named_app = App(name="foo_app")
-    deploy_app(named_app, "bar_app", client=client)
+    named_app.deploy(name="bar_app", client=client)
     assert "bar_app" in servicer.deployed_apps
     assert "foo_app" not in servicer.deployed_apps
 
@@ -153,8 +144,8 @@ def test_run_state(client, servicer):
 
 def test_deploy_state(client, servicer):
     app = App()
-    res = deploy_app(app, "foobar", client=client)
-    assert servicer.app_state_history[res.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
+    app.deploy(name="foobar", client=client)
+    assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
 
 
 def test_detach_state(client, servicer):
@@ -168,11 +159,10 @@ async def test_grpc_protocol(client, servicer):
     app = App()
     async with app.run(client=client):
         await asyncio.sleep(0.01)  # wait for heartbeat
-    assert len(servicer.requests) == 4
-    assert isinstance(servicer.requests[0], Empty)  # ClientHello
-    assert isinstance(servicer.requests[1], api_pb2.AppCreateRequest)
-    assert isinstance(servicer.requests[2], api_pb2.AppHeartbeatRequest)
-    assert isinstance(servicer.requests[3], api_pb2.AppClientDisconnectRequest)
+    assert len(servicer.requests) == 3
+    assert isinstance(servicer.requests[0], api_pb2.AppCreateRequest)
+    assert isinstance(servicer.requests[1], api_pb2.AppHeartbeatRequest)
+    assert isinstance(servicer.requests[2], api_pb2.AppClientDisconnectRequest)
 
 
 async def web1(x):
@@ -183,17 +173,33 @@ async def web2(x):
     return {"cube": x**3}
 
 
-def test_registered_web_endpoints(client, servicer):
+def test_registered_fastapi_endpoints(client, servicer):
     app = App()
     app.function()(square)
-    app.function()(web_endpoint()(web1))
-    app.function()(web_endpoint()(web2))
+    app.function()(fastapi_endpoint()(web1))
+    app.function()(fastapi_endpoint()(web2))
 
     @app.cls(serialized=True)
     class Cls:
-        @web_endpoint()
-        def cls_web_endpoint(self):
+        @fastapi_endpoint()
+        def web3(self):
             pass
+
+    assert app.registered_web_endpoints == ["web1", "web2", "Cls.web3"]
+
+
+def test_registered_legacy_web_endpoints(client, servicer):
+    with pytest.warns(DeprecationError, match="fastapi_endpoint"):
+        app = App()
+        app.function()(square)
+        app.function()(web_endpoint()(web1))
+        app.function()(web_endpoint()(web2))
+
+        @app.cls(serialized=True)
+        class Cls:
+            @web_endpoint()
+            def cls_web_endpoint(self):
+                pass
 
     assert app.registered_web_endpoints == ["web1", "web2", "Cls.cls_web_endpoint"]
 
@@ -212,7 +218,7 @@ def test_init_types():
     App(
         image=Image.debian_slim().pip_install("pandas"),
         secrets=[Secret.from_dict()],
-        mounts=[Mount.from_local_file(__file__)],
+        mounts=[Mount._from_local_file(__file__)],  # TODO: remove
     )
 
 
@@ -230,19 +236,19 @@ def test_redeploy_delete_objects(servicer, client):
     app = App()
     app.function(name="d1")(dummy)
     app.function(name="d2")(dummy)
-    res = deploy_app(app, "xyz", client=client)
+    app.deploy(name="xyz", client=client)
 
     # Check objects
-    assert set(servicer.app_objects[res.app_id].keys()) == set(["d1", "d2"])
+    assert set(servicer.app_objects[app.app_id].keys()) == {"d1", "d2"}
 
     # Deploy an app with objects d2 and d3
     app = App()
     app.function(name="d2")(dummy)
     app.function(name="d3")(dummy)
-    res = deploy_app(app, "xyz", client=client)
+    app.deploy(name="xyz", client=client)
 
     # Make sure d1 is deleted
-    assert set(servicer.app_objects[res.app_id].keys()) == set(["d2", "d3"])
+    assert set(servicer.app_objects[app.app_id].keys()) == {"d2", "d3"}
 
 
 @pytest.mark.asyncio
@@ -295,7 +301,7 @@ async def test_deploy_disconnect(servicer, client):
     app.function(secrets=[Secret.from_name("nonexistent-secret")])(square)
 
     with pytest.raises(NotFoundError):
-        await deploy_app.aio(app, "my-app", client=client)
+        await app.deploy.aio(name="my-app", client=client)
 
     assert servicer.app_state_history["ap-1"] == [
         api_pb2.APP_STATE_INITIALIZING,
@@ -315,7 +321,7 @@ def test_hydrated_other_app_object_gets_referenced(servicer, client):
     with servicer.intercept() as ctx:
         with Volume.ephemeral(client=client) as vol:
             app.function(volumes={"/vol": vol})(dummy)  # implicitly load vol
-            deploy_app(app, client=client)
+            app.deploy(client=client)
             function_create_req: api_pb2.FunctionCreateRequest = ctx.pop_request("FunctionCreate")
             assert vol.object_id in {obj.object_id for obj in function_create_req.function.object_dependencies}
 
@@ -347,8 +353,7 @@ def test_function_named_app():
     with pytest.warns(match="app"):
 
         @app.function(serialized=True)
-        def app():
-            ...
+        def app(): ...
 
 
 def test_stub():
@@ -356,11 +361,10 @@ def test_stub():
         Stub()
 
 
-def test_deploy_stub(servicer, client):
+def test_deploy_stub():
     app = App("xyz")
-    deploy_app(app, client=client)
     with pytest.raises(DeprecationError, match="deploy_app"):
-        deploy_stub(app, client=client)
+        deploy_stub(app)
 
 
 def test_app_logs(servicer, client):
@@ -404,43 +408,27 @@ def test_app_interactive(servicer, client, capsys):
     assert captured.out.endswith("\nsome data\n\r")
 
 
-def test_show_progress_deprecations(client, monkeypatch):
-    # Unset env used to disable warning
-    monkeypatch.delenv("MODAL_DISABLE_APP_RUN_OUTPUT_WARNING")
-
+def test_app_interactive_no_output(servicer, client):
     app = App()
 
-    # If show_progress is not provided, and output is not enabled, warn
-    with pytest.warns(DeprecationError, match="enable_output"):
-        with app.run(client=client):
-            assert _get_output_manager() is not None  # Should be auto-enabled
+    with pytest.warns(match="Interactive mode is disabled because no output manager is active"):
+        with app.run(client=client, interactive=True):
+            # Verify that interactive mode was disabled
+            assert not app.is_interactive
 
-    # If show_progress is not provided, and output is enabled, no warning
-    with enable_output():
-        with app.run(client=client):
+
+def test_show_progress_deprecations(client, monkeypatch):
+    app = App()
+
+    # If show_progress is set to True, raise that this is deprecated
+    with pytest.raises(DeprecationError, match="enable_output"):
+        with app.run(client=client, show_progress=True):
             pass
 
-    # If show_progress is set to True, and output is not enabled, warn
-    with pytest.warns(DeprecationError, match="enable_output"):
-        with app.run(client=client, show_progress=True):
-            assert _get_output_manager() is not None  # Should be auto-enabled
-
-    # If show_progress is set to True, and output is enabled, warn the flag is superfluous
-    with pytest.warns(DeprecationError, match="`show_progress=True` is deprecated"):
-        with enable_output():
-            with app.run(client=client, show_progress=True):
-                pass
-
-    # If show_progress is set to False, and output is not enabled, no warning
-    # This mode is currently used to suppress deprecation warnings, but will in itself be deprecated later.
-    with app.run(client=client, show_progress=False):
-        assert _get_output_manager() is None
-
-    # If show_progress is set to False, and output is enabled, warn that it has no effect
+    # If show_progress is set to False, warn that this has no effect
     with pytest.warns(DeprecationError, match="no effect"):
-        with enable_output():
-            with app.run(client=client, show_progress=False):
-                pass
+        with app.run(client=client, show_progress=False):
+            pass
 
 
 @pytest.mark.asyncio
@@ -449,10 +437,9 @@ async def test_deploy_from_container(servicer, container_client):
     app.function()(square)
 
     # Deploy app
-    res = await deploy_app.aio(app, "my-app", client=container_client)
-    assert res.app_id == "ap-1"
+    await app.deploy.aio(name="my-app", client=container_client)
     assert servicer.app_objects["ap-1"]["square"] == "fu-1"
-    assert servicer.app_state_history[res.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
+    assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
 
 
 def test_app_create_bad_environment_name_error(client):
@@ -465,3 +452,42 @@ def test_app_create_bad_environment_name_error(client):
             pass
 
     assert len(asyncio.all_tasks(synchronizer._loop)) == 1  # no trailing tasks, except the `loop_inner` ever-task
+
+
+def test_overriding_function_warning(caplog):
+    app = App()
+
+    @app.function(serialized=True)
+    def func():  # type: ignore
+        return 1
+
+    assert len(caplog.messages) == 0
+
+    app_2 = App()
+    app_2.include(app)
+
+    assert len(caplog.messages) == 0
+
+    app_3 = App()
+
+    app_3.include(app)
+    app_3.include(app_2)
+
+    assert len(caplog.messages) == 0
+
+    app_4 = App()
+
+    @app_4.function(serialized=True)  # type: ignore
+    def func():  # noqa: F811
+        return 2
+
+    assert len(caplog.messages) == 0
+
+    app_3.include(app_4)
+    assert "Overriding existing function" in caplog.messages[0]
+
+
+@pytest.mark.parametrize("name", ["", " ", "no way", "my-app!", "a" * 65])
+def test_lookup_invalid_name(name):
+    with pytest.raises(InvalidError, match="Invalid App name"):
+        App.lookup(name)

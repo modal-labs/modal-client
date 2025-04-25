@@ -2,213 +2,60 @@
 # ruff: noqa: E402
 import os
 
+from modal._runtime.user_code_imports import (
+    Service,
+    get_active_app_fallback,
+    import_class_service,
+    import_single_function_service,
+)
+
 telemetry_socket = os.environ.get("MODAL_TELEMETRY_SOCKET")
 if telemetry_socket:
-    from ._telemetry import instrument_imports
+    from ._runtime.telemetry import instrument_imports
 
     instrument_imports(telemetry_socket)
 
 import asyncio
-import base64
 import concurrent.futures
-import importlib
 import inspect
 import queue
 import signal
 import sys
 import threading
 import time
-import typing
-from abc import ABCMeta, abstractmethod
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Sequence, Tuple
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from google.protobuf.message import Message
 
-from modal_proto import api_pb2
-
-from ._asgi import (
-    asgi_app_wrapper,
-    get_ip_address,
-    wait_for_web_server,
-    web_server_proxy,
-    webhook_asgi_app,
-    wsgi_app_wrapper,
-)
-from ._container_io_manager import ContainerIOManager, FinalizedFunction, IOContext, UserException, _ContainerIOManager
-from ._proxy_tunnel import proxy_tunnel
-from ._serialization import deserialize, deserialize_proto_params
-from ._utils.async_utils import TaskContext, synchronizer
-from ._utils.function_utils import (
-    LocalFunctionError,
-    callable_has_non_self_params,
-    is_async as get_is_async,
-    is_global_object,
-)
-from .app import App, _App
-from .client import Client, _Client
-from .cls import Cls, Obj
-from .config import logger
-from .exception import ExecutionError, InputCancellation, InvalidError, deprecation_warning
-from .execution_context import _set_current_context_ids
-from .experimental import GroupedFunction
-from .functions import Function, _Function
-from .partial_function import (
+from modal._clustered_functions import initialize_clustered_function
+from modal._partial_function import (
     _find_callables_for_obj,
-    _find_partial_methods_for_user_cls,
-    _PartialFunction,
     _PartialFunctionFlags,
 )
-from .running_app import RunningApp
+from modal._serialization import deserialize, deserialize_params
+from modal._utils.async_utils import TaskContext, synchronizer
+from modal._utils.function_utils import (
+    callable_has_non_self_params,
+)
+from modal.app import App, _App
+from modal.client import Client, _Client
+from modal.config import logger
+from modal.exception import ExecutionError, InputCancellation, InvalidError
+from modal.running_app import RunningApp, running_app_from_layout
+from modal_proto import api_pb2
+
+from ._runtime import execution_context
+from ._runtime.container_io_manager import (
+    ContainerIOManager,
+    IOContext,
+    UserException,
+    _ContainerIOManager,
+)
 
 if TYPE_CHECKING:
-    import modal._container_io_manager
-    import modal.object
-
-
-def construct_webhook_callable(
-    user_defined_callable: Callable,
-    webhook_config: api_pb2.WebhookConfig,
-    container_io_manager: "modal._container_io_manager.ContainerIOManager",
-):
-    # For webhooks, the user function is used to construct an asgi app:
-    if webhook_config.type == api_pb2.WEBHOOK_TYPE_ASGI_APP:
-        # Function returns an asgi_app, which we can use as a callable.
-        return asgi_app_wrapper(user_defined_callable(), container_io_manager)
-
-    elif webhook_config.type == api_pb2.WEBHOOK_TYPE_WSGI_APP:
-        # Function returns an wsgi_app, which we can use as a callable.
-        return wsgi_app_wrapper(user_defined_callable(), container_io_manager)
-
-    elif webhook_config.type == api_pb2.WEBHOOK_TYPE_FUNCTION:
-        # Function is a webhook without an ASGI app. Create one for it.
-        return asgi_app_wrapper(
-            webhook_asgi_app(user_defined_callable, webhook_config.method, webhook_config.web_endpoint_docs),
-            container_io_manager,
-        )
-
-    elif webhook_config.type == api_pb2.WEBHOOK_TYPE_WEB_SERVER:
-        # Function spawns an HTTP web server listening at a port.
-        user_defined_callable()
-
-        # We intentionally try to connect to the external interface instead of the loopback
-        # interface here so users are forced to expose the server. This allows us to potentially
-        # change the implementation to use an external bridge in the future.
-        host = get_ip_address(b"eth0")
-        port = webhook_config.web_server_port
-        startup_timeout = webhook_config.web_server_startup_timeout
-        wait_for_web_server(host, port, timeout=startup_timeout)
-        return asgi_app_wrapper(web_server_proxy(host, port), container_io_manager)
-    else:
-        raise InvalidError(f"Unrecognized web endpoint type {webhook_config.type}")
-
-
-class Service(metaclass=ABCMeta):
-    """Common interface for singular functions and class-based "services"
-
-    There are differences in the importing/finalization logic, and this
-    "protocol"/abc basically defines a common interface for the two types
-    of "Services" after the point of import.
-    """
-
-    user_cls_instance: Any
-    app: Optional[_App]
-    code_deps: Optional[List["modal.object._Object"]]
-
-    @abstractmethod
-    def get_finalized_functions(
-        self, fun_def: api_pb2.Function, container_io_manager: "modal._container_io_manager.ContainerIOManager"
-    ) -> Dict[str, "FinalizedFunction"]:
-        ...
-
-
-@dataclass
-class ImportedFunction(Service):
-    user_cls_instance: Any
-    app: Optional[_App]
-    code_deps: Optional[List["modal.object._Object"]]
-
-    _user_defined_callable: Callable[..., Any]
-
-    def get_finalized_functions(
-        self, fun_def: api_pb2.Function, container_io_manager: "modal._container_io_manager.ContainerIOManager"
-    ) -> Dict[str, "FinalizedFunction"]:
-        # Check this property before we turn it into a method (overriden by webhooks)
-        is_async = get_is_async(self._user_defined_callable)
-        # Use the function definition for whether this is a generator (overriden by webhooks)
-        is_generator = fun_def.function_type == api_pb2.Function.FUNCTION_TYPE_GENERATOR
-
-        webhook_config = fun_def.webhook_config
-        if not webhook_config.type:
-            # for non-webhooks, the runnable is straight forward:
-            return {
-                "": FinalizedFunction(
-                    callable=self._user_defined_callable,
-                    is_async=is_async,
-                    is_generator=is_generator,
-                    data_format=api_pb2.DATA_FORMAT_PICKLE,
-                )
-            }
-
-        web_callable, lifespan_manager = construct_webhook_callable(
-            self._user_defined_callable, fun_def.webhook_config, container_io_manager
-        )
-
-        return {
-            "": FinalizedFunction(
-                callable=web_callable,
-                lifespan_manager=lifespan_manager,
-                is_async=True,
-                is_generator=True,
-                data_format=api_pb2.DATA_FORMAT_ASGI,
-            )
-        }
-
-
-@dataclass
-class ImportedClass(Service):
-    user_cls_instance: Any
-    app: Optional[_App]
-    code_deps: Optional[List["modal.object._Object"]]
-
-    _partial_functions: Dict[str, _PartialFunction]
-
-    def get_finalized_functions(
-        self, fun_def: api_pb2.Function, container_io_manager: "modal._container_io_manager.ContainerIOManager"
-    ) -> Dict[str, "FinalizedFunction"]:
-        finalized_functions = {}
-        for method_name, partial in self._partial_functions.items():
-            partial = synchronizer._translate_in(partial)  # ugly
-            user_func = partial.raw_f
-            # Check this property before we turn it into a method (overriden by webhooks)
-            is_async = get_is_async(user_func)
-            # Use the function definition for whether this is a generator (overriden by webhooks)
-            is_generator = partial.is_generator
-            webhook_config = partial.webhook_config
-
-            bound_func = user_func.__get__(self.user_cls_instance)
-
-            if not webhook_config or webhook_config.type == api_pb2.WEBHOOK_TYPE_UNSPECIFIED:
-                # for non-webhooks, the runnable is straight forward:
-                finalized_function = FinalizedFunction(
-                    callable=bound_func,
-                    is_async=is_async,
-                    is_generator=is_generator,
-                    data_format=api_pb2.DATA_FORMAT_PICKLE,
-                )
-            else:
-                web_callable, lifespan_manager = construct_webhook_callable(
-                    bound_func, webhook_config, container_io_manager
-                )
-                finalized_function = FinalizedFunction(
-                    callable=web_callable,
-                    lifespan_manager=lifespan_manager,
-                    is_async=True,
-                    is_generator=True,
-                    data_format=api_pb2.DATA_FORMAT_ASGI,
-                )
-            finalized_functions[method_name] = finalized_function
-        return finalized_functions
+    import modal._object
+    import modal._runtime.container_io_manager
 
 
 class DaemonizedThreadPool:
@@ -273,7 +120,7 @@ class UserCodeEventLoop:
 
     def __enter__(self):
         self.loop = asyncio.new_event_loop()
-        self.tasks = []
+        self.tasks = set()
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -287,7 +134,10 @@ class UserCodeEventLoop:
         self.loop.close()
 
     def create_task(self, coro):
-        self.tasks.append(self.loop.create_task(coro))
+        task = self.loop.create_task(coro)
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
+        return task
 
     def run(self, coro):
         task = asyncio.ensure_future(coro, loop=self.loop)
@@ -331,15 +181,15 @@ class UserCodeEventLoop:
 
 def call_function(
     user_code_event_loop: UserCodeEventLoop,
-    container_io_manager: "modal._container_io_manager.ContainerIOManager",
-    finalized_functions: Dict[str, FinalizedFunction],
+    container_io_manager: "modal._runtime.container_io_manager.ContainerIOManager",
+    finalized_functions: dict[str, "modal._runtime.user_code_imports.FinalizedFunction"],
     batch_max_size: int,
     batch_wait_ms: int,
 ):
     async def run_input_async(io_context: IOContext) -> None:
         started_at = time.time()
         input_ids, function_call_ids = io_context.input_ids, io_context.function_call_ids
-        reset_context = _set_current_context_ids(input_ids, function_call_ids)
+        reset_context = execution_context._set_current_context_ids(input_ids, function_call_ids)
         async with container_io_manager.handle_input_exception.aio(io_context, started_at):
             res = io_context.call_finalized_function()
             # TODO(erikbern): any exception below shouldn't be considered a user exception
@@ -389,7 +239,7 @@ def call_function(
     def run_input_sync(io_context: IOContext) -> None:
         started_at = time.time()
         input_ids, function_call_ids = io_context.input_ids, io_context.function_call_ids
-        reset_context = _set_current_context_ids(input_ids, function_call_ids)
+        reset_context = execution_context._set_current_context_ids(input_ids, function_call_ids)
         with container_io_manager.handle_input_exception(io_context, started_at):
             res = io_context.call_finalized_function()
 
@@ -427,7 +277,7 @@ def call_function(
                 )
         reset_context()
 
-    if container_io_manager.target_concurrency > 1:
+    if container_io_manager.input_concurrency_enabled:
         with DaemonizedThreadPool(max_threads=container_io_manager.max_concurrency) as thread_pool:
 
             def make_async_cancel_callback(task):
@@ -447,7 +297,7 @@ def call_function(
                 if not did_sigint:
                     did_sigint = True
                     logger.warning(
-                        "User cancelling input of non-async functions with allow_concurrent_inputs > 1.\n"
+                        "User cancelling input of non-async functions with input concurrency enabled.\n"
                         "This shuts down the container, causing concurrently running inputs to be "
                         "rescheduled in other containers."
                     )
@@ -476,6 +326,16 @@ def call_function(
             user_code_event_loop.run(run_concurrent_inputs())
     else:
         for io_context in container_io_manager.run_inputs_outputs(finalized_functions, batch_max_size, batch_wait_ms):
+            # This goes to a registered signal handler for sync Modal functions, or to the
+            # `UserCodeEventLoop` for async functions.
+            #
+            # We only send this signal on functions that do not have concurrent inputs enabled.
+            # This allows us to do fine-grained input cancellation. On sync functions, the
+            # SIGUSR1 signal should interrupt the main thread where user code is running,
+            # raising an InputCancellation() exception. On async functions, the signal should
+            # reach a handler in UserCodeEventLoop, which cancels the task.
+            io_context.set_cancel_callback(lambda: os.kill(os.getpid(), signal.SIGUSR1))
+
             if io_context.finalized_function.is_async:
                 user_code_event_loop.run(run_input_async(io_context))
             else:
@@ -493,207 +353,6 @@ def call_function(
                     signal.signal(signal.SIGUSR1, usr1_handler)  # reset signal handler
 
 
-def import_single_function_service(
-    function_def: api_pb2.Function,
-    ser_cls,  # used only for @build functions
-    ser_fun,
-    cls_args,  #  used only for @build functions
-    cls_kwargs,  #  used only for @build functions
-) -> Service:
-    """Imports a function dynamically, and locates the app.
-
-    This is somewhat complex because we're dealing with 3 quite different type of functions:
-    1. Functions defined in global scope and decorated in global scope (Function objects)
-    2. Functions defined in global scope but decorated elsewhere (these will be raw callables)
-    3. Serialized functions
-
-    In addition, we also need to handle
-    * Normal functions
-    * Methods on classes (in which case we need to instantiate the object)
-
-    This helper also handles web endpoints, ASGI/WSGI servers, and HTTP servers.
-
-    In order to locate the app, we try two things:
-    * If the function is a Function, we can get the app directly from it
-    * Otherwise, use the app name and look it up from a global list of apps: this
-      typically only happens in case 2 above, or in sometimes for case 3
-
-    Note that `import_function` is *not* synchronized, because we need it to run on the main
-    thread. This is so that any user code running in global scope (which executes as a part of
-    the import) runs on the right thread.
-    """
-    user_defined_callable: Callable
-    function: Optional[_Function] = None
-    code_deps: Optional[List["modal.object._Object"]] = None
-    active_app: Optional[_App] = None
-
-    if ser_fun is not None:
-        # This is a serialized function we already fetched from the server
-        cls, user_defined_callable = ser_cls, ser_fun
-    else:
-        # Load the module dynamically
-        module = importlib.import_module(function_def.module_name)
-        qual_name: str = function_def.function_name
-
-        if not is_global_object(qual_name):
-            raise LocalFunctionError("Attempted to load a function defined in a function scope")
-
-        parts = qual_name.split(".")
-        if len(parts) == 1:
-            # This is a function
-            cls = None
-            f = getattr(module, qual_name)
-            if isinstance(f, GroupedFunction):
-                f = f.get_underlying_function()
-            if isinstance(f, Function):
-                function = synchronizer._translate_in(f)
-                user_defined_callable = function.get_raw_f()
-                active_app = function._app
-            else:
-                user_defined_callable = f
-        elif len(parts) == 2:
-            # As of v0.63 - this path should only be triggered by @build class builder methods
-            assert not function_def.use_method_name  # new "placeholder methods" should not be invoked directly!
-            assert function_def.is_builder_function
-            cls_name, fun_name = parts
-            cls = getattr(module, cls_name)
-            if isinstance(cls, Cls):
-                # The cls decorator is in global scope
-                _cls = synchronizer._translate_in(cls)
-                user_defined_callable = _cls._callables[fun_name]
-                function = _cls._method_functions.get(fun_name)
-                active_app = _cls._app
-            else:
-                # This is a raw class
-                user_defined_callable = getattr(cls, fun_name)
-        else:
-            raise InvalidError(f"Invalid function qualname {qual_name}")
-
-    # Instantiate the class if it's defined
-    if cls:
-        # This code is only used for @build methods on classes
-        user_cls_instance = get_user_class_instance(cls, cls_args, cls_kwargs)
-        # Bind the function to the instance as self (using the descriptor protocol!)
-        user_defined_callable = user_defined_callable.__get__(user_cls_instance)
-    else:
-        user_cls_instance = None
-
-    if function:
-        code_deps = function.deps(only_explicit_mounts=True)
-
-    return ImportedFunction(
-        user_cls_instance,
-        active_app,
-        code_deps,
-        user_defined_callable,
-    )
-
-
-def import_class_service(
-    function_def: api_pb2.Function,
-    ser_cls,
-    cls_args,
-    cls_kwargs,
-) -> Service:
-    """
-    This imports a full class to be able to execute any @method or webhook decorated methods.
-
-    See import_function.
-    """
-    active_app: Optional[_App] = None
-    code_deps: Optional[List["modal.object._Object"]] = None
-    cls: typing.Union[type, Cls]
-
-    if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-        assert ser_cls is not None
-        cls = ser_cls
-    else:
-        # Load the module dynamically
-        module = importlib.import_module(function_def.module_name)
-        qual_name: str = function_def.function_name
-
-        if not is_global_object(qual_name):
-            raise LocalFunctionError("Attempted to load a class defined in a function scope")
-
-        parts = qual_name.split(".")
-        if not (
-            len(parts) == 2 and parts[1] == "*"
-        ):  # the "function name" of a class service "function placeholder" is expected to be "ClassName.*"
-            raise ExecutionError(
-                f"Internal error: Invalid 'service function' identifier {qual_name}. Please contact Modal support"
-            )
-
-        assert not function_def.use_method_name  # new "placeholder methods" should not be invoked directly!
-        cls_name = parts[0]
-        cls = getattr(module, cls_name)
-
-    if isinstance(cls, Cls):
-        # The cls decorator is in global scope
-        _cls = synchronizer._translate_in(cls)
-        method_partials = _cls._get_partial_functions()
-        function = _cls._class_service_function
-    else:
-        # Undecorated user class - find all methods
-        method_partials = _find_partial_methods_for_user_cls(cls, _PartialFunctionFlags.all())
-        function = None
-
-    if function:
-        code_deps = function.deps(only_explicit_mounts=True)
-
-    user_cls_instance = get_user_class_instance(cls, cls_args, cls_kwargs)
-
-    return ImportedClass(
-        user_cls_instance,
-        active_app,
-        code_deps,
-        method_partials,
-    )
-
-
-def get_user_class_instance(cls: typing.Union[type, Cls], args: Tuple, kwargs: Dict[str, Any]) -> typing.Any:
-    """Returns instance of the underlying class to be used as the `self`
-
-    The input `cls` can either be the raw Python class the user has declared ("user class"),
-    or an @app.cls-decorated version of it which is a modal.Cls-instance wrapping the user class.
-    """
-    if isinstance(cls, Cls):
-        # globally @app.cls-decorated class
-        modal_obj: Obj = cls(*args, **kwargs)
-        modal_obj.entered = True  # ugly but prevents .local() from triggering additional enter-logic
-        # TODO: unify lifecycle logic between .local() and container_entrypoint
-        user_cls_instance = modal_obj._get_user_cls_instance()
-    else:
-        # undecorated class (non-global decoration or serialized)
-        user_cls_instance = cls(*args, **kwargs)
-
-    return user_cls_instance
-
-
-def get_active_app_fallback(function_def: api_pb2.Function) -> Optional[_App]:
-    # This branch is reached in the special case that the imported function/class is:
-    # 1) not serialized, and
-    # 2) isn't a FunctionHandle - i.e, not decorated at definition time
-    # Look at all instantiated apps - if there is only one with the indicated name, use that one
-    app_name: Optional[str] = function_def.app_name or None  # coalesce protobuf field to None
-    matching_apps = _App._all_apps.get(app_name, [])
-    active_app = None
-    if len(matching_apps) > 1:
-        if app_name is not None:
-            warning_sub_message = f"app with the same name ('{app_name}')"
-        else:
-            warning_sub_message = "unnamed app"
-        logger.warning(
-            f"You have more than one {warning_sub_message}. "
-            "It's recommended to name all your Apps uniquely when using multiple apps"
-        )
-    elif len(matching_apps) == 1:
-        (active_app,) = matching_apps
-    # there could also technically be zero found apps, but that should probably never be an
-    # issue since that would mean user won't use is_inside or other function handles anyway
-
-    return active_app
-
-
 def call_lifecycle_functions(
     event_loop: UserCodeEventLoop,
     container_io_manager,  #: ContainerIOManager,  TODO: this type is generated at runtime
@@ -702,7 +361,7 @@ def call_lifecycle_functions(
     """Call function(s), can be sync or async, but any return values are ignored."""
     with container_io_manager.handle_user_exception():
         for func in funcs:
-            # We are deprecating parameterized exit methods but want to gracefully handle old code.
+            # We are deprecating parametrized exit methods but want to gracefully handle old code.
             # We can remove this once the deprecation in the actual @exit decorator is enforced.
             args = (None, None, None) if callable_has_non_self_params(func) else ()
             # in case func is non-async, it's executed here and sigint will by default
@@ -713,46 +372,41 @@ def call_lifecycle_functions(
                 event_loop.run(res)
 
 
-def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function, _client: "modal.client._Client"):
-    if function_def.class_parameter_info.format in (
-        api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_UNSPECIFIED,
-        api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE,
-    ):
-        # legacy serialization format - pickle of `(args, kwargs)` w/ support for modal object arguments
-        param_args, param_kwargs = deserialize(serialized_params, _client)
-    elif function_def.class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO:
-        param_args = ()
-        param_kwargs = deserialize_proto_params(serialized_params, list(function_def.class_parameter_info.schema))
-    else:
-        raise ExecutionError(
-            f"Unknown class parameter serialization format: {function_def.class_parameter_info.format}"
-        )
-
-    return param_args, param_kwargs
-
-
 def main(container_args: api_pb2.ContainerArguments, client: Client):
     # This is a bit weird but we need both the blocking and async versions of ContainerIOManager.
     # At some point, we should fix that by having built-in support for running "user code"
     container_io_manager = ContainerIOManager(container_args, client)
-    active_app: Optional[_App] = None
+    active_app: _App
     service: Service
     function_def = container_args.function_def
     is_auto_snapshot: bool = function_def.is_auto_snapshot
     # The worker sets this flag to "1" for snapshot and restore tasks. Otherwise, this flag is unset,
     # in which case snapshots should be disabled.
     is_snapshotting_function = (
-        function_def.is_checkpointing_function and os.environ.get("MODAL_ENABLE_SNAP_RESTORE", "0") == "1"
+        function_def.is_checkpointing_function and os.environ.get("MODAL_ENABLE_SNAP_RESTORE") == "1"
     )
 
     _client: _Client = synchronizer._translate_in(client)  # TODO(erikbern): ugly
 
+    # Call ContainerHello - currently a noop but might be used later for things
+    container_io_manager.hello()
+
     with container_io_manager.heartbeats(is_snapshotting_function), UserCodeEventLoop() as event_loop:
         # If this is a serialized function, fetch the definition from the server
         if function_def.definition_type == api_pb2.Function.DEFINITION_TYPE_SERIALIZED:
-            ser_cls, ser_fun = container_io_manager.get_serialized_function()
+            assert function_def.function_serialized or function_def.class_serialized
+
+            if function_def.function_serialized:
+                ser_fun = deserialize(function_def.function_serialized, _client)
+            else:
+                ser_fun = None
+
+            if function_def.class_serialized:
+                ser_usr_cls = deserialize(function_def.class_serialized, _client)
+            else:
+                ser_usr_cls = None
         else:
-            ser_cls, ser_fun = None, None
+            ser_usr_cls, ser_fun = None, None
 
         # Initialize the function, importing user code.
         with container_io_manager.handle_user_exception():
@@ -762,25 +416,39 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 param_args = ()
                 param_kwargs = {}
 
-            if function_def.is_class:
-                service = import_class_service(
-                    function_def,
-                    ser_cls,
-                    param_args,
-                    param_kwargs,
-                )
-            else:
-                service = import_single_function_service(
-                    function_def,
-                    ser_cls,
-                    ser_fun,
-                    param_args,
-                    param_kwargs,
-                )
+            with execution_context._import_context():
+                if function_def.is_class:
+                    # this is a bit ugly - match the function and class based on function name to get metadata
+                    # This metadata is required in order to hydrate the class in case it's not globally
+                    # decorated (or serialized)
+                    service_base_function_id = container_args.app_layout.function_ids[function_def.function_name]
+                    service_function_hydration_data = [
+                        o for o in container_args.app_layout.objects if o.object_id == service_base_function_id
+                    ][0]
+                    class_id = container_args.app_layout.class_ids[function_def.function_name.removesuffix(".*")]
+
+                    service = import_class_service(
+                        function_def,
+                        service_function_hydration_data,
+                        class_id,
+                        client,
+                        ser_usr_cls,
+                        param_args,
+                        param_kwargs,
+                    )
+                else:
+                    service = import_single_function_service(
+                        function_def,
+                        ser_usr_cls,
+                        ser_fun,
+                        param_args,
+                        param_kwargs,
+                    )
 
             # If the cls/function decorator was applied in local scope, but the app is global, we can look it up
-            active_app = service.app
-            if active_app is None:
+            if service.app is not None:
+                active_app = service.app
+            else:
                 # if the app can't be inferred by the imported function, use name-based fallback
                 active_app = get_active_app_fallback(function_def)
 
@@ -793,28 +461,37 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                 batch_wait_ms = function_def.batch_linger_ms or 0
 
         # Get ids and metadata for objects (primarily functions and classes) on the app
-        container_app: RunningApp = container_io_manager.get_app_objects()
+        container_app: RunningApp = running_app_from_layout(container_args.app_id, container_args.app_layout)
 
         # Initialize objects on the app.
         # This is basically only functions and classes - anything else is deprecated and will be unsupported soon
-        if active_app is not None:
-            app: App = synchronizer._translate_out(active_app)
-            app._init_container(client, container_app)
+        app: App = synchronizer._translate_out(active_app)
+        app._init_container(client, container_app)
 
         # Hydrate all function dependencies.
         # TODO(erikbern): we an remove this once we
         # 1. Enable lazy hydration for all objects
         # 2. Fully deprecate .new() objects
-        if service.code_deps is not None:  # this is not set for serialized or non-global scope functions
-            dep_object_ids: List[str] = [dep.object_id for dep in function_def.object_dependencies]
-            if len(service.code_deps) != len(dep_object_ids):
+        if service.service_deps is not None:  # this is not set for serialized or non-global scope functions
+            dep_object_ids: list[str] = [dep.object_id for dep in function_def.object_dependencies]
+            if len(service.service_deps) != len(dep_object_ids):
                 raise ExecutionError(
-                    f"Function has {len(service.code_deps)} dependencies"
-                    f" but container got {len(dep_object_ids)} object ids."
+                    f"Function has {len(service.service_deps)} dependencies"
+                    f" but container got {len(dep_object_ids)} object ids.\n"
+                    f"Code deps: {service.service_deps}\n"
+                    f"Object ids: {dep_object_ids}"
                 )
-            for object_id, obj in zip(dep_object_ids, service.code_deps):
+            for object_id, obj in zip(dep_object_ids, service.service_deps):
                 metadata: Message = container_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, _client, metadata)
+
+        # Initialize clustered functions.
+        if function_def._experimental_group_size > 0:
+            initialize_clustered_function(
+                client,
+                container_args.task_id,
+                function_def._experimental_group_size,
+            )
 
         # Identify all "enter" methods that need to run before we snapshot.
         if service.user_cls_instance is not None and not is_auto_snapshot:
@@ -824,7 +501,7 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
             call_lifecycle_functions(event_loop, container_io_manager, list(pre_snapshot_methods.values()))
 
         # If this container is being used to create a checkpoint, checkpoint the container after
-        # global imports and innitialization. Checkpointed containers run from this point onwards.
+        # global imports and initialization. Checkpointed containers run from this point onwards.
         if is_snapshotting_function:
             container_io_manager.memory_snapshot()
 
@@ -850,10 +527,13 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
         with container_io_manager.handle_user_exception():
             finalized_functions = service.get_finalized_functions(function_def, container_io_manager)
         # Execute the function.
+        lifespan_background_tasks = []
         try:
             for finalized_function in finalized_functions.values():
                 if finalized_function.lifespan_manager:
-                    event_loop.create_task(finalized_function.lifespan_manager.background_task())
+                    lifespan_background_tasks.append(
+                        event_loop.create_task(finalized_function.lifespan_manager.background_task())
+                    )
                     with container_io_manager.handle_user_exception():
                         event_loop.run(finalized_function.lifespan_manager.lifespan_startup())
             call_function(
@@ -878,6 +558,10 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                             with container_io_manager.handle_user_exception():
                                 event_loop.run(finalized_function.lifespan_manager.lifespan_shutdown())
                 finally:
+                    # no need to keep the lifespan asgi call around - we send it no more messages
+                    for lifespan_background_task in lifespan_background_tasks:
+                        lifespan_background_task.cancel()  # prevent dangling tasks
+
                     # Identify "exit" methods and run them.
                     # want to make sure this is called even if the lifespan manager fails
                     if service.user_cls_instance is not None and not is_auto_snapshot:
@@ -899,16 +583,11 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
 if __name__ == "__main__":
     logger.debug("Container: starting")
 
-    # Check and warn on deprecated Python version
-    if sys.version_info[:2] == (3, 8):
-        msg = (
-            "You are using Python 3.8 in your remote environment. Modal will soon drop support for this version,"
-            " and you will be unable to use this Image. Please update your Image definition."
-        )
-        deprecation_warning((2024, 5, 2), msg, show_source=False, pending=True)
-
     container_args = api_pb2.ContainerArguments()
-    container_args.ParseFromString(base64.b64decode(sys.argv[1]))
+    container_arguments_path: Optional[str] = os.environ.get("MODAL_CONTAINER_ARGUMENTS_PATH")
+    if container_arguments_path is None:
+        raise RuntimeError("No path to the container arguments file provided!")
+    container_args.ParseFromString(open(container_arguments_path, "rb").read())
 
     # Note that we're creating the client in a synchronous context, but it will be running in a separate thread.
     # This is good because if the function is long running then we the client can still send heartbeats
@@ -916,11 +595,9 @@ if __name__ == "__main__":
     client = Client.from_env()
 
     try:
-        with proxy_tunnel(container_args.proxy_info):
-            try:
-                main(container_args, client)
-            except UserException:
-                logger.info("User exception caught, exiting")
+        main(container_args, client)
+    except UserException:
+        logger.info("User exception caught, exiting")
     except KeyboardInterrupt:
         logger.debug("Container: interrupted")
 
@@ -928,7 +605,7 @@ if __name__ == "__main__":
     # from shutting down. The sleep(0) here is needed for finished ThreadPoolExecutor resources to
     # shut down without triggering this warning (e.g., `@wsgi_app()`).
     time.sleep(0)
-    lingering_threads: List[threading.Thread] = []
+    lingering_threads: list[threading.Thread] = []
     for thread in threading.enumerate():
         current_thread = threading.get_ident()
         if thread.ident is not None and thread.ident != current_thread and not thread.daemon and thread.is_alive():

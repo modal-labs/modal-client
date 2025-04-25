@@ -35,10 +35,8 @@ from concurrent.futures import ThreadPoolExecutor
 from types import TracebackType
 from typing import (
     Any,
-    Awaitable,
     Callable,
     Dict,
-    Iterable,
     List,
     Literal,
     Optional,
@@ -48,6 +46,7 @@ from typing import (
     TypedDict,
     Union,
 )
+from collections.abc import Awaitable, Iterable
 
 
 ## BEGIN a2wsgi/asgi_typing.py
@@ -73,11 +72,11 @@ class HTTPScope(TypedDict):
     raw_path: NotRequired[bytes]
     query_string: bytes
     root_path: str
-    headers: Iterable[Tuple[bytes, bytes]]
-    client: NotRequired[Tuple[str, int]]
-    server: NotRequired[Tuple[str, Optional[int]]]
-    state: NotRequired[Dict[str, Any]]
-    extensions: NotRequired[Dict[str, Dict[object, object]]]
+    headers: Iterable[tuple[bytes, bytes]]
+    client: NotRequired[tuple[str, int]]
+    server: NotRequired[tuple[str, Optional[int]]]
+    state: NotRequired[dict[str, Any]]
+    extensions: NotRequired[dict[str, dict[object, object]]]
 
 
 class WebSocketScope(TypedDict):
@@ -89,18 +88,18 @@ class WebSocketScope(TypedDict):
     raw_path: bytes
     query_string: bytes
     root_path: str
-    headers: Iterable[Tuple[bytes, bytes]]
-    client: NotRequired[Tuple[str, int]]
-    server: NotRequired[Tuple[str, Optional[int]]]
+    headers: Iterable[tuple[bytes, bytes]]
+    client: NotRequired[tuple[str, int]]
+    server: NotRequired[tuple[str, Optional[int]]]
     subprotocols: Iterable[str]
-    state: NotRequired[Dict[str, Any]]
-    extensions: NotRequired[Dict[str, Dict[object, object]]]
+    state: NotRequired[dict[str, Any]]
+    extensions: NotRequired[dict[str, dict[object, object]]]
 
 
 class LifespanScope(TypedDict):
     type: Literal["lifespan"]
     asgi: ASGIVersions
-    state: NotRequired[Dict[str, Any]]
+    state: NotRequired[dict[str, Any]]
 
 
 WWWScope = Union[HTTPScope, WebSocketScope]
@@ -116,7 +115,7 @@ class HTTPRequestEvent(TypedDict):
 class HTTPResponseStartEvent(TypedDict):
     type: Literal["http.response.start"]
     status: int
-    headers: NotRequired[Iterable[Tuple[bytes, bytes]]]
+    headers: NotRequired[Iterable[tuple[bytes, bytes]]]
     trailers: NotRequired[bool]
 
 
@@ -137,7 +136,7 @@ class WebSocketConnectEvent(TypedDict):
 class WebSocketAcceptEvent(TypedDict):
     type: Literal["websocket.accept"]
     subprotocol: NotRequired[str]
-    headers: NotRequired[Iterable[Tuple[bytes, bytes]]]
+    headers: NotRequired[Iterable[tuple[bytes, bytes]]]
 
 
 class WebSocketReceiveEvent(TypedDict):
@@ -223,56 +222,47 @@ ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 
 ## BEGIN a2wsgi/wsgi_typing.py
 
-CGIRequiredDefined = TypedDict(
-    "CGIRequiredDefined",
-    {
-        # The HTTP request method, such as GET or POST. This cannot ever be an
-        # empty string, and so is always required.
-        "REQUEST_METHOD": str,
-        # When HTTP_HOST is not set, these variables can be combined to determine
-        # a default.
-        # SERVER_NAME and SERVER_PORT are required strings and must never be empty.
-        "SERVER_NAME": str,
-        "SERVER_PORT": str,
-        # The version of the protocol the client used to send the request.
-        # Typically this will be something like "HTTP/1.0" or "HTTP/1.1" and
-        # may be used by the application to determine how to treat any HTTP
-        # request headers. (This variable should probably be called REQUEST_PROTOCOL,
-        # since it denotes the protocol used in the request, and is not necessarily
-        # the protocol that will be used in the server's response. However, for
-        # compatibility with CGI we have to keep the existing name.)
-        "SERVER_PROTOCOL": str,
-    },
-)
+class CGIRequiredDefined(TypedDict):
+    # The HTTP request method, such as GET or POST. This cannot ever be an
+    # empty string, and so is always required.
+    REQUEST_METHOD: str
+    # When HTTP_HOST is not set, these variables can be combined to determine
+    # a default.
+    # SERVER_NAME and SERVER_PORT are required strings and must never be empty.
+    SERVER_NAME: str
+    SERVER_PORT: str
+    # The version of the protocol the client used to send the request.
+    # Typically this will be something like "HTTP/1.0" or "HTTP/1.1" and
+    # may be used by the application to determine how to treat any HTTP
+    # request headers. (This variable should probably be called REQUEST_PROTOCOL,
+    # since it denotes the protocol used in the request, and is not necessarily
+    # the protocol that will be used in the server's response. However, for
+    # compatibility with CGI we have to keep the existing name.)
+    SERVER_PROTOCOL: str
 
-CGIOptionalDefined = TypedDict(
-    "CGIOptionalDefined",
-    {
-        "REQUEST_URI": str,
-        "REMOTE_ADDR": str,
-        "REMOTE_PORT": str,
-        # The initial portion of the request URL’s “path” that corresponds to the
-        # application object, so that the application knows its virtual “location”.
-        # This may be an empty string, if the application corresponds to the “root”
-        # of the server.
-        "SCRIPT_NAME": str,
-        # The remainder of the request URL’s “path”, designating the virtual
-        # “location” of the request’s target within the application. This may be an
-        # empty string, if the request URL targets the application root and does
-        # not have a trailing slash.
-        "PATH_INFO": str,
-        # The portion of the request URL that follows the “?”, if any. May be empty
-        # or absent.
-        "QUERY_STRING": str,
-        # The contents of any Content-Type fields in the HTTP request. May be empty
-        # or absent.
-        "CONTENT_TYPE": str,
-        # The contents of any Content-Length fields in the HTTP request. May be empty
-        # or absent.
-        "CONTENT_LENGTH": str,
-    },
-    total=False,
-)
+class CGIOptionalDefined(TypedDict, total=False):
+    REQUEST_URI: str
+    REMOTE_ADDR: str
+    REMOTE_PORT: str
+    # The initial portion of the request URL’s “path” that corresponds to the
+    # application object, so that the application knows its virtual “location”.
+    # This may be an empty string, if the application corresponds to the “root”
+    # of the server.
+    SCRIPT_NAME: str
+    # The remainder of the request URL’s “path”, designating the virtual
+    # “location” of the request’s target within the application. This may be an
+    # empty string, if the request URL targets the application root and does
+    # not have a trailing slash.
+    PATH_INFO: str
+    # The portion of the request URL that follows the “?”, if any. May be empty
+    # or absent.
+    QUERY_STRING: str
+    # The contents of any Content-Type fields in the HTTP request. May be empty
+    # or absent.
+    CONTENT_TYPE: str
+    # The contents of any Content-Length fields in the HTTP request. May be empty
+    # or absent.
+    CONTENT_LENGTH: str
 
 
 class InputStream(Protocol):
@@ -308,7 +298,7 @@ class InputStream(Protocol):
         """
         raise NotImplementedError
 
-    def readlines(self, hint: int = -1, /) -> List[bytes]:
+    def readlines(self, hint: int = -1, /) -> list[bytes]:
         """
         Note that the hint argument to readlines() is optional for both caller and
         implementer. The application is free not to supply it, and the server or gateway
@@ -349,14 +339,14 @@ class ErrorStream(Protocol):
     def write(self, s: str, /) -> Any:
         raise NotImplementedError
 
-    def writelines(self, seq: List[str], /) -> Any:
+    def writelines(self, seq: list[str], /) -> Any:
         raise NotImplementedError
 
 
 WSGIDefined = TypedDict(
     "WSGIDefined",
     {
-        "wsgi.version": Tuple[int, int],  # e.g. (1, 0)
+        "wsgi.version": tuple[int, int],  # e.g. (1, 0)
         "wsgi.url_scheme": str,  # e.g. "http" or "https"
         "wsgi.input": InputStream,
         "wsgi.errors": ErrorStream,
@@ -381,7 +371,7 @@ class Environ(CGIRequiredDefined, CGIOptionalDefined, WSGIDefined):
     """
 
 
-ExceptionInfo = Tuple[Type[BaseException], BaseException, Optional[TracebackType]]
+ExceptionInfo = tuple[type[BaseException], BaseException, Optional[TracebackType]]
 
 # https://peps.python.org/pep-3333/#the-write-callable
 WriteCallable = Callable[[bytes], None]
@@ -391,7 +381,7 @@ class StartResponse(Protocol):
     def __call__(
         self,
         status: str,
-        response_headers: List[Tuple[str, str]],
+        response_headers: list[tuple[str, str]],
         exc_info: Optional[ExceptionInfo] = None,
         /,
     ) -> WriteCallable:
@@ -460,7 +450,7 @@ class Body:
         self.buffer.clear()
         return result
 
-    def readlines(self, hint: int = -1) -> typing.List[bytes]:
+    def readlines(self, hint: int = -1) -> list[bytes]:
         if not self.has_more:
             return []
         if hint == -1:
@@ -626,7 +616,7 @@ class WSGIResponder:
     def start_response(
         self,
         status: str,
-        response_headers: typing.List[typing.Tuple[str, str]],
+        response_headers: list[tuple[str, str]],
         exc_info: typing.Optional[ExceptionInfo] = None,
     ) -> WriteCallable:
         self.exc_info = exc_info

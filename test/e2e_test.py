@@ -3,10 +3,9 @@ import os
 import pathlib
 import subprocess
 import sys
-from typing import Tuple
 
 
-def _cli(args, server_url, credentials, extra_env={}, check=True) -> Tuple[int, str, str]:
+def _cli(args, server_url, credentials, extra_env={}, check=True) -> tuple[int, str, str]:
     lib_dir = pathlib.Path(__file__).parent.parent
     args = [sys.executable] + args
     token_id, token_secret = credentials
@@ -18,7 +17,7 @@ def _cli(args, server_url, credentials, extra_env={}, check=True) -> Tuple[int, 
         "PYTHONUTF8": "1",  # For windows
         **extra_env,
     }
-    ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    ret = subprocess.run(args, cwd=lib_dir, env=env, capture_output=True)
 
     stdout = ret.stdout.decode()
     stderr = ret.stderr.decode()

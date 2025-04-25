@@ -7,13 +7,13 @@ Modal, with random seeds, and it supports oneofs, and Protobuf v4.
 
 import string
 from random import Random
-from typing import Any, Callable, Dict, Optional, Type, TypeVar
+from typing import Any, Callable, Optional, TypeVar, Union
 
 from google.protobuf.descriptor import Descriptor, FieldDescriptor
 
 T = TypeVar("T")
 
-_FIELD_RANDOM_GENERATOR: Dict[int, Callable[[Random], Any]] = {
+_FIELD_RANDOM_GENERATOR: dict[int, Callable[[Random], Any]] = {
     FieldDescriptor.TYPE_DOUBLE: lambda rand: rand.normalvariate(0, 1),
     FieldDescriptor.TYPE_FLOAT: lambda rand: rand.normalvariate(0, 1),
     FieldDescriptor.TYPE_INT32: lambda rand: int.from_bytes(rand.randbytes(4), "little", signed=True),
@@ -38,9 +38,9 @@ def _fill(msg, desc: Descriptor, rand: Random) -> None:
     field: FieldDescriptor
     oneof_fields: set[str] = set()
     for oneof in desc.oneofs:
-        field = rand.choice(list(oneof.fields) + [None])
-        if field is not None:
-            oneof_fields.add(field.name)
+        oneof_field: Union[FieldDescriptor, None] = rand.choice(list(oneof.fields) + [None])
+        if oneof_field is not None:
+            oneof_fields.add(oneof_field.name)
     for field in desc.fields:
         if field.containing_oneof is not None and field.name not in oneof_fields:
             continue
@@ -71,7 +71,7 @@ def _fill(msg, desc: Descriptor, rand: Random) -> None:
                 setattr(msg, field.name, generator(rand))
 
 
-def rand_pb(proto: Type[T], rand: Optional[Random] = None) -> T:
+def rand_pb(proto: type[T], rand: Optional[Random] = None) -> T:
     """Generate a pseudorandom protobuf message.
 
     ```python notest

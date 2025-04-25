@@ -1,11 +1,15 @@
 # Copyright Modal Labs 2023
+import asyncio
+import contextlib
 import pytest
+import time
 import typing
+from unittest import mock
 
 import modal
 from modal.client import Client
 from modal.exception import AuthError
-from modal.runner import run_app
+from modal.runner import deploy_app, run_app
 from modal_proto import api_pb2
 
 T = typing.TypeVar("T")
@@ -22,6 +26,24 @@ def test_run_app(servicer, client):
     ctx.pop_request("AppClientDisconnect")
 
 
+def test_run_app_shutdown_cleanliness(servicer, client, caplog):
+    dummy_app = modal.App()
+
+    heartbeat_interval_secs = 1.0
+
+    # Introduce jittery response delay to catch race conditions between
+    # concurrently executing RPCs.
+    servicer.set_resp_jitter(heartbeat_interval_secs)
+
+    with mock.patch("modal.runner.HEARTBEAT_INTERVAL", heartbeat_interval_secs):
+        with modal.enable_output(), run_app(dummy_app, client=client):
+            time.sleep(heartbeat_interval_secs)
+
+    # Verify no ERROR logs were emitted, during shutdown or otherwise.
+    error_logs = [record for record in caplog.records if record.levelname == "ERROR"]
+    assert len(error_logs) == 0, f"Found unexpected error logs: {error_logs}"
+
+
 def test_run_app_unauthenticated(servicer):
     dummy_app = modal.App()
     with Client.anonymous(servicer.client_addr) as client:
@@ -30,8 +52,7 @@ def test_run_app_unauthenticated(servicer):
                 pass
 
 
-def dummy():
-    ...
+def dummy(): ...
 
 
 def test_run_app_profile_env_with_refs(servicer, client, monkeypatch):
@@ -83,3 +104,42 @@ def test_run_app_custom_env_with_refs(servicer, client, monkeypatch):
 
     secret_get_or_create_2 = ctx.pop_request("SecretGetOrCreate")
     assert secret_get_or_create_2.environment_name == "third"
+
+
+def test_deploy_without_rich(servicer, client, no_rich):
+    app = modal.App("dummy-app")
+    app.function()(dummy)
+    deploy_app(app, client=client)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("build_validation", ["error", "warn", "ignore"])
+async def test_mid_build_modifications(servicer, client, tmp_path, monkeypatch, build_validation):
+    monkeypatch.setenv("MODAL_BUILD_VALIDATION", build_validation)
+
+    (large_dir := tmp_path / "large_files").mkdir()
+    for i in range(512 + 1):  # Equivalent to file upload concurrency
+        (large_dir / f"{i:02d}.txt").write_bytes(f"large {i:02d}".encode())
+
+    image = modal.Image.debian_slim().add_local_dir(large_dir, "/root/large_files")
+
+    app = modal.App(image=image, include_source=False)
+    app.function()(dummy)
+
+    async def change_file_after_delay():
+        await asyncio.sleep(0.2)  # "Uploading" large should take 2 seconds; see mock MountPutFile
+        for f in large_dir.iterdir():
+            f.touch()
+
+    handler_assertion: contextlib.AbstractContextManager
+    if build_validation == "error":
+        handler_assertion = pytest.raises(modal.exception.ExecutionError, match="modified during build")
+    elif build_validation == "warn":
+        handler_assertion = pytest.warns(UserWarning, match="modified during build")
+    else:
+        handler_assertion = contextlib.nullcontext()
+
+    asyncio.create_task(change_file_after_delay())
+    with handler_assertion:
+        async with app.run.aio(client=client):
+            ...

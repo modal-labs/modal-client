@@ -1,30 +1,35 @@
 # Copyright Modal Labs 2022
 import asyncio
 import contextlib
+import pytest
+import threading
 import time
-from typing import List, Tuple
 
+import modal
 from modal import (
     App,
     Sandbox,
     asgi_app,
     batched,
     build,
+    concurrent,
     current_function_call_id,
     current_input_id,
     enter,
     exit,
+    fastapi_endpoint,
     is_local,
     method,
-    web_endpoint,
+    web_server,
     wsgi_app,
 )
-from modal.exception import deprecation_warning
+from modal._utils.deprecation import deprecation_warning
+from modal.exception import DeprecationError
 from modal.experimental import get_local_input_concurrency, set_local_input_concurrency
 
 SLEEP_DELAY = 0.1
 
-app = App()
+app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @app.function()
@@ -98,7 +103,7 @@ def deprecated_function(x):
 
 
 @app.function()
-@web_endpoint()
+@fastapi_endpoint()
 def webhook(arg="world"):
     return {"hello": arg}
 
@@ -110,7 +115,7 @@ def stream():
 
 
 @app.function()
-@web_endpoint()
+@fastapi_endpoint()
 def webhook_streaming():
     from fastapi.responses import StreamingResponse
 
@@ -124,7 +129,7 @@ async def stream_async():
 
 
 @app.function()
-@web_endpoint()
+@fastapi_endpoint()
 async def webhook_streaming_async():
     from fastapi.responses import StreamingResponse
 
@@ -159,7 +164,15 @@ def fastapi_app():
     return web_app
 
 
-lifespan_global_asgi_app_func: List[str] = []
+@app.function()
+@web_server(8765, startup_timeout=1)
+def non_blocking_web_server():
+    import subprocess
+
+    subprocess.Popen(["python", "-m", "http.server", "-b", "0.0.0.0", "8765"])
+
+
+lifespan_global_asgi_app_func: list[str] = []
 
 
 @app.function()
@@ -229,12 +242,14 @@ def fastapi_app_with_lifespan_failing_shutdown():
     return web_app
 
 
-lifespan_global_asgi_app_cls: List[str] = []
+lifespan_global_asgi_app_cls: list[str] = []
 
 
-@app.cls(container_idle_timeout=300, concurrency_limit=1, allow_concurrent_inputs=100)
+@app.cls(scaledown_window=300, max_containers=1)
+@concurrent(max_inputs=100)
 class fastapi_class_multiple_asgi_apps_lifespans:
-    def __init__(self):
+    @modal.enter()
+    def enter_assertion(self):
         assert len(lifespan_global_asgi_app_cls) == 0
 
     @asgi_app()
@@ -280,12 +295,14 @@ class fastapi_class_multiple_asgi_apps_lifespans:
         lifespan_global_asgi_app_cls.append("exit")
 
 
-lifespan_global_asgi_app_cls_fail: List[str] = []
+lifespan_global_asgi_app_cls_fail: list[str] = []
 
 
-@app.cls(container_idle_timeout=300, concurrency_limit=1, allow_concurrent_inputs=100)
+@app.cls(scaledown_window=300, max_containers=1)
+@concurrent(max_inputs=100)
 class fastapi_class_lifespan_shutdown_failure:
-    def __init__(self):
+    @modal.enter()
+    def enter_assertion(self):
         assert len(lifespan_global_asgi_app_cls_fail) == 0
 
     @asgi_app()
@@ -310,6 +327,26 @@ class fastapi_class_lifespan_shutdown_failure:
     @exit()
     def exit(self):
         lifespan_global_asgi_app_cls_fail.append("lifecycle exit")
+
+
+@app.function()
+@asgi_app()
+def asgi_app_with_slow_lifespan_wind_down():
+    async def _asgi_app(scope, receive, send):
+        if scope["type"] == "lifespan":
+            while True:
+                message = await receive()
+                if message["type"] == "lifespan.startup":
+                    await send({"type": "lifespan.startup.complete"})
+                elif message["type"] == "lifespan.shutdown":
+                    await send({"type": "lifespan.shutdown.complete"})
+                await asyncio.sleep(1)  # take some time to shut down - this should either be cancelled or awaited
+        else:
+            # dummy response to other requests
+            await send({"type": "http.response.start", "status": 200})
+            await send({"type": "http.response.body", "body": b'{"some_result":"foo"}'})
+
+    return _asgi_app
 
 
 @app.function()
@@ -360,68 +397,18 @@ def basic_wsgi_app():
 
 
 @app.cls()
-class Cls:
-    def __init__(self):
-        self._k = 11
-
-    @enter()
-    def enter(self):
-        self._k += 100
-
-    @method()
-    def f(self, x):
-        return self._k * x
-
-    @web_endpoint()
-    def web(self, arg):
-        return {"ret": arg * self._k}
-
-    @asgi_app()
-    def asgi_web(self):
-        from fastapi import FastAPI
-
-        k_at_construction = self._k  # expected to be 111
-        hydrated_at_contruction = square.is_hydrated
-        web_app = FastAPI()
-
-        @web_app.get("/")
-        def k(arg: str):
-            return {
-                "at_construction": k_at_construction,
-                "at_runtime": self._k,
-                "arg": arg,
-                "other_hydrated": hydrated_at_contruction,
-            }
-
-        return web_app
-
-    def _generator(self, x):
-        yield x**3
-
-    @method(is_generator=True)
-    def generator(self, x):
-        return self._generator(x)
-
-
-@app.cls()
 class LifecycleCls:
     """Ensures that {sync,async} lifecycle hooks work with {sync,async} functions."""
 
-    def __init__(
-        self,
-        print_at_exit: bool = False,
-        sync_enter_duration=0,
-        async_enter_duration=0,
-        sync_exit_duration=0,
-        async_exit_duration=0,
-    ):
-        self.events: List[str] = []
-        self.sync_enter_duration = sync_enter_duration
-        self.async_enter_duration = async_enter_duration
-        self.sync_exit_duration = sync_exit_duration
-        self.async_exit_duration = async_exit_duration
-        if print_at_exit:
-            self._print_at_exit()
+    print_at_exit: int = modal.parameter(default=0)
+    sync_enter_duration: int = modal.parameter(default=0)
+    async_enter_duration: int = modal.parameter(default=0)
+    sync_exit_duration: int = modal.parameter(default=0)
+    async_exit_duration: int = modal.parameter(default=0)
+
+    @property
+    def events(self) -> list[str]:
+        return self.__dict__.setdefault("_events", [])
 
     def _print_at_exit(self):
         import atexit
@@ -430,6 +417,8 @@ class LifecycleCls:
 
     @enter()
     def enter_sync(self):
+        if self.print_at_exit:
+            self._print_at_exit()
         self.events.append("enter_sync")
         time.sleep(self.sync_enter_duration)
 
@@ -480,40 +469,14 @@ class LifecycleCls:
 
 
 @app.function()
-def check_sibling_hydration(x):
-    assert square.is_hydrated
-    assert Cls().f.is_hydrated
-    assert Cls().web.is_hydrated
-    assert Cls().web.web_url
-    assert Cls().generator.is_hydrated
-    assert Cls().generator.is_generator
-    assert fastapi_app.is_hydrated
-    assert fun_returning_gen.is_hydrated
-    assert fun_returning_gen.is_generator
-
-
-@app.cls()
-class ParamCls:
-    def __init__(self, x: int, y: str) -> None:
-        self.x = x
-        self.y = y
-
-    @method()
-    def f(self, z: int):
-        return f"{self.x} {self.y} {z}"
-
-    @method()
-    def g(self, z):
-        return self.f.local(z)
-
-
-@app.function(allow_concurrent_inputs=5)
+@concurrent(max_inputs=5)
 def sleep_700_sync(x):
     time.sleep(0.7)
     return x * x, current_input_id(), current_function_call_id()
 
 
-@app.function(allow_concurrent_inputs=5)
+@app.function()
+@concurrent(max_inputs=5)
 async def sleep_700_async(x):
     await asyncio.sleep(0.7)
     return x * x, current_input_id(), current_function_call_id()
@@ -521,7 +484,7 @@ async def sleep_700_async(x):
 
 @app.function()
 @batched(max_batch_size=4, wait_ms=500)
-def batch_function_sync(x: Tuple[int], y: Tuple[int]):
+def batch_function_sync(x: tuple[int], y: tuple[int]):
     outputs = []
     for x_i, y_i in zip(x, y):
         outputs.append(x_i / y_i)
@@ -529,20 +492,26 @@ def batch_function_sync(x: Tuple[int], y: Tuple[int]):
 
 
 @app.function()
+@batched(max_batch_size=500, wait_ms=500)
+def batch_function_sync_large_batch(x: tuple[int], y: tuple[int]):
+    return [x_i / y_i for x_i, y_i in zip(x, y)]
+
+
+@app.function()
 @batched(max_batch_size=4, wait_ms=500)
-def batch_function_outputs_not_list(x: Tuple[int], y: Tuple[int]):
+def batch_function_outputs_not_list(x: tuple[int], y: tuple[int]):
     return str(x)
 
 
 @app.function()
 @batched(max_batch_size=4, wait_ms=500)
-def batch_function_outputs_wrong_len(x: Tuple[int], y: Tuple[int]):
+def batch_function_outputs_wrong_len(x: tuple[int], y: tuple[int]):
     return list(x) + [0]
 
 
 @app.function()
 @batched(max_batch_size=4, wait_ms=500)
-async def batch_function_async(x: Tuple[int], y: Tuple[int]):
+async def batch_function_async(x: tuple[int], y: tuple[int]):
     outputs = []
     for x_i, y_i in zip(x, y):
         outputs.append(x_i / y_i)
@@ -578,44 +547,46 @@ def cube(x):
     return square.remote(x) * x
 
 
-@app.function()
-def function_calling_method(x, y, z):
-    obj = ParamCls(x, y)
-    return obj.f.remote(z)
+with pytest.warns(DeprecationError, match="@modal.build"):
 
+    @app.cls()
+    class BuildCls:
+        @property
+        def _k(self):
+            return self.__dict__.setdefault("__k", 1)
 
-@app.cls()
-class BuildCls:
-    def __init__(self):
-        self._k = 1
+        @_k.setter
+        def _k(self, v):
+            self.__dict__["__k"] = v
 
-    @enter()
-    def enter1(self):
-        self._k += 10
+        @enter()
+        def enter1(self):
+            self._k += 10
 
-    @build()
-    def build1(self):
-        self._k += 100
-        return self._k
+        @build()
+        def build1(self):
+            self._k += 100
+            return self._k
 
-    @build()
-    def build2(self):
-        self._k += 1000
-        return self._k
+        @build()
+        def build2(self):
+            self._k += 1000
+            return self._k
 
-    @exit()
-    def exit1(self):
-        raise Exception("exit called!")
+        @exit()
+        def exit1(self):
+            raise Exception("exit called!")
 
-    @method()
-    def f(self, x):
-        return self._k * x
+        @method()
+        def f(self, x):
+            return self._k * x
 
 
 @app.cls(enable_memory_snapshot=True)
 class SnapshottingCls:
-    def __init__(self):
-        self._vals = []
+    @property
+    def _vals(self) -> list[str]:
+        return self.__dict__.setdefault("__vals", [])
 
     @enter(snap=True)
     def enter1(self):
@@ -679,3 +650,41 @@ def set_input_concurrency(start: float):
     set_local_input_concurrency(3)
     time.sleep(1)
     return time.time() - start
+
+
+@app.function()
+def check_container_app():
+    # The container app should be associated with the app object
+    assert App._get_container_app() == app
+
+
+@app.function()
+def get_running_loop(x):
+    return asyncio.get_running_loop()
+
+
+@app.function()
+def is_main_thread_sync(x):
+    return threading.main_thread() == threading.current_thread()
+
+
+@app.function()
+async def is_main_thread_async(x):
+    return threading.main_thread() == threading.current_thread()
+
+
+_import_thread_is_main_thread = threading.main_thread() == threading.current_thread()
+
+
+@app.function()
+def import_thread_is_main_thread(x):
+    return _import_thread_is_main_thread
+
+
+class CustomException(Exception):
+    pass
+
+
+@app.function()
+def raises_custom_exception(x):
+    raise CustomException("Failure!")

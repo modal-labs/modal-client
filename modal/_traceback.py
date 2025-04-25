@@ -1,22 +1,27 @@
 # Copyright Modal Labs 2022
-"""Helper functions related to operating on traceback objects.
+"""Helper functions related to operating on exceptions, warnings, and traceback objects.
 
 Functions related to *displaying* tracebacks should go in `modal/cli/_traceback.py`
 so that Rich is not a dependency of the container Client.
 """
+
 import re
 import sys
 import traceback
+import warnings
 from types import TracebackType
-from typing import Any, Dict, Optional, Tuple, Type
+from typing import Any, Iterable, Optional
+
+from modal_proto import api_pb2
 
 from ._vendor.tblib import Traceback as TBLibTraceback
+from .exception import ServerWarning
 
-TBDictType = Dict[str, Any]
-LineCacheType = Dict[Tuple[str, str], str]
+TBDictType = dict[str, Any]
+LineCacheType = dict[tuple[str, str], str]
 
 
-def extract_traceback(exc: BaseException, task_id: str) -> Tuple[TBDictType, LineCacheType]:
+def extract_traceback(exc: BaseException, task_id: str) -> tuple[TBDictType, LineCacheType]:
     """Given an exception, extract a serializable traceback (with task ID markers included),
     and a line cache that maps (filename, lineno) to line contents. The latter is used to show
     a helpful traceback to the user, even if they don't have packages installed locally that
@@ -69,11 +74,15 @@ def append_modal_tb(exc: BaseException, tb_dict: TBDictType, line_cache: LineCac
 
 def reduce_traceback_to_user_code(tb: Optional[TracebackType], user_source: str) -> TracebackType:
     """Return a traceback that does not contain modal entrypoint or synchronicity frames."""
-    # Step forward all the way through the traceback and drop any synchronicity frames
+
+    # Step forward all the way through the traceback and drop any "Modal support" frames
+    def skip_frame(filename: str) -> bool:
+        return "/site-packages/synchronicity/" in filename or "modal/_utils/deprecation" in filename
+
     tb_root = tb
     while tb is not None:
         while tb.tb_next is not None:
-            if "/site-packages/synchronicity/" in tb.tb_next.tb_frame.f_code.co_filename:
+            if skip_frame(tb.tb_next.tb_frame.f_code.co_filename):
                 tb.tb_next = tb.tb_next.tb_next
             else:
                 break
@@ -103,9 +112,18 @@ def traceback_contains_remote_call(tb: Optional[TracebackType]) -> bool:
     return False
 
 
-def print_exception(exc: Optional[Type[BaseException]], value: Optional[BaseException], tb: Optional[TracebackType]):
+def print_exception(exc: Optional[type[BaseException]], value: Optional[BaseException], tb: Optional[TracebackType]):
     """Add backwards compatibility for printing exceptions with "notes" for Python<3.11."""
     traceback.print_exception(exc, value, tb)
     if sys.version_info < (3, 11) and value is not None:
         notes = getattr(value, "__notes__", [])
         print(*notes, sep="\n", file=sys.stderr)
+
+
+def print_server_warnings(server_warnings: Iterable[api_pb2.Warning]):
+    """Issue a warning originating from the server with empty metadata about local origin.
+
+    When using the Modal CLI, these warnings should get caught and coerced into Rich panels.
+    """
+    for warning in server_warnings:
+        warnings.warn_explicit(warning.message, ServerWarning, "<modal-server>", 0)

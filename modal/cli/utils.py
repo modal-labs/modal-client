@@ -1,8 +1,9 @@
 # Copyright Modal Labs 2022
 import asyncio
+from collections.abc import Sequence
 from datetime import datetime
 from json import dumps
-from typing import Optional, Sequence, Union
+from typing import Optional, Union
 
 import typer
 from click import UsageError
@@ -74,6 +75,10 @@ def timestamp_to_local(ts: float, isotz: bool = True) -> str:
 
 def _plain(text: Union[Text, str]) -> str:
     return text.plain if isinstance(text, Text) else text
+
+
+def is_tty() -> bool:
+    return Console().is_terminal
 
 
 def display_table(

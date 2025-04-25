@@ -1,43 +1,46 @@
-# Copyright Modal Labs 2022
+# Copyright Modal Labs 2025
+"""Internal module for building and running Apps."""
+# Note: While this is mostly internal code, the `modal.runner.deploy_app` function was
+# the only way to programmatically deploy Apps for some time, so users have reached into here.
+# We may eventually deprecate it from the public API, but for now we should keep that in mind.
+
 import asyncio
 import dataclasses
 import os
 import time
 import typing
+import warnings
+from collections.abc import AsyncGenerator
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, Any, AsyncGenerator, Callable, Dict, List, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Optional, TypeVar
 
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
+import modal._runtime.execution_context
 import modal_proto.api_pb2
 from modal_proto import api_pb2
 
-from ._output import get_app_logs_loop, step_completed, step_progress
+from ._functions import _Function
+from ._object import _get_environment_name, _Object
 from ._pty import get_pty_info
 from ._resolver import Resolver
-from ._traceback import traceback_contains_remote_call
+from ._traceback import print_server_warnings, traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, gather_cancel_on_exc, synchronize_api
+from ._utils.deprecation import deprecation_error
+from ._utils.git_utils import get_git_commit_info
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name, is_valid_tag
 from .client import HEARTBEAT_INTERVAL, HEARTBEAT_TIMEOUT, _Client
 from .cls import _Cls
 from .config import config, logger
 from .environments import _get_environment_cached
-from .exception import (
-    InteractiveTimeoutError,
-    InvalidError,
-    RemoteError,
-    _CliUserExecutionError,
-    deprecation_error,
-)
-from .execution_context import is_local
-from .functions import _Function
-from .object import _get_environment_name, _Object
+from .exception import InteractiveTimeoutError, InvalidError, RemoteError, _CliUserExecutionError
 from .output import _get_output_manager, enable_output
-from .running_app import RunningApp
+from .running_app import RunningApp, running_app_from_layout
 from .sandbox import _Sandbox
 from .secret import _Secret
+from .stream_type import StreamType
 
 if TYPE_CHECKING:
     from .app import _App
@@ -58,15 +61,18 @@ async def _heartbeat(client: _Client, app_id: str) -> None:
 
 async def _init_local_app_existing(client: _Client, existing_app_id: str, environment_name: str) -> RunningApp:
     # Get all the objects first
-    obj_req = api_pb2.AppGetObjectsRequest(app_id=existing_app_id)
+    obj_req = api_pb2.AppGetLayoutRequest(app_id=existing_app_id)
     obj_resp, _ = await gather_cancel_on_exc(
-        retry_transient_errors(client.stub.AppGetObjects, obj_req),
+        retry_transient_errors(client.stub.AppGetLayout, obj_req),
         # Cache the environment associated with the app now as we will use it later
         _get_environment_cached(environment_name, client),
     )
     app_page_url = f"https://modal.com/apps/{existing_app_id}"  # TODO (elias): this should come from the backend
-    object_ids = {item.tag: item.object.object_id for item in obj_resp.items}
-    return RunningApp(existing_app_id, app_page_url=app_page_url, tag_to_object_id=object_ids, client=client)
+    return running_app_from_layout(
+        existing_app_id,
+        obj_resp.app_layout,
+        app_page_url=app_page_url,
+    )
 
 
 async def _init_local_app_new(
@@ -89,10 +95,8 @@ async def _init_local_app_new(
     logger.debug(f"Created new app with id {app_resp.app_id}")
     return RunningApp(
         app_resp.app_id,
-        client=client,
         app_page_url=app_resp.app_page_url,
         app_logs_url=app_resp.app_logs_url,
-        environment_name=environment_name,
         interactive=interactive,
     )
 
@@ -124,10 +128,12 @@ async def _init_local_app_from_name(
 async def _create_all_objects(
     client: _Client,
     running_app: RunningApp,
-    indexed_objects: Dict[str, _Object],
+    functions: dict[str, _Function],
+    classes: dict[str, _Cls],
     environment_name: str,
 ) -> None:
     """Create objects that have been defined but not created on the server."""
+    indexed_objects: dict[str, _Object] = {**functions, **classes}
     resolver = Resolver(
         client,
         environment_name=environment_name,
@@ -135,8 +141,9 @@ async def _create_all_objects(
     )
     with resolver.display():
         # Get current objects, and reset all objects
-        tag_to_object_id = running_app.tag_to_object_id
-        running_app.tag_to_object_id = {}
+        tag_to_object_id = {**running_app.function_ids, **running_app.class_ids}
+        running_app.function_ids = {}
+        running_app.class_ids = {}
 
         # Assign all objects
         for tag, obj in indexed_objects.items():
@@ -155,7 +162,7 @@ async def _create_all_objects(
             # this is to ensure that directly referenced functions from the global scope has
             # ids associated with them when they are serialized into other functions
             await resolver.preload(obj, existing_object_id)
-            if obj.object_id is not None:
+            if obj.is_hydrated:
                 tag_to_object_id[tag] = obj.object_id
 
         await TaskContext.gather(*(_preload(tag, obj) for tag, obj in indexed_objects.items()))
@@ -163,7 +170,12 @@ async def _create_all_objects(
         async def _load(tag, obj):
             existing_object_id = tag_to_object_id.get(tag)
             await resolver.load(obj, existing_object_id)
-            running_app.tag_to_object_id[tag] = obj.object_id
+            if _Function._is_id_type(obj.object_id):
+                running_app.function_ids[tag] = obj.object_id
+            elif _Cls._is_id_type(obj.object_id):
+                running_app.class_ids[tag] = obj.object_id
+            else:
+                raise RuntimeError(f"Unexpected object {obj.object_id}")
 
         await TaskContext.gather(*(_load(tag, obj) for tag, obj in indexed_objects.items()))
 
@@ -172,32 +184,27 @@ async def _publish_app(
     client: _Client,
     running_app: RunningApp,
     app_state: int,  # api_pb2.AppState.value
-    indexed_objects: Dict[str, _Object],
+    functions: dict[str, _Function],
+    classes: dict[str, _Cls],
     name: str = "",  # Only relevant for deployments
     tag: str = "",  # Only relevant for deployments
-) -> str:
+    commit_info: Optional[api_pb2.CommitInfo] = None,  # Git commit information
+) -> tuple[str, list[api_pb2.Warning]]:
     """Wrapper for AppPublish RPC."""
 
-    # Could simplify this function some changing the internal representation to use
-    # function_ids / class_ids rather than the current tag_to_object_id (i.e. "indexed_objects")
-    def filter_values(full_dict: Dict[str, V], condition: Callable[[V], bool]) -> Dict[str, V]:
-        return {k: v for k, v in full_dict.items() if condition(v)}
-
-    function_ids = filter_values(running_app.tag_to_object_id, _Function._is_id_type)
-    class_ids = filter_values(running_app.tag_to_object_id, _Cls._is_id_type)
-
-    function_objs = filter_values(indexed_objects, lambda v: v.object_id in function_ids.values())
-    definition_ids = {obj.object_id: obj._get_metadata().definition_id for obj in function_objs.values()}  # type: ignore
+    definition_ids = {obj.object_id: obj._get_metadata().definition_id for obj in functions.values()}  # type: ignore
 
     request = api_pb2.AppPublishRequest(
         app_id=running_app.app_id,
         name=name,
         deployment_tag=tag,
         app_state=app_state,  # type: ignore  : should be a api_pb2.AppState.value
-        function_ids=function_ids,
-        class_ids=class_ids,
+        function_ids=running_app.function_ids,
+        class_ids=running_app.class_ids,
         definition_ids=definition_ids,
+        commit_info=commit_info,
     )
+
     try:
         response = await retry_transient_errors(client.stub.AppPublish, request)
     except GRPCError as exc:
@@ -205,7 +212,8 @@ async def _publish_app(
             raise InvalidError(exc.message)
         raise
 
-    return response.url
+    print_server_warnings(response.server_warnings)
+    return response.url, response.server_warnings
 
 
 async def _disconnect(
@@ -263,12 +271,9 @@ async def _run_app(
     if environment_name is None:
         environment_name = typing.cast(str, config.get("environment"))
 
-    if not is_local():
-        raise InvalidError(
-            "Can not run an app from within a container."
-            " Are you calling app.run() directly?"
-            " Consider using the `modal run` shell command."
-        )
+    if modal._runtime.execution_context._is_currently_importing:
+        raise InvalidError("Can not run an app in global scope within a container")
+
     if app._running_app:
         raise InvalidError(
             "App is already running and can't be started again.\n"
@@ -289,6 +294,16 @@ async def _run_app(
         client = await _Client.from_env()
 
     app_state = api_pb2.APP_STATE_DETACHED if detach else api_pb2.APP_STATE_EPHEMERAL
+
+    output_mgr = _get_output_manager()
+    if interactive and output_mgr is None:
+        warnings.warn(
+            "Interactive mode is disabled because no output manager is active. "
+            "Use 'with modal.enable_output():' to enable interactive mode and see logs.",
+            stacklevel=2,
+        )
+        interactive = False
+
     running_app: RunningApp = await _init_local_app_new(
         client,
         app.description or "",
@@ -305,28 +320,34 @@ async def _run_app(
         def heartbeat():
             return _heartbeat(client, running_app.app_id)
 
-        tc.infinite_loop(heartbeat, sleep=HEARTBEAT_INTERVAL, log_exception=not detach)
+        heartbeat_loop = tc.infinite_loop(heartbeat, sleep=HEARTBEAT_INTERVAL, log_exception=not detach)
         logs_loop: Optional[asyncio.Task] = None
 
-        if output_mgr := _get_output_manager():
-            with output_mgr.make_live(step_progress("Initializing...")):
+        if output_mgr is not None:
+            # Defer import so this module is rich-safe
+            # TODO(michael): The get_app_logs_loop function is itself rich-safe aside from accepting an OutputManager
+            # as an argument, so with some refactoring we could avoid the need for this deferred import.
+            from modal._output import get_app_logs_loop
+
+            with output_mgr.make_live(output_mgr.step_progress("Initializing...")):
                 initialized_msg = (
                     f"Initialized. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
                 )
-                output_mgr.print(step_completed(initialized_msg))
+                output_mgr.print(output_mgr.step_completed(initialized_msg))
                 output_mgr.update_app_page_url(running_app.app_page_url or "ERROR:NO_APP_PAGE")
 
             # Start logs loop
+
             logs_loop = tc.create_task(
                 get_app_logs_loop(client, output_mgr, app_id=running_app.app_id, app_logs_url=running_app.app_logs_url)
             )
 
         try:
             # Create all members
-            await _create_all_objects(client, running_app, app._indexed_objects, environment_name)
+            await _create_all_objects(client, running_app, app._functions, app._classes, environment_name)
 
             # Publish the app
-            await _publish_app(client, running_app, app_state, app._indexed_objects)
+            await _publish_app(client, running_app, app_state, app._functions, app._classes)
         except asyncio.CancelledError as e:
             # this typically happens on sigint/ctrl-C during setup (the KeyboardInterrupt happens in the main thread)
             if output_mgr := _get_output_manager():
@@ -351,12 +372,13 @@ async def _run_app(
             else:
                 yield app
             # successful completion!
+            heartbeat_loop.cancel()
             await _status_based_disconnect(client, running_app.app_id, exc_info=None)
         except KeyboardInterrupt as e:
             # this happens only if sigint comes in during the yield block above
             if detach:
                 if output_mgr := _get_output_manager():
-                    output_mgr.print(step_completed("Shutting down Modal client."))
+                    output_mgr.print(output_mgr.step_completed("Shutting down Modal client."))
                     output_mgr.print(
                         "The detached app keeps running. You can track its progress at: "
                         f"[magenta]{running_app.app_page_url}[/magenta]"
@@ -379,7 +401,7 @@ async def _run_app(
 
                 if output_mgr:
                     output_mgr.print(
-                        step_completed(
+                        output_mgr.step_completed(
                             "App aborted. "
                             f"[grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
                         )
@@ -401,7 +423,7 @@ async def _run_app(
 
     if output_mgr := _get_output_manager():
         output_mgr.print(
-            step_completed(
+            output_mgr.step_completed(
                 f"App completed. [grey70]View run at [underline]{running_app.app_page_url}[/underline][/grey70]"
             )
         )
@@ -423,12 +445,13 @@ async def _serve_update(
         await _create_all_objects(
             client,
             running_app,
-            app._indexed_objects,
+            app._functions,
+            app._classes,
             environment_name,
         )
 
         # Publish the updated app
-        await _publish_app(client, running_app, api_pb2.APP_STATE_UNSPECIFIED, app._indexed_objects)
+        await _publish_app(client, running_app, api_pb2.APP_STATE_UNSPECIFIED, app._functions, app._classes)
 
         # Communicate to the parent process
         is_ready.set()
@@ -444,6 +467,7 @@ class DeployResult:
     app_id: str
     app_page_url: str
     app_logs_url: str
+    warnings: list[str]
 
 
 async def _deploy_app(
@@ -454,40 +478,22 @@ async def _deploy_app(
     environment_name: Optional[str] = None,
     tag: str = "",
 ) -> DeployResult:
-    """Deploy an app and export its objects persistently.
+    """Internal function for deploying an App.
 
-    Typically, using the command-line tool `modal deploy <module or script>`
-    should be used, instead of this method.
-
-    **Usage:**
-
-    ```python
-    if __name__ == "__main__":
-        deploy_app(app)
-    ```
-
-    Deployment has two primary purposes:
-
-    * Persists all of the objects in the app, allowing them to live past the
-      current app run. For schedules this enables headless "cron"-like
-      functionality where scheduled functions continue to be invoked after
-      the client has disconnected.
-    * Allows for certain kinds of these objects, _deployment objects_, to be
-      referred to and used by other apps.
+    Users should prefer the `modal deploy` CLI or the `App.deploy` method.
     """
     if environment_name is None:
         environment_name = typing.cast(str, config.get("environment"))
 
-    name = name or app.name
+    name = name or app.name or ""
     if not name:
         raise InvalidError(
-            "You need to either supply an explicit deployment name to the deploy command, "
-            "or have a name set on the app.\n"
+            "You need to either supply a deployment name or have a name set on the app.\n"
             "\n"
             "Examples:\n"
-            'app.deploy("some_name")\n\n'
+            'modal.runner.deploy_app(app, name="some_name")\n\n'
             "or\n"
-            'app = App("some-name")'
+            'app = modal.App("some-name")'
         )
     else:
         check_object_name(name, "App")
@@ -503,6 +509,9 @@ async def _deploy_app(
         client = await _Client.from_env()
 
     t0 = time.time()
+
+    # Get git information to track deployment history
+    commit_info_task = asyncio.create_task(get_git_commit_info())
 
     running_app: RunningApp = await _init_local_app_from_name(
         client, name, namespace, environment_name=environment_name
@@ -520,12 +529,26 @@ async def _deploy_app(
             await _create_all_objects(
                 client,
                 running_app,
-                app._indexed_objects,
+                app._functions,
+                app._classes,
                 environment_name=environment_name,
             )
 
-            app_url = await _publish_app(
-                client, running_app, api_pb2.APP_STATE_DEPLOYED, app._indexed_objects, name, tag
+            commit_info = None
+            try:
+                commit_info = await commit_info_task
+            except Exception as e:
+                logger.debug("Failed to get git commit info", exc_info=e)
+
+            app_url, warnings = await _publish_app(
+                client,
+                running_app,
+                api_pb2.APP_STATE_DEPLOYED,
+                app._functions,
+                app._classes,
+                name,
+                tag,
+                commit_info,
             )
         except Exception as e:
             # Note that AppClientDisconnect only stops the app if it's still initializing, and is a no-op otherwise.
@@ -534,16 +557,19 @@ async def _deploy_app(
 
     if output_mgr := _get_output_manager():
         t = time.time() - t0
-        output_mgr.print(step_completed(f"App deployed in {t:.3f}s! 🎉"))
+        output_mgr.print(output_mgr.step_completed(f"App deployed in {t:.3f}s! 🎉"))
         output_mgr.print(f"\nView Deployment: [magenta]{app_url}[/magenta]")
     return DeployResult(
         app_id=running_app.app_id,
         app_page_url=running_app.app_page_url,
         app_logs_url=running_app.app_logs_url,  # type: ignore
+        warnings=[warning.message for warning in warnings],
     )
 
 
-async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str = "", **kwargs: Any) -> None:
+async def _interactive_shell(
+    _app: _App, cmds: list[str], environment_name: str = "", pty: bool = True, **kwargs: Any
+) -> None:
     """Run an interactive shell (like `bash`) within the image for this app.
 
     This is useful for online debugging and interactive exploration of the
@@ -585,9 +611,17 @@ async def _interactive_shell(_app: _App, cmds: List[str], environment_name: str 
                 **kwargs,
             )
 
-        container_process = await sandbox.exec(*sandbox_cmds, pty_info=get_pty_info(shell=True))
         try:
-            await container_process.attach(pty=True)
+            if pty:
+                container_process = await sandbox.exec(
+                    *sandbox_cmds, pty_info=get_pty_info(shell=True) if pty else None
+                )
+                await container_process.attach()
+            else:
+                container_process = await sandbox.exec(
+                    *sandbox_cmds, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT
+                )
+                await container_process.wait()
         except InteractiveTimeoutError:
             # Check on status of Sandbox. It may have crashed, causing connection failure.
             req = api_pb2.SandboxWaitRequest(sandbox_id=sandbox._object_id, timeout=0)
@@ -608,8 +642,9 @@ def _run_stub(*args: Any, **kwargs: Any):
 
 
 def _deploy_stub(*args: Any, **kwargs: Any):
-    """`deploy_stub` has been renamed to `deploy_app` and is deprecated. Please update your code."""
-    deprecation_error((2024, 5, 1), str(_deploy_stub.__doc__))
+    """mdmd:hidden"""
+    message = "`deploy_stub` has been renamed to `deploy_app`. Please update your code."
+    deprecation_error((2024, 5, 1), message)
 
 
 run_app = synchronize_api(_run_app)

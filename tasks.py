@@ -9,16 +9,23 @@ import pkgutil
 import re
 import subprocess
 import sys
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Generator, List, Optional
+from typing import Optional
 
 import requests
 from invoke import task
 from rich.console import Console
 from rich.table import Table
+
+# Set working directory to the root of the client repository.
+original_cwd = Path.cwd()
+project_root = Path(os.path.dirname(__file__))
+os.chdir(project_root)
+
 
 year = datetime.date.today().year
 copyright_header_start = "# Copyright Modal Labs"
@@ -55,7 +62,7 @@ def protoc(ctx):
     ctx.run(f"{py_protoc} -I . {input_files}")
 
     # generate modal-specific wrapper around grpclib api stub using custom plugin:
-    grpc_plugin_pyfile = Path(__file__).parent / "protoc_plugin" / "plugin.py"
+    grpc_plugin_pyfile = Path("protoc_plugin/plugin.py")
 
     with python_file_as_executable(grpc_plugin_pyfile) as grpc_plugin_executable:
         ctx.run(
@@ -66,7 +73,7 @@ def protoc(ctx):
 
 @task
 def lint(ctx, fix=False):
-    ctx.run(f"ruff . {'--fix' if fix else ''}", pty=True)
+    ctx.run(f"ruff check . {'--fix' if fix else ''}", pty=True)
 
 
 @task
@@ -116,8 +123,49 @@ def lint_protos(ctx):
 
 
 @task
+def type_stubs(ctx):
+    # We only generate type stubs for modules that contain synchronicity wrapped types
+    from synchronicity.synchronizer import SYNCHRONIZER_ATTR
+
+    stubs_to_remove = []
+    for root, _, files in os.walk("modal"):
+        for file in files:
+            if file.endswith(".pyi"):
+                stubs_to_remove.append(os.path.abspath(os.path.join(root, file)))
+    for path in sorted(stubs_to_remove):
+        os.remove(path)
+        print(f"Removed {path}")
+
+    def find_modal_modules(root: str = "modal"):
+        modules = []
+        path = importlib.import_module(root).__path__
+        for _, name, is_pkg in pkgutil.iter_modules(path):
+            full_name = f"{root}.{name}"
+            if is_pkg:
+                modules.extend(find_modal_modules(full_name))
+            else:
+                modules.append(full_name)
+        return modules
+
+    def get_wrapped_types(module_name: str) -> list[str]:
+        module = importlib.import_module(module_name)
+        return [
+            name
+            for name, obj in vars(module).items()
+            if not module_name.startswith("modal.cli.")  # TODO we don't handle typer-wrapped functions well
+            and hasattr(obj, "__module__")
+            and obj.__module__ == module_name
+            and not name.startswith("_")  # Avoid deprecation of _App.__getattr__
+            and hasattr(obj, SYNCHRONIZER_ATTR)
+        ]
+
+    modules = [m for m in find_modal_modules() if len(get_wrapped_types(m))]
+    subprocess.check_call(["python", "-m", "synchronicity.type_stubs", *modules])
+    ctx.run("ruff format modal/ --exclude=*.py --no-respect-gitignore", pty=True)
+
+
+@task(type_stubs)
 def type_check(ctx):
-    type_stubs(ctx)
     # mypy will not check the *implementation* (.py) for files that also have .pyi type stubs
     mypy_exclude_list = [
         "playground",
@@ -127,6 +175,7 @@ def type_check(ctx):
         "venv39",
         "venv38",
         "test/cls_test.py",  # blocked by mypy bug: https://github.com/python/mypy/issues/16527
+        "test/supports/sibling_hydration_app.py",  # blocked by mypy bug: https://github.com/python/mypy/issues/16527
         "test/supports/type_assertions_negative.py",
     ]
     excludes = " ".join(f"--exclude {path}" for path in mypy_exclude_list)
@@ -134,8 +183,8 @@ def type_check(ctx):
 
     # use pyright for checking implementation of those files
     pyright_allowlist = [
-        "modal/functions.py",
-        "modal/_asgi.py",
+        "modal/_functions.py",
+        "modal/_runtime/asgi.py",
         "modal/_utils/__init__.py",
         "modal/_utils/async_utils.py",
         "modal/_utils/grpc_testing.py",
@@ -148,7 +197,15 @@ def type_check(ctx):
         "modal/_utils/rand_pb_testing.py",
         "modal/_utils/shell_utils.py",
         "test/cls_test.py",  # see mypy bug above - but this works with pyright, so we run that instead
-        "modal/_container_io_manager.py",
+        "modal/_runtime/container_io_manager.py",
+        "modal/io_streams.py",
+        "modal/image.py",
+        "modal/file_io.py",
+        "modal/cli/import_refs.py",
+        "modal/snapshot.py",
+        "modal/config.py",
+        "modal/object.py",
+        "modal/_type_manager.py",
     ]
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
 
@@ -156,8 +213,7 @@ def type_check(ctx):
 @task
 def check_copyright(ctx, fix=False):
     invalid_files = []
-    d = str(Path(__file__).parent)
-    for root, dirs, files in os.walk(d):
+    for root, dirs, files in os.walk("."):
         fns = [
             os.path.join(root, fn)
             for fn in files
@@ -166,6 +222,8 @@ def check_copyright(ctx, fix=False):
                 # jupytext notebook formatted .py files can't be detected as notebooks if we put a
                 # copyright comment at the top
                 and not fn.endswith(".notebook.py")
+                # ignore generated protobuf code
+                and "/modal_proto" not in root
                 # vendored code has a different copyright
                 and "_vendor" not in root
                 and "protoc_plugin" not in root
@@ -191,24 +249,57 @@ def check_copyright(ctx, fix=False):
         for fn in invalid_files:
             print("Missing copyright:", fn)
 
-        raise Exception(
-            f"{len(invalid_files)} are missing copyright headers!" " Please run `inv check-copyright --fix`"
-        )
+        raise Exception(f"{len(invalid_files)} are missing copyright headers! Please run `inv check-copyright --fix`")
 
 
-@task
-def publish_base_mounts(ctx, no_confirm=False):
+def _check_prod(no_confirm: bool):
     from urllib.parse import urlparse
 
     from modal import config
 
     server_url = config.config["server_url"]
     if "localhost" not in urlparse(server_url).netloc and not no_confirm:
-        answer = input(f"Modal server URL is '{server_url}' not localhost. Continue operation? [y/N]: ")
+        answer = input(f"🚨 Modal server URL is '{server_url}' not localhost. Continue operation? [y/N]: ")
         if answer.upper() not in ["Y", "YES"]:
             exit("Aborting task.")
+    return server_url
+
+
+@task
+def publish_base_mounts(ctx, no_confirm: bool = False):
+    """Publish the client mount and other mounts."""
+    _check_prod(no_confirm)
     for mount in ["modal_client_package", "python_standalone"]:
-        ctx.run(f"{sys.executable} {Path(__file__).parent}/modal_global_objects/mounts/{mount}.py", pty=True)
+        ctx.run(f"{sys.executable} modal_global_objects/mounts/{mount}.py", pty=True)
+
+
+@task
+def publish_base_images(
+    ctx,
+    name: str,
+    builder_version: str = "2024.10",
+    allow_global_deployment: bool = False,
+    no_confirm: bool = False,
+) -> None:
+    """Publish base images. For example, `inv publish-base-images debian_slim`.
+
+    These should be published as global deployments. However, publishing global
+    deployments is *risky* because it would affect all workspaces. Pass the
+    `--allow-global-deployment` flag to confirm this behavior.
+    """
+    if not allow_global_deployment:
+        console = Console()
+        console.print("This is a dry run. Rerun with `--allow-global-deployment` to publish.", style="yellow")
+
+    _check_prod(no_confirm)
+    ctx.run(
+        f"python -m modal_global_objects.images.base_images {name}",
+        pty=True,
+        env={
+            "MODAL_IMAGE_ALLOW_GLOBAL_DEPLOYMENT": "1" if allow_global_deployment else "",
+            "MODAL_IMAGE_BUILDER_VERSION": builder_version,
+        },
+    )
 
 
 @task
@@ -234,94 +325,14 @@ build_number = {new_build_number}  # git: {git_sha}
 
 
 @task
-def create_alias_package(ctx):
-    from modal_version import __version__
-
-    os.makedirs("alias-package", exist_ok=True)
-    with open("alias-package/setup.py", "w") as f:
-        f.write(
-            f"""\
-{copyright_header_full}
-from setuptools import setup
-setup(version="{__version__}")
-"""
-        )
-    with open("alias-package/setup.cfg", "w") as f:
-        f.write(
-            f"""\
-[metadata]
-name = modal-client
-author = Modal Labs
-author_email = support@modal.com
-description = Legacy name for the Modal client
-long_description = This is a legacy compatibility package that just requires the `modal` client library.
-            In versions before 0.51, the official name of the client library was called `modal-client`.
-            We have renamed it to `modal`, but this library is kept updated for compatibility.
-long_description_content_type = text/markdown
-project_urls =
-    Homepage = https://modal.com
-
-[options]
-install_requires =
-    modal=={__version__}
-"""
-        )
-    with open("alias-package/pyproject.toml", "w") as f:
-        f.write(
-            """\
-[build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
-"""
-        )
-
-
-@task
-def type_stubs(ctx):
-    # We only generate type stubs for modules that contain synchronicity wrapped types
-    from synchronicity.synchronizer import SYNCHRONIZER_ATTR
-
-    stubs_to_remove = []
-    for root, _, files in os.walk("modal"):
-        for file in files:
-            if file.endswith(".pyi"):
-                stubs_to_remove.append(os.path.abspath(os.path.join(root, file)))
-    for path in sorted(stubs_to_remove):
-        os.remove(path)
-        print(f"Removed {path}")
-
-    def find_modal_modules(root: str = "modal"):
-        modules = []
-        path = importlib.import_module(root).__path__
-        for _, name, is_pkg in pkgutil.iter_modules(path):
-            full_name = f"{root}.{name}"
-            if is_pkg:
-                modules.extend(find_modal_modules(full_name))
-            else:
-                modules.append(full_name)
-        return modules
-
-    def get_wrapped_types(module_name: str) -> List[str]:
-        module = importlib.import_module(module_name)
-        return [
-            name
-            for name, obj in vars(module).items()
-            if not module_name.startswith("modal.cli.")  # TODO we don't handle typer-wrapped functions well
-            and hasattr(obj, "__module__")
-            and obj.__module__ == module_name
-            and not name.startswith("_")  # Avoid deprecation of _App.__getattr__
-            and hasattr(obj, SYNCHRONIZER_ATTR)
-        ]
-
-    modules = [m for m in find_modal_modules() if len(get_wrapped_types(m))]
-    subprocess.check_call(["python", "-m", "synchronicity.type_stubs", *modules])
-    ctx.run("ruff format modal/ --exclude=*.py --no-respect-gitignore", pty=True)
-
-
-@task
 def update_changelog(ctx, sha: str = ""):
     # Parse a commit message for a GitHub PR number, defaulting to most recent commit
-    res = ctx.run(f"git log --pretty=format:%s -n 1 {sha}", hide="stdout")
+    res = ctx.run(f"git log --pretty=format:%s -n 1 {sha}", hide="stdout", warn=True)
+    if res.exited:
+        print("Failed to extract changelog update!")
+        print("Last 5 commits:")
+        res = ctx.run("git log --pretty=oneline -n 5")
+        return
     m = re.search(r"\(#(\d+)\)$", res.stdout)
     if m:
         pull_number = m.group(1)
@@ -354,7 +365,7 @@ def update_changelog(ctx, sha: str = ""):
         return
 
     # Read the existing changelog and split after the header so we can prepend new content
-    with open("CHANGELOG.md", "r") as fid:
+    with open("CHANGELOG.md") as fid:
         content = fid.read()
     token_pattern = "<!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->"
     m = re.search(token_pattern, content)
@@ -364,6 +375,7 @@ def update_changelog(ctx, sha: str = ""):
         previous_changelog = content[break_idx:]
     else:
         print("Aborting: Could not find token in existing changelog to mark insertion spot")
+        return
 
     # Build the new changelog and write it out
     from modal_version import __version__
@@ -419,26 +431,41 @@ def show_deprecations(ctx):
             func_name_to_level = {
                 "deprecation_warning": "[yellow]warning[/yellow]",
                 "deprecation_error": "[red]error[/red]",
+                # We may add a flag to make renamed_parameter error instead of warn
+                # in which case this would get a little bit more complicated.
+                "renamed_parameter": "[yellow]warning[/yellow]",
             }
-            if isinstance(node.func, ast.Name) and node.func.id in func_name_to_level:
-                depr_date = date(*(elt.n for elt in node.args[0].elts))
+            if (
+                isinstance(node.func, ast.Name)
+                and node.func.id in func_name_to_level
+                and isinstance(node.args[0], ast.Tuple)
+            ):
+                depr_date = date(*(getattr(elt, "n") for elt in node.args[0].elts))
                 function = (
                     f"{self.current_class}.{self.current_function}" if self.current_class else self.current_function
                 )
-                message = node.args[1]
-                if isinstance(message, ast.Name):
-                    message = self.assignments.get(message.id, "")
-                if isinstance(message, ast.Attribute):
-                    message = self.assignments.get(message.attr, "")
-                if isinstance(message, ast.Constant):
-                    message = message.s
-                elif isinstance(message, ast.JoinedStr):
-                    message = "".join(v.s for v in message.values if isinstance(v, ast.Constant))
+                if node.func.id == "renamed_parameter":
+                    old_name = getattr(node.args[1], "s")
+                    new_name = getattr(node.args[2], "s")
+                    message = f"Renamed parameter: {old_name} -> {new_name}"
                 else:
-                    message = str(message)
-                message = message.replace("\n", " ")
-                if len(message) > (max_length := 80):
-                    message = message[:max_length] + "..."
+                    message = node.args[1]
+                    # Handle a few different ways that the message can get passed to the deprecation helper
+                    # since it's not always a literal string (e.g. it's often a functions .__doc__ attribute)
+                    if isinstance(message, ast.Name):
+                        message = self.assignments.get(message.id, "")
+                    if isinstance(message, ast.Attribute):
+                        message = self.assignments.get(message.attr, "")
+                    if isinstance(message, ast.Constant):
+                        message = message.s
+                    elif isinstance(message, ast.JoinedStr):
+                        message = "".join(v.s for v in message.values if isinstance(v, ast.Constant))
+                    else:
+                        message = str(message)
+                    message = message.replace("\n", " ")
+                    if len(message) > (max_length := 80):
+                        message = message[:max_length] + "..."
+
                 level = func_name_to_level[node.func.id]
                 self.deprecations.append((str(depr_date), level, f"{self.fname}:{node.lineno}", function, message))
 

@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2023
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Optional
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
@@ -8,13 +8,14 @@ from google.protobuf.wrappers_pb2 import StringValue
 
 from modal_proto import api_pb2
 
+from ._object import _Object
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api, synchronizer
+from ._utils.deprecation import deprecation_warning, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import config, logger
-from .object import _Object
 
 
 @dataclass(frozen=True)
@@ -28,10 +29,7 @@ class _Environment(_Object, type_prefix="en"):
 
     def __init__(self):
         """mdmd:hidden"""
-        raise RuntimeError(
-            "`Environment(...)` constructor is not allowed."
-            " Please use `Environment.from_name` or `Environment.lookup` instead."
-        )
+        raise RuntimeError("`Environment(...)` constructor is not allowed. Please use `Environment.from_name` instead.")
 
     # TODO(michael) Keeping this private for now until we decide what else should be in it
     # And what the rules should be about updates / mutability
@@ -52,21 +50,23 @@ class _Environment(_Object, type_prefix="en"):
         )
 
     @staticmethod
-    async def from_name(
-        label: str,
+    @renamed_parameter((2024, 12, 18), "label", "name")
+    def from_name(
+        name: str,
+        *,
         create_if_missing: bool = False,
     ):
-        if label:
-            # Allow null labels for the case where we want to look up the "default" environment,
+        if name:
+            # Allow null names for the case where we want to look up the "default" environment,
             # which is defined by the server. It feels messy to have "from_name" without a name, though?
             # We're adding this mostly for internal use right now. We could consider an environment-only
             # alternate constructor, like `Environment.get_default`, rather than exposing "unnamed"
             # environments as part of public API when we make this class more useful.
-            check_object_name(label, "Environment")
+            check_object_name(name, "Environment")
 
         async def _load(self: _Environment, resolver: Resolver, existing_object_id: Optional[str]):
             request = api_pb2.EnvironmentGetOrCreateRequest(
-                deployment_name=label,
+                deployment_name=name,
                 object_creation_type=(
                     api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
                     if create_if_missing
@@ -81,12 +81,19 @@ class _Environment(_Object, type_prefix="en"):
         return _Environment._from_loader(_load, "Environment()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
-        label: str,
+        name: str,
         client: Optional[_Client] = None,
         create_if_missing: bool = False,
     ):
-        obj = await _Environment.from_name(label, create_if_missing=create_if_missing)
+        deprecation_warning(
+            (2025, 1, 27),
+            "`modal.Environment.lookup` is deprecated and will be removed in a future release."
+            " It can be replaced with `modal.Environment.from_name`."
+            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+        )
+        obj = _Environment.from_name(name, create_if_missing=create_if_missing)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
@@ -98,13 +105,13 @@ Environment = synchronize_api(_Environment)
 
 
 # Needs to be after definition; synchronicity interferes with forward references?
-ENVIRONMENT_CACHE: Dict[str, _Environment] = {}
+ENVIRONMENT_CACHE: dict[str, _Environment] = {}
 
 
 async def _get_environment_cached(name: str, client: _Client) -> _Environment:
     if name in ENVIRONMENT_CACHE:
         return ENVIRONMENT_CACHE[name]
-    environment = await _Environment.lookup(name, client)
+    environment = await _Environment.from_name(name).hydrate(client)
     ENVIRONMENT_CACHE[name] = environment
     return environment
 
@@ -151,7 +158,7 @@ async def create_environment(name: str, client: Optional[_Client] = None):
 
 
 @synchronizer.create_blocking
-async def list_environments(client: Optional[_Client] = None) -> List[api_pb2.EnvironmentListItem]:
+async def list_environments(client: Optional[_Client] = None) -> list[api_pb2.EnvironmentListItem]:
     if client is None:
         client = await _Client.from_env()
     resp = await client.stub.EnvironmentList(Empty())
@@ -161,9 +168,9 @@ async def list_environments(client: Optional[_Client] = None) -> List[api_pb2.En
 def ensure_env(environment_name: Optional[str] = None) -> str:
     """Override config environment with environment from environment_name
 
-    This is necessary since a cli command that runs Modal code, e.g. `modal.lookup()` without
-    explicit environment specification wouldn't pick up the environment specified in a command
-    line flag otherwise, e.g. when doing `modal run --env=foo`
+    This is necessary since a cli command that runs Modal code, without explicit
+    environment specification wouldn't pick up the environment specified in a
+    command line flag otherwise, e.g. when doing `modal run --env=foo`
     """
     if environment_name is not None:
         config.override_locally("environment", environment_name)

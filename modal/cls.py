@@ -1,35 +1,37 @@
 # Copyright Modal Labs 2022
+import dataclasses
 import inspect
 import os
 import typing
-from typing import Any, Callable, Collection, Dict, List, Optional, Tuple, Type, TypeVar, Union
+from collections.abc import Collection
+from typing import Any, Callable, Optional, TypeVar, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
-from modal._utils.function_utils import CLASS_PARAM_TYPE_MAP
 from modal_proto import api_pb2
 
-from ._resolver import Resolver
-from ._resources import convert_fn_config_to_resources_config
-from ._serialization import check_valid_cls_constructor_arg
-from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.grpc_utils import retry_transient_errors
-from ._utils.mount_utils import validate_volumes
-from .client import _Client
-from .exception import InvalidError, NotFoundError, VersionError
-from .functions import (
-    _Function,
-    _parse_retries,
-)
-from .gpu import GPU_T
-from .object import _get_environment_name, _Object
-from .partial_function import (
+from ._functions import _Function, _parse_retries
+from ._object import _Object
+from ._partial_function import (
     _find_callables_for_obj,
     _find_partial_methods_for_user_cls,
     _PartialFunction,
     _PartialFunctionFlags,
 )
+from ._resolver import Resolver
+from ._resources import convert_fn_config_to_resources_config
+from ._serialization import check_valid_cls_constructor_arg
+from ._traceback import print_server_warnings
+from ._type_manager import parameter_serde_registry
+from ._utils.async_utils import synchronize_api, synchronizer
+from ._utils.deprecation import deprecation_warning, renamed_parameter, warn_on_renamed_autoscaler_settings
+from ._utils.grpc_utils import retry_transient_errors
+from ._utils.mount_utils import validate_volumes
+from .client import _Client
+from .config import config
+from .exception import ExecutionError, InvalidError, NotFoundError
+from .gpu import GPU_T
 from .retries import Retries
 from .secret import _Secret
 from .volume import _Volume
@@ -41,7 +43,7 @@ if typing.TYPE_CHECKING:
     import modal.app
 
 
-def _use_annotation_parameters(user_cls) -> bool:
+def _use_annotation_parameters(user_cls: type) -> bool:
     has_parameters = any(is_parameter(cls_member) for cls_member in user_cls.__dict__.values())
     has_explicit_constructor = user_cls.__init__ != object.__init__
     return has_parameters and not has_explicit_constructor
@@ -71,29 +73,102 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
         return inspect.Signature(constructor_parameters)
 
 
+@dataclasses.dataclass()
+class _ServiceOptions:
+    secrets: typing.Collection[_Secret]
+    resources: Optional[api_pb2.Resources]
+    retry_policy: Optional[api_pb2.FunctionRetryPolicy]
+    concurrency_limit: Optional[int]
+    timeout_secs: Optional[int]
+    task_idle_timeout_secs: Optional[int]
+    validated_volumes: typing.Sequence[tuple[str, _Volume]]
+    target_concurrent_inputs: Optional[int]
+
+
+def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name: str):
+    """Binds an "instance service function" to a specific method using metadata for that method
+
+    This "dummy" _Function gets no unique object_id and isn't backend-backed at all, since all
+    it does it forward invocations to the underlying instance_service_function with the specified method
+    """
+    assert service_function._obj
+
+    def hydrate_from_instance_service_function(new_function: _Function):
+        assert service_function.is_hydrated
+        assert cls.is_hydrated
+        # After 0.67 is minimum required version, we should be able to use method metadata directly
+        # from the service_function instead (see _Cls._hydrate_metadata), but for now we use the Cls
+        # since it can take the data from the cls metadata OR function metadata depending on source
+        method_metadata = cls._method_metadata[method_name]
+        new_function._hydrate(service_function.object_id, service_function.client, method_metadata)
+
+    async def _load(fun: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
+        # there is currently no actual loading logic executed to create each method on
+        # the *parametrized* instance of a class - it uses the parameter-bound service-function
+        # for the instance. This load method just makes sure to set all attributes after the
+        # `service_function` has been loaded (it's in the `_deps`)
+        hydrate_from_instance_service_function(fun)
+
+    def _deps():
+        unhydrated_deps = []
+        # without this check, the common service_function will be reloaded by all methods
+        # TODO(elias): Investigate if we can fix this multi-loader in the resolver - feels like a bug?
+        if not cls.is_hydrated:
+            unhydrated_deps.append(cls)
+        if not service_function.is_hydrated:
+            unhydrated_deps.append(service_function)
+        return unhydrated_deps
+
+    rep = f"Method({cls._name}.{method_name})"
+
+    fun = _Function._from_loader(
+        _load,
+        rep,
+        deps=_deps,
+        hydrate_lazily=True,
+    )
+    if service_function.is_hydrated:
+        # Eager hydration (skip load) if the instance service function is already loaded
+        hydrate_from_instance_service_function(fun)
+
+    if cls._is_local():
+        partial_function = cls._method_partials[method_name]
+        from modal._utils.function_utils import FunctionInfo
+
+        fun._info = FunctionInfo(
+            # ugly - needed for .local()  TODO (elias): Clean up!
+            partial_function.raw_f,
+            user_cls=cls._user_cls,
+            serialized=True,  # service_function.info.is_serialized(),
+        )
+
+    fun._obj = service_function._obj
+    fun._is_method = True
+    fun._app = service_function._app
+    fun._spec = service_function._spec
+    return fun
+
+
 class _Obj:
     """An instance of a `Cls`, i.e. `Cls("foo", 42)` returns an `Obj`.
 
     All this class does is to return `Function` objects."""
 
-    _functions: Dict[str, _Function]
-    _entered: bool
+    _cls: "_Cls"  # parent
+    _functions: dict[str, _Function]
+    _has_entered: bool
     _user_cls_instance: Optional[Any] = None
-    _construction_args: Tuple[tuple, Dict[str, Any]]
+    _args: tuple[Any, ...]
+    _kwargs: dict[str, Any]
 
-    _instance_service_function: Optional[_Function]
-
-    def _uses_common_service_function(self):
-        # Used for backwards compatibility checks with pre v0.63 classes
-        return self._instance_service_function is not None
+    _instance_service_function: Optional[_Function] = None  # this gets set lazily
+    _options: Optional[_ServiceOptions]
 
     def __init__(
         self,
-        user_cls: type,
-        class_service_function: Optional[_Function],  # only None for <v0.63 classes
-        classbound_methods: Dict[str, _Function],
-        from_other_workspace: bool,
-        options: Optional[api_pb2.FunctionOptions],
+        cls: "_Cls",
+        user_cls: Optional[type],  # this would be None in case of lookups
+        options: Optional[_ServiceOptions],
         args,
         kwargs,
     ):
@@ -101,45 +176,59 @@ class _Obj:
             check_valid_cls_constructor_arg(i + 1, arg)
         for key, kwarg in kwargs.items():
             check_valid_cls_constructor_arg(key, kwarg)
-
-        self._method_functions = {}
-        if class_service_function:
-            # >= v0.63 classes
-            # first create the singular object function used by all methods on this parameterization
-            self._instance_service_function = class_service_function._bind_parameters(
-                self, from_other_workspace, options, args, kwargs
-            )
-            for method_name, class_bound_method in classbound_methods.items():
-                method = self._instance_service_function._bind_instance_method(class_bound_method)
-                self._method_functions[method_name] = method
-        else:
-            # <v0.63 classes - bind each individual method to the new parameters
-            self._instance_service_function = None
-            for method_name, class_bound_method in classbound_methods.items():
-                method = class_bound_method._bind_parameters(self, from_other_workspace, options, args, kwargs)
-                self._method_functions[method_name] = method
+        self._cls = cls
 
         # Used for construction local object lazily
-        self._entered = False
-        self._local_user_cls_instance = None
+        self._has_entered = False
         self._user_cls = user_cls
-        self._construction_args = (args, kwargs)  # used for lazy construction in case of explicit constructors
 
-    def _user_cls_instance_constr(self):
-        args, kwargs = self._construction_args
+        # used for lazy construction in case of explicit constructors
+        self._args = args
+        self._kwargs = kwargs
+        self._options = options
+
+    def _cached_service_function(self) -> "modal.functions._Function":
+        # Returns a service function for this _Obj, serving all its methods
+        # In case of methods without parameters or options, this is simply proxying to the class service function
+        if not self._instance_service_function:
+            assert self._cls._class_service_function
+            self._instance_service_function = self._cls._class_service_function._bind_parameters(
+                self, self._options, self._args, self._kwargs
+            )
+        return self._instance_service_function
+
+    def _get_parameter_values(self) -> dict[str, Any]:
+        # binds args and kwargs according to the class constructor signature
+        # (implicit by parameters or explicit)
+        # can only be called where the local definition exists
+        sig = _get_class_constructor_signature(self._user_cls)
+        bound_vars = sig.bind(*self._args, **self._kwargs)
+        bound_vars.apply_defaults()
+        return bound_vars.arguments
+
+    def _new_user_cls_instance(self):
         if not _use_annotation_parameters(self._user_cls):
             # TODO(elias): deprecate this code path eventually
-            user_cls_instance = self._user_cls(*args, **kwargs)
+            user_cls_instance = self._user_cls(*self._args, **self._kwargs)
         else:
+            # ignore constructor (assumes there is no custom constructor,
+            # which is guaranteed by _use_annotation_parameters)
             # set the attributes on the class corresponding to annotations
             # with = parameter() specifications
-            sig = _get_class_constructor_signature(self._user_cls)
-            bound_vars = sig.bind(*args, **kwargs)
-            bound_vars.apply_defaults()
+            param_values = self._get_parameter_values()
             user_cls_instance = self._user_cls.__new__(self._user_cls)  # new instance without running __init__
-            user_cls_instance.__dict__.update(bound_vars.arguments)
+            user_cls_instance.__dict__.update(param_values)
 
-        user_cls_instance._modal_functions = self._method_functions  # Needed for PartialFunction.__get__
+        # TODO: always use Obj instances instead of making modifications to user cls
+        # TODO: OR (if simpler for now) replace all the PartialFunctions on the user cls
+        #   with getattr(self, method_name)
+
+        # user cls instances are only created locally, so we have all partial functions available
+        instance_methods = {}
+        for method_name in _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.interface_flags()):
+            instance_methods[method_name] = getattr(self, method_name)
+
+        user_cls_instance._modal_functions = instance_methods
         return user_cls_instance
 
     async def keep_warm(self, warm_pool_size: int) -> None:
@@ -151,74 +240,124 @@ class _Obj:
         Note that all Modal methods and web endpoints of a class share the same set
         of containers and the warm_pool_size affects that common container pool.
 
-        ```python
+        ```python notest
         # Usage on a parametrized function.
-        Model = modal.Cls.lookup("my-app", "Model")
+        Model = modal.Cls.from_name("my-app", "Model")
         Model("fine-tuned-model").keep_warm(2)
         ```
         """
-        if not self._uses_common_service_function():
-            raise VersionError(
-                "Class instance `.keep_warm(...)` can't be used on classes deployed using client version <v0.63"
-            )
-        await self._instance_service_function.keep_warm(warm_pool_size)
+        await self._cached_service_function().keep_warm(warm_pool_size)
 
-    def _get_user_cls_instance(self):
-        """Construct local object lazily. Used for .local() calls."""
+    def _cached_user_cls_instance(self):
+        """Get or construct the local object
+
+        Used for .local() calls and getting attributes of classes"""
         if not self._user_cls_instance:
-            self._user_cls_instance = self._user_cls_instance_constr()  # Instantiate object
+            self._user_cls_instance = self._new_user_cls_instance()  # Instantiate object
 
         return self._user_cls_instance
 
-    def enter(self):
-        if not self._entered:
-            if hasattr(self._user_cls_instance, "__enter__"):
-                self._user_cls_instance.__enter__()
+    def _enter(self):
+        assert self._user_cls
+        if not self._has_entered:
+            user_cls_instance = self._cached_user_cls_instance()
+            if hasattr(user_cls_instance, "__enter__"):
+                user_cls_instance.__enter__()
 
             for method_flag in (
                 _PartialFunctionFlags.ENTER_PRE_SNAPSHOT,
                 _PartialFunctionFlags.ENTER_POST_SNAPSHOT,
             ):
-                for enter_method in _find_callables_for_obj(self._user_cls_instance, method_flag).values():
+                for enter_method in _find_callables_for_obj(user_cls_instance, method_flag).values():
                     enter_method()
 
-        self._entered = True
+            self._has_entered = True
 
     @property
-    def entered(self):
-        # needed because aenter is nowrap
-        return self._entered
+    def _entered(self) -> bool:
+        # needed because _aenter is nowrap
+        return self._has_entered
 
-    @entered.setter
-    def entered(self, val):
-        self._entered = val
+    @_entered.setter
+    def _entered(self, val: bool):
+        self._has_entered = val
 
     @synchronizer.nowrap
-    async def aenter(self):
-        if not self.entered:
-            user_cls_instance = self._get_user_cls_instance()
+    async def _aenter(self):
+        if not self._entered:  # use the property to get at the impl class
+            user_cls_instance = self._cached_user_cls_instance()
             if hasattr(user_cls_instance, "__aenter__"):
                 await user_cls_instance.__aenter__()
             elif hasattr(user_cls_instance, "__enter__"):
                 user_cls_instance.__enter__()
-        self.entered = True
+        self._has_entered = True
 
     def __getattr__(self, k):
-        if k in self._method_functions:
-            # if we know the user is accessing a method, we don't have to create an instance
-            # yet, since the user might just call `.remote()` on it which doesn't require
-            # a local instance (in case __init__ does stuff that can't locally)
-            return self._method_functions[k]
-        elif self._user_cls_instance_constr:
-            # if it's *not* a method
-            # TODO: To get lazy loading (from_name) of classes to work, we need to avoid
-            #  this path, otherwise local initialization will happen regardless if user
-            #  only runs .remote(), since we don't know methods for the class until we
-            #  load it
-            user_cls_instance = self._get_user_cls_instance()
-            return getattr(user_cls_instance, k)
-        else:
-            raise AttributeError(k)
+        # This is a bit messy and branchy because:
+        # * Support .remote() on both hydrated (local or remote classes) or unhydrated classes (remote classes only)
+        # * Support .local() on both hydrated and unhydrated classes (assuming local access to code)
+        # * Support attribute access (when local cls is available)
+
+        # The returned _Function objects need to be lazily loaded (including loading the Cls and/or service function)
+        # since we can't assume the class is already loaded when this gets called, e.g.
+        # CLs.from_name(...)().my_func.remote().
+
+        def _get_maybe_method() -> Optional["_Function"]:
+            """Gets _Function object for method - either for a local or a hydrated remote class
+
+            * If class is neither local or hydrated - raise exception (should never happen)
+            * If attribute isn't a method - return None
+            """
+            if self._cls._is_local():
+                if k not in self._cls._method_partials:
+                    return None
+            elif self._cls.is_hydrated:
+                if k not in self._cls._method_metadata:
+                    return None
+            else:
+                raise ExecutionError(
+                    "Class is neither hydrated or local - this is probably a bug in the Modal client. Contact support"
+                )
+
+            return _bind_instance_method(self._cls, self._cached_service_function(), k)
+
+        if self._cls.is_hydrated or self._cls._is_local():
+            # Class is hydrated or local so we know which methods exist
+            if maybe_method := _get_maybe_method():
+                return maybe_method
+            elif self._cls._is_local():
+                # We have the local definition, and the attribute isn't a method
+                # so we instantiate if we don't have an instance, and try to get the attribute
+                user_cls_instance = self._cached_user_cls_instance()
+                return getattr(user_cls_instance, k)
+            else:
+                # This is the case for a *hydrated* class without the local definition, i.e. a lookup
+                # where the attribute isn't a registered method of the class
+                raise NotFoundError(
+                    f"Class has no method `{k}` and attributes (or undecorated methods) can't be accessed for"
+                    f" remote classes (`Cls.from_name` instances)"
+                )
+
+        # Not hydrated Cls, and we don't have the class - typically a Cls.from_name that
+        # has not yet been loaded. So use a special loader that loads it lazily:
+        async def method_loader(fun, resolver: Resolver, existing_object_id):
+            await resolver.load(self._cls)  # load class so we get info about methods
+            method_function = _get_maybe_method()
+            if method_function is None:
+                raise NotFoundError(
+                    f"Class has no method {k}, and attributes can't be accessed for `Cls.from_name` instances"
+                )
+            await resolver.load(method_function)  # get the appropriate method handle (lazy)
+            fun._hydrate_from_other(method_function)
+
+        # The reason we don't *always* use this lazy loader is because it precludes attribute access
+        # on local classes.
+        return _Function._from_loader(
+            method_loader,
+            rep=f"Method({self._cls._name}.{k})",
+            deps=lambda: [],  # TODO: use cls as dep instead of loading inside method_loader?
+            hydrate_lazily=True,
+        )
 
 
 Obj = synchronize_api(_Obj)
@@ -233,61 +372,78 @@ class _Cls(_Object, type_prefix="cs"):
     Instead, use the [`@app.cls()`](/docs/reference/modal.App#cls) decorator on the App object.
     """
 
-    _user_cls: Optional[type]
-    _class_service_function: Optional[
-        _Function
-    ]  # The _Function serving *all* methods of the class, used for version >=v0.63
-    _method_functions: Dict[str, _Function]  # Placeholder _Functions for each method
-    _options: Optional[api_pb2.FunctionOptions]
-    _callables: Dict[str, Callable[..., Any]]
-    _from_other_workspace: Optional[bool]  # Functions require FunctionBindParams before invocation.
+    _class_service_function: Optional[_Function]  # The _Function (read "service") serving *all* methods of the class
+    _options: Optional[_ServiceOptions]
+
     _app: Optional["modal.app._App"] = None  # not set for lookups
+    _name: Optional[str]
+    # Only set for hydrated classes:
+    _method_metadata: Optional[dict[str, api_pb2.FunctionHandleMetadata]] = None
+
+    # These are only set where source is locally available:
+    # TODO: wrap these in a single optional/property for consistency
+    _user_cls: Optional[type] = None
+    _method_partials: Optional[dict[str, _PartialFunction]] = None
+    _callables: dict[str, Callable[..., Any]]
 
     def _initialize_from_empty(self):
         self._user_cls = None
         self._class_service_function = None
-        self._method_functions = {}
         self._options = None
         self._callables = {}
-        self._from_other_workspace = None
+        self._name = None
 
     def _initialize_from_other(self, other: "_Cls"):
+        super()._initialize_from_other(other)
         self._user_cls = other._user_cls
         self._class_service_function = other._class_service_function
-        self._method_functions = other._method_functions
+        self._method_partials = other._method_partials
         self._options = other._options
         self._callables = other._callables
-        self._from_other_workspace = other._from_other_workspace
+        self._name = other._name
+        self._method_metadata = other._method_metadata
 
-    def _get_partial_functions(self) -> Dict[str, _PartialFunction]:
+    def _get_partial_functions(self) -> dict[str, _PartialFunction]:
         if not self._user_cls:
             raise AttributeError("You can only get the partial functions of a local Cls instance")
         return _find_partial_methods_for_user_cls(self._user_cls, _PartialFunctionFlags.all())
 
+    def _get_app(self) -> "modal.app._App":
+        assert self._app is not None
+        return self._app
+
+    def _get_user_cls(self) -> type:
+        assert self._user_cls is not None
+        return self._user_cls
+
+    def _get_name(self) -> str:
+        assert self._name is not None
+        return self._name
+
+    def _get_class_service_function(self) -> _Function:
+        assert self._class_service_function is not None
+        return self._class_service_function
+
+    def _get_method_names(self) -> Collection[str]:
+        # returns method names for a *local* class only for now (used by cli)
+        return self._method_partials.keys()
+
     def _hydrate_metadata(self, metadata: Message):
         assert isinstance(metadata, api_pb2.ClassHandleMetadata)
+        class_service_function = self._get_class_service_function()
+        assert class_service_function.is_hydrated
 
-        for method in metadata.methods:
-            if method.function_name in self._method_functions:
-                # This happens when the class is loaded locally
-                # since each function will already be a loaded dependency _Function
-                self._method_functions[method.function_name]._hydrate(
-                    method.function_id, self._client, method.function_handle_metadata
-                )
-            else:
-                self._method_functions[method.function_name] = _Function._new_hydrated(
-                    method.function_id, self._client, method.function_handle_metadata
-                )
-
-    def _get_metadata(self) -> api_pb2.ClassHandleMetadata:
-        class_handle_metadata = api_pb2.ClassHandleMetadata()
-        for f_name, f in self._method_functions.items():
-            class_handle_metadata.methods.append(
-                api_pb2.ClassMethod(
-                    function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata()
-                )
-            )
-        return class_handle_metadata
+        if class_service_function._method_handle_metadata and len(class_service_function._method_handle_metadata):
+            # If we have the metadata on the class service function
+            # This should be the case for any loaded class (remote or local) as of v0.67
+            method_metadata = class_service_function._method_handle_metadata
+        else:
+            # Method metadata stored on the backend Cls object - pre 0.67 lookups
+            # Can be removed when v0.67 is least supported version (all metadata is on the function)
+            method_metadata = {}
+            for method in metadata.methods:
+                method_metadata[method.function_name] = method.function_handle_metadata
+        self._method_metadata = method_metadata
 
     @staticmethod
     def validate_construction_mechanism(user_cls):
@@ -299,20 +455,33 @@ class _Cls(_Object, type_prefix="cs"):
                 "A class can't have both a custom __init__ constructor "
                 "and dataclass-style modal.parameter() annotations"
             )
+        elif has_custom_constructor:
+            deprecation_warning(
+                (2025, 4, 15),
+                f"""
+{user_cls} uses a non-default constructor (__init__) method.
+Custom constructors will not be supported in a a future version of Modal.
 
+To parameterize classes, use dataclass-style modal.parameter() declarations instead,
+e.g.:\n
+
+class {user_cls.__name__}:
+    model_name: str = modal.parameter()
+
+More information on class parameterization can be found here: https://modal.com/docs/guide/parametrized-functions
+""",
+            )
         annotations = user_cls.__dict__.get("__annotations__", {})  # compatible with older pythons
         missing_annotations = params.keys() - annotations.keys()
         if missing_annotations:
-            raise InvalidError("All modal.parameter() specifications need to be type annotated")
+            raise InvalidError("All modal.parameter() specifications need to be type-annotated")
 
         annotated_params = {k: t for k, t in annotations.items() if k in params}
         for k, t in annotated_params.items():
-            if t not in CLASS_PARAM_TYPE_MAP:
-                t_name = getattr(t, "__name__", repr(t))
-                supported = ", ".join(t.__name__ for t in CLASS_PARAM_TYPE_MAP.keys())
-                raise InvalidError(
-                    f"{user_cls.__name__}.{k}: {t_name} is not a supported parameter type. Use one of: {supported}"
-                )
+            try:
+                parameter_serde_registry.validate_parameter_type(t)
+            except TypeError as exc:
+                raise InvalidError(f"Class parameter '{k}': {exc}")
 
     @staticmethod
     def from_local(user_cls, app: "modal.app._App", class_service_function: _Function) -> "_Cls":
@@ -320,48 +489,37 @@ class _Cls(_Object, type_prefix="cs"):
         # validate signature
         _Cls.validate_construction_mechanism(user_cls)
 
-        functions: Dict[str, _Function] = {}
-        partial_functions: Dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
-            user_cls, _PartialFunctionFlags.FUNCTION
+        method_partials: dict[str, _PartialFunction] = _find_partial_methods_for_user_cls(
+            user_cls, _PartialFunctionFlags.interface_flags()
         )
 
-        for method_name, partial_function in partial_functions.items():
-            method_function = class_service_function._bind_method(user_cls, method_name, partial_function)
-            app._add_function(method_function, is_web_endpoint=partial_function.webhook_config is not None)
-            partial_function.wrapped = True
-            functions[method_name] = method_function
+        for method_name, partial_function in method_partials.items():
+            if partial_function.params.webhook_config is not None:
+                full_name = f"{user_cls.__name__}.{method_name}"
+                app._web_endpoints.append(full_name)
+            partial_function.registered = True
 
-        # Disable the warning that these are not wrapped
-        for partial_function in _find_partial_methods_for_user_cls(user_cls, ~_PartialFunctionFlags.FUNCTION).values():
-            partial_function.wrapped = True
+        # Disable the warning that lifecycle methods are not wrapped
+        for partial_function in _find_partial_methods_for_user_cls(
+            user_cls, ~_PartialFunctionFlags.interface_flags()
+        ).values():
+            partial_function.registered = True
 
         # Get all callables
-        callables: Dict[str, Callable] = {
-            k: pf.raw_f for k, pf in _find_partial_methods_for_user_cls(user_cls, ~_PartialFunctionFlags(0)).items()
+        callables: dict[str, Callable] = {
+            k: pf.raw_f
+            for k, pf in _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.all()).items()
+            if pf.raw_f is not None  # Should be true for _find_partial_methods output, but hard to annotate
         }
 
-        def _deps() -> List[_Function]:
-            return [class_service_function] + list(functions.values())
+        def _deps() -> list[_Function]:
+            return [class_service_function]
 
         async def _load(self: "_Cls", resolver: Resolver, existing_object_id: Optional[str]):
-            req = api_pb2.ClassCreateRequest(app_id=resolver.app_id, existing_class_id=existing_object_id)
-            for f_name, f in self._method_functions.items():
-                req.methods.append(
-                    api_pb2.ClassMethod(
-                        function_name=f_name, function_id=f.object_id, function_handle_metadata=f._get_metadata()
-                    )
-                )
+            req = api_pb2.ClassCreateRequest(
+                app_id=resolver.app_id, existing_class_id=existing_object_id, only_class_function=True
+            )
             resp = await resolver.client.stub.ClassCreate(req)
-            # Even though we already have the function_handle_metadata for this method locally,
-            # The RPC is going to replace it with function_handle_metadata derived from the server.
-            # We need to overwrite the definition_id sent back from the server here with the definition_id
-            # previously stored in function metadata, which may have been sent back from FunctionCreate.
-            # The problem is that this metadata propagates back and overwrites the metadata on the Function
-            # object itself. This is really messy. Maybe better to exclusively populate the method metadata
-            # from the function metadata we already have locally? Really a lot to clean up here...
-            for method in resp.handle_metadata.methods:
-                f_metadata = self._method_functions[method.function_name]._get_metadata()
-                method.function_handle_metadata.definition_id = f_metadata.definition_id
             self._hydrate(resp.class_id, resolver.client, resp.handle_metadata)
 
         rep = f"Cls({user_cls.__name__})"
@@ -369,85 +527,95 @@ class _Cls(_Object, type_prefix="cs"):
         cls._app = app
         cls._user_cls = user_cls
         cls._class_service_function = class_service_function
-        cls._method_functions = functions
+        cls._method_partials = method_partials
         cls._callables = callables
-        cls._from_other_workspace = False
+        cls._name = user_cls.__name__
         return cls
 
-    def _uses_common_service_function(self):
-        # Used for backwards compatibility with version < 0.63
-        # where methods had individual top level functions
-        return self._class_service_function is not None
-
     @classmethod
+    @renamed_parameter((2024, 12, 18), "tag", "name")
     def from_name(
-        cls: Type["_Cls"],
+        cls: type["_Cls"],
         app_name: str,
-        tag: Optional[str] = None,
+        name: str,
+        *,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
-        workspace: Optional[str] = None,
+        workspace: Optional[str] = None,  # Deprecated and unused
     ) -> "_Cls":
-        """Retrieve a class with a given name and tag.
+        """Reference a Cls from a deployed App by its name.
+
+        In contrast to `modal.Cls.lookup`, this is a lazy method
+        that defers hydrating the local object with metadata from
+        Modal servers until the first time it is actually used.
 
         ```python
-        Class = modal.Cls.from_name("other-app", "Class")
+        Model = modal.Cls.from_name("other-app", "Model")
         ```
         """
+        _environment_name = environment_name or config.get("environment")
 
-        async def _load_remote(obj: _Object, resolver: Resolver, existing_object_id: Optional[str]):
-            _environment_name = _get_environment_name(environment_name, resolver)
+        if workspace is not None:
+            deprecation_warning(
+                (2025, 1, 27), "The `workspace` argument is no longer used and will be removed in a future release."
+            )
+
+        async def _load_remote(self: _Cls, resolver: Resolver, existing_object_id: Optional[str]):
             request = api_pb2.ClassGetRequest(
                 app_name=app_name,
-                object_tag=tag,
+                object_tag=name,
                 namespace=namespace,
                 environment_name=_environment_name,
                 lookup_published=workspace is not None,
-                workspace_name=workspace,
+                only_class_function=True,
             )
             try:
                 response = await retry_transient_errors(resolver.client.stub.ClassGet, request)
             except GRPCError as exc:
                 if exc.status == Status.NOT_FOUND:
-                    raise NotFoundError(exc.message)
+                    env_context = f" (in the '{environment_name}' environment)" if environment_name else ""
+                    raise NotFoundError(
+                        f"Lookup failed for Cls '{name}' from the '{app_name}' app{env_context}: {exc.message}."
+                    )
                 elif exc.status == Status.FAILED_PRECONDITION:
                     raise InvalidError(exc.message)
                 else:
                     raise
 
-            class_function_tag = f"{tag}.*"  # special name of the base service function for the class
+            print_server_warnings(response.server_warnings)
+            await resolver.load(self._class_service_function)
+            self._hydrate(response.class_id, resolver.client, response.handle_metadata)
 
-            class_service_function = _Function.from_name(
-                app_name,
-                class_function_tag,
-                environment_name=_environment_name,
-            )
-            try:
-                obj._class_service_function = await resolver.load(class_service_function)
-            except modal.exception.NotFoundError:
-                # this happens when looking up classes deployed using <v0.63
-                # This try-except block can be removed when min supported version >= 0.63
-                pass
+        rep = f"Cls.from_name({app_name!r}, {name!r})"
+        cls = cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
 
-            obj._hydrate(response.class_id, resolver.client, response.handle_metadata)
-
-        rep = f"Ref({app_name})"
-        cls = cls._from_loader(_load_remote, rep, is_another_app=True)
-        cls._from_other_workspace = bool(workspace is not None)
+        class_service_name = f"{name}.*"  # special name of the base service function for the class
+        cls._class_service_function = _Function._from_name(
+            app_name,
+            class_service_name,
+            namespace=namespace,
+            environment_name=_environment_name,
+        )
+        cls._name = name
         return cls
 
+    @warn_on_renamed_autoscaler_settings
     def with_options(
         self: "_Cls",
-        cpu: Optional[float] = None,
-        memory: Optional[Union[int, Tuple[int, int]]] = None,
+        *,
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
+        memory: Optional[Union[int, tuple[int, int]]] = None,
         gpu: GPU_T = None,
         secrets: Collection[_Secret] = (),
-        volumes: Dict[Union[str, os.PathLike], _Volume] = {},
+        volumes: dict[Union[str, os.PathLike], _Volume] = {},
         retries: Optional[Union[int, Retries]] = None,
+        max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
+        scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
         timeout: Optional[int] = None,
-        concurrency_limit: Optional[int] = None,
         allow_concurrent_inputs: Optional[int] = None,
-        container_idle_timeout: Optional[int] = None,
+        # The following parameters are deprecated
+        concurrency_limit: Optional[int] = None,  # Now called `max_containers`
+        container_idle_timeout: Optional[int] = None,  # Now called `scaledown_window`
     ) -> "_Cls":
         """
         **Beta:** Allows for the runtime modification of a modal.Cls's configuration.
@@ -457,8 +625,7 @@ class _Cls(_Object, type_prefix="cs"):
         **Usage:**
 
         ```python notest
-        import modal
-        Model = modal.Cls.lookup("my_app", "Model")
+        Model = modal.Cls.from_name("my_app", "Model")
         ModelUsingGPU = Model.with_options(gpu="A100")
         ModelUsingGPU().generate.remote(42)  # will run with an A100 GPU
         ```
@@ -469,74 +636,128 @@ class _Cls(_Object, type_prefix="cs"):
         else:
             resources = None
 
-        volume_mounts = [
-            api_pb2.VolumeMount(
-                mount_path=path,
-                volume_id=volume.object_id,
-                allow_background_commits=True,
-            )
-            for path, volume in validate_volumes(volumes)
-        ]
-        replace_volume_mounts = len(volume_mounts) > 0
+        async def _load_from_base(new_cls, resolver, existing_object_id):
+            # this is a bit confusing, the cls will always have the same metadata
+            # since it has the same *class* service function (i.e. "template")
+            # But the (instance) service function for each Obj will be different
+            # since it will rebind to whatever `_options` have been assigned on
+            # the particular Cls parent
+            if not self.is_hydrated:
+                # this should only happen for Cls.from_name instances
+                # other classes should already be hydrated!
+                await resolver.load(self)
 
-        cls = self.clone()
-        cls._options = api_pb2.FunctionOptions(
-            replace_secret_ids=bool(secrets),
-            secret_ids=[secret.object_id for secret in secrets],
+            new_cls._initialize_from_other(self)
+
+        def _deps():
+            return []
+
+        cls = _Cls._from_loader(_load_from_base, rep=f"{self._name}.with_options(...)", is_another_app=True, deps=_deps)
+        cls._initialize_from_other(self)
+        cls._options = _ServiceOptions(
+            secrets=secrets,
             resources=resources,
             retry_policy=retry_policy,
-            concurrency_limit=concurrency_limit,
+            # TODO(michael) Update the protos to use the new terminology
+            concurrency_limit=max_containers,
+            task_idle_timeout_secs=scaledown_window,
             timeout_secs=timeout,
-            task_idle_timeout_secs=container_idle_timeout,
-            replace_volume_mounts=replace_volume_mounts,
-            volume_mounts=volume_mounts,
+            validated_volumes=validate_volumes(volumes),
             target_concurrent_inputs=allow_concurrent_inputs,
         )
 
         return cls
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "tag", "name")
     async def lookup(
         app_name: str,
-        tag: Optional[str] = None,
+        name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-        workspace: Optional[str] = None,
+        workspace: Optional[str] = None,  # Deprecated and unused
     ) -> "_Cls":
-        """Lookup a class with a given name and tag.
+        """Lookup a Cls from a deployed App by its name.
 
-        ```python
-        Class = modal.Cls.lookup("other-app", "Class")
+        DEPRECATED: This method is deprecated in favor of `modal.Cls.from_name`.
+
+        In contrast to `modal.Cls.from_name`, this is an eager method
+        that will hydrate the local object with metadata from Modal servers.
+
+        ```python notest
+        Model = modal.Cls.from_name("other-app", "Model")
+        model = Model()
+        model.inference(...)
         ```
         """
-        obj = _Cls.from_name(app_name, tag, namespace=namespace, environment_name=environment_name, workspace=workspace)
+        deprecation_warning(
+            (2025, 1, 27),
+            "`modal.Cls.lookup` is deprecated and will be removed in a future release."
+            " It can be replaced with `modal.Cls.from_name`."
+            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+        )
+        obj = _Cls.from_name(
+            app_name, name, namespace=namespace, environment_name=environment_name, workspace=workspace
+        )
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
         await resolver.load(obj)
         return obj
 
+    @synchronizer.no_input_translation
     def __call__(self, *args, **kwargs) -> _Obj:
         """This acts as the class constructor."""
         return _Obj(
+            self,
             self._user_cls,
-            self._class_service_function,
-            self._method_functions,
-            self._from_other_workspace,
             self._options,
             args,
             kwargs,
         )
 
     def __getattr__(self, k):
-        # Used by CLI and container entrypoint
-        if k in self._method_functions:
-            return self._method_functions[k]
+        # TODO: remove this method - access to attributes on classes (not instances) should be discouraged
+        if not self._is_local() or k in self._method_partials:
+            # if not local (== k *could* be a method) or it is local and we know k is a method
+            deprecation_warning(
+                (2025, 1, 13),
+                "Calling a method on an uninstantiated class will soon be deprecated; "
+                "update your code to instantiate the class first, i.e.:\n"
+                f"{self._name}().{k} instead of {self._name}.{k}",
+            )
+            return getattr(self(), k)
+        # non-method attribute access on local class - arguably shouldn't be used either:
         return getattr(self._user_cls, k)
+
+    def _is_local(self) -> bool:
+        return self._user_cls is not None
 
 
 Cls = synchronize_api(_Cls)
+
+
+@synchronize_api
+async def _get_constructor_args(cls: _Cls) -> typing.Sequence[api_pb2.ClassParameterSpec]:
+    # for internal use only - defined separately to not clutter Cls namespace
+    await cls.hydrate()
+    service_function = cls._get_class_service_function()
+    metadata = service_function._metadata
+    assert metadata
+    if metadata.class_parameter_info.format != metadata.class_parameter_info.PARAM_SERIALIZATION_FORMAT_PROTO:
+        raise InvalidError("Can only get constructor args for strictly parameterized classes")
+    return metadata.class_parameter_info.schema
+
+
+@synchronize_api
+async def _get_method_schemas(cls: _Cls) -> dict[str, api_pb2.FunctionSchema]:
+    # for internal use only - defined separately to not clutter Cls namespace
+    await cls.hydrate()
+    assert cls._method_metadata
+    return {
+        method_name: method_metadata.function_schema for method_name, method_metadata in cls._method_metadata.items()
+    }
 
 
 class _NO_DEFAULT:

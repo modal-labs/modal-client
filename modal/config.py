@@ -60,6 +60,13 @@ Other possible configuration options are:
   When set, ignores the Image cache and builds all Image layers. Note that this
   will break the cache for all images based on the rebuilt layers, so other images
   may rebuild on subsequent runs / deploys even if the config is reverted.
+* `ignore_cache` (in the .toml file) / `MODAL_IGNORE_CACHE` (as an env var).
+  Defaults to False.
+  When set, ignores the Image cache and builds all Image layers. Unlike `force_build`,
+  this will not overwrite the cache for other images that have the same recipe.
+  Subsequent runs that do not use this option will pull the *previous* Image from
+  the cache, if one exists. It can be useful for testing an App's robustness to
+  Image rebuilds without clobbering Images used by other Apps.
 * `traceback` (in the .toml file) / `MODAL_TRACEBACK` (as an env var).
   Defaults to False. Enables printing full tracebacks on unexpected CLI
   errors, which can be useful for debugging client issues.
@@ -80,14 +87,15 @@ import os
 import typing
 import warnings
 from textwrap import dedent
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Optional
 
 from google.protobuf.empty_pb2 import Empty
 
 from modal_proto import api_pb2
 
+from ._utils.deprecation import deprecation_error
 from ._utils.logger import configure_logger
-from .exception import InvalidError, deprecation_error
+from .exception import InvalidError
 
 # Locate config file and read it
 
@@ -132,7 +140,7 @@ async def _lookup_workspace(server_url: str, token_id: str, token_secret: str) -
 
     credentials = (token_id, token_secret)
     async with _Client(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
-        return await client.stub.WorkspaceNameLookup(Empty())
+        return await client.stub.WorkspaceNameLookup(Empty(), timeout=3)
 
 
 def config_profiles():
@@ -191,6 +199,15 @@ def _to_boolean(x: object) -> bool:
     return str(x).lower() not in {"", "0", "false"}
 
 
+def _check_value(options: list[str]) -> Callable[[str], str]:
+    def checker(x: str) -> str:
+        if x not in options:
+            raise ValueError(f"Must be one of {options}.")
+        return x
+
+    return checker
+
+
 class _Setting(typing.NamedTuple):
     default: typing.Any = None
     transform: typing.Callable[[str], typing.Any] = lambda x: x  # noqa: E731
@@ -217,10 +234,14 @@ _SETTINGS = {
     "worker_id": _Setting(),  # For internal debugging use.
     "restore_state_path": _Setting("/__modal/restore-state.json"),
     "force_build": _Setting(False, transform=_to_boolean),
+    "ignore_cache": _Setting(False, transform=_to_boolean),
     "traceback": _Setting(False, transform=_to_boolean),
     "image_builder_version": _Setting(),
     "strict_parameters": _Setting(False, transform=_to_boolean),  # For internal/experimental use
     "snapshot_debug": _Setting(False, transform=_to_boolean),
+    "cuda_checkpoint_path": _Setting("/__modal/.bin/cuda-checkpoint"),  # Used for snapshotting GPU memory.
+    "function_schemas": _Setting(False, transform=_to_boolean),
+    "build_validation": _Setting("error", transform=_check_value(["error", "warn", "ignore"])),
 }
 
 
@@ -242,10 +263,17 @@ class Config:
             profile = _profile
         s = _SETTINGS[key]
         env_var_key = "MODAL_" + key.upper()
+
+        def transform(val: str) -> Any:
+            try:
+                return s.transform(val)
+            except Exception as e:
+                raise InvalidError(f"Invalid value for {key} config ({val!r}): {e}")
+
         if use_env and env_var_key in os.environ:
-            return s.transform(os.environ[env_var_key])
+            return transform(os.environ[env_var_key])
         elif profile in _user_config and key in _user_config[profile]:
-            return s.transform(_user_config[profile][key])
+            return transform(_user_config[profile][key])
         else:
             return s.default
 
@@ -268,7 +296,7 @@ class Config:
         return repr(self.to_dict())
 
     def to_dict(self):
-        return {key: self.get(key) for key in _SETTINGS.keys()}
+        return {key: self.get(key) for key in sorted(_SETTINGS)}
 
 
 config = Config()
@@ -282,7 +310,7 @@ configure_logger(logger, config["loglevel"], config["log_format"])
 
 
 def _store_user_config(
-    new_settings: Dict[str, Any], profile: Optional[str] = None, active_profile: Optional[str] = None
+    new_settings: dict[str, Any], profile: Optional[str] = None, active_profile: Optional[str] = None
 ):
     """Internal method, used by the CLI to set tokens."""
     if profile is None:

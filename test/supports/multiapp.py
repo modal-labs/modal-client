@@ -8,6 +8,7 @@ a = modal.App()
 def a_func(i):
     assert a_func.is_hydrated
     assert not b_func.is_hydrated
+    assert modal.App._get_container_app() == a
 
 
 b = modal.App()
@@ -17,3 +18,4 @@ b = modal.App()
 def b_func(i):
     assert b_func.is_hydrated
     assert not a_func.is_hydrated
+    assert modal.App._get_container_app() == b

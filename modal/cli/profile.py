@@ -28,7 +28,7 @@ def current():
 
 @profile_cli.command(name="list", help="Show all Modal profiles and highlight the active one.")
 @synchronizer.create_blocking
-async def list(json: Optional[bool] = False):
+async def list_(json: Optional[bool] = False):
     config = Config()
     profiles = config_profiles()
     lookup_coros = [
@@ -46,6 +46,8 @@ async def list(json: Optional[bool] = False):
         active = profile == _profile
         if isinstance(resp, AuthError):
             workspace = "Unknown (authentication failure)"
+        elif isinstance(resp, TimeoutError):
+            workspace = "Unknown (timed out)"
         elif isinstance(resp, Exception):
             # Catch-all for other exceptions, like incorrect server url
             workspace = "Unknown (profile misconfigured)"

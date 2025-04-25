@@ -3,16 +3,17 @@ import os
 import platform
 import subprocess
 from tempfile import NamedTemporaryFile
-from typing import List, Optional
+from typing import Optional
 
 import click
 import typer
 from rich.console import Console
 from rich.syntax import Syntax
+from typer import Argument
 
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
-from modal.cli.utils import ENV_OPTION, display_table, timestamp_to_local
+from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table, timestamp_to_local
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.secret import _Secret
@@ -23,7 +24,7 @@ secret_cli = typer.Typer(name="secret", help="Manage secrets.", no_args_is_help=
 
 @secret_cli.command("list", help="List your published secrets.")
 @synchronizer.create_blocking
-async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
     env = ensure_env(env)
     client = await _Client.from_env()
     response = await retry_transient_errors(client.stub.SecretList, api_pb2.SecretListRequest(environment_name=env))
@@ -43,11 +44,11 @@ async def list(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
     display_table(column_names, rows, json, title=f"Secrets{env_part}")
 
 
-@secret_cli.command("create", help="Create a new secret. Use `--force` to overwrite an existing one.")
+@secret_cli.command("create", help="Create a new secret.")
 @synchronizer.create_blocking
 async def create(
     secret_name,
-    keyvalues: List[str] = typer.Argument(..., help="Space-separated KEY=VALUE items"),
+    keyvalues: list[str] = typer.Argument(..., help="Space-separated KEY=VALUE items"),
     env: Optional[str] = ENV_OPTION,
     force: bool = typer.Option(False, "--force", help="Overwrite the secret if it already exists."),
 ):
@@ -85,10 +86,32 @@ def some_function():
 """
     plural_s = "s" if len(env_dict) > 1 else ""
     console.print(
-        f"""Created a new secret '{secret_name}' with the key{plural_s} {', '.join(repr(k) for k in env_dict.keys())}"""
+        f"""Created a new secret '{secret_name}' with the key{plural_s} {", ".join(repr(k) for k in env_dict.keys())}"""
     )
-    console.print("\nUse it in to your Modal app using:\n")
+    console.print("\nUse it in your Modal app:\n")
     console.print(Syntax(example_code, "python"))
+
+
+@secret_cli.command("delete", help="Delete a named secret.")
+@synchronizer.create_blocking
+async def delete(
+    secret_name: str = Argument(help="Name of the modal.Secret to be deleted. Case sensitive"),
+    yes: bool = YES_OPTION,
+    env: Optional[str] = ENV_OPTION,
+):
+    """TODO"""
+    env = ensure_env(env)
+    secret = await _Secret.from_name(secret_name, environment_name=env).hydrate()
+    if not yes:
+        typer.confirm(
+            f"Are you sure you want to irrevocably delete the modal.Secret '{secret_name}'?",
+            default=False,
+            abort=True,
+        )
+    client = await _Client.from_env()
+
+    # TODO: replace with API on `modal.Secret` when we add it
+    await client.stub.SecretDelete(api_pb2.SecretDeleteRequest(secret_id=secret.object_id))
 
 
 def get_text_from_editor(key) -> str:

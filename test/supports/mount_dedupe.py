@@ -2,30 +2,34 @@
 import os
 
 import modal
-from modal import Mount
 
 app = modal.App()
 import pkg_a  # noqa
 
 
 if int(os.environ["USE_EXPLICIT"]):
-    explicit_mounts1 = [Mount.from_local_python_packages("pkg_a")]  # this should be reused
+    image_1 = modal.Image.debian_slim().add_local_python_source("pkg_a")  # this should be reused
     # same as above, but different instance - should be app-deduplicated:
-    explicit_mounts2 = [
-        Mount.from_local_python_packages("pkg_a"),  # identical to first explicit mount and auto mounts
-        Mount.from_local_python_packages(
-            "pkg_a", condition=lambda fn: "__pycache__" not in fn
-        ),  # custom condition, include normally_not_included.pyc
-    ]
+    image_2 = (
+        modal.Image.debian_slim()
+        .add_local_python_source("pkg_a")  # identical to first explicit mount and auto mounts
+        .add_local_python_source(
+            # custom ignore condition, include normally_not_included.pyc (but skip __pycache__)
+            "pkg_a",
+            ignore=["**/__pycache__"],
+        )
+    )
 else:
-    explicit_mounts1 = explicit_mounts2 = []  # only use automounting
+    # only use automounting
+    image_1 = modal.Image.debian_slim()
+    image_2 = modal.Image.debian_slim()
 
 
-@app.function(mounts=explicit_mounts1)
+@app.function(image=image_1)
 def foo():
     pass
 
 
-@app.function(mounts=explicit_mounts2)
+@app.function(image=image_2)
 def bar():
     pass

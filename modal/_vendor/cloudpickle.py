@@ -256,7 +256,7 @@ def _should_pickle_by_reference(obj, name=None):
             return False
         return obj.__name__ in sys.modules
     else:
-        raise TypeError("cannot check importability of {} instances".format(type(obj).__name__))
+        raise TypeError(f"cannot check importability of {type(obj).__name__} instances")
 
 
 def _lookup_module_and_qualname(obj, name=None):
@@ -597,7 +597,7 @@ def _get_bases(typ):
     if "__orig_bases__" in getattr(typ, "__dict__", {}):
         # For generic types (see PEP 560)
         # Note that simply checking `hasattr(typ, '__orig_bases__')` is not
-        # correct.  Subclasses of a fully-parameterized generic class does not
+        # correct.  Subclasses of a fully-parametrized generic class does not
         # have `__orig_bases__` defined, but `hasattr(typ, '__orig_bases__')`
         # will return True because it's defined in the base class.
         bases_attr = "__orig_bases__"

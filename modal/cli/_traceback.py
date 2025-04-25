@@ -1,8 +1,10 @@
 # Copyright Modal Labs 2024
 """Helper functions related to displaying tracebacks in the CLI."""
+
 import functools
+import re
 import warnings
-from typing import Dict, Optional
+from typing import Optional
 
 from rich.console import Console, RenderResult, group
 from rich.panel import Panel
@@ -10,7 +12,7 @@ from rich.syntax import Syntax
 from rich.text import Text
 from rich.traceback import PathHighlighter, Stack, Traceback, install
 
-from ..exception import DeprecationError, PendingDeprecationError
+from ..exception import DeprecationError, PendingDeprecationError, ServerWarning
 
 
 @group()
@@ -20,14 +22,14 @@ def _render_stack(self, stack: Stack) -> RenderResult:
 
     path_highlighter = PathHighlighter()
     theme = self.theme
-    code_cache: Dict[str, str] = {}
+    code_cache: dict[str, str] = {}
     line_cache = getattr(stack, "line_cache", {})
     task_id = None
 
     def read_code(filename: str) -> str:
         code = code_cache.get(filename)
         if code is None:
-            with open(filename, "rt", encoding="utf-8", errors="replace") as code_file:
+            with open(filename, encoding="utf-8", errors="replace") as code_file:
                 code = code_file.read()
             code_cache[filename] = code
         return code
@@ -159,26 +161,36 @@ def setup_rich_traceback() -> None:
     install(suppress=[synchronicity, grpclib, click, typer], extra_lines=1)
 
 
-def highlight_modal_deprecation_warnings() -> None:
-    """Patch the warnings module to make client deprecation warnings more salient in the CLI."""
+def highlight_modal_warnings() -> None:
+    """Patch the warnings module to make certain warnings more salient in the CLI."""
     base_showwarning = warnings.showwarning
 
     def showwarning(warning, category, filename, lineno, file=None, line=None):
-        if issubclass(category, (DeprecationError, PendingDeprecationError)):
+        if issubclass(category, (DeprecationError, PendingDeprecationError, ServerWarning)):
             content = str(warning)
-            date = content[:10]
-            message = content[11:].strip()
+            if re.match(r"^\d{4}-\d{2}-\d{2}", content):
+                date = content[:10]
+                message = content[11:].strip()
+            else:
+                date = ""
+                message = content
             try:
-                with open(filename, "rt", encoding="utf-8", errors="replace") as code_file:
+                with open(filename, encoding="utf-8", errors="replace") as code_file:
                     source = code_file.readlines()[lineno - 1].strip()
                 message = f"{message}\n\nSource: {filename}:{lineno}\n  {source}"
             except OSError:
                 # e.g., when filename is "<unknown>"; raises FileNotFoundError on posix but OSError on windows
                 pass
+            if issubclass(category, ServerWarning):
+                title = "Modal Warning"
+            else:
+                title = "Modal Deprecation Warning"
+            if date:
+                title += f" ({date})"
             panel = Panel(
                 message,
-                style="yellow",
-                title=f"Modal Deprecation Warning ({date})",
+                border_style="yellow",
+                title=title,
                 title_align="left",
             )
             Console().print(panel)

@@ -13,7 +13,9 @@ async def test_serialize_deserialize_function(servicer, client):
     def foo():
         2 * foo.remote()
 
-    assert foo.object_id is None
+    assert not foo.is_hydrated
+    with pytest.raises(Exception):
+        foo.object_id  # noqa
 
     with app.run(client=client):
         object_id = foo.object_id

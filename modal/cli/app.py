@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 import re
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import rich
 import typer
@@ -9,11 +9,11 @@ from rich.table import Column
 from rich.text import Text
 from typer import Argument
 
+from modal._object import _get_environment_name
 from modal._utils.async_utils import synchronizer
+from modal._utils.deprecation import deprecation_warning
 from modal.client import _Client
 from modal.environments import ensure_env
-from modal.exception import deprecation_warning
-from modal.object import _get_environment_name
 from modal_proto import api_pb2
 
 from .utils import ENV_OPTION, display_table, get_app_id_from_name, stream_app_logs, timestamp_to_local
@@ -26,9 +26,10 @@ app_cli = typer.Typer(name="app", help="Manage deployed and running apps.", no_a
 APP_STATE_TO_MESSAGE = {
     api_pb2.APP_STATE_DEPLOYED: Text("deployed", style="green"),
     api_pb2.APP_STATE_DETACHED: Text("ephemeral (detached)", style="green"),
+    api_pb2.APP_STATE_DETACHED_DISCONNECTED: Text("ephemeral (detached)", style="green"),
     api_pb2.APP_STATE_DISABLED: Text("disabled", style="dim"),
     api_pb2.APP_STATE_EPHEMERAL: Text("ephemeral", style="green"),
-    api_pb2.APP_STATE_INITIALIZING: Text("initializing...", style="green"),
+    api_pb2.APP_STATE_INITIALIZING: Text("initializing...", style="yellow"),
     api_pb2.APP_STATE_STOPPED: Text("stopped", style="blue"),
     api_pb2.APP_STATE_STOPPING: Text("stopping...", style="blue"),
 }
@@ -56,7 +57,7 @@ def warn_on_name_option(command: str, app_identifier: str, name: str) -> str:
 
 @app_cli.command("list")
 @synchronizer.create_blocking
-async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
+async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
     """List Modal apps that are currently deployed/running or recently stopped."""
     env = ensure_env(env)
     client = await _Client.from_env()
@@ -65,7 +66,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
         api_pb2.AppListRequest(environment_name=_get_environment_name(env))
     )
 
-    columns: List[Union[Column, str]] = [
+    columns: list[Union[Column, str]] = [
         Column("App ID", min_width=25),  # Ensure that App ID is not truncated in slim terminals
         "Description",
         "State",
@@ -73,7 +74,7 @@ async def list(env: Optional[str] = ENV_OPTION, json: bool = False):
         "Created at",
         "Stopped at",
     ]
-    rows: List[List[Union[Text, str]]] = []
+    rows: list[list[Union[Text, str]]] = []
     for app_stats in resp.apps:
         state = APP_STATE_TO_MESSAGE.get(app_stats.state, Text("unknown", style="gray"))
         rows.append(
@@ -115,7 +116,7 @@ def logs(
     ```
 
     """
-    app_identifier = warn_on_name_option("stop", app_identifier, name)
+    app_identifier = warn_on_name_option("logs", app_identifier, name)
     app_id = get_app_id(app_identifier, env)
     stream_app_logs(app_id)
 
@@ -226,6 +227,8 @@ async def history(
     ]
     rows = []
     deployments_with_tags = False
+    deployments_with_commit_info = False
+    deployments_with_dirty_commit = False
     for idx, app_stats in enumerate(resp.app_deployment_histories):
         style = "bold green" if idx == 0 else ""
 
@@ -240,10 +243,23 @@ async def history(
             deployments_with_tags = True
             row.append(Text(app_stats.tag, style=style))
 
+        if app_stats.commit_info.commit_hash:
+            deployments_with_commit_info = True
+            short_hash = app_stats.commit_info.commit_hash[:7]
+            if app_stats.commit_info.dirty:
+                deployments_with_dirty_commit = True
+                short_hash = f"{short_hash}*"
+            row.append(Text(short_hash, style=style))
+
         rows.append(row)
 
     if deployments_with_tags:
         columns.append("Tag")
+    if deployments_with_commit_info:
+        columns.append("Commit")
 
     rows = sorted(rows, key=lambda x: int(str(x[0])[1:]), reverse=True)
     display_table(columns, rows, json)
+
+    if deployments_with_dirty_commit and not json:
+        rich.print("* - repo had uncommitted changes")

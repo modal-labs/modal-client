@@ -2,9 +2,9 @@
 from modal import App, Sandbox, SchedulerPlacement
 from modal_proto import api_pb2
 
-from .sandbox_test import skip_non_linux
+from .supports.skip import skip_windows
 
-app = App()
+app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
 
 
 @app.function(
@@ -55,9 +55,9 @@ def test_fn_scheduler_placement(servicer, client):
         )
 
 
-@skip_non_linux
+@skip_windows("needs subprocess")
 def test_sandbox_scheduler_placement(client, servicer):
-    with app.run(client):
+    with app.run(client=client):
         Sandbox.create(
             "bash",
             "-c",

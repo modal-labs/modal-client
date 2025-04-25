@@ -36,7 +36,7 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
 
 @dict_cli.command(name="list", rich_help_panel="Management")
 @synchronizer.create_blocking
-async def list(*, json: bool = False, env: Optional[str] = ENV_OPTION):
+async def list_(*, json: bool = False, env: Optional[str] = ENV_OPTION):
     """List all named Dicts."""
     env = ensure_env(env)
     client = await _Client.from_env()
@@ -51,7 +51,7 @@ async def list(*, json: bool = False, env: Optional[str] = ENV_OPTION):
 @synchronizer.create_blocking
 async def clear(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
     """Clear the contents of a named Dict by deleting all of its data."""
-    d = await _Dict.lookup(name, environment_name=env)
+    d = _Dict.from_name(name, environment_name=env)
     if not yes:
         typer.confirm(
             f"Are you sure you want to irrevocably delete the contents of modal.Dict '{name}'?",
@@ -66,7 +66,7 @@ async def clear(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_O
 async def delete(name: str, *, yes: bool = YES_OPTION, env: Optional[str] = ENV_OPTION):
     """Delete a named Dict and all of its data."""
     # Lookup first to validate the name, even though delete is a staticmethod
-    await _Dict.lookup(name, environment_name=env)
+    await _Dict.from_name(name, environment_name=env).hydrate()
     if not yes:
         typer.confirm(
             f"Are you sure you want to irrevocably delete the modal.Dict '{name}'?",
@@ -83,10 +83,15 @@ async def get(name: str, key: str, *, env: Optional[str] = ENV_OPTION):
 
     Note: When using the CLI, keys are always interpreted as having a string type.
     """
-    d = await _Dict.lookup(name, environment_name=env)
+    d = _Dict.from_name(name, environment_name=env)
     console = Console()
     val = await d.get(key)
     console.print(val)
+
+
+def _display(input: str, use_repr: bool) -> str:
+    val = repr(input) if use_repr else str(input)
+    return val[:80] + "..." if len(val) > 80 else val
 
 
 @dict_cli.command(name="items", rich_help_panel="Inspection")
@@ -105,7 +110,7 @@ async def items(
     Note: By default, this command truncates the contents. Use the `N` argument to control the
     amount of data shown or the `--all` option to retrieve the entire Dict, which may be slow.
     """
-    d = await _Dict.lookup(name, environment_name=env)
+    d = _Dict.from_name(name, environment_name=env)
 
     i, items = 0, []
     async for key, val in d.items():
@@ -117,8 +122,7 @@ async def items(
             if json:
                 display_item = key, val
             else:
-                cast = repr if use_repr else str
-                display_item = cast(key), cast(val)  # type: ignore  # mypy/issue/12056
+                display_item = _display(key, use_repr), _display(val, use_repr)  # type: ignore  # mypy/issue/12056
             items.append(display_item)
 
     display_table(["Key", "Value"], items, json)

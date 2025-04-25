@@ -1,11 +1,10 @@
 # Copyright Modal Labs 2023
-from typing import Optional, Union
+from typing import Annotated, Optional, Union
 
 import typer
 from click import UsageError
 from grpclib import GRPCError, Status
 from rich.text import Text
-from typing_extensions import Annotated
 
 from modal import environments
 from modal._utils.name_utils import check_environment_name
@@ -37,7 +36,7 @@ class RenderableBool(Text):
 
 
 @environment_cli.command(name="list", help="List all environments in the current workspace")
-def list(json: Optional[bool] = False):
+def list_(json: Optional[bool] = False):
     envs = environments.list_environments()
 
     # determine which environment is currently active, prioritizing the local default

@@ -1,20 +1,22 @@
 # Copyright Modal Labs 2022
-from typing import Any, AsyncIterator, Optional, Tuple, Type
+from collections.abc import AsyncIterator
+from typing import Any, Optional
 
 from grpclib import GRPCError
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
+from ._object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api
+from ._utils.deprecation import deprecation_warning, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import logger
-from .exception import RequestSizeError, deprecation_error
-from .object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
+from .exception import RequestSizeError
 
 
 def _serialize_dict(data):
@@ -24,8 +26,12 @@ def _serialize_dict(data):
 class _Dict(_Object, type_prefix="di"):
     """Distributed dictionary for storage in Modal apps.
 
-    Keys and values can be essentially any object, so long as they can be serialized by
-    `cloudpickle`, which includes other Modal objects.
+    Dict contents can be essentially any object so long as they can be serialized by
+    `cloudpickle`. This includes other Modal objects. If writing and reading in different
+    environments (eg., writing locally and reading remotely), it's necessary to have the
+    library defining the data type installed, with compatible versions, on both sides.
+    Additionally, cloudpickle serialization is not guaranteed to be deterministic, so it is
+    generally recommended to use primitive types for keys.
 
     **Lifetime of a Dict and its items**
 
@@ -50,19 +56,12 @@ class _Dict(_Object, type_prefix="di"):
 
     The `Dict` class offers a few methods for operations that are usually accomplished
     in Python with operators, such as `Dict.put` and `Dict.contains`. The advantage of
-    these methods is that they can be safely called in an asynchronous context, whereas
-    their operator-based analogues will block the event loop.
+    these methods is that they can be safely called in an asynchronous context by using
+    the `.aio` suffix on the method, whereas their operator-based analogues will always
+    run synchronously and block the event loop.
 
     For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-dicts).
     """
-
-    @staticmethod
-    def new(data: Optional[dict] = None):
-        """`Dict.new` is deprecated.
-
-        Please use `Dict.from_name` (for persisted) or `Dict.ephemeral` (for ephemeral) dicts.
-        """
-        deprecation_error((2024, 3, 19), Dict.new.__doc__)
 
     def __init__(self, data={}):
         """mdmd:hidden"""
@@ -73,7 +72,7 @@ class _Dict(_Object, type_prefix="di"):
     @classmethod
     @asynccontextmanager
     async def ephemeral(
-        cls: Type["_Dict"],
+        cls: type["_Dict"],
         data: Optional[dict] = None,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
@@ -87,7 +86,9 @@ class _Dict(_Object, type_prefix="di"):
 
         with Dict.ephemeral() as d:
             d["foo"] = "bar"
+        ```
 
+        ```python notest
         async with Dict.ephemeral() as d:
             await d.put.aio("foo", "bar")
         ```
@@ -107,30 +108,32 @@ class _Dict(_Object, type_prefix="di"):
             yield cls._new_hydrated(response.dict_id, client, None, is_another_app=True)
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
-        label: str,
+        name: str,
         data: Optional[dict] = None,
+        *,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Dict":
-        """Create a reference to a persisted Dict
+        """Reference a named Dict, creating if necessary.
 
-        **Examples**
+        In contrast to `modal.Dict.lookup`, this is a lazy method
+        that defers hydrating the local object with metadata from
+        Modal servers until the first time it is actually used.
 
         ```python
-        from modal import Dict
-
-        dict = Dict.from_name("my-dict", create_if_missing=True)
-        dict[123] = 456
+        d = modal.Dict.from_name("my-dict", create_if_missing=True)
+        d[123] = 456
         ```
         """
-        check_object_name(label, "Dict")
+        check_object_name(name, "Dict")
 
         async def _load(self: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
             serialized = _serialize_dict(data if data is not None else {})
             req = api_pb2.DictGetOrCreateRequest(
-                deployment_name=label,
+                deployment_name=name,
                 namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
@@ -143,30 +146,35 @@ class _Dict(_Object, type_prefix="di"):
         return _Dict._from_loader(_load, "Dict()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
-    def persisted(label: str, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name: Optional[str] = None):
-        """Deprecated! Use `Dict.from_name(name, create_if_missing=True)`."""
-        deprecation_error((2024, 3, 1), _Dict.persisted.__doc__)
-
-    @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
-        label: str,
+        name: str,
         data: Optional[dict] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Dict":
-        """Lookup a dict with a given name and tag.
+        """Lookup a named Dict.
+
+        DEPRECATED: This method is deprecated in favor of `modal.Dict.from_name`.
+
+        In contrast to `modal.Dict.from_name`, this is an eager method
+        that will hydrate the local object with metadata from Modal servers.
 
         ```python
-        from modal import Dict
-
-        d = Dict.lookup("my-dict")
+        d = modal.Dict.from_name("my-dict")
         d["xyz"] = 123
         ```
         """
+        deprecation_warning(
+            (2025, 1, 27),
+            "`modal.Dict.lookup` is deprecated and will be removed in a future release."
+            " It can be replaced with `modal.Dict.from_name`."
+            "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+        )
         obj = _Dict.from_name(
-            label,
+            name,
             data=data,
             namespace=namespace,
             environment_name=environment_name,
@@ -179,13 +187,14 @@ class _Dict(_Object, type_prefix="di"):
         return obj
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     async def delete(
-        label: str,
+        name: str,
         *,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ):
-        obj = await _Dict.lookup(label, client=client, environment_name=environment_name)
+        obj = await _Dict.from_name(name, environment_name=environment_name).hydrate(client)
         req = api_pb2.DictDeleteRequest(dict_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.DictDelete, req)
 
@@ -317,7 +326,7 @@ class _Dict(_Object, type_prefix="di"):
             yield deserialize(resp.value, self._client)
 
     @live_method_gen
-    async def items(self) -> AsyncIterator[Tuple[Any, Any]]:
+    async def items(self) -> AsyncIterator[tuple[Any, Any]]:
         """Return an iterator over the (key, value) tuples in this dictionary.
 
         Note that (unlike with Python dicts) the return value is a simple iterator,

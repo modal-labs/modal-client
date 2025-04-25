@@ -26,7 +26,7 @@ def _cli(args, env={}):
         # For windows
         "PYTHONUTF8": "1",
     }
-    ret = subprocess.run(args, cwd=lib_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    ret = subprocess.run(args, cwd=lib_dir, env=env, capture_output=True)
     stdout = ret.stdout.decode()
     stderr = ret.stderr.decode()
     if ret.returncode != 0:

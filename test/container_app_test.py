@@ -1,18 +1,16 @@
 # Copyright Modal Labs 2022
-import importlib
 import json
 import os
 import pytest
 import time
 from contextlib import contextmanager
-from typing import Dict
 from unittest import mock
 
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 
 from modal import App, interact
-from modal._container_io_manager import ContainerIOManager
+from modal._runtime.container_io_manager import ContainerIOManager
 from modal._utils.async_utils import synchronize_api
 from modal._utils.grpc_utils import retry_transient_errors
 from modal.exception import InvalidError
@@ -42,16 +40,13 @@ def temp_restore_path(tmpdir):
 
 @pytest.mark.asyncio
 async def test_container_function_lazily_imported(container_client):
-    tag_to_object_id: Dict[str, str] = {
+    function_ids: dict[str, str] = {
         "my_f_1": "fu-123",
-        "my_d": "di-123",
     }
-    object_handle_metadata: Dict[str, Message] = {
+    object_handle_metadata: dict[str, Message] = {
         "fu-123": api_pb2.FunctionHandleMetadata(),
     }
-    container_app = RunningApp(
-        app_id="ap-123", tag_to_object_id=tag_to_object_id, object_handle_metadata=object_handle_metadata
-    )
+    container_app = RunningApp("ap-123", function_ids=function_ids, object_handle_metadata=object_handle_metadata)
     app = App()
 
     # This is normally done in _container_entrypoint
@@ -95,11 +90,11 @@ async def test_container_snapshot_reference_capture(container_client, tmpdir, se
     app.function()(square)
     app_name = "my-app"
     app_id = deploy_app(app, app_name, client=container_client).app_id
-    f = Function.lookup(app_name, "square", client=container_client)
+    f = Function.from_name(app_name, "square").hydrate(container_client)
     assert f.object_id == "fu-1"
     await f.remote.aio()
     assert f.object_id == "fu-1"
-    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    io_manager = ContainerIOManager(api_pb2.ContainerArguments(checkpoint_id="ch-123"), container_client)
     restore_path = temp_restore_path(tmpdir)
     with set_env_vars(restore_path, servicer.container_addr):
         io_manager.memory_snapshot()
@@ -119,7 +114,7 @@ async def test_container_snapshot_reference_capture(container_client, tmpdir, se
 
 
 def test_container_snapshot_restore_heartbeats(tmpdir, servicer, container_client):
-    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    io_manager = ContainerIOManager(api_pb2.ContainerArguments(checkpoint_id="ch-123"), container_client)
     restore_path = temp_restore_path(tmpdir)
 
     # Ensure that heartbeats only run after the snapshot
@@ -139,7 +134,7 @@ def test_container_snapshot_restore_heartbeats(tmpdir, servicer, container_clien
 @pytest.mark.asyncio
 async def test_container_debug_snapshot(container_client, tmpdir, servicer):
     # Get an IO manager, where restore takes place
-    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    io_manager = ContainerIOManager(api_pb2.ContainerArguments(checkpoint_id="ch-123"), container_client)
     restore_path = tmpdir.join("fake-restore-state.json")
     # Write the restore file to start a debugger
     restore_path.write_text(
@@ -155,80 +150,14 @@ async def test_container_debug_snapshot(container_client, tmpdir, servicer):
             test_breakpoint.assert_called_once()
 
 
-@pytest.fixture(scope="function")
-def fake_torch_module():
-    module_path = os.path.join(os.getcwd(), "torch.py")
-    with open(module_path, "w") as f:
-        f.write(
-            """
-import dataclasses
-@dataclasses.dataclass
-class CUDA:
-    device_count = lambda self: 0
-    _device_count_nvml = lambda self: 2
-
-cuda = CUDA()
-"""
-        )
-
-    yield module_path
-    # Teardown: remove the torch.py file
-    os.remove(module_path)
-
-
-@pytest.fixture(scope="function")
-def weird_torch_module():
-    module_path = os.path.join(os.getcwd(), "torch.py")
-    with open(module_path, "w") as f:
-        f.write("IM_WEIRD = 42\n")
-
-    yield module_path
-
-    os.remove(module_path)  # Teardown: remove the torch.py file
-
-
-@pytest.mark.asyncio
-async def test_container_snapshot_patching(fake_torch_module, container_client, tmpdir, servicer):
-    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
-
-    # bring fake torch into scope and call the utility fn
-    import torch
-
-    importlib.reload(torch)  # make sure we get our fake torch
-
-    assert torch.cuda.device_count() == 0
-
-    # Write out a restore file so that snapshot+restore will complete
-    restore_path = temp_restore_path(tmpdir)
-    with set_env_vars(restore_path, servicer.container_addr):
-        io_manager.memory_snapshot()
-        assert torch.cuda.device_count() == 2
-
-
-@pytest.mark.asyncio
-async def test_container_snapshot_patching_err(weird_torch_module, container_client, tmpdir, servicer):
-    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
-    restore_path = temp_restore_path(tmpdir)
-
-    # bring weird torch into scope and call the utility fn
-    import torch
-
-    importlib.reload(torch)
-
-    assert torch.IM_WEIRD == 42
-
-    with set_env_vars(restore_path, servicer.container_addr):
-        io_manager.memory_snapshot()  # should not crash
-
-
 @pytest.mark.asyncio
 async def test_rpc_wrapping_restores(container_client, servicer, tmpdir):
-    from modal import Dict
+    import modal
 
-    io_manager = ContainerIOManager(api_pb2.ContainerArguments(), container_client)
+    io_manager = ContainerIOManager(api_pb2.ContainerArguments(checkpoint_id="ch-123"), container_client)
     restore_path = temp_restore_path(tmpdir)
 
-    d = Dict.lookup("my-amazing-dict", {"xyz": 123}, create_if_missing=True, client=container_client)
+    d = modal.Dict.from_name("my-amazing-dict", {"xyz": 123}, create_if_missing=True).hydrate(container_client)
     d["abc"] = 42
 
     with set_env_vars(restore_path, servicer.container_addr):

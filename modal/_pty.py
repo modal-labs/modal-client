@@ -2,12 +2,12 @@
 import contextlib
 import os
 import sys
-from typing import Optional, Tuple
+from typing import Optional
 
 from modal_proto import api_pb2
 
 
-def get_winsz(fd) -> Tuple[Optional[int], Optional[int]]:
+def get_winsz(fd) -> tuple[Optional[int], Optional[int]]:
     try:
         import fcntl
         import struct

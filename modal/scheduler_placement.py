@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2024
-from typing import Optional, Sequence, Union
+from collections.abc import Sequence
+from typing import Optional, Union
 
 from modal_proto import api_pb2
 

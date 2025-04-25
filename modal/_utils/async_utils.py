@@ -6,19 +6,14 @@ import inspect
 import itertools
 import time
 import typing
+from collections.abc import AsyncGenerator, AsyncIterable, Awaitable, Iterable, Iterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import (
     Any,
-    AsyncGenerator,
-    Awaitable,
     Callable,
-    Iterable,
-    Iterator,
-    List,
+    Generic,
     Optional,
-    Set,
-    Tuple,
     TypeVar,
     Union,
     cast,
@@ -31,6 +26,10 @@ from typing_extensions import ParamSpec, assert_type
 
 from ..exception import InvalidError
 from .logger import logger
+
+T = TypeVar("T")
+P = ParamSpec("P")
+V = TypeVar("V")
 
 synchronizer = synchronicity.Synchronizer()
 
@@ -118,7 +117,7 @@ class TaskContext:
     ```
     """
 
-    _loops: Set[asyncio.Task]
+    _loops: set[asyncio.Task]
 
     def __init__(self, grace: Optional[float] = None):
         self._grace = grace
@@ -266,13 +265,78 @@ def run_coro_blocking(coro):
         return fut.result()
 
 
-async def queue_batch_iterator(q: asyncio.Queue, max_batch_size=100, debounce_time=0.015):
+class TimestampPriorityQueue(Generic[T]):
+    """
+    A priority queue that schedules items to be processed at specific timestamps.
+    """
+
+    _MAX_PRIORITY = float("inf")
+
+    def __init__(self, maxsize: int = 0):
+        self.condition = asyncio.Condition()
+        self._queue: asyncio.PriorityQueue[tuple[float, Union[T, None]]] = asyncio.PriorityQueue(maxsize=maxsize)
+
+    async def close(self):
+        await self.put(self._MAX_PRIORITY, None)
+
+    async def put(self, timestamp: float, item: Union[T, None]):
+        """
+        Add an item to the queue to be processed at a specific timestamp.
+        """
+        await self._queue.put((timestamp, item))
+        async with self.condition:
+            self.condition.notify_all()  # notify any waiting coroutines
+
+    async def get(self) -> Union[T, None]:
+        """
+        Get the next item from the queue that is ready to be processed.
+        """
+        while True:
+            async with self.condition:
+                while self.empty():
+                    await self.condition.wait()
+                # peek at the next item
+                timestamp, item = await self._queue.get()
+                now = time.time()
+                if timestamp < now:
+                    return item
+                if timestamp == self._MAX_PRIORITY:
+                    return None
+                # not ready yet, calculate sleep time
+                sleep_time = timestamp - now
+                self._queue.put_nowait((timestamp, item))  # put it back
+                # wait until either the timeout or a new item is added
+                try:
+                    await asyncio.wait_for(self.condition.wait(), timeout=sleep_time)
+                except asyncio.TimeoutError:
+                    continue
+
+    def empty(self) -> bool:
+        return self._queue.empty()
+
+    def qsize(self) -> int:
+        return self._queue.qsize()
+
+    async def clear(self):
+        """
+        Clear the retry queue. Used for testing to simulate reading all elements from queue using queue_batch_iterator.
+        """
+        while not self.empty():
+            await self.get()
+
+    def __len__(self):
+        return self._queue.qsize()
+
+
+async def queue_batch_iterator(
+    q: Union[asyncio.Queue, TimestampPriorityQueue], max_batch_size=100, debounce_time=0.015
+):
     """
     Read from a queue but return lists of items when queue is large
 
     Treats a None value as end of queue items
     """
-    item_list: List[Any] = []
+    item_list: list[Any] = []
 
     while True:
         if q.empty() and len(item_list) > 0:
@@ -387,10 +451,13 @@ class AsyncOrSyncIterable:
     def __iter__(self):
         try:
             with Runner() as runner:
-                for output in run_async_gen(runner, self._async_iterable):
-                    yield output  # type: ignore
+                yield from run_async_gen(runner, self._async_iterable)
         except NestedEventLoops:
             raise InvalidError(self.nested_async_message)
+
+    async def aclose(self):
+        if hasattr(self._async_iterable, "aclose"):
+            await self._async_iterable.aclose()
 
 
 _shutdown_tasks = []
@@ -406,11 +473,6 @@ def on_shutdown(coro):
             raise
 
     _shutdown_tasks.append(asyncio.create_task(wrapper()))
-
-
-T = TypeVar("T")
-P = ParamSpec("P")
-V = TypeVar("V")
 
 
 def asyncify(f: Callable[P, T]) -> Callable[P, typing.Coroutine[None, None, T]]:
@@ -491,14 +553,17 @@ class aclosing(typing.Generic[T]):  # noqa
         await self.agen.aclose()
 
 
-async def sync_or_async_iter(iter: Union[Iterable[T], AsyncGenerator[T, None]]) -> AsyncGenerator[T, None]:
+async def sync_or_async_iter(iter: Union[Iterable[T], AsyncIterable[T]]) -> AsyncGenerator[T, None]:
     if hasattr(iter, "__aiter__"):
         agen = typing.cast(AsyncGenerator[T, None], iter)
         try:
             async for item in agen:
                 yield item
         finally:
-            await agen.aclose()
+            if hasattr(agen, "aclose"):
+                # All AsyncGenerator's have an aclose method
+                # but some AsyncIterable's don't necessarily
+                await agen.aclose()
     else:
         assert hasattr(iter, "__iter__"), "sync_or_async_iter requires an Iterable or AsyncGenerator"
         # This intentionally could block the event loop for the duration of calling __iter__ and __next__,
@@ -509,13 +574,11 @@ async def sync_or_async_iter(iter: Union[Iterable[T], AsyncGenerator[T, None]]) 
 
 
 @typing.overload
-def async_zip(g1: AsyncGenerator[T, None], g2: AsyncGenerator[V, None], /) -> AsyncGenerator[Tuple[T, V], None]:
-    ...
+def async_zip(g1: AsyncGenerator[T, None], g2: AsyncGenerator[V, None], /) -> AsyncGenerator[tuple[T, V], None]: ...
 
 
 @typing.overload
-def async_zip(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[Tuple[T, ...], None]:
-    ...
+def async_zip(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[tuple[T, ...], None]: ...
 
 
 async def async_zip(*generators):
@@ -565,14 +628,53 @@ class ExceptionWrapper:
     value: Exception
 
 
-class StopSentinelType:
-    ...
+class StopSentinelType: ...
 
 
 STOP_SENTINEL = StopSentinelType()
 
 
 async def async_merge(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T, None]:
+    """
+    Asynchronously merges multiple async generators into a single async generator.
+
+    This function takes multiple async generators and yields their values in the order
+    they are produced. If any generator raises an exception, the exception is propagated.
+
+    Args:
+        *generators: One or more async generators to be merged.
+
+    Yields:
+        The values produced by the input async generators.
+
+    Raises:
+        Exception: If any of the input generators raises an exception, it is propagated.
+
+    Usage:
+    ```python
+    import asyncio
+    from modal._utils.async_utils import async_merge
+
+    async def gen1():
+        yield 1
+        yield 2
+
+    async def gen2():
+        yield "a"
+        yield "b"
+
+    async def example():
+        values = set()
+        async for value in async_merge(gen1(), gen2()):
+            values.add(value)
+
+        return values
+
+    # Output could be: {1, "a", 2, "b"} (order may vary)
+    values = asyncio.run(example())
+    assert values == {1, "a", 2, "b"}
+    ```
+    """
     queue: asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper]] = asyncio.Queue(maxsize=len(generators) * 10)
 
     async def producer(generator: AsyncGenerator[T, None]):
@@ -582,7 +684,7 @@ async def async_merge(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T,
         except Exception as e:
             await queue.put(ExceptionWrapper(e))
 
-    tasks = set([asyncio.create_task(producer(gen)) for gen in generators])
+    tasks = {asyncio.create_task(producer(gen)) for gen in generators}
     new_output_task = asyncio.create_task(queue.get())
 
     try:
@@ -689,7 +791,7 @@ async def async_map_ordered(
 ) -> AsyncGenerator[V, None]:
     semaphore = asyncio.Semaphore(buffer_size or concurrency)
 
-    async def mapper_func_wrapper(tup: Tuple[int, T]) -> Tuple[int, V]:
+    async def mapper_func_wrapper(tup: tuple[int, T]) -> tuple[int, V]:
         return (tup[0], await async_mapper_func(tup[1]))
 
     async def counter() -> AsyncGenerator[int, None]:

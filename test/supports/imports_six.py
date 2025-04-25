@@ -3,7 +3,7 @@ import six  # noqa
 
 import modal
 
-app = modal.App("imports_six")
+app = modal.App("imports_six", include_source=True)  # TODO: remove include_source=True)
 
 
 @app.function()

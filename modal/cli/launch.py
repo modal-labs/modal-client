@@ -4,40 +4,42 @@ import inspect
 import json
 import os
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from typer import Typer
 
-from ..app import App
 from ..exception import _CliUserExecutionError
 from ..output import enable_output
 from ..runner import run_app
-from .import_refs import import_function
+from .import_refs import ImportRef, _get_runnable_app, import_file_or_module
 
 launch_cli = Typer(
     name="launch",
     no_args_is_help=True,
     help="""
-    [Preview] Open a serverless app instance on Modal.
+    Open a serverless app instance on Modal.
 
     This command is in preview and may change in the future.
     """,
 )
 
 
-def _launch_program(name: str, filename: str, args: Dict[str, Any]) -> None:
+def _launch_program(name: str, filename: str, detach: bool, args: dict[str, Any]) -> None:
     os.environ["MODAL_LAUNCH_ARGS"] = json.dumps(args)
 
     program_path = str(Path(__file__).parent / "programs" / filename)
-    entrypoint = import_function(program_path, "modal launch")
-    app: App = entrypoint.app
-    app.set_description(f"modal launch {name}")
+    base_cmd = f"modal launch {name}"
+    module = import_file_or_module(ImportRef(program_path, use_module_mode=False), base_cmd=base_cmd)
+    entrypoint = module.main
+
+    app = _get_runnable_app(entrypoint)
+    app.set_description(base_cmd)
 
     # `launch/` scripts must have a `local_entrypoint()` with no args, for simplicity here.
     func = entrypoint.info.raw_f
     isasync = inspect.iscoroutinefunction(func)
     with enable_output():
-        with run_app(app):
+        with run_app(app, detach=detach):
             try:
                 if isasync:
                     asyncio.run(func())
@@ -55,8 +57,9 @@ def jupyter(
     timeout: int = 3600,
     image: str = "ubuntu:22.04",
     add_python: Optional[str] = "3.11",
-    mount: Optional[str] = None,  # Create a `modal.Mount` from a local directory.
+    mount: Optional[str] = None,  # Adds a local directory to the jupyter container
     volume: Optional[str] = None,  # Attach a persisted `modal.Volume` by name (creating if missing).
+    detach: bool = False,  # Run the app in "detached" mode to persist after local client disconnects
 ):
     args = {
         "cpu": cpu,
@@ -68,7 +71,7 @@ def jupyter(
         "mount": mount,
         "volume": volume,
     }
-    _launch_program("jupyter", "run_jupyter.py", args)
+    _launch_program("jupyter", "run_jupyter.py", detach, args)
 
 
 @launch_cli.command(name="vscode", help="Start Visual Studio Code on Modal.")
@@ -76,16 +79,19 @@ def vscode(
     cpu: int = 8,
     memory: int = 32768,
     gpu: Optional[str] = None,
+    image: str = "debian:12",
     timeout: int = 3600,
     mount: Optional[str] = None,  # Create a `modal.Mount` from a local directory.
     volume: Optional[str] = None,  # Attach a persisted `modal.Volume` by name (creating if missing).
+    detach: bool = False,  # Run the app in "detached" mode to persist after local client disconnects
 ):
     args = {
         "cpu": cpu,
         "memory": memory,
         "gpu": gpu,
+        "image": image,
         "timeout": timeout,
         "mount": mount,
         "volume": volume,
     }
-    _launch_program("vscode", "vscode.py", args)
+    _launch_program("vscode", "vscode.py", detach, args)

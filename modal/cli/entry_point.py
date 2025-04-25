@@ -69,7 +69,7 @@ def check_path():
             "[red]The `[white]modal[/white]` command is not executable!\n"
             "You may need to give it permissions or use `[white]python -m modal[/white]` as a workaround.[/red]\n"
         )
-    text += "See more information here:\n\n" f"[link={url}]{url}[/link]\n"
+    text += f"See more information here:\n\n[link={url}]{url}[/link]\n"
     console = Console()
     console.print(text)
     console.print(Rule(style="white"))
@@ -84,7 +84,7 @@ async def setup(profile: Optional[str] = None):
 
 
 # Commands
-entrypoint_cli_typer.command("deploy", help="Deploy a Modal application.", no_args_is_help=True)(run.deploy)
+entrypoint_cli_typer.command("deploy", no_args_is_help=True)(run.deploy)
 entrypoint_cli_typer.command("serve", no_args_is_help=True)(run.serve)
 entrypoint_cli_typer.command("shell")(run.shell)
 entrypoint_cli_typer.add_typer(launch_cli)

@@ -20,4 +20,12 @@ multiple entities (client, server, worker, database). See points above.
 
 ## Changelog
 
-<!-- If relevant, include a brief user-facing description of what's new in this version. -->
+<!--
+If relevant, include a brief user-facing description of what's new in this version.
+
+Format the changelog updates using bullet points.
+See https://modal.com/docs/reference/changelog for examples and try to use a consistent style.
+
+Provide short code examples, indented under the relevant bullet point, if they would be helpful.
+Cross-linking to relevant documentation is also encouraged.
+-->

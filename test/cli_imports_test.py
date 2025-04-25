@@ -1,15 +1,20 @@
 # Copyright Modal Labs 2023
 import pytest
 
-from modal._utils.async_utils import synchronizer
-from modal.app import _App, _LocalEntrypoint
+from modal.app import App, LocalEntrypoint
 from modal.cli.import_refs import (
-    DEFAULT_APP_NAME,
-    get_by_object_path,
+    AutoRunPriority,
+    CLICommand,
+    ImportRef,
+    MethodReference,
+    import_and_filter,
     import_file_or_module,
+    list_cli_commands,
     parse_import_ref,
 )
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError
+from modal.functions import Function
+from modal.partial_function import method, web_server
 
 # Some helper vars for import_stub tests:
 local_entrypoint_src = """
@@ -22,8 +27,8 @@ def main():
 """
 python_module_src = """
 import modal
-app = modal.App("FOO")
-other_app = modal.App("BAR")
+app = modal.App("FOO", include_source=True)  # TODO: remove include_source=True)
+other_app = modal.App("BAR", include_source=True)  # TODO: remove include_source=True)
 @other_app.function()
 def func():
     pass
@@ -38,28 +43,28 @@ assert not __package__
 
 python_package_src = """
 import modal
-app = modal.App("FOO")
-other_app = modal.App("BAR")
+app = modal.App("FOO", include_source=True)  # TODO: remove include_source=True)
+other_app = modal.App("BAR", include_source=True)  # TODO: remove include_source=True)
 @other_app.function()
 def func():
     pass
-assert __package__ == "pack"
+assert __package__ == "pack005"
 """
 
 python_subpackage_src = """
 import modal
-app = modal.App("FOO")
-other_app = modal.App("BAR")
+app = modal.App("FOO", include_source=True)  # TODO: remove include_source=True)
+other_app = modal.App("BAR", include_source=True)  # TODO: remove include_source=True)
 @other_app.function()
 def func():
     pass
-assert __package__ == "pack.sub"
+assert __package__ == "pack007.sub009"
 """
 
 python_file_src = """
 import modal
-app = modal.App("FOO")
-other_app = modal.App("BAR")
+app = modal.App("FOO", include_source=True)  # TODO: remove include_source=True)
+other_app = modal.App("BAR", include_source=True)  # TODO: remove include_source=True)
 @other_app.function()
 def func():
     pass
@@ -67,47 +72,87 @@ def func():
 assert __package__ == ""
 """
 
-empty_dir_with_python_file = {"mod.py": python_module_src}
+empty_dir_with_python_file = {"mod000.py": python_module_src}
 
 
 dir_containing_python_package = {
-    "dir": {"sub": {"mod.py": python_module_src, "subfile.py": python_file_src}},
-    "pack": {
-        "file.py": python_file_src,
-        "mod.py": python_package_src,
-        "local.py": local_entrypoint_src,
+    "dir001": {"sub002": {"mod003.py": python_module_src, "subfile004.py": python_file_src}},
+    "pack005": {
+        "file006.py": python_file_src,
+        "mod007.py": python_package_src,
+        "local008.py": local_entrypoint_src,
         "__init__.py": "",
-        "sub": {"mod.py": python_subpackage_src, "__init__.py": "", "subfile.py": python_file_src},
+        "sub009": {"mod010.py": python_subpackage_src, "__init__.py": "", "subfile011.py": python_file_src},
     },
 }
 
 
 @pytest.mark.parametrize(
-    ["dir_structure", "ref", "expected_object_type"],
+    ["dir_structure", "ref", "returned_runnable_type", "num_error_choices", "use_module_mode"],
     [
         # # file syntax
-        (empty_dir_with_python_file, "mod.py", _App),
-        (empty_dir_with_python_file, "mod.py::app", _App),
-        (empty_dir_with_python_file, "mod.py::other_app", _App),
-        (dir_containing_python_package, "pack/file.py", _App),
-        (dir_containing_python_package, "pack/sub/subfile.py", _App),
-        (dir_containing_python_package, "dir/sub/subfile.py", _App),
+        (empty_dir_with_python_file, "mod000.py", type(None), 2, False),
+        (empty_dir_with_python_file, "mod000.py::app", MethodReference, 2, False),
+        (empty_dir_with_python_file, "mod000.py::other_app", Function, 2, False),
+        (dir_containing_python_package, "pack005/file006.py", Function, 1, False),
+        (dir_containing_python_package, "pack005/sub009/subfile011.py", Function, 1, False),
+        (dir_containing_python_package, "dir001/sub002/subfile004.py", Function, 1, False),
+        (dir_containing_python_package, "pack005/local008.py::app.main", LocalEntrypoint, 1, False),
         # # python module syntax
-        (empty_dir_with_python_file, "mod", _App),
-        (empty_dir_with_python_file, "mod::app", _App),
-        (empty_dir_with_python_file, "mod::other_app", _App),
-        (dir_containing_python_package, "pack.mod", _App),
-        (dir_containing_python_package, "pack.mod::other_app", _App),
-        (dir_containing_python_package, "pack/local.py::app.main", _LocalEntrypoint),
+        (empty_dir_with_python_file, "mod000::func", Function, 2, True),
+        (empty_dir_with_python_file, "mod000::other_app.func", Function, 2, True),
+        (empty_dir_with_python_file, "mod000::app.func", type(None), 2, True),
+        (empty_dir_with_python_file, "mod000::Parent.meth", MethodReference, 2, True),
+        (empty_dir_with_python_file, "mod000::other_app", Function, 2, True),
+        (dir_containing_python_package, "pack005.mod007", Function, 1, True),
+        (dir_containing_python_package, "pack005.mod007::other_app", Function, 1, True),
     ],
 )
-def test_import_object(dir_structure, ref, expected_object_type, mock_dir):
+def test_import_and_filter(dir_structure, ref, mock_dir, returned_runnable_type, num_error_choices, use_module_mode):
     with mock_dir(dir_structure):
-        import_ref = parse_import_ref(ref)
-        module = import_file_or_module(import_ref.file_or_module)
-        imported_object = get_by_object_path(module, import_ref.object_path or DEFAULT_APP_NAME)
-        _translated_obj = synchronizer._translate_in(imported_object)
-        assert isinstance(_translated_obj, expected_object_type)
+        import_ref = parse_import_ref(ref, use_module_mode=use_module_mode)
+        runnable, all_usable_commands = import_and_filter(
+            import_ref, base_cmd="dummy", accept_local_entrypoint=True, accept_webhook=False
+        )
+        print(all_usable_commands)
+        assert isinstance(runnable, returned_runnable_type)
+        assert len(all_usable_commands) == num_error_choices
+
+
+def test_import_and_filter_2(monkeypatch, supports_on_path):
+    def import_runnable(object_path, accept_local_entrypoint=False, accept_webhook=False):
+        return import_and_filter(
+            ImportRef("import_and_filter_source", use_module_mode=True, object_path=object_path),
+            base_cmd="",
+            accept_local_entrypoint=accept_local_entrypoint,
+            accept_webhook=accept_webhook,
+        )
+
+    runnable, all_usable_commands = import_runnable(
+        "app_with_one_web_function", accept_webhook=False, accept_local_entrypoint=True
+    )
+    assert runnable is None
+    assert len(all_usable_commands) == 4
+
+    assert import_runnable("app_with_one_web_function", accept_webhook=True)[0]
+    assert import_runnable("app_with_one_function_one_web_endpoint", accept_webhook=False)[0]
+
+    runnable, all_usable_commands = import_runnable("app_with_one_function_one_web_endpoint", accept_webhook=True)
+    assert runnable is None
+    assert len(all_usable_commands) == 7
+
+    runnable, all_usable_commands = import_runnable("app_with_one_web_method", accept_webhook=False)
+    assert runnable is None
+    assert len(all_usable_commands) == 3
+
+    assert import_runnable("app_with_one_web_method", accept_webhook=True)[0]
+
+    assert isinstance(
+        import_runnable("app_with_local_entrypoint_and_function", accept_local_entrypoint=True)[0], LocalEntrypoint
+    )
+    assert isinstance(
+        import_runnable("app_with_local_entrypoint_and_function", accept_local_entrypoint=False)[0], Function
+    )
 
 
 def test_import_package_and_module_names(monkeypatch, supports_dir):
@@ -119,37 +164,65 @@ def test_import_package_and_module_names(monkeypatch, supports_dir):
     # is __main__ when using `python` but in the Modal runtime it's the name of the
     # file minus the ".py", since Modal has its own __main__
     monkeypatch.chdir(supports_dir)
-    mod1 = import_file_or_module("assert_package")
+    mod1 = import_file_or_module(ImportRef("assert_package", use_module_mode=True))
     assert mod1.__package__ == ""
     assert mod1.__name__ == "assert_package"
 
     monkeypatch.chdir(supports_dir.parent)
-    mod2 = import_file_or_module("test.supports.assert_package")
+    with pytest.warns(DeprecationError, match=r"\s-m\s"):
+        # TODO: this should use use_module_mode=True once we remove the deprecation warning
+        mod2 = import_file_or_module(ImportRef("test.supports.assert_package", use_module_mode=False))
+
     assert mod2.__package__ == "test.supports"
     assert mod2.__name__ == "test.supports.assert_package"
 
-    mod3 = import_file_or_module("supports/assert_package.py")
+    mod3 = import_file_or_module(ImportRef("supports/assert_package.py", use_module_mode=False))
     assert mod3.__package__ == ""
     assert mod3.__name__ == "assert_package"
 
 
-def test_get_by_object_path():
-    class NS(dict):
-        def __getattr__(self, n):
-            return dict.__getitem__(self, n)
-
-    # simple
-    assert get_by_object_path(NS(foo="bar"), "foo") == "bar"
-    assert get_by_object_path(NS(foo="bar"), "bar") is None
-
-    # nested simple
-    assert get_by_object_path(NS(foo=NS(bar="baz")), "foo.bar") == "baz"
-
-    # try to find item keys with periods in them (ugh).
-    # this helps resolving lifecycled functions
-    assert get_by_object_path(NS({"foo.bar": "baz"}), "foo.bar") == "baz"
-
-
 def test_invalid_source_file_exception():
     with pytest.raises(InvalidError, match="Invalid Modal source filename: 'foo.bar.py'"):
-        import_file_or_module("path/to/foo.bar.py")
+        import_file_or_module(ImportRef("path/to/foo.bar.py", use_module_mode=False))
+
+
+def test_list_cli_commands():
+    app = App()
+    other_app = App()
+
+    @app.function(serialized=True, name="foo")
+    def foo():
+        pass
+
+    @app.cls(serialized=True)
+    class Cls:
+        @method()
+        def method_1(self):
+            pass
+
+        @web_server(8000)
+        def web_method(self):
+            pass
+
+    def non_modal_func():
+        pass
+
+    fake_module = {"app": app, "other_app": other_app, "non_modal_func": non_modal_func, "foo": foo, "Cls": Cls}
+
+    res = list_cli_commands(fake_module)
+
+    assert res == [
+        CLICommand(["foo", "app.foo"], foo, False, priority=AutoRunPriority.MODULE_FUNCTION),  # type: ignore
+        CLICommand(
+            ["Cls.method_1", "app.Cls.method_1"],
+            MethodReference(Cls, "method_1"),  # type: ignore
+            False,
+            priority=AutoRunPriority.MODULE_FUNCTION,
+        ),
+        CLICommand(
+            ["Cls.web_method", "app.Cls.web_method"],
+            MethodReference(Cls, "web_method"),  # type: ignore
+            True,
+            priority=AutoRunPriority.MODULE_FUNCTION,
+        ),
+    ]

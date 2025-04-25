@@ -4,8 +4,8 @@ import pytest
 import time
 from typing import Optional
 
+from modal._object import _Object
 from modal._resolver import Resolver
-from modal.object import _Object
 
 
 @pytest.mark.flaky(max_runs=2)
@@ -54,3 +54,10 @@ async def test_multi_resolve_concurrent_loads_once(client):
     await asyncio.gather(resolver.load(obj), resolver.load(obj))
     assert 0.08 < time.monotonic() - t0 < 0.17
     assert load_count == 1
+
+
+def test_resolver_without_rich(no_rich, client):
+    resolver = Resolver(client, environment_name="", app_id=None)
+    resolver.add_status_row()
+    with resolver.display():
+        pass

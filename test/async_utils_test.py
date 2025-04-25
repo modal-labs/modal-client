@@ -8,7 +8,7 @@ import pytest
 import subprocess
 import sys
 import textwrap
-from test import helpers
+import time
 
 import pytest_asyncio
 from synchronicity import Synchronizer
@@ -16,6 +16,7 @@ from synchronicity import Synchronizer
 from modal._utils import async_utils
 from modal._utils.async_utils import (
     TaskContext,
+    TimestampPriorityQueue,
     aclosing,
     async_chain,
     async_map,
@@ -29,6 +30,7 @@ from modal._utils.async_utils import (
     synchronize_api,
     warn_if_generator_is_not_consumed,
 )
+from test import helpers
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -639,6 +641,7 @@ async def test_async_merge_exception():
         try:
             await asyncio.sleep(0.1)
             yield 1
+            await asyncio.sleep(0.1)  # ensure that 4 gets added by gen2 before the exception cancels it
             raise SampleException("test")
         finally:
             await asyncio.sleep(0)
@@ -896,8 +899,7 @@ async def test_async_map_output_exception_async_func(in_order):
     def gen():
         states.append("enter")
         try:
-            for i in range(5):
-                yield i
+            yield from range(5)
         finally:
             states.append("exit")
 
@@ -1307,3 +1309,49 @@ def test_sigint_run_async_gen_shuts_down_gracefully():
     assert p.wait() == 0
     assert p.stdout.read() == ""
     assert p.stderr.read() == ""
+
+
+@pytest.mark.asyncio
+async def test_timed_priority_queue():
+    queue: TimestampPriorityQueue = TimestampPriorityQueue()
+    now = time.time()
+
+    async def producer():
+        await queue.put(now + 0.2, 2)
+        await queue.put(now + 0.1, 1)
+        await queue.put(now + 0.3, 3)
+
+    async def consumer():
+        items = []
+        for _ in range(3):
+            item = await queue.get()
+            items.append(item)
+        return items
+
+    await producer()
+    assert queue.qsize() == 3
+    items = await consumer()
+    assert items == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_timed_priority_queue_duplicates():
+    queue: TimestampPriorityQueue = async_utils.TimestampPriorityQueue()
+    now = time.time()
+    x = now + 0.1
+
+    async def producer():
+        await queue.put(1, x)
+        await queue.put(1, x)
+
+    async def consumer():
+        items = []
+        for _ in range(2):
+            item = await queue.get()
+            items.append(item)
+        return items
+
+    await producer()
+    assert queue.qsize() == 2
+    items = await consumer()
+    assert len([it for it in items]) == 2

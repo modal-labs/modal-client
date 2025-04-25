@@ -1,9 +1,11 @@
 # Copyright Modal Labs 2023
+import functools
+import pytest
 import time
 
 from grpclib import Status
 
-from modal import method, web_endpoint
+from modal import fastapi_endpoint, method
 from modal._serialization import serialize_data_format
 from modal._utils import async_utils
 from modal._utils.function_utils import (
@@ -14,21 +16,19 @@ from modal._utils.function_utils import (
 )
 from modal_proto import api_pb2
 
-
-def hasarg(a):
-    ...
+GLOBAL_VARIABLE = "whatever"
 
 
-def noarg():
-    ...
+def hasarg(a): ...
 
 
-def defaultarg(a="hello"):
-    ...
+def noarg(): ...
 
 
-def wildcard_args(*wildcard_list, **wildcard_dict):
-    ...
+def defaultarg(a="hello"): ...
+
+
+def wildcard_args(*wildcard_list, **wildcard_dict): ...
 
 
 def test_is_nullary():
@@ -100,7 +100,7 @@ class Foo:
     def bar(self):
         return "hello"
 
-    @web_endpoint()
+    @fastapi_endpoint()
     def web(self):
         pass
 
@@ -133,3 +133,21 @@ async def test_stream_function_call_data(servicer, client):
     assert 0.111 <= elapsed < 1.0
 
     assert await gen.__anext__() == "world"
+
+
+def decorator(f):
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        return f
+
+    return wrapper
+
+
+def has_global_ref():
+    assert GLOBAL_VARIABLE
+
+
+@pytest.mark.parametrize("func", [has_global_ref, decorator(has_global_ref)])
+def test_global_variable_extraction(func):
+    info = FunctionInfo(func)
+    assert info.get_globals().get("GLOBAL_VARIABLE") == GLOBAL_VARIABLE

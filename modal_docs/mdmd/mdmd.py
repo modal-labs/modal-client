@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2023
 """mdmd - MoDal MarkDown"""
+
 import inspect
 import warnings
 from enum import Enum, EnumMeta

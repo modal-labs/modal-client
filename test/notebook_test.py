@@ -3,7 +3,9 @@ import pytest
 import warnings
 from pathlib import Path
 
-import jupytext
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore")
+    import jupytext
 
 try:
     from nbclient.exceptions import CellExecutionError

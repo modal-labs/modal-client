@@ -1,21 +1,15 @@
 # Copyright Modal Labs 2022
 import inspect
-import os
 import typing
 import warnings
+from collections.abc import AsyncGenerator, Coroutine, Sequence
 from pathlib import PurePosixPath
 from textwrap import dedent
 from typing import (
     Any,
-    AsyncGenerator,
     Callable,
     ClassVar,
-    Coroutine,
-    Dict,
-    List,
     Optional,
-    Sequence,
-    Tuple,
     Union,
     overload,
 )
@@ -26,34 +20,39 @@ from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
+from ._functions import _Function
 from ._ipython import is_notebook
-from ._utils.async_utils import synchronize_api
-from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
-from ._utils.grpc_utils import retry_transient_errors
-from ._utils.mount_utils import validate_volumes
-from .client import _Client
-from .cloud_bucket_mount import _CloudBucketMount
-from .cls import _Cls, parameter
-from .config import logger
-from .exception import InvalidError, deprecation_error, deprecation_warning
-from .experimental import _GroupedFunction
-from .functions import Function, _Function
-from .gpu import GPU_T
-from .image import _Image
-from .mount import _Mount
-from .network_file_system import _NetworkFileSystem
-from .object import _get_environment_name, _Object
-from .output import _get_output_manager, enable_output
-from .partial_function import (
-    PartialFunction,
+from ._object import _get_environment_name, _Object
+from ._partial_function import (
     _find_partial_methods_for_user_cls,
     _PartialFunction,
     _PartialFunctionFlags,
 )
+from ._utils.async_utils import synchronize_api
+from ._utils.deprecation import (
+    deprecation_error,
+    deprecation_warning,
+    renamed_parameter,
+    warn_on_renamed_autoscaler_settings,
+)
+from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
+from ._utils.grpc_utils import retry_transient_errors
+from ._utils.mount_utils import validate_volumes
+from ._utils.name_utils import check_object_name
+from .client import _Client
+from .cloud_bucket_mount import _CloudBucketMount
+from .cls import _Cls, parameter
+from .config import logger
+from .exception import ExecutionError, InvalidError
+from .functions import Function
+from .gpu import GPU_T
+from .image import _Image
+from .mount import _Mount
+from .network_file_system import _NetworkFileSystem
+from .partial_function import PartialFunction
 from .proxy import _Proxy
 from .retries import Retries
 from .running_app import RunningApp
-from .sandbox import _Sandbox
 from .schedule import Schedule
 from .scheduler_placement import SchedulerPlacement
 from .secret import _Secret
@@ -90,14 +89,14 @@ class _LocalEntrypoint:
 LocalEntrypoint = synchronize_api(_LocalEntrypoint)
 
 
-def check_sequence(items: typing.Sequence[typing.Any], item_type: typing.Type[typing.Any], error_msg: str) -> None:
+def check_sequence(items: typing.Sequence[typing.Any], item_type: type[typing.Any], error_msg: str) -> None:
     if not isinstance(items, (list, tuple)):
         raise InvalidError(error_msg)
     if not all(isinstance(v, item_type) for v in items):
         raise InvalidError(error_msg)
 
 
-CLS_T = typing.TypeVar("CLS_T", bound=typing.Type[Any])
+CLS_T = typing.TypeVar("CLS_T", bound=type[Any])
 
 
 P = typing_extensions.ParamSpec("P")
@@ -109,26 +108,23 @@ class _FunctionDecoratorType:
     @overload
     def __call__(
         self, func: PartialFunction[P, ReturnType, OriginalReturnType]
-    ) -> Function[P, ReturnType, OriginalReturnType]:
-        ...  # already wrapped by a modal decorator, e.g. web_endpoint
+    ) -> Function[P, ReturnType, OriginalReturnType]: ...  # already wrapped by a modal decorator, e.g. web_endpoint
 
     @overload
     def __call__(
         self, func: Callable[P, Coroutine[Any, Any, ReturnType]]
-    ) -> Function[P, ReturnType, Coroutine[Any, Any, ReturnType]]:
-        ...  # decorated async function
+    ) -> Function[P, ReturnType, Coroutine[Any, Any, ReturnType]]: ...  # decorated async function
 
     @overload
-    def __call__(self, func: Callable[P, ReturnType]) -> Function[P, ReturnType, ReturnType]:
-        ...  # decorated non-async function
+    def __call__(
+        self, func: Callable[P, ReturnType]
+    ) -> Function[P, ReturnType, ReturnType]: ...  # decorated non-async function
 
-    def __call__(self, func):
-        ...
+    def __call__(self, func): ...
 
 
 class _App:
-    """A Modal app (prior to April 2024 a "stub") is a group of functions and classes
-    deployed together.
+    """A Modal App is a group of functions and classes that are deployed together.
 
     The app serves at least three purposes:
 
@@ -159,24 +155,27 @@ class _App:
     In this example, the secret and schedule are registered with the app.
     """
 
-    _all_apps: ClassVar[Dict[Optional[str], List["_App"]]] = {}
-    _container_app: ClassVar[Optional[RunningApp]] = None
+    _all_apps: ClassVar[dict[Optional[str], list["_App"]]] = {}
+    _container_app: ClassVar[Optional["_App"]] = None
 
     _name: Optional[str]
     _description: Optional[str]
-    _indexed_objects: Dict[str, _Object]
-    _function_mounts: Dict[str, _Mount]
+    _functions: dict[str, _Function]
+    _classes: dict[str, _Cls]
+
     _image: Optional[_Image]
     _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
-    _volumes: Dict[Union[str, PurePosixPath], _Volume]
-    _web_endpoints: List[str]  # Used by the CLI
-    _local_entrypoints: Dict[str, _LocalEntrypoint]
+    _volumes: dict[Union[str, PurePosixPath], _Volume]
+    _web_endpoints: list[str]  # Used by the CLI
+    _local_entrypoints: dict[str, _LocalEntrypoint]
 
     # Running apps only (container apps or running local)
     _app_id: Optional[str]  # Kept after app finishes
     _running_app: Optional[RunningApp]  # Various app info
     _client: Optional[_Client]
+
+    _include_source_default: Optional[bool] = None
 
     def __init__(
         self,
@@ -185,16 +184,16 @@ class _App:
         image: Optional[_Image] = None,  # default image for all functions (default is `modal.Image.debian_slim()`)
         mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
-        volumes: Dict[Union[str, PurePosixPath], _Volume] = {},  # default volumes for all functions
+        volumes: dict[Union[str, PurePosixPath], _Volume] = {},  # default volumes for all functions
+        include_source: Optional[bool] = None,
     ) -> None:
         """Construct a new app, optionally with default image, mounts, secrets, or volumes.
 
         ```python notest
         image = modal.Image.debian_slim().pip_install(...)
-        mount = modal.Mount.from_local_dir("./config")
         secret = modal.Secret.from_name("my-secret")
         volume = modal.Volume.from_name("my-data")
-        app = modal.App(image=image, mounts=[mount], secrets=[secret], volumes={"/mnt/data": volume})
+        app = modal.App(image=image, secrets=[secret], volumes={"/mnt/data": volume})
         ```
         """
         if name is not None and not isinstance(name, str):
@@ -202,15 +201,17 @@ class _App:
 
         self._name = name
         self._description = name
+        self._include_source_default = include_source
 
-        check_sequence(mounts, _Mount, "`mounts=` has to be a list or tuple of Mount objects")
-        check_sequence(secrets, _Secret, "`secrets=` has to be a list or tuple of Secret objects")
+        check_sequence(mounts, _Mount, "`mounts=` has to be a list or tuple of `modal.Mount` objects")
+        check_sequence(secrets, _Secret, "`secrets=` has to be a list or tuple of `modal.Secret` objects")
         validate_volumes(volumes)
 
         if image is not None and not isinstance(image, _Image):
-            raise InvalidError("image has to be a modal Image or AioImage object")
+            raise InvalidError("`image=` has to be a `modal.Image` object")
 
-        self._indexed_objects = {}
+        self._functions = {}
+        self._classes = {}
         self._image = image
         self._mounts = mounts
         self._secrets = secrets
@@ -250,43 +251,44 @@ class _App:
         return self._description
 
     @staticmethod
+    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
-        label: str,
+        name: str,
+        *,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_App":
-        """Look up an app with a given name. When `create_if_missing` is true,
-        the app will be created if it doesn't exist.
+        """Look up an App with a given name, creating a new App if necessary.
+
+        Note that Apps created through this method will be in a deployed state,
+        but they will not have any associated Functions or Classes. This method
+        is mainly useful for creating an App to associate with a Sandbox:
 
         ```python
         app = modal.App.lookup("my-app", create_if_missing=True)
-
         modal.Sandbox.create("echo", "hi", app=app)
         ```
         """
+        check_object_name(name, "App")
+
         if client is None:
             client = await _Client.from_env()
 
         environment_name = _get_environment_name(environment_name)
 
         request = api_pb2.AppGetOrCreateRequest(
-            app_name=label,
+            app_name=name,
             environment_name=environment_name,
             object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
         )
 
         response = await retry_transient_errors(client.stub.AppGetOrCreate, request)
 
-        app = _App(label)
+        app = _App(name)
         app._app_id = response.app_id
         app._client = client
-        app._running_app = RunningApp(
-            response.app_id,
-            client=client,
-            environment_name=environment_name,
-            interactive=False,
-        )
+        app._running_app = RunningApp(response.app_id, interactive=False)
         return app
 
     def set_description(self, description: str):
@@ -295,59 +297,6 @@ class _App:
     def _validate_blueprint_value(self, key: str, value: Any):
         if not isinstance(value, _Object):
             raise InvalidError(f"App attribute `{key}` with value {value!r} is not a valid Modal object")
-
-    def _add_object(self, tag, obj):
-        if self._running_app:
-            # If this is inside a container, then objects can be defined after app initialization.
-            # So we may have to initialize objects once they get bound to the app.
-            if tag in self._running_app.tag_to_object_id:
-                object_id: str = self._running_app.tag_to_object_id[tag]
-                metadata: Message = self._running_app.object_handle_metadata[object_id]
-                obj._hydrate(object_id, self._client, metadata)
-
-        self._indexed_objects[tag] = obj
-
-    def __getitem__(self, tag: str):
-        """App assignments of the form `app.x` or `app["x"]` are deprecated!
-
-        The only use cases for these assignments is in conjunction with `.new()`, which is now
-        in itself deprecated. If you are constructing objects with `.from_name(...)`, there is no
-        need to assign those objects to the app. Example:
-
-        ```python
-        d = modal.Dict.from_name("my-dict", create_if_missing=True)
-
-        @app.function()
-        def f(x, y):
-            d[x] = y  # Refer to d in global scope
-        ```
-        """
-        deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
-
-    def __setitem__(self, tag: str, obj: _Object):
-        deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
-
-    def __getattr__(self, tag: str):
-        # TODO(erikbern): remove this method later
-        assert isinstance(tag, str)
-        if tag.startswith("__"):
-            # Hacky way to avoid certain issues, e.g. pickle will try to look this up
-            raise AttributeError(f"App has no member {tag}")
-        if tag not in self._indexed_objects:
-            # Primarily to make hasattr work
-            raise AttributeError(f"App has no member {tag}")
-        deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
-
-    def __setattr__(self, tag: str, obj: _Object):
-        # TODO(erikbern): remove this method later
-        # Note that only attributes defined in __annotations__ are set on the object itself,
-        # everything else is registered on the indexed_objects
-        if tag in self.__annotations__:
-            object.__setattr__(self, tag, obj)
-        elif tag == "image":
-            self._image = obj
-        else:
-            deprecation_error((2024, 3, 25), _App.__getitem__.__doc__)
 
     @property
     def image(self) -> _Image:
@@ -359,7 +308,9 @@ class _App:
 
     def _uncreate_all_objects(self):
         # TODO(erikbern): this doesn't unhydrate objects that aren't tagged
-        for obj in self._indexed_objects.values():
+        for obj in self._functions.values():
+            obj._unhydrate()
+        for obj in self._classes.values():
             obj._unhydrate()
 
     @asynccontextmanager
@@ -377,36 +328,38 @@ class _App:
     @asynccontextmanager
     async def run(
         self,
+        *,
         client: Optional[_Client] = None,
         show_progress: Optional[bool] = None,
         detach: bool = False,
         interactive: bool = False,
+        environment_name: Optional[str] = None,
     ) -> AsyncGenerator["_App", None]:
-        """Context manager that runs an app on Modal.
+        """Context manager that runs an ephemeral app on Modal.
 
         Use this as the main entry point for your Modal application. All calls
-        to Modal functions should be made within the scope of this context
-        manager, and they will correspond to the current app.
+        to Modal Functions should be made within the scope of this context
+        manager, and they will correspond to the current App.
 
         **Example**
 
-        ```python
+        ```python notest
         with app.run():
             some_modal_function.remote()
         ```
 
-        To enable output printing, use `modal.enable_output()`:
+        To enable output printing (i.e., to see App logs), use `modal.enable_output()`:
 
-        ```python
+        ```python notest
         with modal.enable_output():
             with app.run():
                 some_modal_function.remote()
         ```
 
-        Note that you cannot invoke this in global scope of a file where you have
-        Modal functions or Classes, since that would run the block when the function
-        or class is imported in your containers as well. If you want to run it as
-        your entrypoint, consider wrapping it:
+        Note that you should not invoke this in global scope of a file where you have
+        Modal Functions or Classes defined, since that would run the block when the Function
+        or Cls is imported in your containers as well. If you want to run it as your entrypoint,
+        consider protecting it:
 
         ```python
         if __name__ == "__main__":
@@ -420,56 +373,88 @@ class _App:
         python app_module.py
         ```
 
-
-        Note that this method used to return a separate "App" object. This is
-        no longer useful since you can use the app itself for access to all
-        objects. For backwards compatibility reasons, it returns the same app.
-        """
-
-        enable_output_warning = """
-        Note that output will soon not be be printed with `app.run`.
-
-        If you want to print output, use `modal.enable_output()`:
-
-        ```python
-        with modal.enable_output():
-            with app.run():
-                ...
-        ```
-
-        If you don't want output, and you want to to suppress this warning,
-        use `app.run(..., show_progress=False)`.
         """
         from .runner import _run_app  # Defer import of runner.py, which imports a lot from Rich
 
         # See Github discussion here: https://github.com/modal-labs/modal-client/pull/2030#issuecomment-2237266186
 
-        auto_enable_output = False
+        if show_progress is True:
+            deprecation_error(
+                (2024, 11, 20),
+                "`show_progress=True` is no longer supported. Use `with modal.enable_output():` instead.",
+            )
+        elif show_progress is False:
+            deprecation_warning((2024, 11, 20), "`show_progress=False` is deprecated (and has no effect)")
 
-        if "MODAL_DISABLE_APP_RUN_OUTPUT_WARNING" not in os.environ:
-            if show_progress is None:
-                if _get_output_manager() is None:
-                    deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
-                    auto_enable_output = True
-            elif show_progress is True:
-                if _get_output_manager() is None:
-                    deprecation_warning((2024, 7, 18), dedent(enable_output_warning))
-                    auto_enable_output = True
-                else:
-                    deprecation_warning((2024, 7, 18), "`show_progress=True` is deprecated and no longer needed.")
-            elif show_progress is False:
-                if _get_output_manager() is not None:
-                    deprecation_warning(
-                        (2024, 7, 18), "`show_progress=False` will have no effect since output is enabled."
-                    )
+        async with _run_app(
+            self, client=client, detach=detach, interactive=interactive, environment_name=environment_name
+        ):
+            yield self
 
-        if auto_enable_output:
-            with enable_output():
-                async with _run_app(self, client=client, detach=detach, interactive=interactive):
-                    yield self
-        else:
-            async with _run_app(self, client=client, detach=detach, interactive=interactive):
-                yield self
+    async def deploy(
+        self,
+        *,
+        name: Optional[str] = None,  # Name for the deployment, overriding any set on the App
+        environment_name: Optional[str] = None,  # Environment to deploy the App in
+        tag: str = "",  # Optional metadata that will be visible in the deployment history
+        client: Optional[_Client] = None,  # Alternate client to use for RPCs
+    ) -> typing_extensions.Self:
+        """Deploy the App so that it is available persistently.
+
+        Deployed Apps will be avaible for lookup or web-based invocations until they are stopped.
+        Unlike with `App.run`, this method will return as soon as the deployment completes.
+
+        This method is a programmatic alternative to the `modal deploy` CLI command.
+
+        Examples:
+
+        ```python notest
+        app = App("my-app")
+        app.deploy()
+        ```
+
+        To enable output printing (i.e., to see build logs), use `modal.enable_output()`:
+
+        ```python notest
+        app = App("my-app")
+        with modal.enable_output():
+            app.deploy()
+        ```
+
+        Unlike with `App.run`, Function logs will not stream back to the local client after the
+        App is deployed.
+
+        Note that you should not invoke this method in global scope, as that would redeploy
+        the App every time the file is imported. If you want to write a programmatic deployment
+        script, protect this call so that it only runs when the file is executed directly:
+
+        ```python notest
+        if __name__ == "__main__":
+            with modal.enable_output():
+                app.deploy()
+        ```
+
+        Then you can deploy your app with:
+
+        ```shell
+        python app_module.py
+        ```
+
+        """
+        from .runner import _deploy_app  # Defer import of runner.py, which imports a lot from Rich
+
+        if name is None and self._name is None:
+            raise InvalidError(
+                "You need to either supply a deployment name or have a name set on the app.\n"
+                "\n"
+                "Examples:\n"
+                'app.deploy(name="some-name")\n\n'
+                "or\n"
+                'app = modal.App("some-name")'
+            )
+        result = await _deploy_app(self, name=name, environment_name=environment_name, tag=tag, client=client)
+        self._app_id = result.app_id
+        return self
 
     def _get_default_image(self):
         if self._image:
@@ -478,67 +463,101 @@ class _App:
             return _default_image
 
     def _get_watch_mounts(self):
+        if not self._running_app:
+            raise ExecutionError("`_get_watch_mounts` requires a running app.")
+
         all_mounts = [
             *self._mounts,
         ]
         for function in self.registered_functions.values():
-            all_mounts.extend(function._all_mounts)
+            all_mounts.extend(function._serve_mounts)
 
         return [m for m in all_mounts if m.is_local()]
 
     def _add_function(self, function: _Function, is_web_endpoint: bool):
-        if function.tag in self._indexed_objects:
-            old_function = self._indexed_objects[function.tag]
-            if isinstance(old_function, _Function):
-                if not is_notebook():
-                    logger.warning(
-                        f"Warning: Tag '{function.tag}' collision!"
-                        " Overriding existing function "
-                        f"[{old_function._info.module_name}].{old_function._info.function_name}"
-                        f" with new function [{function._info.module_name}].{function._info.function_name}"
-                    )
-            else:
-                logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
+        if old_function := self._functions.get(function.tag, None):
+            if old_function is function:
+                return  # already added the same exact instance, ignore
 
-        self._add_object(function.tag, function)
+            if not is_notebook():
+                logger.warning(
+                    f"Warning: function name '{function.tag}' collision!"
+                    " Overriding existing function "
+                    f"[{old_function._info.module_name}].{old_function._info.function_name}"
+                    f" with new function [{function._info.module_name}].{function._info.function_name}"
+                )
+        if function.tag in self._classes:
+            logger.warning(f"Warning: tag {function.tag} exists but is overridden by function")
+
+        if self._running_app:
+            # If this is inside a container, then objects can be defined after app initialization.
+            # So we may have to initialize objects once they get bound to the app.
+            if function.tag in self._running_app.function_ids:
+                object_id: str = self._running_app.function_ids[function.tag]
+                metadata: Message = self._running_app.object_handle_metadata[object_id]
+                function._hydrate(object_id, self._client, metadata)
+
+        self._functions[function.tag] = function
         if is_web_endpoint:
             self._web_endpoints.append(function.tag)
+
+    def _add_class(self, tag: str, cls: _Cls):
+        if self._running_app:
+            # If this is inside a container, then objects can be defined after app initialization.
+            # So we may have to initialize objects once they get bound to the app.
+            if tag in self._running_app.class_ids:
+                object_id: str = self._running_app.class_ids[tag]
+                metadata: Message = self._running_app.object_handle_metadata[object_id]
+                cls._hydrate(object_id, self._client, metadata)
+
+        self._classes[tag] = cls
 
     def _init_container(self, client: _Client, running_app: RunningApp):
         self._app_id = running_app.app_id
         self._running_app = running_app
         self._client = client
 
-        _App._container_app = running_app
+        _App._container_app = self
 
-        # Hydrate objects on app
-        for tag, object_id in running_app.tag_to_object_id.items():
-            if tag in self._indexed_objects:
-                obj = self._indexed_objects[tag]
+        # Hydrate function objects
+        for tag, object_id in running_app.function_ids.items():
+            if tag in self._functions:
+                obj = self._functions[tag]
+                handle_metadata = running_app.object_handle_metadata[object_id]
+                obj._hydrate(object_id, client, handle_metadata)
+
+        # Hydrate class objects
+        for tag, object_id in running_app.class_ids.items():
+            if tag in self._classes:
+                obj = self._classes[tag]
                 handle_metadata = running_app.object_handle_metadata[object_id]
                 obj._hydrate(object_id, client, handle_metadata)
 
     @property
-    def registered_functions(self) -> Dict[str, _Function]:
+    def registered_functions(self) -> dict[str, _Function]:
         """All modal.Function objects registered on the app."""
-        return {tag: obj for tag, obj in self._indexed_objects.items() if isinstance(obj, _Function)}
+        return self._functions
 
     @property
-    def registered_classes(self) -> Dict[str, _Function]:
+    def registered_classes(self) -> dict[str, _Cls]:
         """All modal.Cls objects registered on the app."""
-        return {tag: obj for tag, obj in self._indexed_objects.items() if isinstance(obj, _Cls)}
+        return self._classes
 
     @property
-    def registered_entrypoints(self) -> Dict[str, _LocalEntrypoint]:
+    def registered_entrypoints(self) -> dict[str, _LocalEntrypoint]:
         """All local CLI entrypoints registered on the app."""
         return self._local_entrypoints
 
     @property
-    def indexed_objects(self) -> Dict[str, _Object]:
-        return self._indexed_objects
+    def indexed_objects(self) -> dict[str, _Object]:
+        deprecation_warning(
+            (2024, 11, 25),
+            "`app.indexed_objects` is deprecated! Use `app.registered_functions` or `app.registered_classes` instead.",
+        )
+        return dict(**self._functions, **self._classes)
 
     @property
-    def registered_web_endpoints(self) -> List[str]:
+    def registered_web_endpoints(self) -> list[str]:
         """Names of web endpoint (ie. webhook) functions registered on the app."""
         return self._web_endpoints
 
@@ -609,6 +628,7 @@ class _App:
 
         return wrapped
 
+    @warn_on_renamed_autoscaler_settings
     def function(
         self,
         _warn_parentheses_missing: Any = None,
@@ -617,33 +637,31 @@ class _App:
         schedule: Optional[Schedule] = None,  # An optional Modal Schedule for the function
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: Union[
-            GPU_T, List[GPU_T]
+            GPU_T, list[GPU_T]
         ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),  # Modal Mounts added to the container
-        network_file_systems: Dict[
+        network_file_systems: dict[
             Union[str, PurePosixPath], _NetworkFileSystem
         ] = {},  # Mountpoints for Modal NetworkFileSystems
-        volumes: Dict[
+        volumes: dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
-        allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        # Specify, in fractional CPU cores, how many CPU cores to request.
+        # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
+        # CPU throttling will prevent a container from exceeding its specified limit.
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
-        memory: Optional[Union[int, Tuple[int, int]]] = None,
+        memory: Optional[Union[int, tuple[int, int]]] = None,
         ephemeral_disk: Optional[int] = None,  # Specify, in MiB, the ephemeral disk size for the Function.
+        min_containers: Optional[int] = None,  # Minimum number of containers to keep warm, even when Function is idle.
+        max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
+        buffer_containers: Optional[int] = None,  # Number of additional idle containers to maintain under active load.
+        scaledown_window: Optional[int] = None,  # Max time (in seconds) a container can remain idle while scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        concurrency_limit: Optional[
-            int
-        ] = None,  # An optional maximum number of concurrent containers running the function (keep_warm sets minimum).
-        allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
-        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        keep_warm: Optional[
-            int
-        ] = None,  # An optional minimum number of containers to always keep warm (use concurrency_limit for maximum).
         name: Optional[str] = None,  # Sets the Modal name of the function within the app
         is_generator: Optional[
             bool
@@ -656,14 +674,23 @@ class _App:
         # With `max_inputs = 1`, containers will be single-use.
         max_inputs: Optional[int] = None,
         i6pn: Optional[bool] = None,  # Whether to enable IPv6 container networking within the region.
-        # The next group of parameters are deprecated; do not use in any new code
-        interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
+        # Whether the function's home package should be included in the image - defaults to True
+        include_source: Optional[bool] = None,  # When `False`, don't automatically add the App source to the container.
+        experimental_options: Optional[dict[str, Any]] = None,
         # Parameters below here are experimental. Use with caution!
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
-        _experimental_buffer_containers: Optional[int] = None,  # Number of additional, idle containers to keep around.
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
+        _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
+        _experimental_enable_gpu_snapshot: bool = False,  # Experimentally enable GPU memory snapshots.
+        # Parameters below here are deprecated. Please update your code as suggested
+        keep_warm: Optional[int] = None,  # Replaced with `min_containers`
+        concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
+        container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
+        allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
+        _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
+        allow_cross_region_volumes: Optional[bool] = None,  # Always True on the Modal backend now
     ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal [Function](/docs/reference/modal.Function) with this App."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -672,20 +699,25 @@ class _App:
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.function()`.")
 
-        if interactive:
-            deprecation_error(
-                (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
-            )
-
         if image is None:
             image = self._get_default_image()
+
+        if allow_concurrent_inputs is not None:
+            deprecation_warning(
+                (2025, 4, 9),
+                "The `allow_concurrent_inputs` parameter is deprecated."
+                " Please use the `@modal.concurrent` decorator instead."
+                "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+            )
+        if allow_cross_region_volumes is not None:
+            deprecation_warning((2025, 4, 23), "The `allow_cross_region_volumes` parameter no longer has any effect.")
 
         secrets = [*self._secrets, *secrets]
 
         def wrapped(
             f: Union[_PartialFunction, Callable[..., Any], None],
         ) -> _Function:
-            nonlocal keep_warm, is_generator, cloud, serialized
+            nonlocal is_generator, cloud, serialized
 
             # Check if the decorated object is a class
             if inspect.isclass(f):
@@ -695,36 +727,38 @@ class _App:
 
             if isinstance(f, _PartialFunction):
                 # typically for @function-wrapped @web_endpoint, @asgi_app, or @batched
-                f.wrapped = True
+                f.registered = True
 
                 # but we don't support @app.function wrapping a method.
                 if is_method_fn(f.raw_f.__qualname__):
                     raise InvalidError(
                         "The `@app.function` decorator cannot be used on class methods. "
-                        "Swap with `@modal.method` or `@modal.web_endpoint`, or drop the `@app.function` decorator. "
+                        "Swap with `@modal.method` or one of the web endpoint decorators. "
                         "Example: "
                         "\n\n"
                         "```python\n"
                         "@app.cls()\n"
                         "class MyClass:\n"
-                        "    @modal.web_endpoint()\n"
+                        "    @modal.method()\n"
                         "    def f(self, x):\n"
                         "        ...\n"
                         "```\n"
                     )
-                i6pn_enabled = i6pn or (f.flags & _PartialFunctionFlags.GROUPED)
-                group_size = f.group_size  # Experimental: Grouped functions
+                i6pn_enabled = i6pn or (f.flags & _PartialFunctionFlags.CLUSTERED)
+                cluster_size = f.params.cluster_size  # Experimental: Clustered functions
 
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
-                webhook_config = f.webhook_config
-                is_generator = f.is_generator
-                keep_warm = f.keep_warm or keep_warm
-                batch_max_size = f.batch_max_size
-                batch_wait_ms = f.batch_wait_ms
-
-                if webhook_config and interactive:
-                    raise InvalidError("interactive=True is not supported with web endpoint functions")
+                webhook_config = f.params.webhook_config
+                is_generator = f.params.is_generator
+                batch_max_size = f.params.batch_max_size
+                batch_wait_ms = f.params.batch_wait_ms
+                if f.flags & _PartialFunctionFlags.CONCURRENT:
+                    max_concurrent_inputs = f.params.max_concurrent_inputs
+                    target_concurrent_inputs = f.params.target_concurrent_inputs
+                else:
+                    max_concurrent_inputs = allow_concurrent_inputs
+                    target_concurrent_inputs = None
             else:
                 if not is_global_object(f.__qualname__) and not serialized:
                     raise InvalidError(
@@ -756,12 +790,14 @@ class _App:
                     )
 
                 info = FunctionInfo(f, serialized=serialized, name_override=name)
+                raw_f = f
                 webhook_config = None
                 batch_max_size = None
                 batch_wait_ms = None
-                raw_f = f
+                max_concurrent_inputs = allow_concurrent_inputs
+                target_concurrent_inputs = None
 
-                group_size = None  # Experimental: Grouped functions
+                cluster_size = None  # Experimental: Clustered functions
                 i6pn_enabled = i6pn
 
             if info.function_name.endswith(".app"):
@@ -779,7 +815,7 @@ class _App:
                     raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
                 scheduler_placement = SchedulerPlacement(region=region)
 
-            function = _Function.from_args(
+            function = _Function.from_local(
                 info,
                 app=self,
                 image=image,
@@ -789,45 +825,43 @@ class _App:
                 gpu=gpu,
                 mounts=[*self._mounts, *mounts],
                 network_file_systems=network_file_systems,
-                allow_cross_region_volumes=allow_cross_region_volumes,
                 volumes={**self._volumes, **volumes},
                 cpu=cpu,
                 memory=memory,
                 ephemeral_disk=ephemeral_disk,
                 proxy=proxy,
                 retries=retries,
-                concurrency_limit=concurrency_limit,
-                allow_concurrent_inputs=allow_concurrent_inputs,
+                min_containers=min_containers,
+                max_containers=max_containers,
+                buffer_containers=buffer_containers,
+                scaledown_window=scaledown_window,
+                max_concurrent_inputs=max_concurrent_inputs,
+                target_concurrent_inputs=target_concurrent_inputs,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
-                container_idle_timeout=container_idle_timeout,
                 timeout=timeout,
-                keep_warm=keep_warm,
                 cloud=cloud,
                 webhook_config=webhook_config,
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
-                _experimental_buffer_containers=_experimental_buffer_containers,
-                _experimental_proxy_ip=_experimental_proxy_ip,
                 i6pn_enabled=i6pn_enabled,
-                group_size=group_size,  # Experimental: Grouped functions
+                cluster_size=cluster_size,  # Experimental: Clustered functions
+                include_source=include_source if include_source is not None else self._include_source_default,
+                experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
+                _experimental_proxy_ip=_experimental_proxy_ip,
+                _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
             )
 
             self._add_function(function, webhook_config is not None)
-
-            # Experimental: Grouped functions
-            if group_size is not None:
-                if group_size <= 0:
-                    raise InvalidError("Group size must be positive")
-                function = _GroupedFunction(function, group_size)
 
             return function
 
         return wrapped
 
     @typing_extensions.dataclass_transform(field_specifiers=(parameter,), kw_only_default=True)
+    @warn_on_renamed_autoscaler_settings
     def cls(
         self,
         _warn_parentheses_missing: Optional[bool] = None,
@@ -835,29 +869,31 @@ class _App:
         image: Optional[_Image] = None,  # The image to run as the container for the function
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: Union[
-            GPU_T, List[GPU_T]
+            GPU_T, list[GPU_T]
         ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
         mounts: Sequence[_Mount] = (),
-        network_file_systems: Dict[
+        network_file_systems: dict[
             Union[str, PurePosixPath], _NetworkFileSystem
         ] = {},  # Mountpoints for Modal NetworkFileSystems
-        volumes: Dict[
+        volumes: dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
-        allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        # Specify, in fractional CPU cores, how many CPU cores to request.
+        # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
+        # CPU throttling will prevent a container from exceeding its specified limit.
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
-        memory: Optional[Union[int, Tuple[int, int]]] = None,
+        memory: Optional[Union[int, tuple[int, int]]] = None,
         ephemeral_disk: Optional[int] = None,  # Specify, in MiB, the ephemeral disk size for the Function.
+        min_containers: Optional[int] = None,  # Minimum number of containers to keep warm, even when Function is idle.
+        max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
+        buffer_containers: Optional[int] = None,  # Number of additional idle containers to maintain under active load.
+        scaledown_window: Optional[int] = None,  # Max time (in seconds) a container can remain idle while scaling down.
         proxy: Optional[_Proxy] = None,  # Reference to a Modal Proxy to use in front of this function.
         retries: Optional[Union[int, Retries]] = None,  # Number of times to retry each input in case of failure.
-        concurrency_limit: Optional[int] = None,  # Limit for max concurrent containers running the function.
-        allow_concurrent_inputs: Optional[int] = None,  # Number of inputs the container may fetch to run concurrently.
-        container_idle_timeout: Optional[int] = None,  # Timeout for idle containers waiting for inputs to shut down.
         timeout: Optional[int] = None,  # Maximum execution time of the function in seconds.
-        keep_warm: Optional[int] = None,  # An optional number of containers to always keep warm.
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
@@ -865,26 +901,28 @@ class _App:
         # Limits the number of inputs a container handles before shutting down.
         # Use `max_inputs = 1` for single-use containers.
         max_inputs: Optional[int] = None,
-        # The next group of parameters are deprecated; do not use in any new code
-        interactive: bool = False,  # Deprecated: use the `modal.interact()` hook instead
+        include_source: Optional[bool] = None,  # When `False`, don't automatically add the App source to the container.
+        experimental_options: Optional[dict[str, Any]] = None,
         # Parameters below here are experimental. Use with caution!
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
-        _experimental_buffer_containers: Optional[int] = None,  # Number of additional, idle containers to keep around.
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
-    ) -> Callable[[CLS_T], CLS_T]:
+        _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
+        _experimental_enable_gpu_snapshot: bool = False,  # Experimentally enable GPU memory snapshots.
+        # Parameters below here are deprecated. Please update your code as suggested
+        keep_warm: Optional[int] = None,  # Replaced with `min_containers`
+        concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
+        container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
+        allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
+        _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
+        allow_cross_region_volumes: Optional[bool] = None,  # Always True on the Modal backend now
+    ) -> Callable[[Union[CLS_T, _PartialFunction]], CLS_T]:
         """
         Decorator to register a new Modal [Cls](/docs/reference/modal.Cls) with this App.
         """
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")
-
-        # Argument validation
-        if interactive:
-            deprecation_error(
-                (2024, 5, 1), "interactive=True has been deprecated. Set MODAL_INTERACTIVE_FUNCTIONS=1 instead."
-            )
 
         scheduler_placement = _experimental_scheduler_placement
         if region:
@@ -892,10 +930,31 @@ class _App:
                 raise InvalidError("`region` and `_experimental_scheduler_placement` cannot be used together")
             scheduler_placement = SchedulerPlacement(region=region)
 
-        def wrapper(user_cls: CLS_T) -> CLS_T:
-            nonlocal keep_warm
+        if allow_concurrent_inputs is not None:
+            deprecation_warning(
+                (2025, 4, 9),
+                "The `allow_concurrent_inputs` parameter is deprecated."
+                " Please use the `@modal.concurrent` decorator instead."
+                "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
+            )
+        if allow_cross_region_volumes is not None:
+            deprecation_warning((2025, 4, 23), "The `allow_cross_region_volumes` parameter no longer has any effect.")
 
+        def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
             # Check if the decorated object is a class
+            if isinstance(wrapped_cls, _PartialFunction):
+                wrapped_cls.registered = True
+                user_cls = wrapped_cls.user_cls
+                if wrapped_cls.flags & _PartialFunctionFlags.CONCURRENT:
+                    max_concurrent_inputs = wrapped_cls.params.max_concurrent_inputs
+                    target_concurrent_inputs = wrapped_cls.params.target_concurrent_inputs
+                else:
+                    max_concurrent_inputs = allow_concurrent_inputs
+                    target_concurrent_inputs = None
+            else:
+                user_cls = wrapped_cls
+                max_concurrent_inputs = allow_concurrent_inputs
+                target_concurrent_inputs = None
             if not inspect.isclass(user_cls):
                 raise TypeError("The @app.cls decorator must be used on a class.")
 
@@ -903,13 +962,13 @@ class _App:
             if batch_functions:
                 if len(batch_functions) > 1:
                     raise InvalidError(f"Modal class {user_cls.__name__} can only have one batched function.")
-                if len(_find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.FUNCTION)) > 1:
+                if len(_find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.interface_flags())) > 1:
                     raise InvalidError(
                         f"Modal class {user_cls.__name__} with a modal batched function cannot have other modal methods."  # noqa
                     )
                 batch_function = next(iter(batch_functions.values()))
-                batch_max_size = batch_function.batch_max_size
-                batch_wait_ms = batch_function.batch_wait_ms
+                batch_max_size = batch_function.params.batch_max_size
+                batch_wait_ms = batch_function.params.batch_wait_ms
             else:
                 batch_max_size = None
                 batch_wait_ms = None
@@ -920,9 +979,15 @@ class _App:
             ):
                 raise InvalidError("A class must have `enable_memory_snapshot=True` to use `snap=True` on its methods.")
 
+            for method in _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.CONCURRENT).values():
+                method.registered = True  # Avoid warning about not registering the method (hacky!)
+                raise InvalidError(
+                    "The `@modal.concurrent` decorator cannot be used on methods; decorate the class instead."
+                )
+
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
-            cls_func = _Function.from_args(
+            cls_func = _Function.from_local(
                 info,
                 app=self,
                 image=image or self._get_default_image(),
@@ -930,27 +995,31 @@ class _App:
                 gpu=gpu,
                 mounts=[*self._mounts, *mounts],
                 network_file_systems=network_file_systems,
-                allow_cross_region_volumes=allow_cross_region_volumes,
                 volumes={**self._volumes, **volumes},
+                cpu=cpu,
                 memory=memory,
                 ephemeral_disk=ephemeral_disk,
+                min_containers=min_containers,
+                max_containers=max_containers,
+                buffer_containers=buffer_containers,
+                scaledown_window=scaledown_window,
                 proxy=proxy,
                 retries=retries,
-                concurrency_limit=concurrency_limit,
-                allow_concurrent_inputs=allow_concurrent_inputs,
+                max_concurrent_inputs=max_concurrent_inputs,
+                target_concurrent_inputs=target_concurrent_inputs,
                 batch_max_size=batch_max_size,
                 batch_wait_ms=batch_wait_ms,
-                container_idle_timeout=container_idle_timeout,
                 timeout=timeout,
-                cpu=cpu,
-                keep_warm=keep_warm,
                 cloud=cloud,
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
-                _experimental_buffer_containers=_experimental_buffer_containers,
+                include_source=include_source if include_source is not None else self._include_source_default,
+                experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
+                _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
+                _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
             )
 
             self._add_function(cls_func, is_web_endpoint=False)
@@ -958,7 +1027,7 @@ class _App:
             cls: _Cls = _Cls.from_local(user_cls, self, cls_func)
 
             tag: str = user_cls.__name__
-            self._add_object(tag, cls)
+            self._add_class(tag, cls)
             return cls  # type: ignore  # a _Cls instance "simulates" being the user provided class
 
         return wrapper
@@ -969,54 +1038,37 @@ class _App:
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         mounts: Sequence[_Mount] = (),  # Mounts to attach to the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
-        network_file_systems: Dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
+        network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
         workdir: Optional[str] = None,  # Working directory of the sandbox.
         gpu: GPU_T = None,
         cloud: Optional[str] = None,
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the sandbox on.
-        cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
+        # Specify, in fractional CPU cores, how many CPU cores to request.
+        # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
+        # CPU throttling will prevent a container from exceeding its specified limit.
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
         # Specify, in MiB, a memory request which is the minimum memory required.
         # Or, pass (request, limit) to additionally specify a hard limit in MiB.
-        memory: Optional[Union[int, Tuple[int, int]]] = None,
+        memory: Optional[Union[int, tuple[int, int]]] = None,
         block_network: bool = False,  # Whether to block network access
-        volumes: Dict[
+        volumes: dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
         pty_info: Optional[api_pb2.PTYInfo] = None,
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
-    ) -> _Sandbox:
-        """`App.spawn_sandbox` is deprecated in favor of `Sandbox.create(app=...)`.
-
-        See https://modal.com/docs/guide/sandbox for more info on working with sandboxes.
-        """
-        deprecation_warning((2024, 7, 5), _App.spawn_sandbox.__doc__ or "")
-        if not self._running_app:
-            raise InvalidError("`app.spawn_sandbox` requires a running app.")
-
-        return await _Sandbox.create(
-            *entrypoint_args,
-            app=self,
-            environment_name=self._running_app.environment_name,
-            image=image or _default_image,
-            mounts=mounts,
-            secrets=secrets,
-            timeout=timeout,
-            workdir=workdir,
-            gpu=gpu,
-            cloud=cloud,
-            region=region,
-            cpu=cpu,
-            memory=memory,
-            network_file_systems=network_file_systems,
-            block_network=block_network,
-            volumes=volumes,
-            pty_info=pty_info,
-            _experimental_scheduler_placement=_experimental_scheduler_placement,
-            client=self._client,
+    ) -> None:
+        """mdmd:hidden"""
+        arglist = ", ".join(repr(s) for s in entrypoint_args)
+        message = (
+            "`App.spawn_sandbox` is deprecated.\n\n"
+            "Sandboxes can be created using the `Sandbox` object:\n\n"
+            f"```\nsb = Sandbox.create({arglist}, app=app)\n```\n\n"
+            "See https://modal.com/docs/guide/sandbox for more info on working with sandboxes."
         )
+        deprecation_error((2024, 7, 5), message)
 
     def include(self, /, other_app: "_App"):
         """Include another App's objects in this one.
@@ -1042,15 +1094,18 @@ class _App:
             bar.remote()
         ```
         """
-        for tag, object in other_app._indexed_objects.items():
-            existing_object = self._indexed_objects.get(tag)
-            if existing_object and existing_object != object:
+        for tag, function in other_app._functions.items():
+            self._add_function(function, False)  # TODO(erikbern): webhook config?
+
+        for tag, cls in other_app._classes.items():
+            existing_cls = self._classes.get(tag)
+            if existing_cls and existing_cls != cls:
                 logger.warning(
-                    f"Named app object {tag} with existing value {existing_object} is being "
-                    f"overwritten by a different object {object}"
+                    f"Named app class {tag} with existing value {existing_cls} is being "
+                    f"overwritten by a different class {cls}"
                 )
 
-            self._add_object(tag, object)
+            self._add_class(tag, cls)
 
     async def _logs(self, client: Optional[_Client] = None) -> AsyncGenerator[str, None]:
         """Stream logs from the app.
@@ -1080,6 +1135,13 @@ class _App:
                         yield log.data
 
     @classmethod
+    def _get_container_app(cls) -> Optional["_App"]:
+        """Returns the `App` running inside a container.
+
+        This will return `None` outside of a Modal container."""
+        return cls._container_app
+
+    @classmethod
     def _reset_container_app(cls):
         """Only used for tests."""
         cls._container_app = None
@@ -1089,7 +1151,8 @@ App = synchronize_api(_App)
 
 
 class _Stub(_App):
-    """This enables using an "Stub" class instead of "App".
+    """mdmd:hidden
+    This enables using a "Stub" class instead of "App".
 
     For most of Modal's history, the app class was called "Stub", so this exists for
     backwards compatibility, in order to facilitate moving from "Stub" to "App".

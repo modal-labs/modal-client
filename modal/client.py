@@ -2,18 +2,14 @@
 import asyncio
 import os
 import platform
+import sys
 import warnings
+from collections.abc import AsyncGenerator, AsyncIterator, Collection, Mapping
 from typing import (
     Any,
-    AsyncGenerator,
-    AsyncIterator,
     ClassVar,
-    Collection,
-    Dict,
     Generic,
-    Mapping,
     Optional,
-    Tuple,
     TypeVar,
     Union,
 )
@@ -21,26 +17,24 @@ from typing import (
 import grpclib.client
 from google.protobuf import empty_pb2
 from google.protobuf.message import Message
-from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal._utils.async_utils import synchronizer
 from modal_proto import api_grpc, api_pb2, modal_api_grpc
 from modal_version import __version__
 
+from ._traceback import print_server_warnings
 from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import connect_channel, create_channel, retry_transient_errors
 from .config import _check_config, _is_remote, config, logger
-from .exception import AuthError, ClientClosed, ConnectionError, DeprecationError, VersionError
+from .exception import AuthError, ClientClosed, ConnectionError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
-CLIENT_CREATE_ATTEMPT_TIMEOUT: float = 4.0
-CLIENT_CREATE_TOTAL_TIMEOUT: float = 15.0
 
 
-def _get_metadata(client_type: int, credentials: Optional[Tuple[str, str]], version: str) -> Dict[str, str]:
+def _get_metadata(client_type: int, credentials: Optional[tuple[str, str]], version: str) -> dict[str, str]:
     # This implements a simplified version of platform.platform() that's still machine-readable
     uname: platform.uname_result = platform.uname()
     if uname.system == "Darwin":
@@ -49,10 +43,13 @@ def _get_metadata(client_type: int, credentials: Optional[Tuple[str, str]], vers
         system, release = uname.system, uname.release
     platform_str = "-".join(s.replace("-", "_") for s in (system, release, uname.machine))
 
+    # sys.version_info is structured unlike sys.version or platform.python_version()
+    python_version = "%d.%d.%d" % (sys.version_info.major, sys.version_info.minor, sys.version_info.micro)
+
     metadata = {
         "x-modal-client-version": version,
         "x-modal-client-type": str(client_type),
-        "x-modal-python-version": platform.python_version(),
+        "x-modal-python-version": python_version,
         "x-modal-node": platform.node(),
         "x-modal-platform": platform_str,
     }
@@ -69,7 +66,7 @@ def _get_metadata(client_type: int, credentials: Optional[Tuple[str, str]], vers
 
 ReturnType = TypeVar("ReturnType")
 _Value = Union[str, bytes]
-_MetadataLike = Union[Mapping[str, _Value], Collection[Tuple[str, _Value]]]
+_MetadataLike = Union[Mapping[str, _Value], Collection[tuple[str, _Value]]]
 RequestType = TypeVar("RequestType", bound=Message)
 ResponseType = TypeVar("ResponseType", bound=Message)
 
@@ -80,12 +77,13 @@ class _Client:
     _cancellation_context: TaskContext
     _cancellation_context_event_loop: asyncio.AbstractEventLoop = None
     _stub: Optional[api_grpc.ModalClientStub]
+    _snapshotted: bool
 
     def __init__(
         self,
         server_url: str,
         client_type: int,
-        credentials: Optional[Tuple[str, str]],
+        credentials: Optional[tuple[str, str]],
         version: str = __version__,
     ):
         """mdmd:hidden
@@ -114,14 +112,14 @@ class _Client:
         self._closed = False
         assert self._stub is None
         metadata = _get_metadata(self.client_type, self._credentials, self.version)
+        self._cancellation_context = TaskContext(grace=0.5)  # allow running rpcs to finish in 0.5s when closing client
+        self._cancellation_context_event_loop = asyncio.get_running_loop()
+        await self._cancellation_context.__aenter__()
         self._channel = create_channel(self.server_url, metadata=metadata)
         try:
             await connect_channel(self._channel)
         except OSError as exc:
-            raise ConnectionError(str(exc))
-        self._cancellation_context = TaskContext(grace=0.5)  # allow running rpcs to finish in 0.5s when closing client
-        self._cancellation_context_event_loop = asyncio.get_running_loop()
-        await self._cancellation_context.__aenter__()
+            raise ConnectionError("Could not connect to the Modal server.") from exc
         self._grpclib_stub = api_grpc.ModalClientStub(self._channel)
         self._stub = modal_api_grpc.ModalClientModal(self._grpclib_stub, client=self)
         self._owner_pid = os.getpid()
@@ -129,7 +127,8 @@ class _Client:
     async def _close(self, prep_for_restore: bool = False):
         logger.debug(f"Client ({id(self)}): closing")
         self._closed = True
-        await self._cancellation_context.__aexit__(None, None, None)  # wait for all rpcs to be finished/cancelled
+        if hasattr(self, "_cancellation_context"):
+            await self._cancellation_context.__aexit__(None, None, None)  # wait for all rpcs to be finished/cancelled
         if self._channel is not None:
             self._channel.close()
 
@@ -142,32 +141,11 @@ class _Client:
     async def hello(self):
         """Connect to server and retrieve version information; raise appropriate error for various failures."""
         logger.debug(f"Client ({id(self)}): Starting")
-        try:
-            req = empty_pb2.Empty()
-            resp = await retry_transient_errors(
-                self.stub.ClientHello,
-                req,
-                attempt_timeout=CLIENT_CREATE_ATTEMPT_TIMEOUT,
-                total_timeout=CLIENT_CREATE_TOTAL_TIMEOUT,
-            )
-            if resp.warning:
-                ALARM_EMOJI = chr(0x1F6A8)
-                warnings.warn(f"{ALARM_EMOJI} {resp.warning} {ALARM_EMOJI}", DeprecationError)
-        except GRPCError as exc:
-            if exc.status == Status.FAILED_PRECONDITION:
-                raise VersionError(
-                    f"The client version ({self.version}) is too old. Please update (pip install --upgrade modal)."
-                )
-            else:
-                raise exc
+        resp = await retry_transient_errors(self.stub.ClientHello, empty_pb2.Empty())
+        print_server_warnings(resp.server_warnings)
 
     async def __aenter__(self):
         await self._open()
-        try:
-            await self.hello()
-        except BaseException:
-            await self._close()
-            raise
         return self
 
     async def __aexit__(self, exc_type, exc, tb):
@@ -183,7 +161,6 @@ class _Client:
         client = cls(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials=None)
         try:
             await client._open()
-            # Skip client.hello
             yield client
         finally:
             await client._close()
@@ -201,7 +178,7 @@ class _Client:
         else:
             c = config
 
-        credentials: Optional[Tuple[str, str]]
+        credentials: Optional[tuple[str, str]]
 
         if cls._client_from_env_lock is None:
             cls._client_from_env_lock = asyncio.Lock()
@@ -234,7 +211,6 @@ class _Client:
             client = _Client(server_url, client_type, credentials)
             await client._open()
             async_utils.on_shutdown(client._close())
-            await client.hello()
             cls._client_from_env = client
             return client
 
@@ -257,21 +233,16 @@ class _Client:
         credentials = (token_id, token_secret)
         client = _Client(server_url, client_type, credentials)
         await client._open()
-        try:
-            await client.hello()
-        except BaseException:
-            await client._close()
-            raise
         async_utils.on_shutdown(client._close())
         return client
 
     @classmethod
-    async def verify(cls, server_url: str, credentials: Tuple[str, str]) -> None:
+    async def verify(cls, server_url: str, credentials: tuple[str, str]) -> None:
         """mdmd:hidden
         Check whether can the client can connect to this server with these credentials; raise if not.
         """
-        async with cls(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials):
-            pass  # Will call ClientHello RPC and possibly raise AuthError or ConnectionError
+        async with cls(server_url, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
+            await client.hello()  # Will call ClientHello RPC and possibly raise AuthError or ConnectionError
 
     @classmethod
     def set_env_client(cls, client: Optional["_Client"]):
@@ -321,7 +292,6 @@ class _Client:
             self.set_env_client(None)
             # TODO(elias): reset _cancellation_context in case ?
             await self._open()
-            # intentionally not doing self.hello since we should already be authenticated etc.
 
     async def _get_grpclib_method(self, method_name: str) -> Any:
         # safely get grcplib method that is bound to a valid channel
