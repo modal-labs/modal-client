@@ -377,6 +377,7 @@ ReturnType = typing.TypeVar("ReturnType", covariant=True)
 OriginalReturnType = typing.TypeVar(
     "OriginalReturnType", covariant=True
 )  # differs from return type if ReturnType is coroutine
+T = typing.TypeVar("T", covariant=True)
 
 
 class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type_prefix="fu"):
@@ -1667,7 +1668,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         return fc
 
     @staticmethod
-    async def gather(*function_calls: "_FunctionCall[Any]") -> list[Any]:
+    async def gather(*function_calls: "_FunctionCall[T]") -> typing.Sequence[T]:
         """Wait until all Modal FunctionCall objects have results before returning.
 
         Accepts a variable number of `FunctionCall` objects, as returned by `Function.spawn()`.
@@ -1693,7 +1694,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
             raise exc
 
 
-async def _gather(*function_calls: _FunctionCall[ReturnType]) -> typing.Sequence[ReturnType]:
+async def _gather(*function_calls: _FunctionCall[T]) -> typing.Sequence[T]:
     """Deprecated: Please use `modal.FunctionCall.gather()` instead."""
     deprecation_warning(
         (2025, 2, 24),
