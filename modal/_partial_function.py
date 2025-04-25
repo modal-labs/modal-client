@@ -777,7 +777,7 @@ def _batched(
     @app.function()
     @modal.batched(max_batch_size=4, wait_ms=1000)
     async def batched_multiply(xs: list[int], ys: list[int]) -> list[int]:
-        return [x * y for x, y in zip(xs, xs)]
+        return [x * y for x, y in zip(xs, ys)]
 
     # call batched_multiply with individual inputs
     # batched_multiply.remote.aio(2, 100)
@@ -787,7 +787,7 @@ def _batched(
     class BatchedClass:
         @modal.batched(max_batch_size=4, wait_ms=1000)
         def batched_multiply(self, xs: list[int], ys: list[int]) -> list[int]:
-            return [x * y for x, y in zip(xs, xs)]
+            return [x * y for x, y in zip(xs, ys)]
     ```
 
     See the [dynamic batching guide](https://modal.com/docs/guide/dynamic-batching) for more information.
