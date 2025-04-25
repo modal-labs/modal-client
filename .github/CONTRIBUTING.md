@@ -12,6 +12,3 @@
 1. Compile protobuf files: `inv protoc`
 1. Install the repo in editable mode: `pip install -e .`
 1. Build type Python stubs and check types: `inv type-check`
-1. Check the CLI works and reflects your local changes. Run `modal --version`. You should see `modal
-   client version: ...`. Change `minor_number` in `modal_version/__init__.py`. `modal --version` should
-   show your local change.
