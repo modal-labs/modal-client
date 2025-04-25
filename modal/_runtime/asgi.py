@@ -468,7 +468,8 @@ async def _proxy_lifespan_request(base_url, scope, receive, send) -> None:
                 session = aiohttp.ClientSession(
                     base_url,
                     cookie_jar=aiohttp.DummyCookieJar(),
-                    timeout=aiohttp.ClientTimeout(total=3600),
+                    # "Disable" this by setting to max possible input timeout. Timeouts are handled on input level instead.
+                    timeout=aiohttp.ClientTimeout(total=3600 * 24),
                     auto_decompress=False,
                     read_bufsize=1024 * 1024,  # 1 MiB
                     connector=aiohttp.TCPConnector(
