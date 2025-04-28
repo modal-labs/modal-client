@@ -407,7 +407,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _build_args: dict
 
     _is_generator: Optional[bool] = None
-    _cluster_size: Optional[int] = None
 
     # when this is the method of a class/object function, invocation of this function
     # should supply the method name in the FunctionInput:
@@ -931,7 +930,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._app = app  # needed for CLI right now
         obj._obj = None
         obj._is_generator = is_generator
-        obj._cluster_size = cluster_size
         obj._is_method = False
         obj._spec = function_spec  # needed for modal shell
         obj._webhook_config = webhook_config  # only set locally
@@ -1236,7 +1234,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # Overridden concrete implementation of base class method
         self._progress = None
         self._is_generator = None
-        self._cluster_size = None
         self._web_url = None
         self._function_name = None
         self._info = None
@@ -1304,11 +1301,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         await self.hydrate()
         assert self._is_generator is not None  # should be set now
         return self._is_generator
-
-    @property
-    def cluster_size(self) -> int:
-        """mdmd:hidden"""
-        return self._cluster_size or 1
 
     @live_method_gen
     async def _map(
