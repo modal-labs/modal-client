@@ -140,7 +140,7 @@ class FunctionInfo:
     def __init__(
         self,
         f: Optional[Callable[..., Any]],
-        serialized=False,
+        serialized: bool = False,
         name_override: Optional[str] = None,
         user_cls: Optional[type] = None,
     ):
@@ -148,6 +148,10 @@ class FunctionInfo:
         self.user_cls = user_cls
 
         if name_override is not None:
+            if not serialized:
+                # We may relax this constraint in the future, but currently we don't track the distinction between
+                # the Function's name inside modal and the name of the object that we need to import in a container.
+                raise InvalidError("Setting a custom `name=` also requires setting `serialized=True`")
             self.function_name = name_override
         elif f is None and user_cls:
             # "service function" for running all methods of a class
