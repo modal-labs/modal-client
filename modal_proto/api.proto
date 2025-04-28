@@ -588,6 +588,9 @@ message AttemptStartRequest {
   string function_id = 1;
   string parent_input_id = 2;
   FunctionPutInputsItem input = 3;
+
+  // Given if this is a retry attempt
+  optional string prev_attempt_token = 4;
 }
 
 message AttemptStartResponse {

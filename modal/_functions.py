@@ -328,10 +328,16 @@ class _InputPlaneInvocation:
         stub: ModalClientModal,
         attempt_token: str,
         client: _Client,
+        function_id: str,
+        item: api_pb2.FunctionPutInputsItem,
+        retry_policy: api_pb2.FunctionRetryPolicy,
     ):
         self.stub = stub
         self.client = client  # Used by the deserializer.
         self.attempt_token = attempt_token
+        self.function_id = function_id
+        self.item = item
+        self.retry_policy = retry_policy
 
     @staticmethod
     async def create(
@@ -355,10 +361,35 @@ class _InputPlaneInvocation:
         response = await retry_transient_errors(stub.AttemptStart, request)
         attempt_token = response.attempt_token
 
-        return _InputPlaneInvocation(stub, attempt_token, client)
+        # TODO(nathan): get retry policy from somewhere
+        retry_policy = api_pb2.FunctionRetryPolicy(
+            retries=3,
+            backoff_coefficient=2.0,
+            initial_delay_ms=10,
+            max_delay_ms=1000,
+        )
+
+        return _InputPlaneInvocation(stub, attempt_token, client, function_id, item, retry_policy)
 
     async def run_function(self) -> Any:
-        # TODO(nathan): add retry logic
+        # User errors including timeouts are managed by the user specified retry policy.
+        user_retry_manager = RetryManager(self.retry_policy)
+
+        while True:
+            try:
+                return await self._get_single_output()
+            except (UserCodeException, FunctionTimeoutError) as exc:
+                delay_ms = user_retry_manager.get_delay_ms()
+                if delay_ms is None:
+                    raise exc
+                await asyncio.sleep(delay_ms / 1000)
+            except InternalFailure:
+                # For system failures on the server, we retry immediately,
+                # and the failure does not count towards the retry policy.
+                pass
+            await self._retry_input()
+
+    async def _get_single_output(self) -> Any:
         while True:
             request = api_pb2.AttemptAwaitRequest(
                 attempt_token=self.attempt_token,
@@ -375,6 +406,19 @@ class _InputPlaneInvocation:
                 return await _process_result(
                     response.output.result, response.output.data_format, self.stub, self.client
                 )
+
+    async def _retry_input(self) -> None:
+        request = api_pb2.AttemptStartRequest(
+            function_id=self.function_id,
+            parent_input_id=current_input_id() or "",
+            input=self.item,
+            prev_attempt_token=self.attempt_token,
+        )
+        response = await retry_transient_errors(
+            self.stub.AttemptStart,
+            request,
+        )
+        self.attempt_token = response.attempt_token
 
 
 # Wrapper type for api_pb2.FunctionStats
