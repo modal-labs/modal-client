@@ -395,6 +395,7 @@ class _Cls(_Object, type_prefix="cs"):
 
     def _initialize_from_other(self, other: "_Cls"):
         super()._initialize_from_other(other)
+        self._app = other._app
         self._user_cls = other._user_cls
         self._class_service_function = other._class_service_function
         self._method_partials = other._method_partials
@@ -665,7 +666,6 @@ More information on class parameterization can be found here: https://modal.com/
             validated_volumes=validate_volumes(volumes),
             target_concurrent_inputs=allow_concurrent_inputs,
         )
-
         return cls
 
     @staticmethod

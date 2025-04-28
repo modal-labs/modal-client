@@ -1254,3 +1254,8 @@ def test_cli_run_variadic_args(servicer, set_env_client, test_dir, func, disable
 def test_server_warnings(servicer, set_env_client, supports_dir):
     res = _run(["run", f"{supports_dir / 'app_run_tests' / 'uses_experimental_options.py'}::gets_warning"])
     assert "You have been warned!" in res.stdout
+
+
+def test_run_with_options(servicer, set_env_client, supports_dir):
+    app_file = supports_dir / "app_run_tests" / "uses_with_options.py"
+    _run(["run", f"{app_file.as_posix()}::C_with_gpu.f"])
