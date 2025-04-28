@@ -973,6 +973,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             if not parent.is_hydrated:
                 # While the base Object.hydrate() method appears to be idempotent, it's not always safe
                 await parent.hydrate()
+
             assert parent._client and parent._client.stub
 
             if (
