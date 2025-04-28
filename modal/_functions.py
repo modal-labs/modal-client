@@ -408,14 +408,14 @@ class _InputPlaneInvocation:
                 )
 
     async def _retry_input(self) -> None:
-        request = api_pb2.AttemptStartRequest(
+        request = api_pb2.AttemptRetryRequest(
             function_id=self.function_id,
             parent_input_id=current_input_id() or "",
             input=self.item,
-            prev_attempt_token=self.attempt_token,
+            attempt_token=self.attempt_token,
         )
         response = await retry_transient_errors(
-            self.stub.AttemptStart,
+            self.stub.AttemptRetry,
             request,
         )
         self.attempt_token = response.attempt_token
