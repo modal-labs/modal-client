@@ -452,6 +452,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         is_auto_snapshot: bool = False,
         enable_memory_snapshot: bool = False,
         block_network: bool = False,
+        restrict_modal_access: bool = False,
         i6pn_enabled: bool = False,
         # Experimental: Clustered functions
         cluster_size: Optional[int] = None,
@@ -812,6 +813,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     checkpointing_enabled=enable_memory_snapshot,
                     object_dependencies=object_dependencies,
                     block_network=block_network,
+                    untrusted=restrict_modal_access,
                     max_inputs=max_inputs or 0,
                     cloud_bucket_mounts=cloud_bucket_mounts_to_proto(cloud_bucket_mounts),
                     scheduler_placement=scheduler_placement.proto if scheduler_placement else None,
@@ -868,6 +870,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         snapshot_debug=function_definition.snapshot_debug,
                         runtime_perf_record=function_definition.runtime_perf_record,
                         function_schema=function_schema,
+                        untrusted=function_definition.untrusted,
                     )
 
                     ranked_functions = []
