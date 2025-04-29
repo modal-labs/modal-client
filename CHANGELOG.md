@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.32 (2025-04-29)
+
+- When setting a custom `name=` in `@app.function()`, an error is now raised unless `serialized=True` is also set.
+
+
+
 ### 0.74.25 (2025-04-25)
 
 - The `App.include` method now returns `self` so it's possible to build up an App through chained calls:
