@@ -966,19 +966,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         parent = self
 
         async def _load(param_bound_func: _Function, resolver: Resolver, existing_object_id: Optional[str]):
-            try:
-                identity = f"{parent.info.function_name} class service function"
-            except Exception:
-                # Can't always look up the function name that way, so fall back to generic message
-                identity = "class service function for a parametrized class"
             if not parent.is_hydrated:
-                if parent.app._running_app is None:
-                    reason = ", because the App it is defined on is not running"
-                else:
-                    reason = ""
-                raise ExecutionError(
-                    f"The {identity} has not been hydrated with the metadata it needs to run on Modal{reason}."
-                )
+                # While the base Object.hydrate() method appears to be idempotent, it's not always safe
+                await parent.hydrate()
 
             assert parent._client and parent._client.stub
 
