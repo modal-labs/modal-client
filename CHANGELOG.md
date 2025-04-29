@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.35 (2025-04-29)
+
+- Fixed a bug that prevented doing `modal run` against an entrypoint defined by `Cls.with_options`.
+
+
+
 ### 0.74.32 (2025-04-29)
 
 - When setting a custom `name=` in `@app.function()`, an error is now raised unless `serialized=True` is also set.
