@@ -19,7 +19,7 @@ runs:
       with:
         path: ${{ env.pythonLocation }}
         key: |
-          ${{ runner.os }}-${{ env.pythonLocation }}-${{ hashFiles('**/setup.cfg', 'requirements.dev.txt', 'pyproject.toml') }}-v2
+          ${{ runner.os }}-${{ env.pythonLocation }}-${{ hashFiles('**/setup.cfg', 'requirements.dev.txt', 'pyproject.toml') }}-v3
 
     - name: Install Python packages
       shell: bash
