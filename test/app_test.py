@@ -234,8 +234,8 @@ def test_set_image_on_app_as_attribute():
 def test_redeploy_delete_objects(servicer, client):
     # Deploy an app with objects d1 and d2
     app = App()
-    app.function(name="d1")(dummy)
-    app.function(name="d2")(dummy)
+    app.function(name="d1", serialized=True)(dummy)
+    app.function(name="d2", serialized=True)(dummy)
     app.deploy(name="xyz", client=client)
 
     # Check objects
@@ -243,8 +243,8 @@ def test_redeploy_delete_objects(servicer, client):
 
     # Deploy an app with objects d2 and d3
     app = App()
-    app.function(name="d2")(dummy)
-    app.function(name="d3")(dummy)
+    app.function(name="d2", serialized=True)(dummy)
+    app.function(name="d3", serialized=True)(dummy)
     app.deploy(name="xyz", client=client)
 
     # Make sure d1 is deleted
