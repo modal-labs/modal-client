@@ -584,6 +584,8 @@ class FunctionCreationStatus:
             suffix = _get_suffix_from_web_url_info(url_info)
             # TODO: this is only printed when we're showing progress. Maybe move this somewhere else.
             web_url = self.response.handle_metadata.web_url
+            for warning in self.response.server_warnings:
+                self.status_row.warning(warning)
             self.status_row.finish(
                 f"Created web function {self.tag} => [magenta underline]{web_url}[/magenta underline]"
                 f"{proxy_auth_suffix}{suffix}"
@@ -595,7 +597,10 @@ class FunctionCreationStatus:
                 custom_domain_status_row.finish(
                     f"Custom domain for {self.tag} => [magenta underline]{custom_domain.url}[/magenta underline]"
                 )
+
         else:
+            for warning in self.response.server_warnings:
+                self.status_row.warning(warning)
             self.status_row.finish(f"Created function {self.tag}.")
             if self.response.function.method_definitions_set:
                 for method_definition in self.response.function.method_definitions.values():

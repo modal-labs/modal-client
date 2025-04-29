@@ -753,39 +753,6 @@ def f(x):
     return x**2
 
 
-def test_allow_cross_region_volumes(client, servicer):
-    app = App()
-    vol1 = NetworkFileSystem.from_name("xyz-1", create_if_missing=True)
-    vol2 = NetworkFileSystem.from_name("xyz-2", create_if_missing=True)
-    # Should pass flag for all the function's NetworkFileSystemMounts
-    app.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(dummy)
-
-    with app.run(client=client):
-        assert len(servicer.app_functions) == 1
-        for func in servicer.app_functions.values():
-            assert len(func.shared_volume_mounts) == 2
-            for svm in func.shared_volume_mounts:
-                assert svm.allow_cross_region
-
-
-def test_allow_cross_region_volumes_webhook(client, servicer):
-    # TODO(erikbern): this test seems a bit redundant
-    app = App()
-    vol1 = NetworkFileSystem.from_name("xyz-1", create_if_missing=True)
-    vol2 = NetworkFileSystem.from_name("xyz-2", create_if_missing=True)
-    # Should pass flag for all the function's NetworkFileSystemMounts
-    app.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(
-        fastapi_endpoint()(dummy)
-    )
-
-    with app.run(client=client):
-        assert len(servicer.app_functions) == 1
-        for func in servicer.app_functions.values():
-            assert len(func.shared_volume_mounts) == 2
-            for svm in func.shared_volume_mounts:
-                assert svm.allow_cross_region
-
-
 def test_serialize_deserialize_function_handle(servicer, client):
     from modal._serialization import deserialize, serialize
 
@@ -1009,7 +976,7 @@ async def test_map_large_inputs(client, servicer, monkeypatch, blob_server):
     app = App()
     dummy_modal = app.function()(dummy)
 
-    _, blobs = blob_server
+    _, blobs, _ = blob_server
     async with app.run.aio(client=client):
         assert len(blobs) == 0
         assert [a async for a in dummy_modal.map.aio(range(100))] == [i**2 for i in range(100)]
@@ -1376,3 +1343,30 @@ def test_failed_lookup_error(client, servicer):
 
     with pytest.raises(NotFoundError, match="in the 'some-env' environment"):
         Function.from_name("app", "f", environment_name="some-env").hydrate(client=client)
+
+
+@pytest.mark.parametrize("decorator", ["function", "cls"])
+def test_experimental_options(client, servicer, decorator):
+    app = App()
+
+    experimental_options = {"foo": 2, "bar": True}
+
+    if decorator == "function":
+
+        @app.function(serialized=True, experimental_options=experimental_options)
+        def f():
+            pass
+
+    else:
+
+        @app.cls(serialized=True, experimental_options=experimental_options)
+        class C:
+            @modal.method()
+            def f(self):
+                pass
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            ...
+
+    assert ctx.get_requests("FunctionCreate")[0].function.experimental_options == {"foo": "2", "bar": "True"}

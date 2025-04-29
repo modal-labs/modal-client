@@ -1,4 +1,9 @@
 # Copyright Modal Labs 2025
+"""Internal module for building and running Apps."""
+# Note: While this is mostly internal code, the `modal.runner.deploy_app` function was
+# the only way to programmatically deploy Apps for some time, so users have reached into here.
+# We may eventually deprecate it from the public API, but for now we should keep that in mind.
+
 import asyncio
 import dataclasses
 import os
@@ -473,40 +478,22 @@ async def _deploy_app(
     environment_name: Optional[str] = None,
     tag: str = "",
 ) -> DeployResult:
-    """Deploy an app and export its objects persistently.
+    """Internal function for deploying an App.
 
-    Typically, using the command-line tool `modal deploy <module or script>`
-    should be used, instead of this method.
-
-    **Usage:**
-
-    ```python
-    if __name__ == "__main__":
-        deploy_app(app)
-    ```
-
-    Deployment has two primary purposes:
-
-    * Persists all of the objects in the app, allowing them to live past the
-      current app run. For schedules this enables headless "cron"-like
-      functionality where scheduled functions continue to be invoked after
-      the client has disconnected.
-    * Allows for certain kinds of these objects, _deployment objects_, to be
-      referred to and used by other apps.
+    Users should prefer the `modal deploy` CLI or the `App.deploy` method.
     """
     if environment_name is None:
         environment_name = typing.cast(str, config.get("environment"))
 
-    name = name or app.name
+    name = name or app.name or ""
     if not name:
         raise InvalidError(
-            "You need to either supply an explicit deployment name to the deploy command, "
-            "or have a name set on the app.\n"
+            "You need to either supply a deployment name or have a name set on the app.\n"
             "\n"
             "Examples:\n"
-            'app.deploy("some_name")\n\n'
+            'modal.runner.deploy_app(app, name="some_name")\n\n'
             "or\n"
-            'app = App("some-name")'
+            'app = modal.App("some-name")'
         )
     else:
         check_object_name(name, "App")

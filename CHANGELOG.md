@@ -12,6 +12,64 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.25 (2025-04-25)
+
+- The `App.include` method now returns `self` so it's possible to build up an App through chained calls:
+
+    ```python
+    app = modal.App("main-app").include(sub_app_1).include(sub_app_2)
+    ```
+
+
+
+### 0.74.23 (2025-04-25)
+
+- Marked some parameters in a small number of Modal functions as requiring keyword arguments (namely, `modal.App.run`, `modal.Cls.with_options`, all `.from_name` methods, and a few others). Code that calls these functions with positional arguments will now raise an error. This is expected to be minimally disruptive as the affected parameters are mostly "extra" options or positioned after parameters that have previously been deprecated.
+
+
+
+### 0.74.22 (2025-04-24)
+
+- Added a `modal secret delete` command to the CLI.
+
+
+
+### 0.74.21 (2025-04-24)
+
+- The `allow_cross_region_volumes` parameter of the `@app.function` and `@app.cls` decorators now issues a deprecation warning; the parameter is always treated as `True` on the Modal backend.
+
+
+
+### 0.74.18 (2025-04-23)
+
+- Adds a `.deploy()` method to the `App` object. This method allows you programmatically deploy Apps from Python:
+
+    ```python
+    app = modal.App("programmatic-deploy")
+    ...
+    app.deploy()
+    ```
+
+
+
+### 0.74.12 (2025-04-18)
+
+- The `@app.function` and `@app.cls` decorators now support `experimental_options`, which we'll use going forward when testing experimental functionality that depends only on server-side configuration.
+
+
+
+### 0.74.7 (2025-04-17)
+
+- Modal will now raise an error if local files included in the App are modified during the build process. This behavior can be controlled with the `MODAL_BUILD_VALIDATION` configuration, which accepts `error` (default), `warning`, or `ignore`.
+
+
+
+### 0.74.6 (2025-04-17)
+
+* Internal change that makes containers for functions/classes with `serialized=True` start up *slightly* faster than before
+
+
+
 ### 0.74.0 (2025-04-15)
 
 * Introduces a deprecation warning when using explicit constructors (`__init__` methods) on `@modal.cls`-decorated classes. Class parameterization should instead be done via [dataclass-style `modal.parameter()` declarations](https://modal.com/docs/guide/parametrized-functions). Initialization logic should run in `@modal.enter()`-decorated [lifecycle methods](https://modal.com/docs/guide/lifecycle-functions).

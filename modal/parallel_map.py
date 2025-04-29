@@ -503,6 +503,7 @@ async def _for_each_async(self, *input_iterators, kwargs={}, ignore_exceptions: 
 async def _starmap_async(
     self,
     input_iterator: typing.Union[typing.Iterable[typing.Sequence[Any]], typing.AsyncIterable[typing.Sequence[Any]]],
+    *,
     kwargs={},
     order_outputs: bool = True,
     return_exceptions: bool = False,
@@ -529,6 +530,7 @@ async def _starmap_async(
 def _starmap_sync(
     self,
     input_iterator: typing.Iterable[typing.Sequence[Any]],
+    *,
     kwargs={},
     order_outputs: bool = True,
     return_exceptions: bool = False,

@@ -53,6 +53,7 @@ class _Environment(_Object, type_prefix="en"):
     @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
         name: str,
+        *,
         create_if_missing: bool = False,
     ):
         if name:

@@ -574,6 +574,27 @@ message Asgi {
   }
 }
 
+message AttemptAwaitRequest {
+  string attempt_token = 1;
+  double requested_at = 2; // Used for waypoints.
+  float timeout_secs = 3;
+}
+
+message AttemptAwaitResponse {
+  optional FunctionGetOutputsItem output = 1;
+}
+
+message AttemptStartRequest {
+  string function_id = 1;
+  string parent_input_id = 2;
+  FunctionPutInputsItem input = 3;
+}
+
+message AttemptStartResponse {
+  string attempt_token = 1;
+  FunctionRetryPolicy retry_policy = 2;
+}
+
 message AutoscalerSettings {
   // A collection of user-configurable settings for Function autoscaling
   // These are used for static configuration and for dynamic autoscaler updates
@@ -1341,6 +1362,11 @@ message Function {
 
   AutoscalerSettings autoscaler_settings = 79;  // Bundle of parameters related to autoscaling
   FunctionSchema function_schema = 80;
+
+  // For server-side experimental functionality. Prefer using this over individual _experimental_* fields.
+  // Note the value type as string. Internally we'll coerce all values to string with str().
+  // On the server, it's necessary to convert back to the most natural type (e.g. int) when relevant.
+  map<string, string> experimental_options = 81;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1425,6 +1451,7 @@ message FunctionCreateResponse {
   string __deprecated_web_url = 2  [ deprecated = true];  // Used up until 0.62.212
   Function function = 4;
   FunctionHandleMetadata handle_metadata = 5;
+  repeated Warning server_warnings = 6;
 }
 
 message FunctionData {
@@ -1490,6 +1517,8 @@ message FunctionData {
 
   AutoscalerSettings autoscaler_settings = 31;  // Bundle of parameters related to autoscaling
   FunctionSchema function_schema = 32;
+
+  map<string, string> experimental_options = 33;
 }
 
 message FunctionExtended {
@@ -2071,6 +2100,7 @@ message Object {
     MountHandleMetadata mount_handle_metadata = 4;
     ClassHandleMetadata class_handle_metadata = 5;
     SandboxHandleMetadata sandbox_handle_metadata = 6;
+    VolumeMetadata volume_metadata = 7;
   }
 }
 
@@ -2886,6 +2916,7 @@ message VolumeGetOrCreateRequest {
 message VolumeGetOrCreateResponse {
   string volume_id = 1;
   VolumeFsVersion version = 2;
+  VolumeMetadata metadata = 3;
 }
 
 message VolumeHeartbeatRequest {
@@ -2916,6 +2947,10 @@ message VolumeListRequest {
 message VolumeListResponse {
   repeated VolumeListItem items = 1;
   string environment_name = 2;
+}
+
+message VolumeMetadata {
+  VolumeFsVersion version = 1;
 }
 
 message VolumeMount {
@@ -3022,6 +3057,7 @@ message Warning {
     WARNING_TYPE_UNSPECIFIED = 0;
     WARNING_TYPE_CLIENT_DEPRECATION = 1;
     WARNING_TYPE_RESOURCE_LIMIT = 2;
+    WARNING_TYPE_FUNCTION_CONFIGURATION = 3;
   }
   WarningType type = 1;
   string message = 2;
@@ -3069,6 +3105,12 @@ service ModalClient {
   rpc AppRollback(AppRollbackRequest) returns (google.protobuf.Empty);
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
+
+  // Input Plane
+  // These RPCs are experimental, not deployed to production, and can be changed / removed
+  // without needing to worry about backwards compatibility.
+  rpc AttemptAwait(AttemptAwaitRequest) returns (AttemptAwaitResponse);
+  rpc AttemptStart(AttemptStartRequest) returns (AttemptStartResponse);
 
   // Blobs
   rpc BlobCreate(BlobCreateRequest) returns (BlobCreateResponse);

@@ -1,15 +1,25 @@
 # Copyright Modal Labs 2022
 import asyncio
 import dataclasses
+import functools
 import hashlib
-import io
 import os
 import platform
 import time
 from collections.abc import AsyncIterator
 from contextlib import AbstractContextManager, contextmanager
+from io import BytesIO, FileIO
 from pathlib import Path, PurePosixPath
-from typing import TYPE_CHECKING, Any, BinaryIO, Callable, Optional, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    BinaryIO,
+    Callable,
+    ContextManager,
+    Optional,
+    Union,
+    cast,
+)
 from urllib.parse import urlparse
 
 from modal_proto import api_pb2
@@ -42,6 +52,9 @@ DEFAULT_SEGMENT_CHUNK_SIZE = 2**24
 # well, but the limit will never be raised.
 # TODO(dano): remove this once we stop requiring md5 for blobs
 MULTIPART_UPLOAD_THRESHOLD = 1024**3
+
+# For block based storage like volumefs2: the size of a block
+BLOCK_SIZE: int = 8 * 1024 * 1024
 
 
 @retry(n_attempts=5, base_delay=0.5, timeout=None)
@@ -94,7 +107,7 @@ async def _upload_to_s3_url(
 
 
 async def perform_multipart_upload(
-    data_file: Union[BinaryIO, io.BytesIO, io.FileIO],
+    data_file: Union[BinaryIO, BytesIO, FileIO],
     *,
     content_length: int,
     max_part_size: int,
@@ -112,9 +125,9 @@ async def perform_multipart_upload(
     # Give each part its own IO reader object to avoid needing to
     # lock access to the reader's position pointer.
     data_file_readers: list[BinaryIO]
-    if isinstance(data_file, io.BytesIO):
+    if isinstance(data_file, BytesIO):
         view = data_file.getbuffer()  # does not copy data
-        data_file_readers = [io.BytesIO(view) for _ in range(len(part_urls))]
+        data_file_readers = [BytesIO(view) for _ in range(len(part_urls))]
     else:
         filename = data_file.name
         data_file_readers = [open(filename, "rb") for _ in range(len(part_urls))]
@@ -174,7 +187,7 @@ async def _blob_upload(
     upload_hashes: UploadHashes, data: Union[bytes, BinaryIO], stub, progress_report_cb: Optional[Callable] = None
 ) -> str:
     if isinstance(data, bytes):
-        data = io.BytesIO(data)
+        data = BytesIO(data)
 
     content_length = get_content_length(data)
 
@@ -292,6 +305,7 @@ async def blob_iter(blob_id: str, stub: ModalClientModal) -> AsyncIterator[bytes
 class FileUploadSpec:
     source: Callable[[], Union[AbstractContextManager, BinaryIO]]
     source_description: Any
+    source_is_path: bool
     mount_filename: str
 
     use_blob: bool
@@ -328,6 +342,7 @@ def _get_file_upload_spec(
     return FileUploadSpec(
         source=source,
         source_description=source_description,
+        source_is_path=isinstance(source_description, Path),
         mount_filename=mount_filename.as_posix(),
         use_blob=use_blob,
         content=content,
@@ -365,6 +380,125 @@ def get_file_upload_spec_from_fileobj(fp: BinaryIO, mount_filename: PurePosixPat
         mount_filename,
         mode,
     )
+
+_FileUploadSource2 = Callable[[], ContextManager[BinaryIO]]
+
+@dataclasses.dataclass
+class FileUploadSpec2:
+    source: _FileUploadSource2
+    source_description: Union[str, Path]
+
+    path: str
+    # Raw (unencoded 32 byte) SHA256 sum per 8MiB file block
+    blocks_sha256: list[bytes]
+    mode: int  # file permission bits (last 12 bits of st_mode)
+    size: int
+
+
+    @staticmethod
+    async def from_path(
+        filename: Path,
+        mount_filename: PurePosixPath,
+        mode: Optional[int] = None,
+    ) -> "FileUploadSpec2":
+        # Python appears to give files 0o666 bits on Windows (equal for user, group, and global),
+        # so we mask those out to 0o755 for compatibility with POSIX-based permissions.
+        mode = mode or os.stat(filename).st_mode & (0o7777 if platform.system() != "Windows" else 0o7755)
+
+        def source():
+            return open(filename, "rb")
+
+        return await FileUploadSpec2._create(
+            source,
+            filename,
+            mount_filename,
+            mode,
+        )
+
+
+    @staticmethod
+    async def from_fileobj(
+        source_fp: Union[BinaryIO, BytesIO],
+        mount_filename: PurePosixPath,
+        mode: int
+    ) -> "FileUploadSpec2":
+        try:
+            fileno = source_fp.fileno()
+            def source():
+                new_fd = os.dup(fileno)
+                fp = os.fdopen(new_fd, "rb")
+                fp.seek(0)
+                return fp
+
+        except OSError:
+            # `.fileno()` not available; assume BytesIO-like type
+            source_fp = cast(BytesIO, source_fp)
+            buffer = source_fp.getbuffer()
+            def source():
+                return BytesIO(buffer)
+
+        return await FileUploadSpec2._create(
+            source,
+            str(source),
+            mount_filename,
+            mode,
+        )
+
+
+    @staticmethod
+    async def _create(
+        source: _FileUploadSource2,
+        source_description: Union[str, Path],
+        mount_filename: PurePosixPath,
+        mode: int,
+    ) -> "FileUploadSpec2":
+        # Current position is ignored - we always upload from position 0
+        with source() as source_fp:
+            source_fp.seek(0, os.SEEK_END)
+            size = source_fp.tell()
+
+        blocks_sha256 = await hash_blocks_sha256(source, size)
+
+        return FileUploadSpec2(
+            source=source,
+            source_description=source_description,
+            path=mount_filename.as_posix(),
+            blocks_sha256=blocks_sha256,
+            mode=mode & 0o7777,
+            size=size,
+        )
+
+
+async def hash_blocks_sha256(
+    source: _FileUploadSource2,
+    size: int,
+) -> list[bytes]:
+    def ceildiv(a: int, b: int) -> int:
+        return -(a // -b)
+
+    num_blocks = ceildiv(size, BLOCK_SIZE)
+
+    def hash_block_sha256(block_idx: int) -> bytes:
+        sha256_hash = hashlib.sha256()
+        block_start = block_idx * BLOCK_SIZE
+
+        with source() as block_fp:
+            block_fp.seek(block_start)
+
+            num_bytes_read = 0
+            while num_bytes_read < BLOCK_SIZE:
+                chunk = block_fp.read(BLOCK_SIZE - num_bytes_read)
+
+                if not chunk:
+                    break
+
+                num_bytes_read += len(chunk)
+                sha256_hash.update(chunk)
+
+        return sha256_hash.digest()
+
+    tasks = (asyncio.to_thread(functools.partial(hash_block_sha256, idx)) for idx in range(num_blocks))
+    return await asyncio.gather(*tasks)
 
 
 def use_md5(url: str) -> bool:

@@ -377,6 +377,7 @@ ReturnType = typing.TypeVar("ReturnType", covariant=True)
 OriginalReturnType = typing.TypeVar(
     "OriginalReturnType", covariant=True
 )  # differs from return type if ReturnType is coroutine
+T = typing.TypeVar("T", covariant=True)
 
 
 class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type_prefix="fu"):
@@ -406,7 +407,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     _build_args: dict
 
     _is_generator: Optional[bool] = None
-    _cluster_size: Optional[int] = None
 
     # when this is the method of a class/object function, invocation of this function
     # should supply the method name in the FunctionInput:
@@ -430,7 +430,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # TODO: maybe break this out into a separate decorator for notebooks.
         mounts: Collection[_Mount] = (),
         network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
-        allow_cross_region_volumes: bool = False,
         volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
         cpu: Optional[Union[float, tuple[float, float]]] = None,
@@ -459,6 +458,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         ephemeral_disk: Optional[int] = None,
         # current default: first-party, future default: main-package
         include_source: Optional[bool] = None,
+        experimental_options: Optional[dict[str, str]] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
         _experimental_enable_gpu_snapshot: bool = False,
@@ -787,9 +787,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     autoscaler_settings=autoscaler_settings,
                     method_definitions=method_definitions,
                     method_definitions_set=True,
-                    shared_volume_mounts=network_file_system_mount_protos(
-                        validated_network_file_systems, allow_cross_region_volumes
-                    ),
+                    shared_volume_mounts=network_file_system_mount_protos(validated_network_file_systems),
                     volume_mounts=volume_mounts,
                     proxy_id=(proxy.object_id if proxy else None),
                     retry_policy=retry_policy,
@@ -819,6 +817,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     i6pn_enabled=i6pn_enabled,
                     schedule=schedule.proto_message if schedule is not None else None,
                     snapshot_debug=config.get("snapshot_debug"),
+                    experimental_options=experimental_options or {},
+                    # ---
                     _experimental_group_size=cluster_size or 0,  # Experimental: Clustered functions
                     _experimental_concurrent_cancellations=True,
                     _experimental_proxy_ip=_experimental_proxy_ip,
@@ -856,6 +856,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         use_method_name=function_definition.use_method_name,
                         method_definitions=function_definition.method_definitions,
                         method_definitions_set=function_definition.method_definitions_set,
+                        experimental_options=experimental_options or {},
                         _experimental_group_size=function_definition._experimental_group_size,
                         _experimental_buffer_containers=function_definition._experimental_buffer_containers,
                         _experimental_custom_scaling=function_definition._experimental_custom_scaling,
@@ -913,6 +914,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         raise InvalidError(f"Function {info.function_name} is too large to deploy.")
                     raise
                 function_creation_status.set_response(response)
+
             # needed for modal.serve file watching
             serve_mounts = {m for m in all_mounts if m.is_local()}
             serve_mounts |= image._serve_mounts
@@ -928,7 +930,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._app = app  # needed for CLI right now
         obj._obj = None
         obj._is_generator = is_generator
-        obj._cluster_size = cluster_size
         obj._is_method = False
         obj._spec = function_spec  # needed for modal shell
         obj._webhook_config = webhook_config  # only set locally
@@ -1124,6 +1125,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         cls: type["_Function"],
         app_name: str,
         name: str,
+        *,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
     ) -> "_Function":
@@ -1232,7 +1234,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         # Overridden concrete implementation of base class method
         self._progress = None
         self._is_generator = None
-        self._cluster_size = None
         self._web_url = None
         self._function_name = None
         self._info = None
@@ -1300,11 +1301,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         await self.hydrate()
         assert self._is_generator is not None  # should be set now
         return self._is_generator
-
-    @property
-    def cluster_size(self) -> int:
-        """mdmd:hidden"""
-        return self._cluster_size or 1
 
     @live_method_gen
     async def _map(
@@ -1386,7 +1382,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             args,
             kwargs,
             client=self.client,
-            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY,
+            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC,
         )
 
     @synchronizer.no_io_translation
@@ -1526,9 +1522,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         if self._is_generator:
             invocation = await self._call_generator_nowait(args, kwargs)
         else:
-            invocation = await self._call_function_nowait(
-                args, kwargs, api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC_LEGACY
-            )
+            invocation = await self._call_function_nowait(args, kwargs, api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC)
 
         fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(
             invocation.function_call_id, invocation.client, None
@@ -1666,7 +1660,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         return fc
 
     @staticmethod
-    async def gather(*function_calls: "_FunctionCall[Any]") -> list[Any]:
+    async def gather(*function_calls: "_FunctionCall[T]") -> typing.Sequence[T]:
         """Wait until all Modal FunctionCall objects have results before returning.
 
         Accepts a variable number of `FunctionCall` objects, as returned by `Function.spawn()`.
@@ -1692,7 +1686,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
             raise exc
 
 
-async def _gather(*function_calls: _FunctionCall[ReturnType]) -> typing.Sequence[ReturnType]:
+async def _gather(*function_calls: _FunctionCall[T]) -> typing.Sequence[T]:
     """Deprecated: Please use `modal.FunctionCall.gather()` instead."""
     deprecation_warning(
         (2025, 2, 24),

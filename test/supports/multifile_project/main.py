@@ -4,9 +4,7 @@ from modal import enter, fastapi_endpoint, method
 
 from . import a, b
 
-app = modal.App()
-app.include(a.app)
-app.include(b.app)
+app = modal.App().include(a.app).include(b.app)
 
 
 @app.function()

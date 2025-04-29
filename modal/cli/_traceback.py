@@ -161,8 +161,8 @@ def setup_rich_traceback() -> None:
     install(suppress=[synchronicity, grpclib, click, typer], extra_lines=1)
 
 
-def highlight_modal_deprecation_warnings() -> None:
-    """Patch the warnings module to make client deprecation warnings more salient in the CLI."""
+def highlight_modal_warnings() -> None:
+    """Patch the warnings module to make certain warnings more salient in the CLI."""
     base_showwarning = warnings.showwarning
 
     def showwarning(warning, category, filename, lineno, file=None, line=None):

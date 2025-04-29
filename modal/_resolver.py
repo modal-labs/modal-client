@@ -1,12 +1,16 @@
 # Copyright Modal Labs 2023
 import asyncio
 import contextlib
+import os
+import tempfile
 import typing
 from asyncio import Future
 from collections.abc import Hashable
 from typing import TYPE_CHECKING, Optional
 
 from grpclib import GRPCError, Status
+
+from modal_proto import api_pb2
 
 from ._utils.async_utils import TaskContext
 from .client import _Client
@@ -32,6 +36,10 @@ class StatusRow:
         if self._spinner is not None:
             self._spinner.update(text=message)
 
+    def warning(self, warning: api_pb2.Warning):
+        if self._step_node is not None:
+            self._step_node.add(f"[yellow]:warning:[/yellow] {warning.message}")
+
     def finish(self, message):
         if self._step_node is not None and self._spinner is not None:
             from ._output import OutputManager
@@ -46,6 +54,7 @@ class Resolver:
     _app_id: Optional[str]
     _deduplication_cache: dict[Hashable, Future]
     _client: _Client
+    _build_start: float
 
     def __init__(
         self,
@@ -73,6 +82,11 @@ class Resolver:
         self._environment_name = environment_name
         self._deduplication_cache = {}
 
+        with tempfile.TemporaryFile() as temp_file:
+            # Use file mtime to track build start time because we will later compare this baseline
+            # to the mtime on mounted files, and want those measurements to have the same resolution.
+            self._build_start = os.fstat(temp_file.fileno()).st_mtime
+
     @property
     def app_id(self) -> Optional[str]:
         return self._app_id
@@ -84,6 +98,10 @@ class Resolver:
     @property
     def environment_name(self):
         return self._environment_name
+
+    @property
+    def build_start(self) -> float:
+        return self._build_start
 
     async def preload(self, obj, existing_object_id: Optional[str]):
         if obj._preload is not None:

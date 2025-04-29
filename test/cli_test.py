@@ -86,33 +86,27 @@ def test_app_deploy_with_name(servicer, mock_dir, set_env_client):
     assert "my_app_foo" in servicer.deployed_apps
 
 
-def test_secret_create(servicer, set_env_client):
+def test_secret_create_list_delete(servicer, set_env_client):
     # fail without any keys
     _run(["secret", "create", "foo"], 2, None)
 
-    _run(["secret", "create", "foo", "bar=baz"])
-    assert len(servicer.secrets) == 1
+    _run(["secret", "create", "foo", "VAR=foo"])
+    assert "foo" in _run(["secret", "list"]).stdout
 
     # Creating the same one again should fail
-    _run(["secret", "create", "foo", "bar=baz"], expected_exit_code=1)
+    _run(["secret", "create", "foo", "VAR=foo"], expected_exit_code=1)
 
     # But it should succeed with --force
-    _run(["secret", "create", "foo", "bar=baz", "--force"])
+    _run(["secret", "create", "foo", "VAR=foo", "--force"])
 
+    # Create a few more
+    _run(["secret", "create", "bar", "VAR=bar"])
+    _run(["secret", "create", "buz", "VAR=buz"])
+    assert len(json.loads(_run(["secret", "list", "--json"]).stdout)) == 3
 
-def test_secret_list(servicer, set_env_client):
-    res = _run(["secret", "list"])
-    assert "dummy-secret-0" not in res.stdout
-
-    _run(["secret", "create", "foo", "bar=baz"])
-    _run(["secret", "create", "bar", "baz=buz"])
-    _run(["secret", "create", "eric", "baz=bu 123z=b\n\t\r #(Q)JO5️⃣5️⃣😤WMLE🔧:GWam "])
-
-    res = _run(["secret", "list"])
-    assert "dummy-secret-0" in res.stdout
-    assert "dummy-secret-1" in res.stdout
-    assert "dummy-secret-2" in res.stdout
-    assert "dummy-secret-3" not in res.stdout
+    # We can delete it
+    _run(["secret", "delete", "foo", "--yes"])
+    assert "foo" not in _run(["secret", "list"]).stdout
 
 
 def test_app_token_new(servicer, set_env_client, server_url_env, modal_config):
@@ -1163,7 +1157,7 @@ def test_keyboard_interrupt_during_app_run_detach(servicer, server_url_env, toke
 @pytest.fixture
 def app(client):
     app = App()
-    with app.run(client):
+    with app.run(client=client):
         yield app
 
 
@@ -1255,3 +1249,8 @@ def test_cli_run_variadic_args(servicer, set_env_client, test_dir, func, disable
     assert "args: ('abc', '--foo=123', '--bar=456')" in res.stdout
 
     _run(["run", f"{app_file.as_posix()}::{func}_invalid", "--foo=123"], expected_exit_code=1)
+
+
+def test_server_warnings(servicer, set_env_client, supports_dir):
+    res = _run(["run", f"{supports_dir / 'app_run_tests' / 'uses_experimental_options.py'}::gets_warning"])
+    assert "You have been warned!" in res.stdout

@@ -10,16 +10,19 @@ import time
 import typing
 from collections.abc import AsyncGenerator, AsyncIterator, Generator, Sequence
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import (
     IO,
     Any,
+    Awaitable,
     BinaryIO,
     Callable,
     Optional,
     Union,
 )
 
+from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -31,7 +34,9 @@ from ._object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _O
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, aclosing, async_map, asyncnullcontext, synchronize_api
 from ._utils.blob_utils import (
+    BLOCK_SIZE,
     FileUploadSpec,
+    FileUploadSpec2,
     blob_iter,
     blob_upload_file,
     get_file_upload_spec_from_fileobj,
@@ -39,6 +44,7 @@ from ._utils.blob_utils import (
 )
 from ._utils.deprecation import deprecation_error, deprecation_warning, renamed_parameter
 from ._utils.grpc_utils import retry_transient_errors
+from ._utils.http_utils import ClientSessionRegistry
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .config import logger
@@ -119,6 +125,7 @@ class _Volume(_Object, type_prefix="vo"):
     """
 
     _lock: Optional[asyncio.Lock] = None
+    _metadata: "typing.Optional[api_pb2.VolumeMetadata]"
 
     async def _get_lock(self):
         # To (mostly*) prevent multiple concurrent operations on the same volume, which can cause problems under
@@ -138,6 +145,7 @@ class _Volume(_Object, type_prefix="vo"):
     @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
         name: str,
+        *,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -171,9 +179,20 @@ class _Volume(_Object, type_prefix="vo"):
                 version=version,
             )
             response = await resolver.client.stub.VolumeGetOrCreate(req)
-            self._hydrate(response.volume_id, resolver.client, None)
+            self._hydrate(response.volume_id, resolver.client, response.metadata)
 
         return _Volume._from_loader(_load, "Volume()", hydrate_lazily=True)
+
+    def _hydrate_metadata(self, metadata: Optional[Message]):
+        if metadata and isinstance(metadata, api_pb2.VolumeMetadata):
+            self._metadata = metadata
+        else:
+            raise TypeError(
+                "_hydrate_metadata() requires an `api_pb2.VolumeMetadata` to determine volume version"
+            )
+
+    def _get_metadata(self) -> Optional[Message]:
+        return self._metadata
 
     @classmethod
     @asynccontextmanager
@@ -209,7 +228,7 @@ class _Volume(_Object, type_prefix="vo"):
         async with TaskContext() as tc:
             request = api_pb2.VolumeHeartbeatRequest(volume_id=response.volume_id)
             tc.infinite_loop(lambda: client.stub.VolumeHeartbeat(request), sleep=_heartbeat_sleep)
-            yield cls._new_hydrated(response.volume_id, client, None, is_another_app=True)
+            yield cls._new_hydrated(response.volume_id, client, response.metadata, is_another_app=True)
 
     @staticmethod
     @renamed_parameter((2024, 12, 18), "label", "name")
@@ -481,7 +500,7 @@ class _Volume(_Object, type_prefix="vo"):
         await retry_transient_errors(self._client.stub.VolumeCopyFiles, request, base_delay=1)
 
     @live_method
-    async def batch_upload(self, force: bool = False) -> "_VolumeUploadContextManager":
+    async def batch_upload(self, force: bool = False) -> "_AbstractVolumeUploadContextManager":
         """
         Initiate a batched upload to a volume.
 
@@ -499,7 +518,13 @@ class _Volume(_Object, type_prefix="vo"):
             batch.put_file(io.BytesIO(b"some data"), "/foobar")
         ```
         """
-        return _VolumeUploadContextManager(self.object_id, self._client, force=force)
+        return _AbstractVolumeUploadContextManager.resolve(
+            self._metadata.version,
+            self.object_id,
+            self._client,
+            force=force
+        )
+
 
     @live_method
     async def _instance_delete(self):
@@ -527,7 +552,57 @@ class _Volume(_Object, type_prefix="vo"):
         await retry_transient_errors(obj._client.stub.VolumeRename, req)
 
 
-class _VolumeUploadContextManager:
+Volume = synchronize_api(_Volume)
+
+# TODO(dflemstr): Find a way to add ABC or AbstractAsyncContextManager superclasses while keeping synchronicity happy.
+class _AbstractVolumeUploadContextManager:
+    async def __aenter__(self):
+        ...
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        ...
+
+
+    def put_file(
+        self,
+        local_file: Union[Path, str, BinaryIO, BytesIO],
+        remote_path: Union[PurePosixPath, str],
+        mode: Optional[int] = None,
+    ):
+        ...
+
+    def put_directory(
+        self,
+        local_path: Union[Path, str],
+        remote_path: Union[PurePosixPath, str],
+        recursive: bool = True,
+    ):
+        ...
+
+    @staticmethod
+    def resolve(
+        version: "modal_proto.api_pb2.VolumeFsVersion.ValueType",
+        object_id: str,
+        client,
+        progress_cb: Optional[Callable[..., Any]] = None,
+        force: bool = False
+    ) -> "_AbstractVolumeUploadContextManager":
+
+        if version in [
+            None,
+            api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_UNSPECIFIED,
+            api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_V1
+        ]:
+            return _VolumeUploadContextManager(object_id, client, progress_cb=progress_cb, force=force)
+        elif version == api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_V2:
+            return _VolumeUploadContextManager2(object_id, client, progress_cb=progress_cb, force=force)
+        else:
+            raise RuntimeError(f"unsupported volume version: {version}")
+
+
+AbstractVolumeUploadContextManager = synchronize_api(_AbstractVolumeUploadContextManager)
+
+class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
     """Context manager for batch-uploading files to a Volume."""
 
     _volume_id: str
@@ -585,7 +660,7 @@ class _VolumeUploadContextManager:
 
     def put_file(
         self,
-        local_file: Union[Path, str, BinaryIO],
+        local_file: Union[Path, str, BinaryIO, BytesIO],
         remote_path: Union[PurePosixPath, str],
         mode: Optional[int] = None,
     ):
@@ -678,8 +753,203 @@ class _VolumeUploadContextManager:
         )
 
 
-Volume = synchronize_api(_Volume)
 VolumeUploadContextManager = synchronize_api(_VolumeUploadContextManager)
+
+_FileUploader2 = Callable[[], Awaitable[FileUploadSpec2]]
+
+class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
+    """Context manager for batch-uploading files to a Volume version 2."""
+
+    _volume_id: str
+    _client: _Client
+    _force: bool
+    _progress_cb: Callable[..., Any]
+    _uploader_generators: list[Generator[_FileUploader2]]
+
+    def __init__(
+        self, volume_id: str, client: _Client, progress_cb: Optional[Callable[..., Any]] = None, force: bool = False
+    ):
+        """mdmd:hidden"""
+        self._volume_id = volume_id
+        self._client = client
+        self._uploader_generators = []
+        self._progress_cb = progress_cb or (lambda *_, **__: None)
+        self._force = force
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        if not exc_val:
+            # Flatten all the uploads yielded by the upload generators in the batch
+            def gen_upload_providers():
+                for gen in self._uploader_generators:
+                    yield from gen
+
+            async def gen_file_upload_specs() -> list[FileUploadSpec2]:
+                uploads = [asyncio.create_task(fut()) for fut in gen_upload_providers()]
+                logger.debug(f"Computing checksums for {len(uploads)} files")
+
+                file_specs = []
+                for file_spec in asyncio.as_completed(uploads):
+                    file_specs.append(await file_spec)
+                return file_specs
+
+            upload_specs = await gen_file_upload_specs()
+            await self._put_file_specs(upload_specs)
+
+
+    def put_file(
+        self,
+        local_file: Union[Path, str, BinaryIO, BytesIO],
+        remote_path: Union[PurePosixPath, str],
+        mode: Optional[int] = None,
+    ):
+        """Upload a file from a local file or file-like object.
+
+        Will create any needed parent directories automatically.
+
+        If `local_file` is a file-like object it must remain readable for the lifetime of the batch.
+        """
+        remote_path = PurePosixPath(remote_path).as_posix()
+        if remote_path.endswith("/"):
+            raise ValueError(f"remote_path ({remote_path}) must refer to a file - cannot end with /")
+
+        def gen():
+            if isinstance(local_file, str) or isinstance(local_file, Path):
+                yield lambda: FileUploadSpec2.from_path(local_file, PurePosixPath(remote_path), mode)
+            else:
+                yield lambda: FileUploadSpec2.from_fileobj(local_file, PurePosixPath(remote_path), mode or 0o644)
+
+        self._uploader_generators.append(gen())
+
+    def put_directory(
+        self,
+        local_path: Union[Path, str],
+        remote_path: Union[PurePosixPath, str],
+        recursive: bool = True,
+    ):
+        """
+        Upload all files in a local directory.
+
+        Will create any needed parent directories automatically.
+        """
+        local_path = Path(local_path)
+        assert local_path.is_dir()
+        remote_path = PurePosixPath(remote_path)
+
+        def create_spec(subpath):
+            relpath_str = subpath.relative_to(local_path)
+            return lambda: FileUploadSpec2.from_path(subpath, remote_path / relpath_str)
+
+        def gen():
+            glob = local_path.rglob("*") if recursive else local_path.glob("*")
+            for subpath in glob:
+                # Skip directories and unsupported file types (e.g. block devices)
+                if subpath.is_file():
+                    yield create_spec(subpath)
+
+        self._uploader_generators.append(gen())
+
+    async def _put_file_specs(self, file_specs: list[FileUploadSpec2]):
+        put_responses = {}
+        # num_blocks_total = sum(len(file_spec.blocks_sha256) for file_spec in file_specs)
+
+        # We should only need two iterations: Once to possibly get some missing_blocks; the second time we should have
+        # all blocks uploaded
+        for _ in range(2):
+            files = []
+
+            for file_spec in file_specs:
+                blocks = [
+                    api_pb2.VolumePutFiles2Request.Block(
+                        contents_sha256=block_sha256,
+                        put_response=put_responses.get(block_sha256)
+                    ) for block_sha256 in file_spec.blocks_sha256
+                ]
+                files.append(api_pb2.VolumePutFiles2Request.File(
+                    path=file_spec.path,
+                    mode=file_spec.mode,
+                    size=file_spec.size,
+                    blocks=blocks
+                ))
+
+            request = api_pb2.VolumePutFiles2Request(
+                volume_id=self._volume_id,
+                files=files,
+                disallow_overwrite_existing_files=not self._force,
+            )
+
+            try:
+                response = await retry_transient_errors(self._client.stub.VolumePutFiles2, request, base_delay=1)
+            except GRPCError as exc:
+                raise FileExistsError(exc.message) if exc.status == Status.ALREADY_EXISTS else exc
+
+            if not response.missing_blocks:
+                break
+
+            await _put_missing_blocks(file_specs, response.missing_blocks, put_responses, self._progress_cb)
+        else:
+            raise RuntimeError("Did not succeed at uploading all files despite supplying all missing blocks")
+
+        self._progress_cb(complete=True)
+
+
+VolumeUploadContextManager2 = synchronize_api(_VolumeUploadContextManager2)
+
+
+async def _put_missing_blocks(
+    file_specs: list[FileUploadSpec2],
+    # TODO(dflemstr): Element type is `api_pb2.VolumePutFiles2Response.MissingBlock` but synchronicity gets confused
+    # by the nested class (?)
+    missing_blocks: list,
+    put_responses: dict[bytes, bytes],
+    progress_cb: Callable[..., Any]
+):
+    async def put_missing_block(
+        # TODO(dflemstr): Type is `api_pb2.VolumePutFiles2Response.MissingBlock` but synchronicity gets confused
+        # by the nested class (?)
+        missing_block
+    ) -> (bytes, bytes):
+        # Lazily import to keep the eager loading time of this module down
+        from ._utils.bytes_io_segment_payload import BytesIOSegmentPayload
+
+        assert isinstance(missing_block, api_pb2.VolumePutFiles2Response.MissingBlock)
+
+        file_spec = file_specs[missing_block.file_index]
+        # TODO(dflemstr): What if the underlying file has changed here in the meantime; should we check the
+        #  hash again just to be sure?
+        block_sha256 = file_spec.blocks_sha256[missing_block.block_index]
+        block_start = missing_block.block_index * BLOCK_SIZE
+        block_length = min(BLOCK_SIZE, file_spec.size - block_start)
+
+        progress_name = f"{file_spec.path} block {missing_block.block_index + 1} / {len(file_spec.blocks_sha256)}"
+        progress_task_id = progress_cb(name=progress_name, size=file_spec.size)
+
+        with file_spec.source() as source_fp:
+            payload = BytesIOSegmentPayload(
+                source_fp,
+                block_start,
+                block_length,
+                progress_report_cb=functools.partial(progress_cb, progress_task_id)
+            )
+
+            async with ClientSessionRegistry.get_session().put(
+                missing_block.put_url,
+                data=payload,
+            ) as response:
+                response.raise_for_status()
+                resp_data = await response.content.read()
+
+        return block_sha256, resp_data
+
+    tasks = [
+        asyncio.create_task(put_missing_block(missing_block))
+        for missing_block in missing_blocks
+    ]
+    for task_result in asyncio.as_completed(tasks):
+        digest, resp = await task_result
+        put_responses[digest] = resp
 
 
 def _open_files_error_annotation(mount_path: str) -> Optional[str]:
