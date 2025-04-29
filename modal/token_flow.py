@@ -158,6 +158,12 @@ async def _set_token(
         f"[magenta]{profile}[/magenta].[/green]"
     )
 
+    if os.environ.get("MODAL_TOKEN_ID"):
+        console.print(
+            "Warning: The MODAL_TOKEN_ID environment variable is set; this will override your new token.",
+            style="yellow",
+        )
+
 
 def _open_url(url: str) -> bool:
     """Opens url in web browser, making sure we use a modern one (not Lynx etc)"""
