@@ -670,6 +670,7 @@ class _App:
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
+        restrict_modal_access: bool = False,  # Whether to allow this function access to other Modal resources
         # Maximum number of inputs a container should handle before shutting down.
         # With `max_inputs = 1`, containers will be single-use.
         max_inputs: Optional[int] = None,
@@ -844,6 +845,7 @@ class _App:
                 webhook_config=webhook_config,
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
+                restrict_modal_access=restrict_modal_access,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
                 i6pn_enabled=i6pn_enabled,
@@ -898,6 +900,7 @@ class _App:
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
+        restrict_modal_access: bool = False,  # Whether to allow this class access to other Modal resources
         # Limits the number of inputs a container handles before shutting down.
         # Use `max_inputs = 1` for single-use containers.
         max_inputs: Optional[int] = None,
@@ -1013,6 +1016,7 @@ class _App:
                 cloud=cloud,
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
+                restrict_modal_access=restrict_modal_access,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
                 include_source=include_source if include_source is not None else self._include_source_default,
