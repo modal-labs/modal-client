@@ -1377,3 +1377,30 @@ def test_experimental_options(client, servicer, decorator):
             ...
 
     assert ctx.get_requests("FunctionCreate")[0].function.experimental_options == {"foo": "2", "bar": "True"}
+
+
+def test_restrict_modal_access(client, servicer):
+    app = App()
+
+    @app.function(serialized=True, restrict_modal_access=True)
+    def f():
+        pass
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            pass
+
+    assert ctx.get_requests("FunctionCreate")[0].function.untrusted == True
+
+    # Test that by default, untrusted is False
+    app2 = App()
+
+    @app2.function(serialized=True)
+    def g():
+        pass
+
+    with servicer.intercept() as ctx:
+        with app2.run(client=client):
+            pass
+
+    assert ctx.get_requests("FunctionCreate")[0].function.untrusted == False
