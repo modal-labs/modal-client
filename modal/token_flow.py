@@ -158,12 +158,17 @@ async def _set_token(
         f"[magenta]{profile}[/magenta].[/green]"
     )
 
-    for var, item in [("MODAL_TOKEN_ID", "token"), ("MODAL_TOKEN_SECRET", "secret")]:
-        if os.environ.get(var):
-            console.print(
-                f"Warning: The {var} environment variable is set; this will override your new {item}.",
-                style="yellow",
-            )
+    # Warn the user if their token will be ignored
+    env_vars = [var if os.environ.get(var) else None for var in ["MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET"]]
+    env_vars_used = [var for var in env_vars if var is not None]
+    env_vars_str = " / ".join(env_vars_used)
+    if env_vars_used:
+        s = "s" if len(env_vars_used) > 1 else ""
+        verb = "are" if len(env_vars_used) > 1 else "is"
+        console.print(
+            f"Warning: The {env_vars_str} environment variable{s} {verb} set; this will override your new credentials.",
+            style="yellow",
+        )
 
 
 def _open_url(url: str) -> bool:
