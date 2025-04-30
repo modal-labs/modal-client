@@ -116,6 +116,19 @@ def test_app_token_new(servicer, set_env_client, server_url_env, modal_config):
         assert "_test" in toml.load(config_file_path)
 
 
+def test_token_env_var_warning(servicer, set_env_client, server_url_env, modal_config, monkeypatch):
+    servicer.required_creds = {"abc": "xyz"}
+    monkeypatch.setenv("MODAL_TOKEN_ID", "ak-123")
+    with modal_config():
+        res = _run(["token", "new"])
+        assert "MODAL_TOKEN_ID environment variable is" in res.stdout
+
+    monkeypatch.setenv("MODAL_TOKEN_SECRET", "as-xyz")
+    with modal_config():
+        res = _run(["token", "new"])
+        assert "MODAL_TOKEN_ID / MODAL_TOKEN_SECRET environment variables are" in res.stdout
+
+
 def test_app_setup(servicer, set_env_client, server_url_env, modal_config):
     servicer.required_creds = {"abc": "xyz"}
     with modal_config() as config_file_path:
