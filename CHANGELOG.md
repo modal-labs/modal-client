@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.39 (2025-04-30)
+
+- The `modal` clien no longer includes `fastapi` as a library dependency.
+
+
+
 ### 0.74.36 (2025-04-29)
 
 - A new parameter, `restrict_modal_access`, can be provided on a Function to prevent it from interacting with other resources in your Modal Workspace like Queues, Volumes, or other Functions. This can be useful for running user-provided or LLM-written code in a safe way.
