@@ -253,6 +253,18 @@ class _Sandbox(_Object, type_prefix="sb"):
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
     ) -> "_Sandbox":
+        """
+        Create a new Sandbox to run untrusted, arbitrary code.
+
+        **Usage**
+
+        ```python
+        app = modal.App.lookup('sandbox-hello-world', create_if_missing=True)
+        sandbox = modal.Sandbox.create("echo", "hello world", app=app)
+        print(sandbox.stdout.read())
+        sandbox.wait()
+        ```
+        """
         from .app import _App
 
         environment_name = _get_environment_name(environment_name)
@@ -411,13 +423,14 @@ class _Sandbox(_Object, type_prefix="sb"):
                 break
 
     async def tunnels(self, timeout: int = 50) -> dict[int, Tunnel]:
-        """Get tunnel metadata for the sandbox.
+        """Get Tunnel metadata for the sandbox.
 
         Raises `SandboxTimeoutError` if the tunnels are not available after the timeout.
 
         Returns a dictionary of `Tunnel` objects which are keyed by the container port.
 
-        NOTE: Previous to client v0.64.152, this returned a list of `TunnelData` objects.
+        NOTE: Previous to client [v0.64.153](/docs/reference/changelog#064153-2024-09-30), this
+        returned a list of `TunnelData` objects.
         """
 
         if self._tunnels:
@@ -659,6 +672,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         recursive: Optional[bool] = None,
         timeout: Optional[int] = None,
     ) -> AsyncIterator[FileWatchEvent]:
+        """Watch a file or directory in the Sandbox for changes.
+
+        See the [guide](/docs/guide/sandbox-files#file-watching) for usage information.
+        """
         task_id = await self._get_task_id()
         async for event in _FileIO.watch(path, self._client, task_id, filter, recursive, timeout):
             yield event
@@ -675,7 +692,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     @property
     def stderr(self) -> _StreamReader[str]:
         """[`StreamReader`](/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
-        the sandbox's stderr stream.
+        the Sandbox's stderr stream.
         """
 
         return self._stderr
@@ -684,14 +701,14 @@ class _Sandbox(_Object, type_prefix="sb"):
     def stdin(self) -> _StreamWriter:
         """
         [`StreamWriter`](/docs/reference/modal.io_streams#modalio_streamsstreamwriter) for
-        the sandbox's stdin stream.
+        the Sandbox's stdin stream.
         """
 
         return self._stdin
 
     @property
     def returncode(self) -> Optional[int]:
-        """Return code of the sandbox process if it has finished running, else `None`."""
+        """Return code of the Sandbox process if it has finished running, else `None`."""
 
         if self._result is None:
             return None
@@ -708,8 +725,8 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def list(
         *, app_id: Optional[str] = None, tags: Optional[dict[str, str]] = None, client: Optional[_Client] = None
     ) -> AsyncGenerator["_Sandbox", None]:
-        """List all sandboxes for the current environment or app ID (if specified). If tags are specified, only
-        sandboxes that have at least those tags are returned. Returns an iterator over `Sandbox` objects."""
+        """List all Sandboxes for the current Environment or App ID (if specified). If tags are specified, only
+        Sandboxes that have at least those tags are returned. Returns an iterator over `Sandbox` objects."""
         before_timestamp = None
         environment_name = _get_environment_name()
         if client is None:
