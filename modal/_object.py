@@ -54,6 +54,7 @@ class _Object:
             cls._prefix_to_type[type_prefix] = cls
 
     def __init__(self, *args, **kwargs):
+        """mdmd:hidden"""
         raise InvalidError(f"Class {type(self).__name__} has no constructor. Use class constructor methods instead.")
 
     def _init(
