@@ -31,7 +31,8 @@ def configure_logger(logger: logging.Logger, log_level: str, log_format: str):
         ch.setFormatter(json_formatter)
     else:
         if not (log_format_pattern := config.get("log_pattern")):
-            log_format_pattern = "%(name)s [%(threadName)s] %(asctime)s %(message)s"
+            # TODO: use `%(name)s` instead of `modal-client` as soon as we unify the loggers we use
+            log_format_pattern = "modal-client [%(threadName)s] %(asctime)s %(message)s"
 
         ch.setFormatter(logging.Formatter(log_format_pattern, datefmt=datefmt))
 
