@@ -26,11 +26,15 @@ def configure_logger(logger: logging.Logger, log_level: str, log_format: str):
 
         ch.setFormatter(json_formatter)
     else:
-        ch.setFormatter(logging.Formatter("[%(threadName)s] %(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z"))
+        ch.setFormatter(
+            logging.Formatter("%(name)s [%(threadName)s] %(asctime)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z")
+        )
+        pass
 
     logger.addHandler(ch)
 
 
+# TODO: remove this distinct logger in favor of the one in modal.config?
 log_level = os.environ.get("MODAL_LOGLEVEL", "WARNING")
 log_format = os.environ.get("MODAL_LOG_FORMAT", "STRING")
 
