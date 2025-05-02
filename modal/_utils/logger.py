@@ -45,4 +45,3 @@ log_format = os.environ.get("MODAL_LOG_FORMAT", "STRING")
 
 logger = logging.getLogger("modal-utils")
 configure_logger(logger, log_level, log_format)
-logger.warning("hello")
