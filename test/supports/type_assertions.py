@@ -37,14 +37,12 @@ async def async_typed_func(b: bool) -> str:
     return ""
 
 
-async_typed_func
-
 should_be_str = async_typed_func.remote(False)  # should be blocking without aio
 assert_type(should_be_str, str)
 
 
 @app.cls()
-class Cls:
+class UserCls(modal.Service):
     @method()
     def foo(self, a: str) -> int:
         return 1
@@ -54,12 +52,18 @@ class Cls:
         return 1
 
 
-instance = Cls()
-should_be_int = instance.foo.remote("foo")
+service = UserCls()
+should_be_int = service.foo.remote("foo")
 assert_type(should_be_int, int)
 
-should_be_int = instance.bar.remote("bar")
+should_be_int_2 = service.bar.remote("bar")
 assert_type(should_be_int, int)
+
+service.update_autoscaler(min_containers=10)
+derived_service = service.with_options(cpu=10)
+assert_type(derived_service, UserCls)
+should_be_int_3 = derived_service.bar.remote(a="123")
+assert_type(should_be_int_3, int)
 
 
 async def async_block() -> None:
@@ -67,7 +71,7 @@ async def async_block() -> None:
     assert_type(should_be_str_2, str)
     should_also_be_str = await async_typed_func.local(False)  # local should be the original return type (!)
     assert_type(should_also_be_str, str)
-    should_be_int = await instance.bar.local("bar")
+    should_be_int = await service.bar.local("bar")
     assert_type(should_be_int, int)
 
 
