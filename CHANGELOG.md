@@ -14,7 +14,7 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 ### 0.74.39 (2025-04-30)
 
-- The `modal` clien no longer includes `fastapi` as a library dependency.
+- The `modal` client no longer includes `fastapi` as a library dependency.
 
 
 
