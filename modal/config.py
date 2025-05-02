@@ -216,6 +216,7 @@ class _Setting(typing.NamedTuple):
 _SETTINGS = {
     "loglevel": _Setting("WARNING", lambda s: s.upper()),
     "log_format": _Setting("STRING", lambda s: s.upper()),
+    "log_pattern": _Setting(),  # optional override of the formatting pattern
     "server_url": _Setting("https://api.modal.com"),
     "token_id": _Setting(),
     "token_secret": _Setting(),
