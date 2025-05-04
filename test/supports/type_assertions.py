@@ -1,5 +1,7 @@
 # Copyright Modal Labs 2024
 import typing
+from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from typing_extensions import assert_type
 
@@ -100,3 +102,23 @@ file_io2 = sandbox.open("foo", "rb")
 assert_type(file_io2.read(), bytes)
 assert_type(file_io2.readline(), bytes)
 assert_type(file_io2.readlines(), typing.Sequence[bytes])
+
+# check secrets
+secret = modal.Secret.from_dict({})
+assert_type(secret, modal.Secret)
+
+secret = modal.Secret.from_local_environ(["PATH"])
+assert_type(secret, modal.Secret)
+
+try:
+    from dotenv import set_key
+except ImportError:
+    pass
+else:
+    with NamedTemporaryFile() as f:
+        f.flush()
+        p = Path(f.name)
+        set_key(p, "FOO", "bar")
+
+        secret = modal.Secret.from_dotenv(path=p.parent, filename=p.name)
+        assert_type(secret, modal.Secret)

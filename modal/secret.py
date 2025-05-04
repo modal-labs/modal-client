@@ -34,7 +34,7 @@ class _Secret(_Object, type_prefix="st"):
         env_dict: dict[
             str, Union[str, None]
         ] = {},  # dict of entries to be inserted as environment variables in functions using the secret
-    ):
+    ) -> "_Secret":
         """Create a secret from a str-str dictionary. Values can also be `None`, which is ignored.
 
         Usage:
@@ -81,7 +81,7 @@ class _Secret(_Object, type_prefix="st"):
     @staticmethod
     def from_local_environ(
         env_keys: list[str],  # list of local env vars to be included for remote execution
-    ):
+    ) -> "_Secret":
         """Create secrets from local environment variables automatically."""
 
         if is_local():
@@ -96,7 +96,7 @@ class _Secret(_Object, type_prefix="st"):
         return _Secret.from_dict({})
 
     @staticmethod
-    def from_dotenv(path=None, *, filename=".env"):
+    def from_dotenv(path=None, *, filename=".env") -> "_Secret":
         """Create secrets from a .env file automatically.
 
         If no argument is provided, it will use the current working directory as the starting
