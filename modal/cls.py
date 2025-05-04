@@ -6,6 +6,7 @@ import typing
 from collections.abc import Collection
 from typing import Any, Callable, Optional, TypeVar, Union
 
+import typing_extensions
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
@@ -804,3 +805,24 @@ def parameter(*, default: Any = _no_default, init: bool = True) -> Any:
     """
     # has to return Any to be assignable to any annotation (https://github.com/microsoft/pyright/issues/5102)
     return _Parameter(default=default, init=init)
+
+
+class Service:
+    # Mixin to provide static types for "service" level methods
+    # The actual implementation of these methods are currently in the modal.Obj wrapper
+
+    def update_autoscaler(self, min_containers: Optional[int] = None): ...
+
+    def with_options(
+        self,
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
+        memory: Optional[Union[int, tuple[int, int]]] = None,
+        gpu: GPU_T = None,
+        secrets: Collection[_Secret] = (),
+        volumes: dict[Union[str, os.PathLike], _Volume] = {},
+        retries: Optional[Union[int, Retries]] = None,
+        max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
+        scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
+        timeout: Optional[int] = None,
+        allow_concurrent_inputs: Optional[int] = None,
+    ) -> typing_extensions.Self: ...

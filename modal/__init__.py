@@ -14,7 +14,7 @@ try:
     from .app import App, Stub
     from .client import Client
     from .cloud_bucket_mount import CloudBucketMount
-    from .cls import Cls, parameter
+    from .cls import Cls, Service, parameter
     from .dict import Dict
     from .exception import Error
     from .file_pattern_matcher import FilePatternMatcher
@@ -77,6 +77,7 @@ __all__ = [
     "SandboxSnapshot",
     "SchedulerPlacement",
     "Secret",
+    "Service",
     "Stub",
     "Tunnel",
     "Volume",
