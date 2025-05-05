@@ -231,22 +231,70 @@ class _Obj:
         user_cls_instance._modal_functions = instance_methods
         return user_cls_instance
 
+    async def update_autoscaler(
+        self,
+        *,
+        min_containers: Optional[int] = None,
+        max_containers: Optional[int] = None,
+        scaledown_window: Optional[int] = None,
+        buffer_containers: Optional[int] = None,
+    ) -> None:
+        """Override the current autoscaler behavior for this Cls instance.
+
+        Unspecified parameters will retain their current value, i.e. either the static value
+        from the function decorator, or an override value from a previous call to this method.
+
+        Subsequent deployments of the App containing this Cls will reset the autoscaler back to
+        its static configuration.
+
+        Note: When calling this method on a Cls that is defined locally, static type checkers will
+        issue an error, because the object will appear to have the user-defined type.
+
+        Examples:
+
+        ```python notest
+        Model = modal.Cls.from_name("my-app", "Model")
+        model = Model()  # This method is called on an *instance* of the class
+
+        # Always have at least 2 containers running, with an extra buffer when the Function is active
+        model.update_autoscaler(min_containers=2, buffer_containers=1)
+
+        # Limit this Function to avoid spinning up more than 5 containers
+        f.update_autoscaler(max_containers=5)
+        ```
+
+        """
+        return await self._cached_service_function().update_autoscaler(
+            min_containers=min_containers,
+            max_containers=max_containers,
+            scaledown_window=scaledown_window,
+            buffer_containers=buffer_containers,
+        )
+
     async def keep_warm(self, warm_pool_size: int) -> None:
         """Set the warm pool size for the class containers
 
-        Please exercise care when using this advanced feature!
-        Setting and forgetting a warm pool on functions can lead to increased costs.
-
-        Note that all Modal methods and web endpoints of a class share the same set
-        of containers and the warm_pool_size affects that common container pool.
+        DEPRECATED: Please adapt your code to use the more general `update_autoscaler` method instead:
 
         ```python notest
-        # Usage on a parametrized function.
         Model = modal.Cls.from_name("my-app", "Model")
-        Model("fine-tuned-model").keep_warm(2)
+        model = Model()  # This method is called on an *instance* of the class
+
+        # Old pattern (deprecated)
+        model.keep_warm(2)
+
+        # New pattern
+        model.update_autoscaler(min_containers=2)
         ```
+
         """
-        await self._cached_service_function().keep_warm(warm_pool_size)
+        deprecation_warning(
+            (2025, 5, 5),
+            "The .keep_warm() method has been deprecated in favor of the more general "
+            ".update_autoscaler(min_containers=...) method.",
+            show_source=True,
+        )
+        await self._cached_service_function().update_autoscaler(min_containers=warm_pool_size)
 
     def _cached_user_cls_instance(self):
         """Get or construct the local object

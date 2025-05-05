@@ -1302,13 +1302,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def FunctionUpdateSchedulingParams(self, stream):
         req: api_pb2.FunctionUpdateSchedulingParamsRequest = await stream.recv_message()
+
         # update function definition
         fn_definition = self.app_functions[req.function_id]
         assert isinstance(fn_definition, api_pb2.Function)
-        # Hacky that we're modifying the function definition directly
-        # In the server we track autoscaler updates separately
+        # Note that this doesn't mock the full server logic very well
         fn_definition.warm_pool_size = req.warm_pool_size_override
         fn_definition.autoscaler_settings.MergeFrom(req.settings)
+
+        # Hacky that we're modifying the function definition directly
+        # In the server we track autoscaler updates separately
+        fn_definition.warm_pool_size = fn_definition.autoscaler_settings.min_containers
+        fn_definition.concurrency_limit = fn_definition.autoscaler_settings.max_containers
+        fn_definition._experimental_buffer_containers = fn_definition.autoscaler_settings.buffer_containers
+        fn_definition.task_idle_timeout_secs = fn_definition.autoscaler_settings.scaledown_window
+
         await stream.send_message(api_pb2.FunctionUpdateSchedulingParamsResponse())
 
     ### Image
