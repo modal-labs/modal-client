@@ -668,7 +668,7 @@ def test_cls_update_autoscaler(client, servicer):
         assert len(servicer.app_functions) == 3  # base + 2 x instance service function
         assert cls_service_fun.warm_pool_size == 0  # base still has no warm
 
-        instance_service_function_id = param_obj._cached_service_function().object_id
+        instance_service_function_id = param_obj._cached_service_function().object_id  # type: ignore
         instance_service_defn = servicer.app_functions[instance_service_function_id]
         instance_autoscaler_settings = instance_service_defn.autoscaler_settings
         assert instance_service_defn.warm_pool_size == instance_autoscaler_settings.min_containers == 5
