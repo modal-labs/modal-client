@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2024
 import typing
-
 from importlib.util import find_spec
+
 from typing_extensions import assert_type
 
 import modal
