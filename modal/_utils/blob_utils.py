@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
 import dataclasses
-import functools
 import hashlib
 import os
 import platform
@@ -505,7 +504,7 @@ async def hash_blocks_sha256(
 
     async def hash_block_sha256(block_idx: int) -> bytes:
         async with hash_semaphore:
-            return await asyncio.to_thread(functools.partial(blocking_hash_block_sha256, block_idx))
+            return await asyncio.to_thread(blocking_hash_block_sha256, block_idx)
 
     tasks = (hash_block_sha256(idx) for idx in range(num_blocks))
     return await asyncio.gather(*tasks)
