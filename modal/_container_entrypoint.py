@@ -4,7 +4,6 @@ import os
 
 from modal._runtime.user_code_imports import (
     Service,
-    get_active_app_fallback,
     import_class_service,
     import_single_function_service,
 )
@@ -441,16 +440,9 @@ def main(container_args: api_pb2.ContainerArguments, client: Client):
                         function_def,
                         ser_usr_cls,
                         ser_fun,
-                        param_args,
-                        param_kwargs,
                     )
 
-            # If the cls/function decorator was applied in local scope, but the app is global, we can look it up
-            if service.app is not None:
-                active_app = service.app
-            else:
-                # if the app can't be inferred by the imported function, use name-based fallback
-                active_app = get_active_app_fallback(function_def)
+            active_app = service.app
 
             if function_def.pty_info.pty_type == api_pb2.PTYInfo.PTY_TYPE_SHELL:
                 # Concurrency and batching doesn't apply for `modal shell`.
