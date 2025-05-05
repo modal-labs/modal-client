@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.45 (2025-05-05)
+
+Add missing return typing hints for all Secret.from methods.
+
+
+
 ### 0.74.39 (2025-04-30)
 
 - The `modal` client no longer includes `fastapi` as a library dependency.
