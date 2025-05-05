@@ -99,10 +99,8 @@ def test_nested_map(client):
         assert final_results == [1, 16]
 
 
-# TODO(gongy): Fix this test for starmap.
-# @pytest.mark.parametrize("maptype", ["map", "starmap", "spawn_map"])
-@pytest.mark.parametrize("maptype", ["map", "spawn_map"])
-def test_map_with_exception_in_input_iterator(client, maptype):
+@pytest.mark.parametrize("map_type", ["map", "starmap", "spawn_map"])
+def test_exception_in_input_iterator(client, map_type):
     class CustomException(Exception):
         pass
 
@@ -115,11 +113,11 @@ def test_map_with_exception_in_input_iterator(client, maptype):
 
     with app.run(client=client):
         with pytest.raises(CustomException):
-            if maptype == "map":
+            if map_type == "map":
                 list(dummy_modal.map(input_gen()))
-            elif maptype == "starmap":
+            elif map_type == "starmap":
                 list(dummy_modal.starmap(input_gen()))
-            elif maptype == "spawn_map":
+            elif map_type == "spawn_map":
                 dummy_modal.spawn_map(input_gen())
 
 
