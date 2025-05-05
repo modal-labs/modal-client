@@ -103,6 +103,9 @@ assert_type(file_io2.readline(), bytes)
 assert_type(file_io2.readlines(), typing.Sequence[bytes])
 
 # check secrets
+secret = modal.Secret.from_name("foo")
+assert_type(secret, modal.Secret)
+
 secret = modal.Secret.from_dict({})
 assert_type(secret, modal.Secret)
 
