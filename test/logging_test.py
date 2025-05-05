@@ -33,7 +33,7 @@ loglevel = "INFO"
     logger = clean_logger(conf)
     logger.info("dummy")
     log_output = capsys.readouterr().err
-    assert re.match(r"^modal-client \[MainThread\] [^ ]+ dummy$", log_output)
+    assert re.match(r"^\[modal-client] [^ ]+ dummy$", log_output)
 
 
 def test_log_format_json(clean_logger, capsys):
