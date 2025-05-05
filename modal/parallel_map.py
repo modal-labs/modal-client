@@ -508,11 +508,24 @@ async def _spawn_map_async(self, *input_iterators, kwargs={}) -> None:
 
 
 def _spawn_map_sync(self, *input_iterators, kwargs={}) -> None:
-    """mdmd:hidden
-    For compatibility, we use a temporary event loop to run the async implementation.
+    """Spawn parallel execution over a set of inputs, exiting as soon as the inputs are created (without waiting
+    for the map to complete).
 
-    In the future, the intention is to have separate implementations so there is no
-    issue with nested event loops.
+    Takes one iterator argument per argument in the function being mapped over.
+
+    Example:
+    ```python
+    @app.function()
+    def my_func(a):
+        return a ** 2
+
+
+    @app.local_entrypoint()
+    def main():
+        my_func.spawn_map([1, 2, 3, 4])
+    ```
+
+    Programmatic retrieval of results will be supported in a future update.
     """
 
     return run_coroutine_in_temporary_event_loop(
@@ -522,7 +535,7 @@ def _spawn_map_sync(self, *input_iterators, kwargs={}) -> None:
 
 
 def _for_each_sync(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
-    """Execute function for all inputs, ignoring outputs.
+    """Execute function for all inputs, ignoring outputs. Waits for completion of the inputs.
 
     Convenient alias for `.map()` in cases where the function just needs to be called.
     as the caller doesn't have to consume the generator to process the inputs.
