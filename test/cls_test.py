@@ -4,7 +4,6 @@ import pytest
 import subprocess
 import sys
 import threading
-import typing
 from typing import TYPE_CHECKING
 
 from typing_extensions import assert_type
@@ -639,7 +638,7 @@ def test_method_args(servicer, client):
         assert warm_pools == {"XYZ.*": 5}
 
 
-def test_cls_keep_warm(client, servicer):
+def test_cls_update_autoscaler(client, servicer):
     app = App()
 
     @app.cls(serialized=True)
@@ -651,22 +650,20 @@ def test_cls_keep_warm(client, servicer):
 
     with app.run(client=client):
         assert len(servicer.app_functions) == 1  # only class service function
-        cls_service_fun = servicer.function_by_name("ClsWithMethod.*")
-        assert cls_service_fun.is_class
-        assert cls_service_fun.warm_pool_size == 0
+        service_defn = servicer.function_by_name("ClsWithMethod.*")
+        assert service_defn.is_class
+        assert service_defn.warm_pool_size == service_defn.autoscaler_settings.min_containers == 0
 
-        empty_args_obj = typing.cast(modal.cls.Obj, ClsWithMethod())
-        empty_args_obj.keep_warm(2)
-        service_function_id = empty_args_obj._cached_service_function().object_id
-        assert servicer.app_functions[service_function_id].warm_pool_size == 2
+        ClsWithMethod().update_autoscaler(min_containers=2, buffer_containers=1)  # type: ignore
+        assert service_defn.warm_pool_size == service_defn.autoscaler_settings.min_containers == 2
+        assert service_defn._experimental_buffer_containers == service_defn.autoscaler_settings.buffer_containers == 1
 
-        ClsWithMethod(arg="other-instance").keep_warm(5)  # type: ignore  # Python can't do type intersection
-        instance_service_function = servicer.function_by_name(
-            "ClsWithMethod.*", params=(((), {"arg": "other-instance"}))
-        )
-        assert len(servicer.app_functions) == 3  # base + 2 x instance service function
-        assert cls_service_fun.warm_pool_size == 0  # base has no warm
-        assert instance_service_function.warm_pool_size == 5
+        ClsWithMethod("other-instance").update_autoscaler(min_containers=5, max_containers=10)  # type: ignore
+        instance_defn = servicer.function_by_name("ClsWithMethod.*", params=((("other-instance",), {})))
+        assert len(servicer.app_functions) == 2  # + instance service function
+        assert service_defn.warm_pool_size == service_defn.autoscaler_settings.min_containers == 2
+        assert instance_defn.warm_pool_size == instance_defn.autoscaler_settings.min_containers == 5
+        assert instance_defn.concurrency_limit == instance_defn.autoscaler_settings.max_containers == 10
 
 
 def test_cls_lookup_keep_warm(client, servicer):
