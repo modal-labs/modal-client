@@ -289,8 +289,7 @@ def import_single_function_service(
             user_cls_instance = get_user_class_instance(_cls, (), {})
             # Bind the unbound method to the instance as self (using the descriptor protocol!)
         else:
-            print("creating user cls instance", user_cls_or_cls)
-            # serialized=True or decorated
+            # serialized=True or "undecorated"
             user_cls_instance = user_cls_or_cls()
 
         user_defined_callable = user_defined_callable.__get__(user_cls_instance)
