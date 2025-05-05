@@ -103,9 +103,27 @@ class _Client:
 
     @property
     def stub(self) -> modal_api_grpc.ModalClientModal:
-        """mdmd:hidden"""
+        """mdmd:hidden
+        The default stub. Stubs can safely be used across forks / client snapshots.
+
+        This is useful if you want to make requests to the default Modal server in us-east, for example
+        control plane requests.
+
+        This is equivalent to client.get_stub(default_server_url), but it's cached, so it's a bit faster.
+        """
         assert self._stub
         return self._stub
+
+    async def get_stub(self, server_url: str) -> modal_api_grpc.ModalClientModal:
+        """mdmd:hidden
+        Get a stub for a specific server URL. Stubs can safely be used across forks / client snapshots.
+
+        This is useful if you want to make requests to a regional Modal server, for example low-latency
+        function calls in us-west.
+
+        This function is O(n) where n is the number of RPCs in ModalClient.
+        """
+        return await modal_api_grpc.ModalClientModal._create(self, server_url)
 
     async def _open(self):
         self._closed = False
@@ -116,7 +134,7 @@ class _Client:
         await self._cancellation_context.__aenter__()
 
         self._connection_manager = ConnectionManager(client=self, metadata=metadata)
-        self._stub = await modal_api_grpc.ModalClientModal.create(self, self.server_url)
+        self._stub = await self.get_stub(self.server_url)
         self._owner_pid = os.getpid()
 
     async def _close(self, prep_for_restore: bool = False):

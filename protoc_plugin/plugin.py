@@ -84,7 +84,7 @@ def render(
         buf.add("class {}Modal:", service.name)
         with buf.indent():
             buf.add("@classmethod")
-            buf.add("async def create(cls, client: 'modal.client._Client', server_url: str):")
+            buf.add("async def _create(cls, client: 'modal.client._Client', server_url: str):")
             with buf.indent():
                 buf.add("channel = await client._get_channel(server_url)")
                 buf.add(f"grpclib_stub = {grpclib_module}.{grpclib_stub_name}(channel)")
