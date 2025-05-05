@@ -4,6 +4,7 @@ import pytest
 import subprocess
 import sys
 import threading
+import typing
 from typing import TYPE_CHECKING
 
 from typing_extensions import assert_type
@@ -650,23 +651,31 @@ def test_cls_update_autoscaler(client, servicer):
 
     with app.run(client=client):
         assert len(servicer.app_functions) == 1  # only class service function
-        service_defn = servicer.function_by_name("ClsWithMethod.*")
-        assert service_defn.is_class
-        assert service_defn.warm_pool_size == service_defn.autoscaler_settings.min_containers == 0
+        cls_service_fun = servicer.function_by_name("ClsWithMethod.*")
+        assert cls_service_fun.is_class
+        assert cls_service_fun.warm_pool_size == 0
 
-        ClsWithMethod().update_autoscaler(min_containers=2, buffer_containers=1)  # type: ignore
-        assert service_defn.warm_pool_size == service_defn.autoscaler_settings.min_containers == 2
-        assert service_defn._experimental_buffer_containers == service_defn.autoscaler_settings.buffer_containers == 1
+        empty_args_obj = typing.cast(modal.cls.Obj, ClsWithMethod())
+        empty_args_obj.update_autoscaler(min_containers=2, buffer_containers=1)
+        service_function_id = empty_args_obj._cached_service_function().object_id
+        service_function_defn = servicer.app_functions[service_function_id]
+        autoscaler_settings = service_function_defn.autoscaler_settings
+        assert service_function_defn.warm_pool_size == autoscaler_settings.min_containers == 2
+        assert service_function_defn._experimental_buffer_containers == autoscaler_settings.buffer_containers == 1
 
-        ClsWithMethod("other-instance").update_autoscaler(min_containers=5, max_containers=10)  # type: ignore
-        instance_defn = servicer.function_by_name("ClsWithMethod.*", params=((("other-instance",), {})))
-        assert len(servicer.app_functions) == 2  # + instance service function
-        assert service_defn.warm_pool_size == service_defn.autoscaler_settings.min_containers == 2
-        assert instance_defn.warm_pool_size == instance_defn.autoscaler_settings.min_containers == 5
-        assert instance_defn.concurrency_limit == instance_defn.autoscaler_settings.max_containers == 10
+        param_obj = ClsWithMethod(arg="other-instance")
+        param_obj.update_autoscaler(min_containers=5, max_containers=10)  # type: ignore
+        assert len(servicer.app_functions) == 3  # base + 2 x instance service function
+        assert cls_service_fun.warm_pool_size == 0  # base still has no warm
+
+        instance_service_function_id = param_obj._cached_service_function().object_id
+        instance_service_defn = servicer.app_functions[instance_service_function_id]
+        instance_autoscaler_settings = instance_service_defn.autoscaler_settings
+        assert instance_service_defn.warm_pool_size == instance_autoscaler_settings.min_containers == 5
+        assert instance_service_defn.concurrency_limit == instance_autoscaler_settings.max_containers == 10
 
 
-def test_cls_lookup_keep_warm(client, servicer):
+def test_cls_lookup_update_autoscaler(client, servicer):
     app = App(name := "my-cls-app")
 
     @app.cls(serialized=True)
@@ -678,19 +687,19 @@ def test_cls_lookup_keep_warm(client, servicer):
 
     C_pre_deploy = ClsWithMethod()
     with pytest.raises(ExecutionError, match="has not been hydrated"):
-        C_pre_deploy.keep_warm(1)  # type: ignore
+        C_pre_deploy.update_autoscaler(min_containers=1)  # type: ignore
 
     deploy_app(app, name, client=client)
 
     C = Cls.from_name(name, "ClsWithMethod")
     obj = C()
-    obj.keep_warm(3)
+    obj.update_autoscaler(min_containers=3)
 
     service_function_id = obj._cached_service_function().object_id
     assert servicer.app_functions[service_function_id].warm_pool_size == 3
 
     with servicer.intercept() as ctx:
-        obj.keep_warm(4)
+        obj.update_autoscaler(min_containers=4)
         assert len(ctx.get_requests("FunctionBindParams")) == 0  # We did not re-bind
 
 
