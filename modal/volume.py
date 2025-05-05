@@ -3,6 +3,7 @@ import asyncio
 import concurrent.futures
 import enum
 import functools
+import multiprocessing
 import os
 import platform
 import re
@@ -755,19 +756,27 @@ class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
 
 VolumeUploadContextManager = synchronize_api(_VolumeUploadContextManager)
 
-_FileUploader2 = Callable[[], Awaitable[FileUploadSpec2]]
+_FileUploader2 = Callable[[asyncio.Semaphore], Awaitable[FileUploadSpec2]]
 
 class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
     """Context manager for batch-uploading files to a Volume version 2."""
 
     _volume_id: str
     _client: _Client
-    _force: bool
     _progress_cb: Callable[..., Any]
+    _force: bool
+    _hash_concurrency: int
+    _put_concurrency: int
     _uploader_generators: list[Generator[_FileUploader2]]
 
     def __init__(
-        self, volume_id: str, client: _Client, progress_cb: Optional[Callable[..., Any]] = None, force: bool = False
+        self,
+        volume_id: str,
+        client: _Client,
+        progress_cb: Optional[Callable[..., Any]] = None,
+        force: bool = False,
+        hash_concurrency: int = multiprocessing.cpu_count(),
+        put_concurrency: int = multiprocessing.cpu_count(),
     ):
         """mdmd:hidden"""
         self._volume_id = volume_id
@@ -775,6 +784,8 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
         self._uploader_generators = []
         self._progress_cb = progress_cb or (lambda *_, **__: None)
         self._force = force
+        self._hash_concurrency = hash_concurrency
+        self._put_concurrency = put_concurrency
 
     async def __aenter__(self):
         return self
@@ -787,7 +798,9 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
                     yield from gen
 
             async def gen_file_upload_specs() -> list[FileUploadSpec2]:
-                uploads = [asyncio.create_task(fut()) for fut in gen_upload_providers()]
+                hash_semaphore = asyncio.Semaphore(self._hash_concurrency)
+
+                uploads = [asyncio.create_task(fut(hash_semaphore)) for fut in gen_upload_providers()]
                 logger.debug(f"Computing checksums for {len(uploads)} files")
 
                 file_specs = []
@@ -817,9 +830,19 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
 
         def gen():
             if isinstance(local_file, str) or isinstance(local_file, Path):
-                yield lambda: FileUploadSpec2.from_path(local_file, PurePosixPath(remote_path), mode)
+                yield lambda hash_semaphore: FileUploadSpec2.from_path(
+                    local_file,
+                    PurePosixPath(remote_path),
+                    hash_semaphore,
+                    mode
+                )
             else:
-                yield lambda: FileUploadSpec2.from_fileobj(local_file, PurePosixPath(remote_path), mode or 0o644)
+                yield lambda hash_semaphore: FileUploadSpec2.from_fileobj(
+                    local_file,
+                    PurePosixPath(remote_path),
+                    hash_semaphore,
+                    mode or 0o644
+                )
 
         self._uploader_generators.append(gen())
 
@@ -840,7 +863,7 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
 
         def create_spec(subpath):
             relpath_str = subpath.relative_to(local_path)
-            return lambda: FileUploadSpec2.from_path(subpath, remote_path / relpath_str)
+            return lambda hash_semaphore: FileUploadSpec2.from_path(subpath, remote_path / relpath_str, hash_semaphore)
 
         def gen():
             glob = local_path.rglob("*") if recursive else local_path.glob("*")
@@ -854,6 +877,8 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
     async def _put_file_specs(self, file_specs: list[FileUploadSpec2]):
         put_responses = {}
         # num_blocks_total = sum(len(file_spec.blocks_sha256) for file_spec in file_specs)
+
+        logger.debug(f"Ensuring {len(file_specs)} files are uploaded...")
 
         # We should only need two iterations: Once to possibly get some missing_blocks; the second time we should have
         # all blocks uploaded
@@ -888,7 +913,13 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
             if not response.missing_blocks:
                 break
 
-            await _put_missing_blocks(file_specs, response.missing_blocks, put_responses, self._progress_cb)
+            await _put_missing_blocks(
+                file_specs,
+                response.missing_blocks,
+                put_responses,
+                self._put_concurrency,
+                self._progress_cb
+            )
         else:
             raise RuntimeError("Did not succeed at uploading all files despite supplying all missing blocks")
 
@@ -904,8 +935,19 @@ async def _put_missing_blocks(
     # by the nested class (?)
     missing_blocks: list,
     put_responses: dict[bytes, bytes],
+    put_concurrency: int,
     progress_cb: Callable[..., Any]
 ):
+    @dataclass
+    class FileProgress:
+        task_id: str
+        pending_blocks: set[int]
+
+    put_semaphore = asyncio.Semaphore(put_concurrency)
+    file_progresses: dict[str, FileProgress] = dict()
+
+    logger.debug(f"Uploading {len(missing_blocks)} missing blocks...")
+
     async def put_missing_block(
         # TODO(dflemstr): Type is `api_pb2.VolumePutFiles2Response.MissingBlock` but synchronicity gets confused
         # by the nested class (?)
@@ -923,23 +965,36 @@ async def _put_missing_blocks(
         block_start = missing_block.block_index * BLOCK_SIZE
         block_length = min(BLOCK_SIZE, file_spec.size - block_start)
 
-        progress_name = f"{file_spec.path} block {missing_block.block_index + 1} / {len(file_spec.blocks_sha256)}"
-        progress_task_id = progress_cb(name=progress_name, size=file_spec.size)
+        if file_spec.path not in file_progresses:
+            file_task_id = progress_cb(name=file_spec.path, size=file_spec.size)
+            file_progresses[file_spec.path] = FileProgress(task_id=file_task_id, pending_blocks=set())
 
-        with file_spec.source() as source_fp:
-            payload = BytesIOSegmentPayload(
-                source_fp,
-                block_start,
-                block_length,
-                progress_report_cb=functools.partial(progress_cb, progress_task_id)
-            )
+        file_progress = file_progresses[file_spec.path]
+        file_progress.pending_blocks.add(missing_block.block_index)
+        task_progress_cb = functools.partial(progress_cb, task_id=file_progress.task_id)
 
-            async with ClientSessionRegistry.get_session().put(
-                missing_block.put_url,
-                data=payload,
-            ) as response:
-                response.raise_for_status()
-                resp_data = await response.content.read()
+        async with put_semaphore:
+            with file_spec.source() as source_fp:
+                payload = BytesIOSegmentPayload(
+                    source_fp,
+                    block_start,
+                    block_length,
+                    # limit chunk size somewhat to not keep event loop busy for too long
+                    chunk_size=256*1024,
+                    progress_report_cb=task_progress_cb
+                )
+
+                async with ClientSessionRegistry.get_session().put(
+                    missing_block.put_url,
+                    data=payload,
+                ) as response:
+                    response.raise_for_status()
+                    resp_data = await response.content.read()
+
+        file_progress.pending_blocks.remove(missing_block.block_index)
+
+        if len(file_progress.pending_blocks) == 0:
+            task_progress_cb(complete=True)
 
         return block_sha256, resp_data
 
