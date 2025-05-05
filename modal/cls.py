@@ -292,7 +292,6 @@ class _Obj:
             (2025, 5, 5),
             "The .keep_warm() method has been deprecated in favor of the more general "
             ".update_autoscaler(min_containers=...) method.",
-            pending=True,
             show_source=True,
         )
         await self._cached_service_function().update_autoscaler(min_containers=warm_pool_size)
