@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import (
-    IO,
     Any,
     Awaitable,
     BinaryIO,
@@ -194,6 +193,16 @@ class _Volume(_Object, type_prefix="vo"):
 
     def _get_metadata(self) -> Optional[Message]:
         return self._metadata
+
+
+    @property
+    def _is_v1(self) -> bool:
+        return self._metadata.version in [
+            None,
+            api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_UNSPECIFIED,
+            api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_V1
+        ]
+
 
     @classmethod
     @asynccontextmanager
@@ -391,7 +400,7 @@ class _Volume(_Object, type_prefix="vo"):
         return [entry async for entry in self.iterdir(path, recursive=recursive)]
 
     @live_method_gen
-    async def read_file(self, path: str) -> AsyncIterator[bytes]:
+    def read_file(self, path: str) -> AsyncIterator[bytes]:
         """
         Read a file from the modal.Volume.
 
@@ -405,6 +414,10 @@ class _Volume(_Object, type_prefix="vo"):
         print(len(data))  # == 1024 * 1024
         ```
         """
+        return self._read_file1(path) if self._is_v1 else self._read_file2(path)
+
+
+    async def _read_file1(self, path: str) -> AsyncIterator[bytes]:
         req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path)
         try:
             response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
@@ -418,53 +431,20 @@ class _Volume(_Object, type_prefix="vo"):
             async for data in blob_iter(response.data_blob_id, self._client.stub):
                 yield data
 
-    @live_method
-    async def read_file_into_fileobj(self, path: str, fileobj: IO[bytes]) -> int:
-        """mdmd:hidden
 
-        Read volume file into file-like IO object.
-        In the future, this will replace the current generator implementation of the `read_file` method.
-        """
+    async def _read_file2(self, path: str) -> AsyncIterator[bytes]:
+        req = api_pb2.VolumeGetFile2Request(volume_id=self.object_id, path=path)
 
-        chunk_size_bytes = 8 * 1024 * 1024
-        start = 0
-        req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path, start=start, len=chunk_size_bytes)
         try:
-            response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
+            response = await retry_transient_errors(self._client.stub.VolumeGetFile2, req)
         except GRPCError as exc:
             raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
-        if response.WhichOneof("data_oneof") != "data":
-            raise RuntimeError("expected to receive 'data' in response")
 
-        n = fileobj.write(response.data)
-        if n != len(response.data):
-            raise OSError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
-        elif n == response.size:
-            return response.size
-        elif n > response.size:
-            raise RuntimeError(f"length of returned data exceeds reported filesize: {n} > {response.size}")
-        # else: there's more data to read. continue reading with further ranged GET requests.
-        file_size = response.size
-        written = n
+        for url in response.get_urls:
+            async with ClientSessionRegistry.get_session().get(url) as get_response:
+                async for data in get_response.content.iter_any():
+                    yield data
 
-        while True:
-            req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path, start=written, len=chunk_size_bytes)
-            response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
-            if response.WhichOneof("data_oneof") != "data":
-                raise RuntimeError("expected to receive 'data' in response")
-            if len(response.data) > chunk_size_bytes:
-                raise RuntimeError(f"received more data than requested: {len(response.data)} > {chunk_size_bytes}")
-            elif (written + len(response.data)) > file_size:
-                raise RuntimeError(f"received data exceeds filesize of {chunk_size_bytes}")
-
-            n = fileobj.write(response.data)
-            if n != len(response.data):
-                raise OSError(f"failed to write {len(response.data)} bytes to output. Wrote {n}.")
-            written += n
-            if written == file_size:
-                break
-
-        return written
 
     @live_method
     async def remove_file(self, path: str, recursive: bool = False) -> None:
