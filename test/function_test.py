@@ -99,7 +99,10 @@ def test_nested_map(client):
         assert final_results == [1, 16]
 
 
-def test_map_with_exception_in_input_iterator(client):
+# TODO(gongy): Fix this test for starmap.
+# @pytest.mark.parametrize("maptype", ["map", "starmap", "spawn_map"])
+@pytest.mark.parametrize("maptype", ["map", "spawn_map"])
+def test_map_with_exception_in_input_iterator(client, maptype):
     class CustomException(Exception):
         pass
 
@@ -112,7 +115,12 @@ def test_map_with_exception_in_input_iterator(client):
 
     with app.run(client=client):
         with pytest.raises(CustomException):
-            list(dummy_modal.map(input_gen()))
+            if maptype == "map":
+                list(dummy_modal.map(input_gen()))
+            elif maptype == "starmap":
+                list(dummy_modal.starmap(input_gen()))
+            elif maptype == "spawn_map":
+                dummy_modal.spawn_map(input_gen())
 
 
 @pytest.mark.asyncio
@@ -1009,6 +1017,21 @@ async def test_non_aio_map_in_async_caller_error(client):
         # but we support it for backwards compatibility for now:
         res = [r async for r in dummy_function.map([1, 2, 4])]
         assert res == [1, 4, 16]
+
+
+@pytest.mark.asyncio
+async def test_spawn_map_async(client):
+    dummy_function = app.function()(dummy)
+
+    async with app.run.aio(client=client):
+        await dummy_function.spawn_map.aio([1, 2, 3])
+
+
+def test_spawn_map_sync(client):
+    dummy_function = app.function()(dummy)
+
+    with app.run(client=client):
+        dummy_function.spawn_map([1, 2, 3])
 
 
 def test_warn_on_local_volume_mount(client, servicer):
