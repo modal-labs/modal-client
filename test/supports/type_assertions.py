@@ -1,8 +1,7 @@
 # Copyright Modal Labs 2024
 import typing
-from pathlib import Path
-from tempfile import NamedTemporaryFile
 
+from importlib.util import find_spec
 from typing_extensions import assert_type
 
 import modal
@@ -110,15 +109,6 @@ assert_type(secret, modal.Secret)
 secret = modal.Secret.from_local_environ(["PATH"])
 assert_type(secret, modal.Secret)
 
-try:
-    from dotenv import set_key
-except ImportError:
-    pass
-else:
-    with NamedTemporaryFile() as f:
-        f.flush()
-        p = Path(f.name)
-        set_key(p, "FOO", "bar")
-
-        secret = modal.Secret.from_dotenv(path=p.parent, filename=p.name)
-        assert_type(secret, modal.Secret)
+if find_spec("dotenv"):
+    secret = modal.Secret.from_dotenv(filename="non-existing-dotenv")
+    assert_type(secret, modal.Secret)
