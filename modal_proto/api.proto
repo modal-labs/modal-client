@@ -1673,6 +1673,7 @@ message FunctionMapRequest {
   FunctionCallType function_call_type = 4;
   repeated FunctionPutInputsItem pipelined_inputs = 5;
   FunctionCallInvocationType function_call_invocation_type = 6;
+  bool from_spawn_map = 7;
 }
 
 message FunctionMapResponse {
