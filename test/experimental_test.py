@@ -5,6 +5,7 @@ from typing import Union, cast
 import modal
 import modal.experimental
 import modal.runner
+from modal.exception import DeprecationError
 
 app = modal.App(include_source=False)
 
@@ -40,7 +41,8 @@ def test_update_autoscaler(client, servicer, which):
         else:
             obj, obj_id = cast(modal.cls.Obj, C()), "fu-2"
 
-        modal.experimental.update_autoscaler(obj, client=client, **overrides)  # type: ignore
+        with pytest.warns(DeprecationError):
+            modal.experimental.update_autoscaler(obj, client=client, **overrides)  # type: ignore
 
         settings = servicer.app_functions[obj_id].autoscaler_settings  # type: ignore
         assert settings.min_containers == overrides["min_containers"]
@@ -71,7 +73,8 @@ def test_update_autoscaler_after_lookup(client, servicer, which):
         obj = C()
         obj_id = "fu-2"
 
-    modal.experimental.update_autoscaler(obj, client=client, **overrides)  # type: ignore
+    with pytest.warns(DeprecationError):
+        modal.experimental.update_autoscaler(obj, client=client, **overrides)  # type: ignore
 
     settings = servicer.app_functions[obj_id].autoscaler_settings  # type: ignore
     assert settings.min_containers == overrides["min_containers"]
