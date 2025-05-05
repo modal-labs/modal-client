@@ -938,7 +938,13 @@ async def _put_missing_blocks(
     put_concurrency: int,
     progress_cb: Callable[..., Any]
 ):
-    put_semaphore = asyncio.Semaphore(multiprocessing.cpu_count())
+    @dataclass
+    class FileProgress:
+        task_id: str
+        pending_blocks: set[int]
+
+    put_semaphore = asyncio.Semaphore(put_concurrency)
+    file_progresses: dict[str, FileProgress] = dict()
 
     logger.debug(f"Uploading {len(missing_blocks)} missing blocks...")
 
@@ -959,8 +965,13 @@ async def _put_missing_blocks(
         block_start = missing_block.block_index * BLOCK_SIZE
         block_length = min(BLOCK_SIZE, file_spec.size - block_start)
 
-        progress_name = f"{file_spec.path} block {missing_block.block_index + 1} / {len(file_spec.blocks_sha256)}"
-        progress_task_id = progress_cb(name=progress_name, size=file_spec.size)
+        if file_spec.path not in file_progresses:
+            file_task_id = progress_cb(name=file_spec.path, size=file_spec.size)
+            file_progresses[file_spec.path] = FileProgress(task_id=file_task_id, pending_blocks=set())
+
+        file_progress = file_progresses[file_spec.path]
+        file_progress.pending_blocks.add(missing_block.block_index)
+        task_progress_cb = functools.partial(progress_cb, task_id=file_progress.task_id)
 
         async with put_semaphore:
             with file_spec.source() as source_fp:
@@ -968,7 +979,9 @@ async def _put_missing_blocks(
                     source_fp,
                     block_start,
                     block_length,
-                    progress_report_cb=functools.partial(progress_cb, progress_task_id)
+                    # limit chunk size somewhat to not keep event loop busy for too long
+                    chunk_size=256*1024,
+                    progress_report_cb=task_progress_cb
                 )
 
                 async with ClientSessionRegistry.get_session().put(
@@ -977,6 +990,11 @@ async def _put_missing_blocks(
                 ) as response:
                     response.raise_for_status()
                     resp_data = await response.content.read()
+
+        file_progress.pending_blocks.remove(missing_block.block_index)
+
+        if len(file_progress.pending_blocks) == 0:
+            task_progress_cb(complete=True)
 
         return block_sha256, resp_data
 
