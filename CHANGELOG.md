@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.48 (2025-05-05)
+
+- Added a method for spawning many calls in parallel.
+
+
+
 ### 0.74.46 (2025-05-05)
 
 - Introduces a new `.update_autoscaler()` method, which will replace the existing `.keep_warm()` method with the ability to dynamically change the entire autoscaler configuration (`min_containers`, `max_containers`, `buffer_containers`, and `scaledown_window`).
