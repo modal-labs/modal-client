@@ -109,7 +109,7 @@ assert_type(secret, modal.Secret)
 secret = modal.Secret.from_dict({})
 assert_type(secret, modal.Secret)
 
-secret = modal.Secret.from_local_environ(["PATH"])
+secret = modal.Secret.from_local_environ(["FOO"])
 assert_type(secret, modal.Secret)
 
 if find_spec("dotenv"):
