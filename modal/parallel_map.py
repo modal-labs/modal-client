@@ -13,10 +13,12 @@ from modal._utils.async_utils import (
     AsyncOrSyncIterable,
     TimestampPriorityQueue,
     aclosing,
+    async_map,
     async_map_ordered,
     async_merge,
     async_zip,
     queue_batch_iterator,
+    run_coroutine_in_temporary_event_loop,
     sync_or_async_iter,
     synchronize_api,
     synchronizer,
@@ -480,8 +482,60 @@ async def _map_async(
             yield output
 
 
+async def _spawn_map_async(self, *input_iterators, kwargs={}) -> None:
+    """mdmd:hidden
+    This runs in an event loop on the main thread. It consumes inputs from the input iterators and creates async
+    function calls for each.
+    """
+
+    def _call_with_args(args):
+        """
+        Returns co-routine that invokes a function with the given arguments.
+
+        On RESOURCE_EXHAUSTED, it will retry indefinitely with exponential backoff up to 30 seconds. Every 10 retriable
+        errors, log a warning that the function call is waiting to be created.
+        """
+
+        return self._call_function_nowait.aio(
+            args, kwargs, api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC, from_spawn_map=True
+        )
+
+    input_gen = async_zip(*[sync_or_async_iter(it) for it in input_iterators])
+
+    # TODO(gongy): Can improve this by creating async_foreach method which foregoes async_merge.
+    async for _ in async_map(input_gen, _call_with_args, concurrency=256):
+        pass
+
+
+def _spawn_map_sync(self, *input_iterators, kwargs={}) -> None:
+    """Spawn parallel execution over a set of inputs, exiting as soon as the inputs are created (without waiting
+    for the map to complete).
+
+    Takes one iterator argument per argument in the function being mapped over.
+
+    Example:
+    ```python
+    @app.function()
+    def my_func(a):
+        return a ** 2
+
+
+    @app.local_entrypoint()
+    def main():
+        my_func.spawn_map([1, 2, 3, 4])
+    ```
+
+    Programmatic retrieval of results will be supported in a future update.
+    """
+
+    return run_coroutine_in_temporary_event_loop(
+        _spawn_map_async(self, *input_iterators, kwargs=kwargs),
+        "You can't run Function.spawn_map() from an async function. Use Function.map.aio() instead.",
+    )
+
+
 def _for_each_sync(self, *input_iterators, kwargs={}, ignore_exceptions: bool = False):
-    """Execute function for all inputs, ignoring outputs.
+    """Execute function for all inputs, ignoring outputs. Waits for completion of the inputs.
 
     Convenient alias for `.map()` in cases where the function just needs to be called.
     as the caller doesn't have to consume the generator to process the inputs.
