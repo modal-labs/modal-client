@@ -432,6 +432,19 @@ def warn_if_generator_is_not_consumed(function_name: Optional[str] = None):
     return decorator
 
 
+def run_coroutine_in_temporary_event_loop(coro: typing.Coroutine[None, None, T], nested_async_message: str) -> T:
+    """Compatibility function to run an async coroutine in a temporary event loop.
+
+    This is needed for compatibility with the async implementation of Function.spawn_map. The future plan is
+    to have separate implementations so there is no issue with nested event loops.
+    """
+    try:
+        with Runner() as runner:
+            return runner.run(coro)
+    except NestedEventLoops:
+        raise InvalidError(nested_async_message)
+
+
 class AsyncOrSyncIterable:
     """Compatibility class for non-synchronicity wrapped async iterables to get
     both async and sync interfaces in the same way that synchronicity does (but on the main thread)
@@ -748,19 +761,68 @@ async def gather_cancel_on_exc(*coros_or_futures):
         raise
 
 
+async def async_foreach(
+    input_generator: AsyncGenerator[T, None],
+    async_mapper_func: Callable[[T], Awaitable[V]],
+    concurrency: int,
+) -> None:
+    """
+    Call mapper function for each item in input_generator. Drops the return value, ~30% faster than async_map.
+    """
+
+    queue: asyncio.Queue[Union[ValueWrapper[T], StopSentinelType]] = asyncio.Queue()
+
+    t0 = time.time()
+
+    async def producer() -> None:
+        async for item in input_generator:
+            queue.put_nowait(ValueWrapper(item))
+
+        for _ in range(concurrency):
+            queue.put_nowait(STOP_SENTINEL)
+
+        print(f"producer: {time.time() - t0:.2f}s")
+
+    async def worker() -> None:
+        while True:
+            item = await queue.get()
+            if isinstance(item, ValueWrapper):
+                if isinstance(item.value, int) and item.value % 500 == 0:
+                    print(f"{item.value} found at time {time.time() - t0}")
+                await async_mapper_func(item.value)
+            elif isinstance(item, ExceptionWrapper):
+                raise item.value
+            else:
+                assert_type(item, StopSentinelType)
+                break
+
+    tasks = [asyncio.create_task(producer())]
+    tasks.extend([asyncio.create_task(worker()) for _ in range(concurrency)])
+    try:
+        await asyncio.gather(*tasks)
+    finally:
+        for task in tasks:
+            task.cancel()
+
+
 async def async_map(
     input_generator: AsyncGenerator[T, None],
     async_mapper_func: Callable[[T], Awaitable[V]],
     concurrency: int,
+    yield_nothing=False,
 ) -> AsyncGenerator[V, None]:
-    queue: asyncio.Queue[Union[ValueWrapper[T], StopSentinelType]] = asyncio.Queue(maxsize=concurrency * 2)
+    queue: asyncio.Queue[Union[ValueWrapper[T], StopSentinelType]] = asyncio.Queue()
+
+    t0 = time.time()
 
     async def producer() -> AsyncGenerator[V, None]:
         async for item in input_generator:
-            await queue.put(ValueWrapper(item))
+            queue.put_nowait(ValueWrapper(item))
 
         for _ in range(concurrency):
-            await queue.put(STOP_SENTINEL)
+            queue.put_nowait(STOP_SENTINEL)
+
+        print(f"producer: {time.time() - t0:.2f}s")
 
         if False:
             # Need it to be an async generator for async_merge
@@ -771,7 +833,13 @@ async def async_map(
         while True:
             item = await queue.get()
             if isinstance(item, ValueWrapper):
-                yield await async_mapper_func(item.value)
+                if isinstance(item.value, int) and item.value % 500 == 0:
+                    print(f"{item.value} found at time {time.time() - t0}")
+                r = await async_mapper_func(item.value)
+                if yield_nothing:
+                    yield None
+                else:
+                    yield r
             elif isinstance(item, ExceptionWrapper):
                 raise item.value
             else:

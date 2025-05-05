@@ -19,6 +19,7 @@ from modal._utils.async_utils import (
     TimestampPriorityQueue,
     aclosing,
     async_chain,
+    async_foreach,
     async_map,
     async_map_ordered,
     async_merge,
@@ -729,8 +730,40 @@ async def test_callable_to_agen():
     assert result == [await foo()]
 
 
-@pytest.mark.parametrize("in_order", [True, False])
-async def test_async_map(in_order):
+@pytest.mark.asyncio
+async def test_async_foreach():
+    global_results = []
+    global_times = []
+    states = []
+
+    async def foo():
+        states.append("enter")
+        try:
+            yield 1
+            yield 2
+            yield 3
+        finally:
+            states.append("exit")
+
+    async def mapper(x):
+        nonlocal global_results, global_times
+
+        await asyncio.sleep(0.1)
+        global_results.append(x * 2)
+        global_times.append(time.time())
+
+    await async_foreach(foo(), mapper, concurrency=3)
+
+    # Ensure that all items were processed in parallel.
+    assert max(*global_times) - min(*global_times) < 0.1
+    assert sorted(global_results) == [2, 4, 6]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("pattern", ["unordered", "ordered", "foreach"])
+async def test_async_map(pattern):
+    global_results = []
+    global_times = []
     result = []
     states = []
 
@@ -744,23 +777,33 @@ async def test_async_map(in_order):
             states.append("exit")
 
     async def mapper(x):
-        await asyncio.sleep(0.1)  # Simulate some async work
+        nonlocal global_results
+
+        await asyncio.sleep(0.2)  # Simulate some async work
+        global_results.append(x * 2)
+        global_times.append(time.time())
         return x * 2
 
-    if in_order:
-        async for item in async_map_ordered(foo(), mapper, concurrency=3):
-            result.append(item)
-    else:
+    if pattern == "unordered":
         async for item in async_map(foo(), mapper, concurrency=3):
             result.append(item)
+    elif pattern == "ordered":
+        async for item in async_map_ordered(foo(), mapper, concurrency=3):
+            result.append(item)
+    elif pattern == "foreach":
+        await async_foreach(foo(), mapper, concurrency=3)
+
+        # Ensure that all items were processed in parallel.
+        assert max(*global_times) - min(global_times) < 0.1
+        result.extend(global_results)
 
     assert sorted(result) == [2, 4, 6]
     assert states == ["enter", "exit"]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("in_order", [True, False])
-async def test_async_map_input_exception_async_producer(in_order):
+@pytest.mark.parametrize("pattern", ["unordered", "ordered", "foreach"])
+async def test_async_map_input_exception_async_producer(pattern):
     # test exception async producer
     states = []
 
@@ -779,19 +822,21 @@ async def test_async_map_input_exception_async_producer(in_order):
             states.append("exit")
 
     with pytest.raises(SampleException):
-        if in_order:
-            async for _ in async_map_ordered(gen(), mapper_func, concurrency=3):
-                pass
-        else:
+        if pattern == "unordered":
             async for _ in async_map(gen(), mapper_func, concurrency=3):
                 pass
+        elif pattern == "ordered":
+            async for _ in async_map_ordered(gen(), mapper_func, concurrency=3):
+                pass
+        elif pattern == "foreach":
+            await async_foreach(gen(), mapper_func, concurrency=3)
 
     assert sorted(states) == ["enter", "exit"]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("in_order", [True, False])
-async def test_async_map_input_cancellation_async_producer(in_order):
+@pytest.mark.parametrize("pattern", ["unordered", "ordered", "foreach"])
+async def test_async_map_input_cancellation_async_producer(pattern):
     # test cancelling async_map while waiting for input
     states = []
 
@@ -810,19 +855,21 @@ async def test_async_map_input_cancellation_async_producer(in_order):
             states.append("exit")
 
     with pytest.raises(asyncio.CancelledError):
-        if in_order:
-            async for _ in async_map_ordered(gen(), mapper_func, concurrency=3):
-                pass
-        else:
+        if pattern == "unordered":
             async for _ in async_map(gen(), mapper_func, concurrency=3):
                 pass
+        elif pattern == "ordered":
+            async for _ in async_map_ordered(gen(), mapper_func, concurrency=3):
+                pass
+        elif pattern == "foreach":
+            await async_foreach(gen(), mapper_func, concurrency=3)
 
     assert sorted(states) == ["enter", "exit"]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("in_order", [True, False])
-async def test_async_map_cancellation_waiting_for_input(in_order):
+@pytest.mark.parametrize("pattern", ["unordered", "ordered", "foreach"])
+async def test_async_map_cancellation_waiting_for_input(pattern):
     # test cancelling async_map while waiting for input
     result = []
     states = []
@@ -841,12 +888,14 @@ async def test_async_map_cancellation_waiting_for_input(in_order):
             states.append("exit")
 
     async def mapper_coro():
-        if in_order:
-            async for item in async_map_ordered(gen(), mapper_func, concurrency=3):
-                result.append(item)
-        else:
+        if pattern == "unordered":
             async for item in async_map(gen(), mapper_func, concurrency=3):
                 result.append(item)
+        elif pattern == "ordered":
+            async for item in async_map_ordered(gen(), mapper_func, concurrency=3):
+                result.append(item)
+        elif pattern == "foreach":
+            await async_foreach(gen(), mapper_func, concurrency=3)
 
     mapper_task = asyncio.create_task(mapper_coro())
     await asyncio.sleep(0.1)
@@ -859,8 +908,8 @@ async def test_async_map_cancellation_waiting_for_input(in_order):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("in_order", [True, False])
-async def test_async_map_input_exception_sync_producer(in_order):
+@pytest.mark.parametrize("pattern", ["unordered", "ordered", "foreach"])
+async def test_async_map_input_exception_sync_producer(pattern):
     # test exception sync producer
     states = []
 
@@ -879,20 +928,23 @@ async def test_async_map_input_exception_sync_producer(in_order):
             states.append("exit")
 
     with pytest.raises(SampleException):
-        if in_order:
-            async for _ in async_map_ordered(sync_or_async_iter(gen()), mapper_func, concurrency=3):
-                pass
-        else:
+        if pattern == "unordered":
             async for _ in async_map(sync_or_async_iter(gen()), mapper_func, concurrency=3):
                 pass
+        elif pattern == "ordered":
+            async for _ in async_map_ordered(sync_or_async_iter(gen()), mapper_func, concurrency=3):
+                pass
+        elif pattern == "foreach":
+            await async_foreach(sync_or_async_iter(gen()), mapper_func, concurrency=3)
 
     assert sorted(states) == ["enter", "exit"]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("in_order", [True, False])
-async def test_async_map_output_exception_async_func(in_order):
+@pytest.mark.parametrize("pattern", ["unordered", "ordered", "foreach"])
+async def test_async_map_output_exception_async_func(pattern):
     # test cancelling async mapper function
+    global_result = []
     result = []
     states = []
 
@@ -904,28 +956,41 @@ async def test_async_map_output_exception_async_func(in_order):
             states.append("exit")
 
     async def mapper_func(x):
+        nonlocal global_result
+
         await asyncio.sleep(0.1)
         if x == 3:
             raise SampleException("test")
+
+        global_result.append(x * 2)
         return x * 2
 
     with pytest.raises(SampleException):
-        if in_order:
-            async for item in async_map_ordered(sync_or_async_iter(gen()), mapper_func, concurrency=3):
-                result.append(item)
-        else:
+        if pattern == "unordered":
             async for item in async_map(sync_or_async_iter(gen()), mapper_func, concurrency=3):
                 result.append(item)
+        elif pattern == "ordered":
+            async for item in async_map_ordered(sync_or_async_iter(gen()), mapper_func, concurrency=3):
+                result.append(item)
+        elif pattern == "foreach":
+            await async_foreach(sync_or_async_iter(gen()), mapper_func, concurrency=3)
 
-    assert sorted(result) == [0, 2, 4]
     assert states == ["enter", "exit"]
+
+    # foreach pattern is able to complete the value=4, even though there was an exception in value=3.
+    if pattern == "foreach":
+        assert sorted(global_result) == [0, 2, 4, 8]
+    else:
+        assert sorted(result) == [0, 2, 4]
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("in_order", [True, False])
-async def test_async_map_streaming_input(in_order):
+@pytest.mark.parametrize("pattern", ["unordered", "ordered", "foreach"])
+async def test_async_map_streaming_input(pattern):
     # ensure we can stream input
     # and dont buffer all the items and return them after
+    global_results = []
+    global_timings = []
     result = []
     states = []
 
@@ -940,26 +1005,36 @@ async def test_async_map_streaming_input(in_order):
             states.append("exit")
 
     async def mapper(x):
+        nonlocal global_timings, global_results
+
+        global_timings.append(time.time())
+
         await asyncio.sleep(0.1)
+
+        global_results.append(x * 2)
         return x * 2
 
     import time
 
     start = time.time()
-    if in_order:
-        async for item in async_map_ordered(gen(), mapper, concurrency=3):
-            if item == 2:
-                assert time.time() - start < 0.5
-            else:
-                assert time.time() - start > 0.5
-            result.append(item)
-    else:
+    if pattern == "unordered":
         async for item in async_map(gen(), mapper, concurrency=3):
             if item == 2:
                 assert time.time() - start < 0.5
             else:
                 assert time.time() - start > 0.5
             result.append(item)
+    elif pattern == "ordered":
+        async for item in async_map_ordered(gen(), mapper, concurrency=3):
+            if item == 2:
+                assert time.time() - start < 0.5
+            else:
+                assert time.time() - start > 0.5
+            result.append(item)
+    elif pattern == "foreach":
+        await async_foreach(gen(), mapper, concurrency=3)
+        assert min(global_timings) - start < 0.5
+        result = global_results
 
     assert result == [2, 4, 6]
     assert states == ["enter", "exit"]
