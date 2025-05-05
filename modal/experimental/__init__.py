@@ -182,7 +182,7 @@ async def update_autoscaler(
     """
     deprecation_warning(
         (2025, 5, 5),
-        "The experimenta.update_autoscaler() function is now deprecated in favor of"
+        "The modal.experimental.update_autoscaler(...) function is now deprecated in favor of"
         " a stable `.update_autoscaler(...) method on the corresponding object.",
         show_source=True,
     )
