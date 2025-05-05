@@ -142,31 +142,33 @@ class _Invocation:
         function_id = function.object_id
         item = await _create_input(args, kwargs, client, method_name=function._use_method_name)
 
-        transient_error_kwargs = {}
-        if from_spawn_map:
-            transient_error_kwargs = {
-                "max_retries": None,
-                "max_delay": 30.0,
-                "retry_warning_message": RetryWarningMessage(
-                    message="Warning: `.spawn_map(...)` for function `{self._function_name}` is waiting to create"
-                    "more function calls. This may be due to hitting rate limits or function backlog limits.",
-                    warning_interval=10,
-                    errors_to_warn_for=[Status.RESOURCE_EXHAUSTED],
-                ),
-                "additional_status_codes": [Status.RESOURCE_EXHAUSTED],
-            }
-
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
             parent_input_id=current_input_id() or "",
             function_call_type=api_pb2.FUNCTION_CALL_TYPE_UNARY,
             pipelined_inputs=[item],
             function_call_invocation_type=function_call_invocation_type,
-            from_spawn_map=from_spawn_map,
         )
-        response = await retry_transient_errors(client.stub.FunctionMap, request, **transient_error_kwargs)
-        function_call_id = response.function_call_id
 
+        if from_spawn_map:
+            request.from_spawn_map = True
+            response = await retry_transient_errors(
+                client.stub.FunctionMap,
+                request,
+                max_retries=None,
+                max_delay=30.0,
+                retry_warning_message=RetryWarningMessage(
+                    message="Warning: `.spawn_map(...)` for function `{self._function_name}` is waiting to create"
+                    "more function calls. This may be due to hitting rate limits or function backlog limits.",
+                    warning_interval=10,
+                    errors_to_warn_for=[Status.RESOURCE_EXHAUSTED],
+                ),
+                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+            )
+        else:
+            response = await retry_transient_errors(client.stub.FunctionMap, request)
+
+        function_call_id = response.function_call_id
         if response.pipelined_inputs:
             assert len(response.pipelined_inputs) == 1
             input = response.pipelined_inputs[0]
