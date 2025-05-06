@@ -102,6 +102,9 @@ from ._utils.deprecation import deprecation_error
 from ._utils.logger import configure_logger
 from .exception import InvalidError
 
+DEFAULT_SERVER_URL = "https://api.modal.com"
+
+
 # Locate config file and read it
 
 user_config_path: str = os.environ.get("MODAL_CONFIG_PATH") or os.path.expanduser("~/.modal.toml")
@@ -222,7 +225,7 @@ _SETTINGS = {
     "loglevel": _Setting("WARNING", lambda s: s.upper()),
     "log_format": _Setting("STRING", lambda s: s.upper()),
     "log_pattern": _Setting(),  # optional override of the formatting pattern
-    "server_url": _Setting("https://api.modal.com"),
+    "server_url": _Setting(DEFAULT_SERVER_URL),
     "token_id": _Setting(),
     "token_secret": _Setting(),
     "task_id": _Setting(),
@@ -316,7 +319,9 @@ configure_logger(logger, config["loglevel"], config["log_format"])
 
 
 def _store_user_config(
-    new_settings: dict[str, Any], profile: Optional[str] = None, active_profile: Optional[str] = None
+    new_settings: dict[str, Any],
+    profile: Optional[str] = None,
+    active_profile: Optional[str] = None,
 ):
     """Internal method, used by the CLI to set tokens."""
     if profile is None:
