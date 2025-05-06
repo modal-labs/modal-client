@@ -14,6 +14,7 @@ from synchronicity.exceptions import UserCodeException
 
 import modal_proto
 from modal_proto import api_pb2
+from modal_proto.modal_api_grpc import ModalClientModal
 
 from .._serialization import (
     deserialize,
@@ -511,7 +512,7 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
 
 
 async def _create_input(
-    args, kwargs, client, *, idx: Optional[int] = None, method_name: Optional[str] = None
+    args, kwargs, stub: ModalClientModal, *, idx: Optional[int] = None, method_name: Optional[str] = None
 ) -> api_pb2.FunctionPutInputsItem:
     """Serialize function arguments and create a FunctionInput protobuf,
     uploading to blob storage if needed.
@@ -524,7 +525,7 @@ async def _create_input(
     args_serialized = serialize((args, kwargs))
 
     if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:
-        args_blob_id = await blob_upload(args_serialized, client.stub)
+        args_blob_id = await blob_upload(args_serialized, stub)
 
         return api_pb2.FunctionPutInputsItem(
             input=api_pb2.FunctionInput(

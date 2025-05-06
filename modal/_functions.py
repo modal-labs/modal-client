@@ -139,8 +139,10 @@ class _Invocation:
         from_spawn_map: bool = False,
     ) -> "_Invocation":
         assert client.stub
+        stub = client.stub
+
         function_id = function.object_id
-        item = await _create_input(args, kwargs, client, method_name=function._use_method_name)
+        item = await _create_input(args, kwargs, stub, method_name=function._use_method_name)
 
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
@@ -181,7 +183,7 @@ class _Invocation:
                 item=item,
                 sync_client_retries_enabled=response.sync_client_retries_enabled,
             )
-            return _Invocation(client.stub, function_call_id, client, retry_context)
+            return _Invocation(stub, function_call_id, client, retry_context)
 
         request_put = api_pb2.FunctionPutInputsRequest(
             function_id=function_id, inputs=[item], function_call_id=function_call_id
@@ -203,7 +205,7 @@ class _Invocation:
             item=item,
             sync_client_retries_enabled=response.sync_client_retries_enabled,
         )
-        return _Invocation(client.stub, function_call_id, client, retry_context)
+        return _Invocation(stub, function_call_id, client, retry_context)
 
     async def pop_function_call_outputs(
         self, timeout: Optional[float], clear_on_success: bool, input_jwts: Optional[list[str]] = None
@@ -249,7 +251,7 @@ class _Invocation:
         item = api_pb2.FunctionRetryInputsItem(input_jwt=ctx.input_jwt, input=ctx.item.input)
         request = api_pb2.FunctionRetryInputsRequest(function_call_jwt=ctx.function_call_jwt, inputs=[item])
         await retry_transient_errors(
-            self.client.stub.FunctionRetryInputs,
+            self.stub.FunctionRetryInputs,
             request,
         )
 

@@ -69,14 +69,11 @@ class VolumeFile:
     data_blob_id: Optional[str] = None
     block_hashes: list[bytes] = dataclasses.field(default_factory=list)
 
-
 @dataclasses.dataclass
 class GrpcErrorAndCount:
-    """Helper class that holds a gRPC error and the number of times it should be raised."""
-
+    """ Helper class that holds a gRPC error and the number of times it should be raised. """
     grpc_error: Status
     count: int
-
 
 # TODO: Isolate all test config from the host
 @pytest.fixture(scope="function", autouse=True)

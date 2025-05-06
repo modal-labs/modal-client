@@ -78,14 +78,44 @@ class RetryWarningMessage:
     errors_to_warn_for: typing.List[Status]
 
 
+class ConnectionManager:
+    """ConnectionManager is a helper class for sharing connections to the Modal server.
+
+    It can create, cache, and close channels to the Modal server. This is useful since
+    multiple ModalClientModal stubs may target the same server URL, in which case they
+    should share the same connection.
+    """
+
+    def __init__(self, client: "modal.client._Client", metadata: dict[str, str] = {}):
+        self._client = client
+        # Warning: This metadata is shared across all channels! If the metadata is mutated
+        # in one `create_channel` call, the mutation will be reflected in all channels.
+        self._metadata = metadata
+        self._channels: dict[str, grpclib.client.Channel] = {}
+
+    async def get_or_create_channel(self, server_url: str) -> grpclib.client.Channel:
+        if server_url not in self._channels:
+            self._channels[server_url] = create_channel(server_url, self._metadata)
+            try:
+                await connect_channel(self._channels[server_url])
+            except OSError as exc:
+                raise ConnectionError("Could not connect to the Modal server.") from exc
+        return self._channels[server_url]
+
+    def close(self):
+        for channel in self._channels.values():
+            channel.close()
+        self._channels.clear()
+
+
 def create_channel(
     server_url: str,
     metadata: dict[str, str] = {},
 ) -> grpclib.client.Channel:
-    """Creates a grpclib.Channel.
+    """Creates a grpclib.Channel to be used by a GRPC stub.
 
-    Either to be used directly by a GRPC stub, or indirectly used through the channel pool.
-    See `create_channel`.
+    Note that this function mutates the given metadata argument by adding an x-modal-auth-token
+    if one is present in the trailing metadata of any response.
     """
     o = urllib.parse.urlparse(server_url)
 
