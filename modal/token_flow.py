@@ -14,7 +14,7 @@ from modal_proto import api_pb2
 from ._utils.async_utils import synchronize_api
 from ._utils.http_utils import run_temporary_http_server
 from .client import _Client
-from .config import _lookup_workspace, _store_user_config, config, config_profiles, user_config_path
+from .config import DEFAULT_SERVER_URL, _lookup_workspace, _store_user_config, config, config_profiles, user_config_path
 from .exception import AuthError
 
 
@@ -108,6 +108,8 @@ async def _new_token(
 
         console.print("[green]Web authentication finished successfully![/green]")
 
+        server_url = client.server_url
+
     assert result is not None
 
     if result.workspace_username:
@@ -115,7 +117,9 @@ async def _new_token(
             f"[green]Token is connected to the [magenta]{result.workspace_username}[/magenta] workspace.[/green]"
         )
 
-    await _set_token(result.token_id, result.token_secret, profile=profile, activate=activate, verify=verify)
+    await _set_token(
+        result.token_id, result.token_secret, profile=profile, activate=activate, verify=verify, server_url=server_url
+    )
 
 
 async def _set_token(
@@ -125,6 +129,7 @@ async def _set_token(
     profile: Optional[str] = None,
     activate: bool = True,
     verify: bool = True,
+    server_url: Optional[str] = None,
 ):
     # TODO add server_url as a parameter for verification?
     server_url = config.get("server_url", profile=profile)
@@ -149,6 +154,8 @@ async def _set_token(
             profile = workspace.username
 
     config_data = {"token_id": token_id, "token_secret": token_secret}
+    if server_url is not None and server_url != DEFAULT_SERVER_URL:
+        config_data["server_url"] = server_url
     # Activate the profile when requested or if no other profiles currently exist
     active_profile = profile if (activate or not config_profiles()) else None
     with console.status("Storing token", spinner="dots"):
