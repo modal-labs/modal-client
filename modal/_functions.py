@@ -1585,6 +1585,15 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     @synchronizer.no_input_translation
     @live_method
+    async def _spawn_map_inner(self, *args: P.args, **kwargs: P.kwargs) -> None:
+        self._check_no_web_url("spawn_map")
+        if self._is_generator:
+            raise Exception("Cannot `spawn_map` over a generator function.")
+
+        await self._call_function_nowait(args, kwargs, api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC, from_spawn_map=True)
+
+    @synchronizer.no_input_translation
+    @live_method
     async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> "_FunctionCall[ReturnType]":
         """Calls the function with the given arguments, without waiting for the results.
 
