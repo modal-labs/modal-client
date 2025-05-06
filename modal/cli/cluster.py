@@ -74,10 +74,9 @@ async def shell(
         pty_info=get_pty_info(shell=True) if pty else None,
         runtime_debug=config.get("function_runtime_debug"),
     )
-    res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(req)
-
+    exec_res: api_pb2.ContainerExecResponse = await client.stub.ContainerExec(req)
     if pty:
-        await _ContainerProcess(res.exec_id, client).attach()
+        await _ContainerProcess(exec_res.exec_id, client).attach()
     else:
         # TODO: redirect stderr to its own stream?
-        await _ContainerProcess(res.exec_id, client, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT).wait()
+        await _ContainerProcess(exec_res.exec_id, client, stdout=StreamType.STDOUT, stderr=StreamType.STDOUT).wait()
