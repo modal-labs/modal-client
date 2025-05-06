@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.56 (2025-05-06)
+
+* Experimental `modal cluster` subcommand is added.
+
+
+
 ### 0.74.53 (2025-05-06)
 
 - Added functionality for `.spawn_map` on a function instantiated from `Function.from_name`.
