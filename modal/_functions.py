@@ -1355,7 +1355,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         deprecation_msg = """The Function.web_url property will be removed in a future version of Modal.
 Use the `Function.get_web_url()` method instead.
 """
-        deprecation_warning((2025, 5, 6), deprecation_msg)  #  pending=True)
+        deprecation_warning((2025, 5, 6), deprecation_msg, pending=True)
         return self._web_url
 
     @live_method
