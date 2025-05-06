@@ -1367,13 +1367,17 @@ message Function {
   // Note the value type as string. Internally we'll coerce all values to string with str().
   // On the server, it's necessary to convert back to the most natural type (e.g. int) when relevant.
   map<string, string> experimental_options = 81;
+
+  // If set, client deps will be mounted into the container, and are
+  // no longer expected to exist in the image itself.
+  bool mount_client_dependencies = 82;
 }
 
 message FunctionAsyncInvokeRequest {
   string function_id = 1;
   string parent_input_id = 2;
   FunctionInput input = 3;
-} 
+}
 
 message FunctionAsyncInvokeResponse {
   bool retry_with_blob_upload = 1;
