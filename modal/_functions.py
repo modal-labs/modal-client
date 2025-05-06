@@ -475,6 +475,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         i6pn_enabled: bool = False,
         # Experimental: Clustered functions
         cluster_size: Optional[int] = None,
+        rdma: Optional[bool] = None,
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
         # current default: first-party, future default: main-package
@@ -897,7 +898,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
                         function_definition_copy.resources.CopyFrom(
                             convert_fn_config_to_resources_config(
-                                cpu=cpu, memory=memory, gpu=_gpu, ephemeral_disk=ephemeral_disk
+                                cpu=cpu, memory=memory, gpu=_gpu, ephemeral_disk=ephemeral_disk, rdma=rdma
                             ),
                         )
                         ranked_function = api_pb2.FunctionData.RankedFunction(
@@ -912,7 +913,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     # assert isinstance(gpu, GPU_T)  # includes the case where gpu==None case
                     function_definition.resources.CopyFrom(
                         convert_fn_config_to_resources_config(
-                            cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
+                            cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk, rdma=rdma
                         ),
                     )
 
