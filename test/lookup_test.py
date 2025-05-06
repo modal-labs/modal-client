@@ -52,7 +52,7 @@ def test_fastapi_endpoint_lookup(servicer, client):
     deploy_app(app, "my-webhook", client=client)
 
     f = Function.from_name("my-webhook", "square").hydrate(client)
-    assert f.web_url
+    assert f.get_web_url()
 
 
 def test_web_endpoint_legacy_lookup(servicer, client):
@@ -62,7 +62,7 @@ def test_web_endpoint_legacy_lookup(servicer, client):
     deploy_app(app, "my-webhook", client=client)
 
     f = Function.from_name("my-webhook", "square").hydrate(client)
-    assert f.web_url
+    assert f.get_web_url()
 
 
 def test_deploy_exists(servicer, client):

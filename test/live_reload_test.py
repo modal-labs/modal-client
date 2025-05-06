@@ -49,7 +49,7 @@ def test_file_changes_trigger_reloads(import_ref, server_url_env, token_env, ser
     with serve_app(app, import_ref, _watcher=fake_watch()):
         watcher_done.wait()  # wait until watcher loop is done
         foo: Function = app.registered_functions["foo"]
-        assert foo.web_url.startswith("http://")
+        assert foo.get_web_url().startswith("http://")
 
     stderr = capfd.readouterr().err
     print(stderr)
