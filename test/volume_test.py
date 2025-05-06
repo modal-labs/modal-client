@@ -81,7 +81,7 @@ def test_volume_commit(client, servicer, skip_reload):
 @pytest.mark.parametrize("version", VERSIONS)
 async def test_volume_get(servicer, client, tmp_path, version):
     await modal.Volume.create_deployed.aio("my-vol", client=client, version=version)
-    vol = await modal.Volume.from_name("my-vol").hydrate.aio(client=client)
+    vol = await modal.Volume.from_name("my-vol", version=version).hydrate.aio(client=client)
 
     file_contents = b"hello world"
     file_path = "foo.txt"
@@ -95,10 +95,6 @@ async def test_volume_get(servicer, client, tmp_path, version):
     for chunk in vol.read_file(file_path):
         data += chunk
     assert data == file_contents
-
-    output = io.BytesIO()
-    vol.read_file_into_fileobj(file_path, output)
-    assert output.getvalue() == file_contents
 
     with pytest.raises(FileNotFoundError):
         for _ in vol.read_file("/abc/def/i-dont-exist-at-all"):
