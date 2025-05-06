@@ -79,8 +79,17 @@ class RetryWarningMessage:
 
 
 class ConnectionManager:
+    """ConnectionManager is a helper class for sharing connections to the Modal server.
+
+    It can create, cache, and close channels to the Modal server. This is useful since
+    multiple ModalClientModal stubs may target the same server URL, in which case they
+    should share the same connection.
+    """
+
     def __init__(self, client: "modal.client._Client", metadata: dict[str, str] = {}):
         self._client = client
+        # Warning: This metadata is shared across all channels! If the metadata is mutated
+        # in one `create_channel` call, the mutation will be reflected in all channels.
         self._metadata = metadata
         self._channels: dict[str, grpclib.client.Channel] = {}
 
@@ -103,7 +112,11 @@ def create_channel(
     server_url: str,
     metadata: dict[str, str] = {},
 ) -> grpclib.client.Channel:
-    """Creates a grpclib.Channel to be used by a GRPC stub."""
+    """Creates a grpclib.Channel to be used by a GRPC stub.
+
+    Note that this function mutates the given metadata argument by adding an x-modal-auth-token
+    if one is present in the trailing metadata of any response.
+    """
     o = urllib.parse.urlparse(server_url)
 
     channel: grpclib.client.Channel
