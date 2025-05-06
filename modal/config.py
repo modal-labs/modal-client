@@ -70,6 +70,11 @@ Other possible configuration options are:
 * `traceback` (in the .toml file) / `MODAL_TRACEBACK` (as an env var).
   Defaults to False. Enables printing full tracebacks on unexpected CLI
   errors, which can be useful for debugging client issues.
+* `log_pattern` (in the .toml file) / MODAL_LOG_PATTERN` (as an env var).
+  Defaults to "[modal-client] %(asctime)s %(message)s"
+  The log formatting pattern that will be used by the modal client itself.
+  See https://docs.python.org/3/library/logging.html#logrecord-attributes for available
+  log attributes.
 
 Meta-configuration
 ------------------
@@ -216,6 +221,7 @@ class _Setting(typing.NamedTuple):
 _SETTINGS = {
     "loglevel": _Setting("WARNING", lambda s: s.upper()),
     "log_format": _Setting("STRING", lambda s: s.upper()),
+    "log_pattern": _Setting(),  # optional override of the formatting pattern
     "server_url": _Setting("https://api.modal.com"),
     "token_id": _Setting(),
     "token_secret": _Setting(),
