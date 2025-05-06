@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.53 (2025-05-06)
+
+- Added functionality for `.spawn_map` on a function instantiated from `Function.from_name`.
+
+
+
 ### 0.74.51 (2025-05-06)
 
 - The `modal` client library can now be installed with Protobuf 6.
