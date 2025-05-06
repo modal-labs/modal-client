@@ -7,7 +7,8 @@ from modal.exception import InvalidError, NotFoundError
 
 
 def test_dict_app(servicer, client):
-    d = Dict.from_name("my-amazing-dict", {"xyz": 123}, create_if_missing=True).hydrate(client)
+    d = Dict.from_name("my-amazing-dict", create_if_missing=True).hydrate(client)
+    d["xyz"] = 123
     d["foo"] = 42
     d["foo"] += 5
     assert d["foo"] == 47
