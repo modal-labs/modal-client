@@ -1890,6 +1890,39 @@ class MockClientServicer(api_grpc.ModalClientBase):
             else:
                 await stream.send_message(api_pb2.VolumeGetFileResponse(data=vol_file.data, size=size))
 
+    async def VolumeGetFile2(self, stream):
+        req = await stream.recv_message()
+        if req.path not in self.volumes[req.volume_id].files:
+            raise GRPCError(Status.NOT_FOUND, "File not found")
+        vol_file = self.volumes[req.volume_id].files[req.path]
+        get_urls = []
+
+        def ceildiv(a: int, b: int) -> int:
+            return -(a // -b)
+
+        total_start = req.start
+        total_end = req.start + (req.len or len(vol_file.data))
+
+        block_start = min(total_start // BLOCK_SIZE, len(vol_file.block_hashes))
+        block_end = min(ceildiv(total_end, BLOCK_SIZE), len(vol_file.block_hashes))
+
+        for idx, block_hash in enumerate(vol_file.block_hashes[block_start:block_end]):
+            # Crude port of internal `blocks_for_byte_slice` algorithm:
+            start = total_start % BLOCK_SIZE if idx == 0 else 0
+            end = (((total_end - 1) % BLOCK_SIZE) + 1 if total_end > 0 else 0) \
+                if idx == (block_end - block_start - 1) else BLOCK_SIZE
+            length = end - start
+
+            get_urls.append(f"{self.blob_host}/block/test-get-request:{block_hash.hex()}:{start}:{length}")
+
+        response = api_pb2.VolumeGetFile2Response(
+            get_urls=get_urls,
+            size=len(vol_file.data),
+            start=total_start,
+            len=total_end - total_start
+        )
+        await stream.send_message(response)
+
     async def VolumeRemoveFile(self, stream):
         req = await stream.recv_message()
         if req.path not in self.volumes[req.volume_id].files:
@@ -1991,7 +2024,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     missing_block = api_pb2.VolumePutFiles2Response.MissingBlock(
                         file_index=file_index,
                         block_index=block_index,
-                        put_url=f"{self.blob_host}/block?token=test-put-request",
+                        put_url=f"{self.blob_host}/block/test-put-request",
                     )
                     file_missing_blocks.append(missing_block)
 
@@ -2070,7 +2103,7 @@ def blob_server():
         return aiohttp.web.Response(body=blobs[blob_id])
 
     async def put_block(request):
-        token = request.query["token"]
+        token = request.match_info["token"]
         if token != "test-put-request":
             return aiohttp.web.Response(status=400, text="bad token")
 
@@ -2085,13 +2118,26 @@ def blob_server():
         blocks[block_id] = content
         return aiohttp.web.Response(text=f"test-put-response:{block_id}")
 
+    async def get_block(request):
+        token = request.match_info["token"]
+
+        magic, block_id, start, length = token.split(':')
+        if magic != "test-get-request":
+            return aiohttp.web.Response(status=400, text="bad token")
+
+        start = int(start)
+        length = int(length)
+
+        return aiohttp.web.Response(body=blocks[block_id][start:start+length])
+
     app = aiohttp.web.Application()
     app.add_routes([aiohttp.web.put("/upload", upload)])
     app.add_routes([aiohttp.web.get("/download", download)])
     app.add_routes([aiohttp.web.post("/complete_multipart", complete_multipart)])
 
     # API used for volume version 2 blocks:
-    app.add_routes([aiohttp.web.put("/block", put_block)])
+    app.add_routes([aiohttp.web.get("/block/{token}", get_block)])
+    app.add_routes([aiohttp.web.put("/block/{token}", put_block)])
 
     started = threading.Event()
     stop_server = threading.Event()
