@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.51 (2025-05-06)
+
+- The `modal` client library can now be installed with Protobuf 6.
+
+
+
 ### 0.74.49 (2025-05-06)
 
 * Changes the log format of the modal client's default logger. Instead of `[%(threadName)s]`, the client now logs `[modal-client]` as the log line prefix.
