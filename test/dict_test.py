@@ -55,3 +55,10 @@ def test_dict_lazy_hydrate_named(set_env_client, servicer):
 def test_invalid_name(servicer, client, name):
     with pytest.raises(InvalidError, match="Invalid Dict name"):
         Dict.from_name(name).hydrate(client)
+
+
+def test_dict_update(servicer, client):
+    with Dict.ephemeral(client=client, _heartbeat_sleep=1) as d:
+        d.update({"foo": 1, "bar": 2}, foo=3, baz=4)
+        items = list(d.items())
+        assert sorted(items) == [("bar", 2), ("baz", 4), ("foo", 3)]
