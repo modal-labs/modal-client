@@ -747,6 +747,7 @@ class _App:
                     )
                 i6pn_enabled = i6pn or (f.flags & _PartialFunctionFlags.CLUSTERED)
                 cluster_size = f.params.cluster_size  # Experimental: Clustered functions
+                rdma = f.params.rdma
 
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
@@ -799,6 +800,7 @@ class _App:
                 target_concurrent_inputs = None
 
                 cluster_size = None  # Experimental: Clustered functions
+                rdma = None
                 i6pn_enabled = i6pn
 
             if info.function_name.endswith(".app"):
@@ -850,6 +852,7 @@ class _App:
                 scheduler_placement=scheduler_placement,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,  # Experimental: Clustered functions
+                rdma=rdma,
                 include_source=include_source if include_source is not None else self._include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
