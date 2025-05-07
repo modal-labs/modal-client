@@ -32,7 +32,14 @@ from modal_proto import api_pb2
 
 from ._object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
 from ._resolver import Resolver
-from ._utils.async_utils import TaskContext, aclosing, async_map, asyncnullcontext, synchronize_api
+from ._utils.async_utils import (
+    TaskContext,
+    aclosing,
+    async_map,
+    async_map_ordered,
+    asyncnullcontext,
+    synchronize_api,
+)
 from ._utils.blob_utils import (
     BLOCK_SIZE,
     FileUploadSpec,
@@ -440,10 +447,20 @@ class _Volume(_Object, type_prefix="vo"):
         except GRPCError as exc:
             raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
 
-        for url in response.get_urls:
-            async with ClientSessionRegistry.get_session().get(url) as get_response:
-                async for data in get_response.content.iter_any():
-                    yield data
+        async def read_block(block_url: str) -> bytes:
+            async with ClientSessionRegistry.get_session().get(block_url) as get_response:
+                return await get_response.content.read()
+
+        async def iter_urls() -> AsyncGenerator[str]:
+            for url in response.get_urls:
+                yield url
+
+        # TODO(dflemstr): Reasonable default? Make configurable?
+        prefetch_num_blocks = multiprocessing.cpu_count()
+
+        async with aclosing(async_map_ordered(iter_urls(), read_block, concurrency=prefetch_num_blocks)) as stream:
+            async for value in stream:
+                yield value
 
 
     @live_method
