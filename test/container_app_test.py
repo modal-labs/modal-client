@@ -157,7 +157,8 @@ async def test_rpc_wrapping_restores(container_client, servicer, tmpdir):
     io_manager = ContainerIOManager(api_pb2.ContainerArguments(checkpoint_id="ch-123"), container_client)
     restore_path = temp_restore_path(tmpdir)
 
-    d = modal.Dict.from_name("my-amazing-dict", {"xyz": 123}, create_if_missing=True).hydrate(container_client)
+    d = modal.Dict.from_name("my-amazing-dict", create_if_missing=True).hydrate(container_client)
+    d["xyz"] = 123
     d["abc"] = 42
 
     with set_env_vars(restore_path, servicer.container_addr):
