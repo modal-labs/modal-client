@@ -1014,7 +1014,7 @@ class _Image(_Object, type_prefix="im"):
         elif not _validate_packages(pkgs):
             raise InvalidError(
                 "Package list for `Image.pip_install` cannot contain other arguments;"
-                " try the `extra_args` parameter instead."
+                " try the `extra_options` parameter instead."
             )
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
