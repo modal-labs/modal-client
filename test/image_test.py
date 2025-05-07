@@ -1803,11 +1803,31 @@ def test_image_local_dir_ignore_patterns(servicer, client, tmp_path_with_content
             assert len(img._mount_layers) == 0
             layers = get_image_layers(img.object_id, servicer)
             mount_id = layers[0].context_mount_id
-            assert set(servicer.mount_contents[mount_id].keys()) == {f"/place{f}" for f in expected}
         else:
             assert len(img._mount_layers) == 1
             mount_id = img._mount_layers[0].object_id
-            assert set(servicer.mount_contents[mount_id].keys()) == {f"/place{f}" for f in expected}
+        assert servicer.mount_contents[mount_id].keys() == {f"/place{f}" for f in expected}
+
+
+@pytest.mark.parametrize("copy", [True, False])
+def test_image_local_dir_ignore_relative(servicer, client, tmp_path_with_content, copy):
+    assert (tmp_path_with_content / "data.txt").exists()
+    app = App()
+
+    img = Image.from_registry("unknown_image").add_local_dir(
+        tmp_path_with_content, "/place", ignore=["*.txt"], copy=copy
+    )
+
+    app.function(image=img)(dummy)
+    with app.run(client=client):
+        if copy:
+            assert len(img._mount_layers) == 0
+            layers = get_image_layers(img.object_id, servicer)
+            mount_id = layers[0].context_mount_id
+        else:
+            assert len(img._mount_layers) == 1
+            mount_id = img._mount_layers[0].object_id
+        assert "/place/data.txt" not in servicer.mount_contents[mount_id].keys()
 
 
 @pytest.mark.parametrize("copy", [True, False])
