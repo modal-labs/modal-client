@@ -62,3 +62,11 @@ def test_dict_update(servicer, client):
         d.update({"foo": 1, "bar": 2}, foo=3, baz=4)
         items = list(d.items())
         assert sorted(items) == [("bar", 2), ("baz", 4), ("foo", 3)]
+
+
+def test_dict_put_if_not_exists(client):
+    with Dict.ephemeral(client=client, _heartbeat_sleep=1) as d:
+        assert d.put("foo", 1, if_not_exists=True)
+        assert not d.put("foo", 2, if_not_exists=True)
+        items = list(d.items())
+        assert items == [("foo", 1)]
