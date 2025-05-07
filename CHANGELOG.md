@@ -12,6 +12,17 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.60 (2025-05-07)
+
+- `modal.Dict.update` now also accepts a positional Mapping, like Python's `dict` type:
+
+    ```python
+    d = modal.Dict.from_name("some-dict")
+    d.update({"a_key": 1, "another_key": "b"}, some_kwarg=True)
+    ```
+
+
+
 ### 0.74.56 (2025-05-06)
 
 * Experimental `modal cluster` subcommand is added.
