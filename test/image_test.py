@@ -205,7 +205,7 @@ def test_image_python_packages(builder_version, servicer, client):
         )
         assert any("pip install pandas" + 2 * " " + "--pre" in cmd for cmd in layers[0].dockerfile_commands)
 
-    with pytest.warns(DeprecationError):
+    with pytest.raises(InvalidError, match="try the `extra_args` parameter instead"):
         app = App(image=Image.debian_slim().pip_install("--no-build-isolation", "flash-attn"))
         app.function()(dummy)
         with app.run(client=client):
