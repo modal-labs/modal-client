@@ -394,7 +394,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.container_heartbeat_response = response
         self.container_heartbeat_abort.set()
 
-    def _get_input_plane_url(self, definition: api_pb2.Function):
+    def _get_input_plane_url(self, definition: Union[api_pb2.Function, api_pb2.FunctionData]) -> Optional[str]:
         input_plane_region = definition.experimental_options.get("input_plane_region")
         return f"http://127.0.0.1:{self.port}" if input_plane_region else None
 
