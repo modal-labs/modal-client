@@ -528,9 +528,9 @@ class _Volume(_Object, type_prefix="vo"):
 
             return num_bytes_written
 
-        tasks = (asyncio.create_task(download_block(idx, url)) for idx, url in enumerate(response.get_urls))
+        coros = [download_block(idx, url) for idx, url in enumerate(response.get_urls)]
 
-        total_size = sum(await asyncio.gather(*tasks))
+        total_size = sum(await asyncio.gather(*coros))
         fileobj.seek(start_pos + total_size)
 
         return total_size
