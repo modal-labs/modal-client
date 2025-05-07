@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2022
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import Any, Optional
 
 from grpclib import GRPCError
@@ -73,7 +73,7 @@ class _Dict(_Object, type_prefix="di"):
     @asynccontextmanager
     async def ephemeral(
         cls: type["_Dict"],
-        data: Optional[dict] = None,
+        data: Optional[dict] = None,  # DEPRECATED
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
@@ -95,6 +95,11 @@ class _Dict(_Object, type_prefix="di"):
         """
         if client is None:
             client = await _Client.from_env()
+        if data:
+            deprecation_warning(
+                (2025, 5, 6),
+                "Passing data to `modal.Dict.ephemeral` is deprecated and will stop working in a future release.",
+            )
         serialized = _serialize_dict(data if data is not None else {})
         request = api_pb2.DictGetOrCreateRequest(
             object_creation_type=api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL,
@@ -111,7 +116,8 @@ class _Dict(_Object, type_prefix="di"):
     @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
         name: str,
-        data: Optional[dict] = None,
+        data: Optional[dict] = None,  # DEPRECATED
+        *,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -128,6 +134,12 @@ class _Dict(_Object, type_prefix="di"):
         ```
         """
         check_object_name(name, "Dict")
+
+        if data:
+            deprecation_warning(
+                (2025, 5, 6),
+                "Passing data to `modal.Dict.from_name` is deprecated and will stop working in a future release.",
+            )
 
         async def _load(self: _Dict, resolver: Resolver, existing_object_id: Optional[str]):
             serialized = _serialize_dict(data if data is not None else {})
@@ -243,9 +255,16 @@ class _Dict(_Object, type_prefix="di"):
         return value
 
     @live_method
-    async def update(self, **kwargs) -> None:
+    async def update(self, other: Optional[Mapping] = None, /, **kwargs) -> None:
         """Update the dictionary with additional items."""
-        serialized = _serialize_dict(kwargs)
+        # Support the Python dict.update API
+        # https://docs.python.org/3/library/stdtypes.html#dict.update
+        contents = {}
+        if other:
+            contents.update({k: other[k] for k in other.keys()})
+        if kwargs:
+            contents.update(kwargs)
+        serialized = _serialize_dict(contents)
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
         try:
             await retry_transient_errors(self._client.stub.DictUpdate, req)

@@ -99,7 +99,10 @@ def test_nested_map(client):
         assert final_results == [1, 16]
 
 
-def test_map_with_exception_in_input_iterator(client):
+# TODO(gongy): Fix this test for starmap.
+# @pytest.mark.parametrize("maptype", ["map", "starmap", "spawn_map"])
+@pytest.mark.parametrize("maptype", ["map", "spawn_map"])
+def test_map_with_exception_in_input_iterator(client, maptype):
     class CustomException(Exception):
         pass
 
@@ -112,7 +115,12 @@ def test_map_with_exception_in_input_iterator(client):
 
     with app.run(client=client):
         with pytest.raises(CustomException):
-            list(dummy_modal.map(input_gen()))
+            if maptype == "map":
+                list(dummy_modal.map(input_gen()))
+            elif maptype == "starmap":
+                list(dummy_modal.starmap(input_gen()))
+            elif maptype == "spawn_map":
+                dummy_modal.spawn_map(input_gen())
 
 
 @pytest.mark.asyncio
@@ -592,6 +600,13 @@ def test_closure_valued_serialized_function(client, servicer):
     assert functions["ret_bar"]() == "bar"
 
 
+def test_custom_name_requires_serialized():
+    app = App()
+
+    with pytest.raises(InvalidError, match="`serialized=True`"):
+        app.function(name="foo")(dummy)
+
+
 def test_new_hydrated_internal(client, servicer):
     obj: FunctionCall[typing.Any] = FunctionCall._new_hydrated("fc-123", client, None)
     assert obj.object_id == "fc-123"
@@ -751,39 +766,6 @@ lc_app = App(include_source=True)  # TODO: remove include_source=True when autom
 @lc_app.function()
 def f(x):
     return x**2
-
-
-def test_allow_cross_region_volumes(client, servicer):
-    app = App()
-    vol1 = NetworkFileSystem.from_name("xyz-1", create_if_missing=True)
-    vol2 = NetworkFileSystem.from_name("xyz-2", create_if_missing=True)
-    # Should pass flag for all the function's NetworkFileSystemMounts
-    app.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(dummy)
-
-    with app.run(client=client):
-        assert len(servicer.app_functions) == 1
-        for func in servicer.app_functions.values():
-            assert len(func.shared_volume_mounts) == 2
-            for svm in func.shared_volume_mounts:
-                assert svm.allow_cross_region
-
-
-def test_allow_cross_region_volumes_webhook(client, servicer):
-    # TODO(erikbern): this test seems a bit redundant
-    app = App()
-    vol1 = NetworkFileSystem.from_name("xyz-1", create_if_missing=True)
-    vol2 = NetworkFileSystem.from_name("xyz-2", create_if_missing=True)
-    # Should pass flag for all the function's NetworkFileSystemMounts
-    app.function(network_file_systems={"/sv-1": vol1, "/sv-2": vol2}, allow_cross_region_volumes=True)(
-        fastapi_endpoint()(dummy)
-    )
-
-    with app.run(client=client):
-        assert len(servicer.app_functions) == 1
-        for func in servicer.app_functions.values():
-            assert len(func.shared_volume_mounts) == 2
-            for svm in func.shared_volume_mounts:
-                assert svm.allow_cross_region
 
 
 def test_serialize_deserialize_function_handle(servicer, client):
@@ -1009,7 +991,7 @@ async def test_map_large_inputs(client, servicer, monkeypatch, blob_server):
     app = App()
     dummy_modal = app.function()(dummy)
 
-    _, blobs = blob_server
+    _, blobs, _ = blob_server
     async with app.run.aio(client=client):
         assert len(blobs) == 0
         assert [a async for a in dummy_modal.map.aio(range(100))] == [i**2 for i in range(100)]
@@ -1035,6 +1017,21 @@ async def test_non_aio_map_in_async_caller_error(client):
         # but we support it for backwards compatibility for now:
         res = [r async for r in dummy_function.map([1, 2, 4])]
         assert res == [1, 4, 16]
+
+
+@pytest.mark.asyncio
+async def test_spawn_map_async(client):
+    dummy_function = app.function()(dummy)
+
+    async with app.run.aio(client=client):
+        await dummy_function.spawn_map.aio([1, 2, 3])
+
+
+def test_spawn_map_sync(client):
+    dummy_function = app.function()(dummy)
+
+    with app.run(client=client):
+        dummy_function.spawn_map([1, 2, 3])
 
 
 def test_warn_on_local_volume_mount(client, servicer):
@@ -1403,3 +1400,30 @@ def test_experimental_options(client, servicer, decorator):
             ...
 
     assert ctx.get_requests("FunctionCreate")[0].function.experimental_options == {"foo": "2", "bar": "True"}
+
+
+def test_restrict_modal_access(client, servicer):
+    app = App()
+
+    @app.function(serialized=True, restrict_modal_access=True)
+    def f():
+        pass
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            pass
+
+    assert ctx.get_requests("FunctionCreate")[0].function.untrusted == True
+
+    # Test that by default, untrusted is False
+    app2 = App()
+
+    @app2.function(serialized=True)
+    def g():
+        pass
+
+    with servicer.intercept() as ctx:
+        with app2.run(client=client):
+            pass
+
+    assert ctx.get_requests("FunctionCreate")[0].function.untrusted == False

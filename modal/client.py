@@ -26,9 +26,9 @@ from modal_version import __version__
 from ._traceback import print_server_warnings
 from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.grpc_utils import connect_channel, create_channel, retry_transient_errors
+from ._utils.grpc_utils import ConnectionManager, retry_transient_errors
 from .config import _check_config, _is_remote, config, logger
-from .exception import AuthError, ClientClosed, ConnectionError
+from .exception import AuthError, ClientClosed
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
@@ -94,7 +94,6 @@ class _Client:
         self._credentials = credentials
         self.version = version
         self._closed = False
-        self._channel: Optional[grpclib.client.Channel] = None
         self._stub: Optional[modal_api_grpc.ModalClientModal] = None
         self._snapshotted = False
         self._owner_pid = None
@@ -104,9 +103,27 @@ class _Client:
 
     @property
     def stub(self) -> modal_api_grpc.ModalClientModal:
-        """mdmd:hidden"""
+        """mdmd:hidden
+        The default stub. Stubs can safely be used across forks / client snapshots.
+
+        This is useful if you want to make requests to the default Modal server in us-east, for example
+        control plane requests.
+
+        This is equivalent to client.get_stub(default_server_url), but it's cached, so it's a bit faster.
+        """
         assert self._stub
         return self._stub
+
+    async def get_stub(self, server_url: str) -> modal_api_grpc.ModalClientModal:
+        """mdmd:hidden
+        Get a stub for a specific server URL. Stubs can safely be used across forks / client snapshots.
+
+        This is useful if you want to make requests to a regional Modal server, for example low-latency
+        function calls in us-west.
+
+        This function is O(n) where n is the number of RPCs in ModalClient.
+        """
+        return await modal_api_grpc.ModalClientModal._create(self, server_url)
 
     async def _open(self):
         self._closed = False
@@ -115,13 +132,9 @@ class _Client:
         self._cancellation_context = TaskContext(grace=0.5)  # allow running rpcs to finish in 0.5s when closing client
         self._cancellation_context_event_loop = asyncio.get_running_loop()
         await self._cancellation_context.__aenter__()
-        self._channel = create_channel(self.server_url, metadata=metadata)
-        try:
-            await connect_channel(self._channel)
-        except OSError as exc:
-            raise ConnectionError("Could not connect to the Modal server.") from exc
-        self._grpclib_stub = api_grpc.ModalClientStub(self._channel)
-        self._stub = modal_api_grpc.ModalClientModal(self._grpclib_stub, client=self)
+
+        self._connection_manager = ConnectionManager(client=self, metadata=metadata)
+        self._stub = await self.get_stub(self.server_url)
         self._owner_pid = os.getpid()
 
     async def _close(self, prep_for_restore: bool = False):
@@ -129,8 +142,8 @@ class _Client:
         self._closed = True
         if hasattr(self, "_cancellation_context"):
             await self._cancellation_context.__aexit__(None, None, None)  # wait for all rpcs to be finished/cancelled
-        if self._channel is not None:
-            self._channel.close()
+        if self._connection_manager:
+            self._connection_manager.close()
 
         if prep_for_restore:
             self._snapshotted = True
@@ -284,43 +297,40 @@ class _Client:
         if self._owner_pid and self._owner_pid != os.getpid():
             # not calling .close() since that would also interact with stale resources
             # just reset the internal state
-            self._channel = None
+            self._connection_manager = None
             self._stub = None
-            self._grpclib_stub = None
             self._owner_pid = None
 
             self.set_env_client(None)
             # TODO(elias): reset _cancellation_context in case ?
             await self._open()
 
-    async def _get_grpclib_method(self, method_name: str) -> Any:
-        # safely get grcplib method that is bound to a valid channel
-        # This prevents usage of stale methods across forks of processes
+    async def _get_channel(self, server_url: str) -> grpclib.client.Channel:
+        # Get a valid grpclib channel, reusing existing channels if possible.
+        # This prevents usage of stale channels across forks of processes.
         await self._reset_on_pid_change()
-        return getattr(self._grpclib_stub, method_name)
+        return await self._connection_manager.get_or_create_channel(server_url)
 
     @synchronizer.nowrap
     async def _call_unary(
         self,
-        method_name: str,
+        grpclib_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType],
         request: Any,
         *,
         timeout: Optional[float] = None,
         metadata: Optional[_MetadataLike] = None,
     ) -> Any:
-        grpclib_method = await self._get_grpclib_method(method_name)
         coro = grpclib_method(request, timeout=timeout, metadata=metadata)
         return await self._call_safely(coro, grpclib_method.name)
 
     @synchronizer.nowrap
     async def _call_stream(
         self,
-        method_name: str,
+        grpclib_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType],
         request: Any,
         *,
         metadata: Optional[_MetadataLike],
     ) -> AsyncGenerator[Any, None]:
-        grpclib_method = await self._get_grpclib_method(method_name)
         stream_context = grpclib_method.open(metadata=metadata)
         stream = await self._call_safely(stream_context.__aenter__(), f"{grpclib_method.name}.open")
         try:
@@ -347,16 +357,19 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
     wrapped_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType]
     client: _Client
 
-    def __init__(self, wrapped_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType], client: _Client):
-        # we pass in the wrapped_method here to get the correct static types
-        # but don't use the reference directly, see `def wrapped_method` below
-        self._wrapped_full_name = wrapped_method.name
-        self._wrapped_method_name = wrapped_method.name.rsplit("/", 1)[1]
+    def __init__(
+        self,
+        wrapped_method: grpclib.client.UnaryUnaryMethod[RequestType, ResponseType],
+        client: _Client,
+        server_url: str,
+    ):
+        self.wrapped_method = wrapped_method
         self.client = client
+        self.server_url = server_url
 
     @property
     def name(self) -> str:
-        return self._wrapped_full_name
+        return self.wrapped_method.name
 
     async def __call__(
         self,
@@ -366,22 +379,38 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         metadata: Optional[_MetadataLike] = None,
     ) -> ResponseType:
         if self.client._snapshotted:
-            logger.debug(f"refreshing client after snapshot for {self._wrapped_method_name}")
+            logger.debug(f"refreshing client after snapshot for {self.name.rsplit('/', 1)[1]}")
             self.client = await _Client.from_env()
-        return await self.client._call_unary(self._wrapped_method_name, req, timeout=timeout, metadata=metadata)
+
+        # Note: We override the grpclib method's channel (see grpclib's code [1]). I think this is fine
+        # since grpclib's code doesn't seem to change very much, but we could also recreate the
+        # grpclib stub if we aren't comfortable with this. The downside is then we need to cache
+        # the grpclib stub so the rest of our code becomes a bit more complicated.
+        #
+        # We need to override the channel because after the process is forked or the client is
+        # snapshotted, the existing channel may be stale / unusable.
+        #
+        # [1]: https://github.com/vmagamedov/grpclib/blob/62f968a4c84e3f64e6966097574ff0a59969ea9b/grpclib/client.py#L844
+        self.wrapped_method.channel = await self.client._get_channel(self.server_url)
+        return await self.client._call_unary(self.wrapped_method, req, timeout=timeout, metadata=metadata)
 
 
 class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
     wrapped_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType]
 
-    def __init__(self, wrapped_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType], client: _Client):
-        self._wrapped_full_name = wrapped_method.name
-        self._wrapped_method_name = wrapped_method.name.rsplit("/", 1)[1]
+    def __init__(
+        self,
+        wrapped_method: grpclib.client.UnaryStreamMethod[RequestType, ResponseType],
+        client: _Client,
+        server_url: str,
+    ):
+        self.wrapped_method = wrapped_method
         self.client = client
+        self.server_url = server_url
 
     @property
     def name(self) -> str:
-        return self._wrapped_full_name
+        return self.wrapped_method.name
 
     async def unary_stream(
         self,
@@ -389,7 +418,8 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
         metadata: Optional[Any] = None,
     ):
         if self.client._snapshotted:
-            logger.debug(f"refreshing client after snapshot for {self._wrapped_method_name}")
+            logger.debug(f"refreshing client after snapshot for {self.name.rsplit('/', 1)[1]}")
             self.client = await _Client.from_env()
-        async for response in self.client._call_stream(self._wrapped_method_name, request, metadata=metadata):
+        self.wrapped_method.channel = await self.client._get_channel(self.server_url)
+        async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
             yield response

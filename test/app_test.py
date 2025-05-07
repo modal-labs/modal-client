@@ -10,7 +10,7 @@ from modal import App, Image, Mount, Secret, Stub, Volume, enable_output, fastap
 from modal._partial_function import _parse_custom_domains
 from modal._utils.async_utils import synchronizer
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
-from modal.runner import deploy_app, deploy_stub, run_app
+from modal.runner import deploy_stub, run_app
 from modal_proto import api_pb2
 
 from .supports import module_1, module_2
@@ -26,26 +26,26 @@ async def test_redeploy(servicer, client):
     app.function()(square)
 
     # Deploy app
-    res = await deploy_app.aio(app, "my-app", client=client)
-    assert res.app_id == "ap-1"
+    await app.deploy.aio(name="my-app", client=client)
+    assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["square"] == "fu-1"
-    assert servicer.app_state_history[res.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
+    assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
 
     # Redeploy, make sure all ids are the same
-    res = await deploy_app.aio(app, "my-app", client=client)
-    assert res.app_id == "ap-1"
+    await app.deploy.aio(name="my-app", client=client)
+    assert app.app_id == "ap-1"
     assert servicer.app_objects["ap-1"]["square"] == "fu-1"
-    assert servicer.app_state_history[res.app_id] == [
+    assert servicer.app_state_history[app.app_id] == [
         api_pb2.APP_STATE_INITIALIZING,
         api_pb2.APP_STATE_DEPLOYED,
         api_pb2.APP_STATE_DEPLOYED,
     ]
 
     # Deploy to a different name, ids should change
-    res = await deploy_app.aio(app, "my-app-xyz", client=client)
-    assert res.app_id == "ap-2"
+    await app.deploy.aio(name="my-app-xyz", client=client)
+    assert app.app_id == "ap-2"
     assert servicer.app_objects["ap-2"]["square"] == "fu-2"
-    assert servicer.app_state_history[res.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
+    assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
 
 
 def dummy():
@@ -89,13 +89,13 @@ def test_create_object_invalid_exception(servicer, client):
 
 def test_deploy_falls_back_to_app_name(servicer, client):
     named_app = App(name="foo_app")
-    deploy_app(named_app, client=client)
+    named_app.deploy(client=client)
     assert "foo_app" in servicer.deployed_apps
 
 
 def test_deploy_uses_deployment_name_if_specified(servicer, client):
     named_app = App(name="foo_app")
-    deploy_app(named_app, "bar_app", client=client)
+    named_app.deploy(name="bar_app", client=client)
     assert "bar_app" in servicer.deployed_apps
     assert "foo_app" not in servicer.deployed_apps
 
@@ -144,8 +144,8 @@ def test_run_state(client, servicer):
 
 def test_deploy_state(client, servicer):
     app = App()
-    res = deploy_app(app, "foobar", client=client)
-    assert servicer.app_state_history[res.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
+    app.deploy(name="foobar", client=client)
+    assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
 
 
 def test_detach_state(client, servicer):
@@ -234,21 +234,21 @@ def test_set_image_on_app_as_attribute():
 def test_redeploy_delete_objects(servicer, client):
     # Deploy an app with objects d1 and d2
     app = App()
-    app.function(name="d1")(dummy)
-    app.function(name="d2")(dummy)
-    res = deploy_app(app, "xyz", client=client)
+    app.function(name="d1", serialized=True)(dummy)
+    app.function(name="d2", serialized=True)(dummy)
+    app.deploy(name="xyz", client=client)
 
     # Check objects
-    assert set(servicer.app_objects[res.app_id].keys()) == {"d1", "d2"}
+    assert set(servicer.app_objects[app.app_id].keys()) == {"d1", "d2"}
 
     # Deploy an app with objects d2 and d3
     app = App()
-    app.function(name="d2")(dummy)
-    app.function(name="d3")(dummy)
-    res = deploy_app(app, "xyz", client=client)
+    app.function(name="d2", serialized=True)(dummy)
+    app.function(name="d3", serialized=True)(dummy)
+    app.deploy(name="xyz", client=client)
 
     # Make sure d1 is deleted
-    assert set(servicer.app_objects[res.app_id].keys()) == {"d2", "d3"}
+    assert set(servicer.app_objects[app.app_id].keys()) == {"d2", "d3"}
 
 
 @pytest.mark.asyncio
@@ -301,7 +301,7 @@ async def test_deploy_disconnect(servicer, client):
     app.function(secrets=[Secret.from_name("nonexistent-secret")])(square)
 
     with pytest.raises(NotFoundError):
-        await deploy_app.aio(app, "my-app", client=client)
+        await app.deploy.aio(name="my-app", client=client)
 
     assert servicer.app_state_history["ap-1"] == [
         api_pb2.APP_STATE_INITIALIZING,
@@ -321,7 +321,7 @@ def test_hydrated_other_app_object_gets_referenced(servicer, client):
     with servicer.intercept() as ctx:
         with Volume.ephemeral(client=client) as vol:
             app.function(volumes={"/vol": vol})(dummy)  # implicitly load vol
-            deploy_app(app, client=client)
+            app.deploy(client=client)
             function_create_req: api_pb2.FunctionCreateRequest = ctx.pop_request("FunctionCreate")
             assert vol.object_id in {obj.object_id for obj in function_create_req.function.object_dependencies}
 
@@ -361,11 +361,10 @@ def test_stub():
         Stub()
 
 
-def test_deploy_stub(servicer, client):
+def test_deploy_stub():
     app = App("xyz")
-    deploy_app(app, client=client)
     with pytest.raises(DeprecationError, match="deploy_app"):
-        deploy_stub(app, client=client)
+        deploy_stub(app)
 
 
 def test_app_logs(servicer, client):
@@ -438,10 +437,9 @@ async def test_deploy_from_container(servicer, container_client):
     app.function()(square)
 
     # Deploy app
-    res = await deploy_app.aio(app, "my-app", client=container_client)
-    assert res.app_id == "ap-1"
+    await app.deploy.aio(name="my-app", client=container_client)
     assert servicer.app_objects["ap-1"]["square"] == "fu-1"
-    assert servicer.app_state_history[res.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
+    assert servicer.app_state_history[app.app_id] == [api_pb2.APP_STATE_INITIALIZING, api_pb2.APP_STATE_DEPLOYED]
 
 
 def test_app_create_bad_environment_name_error(client):

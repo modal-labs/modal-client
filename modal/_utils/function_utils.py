@@ -14,6 +14,7 @@ from synchronicity.exceptions import UserCodeException
 
 import modal_proto
 from modal_proto import api_pb2
+from modal_proto.modal_api_grpc import ModalClientModal
 
 from .._serialization import (
     deserialize,
@@ -140,7 +141,7 @@ class FunctionInfo:
     def __init__(
         self,
         f: Optional[Callable[..., Any]],
-        serialized=False,
+        serialized: bool = False,
         name_override: Optional[str] = None,
         user_cls: Optional[type] = None,
     ):
@@ -148,6 +149,10 @@ class FunctionInfo:
         self.user_cls = user_cls
 
         if name_override is not None:
+            if not serialized:
+                # We may relax this constraint in the future, but currently we don't track the distinction between
+                # the Function's name inside modal and the name of the object that we need to import in a container.
+                raise InvalidError("Setting a custom `name=` also requires setting `serialized=True`")
             self.function_name = name_override
         elif f is None and user_cls:
             # "service function" for running all methods of a class
@@ -507,7 +512,7 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
 
 
 async def _create_input(
-    args, kwargs, client, *, idx: Optional[int] = None, method_name: Optional[str] = None
+    args, kwargs, stub: ModalClientModal, *, idx: Optional[int] = None, method_name: Optional[str] = None
 ) -> api_pb2.FunctionPutInputsItem:
     """Serialize function arguments and create a FunctionInput protobuf,
     uploading to blob storage if needed.
@@ -520,7 +525,7 @@ async def _create_input(
     args_serialized = serialize((args, kwargs))
 
     if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:
-        args_blob_id = await blob_upload(args_serialized, client.stub)
+        args_blob_id = await blob_upload(args_serialized, stub)
 
         return api_pb2.FunctionPutInputsItem(
             input=api_pb2.FunctionInput(

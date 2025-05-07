@@ -18,13 +18,12 @@ import tempfile
 import textwrap
 import threading
 import traceback
-import typing
 import uuid
 from collections import defaultdict
 from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
-from typing import Any, get_args
+from typing import Any, Optional, Union, get_args
 
 import aiohttp.web
 import aiohttp.web_runner
@@ -40,6 +39,7 @@ from modal._functions import _Function
 from modal._runtime.container_io_manager import _ContainerIOManager
 from modal._serialization import deserialize, deserialize_params, serialize_data_format
 from modal._utils.async_utils import asyncify, synchronize_api
+from modal._utils.blob_utils import BLOCK_SIZE
 from modal._utils.grpc_testing import patch_mock_servicer
 from modal._utils.grpc_utils import find_free_port
 from modal._utils.http_utils import run_temporary_http_server
@@ -57,19 +57,23 @@ VALID_CLOUD_PROVIDERS = ["AWS", "GCP", "OCI", "AUTO", "XYZ"]
 
 
 @dataclasses.dataclass
-class VolumeFile:
-    data: bytes
-    data_blob_id: str
-    mode: int
+class Volume:
+    version: "api_pb2.VolumeFsVersion.ValueType"
+    files: dict[str, VolumeFile]
 
 
 @dataclasses.dataclass
-class GrpcErrorAndCount:
-    """Helper class that holds a gRPC error and the number of times it should be raised."""
+class VolumeFile:
+    data: bytes
+    mode: int
+    data_blob_id: Optional[str] = None
+    block_hashes: list[bytes] = dataclasses.field(default_factory=list)
 
+@dataclasses.dataclass
+class GrpcErrorAndCount:
+    """ Helper class that holds a gRPC error and the number of times it should be raised. """
     grpc_error: Status
     count: int
-
 
 # TODO: Isolate all test config from the host
 @pytest.fixture(scope="function", autouse=True)
@@ -147,7 +151,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     client_addr: str
     container_addr: str
 
-    def __init__(self, blob_host, blobs, credentials):
+    def __init__(self, blob_host, blobs, blocks, credentials):
         self.default_published_client_mount = "mo-123"
         self.use_blob_outputs = False
         self.put_outputs_barrier = threading.Barrier(
@@ -163,6 +167,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_blobs = 0
         self.blob_host = blob_host
         self.blobs = blobs  # shared dict
+        self.blocks = blocks  # shared dict
         self.requests = []
         self.done = False
         self.rate_limit_sleep_duration = None
@@ -221,7 +226,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.task_result = None
 
         self.nfs_files: dict[str, dict[str, api_pb2.SharedVolumePutFileRequest]] = defaultdict(dict)
-        self.volume_files: dict[str, dict[str, VolumeFile]] = defaultdict(dict)
+        self.volumes: dict[str, Volume] = {}
         self.images = {}
         self.image_build_function_ids = {}
         self.image_builder_versions = {}
@@ -426,6 +431,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         elif object_id.startswith("sb-"):
             sandbox_handle_metadata = api_pb2.SandboxHandleMetadata(result=self.sandbox_result)
             res = api_pb2.Object(sandbox_handle_metadata=sandbox_handle_metadata)
+
+        elif object_id.startswith("vo-"):
+            volume_metadata = api_pb2.VolumeMetadata(version=self.volumes[object_id].version)
+            res = api_pb2.Object(volume_metadata=volume_metadata)
 
         else:
             res = api_pb2.Object()
@@ -1034,7 +1043,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             function.CopyFrom(request.function)
 
         assert (function is None) != (function_data is None)
-        function_defn: typing.Union[api_pb2.Function, api_pb2.FunctionData] = function or function_data
+        function_defn: Union[api_pb2.Function, api_pb2.FunctionData] = function or function_data
         assert function_defn
         if function_defn.webhook_config.type:
             function_defn.web_url = "http://xyz.internal"
@@ -1290,13 +1299,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def FunctionUpdateSchedulingParams(self, stream):
         req: api_pb2.FunctionUpdateSchedulingParamsRequest = await stream.recv_message()
+
         # update function definition
         fn_definition = self.app_functions[req.function_id]
         assert isinstance(fn_definition, api_pb2.Function)
-        # Hacky that we're modifying the function definition directly
-        # In the server we track autoscaler updates separately
+        # Note that this doesn't mock the full server logic very well
         fn_definition.warm_pool_size = req.warm_pool_size_override
         fn_definition.autoscaler_settings.MergeFrom(req.settings)
+
+        # Hacky that we're modifying the function definition directly
+        # In the server we track autoscaler updates separately
+        fn_definition.warm_pool_size = fn_definition.autoscaler_settings.min_containers
+        fn_definition.concurrency_limit = fn_definition.autoscaler_settings.max_containers
+        fn_definition._experimental_buffer_containers = fn_definition.autoscaler_settings.buffer_containers
+        fn_definition.task_idle_timeout_secs = fn_definition.autoscaler_settings.scaledown_window
+
         await stream.send_message(api_pb2.FunctionUpdateSchedulingParamsResponse())
 
     ### Image
@@ -1622,6 +1639,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     ### Secret
 
+    async def SecretDelete(self, stream):
+        request: api_pb2.SecretDeleteRequest = await stream.recv_message()
+        self.deployed_secrets = {k: v for k, v in self.deployed_secrets.items() if v != request.secret_id}
+        self.secrets.pop(request.secret_id)
+        await stream.send_message(Empty())
+
     async def SecretGetOrCreate(self, stream):
         request: api_pb2.SecretGetOrCreateRequest = await stream.recv_message()
         k = (request.deployment_name, request.namespace, request.environment_name)
@@ -1653,7 +1676,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SecretList(self, stream):
         await stream.recv_message()
-        items = [api_pb2.SecretListItem(label=f"dummy-secret-{i}") for i, _ in enumerate(self.secrets)]
+        # Note: being lazy and not implementing the env filtering
+        items = [api_pb2.SecretListItem(label=name) for name, _, env in self.deployed_secrets]
         await stream.send_message(api_pb2.SecretListResponse(items=items))
 
     ### Snapshot
@@ -1789,24 +1813,26 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 raise GRPCError(Status.NOT_FOUND, f"Volume {k} not found")
             volume_id = self.deployed_volumes[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
-            volume_id = f"vo-{len(self.volume_files)}"
-            self.volume_files[volume_id] = {}
+            volume_id = f"vo-{len(self.volumes)}"
+            self.volumes[volume_id] = Volume(version=request.version, files={})
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
             if k not in self.deployed_volumes:
-                volume_id = f"vo-{len(self.volume_files)}"
-                self.volume_files[volume_id] = {}
+                volume_id = f"vo-{len(self.volumes)}"
+                self.volumes[volume_id] = Volume(version=request.version, files={})
                 self.deployed_volumes[k] = volume_id
             volume_id = self.deployed_volumes[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS:
             if k in self.deployed_volumes:
                 raise GRPCError(Status.ALREADY_EXISTS, f"Volume {k} already exists")
-            volume_id = f"vo-{len(self.volume_files)}"
-            self.volume_files[volume_id] = {}
+            volume_id = f"vo-{len(self.volumes)}"
+            self.volumes[volume_id] = Volume(version=request.version, files={})
             self.deployed_volumes[k] = volume_id
         else:
             raise GRPCError(Status.INVALID_ARGUMENT, "unsupported object creation type")
 
-        await stream.send_message(api_pb2.VolumeGetOrCreateResponse(volume_id=volume_id))
+        metadata = api_pb2.VolumeMetadata(version=request.version)
+        response = api_pb2.VolumeGetOrCreateResponse(volume_id=volume_id, version=request.version, metadata=metadata)
+        await stream.send_message(response)
 
     async def VolumeList(self, stream):
         req = await stream.recv_message()
@@ -1833,7 +1859,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def VolumeDelete(self, stream):
         req: api_pb2.VolumeDeleteRequest = await stream.recv_message()
-        self.volume_files.pop(req.volume_id)
+        self.volumes.pop(req.volume_id)
         self.deployed_volumes = {k: vol_id for k, vol_id in self.deployed_volumes.items() if vol_id != req.volume_id}
         await stream.send_message(Empty())
 
@@ -1845,9 +1871,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def VolumeGetFile(self, stream):
         req = await stream.recv_message()
-        if req.path not in self.volume_files[req.volume_id]:
+        if req.path not in self.volumes[req.volume_id].files:
             raise GRPCError(Status.NOT_FOUND, "File not found")
-        vol_file = self.volume_files[req.volume_id][req.path]
+        vol_file = self.volumes[req.volume_id].files[req.path]
         if vol_file.data_blob_id:
             await stream.send_message(api_pb2.VolumeGetFileResponse(data_blob_id=vol_file.data_blob_id))
         else:
@@ -1861,11 +1887,44 @@ class MockClientServicer(api_grpc.ModalClientBase):
             else:
                 await stream.send_message(api_pb2.VolumeGetFileResponse(data=vol_file.data, size=size))
 
+    async def VolumeGetFile2(self, stream):
+        req = await stream.recv_message()
+        if req.path not in self.volumes[req.volume_id].files:
+            raise GRPCError(Status.NOT_FOUND, "File not found")
+        vol_file = self.volumes[req.volume_id].files[req.path]
+        get_urls = []
+
+        def ceildiv(a: int, b: int) -> int:
+            return -(a // -b)
+
+        total_start = req.start
+        total_end = req.start + (req.len or len(vol_file.data))
+
+        block_start = min(total_start // BLOCK_SIZE, len(vol_file.block_hashes))
+        block_end = min(ceildiv(total_end, BLOCK_SIZE), len(vol_file.block_hashes))
+
+        for idx, block_hash in enumerate(vol_file.block_hashes[block_start:block_end]):
+            # Crude port of internal `blocks_for_byte_slice` algorithm:
+            start = total_start % BLOCK_SIZE if idx == 0 else 0
+            end = (((total_end - 1) % BLOCK_SIZE) + 1 if total_end > 0 else 0) \
+                if idx == (block_end - block_start - 1) else BLOCK_SIZE
+            length = end - start
+
+            get_urls.append(f"{self.blob_host}/block/test-get-request:{block_hash.hex()}:{start}:{length}")
+
+        response = api_pb2.VolumeGetFile2Response(
+            get_urls=get_urls,
+            size=len(vol_file.data),
+            start=total_start,
+            len=total_end - total_start
+        )
+        await stream.send_message(response)
+
     async def VolumeRemoveFile(self, stream):
         req = await stream.recv_message()
-        if req.path not in self.volume_files[req.volume_id]:
+        if req.path not in self.volumes[req.volume_id].files:
             raise GRPCError(Status.INVALID_ARGUMENT, "File not found")
-        del self.volume_files[req.volume_id][req.path]
+        del self.volumes[req.volume_id].files[req.path]
         await stream.send_message(Empty())
 
     async def VolumeRename(self, stream):
@@ -1885,7 +1944,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             path = path[:-1]
 
         found_file = False  # empty directory detection is not handled here!
-        for k, vol_file in self.volume_files[req.volume_id].items():
+        for k, vol_file in self.volumes[req.volume_id].files.items():
             if not path or k == path or (k.startswith(path + "/") and (req.recursive or "/" not in k[len(path) + 1 :])):
                 entry = api_pb2.FileEntry(path=k, type=api_pb2.FileEntry.FileType.FILE, size=len(vol_file.data))
                 await stream.send_message(api_pb2.VolumeListFilesResponse(entries=[entry]))
@@ -1899,7 +1958,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         for file in req.files:
             blob_data = self.files_sha2data[file.sha256_hex]
 
-            if file.filename in self.volume_files[req.volume_id] and req.disallow_overwrite_existing_files:
+            if file.filename in self.volumes[req.volume_id].files and req.disallow_overwrite_existing_files:
                 raise GRPCError(
                     Status.ALREADY_EXISTS,
                     (
@@ -1908,19 +1967,85 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     ),
                 )
 
-            self.volume_files[req.volume_id][file.filename] = VolumeFile(
+            self.volumes[req.volume_id].files[file.filename] = VolumeFile(
                 data=blob_data["data"],
                 data_blob_id=blob_data["data_blob_id"],
                 mode=file.mode,
             )
         await stream.send_message(Empty())
 
+    async def VolumePutFiles2(self, stream):
+        req = await stream.recv_message()
+        missing_blocks = []
+        files_to_create = {}
+
+        for file_index, file in enumerate(req.files):
+            if file.path in self.volumes[req.volume_id].files and req.disallow_overwrite_existing_files:
+                raise GRPCError(
+                    Status.ALREADY_EXISTS,
+                    (
+                        f"{file.path}: already exists "
+                        f"(disallow_overwrite_existing_files={req.disallow_overwrite_existing_files}"
+                    ),
+                )
+
+            blocks = []
+            block_hashes = []
+            file_missing_blocks = []
+
+            for block_index, block in enumerate(file.blocks):
+                block_hashes.append(block.contents_sha256)
+                actual_block_id = block.contents_sha256.hex()
+                block_data = self.blocks.get(actual_block_id)
+
+                # TODO(dflemstr): here, we assume that all blocks that the user uploads are always new; we could check
+                #  if the block blob already exists, and not generate a MissingBlock for those block blobs, but then it
+                #  would get trickier to validate the put_url response loop here...
+                put_response = block.put_response
+                if put_response:
+                    prefix = b"test-put-response:"
+                    expected_block_id = put_response[len(prefix) :].decode("utf-8")
+                    valid_put_response = put_response.startswith(prefix) and expected_block_id == actual_block_id
+                else:
+                    valid_put_response = False
+
+                if block_data is not None and valid_put_response:
+                    # If this is not the last block, it needs to have size BLOCK_SIZE
+                    if block_index + 1 < len(file.blocks):
+                        assert len(block_data) == BLOCK_SIZE
+                    # If this is the last block, it must be at most BLOCK_SIZE
+                    if block_index + 1 == len(file.blocks):
+                        assert len(block_data) <= BLOCK_SIZE
+                    blocks.append(block_data)
+                else:
+                    missing_block = api_pb2.VolumePutFiles2Response.MissingBlock(
+                        file_index=file_index,
+                        block_index=block_index,
+                        put_url=f"{self.blob_host}/block/test-put-request",
+                    )
+                    file_missing_blocks.append(missing_block)
+
+            if file_missing_blocks:
+                missing_blocks.extend(file_missing_blocks)
+            else:
+                files_to_create[file.path] = VolumeFile(
+                    data=b"".join(blocks),
+                    data_blob_id=None,
+                    mode=file.mode,
+                    block_hashes=block_hashes,
+                )
+
+        if not missing_blocks:
+            self.volumes[req.volume_id].files.update(files_to_create)
+
+        await stream.send_message(api_pb2.VolumePutFiles2Response(missing_blocks=missing_blocks))
+
     async def VolumeCopyFiles(self, stream):
         req = await stream.recv_message()
         for src_path in req.src_paths:
-            if src_path not in self.volume_files[req.volume_id]:
+            if src_path not in self.volumes[req.volume_id].files:
                 raise GRPCError(Status.NOT_FOUND, f"Source file not found: {src_path}")
-            src_file = self.volume_files[req.volume_id][src_path]
+            src_file = self.volumes[req.volume_id].files[src_path]
             if len(req.src_paths) > 1:
                 # check to make sure dst is a directory
                 if req.dst_path.endswith(("/", "\\")) or not os.path.splitext(os.path.basename(req.dst_path))[1]:
@@ -1929,7 +2054,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     raise GRPCError(Status.INVALID_ARGUMENT, f"{dst_path} is not a directory.")
             else:
                 dst_path = req.dst_path
-            self.volume_files[req.volume_id][dst_path] = src_file
+            self.volumes[req.volume_id].files[dst_path] = src_file
         await stream.send_message(Empty())
 
 
@@ -1937,6 +2062,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 def blob_server():
     blobs = {}
     blob_parts: dict[str, dict[int, bytes]] = defaultdict(dict)
+    blocks = {}
 
     async def upload(request):
         blob_id = request.query["blob_id"]
@@ -1973,10 +2099,42 @@ def blob_server():
             return aiohttp.web.Response(status=500)
         return aiohttp.web.Response(body=blobs[blob_id])
 
+    async def put_block(request):
+        token = request.match_info["token"]
+        if token != "test-put-request":
+            return aiohttp.web.Response(status=400, text="bad token")
+
+        content = await request.content.read()
+        if content == b"FAILURE":
+            return aiohttp.web.Response(status=500, text="simulated server error")
+
+        if len(content) > BLOCK_SIZE:
+            return aiohttp.web.Response(status=413, text="block too big")
+
+        block_id = hashlib.sha256(content).hexdigest()
+        blocks[block_id] = content
+        return aiohttp.web.Response(text=f"test-put-response:{block_id}")
+
+    async def get_block(request):
+        token = request.match_info["token"]
+
+        magic, block_id, start, length = token.split(':')
+        if magic != "test-get-request":
+            return aiohttp.web.Response(status=400, text="bad token")
+
+        start = int(start)
+        length = int(length)
+
+        return aiohttp.web.Response(body=blocks[block_id][start:start+length])
+
     app = aiohttp.web.Application()
     app.add_routes([aiohttp.web.put("/upload", upload)])
     app.add_routes([aiohttp.web.get("/download", download)])
     app.add_routes([aiohttp.web.post("/complete_multipart", complete_multipart)])
+
+    # API used for volume version 2 blocks:
+    app.add_routes([aiohttp.web.get("/block/{token}", get_block)])
+    app.add_routes([aiohttp.web.put("/block/{token}", put_block)])
 
     started = threading.Event()
     stop_server = threading.Event()
@@ -2004,7 +2162,7 @@ def blob_server():
     thread = threading.Thread(target=run_server_other_thread)
     thread.start()
     started.wait()
-    yield host, blobs
+    yield host, blobs, blocks
     stop_server.set()
     thread.join()
 
@@ -2056,8 +2214,8 @@ def credentials():
 async def servicer(blob_server, temporary_sock_path, credentials):
     port = find_free_port()
 
-    blob_host, blobs = blob_server
-    servicer = MockClientServicer(blob_host, blobs, credentials)  # type: ignore
+    blob_host, blobs, blocks = blob_server
+    servicer = MockClientServicer(blob_host, blobs, blocks, credentials)  # type: ignore
 
     if platform.system() != "Windows":
         async with run_server(servicer, host="0.0.0.0", port=port):

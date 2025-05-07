@@ -12,6 +12,7 @@ from .._object import _get_environment_name
 from .._partial_function import _clustered
 from .._runtime.container_io_manager import _ContainerIOManager
 from .._utils.async_utils import synchronize_api, synchronizer
+from .._utils.deprecation import deprecation_warning
 from .._utils.grpc_utils import retry_transient_errors
 from ..client import _Client
 from ..cls import _Obj
@@ -179,6 +180,13 @@ async def update_autoscaler(
     may look different (i.e., it may be a standalone function or a method).
 
     """
+    deprecation_warning(
+        (2025, 5, 5),
+        "The modal.experimental.update_autoscaler(...) function is now deprecated in favor of"
+        " a stable `.update_autoscaler(...) method on the corresponding object.",
+        show_source=True,
+    )
+
     settings = api_pb2.AutoscalerSettings(
         min_containers=min_containers,
         max_containers=max_containers,

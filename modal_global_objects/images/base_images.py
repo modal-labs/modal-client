@@ -35,7 +35,7 @@ if __name__ == "__main__":
     for v in python_versions:
         image = constructor(python_version=v)
         images_map[v] = image
-        app.function(image=image, name=f"{v}")(dummy)
+        app.function(image=image, name=f"{v}", serialized=True)(dummy)
 
     with modal.enable_output():
         with app.run():

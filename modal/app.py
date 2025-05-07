@@ -254,6 +254,7 @@ class _App:
     @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
         name: str,
+        *,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -327,17 +328,18 @@ class _App:
     @asynccontextmanager
     async def run(
         self,
+        *,
         client: Optional[_Client] = None,
         show_progress: Optional[bool] = None,
         detach: bool = False,
         interactive: bool = False,
         environment_name: Optional[str] = None,
     ) -> AsyncGenerator["_App", None]:
-        """Context manager that runs an app on Modal.
+        """Context manager that runs an ephemeral app on Modal.
 
         Use this as the main entry point for your Modal application. All calls
-        to Modal functions should be made within the scope of this context
-        manager, and they will correspond to the current app.
+        to Modal Functions should be made within the scope of this context
+        manager, and they will correspond to the current App.
 
         **Example**
 
@@ -346,7 +348,7 @@ class _App:
             some_modal_function.remote()
         ```
 
-        To enable output printing, use `modal.enable_output()`:
+        To enable output printing (i.e., to see App logs), use `modal.enable_output()`:
 
         ```python notest
         with modal.enable_output():
@@ -354,10 +356,10 @@ class _App:
                 some_modal_function.remote()
         ```
 
-        Note that you cannot invoke this in global scope of a file where you have
-        Modal functions or Classes, since that would run the block when the function
-        or class is imported in your containers as well. If you want to run it as
-        your entrypoint, consider wrapping it:
+        Note that you should not invoke this in global scope of a file where you have
+        Modal Functions or Classes defined, since that would run the block when the Function
+        or Cls is imported in your containers as well. If you want to run it as your entrypoint,
+        consider protecting it:
 
         ```python
         if __name__ == "__main__":
@@ -371,9 +373,6 @@ class _App:
         python app_module.py
         ```
 
-        Note that this method used to return a separate "App" object. This is
-        no longer useful since you can use the app itself for access to all
-        objects. For backwards compatibility reasons, it returns the same app.
         """
         from .runner import _run_app  # Defer import of runner.py, which imports a lot from Rich
 
@@ -391,6 +390,71 @@ class _App:
             self, client=client, detach=detach, interactive=interactive, environment_name=environment_name
         ):
             yield self
+
+    async def deploy(
+        self,
+        *,
+        name: Optional[str] = None,  # Name for the deployment, overriding any set on the App
+        environment_name: Optional[str] = None,  # Environment to deploy the App in
+        tag: str = "",  # Optional metadata that will be visible in the deployment history
+        client: Optional[_Client] = None,  # Alternate client to use for RPCs
+    ) -> typing_extensions.Self:
+        """Deploy the App so that it is available persistently.
+
+        Deployed Apps will be avaible for lookup or web-based invocations until they are stopped.
+        Unlike with `App.run`, this method will return as soon as the deployment completes.
+
+        This method is a programmatic alternative to the `modal deploy` CLI command.
+
+        Examples:
+
+        ```python notest
+        app = App("my-app")
+        app.deploy()
+        ```
+
+        To enable output printing (i.e., to see build logs), use `modal.enable_output()`:
+
+        ```python notest
+        app = App("my-app")
+        with modal.enable_output():
+            app.deploy()
+        ```
+
+        Unlike with `App.run`, Function logs will not stream back to the local client after the
+        App is deployed.
+
+        Note that you should not invoke this method in global scope, as that would redeploy
+        the App every time the file is imported. If you want to write a programmatic deployment
+        script, protect this call so that it only runs when the file is executed directly:
+
+        ```python notest
+        if __name__ == "__main__":
+            with modal.enable_output():
+                app.deploy()
+        ```
+
+        Then you can deploy your app with:
+
+        ```shell
+        python app_module.py
+        ```
+
+        """
+        from .runner import _deploy_app  # Defer import of runner.py, which imports a lot from Rich
+
+        if name is None and self._name is None:
+            raise InvalidError(
+                "You need to either supply a deployment name or have a name set on the app.\n"
+                "\n"
+                "Examples:\n"
+                'app.deploy(name="some-name")\n\n'
+                "or\n"
+                'app = modal.App("some-name")'
+            )
+        result = await _deploy_app(self, name=name, environment_name=environment_name, tag=tag, client=client)
+        self._app_id = result.app_id
+        return self
 
     def _get_default_image(self):
         if self._image:
@@ -583,7 +647,6 @@ class _App:
         volumes: dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
-        allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         # Specify, in fractional CPU cores, how many CPU cores to request.
         # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
         # CPU throttling will prevent a container from exceeding its specified limit.
@@ -607,6 +670,7 @@ class _App:
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
+        restrict_modal_access: bool = False,  # Whether to allow this function access to other Modal resources
         # Maximum number of inputs a container should handle before shutting down.
         # With `max_inputs = 1`, containers will be single-use.
         max_inputs: Optional[int] = None,
@@ -627,6 +691,7 @@ class _App:
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
+        allow_cross_region_volumes: Optional[bool] = None,  # Always True on the Modal backend now
     ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal [Function](/docs/reference/modal.Function) with this App."""
         if isinstance(_warn_parentheses_missing, _Image):
@@ -645,6 +710,8 @@ class _App:
                 " Please use the `@modal.concurrent` decorator instead."
                 "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
             )
+        if allow_cross_region_volumes is not None:
+            deprecation_warning((2025, 4, 23), "The `allow_cross_region_volumes` parameter no longer has any effect.")
 
         secrets = [*self._secrets, *secrets]
 
@@ -680,6 +747,7 @@ class _App:
                     )
                 i6pn_enabled = i6pn or (f.flags & _PartialFunctionFlags.CLUSTERED)
                 cluster_size = f.params.cluster_size  # Experimental: Clustered functions
+                rdma = f.params.rdma
 
                 info = FunctionInfo(f.raw_f, serialized=serialized, name_override=name)
                 raw_f = f.raw_f
@@ -732,6 +800,7 @@ class _App:
                 target_concurrent_inputs = None
 
                 cluster_size = None  # Experimental: Clustered functions
+                rdma = None
                 i6pn_enabled = i6pn
 
             if info.function_name.endswith(".app"):
@@ -759,7 +828,6 @@ class _App:
                 gpu=gpu,
                 mounts=[*self._mounts, *mounts],
                 network_file_systems=network_file_systems,
-                allow_cross_region_volumes=allow_cross_region_volumes,
                 volumes={**self._volumes, **volumes},
                 cpu=cpu,
                 memory=memory,
@@ -779,10 +847,12 @@ class _App:
                 webhook_config=webhook_config,
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
+                restrict_modal_access=restrict_modal_access,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
                 i6pn_enabled=i6pn_enabled,
                 cluster_size=cluster_size,  # Experimental: Clustered functions
+                rdma=rdma,
                 include_source=include_source if include_source is not None else self._include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
@@ -814,7 +884,6 @@ class _App:
         volumes: dict[
             Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
         ] = {},  # Mount points for Modal Volumes & CloudBucketMounts
-        allow_cross_region_volumes: bool = False,  # Whether using network file systems from other regions is allowed.
         # Specify, in fractional CPU cores, how many CPU cores to request.
         # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
         # CPU throttling will prevent a container from exceeding its specified limit.
@@ -834,6 +903,7 @@ class _App:
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
         block_network: bool = False,  # Whether to block network access
+        restrict_modal_access: bool = False,  # Whether to allow this class access to other Modal resources
         # Limits the number of inputs a container handles before shutting down.
         # Use `max_inputs = 1` for single-use containers.
         max_inputs: Optional[int] = None,
@@ -852,6 +922,7 @@ class _App:
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
+        allow_cross_region_volumes: Optional[bool] = None,  # Always True on the Modal backend now
     ) -> Callable[[Union[CLS_T, _PartialFunction]], CLS_T]:
         """
         Decorator to register a new Modal [Cls](/docs/reference/modal.Cls) with this App.
@@ -872,6 +943,8 @@ class _App:
                 " Please use the `@modal.concurrent` decorator instead."
                 "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
             )
+        if allow_cross_region_volumes is not None:
+            deprecation_warning((2025, 4, 23), "The `allow_cross_region_volumes` parameter no longer has any effect.")
 
         def wrapper(wrapped_cls: Union[CLS_T, _PartialFunction]) -> CLS_T:
             # Check if the decorated object is a class
@@ -928,7 +1001,6 @@ class _App:
                 gpu=gpu,
                 mounts=[*self._mounts, *mounts],
                 network_file_systems=network_file_systems,
-                allow_cross_region_volumes=allow_cross_region_volumes,
                 volumes={**self._volumes, **volumes},
                 cpu=cpu,
                 memory=memory,
@@ -947,6 +1019,7 @@ class _App:
                 cloud=cloud,
                 enable_memory_snapshot=enable_memory_snapshot,
                 block_network=block_network,
+                restrict_modal_access=restrict_modal_access,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
                 include_source=include_source if include_source is not None else self._include_source_default,
@@ -1004,7 +1077,7 @@ class _App:
         )
         deprecation_error((2024, 7, 5), message)
 
-    def include(self, /, other_app: "_App"):
+    def include(self, /, other_app: "_App") -> typing_extensions.Self:
         """Include another App's objects in this one.
 
         Useful for splitting up Modal Apps across different self-contained files.
@@ -1040,6 +1113,7 @@ class _App:
                 )
 
             self._add_class(tag, cls)
+        return self
 
     async def _logs(self, client: Optional[_Client] = None) -> AsyncGenerator[str, None]:
         """Stream logs from the app.

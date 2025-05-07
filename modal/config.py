@@ -70,6 +70,11 @@ Other possible configuration options are:
 * `traceback` (in the .toml file) / `MODAL_TRACEBACK` (as an env var).
   Defaults to False. Enables printing full tracebacks on unexpected CLI
   errors, which can be useful for debugging client issues.
+* `log_pattern` (in the .toml file) / MODAL_LOG_PATTERN` (as an env var).
+  Defaults to "[modal-client] %(asctime)s %(message)s"
+  The log formatting pattern that will be used by the modal client itself.
+  See https://docs.python.org/3/library/logging.html#logrecord-attributes for available
+  log attributes.
 
 Meta-configuration
 ------------------
@@ -96,6 +101,9 @@ from modal_proto import api_pb2
 from ._utils.deprecation import deprecation_error
 from ._utils.logger import configure_logger
 from .exception import InvalidError
+
+DEFAULT_SERVER_URL = "https://api.modal.com"
+
 
 # Locate config file and read it
 
@@ -216,7 +224,8 @@ class _Setting(typing.NamedTuple):
 _SETTINGS = {
     "loglevel": _Setting("WARNING", lambda s: s.upper()),
     "log_format": _Setting("STRING", lambda s: s.upper()),
-    "server_url": _Setting("https://api.modal.com"),
+    "log_pattern": _Setting(),  # optional override of the formatting pattern
+    "server_url": _Setting(DEFAULT_SERVER_URL),
     "token_id": _Setting(),
     "token_secret": _Setting(),
     "task_id": _Setting(),
@@ -310,7 +319,9 @@ configure_logger(logger, config["loglevel"], config["log_format"])
 
 
 def _store_user_config(
-    new_settings: dict[str, Any], profile: Optional[str] = None, active_profile: Optional[str] = None
+    new_settings: dict[str, Any],
+    profile: Optional[str] = None,
+    active_profile: Optional[str] = None,
 ):
     """Internal method, used by the CLI to set tokens."""
     if profile is None:

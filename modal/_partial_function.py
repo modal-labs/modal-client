@@ -77,6 +77,7 @@ class _PartialFunctionParams:
     max_concurrent_inputs: Optional[int] = None
     target_concurrent_inputs: Optional[int] = None
     build_timeout: Optional[int] = None
+    rdma: Optional[bool] = None
 
     def update(self, other: "_PartialFunctionParams") -> None:
         """Update self with params set in other."""
@@ -777,7 +778,7 @@ def _batched(
     @app.function()
     @modal.batched(max_batch_size=4, wait_ms=1000)
     async def batched_multiply(xs: list[int], ys: list[int]) -> list[int]:
-        return [x * y for x, y in zip(xs, xs)]
+        return [x * y for x, y in zip(xs, ys)]
 
     # call batched_multiply with individual inputs
     # batched_multiply.remote.aio(2, 100)
@@ -787,7 +788,7 @@ def _batched(
     class BatchedClass:
         @modal.batched(max_batch_size=4, wait_ms=1000)
         def batched_multiply(self, xs: list[int], ys: list[int]) -> list[int]:
-            return [x * y for x, y in zip(xs, xs)]
+            return [x * y for x, y in zip(xs, ys)]
     ```
 
     See the [dynamic batching guide](https://modal.com/docs/guide/dynamic-batching) for more information.
@@ -900,7 +901,7 @@ def _concurrent(
 
 
 # NOTE: clustered is currently exposed through modal.experimental, not the top-level namespace
-def _clustered(size: int, broadcast: bool = True):
+def _clustered(size: int, broadcast: bool = True, rdma: bool = False):
     """Provision clusters of colocated and networked containers for the Function.
 
     Parameters:
@@ -918,7 +919,7 @@ def _clustered(size: int, broadcast: bool = True):
         raise ValueError("cluster size must be greater than 0")
 
     flags = _PartialFunctionFlags.CLUSTERED
-    params = _PartialFunctionParams(cluster_size=size)
+    params = _PartialFunctionParams(cluster_size=size, rdma=rdma)
 
     def wrapper(
         obj: Union[_PartialFunction[P, ReturnType, ReturnType], Callable[P, ReturnType]],

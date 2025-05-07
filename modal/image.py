@@ -1236,10 +1236,9 @@ class _Image(_Object, type_prefix="im"):
     def poetry_install_from_file(
         self,
         poetry_pyproject_toml: str,
-        # Path to the lockfile. If not provided, uses poetry.lock in the same directory.
-        poetry_lockfile: Optional[str] = None,
-        # If set to True, it will not use poetry.lock
-        ignore_lockfile: bool = False,
+        poetry_lockfile: Optional[str] = None,  # Path to lockfile. If not provided, uses poetry.lock in same directory.
+        *,
+        ignore_lockfile: bool = False,  # If set to True, do not use poetry.lock, even when present
         # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
         old_installer: bool = False,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
@@ -1247,9 +1246,7 @@ class _Image(_Object, type_prefix="im"):
         with_: list[str] = [],
         # Selected optional dependency groups to exclude (See https://python-poetry.org/docs/cli/#install)
         without: list[str] = [],
-        # Only install dependency groups specifed in this list.
-        only: list[str] = [],
-        *,
+        only: list[str] = [],  # Only install dependency groups specifed in this list.
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
@@ -1556,8 +1553,8 @@ class _Image(_Object, type_prefix="im"):
     @staticmethod
     def from_registry(
         tag: str,
-        *,
         secret: Optional[_Secret] = None,
+        *,
         setup_dockerfile_commands: list[str] = [],
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         add_python: Optional[str] = None,
@@ -1714,12 +1711,10 @@ class _Image(_Object, type_prefix="im"):
 
     @staticmethod
     def from_dockerfile(
-        # Filepath to Dockerfile.
-        path: Union[str, Path],
-        context_mount: Optional[_Mount] = None,  # Deprecated: the context is now inferred
-        # Ignore cached builds, similar to 'docker build --no-cache'
-        force_build: bool = False,
+        path: Union[str, Path],  # Filepath to Dockerfile.
         *,
+        context_mount: Optional[_Mount] = None,  # Deprecated: the context is now inferred
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         context_dir: Optional[Union[Path, str]] = None,  # Context for relative COPY commands
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
@@ -1901,10 +1896,9 @@ class _Image(_Object, type_prefix="im"):
     def run_function(
         self,
         raw_f: Callable[..., Any],
+        *,
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
-        gpu: Union[
-            GPU_T, list[GPU_T]
-        ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
+        gpu: Union[GPU_T, list[GPU_T]] = None,  # Requested GPU or or list of acceptable GPUs( e.g. ["A10", "A100"])
         mounts: Sequence[_Mount] = (),  # Mounts attached to the function
         volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},  # Volume mount paths
         network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},  # NFS mount paths
@@ -1916,7 +1910,6 @@ class _Image(_Object, type_prefix="im"):
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         args: Sequence[Any] = (),  # Positional arguments to the function.
         kwargs: dict[str, Any] = {},  # Keyword arguments to the function.
-        *,
         include_source: Optional[bool] = None,
     ) -> "_Image":
         """Run user-defined function `raw_f` as an image build step. The function runs just like an ordinary Modal

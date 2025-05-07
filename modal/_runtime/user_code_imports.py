@@ -18,8 +18,9 @@ from modal.exception import ExecutionError, InvalidError
 from modal_proto import api_pb2
 
 if typing.TYPE_CHECKING:
+    import modal._functions
+    import modal._partial_function
     import modal.app
-    import modal.partial_function
     from modal._runtime.asgi import LifespanManager
 
 
@@ -41,7 +42,7 @@ class Service(metaclass=ABCMeta):
     """
 
     user_cls_instance: Any
-    app: Optional["modal.app._App"]
+    app: "modal.app._App"
     service_deps: Optional[Sequence["modal._object._Object"]]
 
     @abstractmethod
@@ -93,7 +94,7 @@ def construct_webhook_callable(
 @dataclass
 class ImportedFunction(Service):
     user_cls_instance: Any
-    app: Optional["modal.app._App"]
+    app: modal.app._App
     service_deps: Optional[Sequence["modal._object._Object"]]
 
     _user_defined_callable: Callable[..., Any]
@@ -136,7 +137,7 @@ class ImportedFunction(Service):
 @dataclass
 class ImportedClass(Service):
     user_cls_instance: Any
-    app: Optional["modal.app._App"]
+    app: "modal.app._App"
     service_deps: Optional[Sequence["modal._object._Object"]]
 
     _partial_functions: dict[str, "modal._partial_function._PartialFunction"]
@@ -147,6 +148,7 @@ class ImportedClass(Service):
         finalized_functions = {}
         for method_name, _partial in self._partial_functions.items():
             user_func = _partial.raw_f
+            assert user_func
             # Check this property before we turn it into a method (overriden by webhooks)
             is_async = get_is_async(user_func)
             # Use the function definition for whether this is a generator (overriden by webhooks)
@@ -160,7 +162,7 @@ class ImportedClass(Service):
                 finalized_function = FinalizedFunction(
                     callable=bound_func,
                     is_async=is_async,
-                    is_generator=is_generator,
+                    is_generator=bool(is_generator),
                     data_format=api_pb2.DATA_FORMAT_PICKLE,
                 )
             else:
@@ -178,7 +180,7 @@ class ImportedClass(Service):
         return finalized_functions
 
 
-def get_user_class_instance(_cls: modal.cls._Cls, args: tuple, kwargs: dict[str, Any]) -> typing.Any:
+def get_user_class_instance(_cls: modal.cls._Cls, args: tuple[Any, ...], kwargs: dict[str, Any]) -> typing.Any:
     """Returns instance of the underlying class to be used as the `self`
 
     For the time being, this is an instance of the underlying user defined type, with
@@ -187,7 +189,7 @@ def get_user_class_instance(_cls: modal.cls._Cls, args: tuple, kwargs: dict[str,
 
     TODO: Could possibly change this to use an Obj to clean up the data model? would invalidate isinstance checks though
     """
-    cls = synchronizer._translate_out(_cls)  # ugly
+    cls = typing.cast(modal.cls.Cls, synchronizer._translate_out(_cls))  # ugly
     modal_obj: modal.cls.Obj = cls(*args, **kwargs)
     modal_obj._entered = True  # ugly but prevents .local() from triggering additional enter-logic
     # TODO: unify lifecycle logic between .local() and container_entrypoint
@@ -197,10 +199,8 @@ def get_user_class_instance(_cls: modal.cls._Cls, args: tuple, kwargs: dict[str,
 
 def import_single_function_service(
     function_def: api_pb2.Function,
-    ser_cls,  # used only for @build functions
-    ser_fun,
-    cls_args,  #  used only for @build functions
-    cls_kwargs,  #  used only for @build functions
+    ser_cls: Optional[type],  # used only for @build functions
+    ser_fun: Optional[Callable[..., Any]],
 ) -> Service:
     """Imports a function dynamically, and locates the app.
 
@@ -226,11 +226,15 @@ def import_single_function_service(
     """
     user_defined_callable: Callable
     service_deps: Optional[Sequence["modal._object._Object"]] = None
-    active_app: Optional[modal.app._App] = None
+    active_app: modal.app._App
+
+    user_cls_or_cls: typing.Union[None, type, modal.cls.Cls]
+    user_cls_instance = None
 
     if ser_fun is not None:
         # This is a serialized function we already fetched from the server
-        cls, user_defined_callable = ser_cls, ser_fun
+        user_cls_or_cls, user_defined_callable = ser_cls, ser_fun
+        active_app = get_active_app_fallback(function_def)
     else:
         # Load the module dynamically
         module = importlib.import_module(function_def.module_name)
@@ -242,44 +246,53 @@ def import_single_function_service(
         parts = qual_name.split(".")
         if len(parts) == 1:
             # This is a function
-            cls = None
+            user_cls_or_cls = None
             f = getattr(module, qual_name)
             if isinstance(f, Function):
-                function = synchronizer._translate_in(f)
-                service_deps = function.deps(only_explicit_mounts=True)
-                user_defined_callable = function.get_raw_f()
-                active_app = function._app
+                _function: modal._functions._Function[Any, Any, Any] = synchronizer._translate_in(f)  # type: ignore
+                service_deps = _function.deps(only_explicit_mounts=True)
+                user_defined_callable = _function.get_raw_f()
+                assert _function._app  # app should always be set on a decorated function
+                active_app = _function._app
             else:
                 user_defined_callable = f
+                active_app = get_active_app_fallback(function_def)
+
         elif len(parts) == 2:
             # This path should only be triggered by @build class builder methods and can be removed
             # once @build is deprecated.
             assert not function_def.use_method_name  # new "placeholder methods" should not be invoked directly!
             assert function_def.is_builder_function
             cls_name, fun_name = parts
-            cls = getattr(module, cls_name)
-            if isinstance(cls, modal.cls.Cls):
+            user_cls_or_cls = getattr(module, cls_name)
+            if isinstance(user_cls_or_cls, modal.cls.Cls):
                 # The cls decorator is in global scope
-                _cls = synchronizer._translate_in(cls)
+                _cls = typing.cast(modal.cls._Cls, synchronizer._translate_in(user_cls_or_cls))
                 user_defined_callable = _cls._callables[fun_name]
                 # Intentionally not including these, since @build functions don't actually
                 # forward the information from their parent class.
                 # service_deps = _cls._get_class_service_function().deps(only_explicit_mounts=True)
+                assert _cls._app
                 active_app = _cls._app
             else:
                 # This is non-decorated class
-                user_defined_callable = getattr(cls, fun_name)
+                user_defined_callable = getattr(user_cls_or_cls, fun_name)  # unbound method
+                active_app = get_active_app_fallback(function_def)
         else:
             raise InvalidError(f"Invalid function qualname {qual_name}")
 
     # Instantiate the class if it's defined
-    if cls:
-        # This code is only used for @build methods on classes
-        user_cls_instance = get_user_class_instance(cls, cls_args, cls_kwargs)
-        # Bind the function to the instance as self (using the descriptor protocol!)
+    if user_cls_or_cls:
+        if isinstance(user_cls_or_cls, modal.cls.Cls):
+            # This code is only used for @build methods on classes
+            _cls = typing.cast(modal.cls._Cls, user_cls_or_cls)
+            user_cls_instance = get_user_class_instance(_cls, (), {})
+            # Bind the unbound method to the instance as self (using the descriptor protocol!)
+        else:
+            # serialized=True or "undecorated"
+            user_cls_instance = user_cls_or_cls()
+
         user_defined_callable = user_defined_callable.__get__(user_cls_instance)
-    else:
-        user_cls_instance = None
 
     return ImportedFunction(
         user_cls_instance,
@@ -331,7 +344,7 @@ def import_class_service(
         cls_or_user_cls = getattr(module, cls_name)
 
     if isinstance(cls_or_user_cls, modal.cls.Cls):
-        _cls = synchronizer._translate_in(cls_or_user_cls)
+        _cls = typing.cast(modal.cls._Cls, synchronizer._translate_in(cls_or_user_cls))
         class_service_function: _Function = _cls._get_class_service_function()
         service_deps = class_service_function.deps(only_explicit_mounts=True)
         active_app = class_service_function.app
@@ -339,7 +352,7 @@ def import_class_service(
         # Undecorated user class (serialized or local scope-decoration).
         service_deps = None  # we can't infer service deps for now
         active_app = get_active_app_fallback(function_def)
-        _client: "modal.client._Client" = synchronizer._translate_in(client)
+        _client = typing.cast("modal.client._Client", synchronizer._translate_in(client))
         _service_function: modal._functions._Function[Any, Any, Any] = modal._functions._Function._new_hydrated(
             service_function_hydration_data.object_id,
             _client,

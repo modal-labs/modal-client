@@ -12,6 +12,130 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.61 (2025-05-07)
+
+- Adds a deprecation warning when data is passed directly to `modal.Dict.from_name` or `modal.Dict.ephemeral`. Going forward, it will be necessary to separate `Dict` population from creation.
+
+
+
+### 0.74.60 (2025-05-07)
+
+- `modal.Dict.update` now also accepts a positional Mapping, like Python's `dict` type:
+
+    ```python
+    d = modal.Dict.from_name("some-dict")
+    d.update({"a_key": 1, "another_key": "b"}, some_kwarg=True)
+    ```
+
+
+
+### 0.74.56 (2025-05-06)
+
+* Experimental `modal cluster` subcommand is added.
+
+
+
+### 0.74.53 (2025-05-06)
+
+- Added functionality for `.spawn_map` on a function instantiated from `Function.from_name`.
+
+
+
+### 0.74.51 (2025-05-06)
+
+- The `modal` client library can now be installed with Protobuf 6.
+
+
+
+### 0.74.49 (2025-05-06)
+
+* Changes the log format of the modal client's default logger. Instead of `[%(threadName)s]`, the client now logs `[modal-client]` as the log line prefix.
+* Adds a configuration option (MODAL_LOG_PATTERN) to the modal config for setting the log formatting pattern, in case users want to customize the format. To get the old format, use `MODAL_LOG_PATTERN='[%(threadName)s] %(asctime)s %(message)s'` (or add this to your `.modal.toml` in the `log_pattern` field).
+
+
+
+### 0.74.48 (2025-05-05)
+
+- Added a method for spawning many calls in parallel.
+
+
+
+### 0.74.46 (2025-05-05)
+
+- Introduces a new `.update_autoscaler()` method, which will replace the existing `.keep_warm()` method with the ability to dynamically change the entire autoscaler configuration (`min_containers`, `max_containers`, `buffer_containers`, and `scaledown_window`).
+
+
+
+### 0.74.45 (2025-05-05)
+
+Add missing return typing hints for all Secret.from methods.
+
+
+
+### 0.74.39 (2025-04-30)
+
+- The `modal` client no longer includes `fastapi` as a library dependency.
+
+
+
+### 0.74.36 (2025-04-29)
+
+- A new parameter, `restrict_modal_access`, can be provided on a Function to prevent it from interacting with other resources in your Modal Workspace like Queues, Volumes, or other Functions. This can be useful for running user-provided or LLM-written code in a safe way.
+
+
+
+### 0.74.35 (2025-04-29)
+
+- Fixed a bug that prevented doing `modal run` against an entrypoint defined by `Cls.with_options`.
+
+
+
+### 0.74.32 (2025-04-29)
+
+- When setting a custom `name=` in `@app.function()`, an error is now raised unless `serialized=True` is also set.
+
+
+
+### 0.74.25 (2025-04-25)
+
+- The `App.include` method now returns `self` so it's possible to build up an App through chained calls:
+
+    ```python
+    app = modal.App("main-app").include(sub_app_1).include(sub_app_2)
+    ```
+
+
+
+### 0.74.23 (2025-04-25)
+
+- Marked some parameters in a small number of Modal functions as requiring keyword arguments (namely, `modal.App.run`, `modal.Cls.with_options`, all `.from_name` methods, and a few others). Code that calls these functions with positional arguments will now raise an error. This is expected to be minimally disruptive as the affected parameters are mostly "extra" options or positioned after parameters that have previously been deprecated.
+
+
+
+### 0.74.22 (2025-04-24)
+
+- Added a `modal secret delete` command to the CLI.
+
+
+
+### 0.74.21 (2025-04-24)
+
+- The `allow_cross_region_volumes` parameter of the `@app.function` and `@app.cls` decorators now issues a deprecation warning; the parameter is always treated as `True` on the Modal backend.
+
+
+
+### 0.74.18 (2025-04-23)
+
+- Adds a `.deploy()` method to the `App` object. This method allows you programmatically deploy Apps from Python:
+
+    ```python
+    app = modal.App("programmatic-deploy")
+    ...
+    app.deploy()
+    ```
+
+
+
 ### 0.74.12 (2025-04-18)
 
 - The `@app.function` and `@app.cls` decorators now support `experimental_options`, which we'll use going forward when testing experimental functionality that depends only on server-side configuration.

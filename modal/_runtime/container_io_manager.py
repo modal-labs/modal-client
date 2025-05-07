@@ -352,15 +352,19 @@ class _ContainerIOManager:
         await self._client.stub.ContainerHello(Empty())
 
     async def _run_heartbeat_loop(self):
+        t_last_success = time.monotonic()
         while 1:
             t0 = time.monotonic()
             try:
-                if await self._heartbeat_handle_cancellations():
-                    # got a cancellation event, fine to start another heartbeat immediately
-                    # since the cancellation queue should be empty on the worker server
-                    # however, we wait at least 1s to prevent short-circuiting the heartbeat loop
-                    # in case there is ever a bug. This means it will take at least 1s between
-                    # two subsequent cancellations on the same task at the moment
+                got_cancellation = await self._heartbeat_handle_cancellations()
+                t_last_success = time.monotonic()
+                if got_cancellation:
+                    # Got a cancellation event, so it is fine to start another heartbeat immediately
+                    # since the cancellation queue should be empty on the worker server.
+                    # However, we wait at least 1s to prevent short-circuiting the heartbeat loop
+                    # in case there is ever a bug.
+                    # This means it will take at least 1s between two subsequent cancellations on the
+                    # same task at the moment.
                     await asyncio.sleep(1.0)
                     continue
             except ClientClosed:
@@ -368,13 +372,25 @@ class _ContainerIOManager:
                 break
             except Exception as exc:
                 # don't stop heartbeat loop if there are transient exceptions!
-                time_elapsed = time.monotonic() - t0
+                attempt_dur = time.monotonic() - t0
+                time_since_heartbeat_success = time.monotonic() - t_last_success
                 error = exc
-                logger.warning(f"Heartbeat attempt failed ({time_elapsed=}, {error=})")
+                logger.warning(
+                    f"Modal Client → Modal Worker Heartbeat attempt failed "
+                    f"({attempt_dur=:.2f}, {time_since_heartbeat_success=:.2f}, {error=})"
+                )
+                if time_since_heartbeat_success > HEARTBEAT_INTERVAL * 50:
+                    trouble_mins = time_since_heartbeat_success / 60
+                    logger.warning(
+                        "Modal Client → Modal Worker heartbeat attempts have been failing for "
+                        f"over {trouble_mins:.2f} minutes. "
+                        "Container will eventually be marked unhealthy. "
+                        "See https://modal.com/docs/guide/troubleshooting#heartbeat-timeout. "
+                    )
 
             heartbeat_duration = time.monotonic() - t0
-            time_until_next_hearbeat = max(0.0, HEARTBEAT_INTERVAL - heartbeat_duration)
-            await asyncio.sleep(time_until_next_hearbeat)
+            time_until_next_heartbeat = max(0.0, HEARTBEAT_INTERVAL - heartbeat_duration)
+            await asyncio.sleep(time_until_next_heartbeat)
 
     async def _heartbeat_handle_cancellations(self) -> bool:
         # Return True if a cancellation event was received, in that case

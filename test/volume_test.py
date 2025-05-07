@@ -4,6 +4,7 @@ import io
 import os
 import platform
 import pytest
+import random
 import re
 import sys
 import time
@@ -11,18 +12,23 @@ from pathlib import Path
 from unittest import mock
 
 import modal
+from modal._utils.blob_utils import BLOCK_SIZE
 from modal.exception import InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal.volume import _open_files_error_annotation
 from modal_proto import api_pb2
 
+VERSIONS = [
+    None,
+    api_pb2.VOLUME_FS_VERSION_V2,
+]
 
 def dummy():
     pass
 
-
-def test_volume_mount(client, servicer):
+@pytest.mark.parametrize("version", VERSIONS)
+def test_volume_mount(client, servicer, version):
     app = modal.App()
-    vol = modal.Volume.from_name("xyz", create_if_missing=True)
+    vol = modal.Volume.from_name("xyz", create_if_missing=True, version=version)
 
     _ = app.function(volumes={"/root/foo": vol})(dummy)
 
@@ -73,12 +79,14 @@ def test_volume_commit(client, servicer, skip_reload):
 
 
 @pytest.mark.asyncio
-async def test_volume_get(servicer, client, tmp_path):
-    await modal.Volume.create_deployed.aio("my-vol", client=client)
-    vol = await modal.Volume.from_name("my-vol").hydrate.aio(client=client)
+@pytest.mark.parametrize("version", VERSIONS)
+@pytest.mark.parametrize("file_contents_size", [100, 8 * 1024 * 1024, 16 * 1024 * 1024, 32 * 1024 * 1024 + 4711])
+async def test_volume_get(servicer, client, tmp_path, version, file_contents_size):
+    await modal.Volume.create_deployed.aio("my-vol", client=client, version=version)
+    vol = await modal.Volume.from_name("my-vol", version=version).hydrate.aio(client=client)
 
-    file_contents = b"hello world"
-    file_path = "foo.txt"
+    file_contents = random.randbytes(file_contents_size)
+    file_path = "foo.bin"
     local_file_path = tmp_path / file_path
     local_file_path.write_bytes(file_contents)
 
@@ -108,7 +116,8 @@ def test_volume_reload(client, servicer):
 
 
 @pytest.mark.asyncio
-async def test_volume_batch_upload(servicer, client, tmp_path):
+@pytest.mark.parametrize("version", VERSIONS)
+async def test_volume_batch_upload(servicer, client, tmp_path, version):
     local_file_path = tmp_path / "some_file"
     local_file_path.write_text("hello world")
 
@@ -120,7 +129,7 @@ async def test_volume_batch_upload(servicer, client, tmp_path):
     subdir.mkdir()
     (subdir / "other").write_text("####")
 
-    async with modal.Volume.ephemeral(client=client) as vol:
+    async with modal.Volume.ephemeral(client=client, version=version) as vol:
         with open(local_file_path, "rb") as fp:
             with vol.batch_upload() as batch:
                 batch.put_file(local_file_path, "/some_file")
@@ -130,7 +139,7 @@ async def test_volume_batch_upload(servicer, client, tmp_path):
                 batch.put_file(fp, "/filelike2")
         object_id = vol.object_id
 
-    assert servicer.volume_files[object_id].keys() == {
+    assert servicer.volumes[object_id].files.keys() == {
         "/some_file",
         "/some_dir/smol",
         "/some_dir/subdir/other",
@@ -138,51 +147,105 @@ async def test_volume_batch_upload(servicer, client, tmp_path):
         "/non-recursive/smol",
         "/filelike2",
     }
-    assert servicer.volume_files[object_id]["/some_file"].data == b"hello world"
-    assert servicer.volume_files[object_id]["/some_dir/smol"].data == b"###"
-    assert servicer.volume_files[object_id]["/some_dir/subdir/other"].data == b"####"
-    assert servicer.volume_files[object_id]["/filelike"].data == b"data from a file-like object"
-    assert servicer.volume_files[object_id]["/filelike"].mode == 0o600
-    assert servicer.volume_files[object_id]["/non-recursive/smol"].data == b"###"
-    assert servicer.volume_files[object_id]["/filelike2"].data == b"hello world"
-    assert servicer.volume_files[object_id]["/filelike2"].mode == 0o644
+    assert servicer.volumes[object_id].files["/some_file"].data == b"hello world"
+    assert servicer.volumes[object_id].files["/some_dir/smol"].data == b"###"
+    assert servicer.volumes[object_id].files["/some_dir/subdir/other"].data == b"####"
+    assert servicer.volumes[object_id].files["/filelike"].data == b"data from a file-like object"
+    assert servicer.volumes[object_id].files["/filelike"].mode == 0o600
+    assert servicer.volumes[object_id].files["/non-recursive/smol"].data == b"###"
+    assert servicer.volumes[object_id].files["/filelike2"].data == b"hello world"
+    assert servicer.volumes[object_id].files["/filelike2"].mode == 0o644
 
 
 @pytest.mark.asyncio
-async def test_volume_batch_upload_force(servicer, client, tmp_path):
+@pytest.mark.parametrize("version", VERSIONS)
+async def test_volume_batch_upload_bytesio(servicer, client, tmp_path, version):
+    async with modal.Volume.ephemeral(client=client, version=version) as vol:
+        with vol.batch_upload() as batch:
+            batch.put_file(io.BytesIO(b"data from a file-like object"), "/filelike", mode=0o600)
+        object_id = vol.object_id
+
+    assert servicer.volumes[object_id].files.keys() == {
+        "/filelike",
+    }
+    assert servicer.volumes[object_id].files["/filelike"].data == b"data from a file-like object"
+    assert servicer.volumes[object_id].files["/filelike"].mode == 0o600
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", VERSIONS)
+async def test_volume_batch_upload_opened_file(servicer, client, tmp_path, version):
+    local_file_path = tmp_path / "some_file"
+    local_file_path.write_text("hello world")
+
+    async with modal.Volume.ephemeral(client=client, version=version) as vol:
+        with open(local_file_path, "rb") as fp, vol.batch_upload() as batch:
+            batch.put_file(fp, "/filelike2", mode=0o600)
+        object_id = vol.object_id
+
+    assert servicer.volumes[object_id].files.keys() == {
+        "/filelike2",
+    }
+    assert servicer.volumes[object_id].files["/filelike2"].data == b"hello world"
+    assert servicer.volumes[object_id].files["/filelike2"].mode == 0o600
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", VERSIONS)
+async def test_volume_batch_upload_force(servicer, client, tmp_path, version):
     local_file_path = tmp_path / "some_file"
     local_file_path.write_text("hello world")
 
     local_file_path2 = tmp_path / "some_file2"
     local_file_path2.write_text("overwritten")
 
-    async with modal.Volume.ephemeral(client=client) as vol:
+    async with modal.Volume.ephemeral(client=client, version=version) as vol:
         with servicer.intercept() as ctx:
             # Seed the volume
             with vol.batch_upload() as batch:
                 batch.put_file(local_file_path, "/some_file")
-            assert ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
+
+            if version == api_pb2.VOLUME_FS_VERSION_V2:
+                # The batch should involve two calls; once with a missing_blocks response
+                assert ctx.pop_request("VolumePutFiles2").disallow_overwrite_existing_files
+                assert ctx.pop_request("VolumePutFiles2").disallow_overwrite_existing_files
+            else:
+                assert ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
 
             # Attempting to overwrite the file with force=False should result in an error
             with pytest.raises(FileExistsError):
                 with vol.batch_upload(force=False) as batch:
                     batch.put_file(local_file_path, "/some_file")
-            assert ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
-            assert servicer.volume_files[vol.object_id]["/some_file"].data == b"hello world"
+
+            if version == api_pb2.VOLUME_FS_VERSION_V2:
+                # The batch should fail on the first call since force=False
+                assert ctx.pop_request("VolumePutFiles2").disallow_overwrite_existing_files
+            else:
+                assert ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
+
+            assert servicer.volumes[vol.object_id].files["/some_file"].data == b"hello world"
 
             # Overwriting should work with force=True
             with vol.batch_upload(force=True) as batch:
                 batch.put_file(local_file_path2, "/some_file")
-            assert not ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
-            assert servicer.volume_files[vol.object_id]["/some_file"].data == b"overwritten"
+
+            if version == api_pb2.VOLUME_FS_VERSION_V2:
+                # The batch should involve two calls; once with a missing_blocks response
+                assert not ctx.pop_request("VolumePutFiles2").disallow_overwrite_existing_files
+                assert not ctx.pop_request("VolumePutFiles2").disallow_overwrite_existing_files
+            else:
+                assert not ctx.pop_request("VolumePutFiles").disallow_overwrite_existing_files
+
+            assert servicer.volumes[vol.object_id].files["/some_file"].data == b"overwritten"
 
 
 @pytest.mark.asyncio
-async def test_volume_upload_removed_file(servicer, client, tmp_path):
+@pytest.mark.parametrize("version", VERSIONS)
+async def test_volume_upload_removed_file(servicer, client, tmp_path, version):
     local_file_path = tmp_path / "some_file"
     local_file_path.write_text("hello world")
 
-    async with modal.Volume.ephemeral(client=client) as vol:
+    async with modal.Volume.ephemeral(client=client, version=version) as vol:
         with pytest.raises(FileNotFoundError):
             with vol.batch_upload() as batch:
                 batch.put_file(local_file_path, "/dest")
@@ -190,7 +253,7 @@ async def test_volume_upload_removed_file(servicer, client, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_volume_upload_large_file(client, tmp_path, servicer, blob_server, *args):
+async def test_volume_upload_large_file(client, tmp_path, servicer, blob_server):
     with mock.patch("modal._utils.blob_utils.LARGE_FILE_LIMIT", 10):
         local_file_path = tmp_path / "bigfile"
         local_file_path.write_text("hello world, this is a lot of text")
@@ -200,16 +263,39 @@ async def test_volume_upload_large_file(client, tmp_path, servicer, blob_server,
                 batch.put_file(local_file_path, "/a")
             object_id = vol.object_id
 
-        assert servicer.volume_files[object_id].keys() == {"/a"}
-        assert servicer.volume_files[object_id]["/a"].data == b""
-        assert servicer.volume_files[object_id]["/a"].data_blob_id == "bl-1"
+        assert servicer.volumes[object_id].files.keys() == {"/a"}
+        assert servicer.volumes[object_id].files["/a"].data == b""
+        assert servicer.volumes[object_id].files["/a"].data_blob_id == "bl-1"
 
-        _, blobs = blob_server
+        _, blobs, _ = blob_server
         assert blobs["bl-1"] == b"hello world, this is a lot of text"
 
 
 @pytest.mark.asyncio
-async def test_volume_upload_large_stream(client, servicer, blob_server, *args):
+async def test_volume2_upload_large_file(client, tmp_path, servicer, blob_server):
+    # Volumes version 2 don't use `modal._utils.blob_utils.LARGE_FILE_LIMIT`
+    # Instead, we need to go over 8MiB to trigger different behavior (ie spilling into multiple blocks), but in this
+    # unit test context there isn't much of a semantic difference.
+
+    # Create a byte buffer that is larger than 8MiB
+    data = b"hello world, this is a lot of text" * 250_000
+    assert len(data) > BLOCK_SIZE
+
+    local_file_path = tmp_path / "bigfile"
+    local_file_path.write_bytes(data)
+
+    async with modal.Volume.ephemeral(client=client, version=api_pb2.VOLUME_FS_VERSION_V2) as vol:
+        async with vol.batch_upload() as batch:
+            batch.put_file(local_file_path, "/a")
+        object_id = vol.object_id
+
+    assert servicer.volumes[object_id].files.keys() == {"/a"}
+    # Volumes version 2 don't use blob entities
+    assert servicer.volumes[object_id].files["/a"].data == data
+
+
+@pytest.mark.asyncio
+async def test_volume_upload_large_stream(client, servicer, blob_server):
     with mock.patch("modal._utils.blob_utils.LARGE_FILE_LIMIT", 10):
         stream = io.BytesIO(b"hello world, this is a lot of text")
 
@@ -218,12 +304,33 @@ async def test_volume_upload_large_stream(client, servicer, blob_server, *args):
                 batch.put_file(stream, "/a")
             object_id = vol.object_id
 
-        assert servicer.volume_files[object_id].keys() == {"/a"}
-        assert servicer.volume_files[object_id]["/a"].data == b""
-        assert servicer.volume_files[object_id]["/a"].data_blob_id == "bl-1"
+        assert servicer.volumes[object_id].files.keys() == {"/a"}
+        assert servicer.volumes[object_id].files["/a"].data == b""
+        assert servicer.volumes[object_id].files["/a"].data_blob_id == "bl-1"
 
-        _, blobs = blob_server
+        _, blobs, _ = blob_server
         assert blobs["bl-1"] == b"hello world, this is a lot of text"
+
+
+@pytest.mark.asyncio
+async def test_volume2_upload_large_stream(client, servicer, blob_server):
+    # Volumes version 2 don't use `modal._utils.blob_utils.LARGE_FILE_LIMIT`
+    # Instead, we need to go over 8MiB to trigger different behavior (ie spilling into multiple blocks), but in this
+    # unit test context there isn't much of a semantic difference.
+
+    # Create a byte buffer that is larger than 8MiB
+    data = b"hello world, this is a lot of text" * 250_000
+    assert len(data) > BLOCK_SIZE
+
+    stream = io.BytesIO(data)
+
+    async with modal.Volume.ephemeral(client=client, version=api_pb2.VOLUME_FS_VERSION_V2) as vol:
+        async with vol.batch_upload() as batch:
+            batch.put_file(stream, "/a")
+        object_id = vol.object_id
+
+    assert servicer.volumes[object_id].files.keys() == {"/a"}
+    assert servicer.volumes[object_id].files["/a"].data == data
 
 
 @pytest.mark.asyncio
@@ -252,14 +359,15 @@ async def test_volume_upload_file_timeout(client, tmp_path, servicer, blob_serve
 
 
 @pytest.mark.asyncio
-async def test_volume_copy_1(client, tmp_path, servicer):
+@pytest.mark.parametrize("version", VERSIONS)
+async def test_volume_copy_1(client, tmp_path, servicer, version):
     ## test 1: copy src path to dst path ##
     src_path = "original.txt"
     dst_path = "copied.txt"
     local_file_path = tmp_path / src_path
     local_file_path.write_text("test copy")
 
-    async with modal.Volume.ephemeral(client=client) as vol:
+    async with modal.Volume.ephemeral(client=client, version=version) as vol:
         # add local file to volume
         async with vol.batch_upload() as batch:
             batch.put_file(local_file_path, src_path)
@@ -268,18 +376,19 @@ async def test_volume_copy_1(client, tmp_path, servicer):
         # copy file from src_path to dst_path
         vol.copy_files([src_path], dst_path)
 
-    assert servicer.volume_files[object_id].keys() == {src_path, dst_path}
+    assert servicer.volumes[object_id].files.keys() == {src_path, dst_path}
 
-    assert servicer.volume_files[object_id][src_path].data == b"test copy"
-    assert servicer.volume_files[object_id][dst_path].data == b"test copy"
+    assert servicer.volumes[object_id].files[src_path].data == b"test copy"
+    assert servicer.volumes[object_id].files[dst_path].data == b"test copy"
 
 
 @pytest.mark.asyncio
-async def test_volume_copy_2(client, tmp_path, servicer):
+@pytest.mark.parametrize("version", VERSIONS)
+async def test_volume_copy_2(client, tmp_path, servicer, version):
     ## test 2: copy multiple files into a directory ##
     file_paths = ["file1.txt", "file2.txt"]
 
-    async with modal.Volume.ephemeral(client=client) as vol:
+    async with modal.Volume.ephemeral(client=client, version=version) as vol:
         for file_path in file_paths:
             local_file_path = tmp_path / file_path
             local_file_path.write_text("test copy")
@@ -289,7 +398,7 @@ async def test_volume_copy_2(client, tmp_path, servicer):
 
         vol.copy_files(file_paths, "test_dir")
 
-    returned_volume_files = [Path(file) for file in servicer.volume_files[object_id].keys()]
+    returned_volume_files = [Path(file) for file in servicer.volumes[object_id].files.keys()]
     expected_volume_files = [
         Path(file) for file in ["file1.txt", "file2.txt", "test_dir/file1.txt", "test_dir/file2.txt"]
     ]
@@ -297,30 +406,31 @@ async def test_volume_copy_2(client, tmp_path, servicer):
     assert returned_volume_files == expected_volume_files
 
     returned_file_data = {
-        Path(entry): servicer.volume_files[object_id][entry] for entry in servicer.volume_files[object_id]
+        Path(entry): servicer.volumes[object_id].files[entry] for entry in servicer.volumes[object_id].files
     }
     assert returned_file_data[Path("test_dir/file1.txt")].data == b"test copy"
     assert returned_file_data[Path("test_dir/file2.txt")].data == b"test copy"
 
 
 @pytest.mark.parametrize("delete_as_instance_method", [True, False])
-def test_persisted(servicer, client, delete_as_instance_method):
+@pytest.mark.parametrize("version", VERSIONS)
+def test_persisted(servicer, client, delete_as_instance_method, version):
     # Lookup should fail since it doesn't exist
     with pytest.raises(NotFoundError):
-        modal.Volume.from_name("xyz").hydrate(client)
+        modal.Volume.from_name("xyz", version=version).hydrate(client)
 
     # Create it
-    modal.Volume.from_name("xyz", create_if_missing=True).hydrate(client)
+    modal.Volume.from_name("xyz", create_if_missing=True, version=version).hydrate(client)
 
     # Lookup should succeed now
-    modal.Volume.from_name("xyz").hydrate(client)
+    modal.Volume.from_name("xyz", version=version).hydrate(client)
 
     # Delete it
     modal.Volume.delete("xyz", client=client)
 
     # Lookup should fail again
     with pytest.raises(NotFoundError):
-        modal.Volume.from_name("xyz").hydrate(client)
+        modal.Volume.from_name("xyz", version=version).hydrate(client)
 
 
 def test_ephemeral(servicer, client):

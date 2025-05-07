@@ -7,7 +7,8 @@ from modal.exception import InvalidError, NotFoundError
 
 
 def test_dict_app(servicer, client):
-    d = Dict.from_name("my-amazing-dict", {"xyz": 123}, create_if_missing=True).hydrate(client)
+    d = Dict.from_name("my-amazing-dict", create_if_missing=True).hydrate(client)
+    d["xyz"] = 123
     d["foo"] = 42
     d["foo"] += 5
     assert d["foo"] == 47
@@ -33,11 +34,10 @@ def test_dict_app(servicer, client):
 
 def test_dict_ephemeral(servicer, client):
     assert servicer.n_dict_heartbeats == 0
-    with Dict.ephemeral({"bar": 123}, client=client, _heartbeat_sleep=1) as d:
+    with Dict.ephemeral(client=client, _heartbeat_sleep=1) as d:
         d["foo"] = 42
-        assert d.len() == 2
+        assert d.len() == 1
         assert d["foo"] == 42
-        assert d["bar"] == 123
         time.sleep(1.5)  # Make time for 2 heartbeats
     assert servicer.n_dict_heartbeats == 2
 
@@ -55,3 +55,10 @@ def test_dict_lazy_hydrate_named(set_env_client, servicer):
 def test_invalid_name(servicer, client, name):
     with pytest.raises(InvalidError, match="Invalid Dict name"):
         Dict.from_name(name).hydrate(client)
+
+
+def test_dict_update(servicer, client):
+    with Dict.ephemeral(client=client, _heartbeat_sleep=1) as d:
+        d.update({"foo": 1, "bar": 2}, foo=3, baz=4)
+        items = list(d.items())
+        assert sorted(items) == [("bar", 2), ("baz", 4), ("foo", 3)]

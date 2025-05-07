@@ -83,10 +83,18 @@ def render(
         grpclib_stub_name = f"{service.name}Stub"
         buf.add("class {}Modal:", service.name)
         with buf.indent():
+            buf.add("@classmethod")
+            buf.add("async def _create(cls, client: 'modal.client._Client', server_url: str):")
+            with buf.indent():
+                buf.add("channel = await client._get_channel(server_url)")
+                buf.add(f"grpclib_stub = {grpclib_module}.{grpclib_stub_name}(channel)")
+                buf.add("return cls(grpclib_stub, client, server_url)")
+
+            buf.add("")
             buf.add("")
             buf.add(
                 f"def __init__(self, grpclib_stub: {grpclib_module}.{grpclib_stub_name}, "
-                + """client: "modal.client._Client") -> None:"""
+                + """client: "modal.client._Client", server_url: str) -> None:"""
             )
             with buf.indent():
                 if len(service.methods) == 0:
@@ -106,7 +114,7 @@ def render(
                         raise TypeError(cardinality)
 
                     original_method = f"grpclib_stub.{name}"
-                    buf.add(f"self.{name} = {wrapper_cls}({original_method}, client)")
+                    buf.add(f"self.{name} = {wrapper_cls}({original_method}, client, server_url)")
 
     return buf.content()
 
