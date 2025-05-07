@@ -4,6 +4,7 @@ import io
 import os
 import platform
 import pytest
+import random
 import re
 import sys
 import time
@@ -79,12 +80,13 @@ def test_volume_commit(client, servicer, skip_reload):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("version", VERSIONS)
-async def test_volume_get(servicer, client, tmp_path, version):
+@pytest.mark.parametrize("file_contents_size", [100, 8 * 1024 * 1024, 16 * 1024 * 1024, 32 * 1024 * 1024 + 4711])
+async def test_volume_get(servicer, client, tmp_path, version, file_contents_size):
     await modal.Volume.create_deployed.aio("my-vol", client=client, version=version)
     vol = await modal.Volume.from_name("my-vol", version=version).hydrate.aio(client=client)
 
-    file_contents = b"hello world"
-    file_path = "foo.txt"
+    file_contents = random.randbytes(file_contents_size)
+    file_path = "foo.bin"
     local_file_path = tmp_path / file_path
     local_file_path.write_bytes(file_contents)
 
@@ -95,6 +97,10 @@ async def test_volume_get(servicer, client, tmp_path, version):
     for chunk in vol.read_file(file_path):
         data += chunk
     assert data == file_contents
+
+    output = io.BytesIO()
+    vol.read_file_into_fileobj(file_path, output)
+    assert output.getvalue() == file_contents
 
     with pytest.raises(FileNotFoundError):
         for _ in vol.read_file("/abc/def/i-dont-exist-at-all"):
