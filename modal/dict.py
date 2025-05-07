@@ -275,11 +275,11 @@ class _Dict(_Object, type_prefix="di"):
                 raise exc
 
     @live_method
-    async def put(self, key: Any, value: Any) -> None:
+    async def put(self, key: Any, value: Any, *, if_not_exists: bool = False) -> None:
         """Add a specific key-value pair to the dictionary."""
         updates = {key: value}
         serialized = _serialize_dict(updates)
-        req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
+        req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized, if_not_exists=if_not_exists)
         try:
             await retry_transient_errors(self._client.stub.DictUpdate, req)
         except GRPCError as exc:
