@@ -2015,7 +2015,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                         assert len(block_data) == BLOCK_SIZE
                     # If this is the last block, it must be at most BLOCK_SIZE
                     if block_index + 1 == len(file.blocks):
-                        assert len(block_data) < BLOCK_SIZE
+                        assert len(block_data) <= BLOCK_SIZE
                     blocks.append(block_data)
                 else:
                     missing_block = api_pb2.VolumePutFiles2Response.MissingBlock(

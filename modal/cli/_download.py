@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2023
 import asyncio
+import functools
 import os
 import shutil
 import sys
@@ -70,21 +71,30 @@ async def _volume_download(
                 if is_pipe:
                     if entry.type == FileEntryType.FILE:
                         progress_task_id = progress_cb(name=entry.path, size=entry.size)
+                        file_progress_cb = functools.partial(progress_cb, task_id=progress_task_id)
+
                         async for chunk in volume.read_file(entry.path):
                             sys.stdout.buffer.write(chunk)
-                            progress_cb(task_id=progress_task_id, advance=len(chunk))
-                        progress_cb(task_id=progress_task_id, complete=True)
+                            file_progress_cb(advance=len(chunk))
+
+                        file_progress_cb(complete=True)
                 else:
                     if entry.type == FileEntryType.FILE:
                         progress_task_id = progress_cb(name=entry.path, size=entry.size)
                         output_path.parent.mkdir(parents=True, exist_ok=True)
+                        file_progress_cb = functools.partial(progress_cb, task_id=progress_task_id)
+
                         with output_path.open("wb") as fp:
-                            b = 0
-                            async for chunk in volume.read_file(entry.path):
-                                b += fp.write(chunk)
-                                progress_cb(task_id=progress_task_id, advance=len(chunk))
+                            if isinstance(volume, _Volume):
+                                b = await volume.read_file_into_fileobj(entry.path, fp, file_progress_cb)
+                            else:
+                                b = 0
+                                async for chunk in volume.read_file(entry.path):
+                                    b += fp.write(chunk)
+                                    file_progress_cb(advance=len(chunk))
+
                         logger.debug(f"Wrote {b} bytes to {output_path}")
-                        progress_cb(task_id=progress_task_id, complete=True)
+                        file_progress_cb(complete=True)
                     elif entry.type == FileEntryType.DIRECTORY:
                         output_path.mkdir(parents=True, exist_ok=True)
             finally:
