@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.61 (2025-05-07)
+
+- Adds a deprecation warning when data is passed directly to `modal.Dict.from_name` or `modal.Dict.ephemeral`. Going forward, it will be necessary to separate `Dict` population from creation.
+
+
+
 ### 0.74.60 (2025-05-07)
 
 - `modal.Dict.update` now also accepts a positional Mapping, like Python's `dict` type:
