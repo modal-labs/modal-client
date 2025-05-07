@@ -10,6 +10,7 @@ from modal._utils.async_utils import synchronizer
 
 from . import run
 from .app import app_cli
+from .cluster import cluster_cli
 from .config import config_cli
 from .container import container_cli
 from .dict import dict_cli
@@ -92,6 +93,8 @@ entrypoint_cli_typer.add_typer(launch_cli)
 # Deployments
 entrypoint_cli_typer.add_typer(app_cli, rich_help_panel="Deployments")
 entrypoint_cli_typer.add_typer(container_cli, rich_help_panel="Deployments")
+# TODO: cluster is hidden while multi-node is in beta/experimental
+entrypoint_cli_typer.add_typer(cluster_cli, rich_help_panel="Deployments", hidden=True)
 
 # Storage
 entrypoint_cli_typer.add_typer(dict_cli, rich_help_panel="Storage")

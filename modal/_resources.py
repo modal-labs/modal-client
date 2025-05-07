@@ -13,6 +13,7 @@ def convert_fn_config_to_resources_config(
     memory: Optional[Union[int, tuple[int, int]]],
     gpu: GPU_T,
     ephemeral_disk: Optional[int],
+    rdma: Optional[bool] = None,
 ) -> api_pb2.Resources:
     gpu_config = parse_gpu_config(gpu)
     if cpu and isinstance(cpu, tuple):
@@ -48,4 +49,5 @@ def convert_fn_config_to_resources_config(
         memory_mb=memory_mb,
         memory_mb_max=memory_mb_max,
         ephemeral_disk_mb=ephemeral_disk,
+        rdma=rdma or False,
     )

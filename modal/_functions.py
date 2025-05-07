@@ -55,7 +55,7 @@ from ._utils.function_utils import (
     get_include_source_mode,
     is_async,
 )
-from ._utils.grpc_utils import retry_transient_errors
+from ._utils.grpc_utils import RetryWarningMessage, retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
@@ -80,6 +80,8 @@ from .parallel_map import (
     _map_async,
     _map_invocation,
     _map_sync,
+    _spawn_map_async,
+    _spawn_map_sync,
     _starmap_async,
     _starmap_sync,
     _SynchronizedQueue,
@@ -134,10 +136,13 @@ class _Invocation:
         *,
         client: _Client,
         function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
+        from_spawn_map: bool = False,
     ) -> "_Invocation":
         assert client.stub
+        stub = client.stub
+
         function_id = function.object_id
-        item = await _create_input(args, kwargs, client, method_name=function._use_method_name)
+        item = await _create_input(args, kwargs, stub, method_name=function._use_method_name)
 
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
@@ -146,9 +151,26 @@ class _Invocation:
             pipelined_inputs=[item],
             function_call_invocation_type=function_call_invocation_type,
         )
-        response = await retry_transient_errors(client.stub.FunctionMap, request)
-        function_call_id = response.function_call_id
 
+        if from_spawn_map:
+            request.from_spawn_map = True
+            response = await retry_transient_errors(
+                client.stub.FunctionMap,
+                request,
+                max_retries=None,
+                max_delay=30.0,
+                retry_warning_message=RetryWarningMessage(
+                    message="Warning: `.spawn_map(...)` for function `{self._function_name}` is waiting to create"
+                    "more function calls. This may be due to hitting rate limits or function backlog limits.",
+                    warning_interval=10,
+                    errors_to_warn_for=[Status.RESOURCE_EXHAUSTED],
+                ),
+                additional_status_codes=[Status.RESOURCE_EXHAUSTED],
+            )
+        else:
+            response = await retry_transient_errors(client.stub.FunctionMap, request)
+
+        function_call_id = response.function_call_id
         if response.pipelined_inputs:
             assert len(response.pipelined_inputs) == 1
             input = response.pipelined_inputs[0]
@@ -161,7 +183,7 @@ class _Invocation:
                 item=item,
                 sync_client_retries_enabled=response.sync_client_retries_enabled,
             )
-            return _Invocation(client.stub, function_call_id, client, retry_context)
+            return _Invocation(stub, function_call_id, client, retry_context)
 
         request_put = api_pb2.FunctionPutInputsRequest(
             function_id=function_id, inputs=[item], function_call_id=function_call_id
@@ -183,7 +205,7 @@ class _Invocation:
             item=item,
             sync_client_retries_enabled=response.sync_client_retries_enabled,
         )
-        return _Invocation(client.stub, function_call_id, client, retry_context)
+        return _Invocation(stub, function_call_id, client, retry_context)
 
     async def pop_function_call_outputs(
         self, timeout: Optional[float], clear_on_success: bool, input_jwts: Optional[list[str]] = None
@@ -229,7 +251,7 @@ class _Invocation:
         item = api_pb2.FunctionRetryInputsItem(input_jwt=ctx.input_jwt, input=ctx.item.input)
         request = api_pb2.FunctionRetryInputsRequest(function_call_jwt=ctx.function_call_jwt, inputs=[item])
         await retry_transient_errors(
-            self.client.stub.FunctionRetryInputs,
+            self.stub.FunctionRetryInputs,
             request,
         )
 
@@ -455,6 +477,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         i6pn_enabled: bool = False,
         # Experimental: Clustered functions
         cluster_size: Optional[int] = None,
+        rdma: Optional[bool] = None,
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
         # current default: first-party, future default: main-package
@@ -877,7 +900,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
                         function_definition_copy.resources.CopyFrom(
                             convert_fn_config_to_resources_config(
-                                cpu=cpu, memory=memory, gpu=_gpu, ephemeral_disk=ephemeral_disk
+                                cpu=cpu, memory=memory, gpu=_gpu, ephemeral_disk=ephemeral_disk, rdma=rdma
                             ),
                         )
                         ranked_function = api_pb2.FunctionData.RankedFunction(
@@ -892,7 +915,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     # assert isinstance(gpu, GPU_T)  # includes the case where gpu==None case
                     function_definition.resources.CopyFrom(
                         convert_fn_config_to_resources_config(
-                            cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk
+                            cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=ephemeral_disk, rdma=rdma
                         ),
                     )
 
@@ -1050,20 +1073,68 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return fun
 
     @live_method
-    async def keep_warm(self, warm_pool_size: int) -> None:
-        """Set the warm pool size for the function.
+    async def update_autoscaler(
+        self,
+        *,
+        min_containers: Optional[int] = None,
+        max_containers: Optional[int] = None,
+        buffer_containers: Optional[int] = None,
+        scaledown_window: Optional[int] = None,
+    ) -> None:
+        """Override the current autoscaler behavior for this Function.
 
-        Please exercise care when using this advanced feature!
-        Setting and forgetting a warm pool on functions can lead to increased costs.
+        Unspecified parameters will retain their current value, i.e. either the static value
+        from the function decorator, or an override value from a previous call to this method.
+
+        Subsequent deployments of the App containing this Function will reset the autoscaler back to
+        its static configuration.
+
+        Examples:
 
         ```python notest
-        # Usage on a regular function.
         f = modal.Function.from_name("my-app", "function")
+
+        # Always have at least 2 containers running, with an extra buffer when the Function is active
+        f.update_autoscaler(min_containers=2, buffer_containers=1)
+
+        # Limit this Function to avoid spinning up more than 5 containers
+        f.update_autoscaler(max_containers=5)
+
+        # Extend the scaledown window to increase the amount of time that idle containers stay alive
+        f.update_autoscaler(scaledown_window=300)
+
+        ```
+
+        """
+        if self._is_method:
+            raise InvalidError("Cannot call .update_autoscaler() on a method. Call it on the class instance instead.")
+
+        settings = api_pb2.AutoscalerSettings(
+            min_containers=min_containers,
+            max_containers=max_containers,
+            buffer_containers=buffer_containers,
+            scaledown_window=scaledown_window,
+        )
+        request = api_pb2.FunctionUpdateSchedulingParamsRequest(function_id=self.object_id, settings=settings)
+        await retry_transient_errors(self.client.stub.FunctionUpdateSchedulingParams, request)
+
+        # One idea would be for FunctionUpdateScheduleParams to return the current (coalesced) settings
+        # and then we could return them here (would need some ad hoc dataclass, which I don't love)
+
+    @live_method
+    async def keep_warm(self, warm_pool_size: int) -> None:
+        """Set the warm pool size for the Function.
+
+        DEPRECATED: Please adapt your code to use the more general `update_autoscaler` method instead:
+
+        ```python notest
+        f = modal.Function.from_name("my-app", "function")
+
+        # Old pattern (deprecated)
         f.keep_warm(2)
 
-        # Usage on a parametrized function.
-        Model = modal.Cls.from_name("my-app", "Model")
-        Model("fine-tuned-model").keep_warm(2)  # note that this applies to the class instance, not a method
+        # New pattern
+        f.update_autoscaler(min_containers=2)
         ```
         """
         if self._is_method:
@@ -1077,10 +1148,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             """
                 )
             )
-        request = api_pb2.FunctionUpdateSchedulingParamsRequest(
-            function_id=self.object_id, warm_pool_size_override=warm_pool_size
+
+        deprecation_warning(
+            (2025, 5, 5),
+            "The .keep_warm() method has been deprecated in favor of the more general "
+            ".update_autoscaler(min_containers=...) method.",
+            show_source=True,
         )
-        await retry_transient_errors(self.client.stub.FunctionUpdateSchedulingParams, request)
+        await self.update_autoscaler(min_containers=warm_pool_size)
 
     @classmethod
     def _from_name(cls, app_name: str, name: str, namespace, environment_name: Optional[str]):
@@ -1344,10 +1419,19 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return await invocation.run_function()
 
     async def _call_function_nowait(
-        self, args, kwargs, function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType"
+        self,
+        args,
+        kwargs,
+        function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
+        from_spawn_map: bool = False,
     ) -> _Invocation:
         return await _Invocation.create(
-            self, args, kwargs, client=self.client, function_call_invocation_type=function_call_invocation_type
+            self,
+            args,
+            kwargs,
+            client=self.client,
+            function_call_invocation_type=function_call_invocation_type,
+            from_spawn_map=from_spawn_map,
         )
 
     @warn_if_generator_is_not_consumed()
@@ -1504,6 +1588,15 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     @synchronizer.no_input_translation
     @live_method
+    async def _spawn_map_inner(self, *args: P.args, **kwargs: P.kwargs) -> None:
+        self._check_no_web_url("spawn_map")
+        if self._is_generator:
+            raise Exception("Cannot `spawn_map` over a generator function.")
+
+        await self._call_function_nowait(args, kwargs, api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC, from_spawn_map=True)
+
+    @synchronizer.no_input_translation
+    @live_method
     async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> "_FunctionCall[ReturnType]":
         """Calls the function with the given arguments, without waiting for the results.
 
@@ -1551,6 +1644,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     map = MethodWithAio(_map_sync, _map_async, synchronizer)
     starmap = MethodWithAio(_starmap_sync, _starmap_async, synchronizer)
     for_each = MethodWithAio(_for_each_sync, _for_each_async, synchronizer)
+    spawn_map = MethodWithAio(_spawn_map_sync, _spawn_map_async, synchronizer)
 
 
 class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):

@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2024
 import typing
+from importlib.util import find_spec
 
 from typing_extensions import assert_type
 
@@ -100,3 +101,17 @@ file_io2 = sandbox.open("foo", "rb")
 assert_type(file_io2.read(), bytes)
 assert_type(file_io2.readline(), bytes)
 assert_type(file_io2.readlines(), typing.Sequence[bytes])
+
+# check secrets
+secret = modal.Secret.from_name("foo")
+assert_type(secret, modal.Secret)
+
+secret = modal.Secret.from_dict({})
+assert_type(secret, modal.Secret)
+
+secret = modal.Secret.from_local_environ(["FOO"])
+assert_type(secret, modal.Secret)
+
+if find_spec("dotenv"):
+    secret = modal.Secret.from_dotenv(filename="non-existing-dotenv")
+    assert_type(secret, modal.Secret)

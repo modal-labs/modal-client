@@ -432,6 +432,19 @@ def warn_if_generator_is_not_consumed(function_name: Optional[str] = None):
     return decorator
 
 
+def run_coroutine_in_temporary_event_loop(coro: typing.Coroutine[None, None, T], nested_async_message: str) -> T:
+    """Compatibility function to run an async coroutine in a temporary event loop.
+
+    This is needed for compatibility with the async implementation of Function.spawn_map. The future plan is
+    to have separate implementations so there is no issue with nested event loops.
+    """
+    try:
+        with Runner() as runner:
+            return runner.run(coro)
+    except NestedEventLoops:
+        raise InvalidError(nested_async_message)
+
+
 class AsyncOrSyncIterable:
     """Compatibility class for non-synchronicity wrapped async iterables to get
     both async and sync interfaces in the same way that synchronicity does (but on the main thread)

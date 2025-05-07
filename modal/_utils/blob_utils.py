@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
 import dataclasses
-import functools
 import hashlib
 import os
 import platform
@@ -399,6 +398,7 @@ class FileUploadSpec2:
     async def from_path(
         filename: Path,
         mount_filename: PurePosixPath,
+        hash_semaphore: asyncio.Semaphore,
         mode: Optional[int] = None,
     ) -> "FileUploadSpec2":
         # Python appears to give files 0o666 bits on Windows (equal for user, group, and global),
@@ -413,6 +413,7 @@ class FileUploadSpec2:
             filename,
             mount_filename,
             mode,
+            hash_semaphore,
         )
 
 
@@ -420,7 +421,8 @@ class FileUploadSpec2:
     async def from_fileobj(
         source_fp: Union[BinaryIO, BytesIO],
         mount_filename: PurePosixPath,
-        mode: int
+        hash_semaphore: asyncio.Semaphore,
+        mode: int,
     ) -> "FileUploadSpec2":
         try:
             fileno = source_fp.fileno()
@@ -442,6 +444,7 @@ class FileUploadSpec2:
             str(source),
             mount_filename,
             mode,
+            hash_semaphore,
         )
 
 
@@ -451,13 +454,14 @@ class FileUploadSpec2:
         source_description: Union[str, Path],
         mount_filename: PurePosixPath,
         mode: int,
+        hash_semaphore: asyncio.Semaphore,
     ) -> "FileUploadSpec2":
         # Current position is ignored - we always upload from position 0
         with source() as source_fp:
             source_fp.seek(0, os.SEEK_END)
             size = source_fp.tell()
 
-        blocks_sha256 = await hash_blocks_sha256(source, size)
+        blocks_sha256 = await hash_blocks_sha256(source, size, hash_semaphore)
 
         return FileUploadSpec2(
             source=source,
@@ -472,13 +476,14 @@ class FileUploadSpec2:
 async def hash_blocks_sha256(
     source: _FileUploadSource2,
     size: int,
+    hash_semaphore: asyncio.Semaphore,
 ) -> list[bytes]:
     def ceildiv(a: int, b: int) -> int:
         return -(a // -b)
 
     num_blocks = ceildiv(size, BLOCK_SIZE)
 
-    def hash_block_sha256(block_idx: int) -> bytes:
+    def blocking_hash_block_sha256(block_idx: int) -> bytes:
         sha256_hash = hashlib.sha256()
         block_start = block_idx * BLOCK_SIZE
 
@@ -497,7 +502,11 @@ async def hash_blocks_sha256(
 
         return sha256_hash.digest()
 
-    tasks = (asyncio.to_thread(functools.partial(hash_block_sha256, idx)) for idx in range(num_blocks))
+    async def hash_block_sha256(block_idx: int) -> bytes:
+        async with hash_semaphore:
+            return await asyncio.to_thread(blocking_hash_block_sha256, block_idx)
+
+    tasks = (hash_block_sha256(idx) for idx in range(num_blocks))
     return await asyncio.gather(*tasks)
 
 

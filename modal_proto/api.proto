@@ -1653,6 +1653,7 @@ message FunctionHandleMetadata {
   // Mapping of method names to their metadata, only non-empty for class service functions
   map<string, FunctionHandleMetadata> method_handle_metadata = 44;
   FunctionSchema function_schema = 45;
+  optional string input_plane_url = 46;
 }
 
 message FunctionInput {
@@ -1673,6 +1674,7 @@ message FunctionMapRequest {
   FunctionCallType function_call_type = 4;
   repeated FunctionPutInputsItem pipelined_inputs = 5;
   FunctionCallInvocationType function_call_invocation_type = 6;
+  bool from_spawn_map = 7;
 }
 
 message FunctionMapResponse {
@@ -2887,6 +2889,20 @@ message VolumeDeleteRequest {
   string environment_name = 2 [deprecated=true];
 }
 
+message VolumeGetFile2Request {
+  string volume_id = 1;
+  string path = 2;
+  uint64 start = 3;
+  uint64 len = 4; // 0 is interpreted as 'read to end'
+}
+
+message VolumeGetFile2Response {
+  repeated string get_urls = 1;
+  uint64 size = 2; // total file size
+  uint64 start = 3; // file position of first byte returned
+  uint64 len = 4; // number of bytes returned
+}
+
 message VolumeGetFileRequest {
   string volume_id = 1;
   string path = 2;
@@ -3273,6 +3289,7 @@ service ModalClient {
   rpc VolumeCopyFiles(VolumeCopyFilesRequest) returns (google.protobuf.Empty);
   rpc VolumeDelete(VolumeDeleteRequest) returns (google.protobuf.Empty);
   rpc VolumeGetFile(VolumeGetFileRequest) returns (VolumeGetFileResponse);
+  rpc VolumeGetFile2(VolumeGetFile2Request) returns (VolumeGetFile2Response);
   rpc VolumeGetOrCreate(VolumeGetOrCreateRequest) returns (VolumeGetOrCreateResponse);
   rpc VolumeHeartbeat(VolumeHeartbeatRequest) returns (google.protobuf.Empty);
   rpc VolumeList(VolumeListRequest) returns (VolumeListResponse);

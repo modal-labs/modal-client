@@ -12,6 +12,49 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.56 (2025-05-06)
+
+* Experimental `modal cluster` subcommand is added.
+
+
+
+### 0.74.53 (2025-05-06)
+
+- Added functionality for `.spawn_map` on a function instantiated from `Function.from_name`.
+
+
+
+### 0.74.51 (2025-05-06)
+
+- The `modal` client library can now be installed with Protobuf 6.
+
+
+
+### 0.74.49 (2025-05-06)
+
+* Changes the log format of the modal client's default logger. Instead of `[%(threadName)s]`, the client now logs `[modal-client]` as the log line prefix.
+* Adds a configuration option (MODAL_LOG_PATTERN) to the modal config for setting the log formatting pattern, in case users want to customize the format. To get the old format, use `MODAL_LOG_PATTERN='[%(threadName)s] %(asctime)s %(message)s'` (or add this to your `.modal.toml` in the `log_pattern` field).
+
+
+
+### 0.74.48 (2025-05-05)
+
+- Added a method for spawning many calls in parallel.
+
+
+
+### 0.74.46 (2025-05-05)
+
+- Introduces a new `.update_autoscaler()` method, which will replace the existing `.keep_warm()` method with the ability to dynamically change the entire autoscaler configuration (`min_containers`, `max_containers`, `buffer_containers`, and `scaledown_window`).
+
+
+
+### 0.74.45 (2025-05-05)
+
+Add missing return typing hints for all Secret.from methods.
+
+
+
 ### 0.74.39 (2025-04-30)
 
 - The `modal` client no longer includes `fastapi` as a library dependency.
