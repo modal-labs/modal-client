@@ -1112,9 +1112,11 @@ message DictPopResponse {
 message DictUpdateRequest {
   string dict_id = 1 [ (modal.options.audit_target_attr) = true ];
   repeated DictEntry updates = 2;
+  bool if_not_exists = 3;
 }
 
 message DictUpdateResponse {
+  bool created = 1;
 }
 
 message Domain {
