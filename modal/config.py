@@ -251,7 +251,6 @@ _SETTINGS = {
     "cuda_checkpoint_path": _Setting("/__modal/.bin/cuda-checkpoint"),  # Used for snapshotting GPU memory.
     "function_schemas": _Setting(False, transform=_to_boolean),
     "build_validation": _Setting("error", transform=_check_value(["error", "warn", "ignore"])),
-    "input_plane_url": _Setting(None),  # For internal use only.
 }
 
 

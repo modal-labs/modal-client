@@ -151,7 +151,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     client_addr: str
     container_addr: str
 
-    def __init__(self, blob_host, blobs, blocks, credentials):
+    def __init__(self, blob_host, blobs, blocks, credentials, port):
         self.default_published_client_mount = "mo-123"
         self.use_blob_outputs = False
         self.put_outputs_barrier = threading.Barrier(
@@ -306,6 +306,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
         self.function_get_server_warnings = None
         self.resp_jitter_secs: float = 0.0
+        self.port = port
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -393,6 +394,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.container_heartbeat_response = response
         self.container_heartbeat_abort.set()
 
+    def _get_input_plane_url(self, definition: api_pb2.Function):
+        input_plane_region = definition.experimental_options.get("input_plane_region")
+        return f"http://127.0.0.1:{self.port}" if input_plane_region else None
+
     def get_function_metadata(self, object_id: str) -> api_pb2.FunctionHandleMetadata:
         definition: api_pb2.Function = self.app_functions[object_id]
         return api_pb2.FunctionHandleMetadata(
@@ -415,6 +420,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 for method_name, method_definition in definition.method_definitions.items()
             },
             function_schema=definition.function_schema,
+            input_plane_url=self._get_input_plane_url(definition)
         )
 
     def get_object_metadata(self, object_id) -> api_pb2.Object:
@@ -1084,6 +1090,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     },
                     class_parameter_info=function_defn.class_parameter_info,
                     function_schema=function_defn.function_schema,
+                    input_plane_url=self._get_input_plane_url(function_defn)
                 ),
                 server_warnings=warnings,
             )
@@ -2057,6 +2064,33 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.volumes[req.volume_id].files[dst_path] = src_file
         await stream.send_message(Empty())
 
+    async def AttemptStart(self, stream):
+        request: api_pb2.AttemptStartRequest = await stream.recv_message()
+        fn_definition = self.app_functions.get(request.function_id)
+        retry_policy = fn_definition.retry_policy if fn_definition else None
+        # TODO(ryan): implement attempt token logic
+        await stream.send_message(
+            api_pb2.AttemptStartResponse(attempt_token="bogus_attempt_token", retry_policy=retry_policy)
+        )
+
+    async def AttemptAwait(self, stream):
+        # TODO(ryan): Eventually we want to invoke the user's function and return a result.
+        # For now we just return a dummy response which allows the test to verify that the input_plane_region param
+        # was honored, and we hit this endpoint rather than get_outputs.
+        await stream.send_message(
+            api_pb2.AttemptAwaitResponse(
+                output=api_pb2.FunctionGetOutputsItem(
+                    input_id="in-1",
+                    idx=0,
+                    result=api_pb2.GenericResult(
+                        status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+                        data=serialize_data_format("attempt_await_bogus_response", api_pb2.DATA_FORMAT_PICKLE),
+                    ),
+                    data_format=api_pb2.DATA_FORMAT_PICKLE,
+                    retry_count=0,
+                )
+            )
+        )
 
 @pytest.fixture
 def blob_server():
@@ -2215,7 +2249,7 @@ async def servicer(blob_server, temporary_sock_path, credentials):
     port = find_free_port()
 
     blob_host, blobs, blocks = blob_server
-    servicer = MockClientServicer(blob_host, blobs, blocks, credentials)  # type: ignore
+    servicer = MockClientServicer(blob_host, blobs, blocks, credentials, port)  # type: ignore
 
     if platform.system() != "Windows":
         async with run_server(servicer, host="0.0.0.0", port=port):

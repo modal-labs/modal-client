@@ -1383,6 +1383,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._class_parameter_info = metadata.class_parameter_info
         self._method_handle_metadata = dict(metadata.method_handle_metadata)
         self._definition_id = metadata.definition_id
+        self._input_plane_url = metadata.input_plane_url
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
@@ -1397,6 +1398,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             definition_id=self._definition_id,
             method_handle_metadata=self._method_handle_metadata,
             function_schema=self._metadata.function_schema if self._metadata else None,
+            input_plane_url=self._input_plane_url
         )
 
     def _check_no_web_url(self, fn_name: str):
@@ -1468,16 +1470,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 yield item
 
     async def _call_function(self, args, kwargs) -> ReturnType:
-        input_plane_url = config.get("input_plane_url")
-
         invocation: Union[_Invocation, _InputPlaneInvocation]
-        if input_plane_url is not None:
+        if self._input_plane_url:
             invocation = await _InputPlaneInvocation.create(
                 self,
                 args,
                 kwargs,
                 client=self.client,
-                input_plane_url=input_plane_url,
+                input_plane_url=self._input_plane_url,
             )
         else:
             invocation = await _Invocation.create(
