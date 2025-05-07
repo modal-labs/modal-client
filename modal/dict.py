@@ -1,5 +1,5 @@
 # Copyright Modal Labs 2022
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from typing import Any, Optional
 
 from grpclib import GRPCError
@@ -244,9 +244,16 @@ class _Dict(_Object, type_prefix="di"):
         return value
 
     @live_method
-    async def update(self, **kwargs) -> None:
+    async def update(self, other: Optional[Mapping] = None, /, **kwargs) -> None:
         """Update the dictionary with additional items."""
-        serialized = _serialize_dict(kwargs)
+        # Support the Python dict.update API
+        # https://docs.python.org/3/library/stdtypes.html#dict.update
+        contents = {}
+        if other:
+            contents.update({k: other[k] for k in other.keys()})
+        if kwargs:
+            contents.update(kwargs)
+        serialized = _serialize_dict(contents)
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
         try:
             await retry_transient_errors(self._client.stub.DictUpdate, req)
