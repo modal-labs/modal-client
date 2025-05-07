@@ -339,8 +339,8 @@ class _Mount(_Object, type_prefix="mo"):
         return _Mount._new()._extend(
             _MountDir(
                 local_dir=local_path,
-                ignore=ignore,
                 remote_path=remote_path,
+                ignore=ignore,
                 recursive=True,
             ),
         )
