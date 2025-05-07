@@ -35,10 +35,8 @@ class _Dict(_Object, type_prefix="di"):
 
     **Lifetime of a Dict and its items**
 
-    An individual dict entry will expire 30 days after it was last added to its Dict object.
-    Additionally, data are stored in memory on the Modal server and could be lost due to
-    unexpected server restarts. Because of this, `Dict` is best suited for storing short-term
-    state and is not recommended for durable storage.
+    An individual Dict entry will expire after 7 days of inactivity (no reads or writes). The
+    Dict entries are written to durable storage.
 
     **Usage**
 
