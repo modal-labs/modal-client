@@ -464,6 +464,96 @@ class _Volume(_Object, type_prefix="vo"):
 
 
     @live_method
+    async def read_file_into_fileobj(
+        self,
+        path: str,
+        fileobj: typing.IO[bytes],
+        progress_cb: Optional[Callable[..., Any]] = None
+    ) -> int:
+        """mdmd:hidden
+        Read volume file into file-like IO object.
+        """
+        if progress_cb is None:
+            def progress_cb(*_, **__):
+                pass
+
+        if self._is_v1:
+            return await self._read_file_into_fileobj1(path, fileobj, progress_cb)
+        else:
+            return await self._read_file_into_fileobj2(path, fileobj, progress_cb)
+
+
+    async def _read_file_into_fileobj1(
+        self,
+        path: str,
+        fileobj: typing.IO[bytes],
+        progress_cb: Callable[..., Any]
+    ) -> int:
+        num_bytes_written = 0
+
+        async for chunk in self._read_file1(path):
+            num_chunk_bytes_written = 0
+
+            while num_chunk_bytes_written < len(chunk):
+                # TODO(dflemstr): this is a small write, but nonetheless might block the event loop for some time:
+                n = fileobj.write(chunk)
+                num_chunk_bytes_written += n
+                progress_cb(advance=n)
+
+            num_bytes_written += len(chunk)
+
+        return num_bytes_written
+
+
+    async def _read_file_into_fileobj2(
+        self,
+        path: str,
+        fileobj: typing.IO[bytes],
+        progress_cb: Callable[..., Any]
+    ) -> int:
+        req = api_pb2.VolumeGetFile2Request(volume_id=self.object_id, path=path)
+
+        try:
+            response = await retry_transient_errors(self._client.stub.VolumeGetFile2, req)
+        except GRPCError as exc:
+            raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
+
+        # TODO(dflemstr): Sane default limit? Make configurable?
+        download_semaphore = asyncio.Semaphore(multiprocessing.cpu_count())
+        write_lock = asyncio.Lock()
+        start_pos = fileobj.tell()
+
+        async def download_block(idx, url) -> int:
+            block_start_pos = start_pos + idx * BLOCK_SIZE
+            num_bytes_written = 0
+
+            async with download_semaphore, ClientSessionRegistry.get_session().get(url) as get_response:
+                async for chunk in get_response.content:
+                    num_chunk_bytes_written = 0
+
+                    while num_chunk_bytes_written < len(chunk):
+                        async with write_lock:
+                            fileobj.seek(block_start_pos + num_bytes_written + num_chunk_bytes_written)
+                            # TODO(dflemstr): this is a small write, but nonetheless might block the event loop for some
+                            #  time:
+                            n = fileobj.write(chunk)
+
+                        num_chunk_bytes_written += n
+                        progress_cb(advance=n)
+
+                    num_bytes_written += len(chunk)
+
+            return num_bytes_written
+
+        coros = [download_block(idx, url) for idx, url in enumerate(response.get_urls)]
+
+        total_size = sum(await asyncio.gather(*coros))
+        fileobj.seek(start_pos + total_size)
+
+        return total_size
+
+
+    @live_method
     async def remove_file(self, path: str, recursive: bool = False) -> None:
         """Remove a file or directory from a volume."""
         req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
