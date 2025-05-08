@@ -12,6 +12,22 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.75.3 (2025-05-08)
+
+- New `modal.Dict`s (forthcoming on 2025-05-20) use a new durable storage backend with more "cache-like" behavior - items expire after 7 days of inactivity (no reads or writes). Previously created `modal.Dict`s will continue to use the old backend, but support will eventually be dropped.
+- `modal.Dict.put` now supports an `skip_if_exists` flag that can be used to avoid overwriting the value for existing keys:
+
+  ```
+  item_created = my_dict.put("foo", "bar", skip_if_exists=True)
+  assert item_created
+  new_item_created = my_dict.put("foo", "baz", skip_if_exists=True)
+  assert not new_item_created
+  ```
+
+  Note that this flag only works for `modal.Dict` objects with the new backend (forthcoming on 2025-05-20) and will raise an error otherwise.
+
+
+
 ### 0.75.2 (2025-05-08)
 
 - Reverts defective changes to the interpretation of `ignore=` patterns and `.dockerignore` files that were introduced in v0.75.0.
