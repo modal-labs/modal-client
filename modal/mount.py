@@ -153,9 +153,9 @@ class _MountDir(_MountEntry):
 
         for local_filename in gen:
             local_path = Path(local_filename)
-            rel_local_path = local_path.relative_to(local_dir)
-            if not self.ignore(rel_local_path):
-                mount_path = self.remote_path / rel_local_path.as_posix()
+            if not self.ignore(local_path):
+                local_relpath = local_path.expanduser().absolute().relative_to(local_dir)
+                mount_path = self.remote_path / local_relpath.as_posix()
                 yield local_path.resolve(), mount_path
 
     def watch_entry(self):
@@ -339,8 +339,8 @@ class _Mount(_Object, type_prefix="mo"):
         return _Mount._new()._extend(
             _MountDir(
                 local_dir=local_path,
-                remote_path=remote_path,
                 ignore=ignore,
+                remote_path=remote_path,
                 recursive=True,
             ),
         )
