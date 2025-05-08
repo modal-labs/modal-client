@@ -94,6 +94,8 @@ class FilePatternMatcher(_AbstractPatternMatcher):
                     raise ValueError('Illegal exclusion pattern: "!"')
                 new_pattern.exclusion = True
                 pattern = pattern[1:]
+            if os.path.isabs(pattern):
+                raise ValueError("Ignore patterns cannot be absolute paths")
             # In Python, we can proceed without explicit syntax checking
             new_pattern.cleaned_pattern = pattern
             new_pattern.dirs = pattern.split(os.path.sep)
