@@ -275,13 +275,18 @@ class _Dict(_Object, type_prefix="di"):
                 raise exc
 
     @live_method
-    async def put(self, key: Any, value: Any, *, if_not_exists: bool = False) -> None:
-        """Add a specific key-value pair to the dictionary."""
+    async def put(self, key: Any, value: Any, *, if_not_exists: bool = False) -> bool:
+        """Add a specific key-value pair to the dictionary.
+
+        Returns True if the key-value pair was added and False if it wasn't because the key already existed and
+        `if_not_exists` was set.
+        """
         updates = {key: value}
         serialized = _serialize_dict(updates)
         req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized, if_not_exists=if_not_exists)
         try:
-            await retry_transient_errors(self._client.stub.DictUpdate, req)
+            resp = await retry_transient_errors(self._client.stub.DictUpdate, req)
+            return resp.created
         except GRPCError as exc:
             if "status = '413'" in exc.message:
                 raise RequestSizeError("Dict.put request is too large") from exc
