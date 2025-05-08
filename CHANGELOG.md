@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.74.63 (2025-05-08)
+
+* Deprecates `Function.web_url` in favor of a new `Function.get_web_url()` method. This also allows the url of a `Function` to be retrieved in an async manner using `Function.get_web_url.aio()` (like all other io-bearing methods in the Modal API)
+
+
+
 ### 0.74.61 (2025-05-07)
 
 - Adds a deprecation warning when data is passed directly to `modal.Dict.from_name` or `modal.Dict.ephemeral`. Going forward, it will be necessary to separate `Dict` population from creation.
