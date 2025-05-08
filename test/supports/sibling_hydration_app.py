@@ -35,7 +35,7 @@ def function_calling_method(x, y, z):
 def check_sibling_hydration(x):
     assert square.is_hydrated
     assert fastapi_app.is_hydrated
-    assert fastapi_app.web_url
+    assert fastapi_app.get_web_url()
     assert fun_returning_gen.is_hydrated
     assert fun_returning_gen.is_generator
 

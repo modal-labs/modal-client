@@ -1351,9 +1351,19 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     @property
     @live_method
     async def web_url(self) -> Optional[str]:
+        """Deprecated. Use the `Function.get_web_url()` method instead.
+
+        URL of a Function running as a web endpoint.
+        """
+        deprecation_msg = """The Function.web_url property will be removed in a future version of Modal.
+Use the `Function.get_web_url()` method instead.
+"""
+        deprecation_warning((2025, 5, 6), deprecation_msg, pending=True)
+        return self._web_url
+
+    @live_method
+    async def get_web_url(self) -> Optional[str]:
         """URL of a Function running as a web endpoint."""
-        # TODO If we remove the @live_method above, we may want to provide better feedback when the underlying
-        # attribute is None because the object is not hydrated, rather than because it's not a web endpoint.
         return self._web_url
 
     @property
