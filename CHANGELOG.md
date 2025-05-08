@@ -14,10 +14,7 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 ### 0.75.0 (2025-05-08)
 
-- Fixes the behavior of `ignore=` in `modal.Image` methods. Exclusion patterns are now correctly interpreted as relative to the directory being added (e.g., `*.json` will now ignore all json files in the top-level of the directory). The fix also affects the interpretation of patterns in `.dockerignore` files used by `modal.Image.from_dockerfile`. **This involves two breaking changes:**
-    - When providing a custom function to `ignore=`, file paths passed into the function will now be _relative_, rather than absolute.
-    - When providing ignore patterns (either as strings or in a `dockerignore` file), an error will be raised if any of the pattens are absolute paths.
-
+- This release contained some changes to the interpretation of `ignore=` patterns and `.dockerignore` contents that were reverted in a subsequent release due to defects.
 
 
 ### 0.74.63 (2025-05-08)
