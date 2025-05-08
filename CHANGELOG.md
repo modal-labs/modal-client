@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.75.2 (2025-05-08)
+
+- Reverts defective changes to the interpretation of `ignore=` patterns and `.dockerignore` files that were introduced in v0.75.0.
+
+
+
 ### 0.75.0 (2025-05-08)
 
 - This release contained some changes to the interpretation of `ignore=` patterns and `.dockerignore` contents that were reverted in a subsequent release due to defects.
