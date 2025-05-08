@@ -643,7 +643,7 @@ def test_local_execution_on_web_endpoint(client, servicer):
 
     function_id = foo.object_id
     assert function_id
-    assert foo.web_url
+    assert foo.get_web_url()
 
     res = foo.local("hello")
     assert res == "hello!"
@@ -671,7 +671,7 @@ def test_local_execution_on_asgi_app(client, servicer):
 
     function_id = foo.object_id
     assert function_id
-    assert foo.web_url
+    assert foo.get_web_url()
 
     res = foo.local()
     assert type(res) is FastAPI
@@ -690,7 +690,7 @@ def test_invalid_remote_executor_on_web_endpoint(client, servicer, remote_execut
 
     function_id = foo.object_id
     assert function_id
-    assert foo.web_url
+    assert foo.get_web_url()
 
     with pytest.raises(InvalidError) as excinfo:
         f = getattr(foo, remote_executor)
@@ -722,7 +722,7 @@ def test_invalid_remote_executor_on_asgi_app(client, servicer, remote_executor):
 
     function_id = foo.object_id
     assert function_id
-    assert foo.web_url
+    assert foo.get_web_url()
 
     with pytest.raises(InvalidError) as excinfo:
         f = getattr(foo, remote_executor)
@@ -787,7 +787,7 @@ def test_serialize_deserialize_function_handle(servicer, client):
         rehydrated_function_handle = deserialize(blob, client)
         assert rehydrated_function_handle.object_id == my_handle.object_id
         assert isinstance(rehydrated_function_handle, Function)
-        assert rehydrated_function_handle.web_url == "http://xyz.internal"
+        assert rehydrated_function_handle.get_web_url() == "http://xyz.internal"
 
 
 def test_default_cloud_provider(client, servicer, monkeypatch):
@@ -1107,7 +1107,7 @@ def test_from_name_web_url(servicer, set_env_client):
                 function_id="fu-1", handle_metadata=api_pb2.FunctionHandleMetadata(web_url="test.internal")
             ),
         )
-        assert f.web_url == "test.internal"
+        assert f.get_web_url() == "test.internal"
 
 
 @pytest.mark.parametrize(
