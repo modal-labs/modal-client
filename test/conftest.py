@@ -69,11 +69,14 @@ class VolumeFile:
     data_blob_id: Optional[str] = None
     block_hashes: list[bytes] = dataclasses.field(default_factory=list)
 
+
 @dataclasses.dataclass
 class GrpcErrorAndCount:
-    """ Helper class that holds a gRPC error and the number of times it should be raised. """
+    """Helper class that holds a gRPC error and the number of times it should be raised."""
+
     grpc_error: Status
     count: int
+
 
 # TODO: Isolate all test config from the host
 @pytest.fixture(scope="function", autouse=True)
@@ -877,9 +880,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def DictUpdate(self, stream):
         request: api_pb2.DictUpdateRequest = await stream.recv_message()
+        if len(request.updates) == 1:
+            if request.if_not_exists and request.updates[0].key in self.dicts[request.dict_id]:
+                await stream.send_message(api_pb2.DictUpdateResponse(created=False))
+                return
+        else:
+            if request.if_not_exists:
+                raise GRPCError(Status.INVALID_ARGUMENT)
+
         for update in request.updates:
             self.dicts[request.dict_id][update.key] = update.value
-        await stream.send_message(api_pb2.DictUpdateResponse())
+        await stream.send_message(api_pb2.DictUpdateResponse(created=True))
 
     async def DictContents(self, stream):
         request: api_pb2.DictGetRequest = await stream.recv_message()
@@ -1913,17 +1924,17 @@ class MockClientServicer(api_grpc.ModalClientBase):
         for idx, block_hash in enumerate(vol_file.block_hashes[block_start:block_end]):
             # Crude port of internal `blocks_for_byte_slice` algorithm:
             start = total_start % BLOCK_SIZE if idx == 0 else 0
-            end = (((total_end - 1) % BLOCK_SIZE) + 1 if total_end > 0 else 0) \
-                if idx == (block_end - block_start - 1) else BLOCK_SIZE
+            end = (
+                (((total_end - 1) % BLOCK_SIZE) + 1 if total_end > 0 else 0)
+                if idx == (block_end - block_start - 1)
+                else BLOCK_SIZE
+            )
             length = end - start
 
             get_urls.append(f"{self.blob_host}/block/test-get-request:{block_hash.hex()}:{start}:{length}")
 
         response = api_pb2.VolumeGetFile2Response(
-            get_urls=get_urls,
-            size=len(vol_file.data),
-            start=total_start,
-            len=total_end - total_start
+            get_urls=get_urls, size=len(vol_file.data), start=total_start, len=total_end - total_start
         )
         await stream.send_message(response)
 
@@ -2152,14 +2163,14 @@ def blob_server():
     async def get_block(request):
         token = request.match_info["token"]
 
-        magic, block_id, start, length = token.split(':')
+        magic, block_id, start, length = token.split(":")
         if magic != "test-get-request":
             return aiohttp.web.Response(status=400, text="bad token")
 
         start = int(start)
         length = int(length)
 
-        return aiohttp.web.Response(body=blocks[block_id][start:start+length])
+        return aiohttp.web.Response(body=blocks[block_id][start : start + length])
 
     app = aiohttp.web.Application()
     app.add_routes([aiohttp.web.put("/upload", upload)])
