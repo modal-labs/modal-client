@@ -35,10 +35,12 @@ class _Dict(_Object, type_prefix="di"):
 
     **Lifetime of a Dict and its items**
 
-    An individual dict entry will expire 30 days after it was last added to its Dict object.
-    Additionally, data are stored in memory on the Modal server and could be lost due to
-    unexpected server restarts. Because of this, `Dict` is best suited for storing short-term
-    state and is not recommended for durable storage.
+    An individual Dict entry will expire after 7 days of inactivity (no reads or writes). The
+    Dict entries are written to durable storage.
+
+    Legacy Dicts (created before 2025-05-20) will still have entries expire 30 days after being
+    last added. Additionally, data are stored in memory on the Modal server and could be lost due to
+    unexpected server restarts. Eventually, these Dicts will be fully sunset.
 
     **Usage**
 
@@ -275,13 +277,18 @@ class _Dict(_Object, type_prefix="di"):
                 raise exc
 
     @live_method
-    async def put(self, key: Any, value: Any) -> None:
-        """Add a specific key-value pair to the dictionary."""
+    async def put(self, key: Any, value: Any, *, skip_if_exists: bool = False) -> bool:
+        """Add a specific key-value pair to the dictionary.
+
+        Returns True if the key-value pair was added and False if it wasn't because the key already existed and
+        `skip_if_exists` was set.
+        """
         updates = {key: value}
         serialized = _serialize_dict(updates)
-        req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized)
+        req = api_pb2.DictUpdateRequest(dict_id=self.object_id, updates=serialized, if_not_exists=skip_if_exists)
         try:
-            await retry_transient_errors(self._client.stub.DictUpdate, req)
+            resp = await retry_transient_errors(self._client.stub.DictUpdate, req)
+            return resp.created
         except GRPCError as exc:
             if "status = '413'" in exc.message:
                 raise RequestSizeError("Dict.put request is too large") from exc
