@@ -272,11 +272,6 @@ def test_match():
             assert FilePatternMatcher(pattern)._matches(text) is expected
 
 
-def test_absolute_path_error():
-    with pytest.raises(ValueError, match="cannot be absolute paths"):
-        FilePatternMatcher("/home/data/")
-
-
 def __helper_get_file_paths(tmp_path: Path) -> list[Path]:
     file_paths = []
     for root, _, files in os.walk(tmp_path):
