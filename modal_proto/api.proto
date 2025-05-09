@@ -584,6 +584,17 @@ message AttemptAwaitResponse {
   optional FunctionGetOutputsItem output = 1;
 }
 
+message AttemptRetryRequest {
+  string function_id = 1;
+  string parent_input_id = 2;
+  FunctionPutInputsItem input = 3;
+  string attempt_token = 4;
+}
+
+message AttemptRetryResponse {
+  string attempt_token = 1;
+}
+
 message AttemptStartRequest {
   string function_id = 1;
   string parent_input_id = 2;
@@ -3132,6 +3143,7 @@ service ModalClient {
   // These RPCs are experimental, not deployed to production, and can be changed / removed
   // without needing to worry about backwards compatibility.
   rpc AttemptAwait(AttemptAwaitRequest) returns (AttemptAwaitResponse);
+  rpc AttemptRetry(AttemptRetryRequest) returns (AttemptRetryResponse);
   rpc AttemptStart(AttemptStartRequest) returns (AttemptStartResponse);
 
   // Blobs
