@@ -75,14 +75,18 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
 
 @dataclasses.dataclass()
 class _ServiceOptions:
-    secrets: typing.Collection[_Secret]
-    resources: Optional[api_pb2.Resources]
-    retry_policy: Optional[api_pb2.FunctionRetryPolicy]
-    concurrency_limit: Optional[int]
-    timeout_secs: Optional[int]
-    task_idle_timeout_secs: Optional[int]
-    validated_volumes: typing.Sequence[tuple[str, _Volume]]
-    target_concurrent_inputs: Optional[int]
+    secrets: typing.Collection[_Secret] = ()
+    validated_volumes: typing.Sequence[tuple[str, _Volume]] = ()
+    resources: Optional[api_pb2.Resources] = None
+    retry_policy: Optional[api_pb2.FunctionRetryPolicy] = None
+    max_containers: Optional[int] = None
+    buffer_containers: Optional[int] = None
+    scaledown_window: Optional[int] = None
+    timeout_secs: Optional[int] = None
+    max_concurrent_inputs: Optional[int] = None
+    target_concurrent_inputs: Optional[int] = None
+    batch_max_size: Optional[int] = None
+    batch_wait_ms: Optional[int] = None
 
 
 def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name: str):
@@ -421,7 +425,7 @@ class _Cls(_Object, type_prefix="cs"):
     """
 
     _class_service_function: Optional[_Function]  # The _Function (read "service") serving *all* methods of the class
-    _options: Optional[_ServiceOptions]
+    _options: _ServiceOptions
 
     _app: Optional["modal.app._App"] = None  # not set for lookups
     _name: Optional[str]
@@ -437,7 +441,7 @@ class _Cls(_Object, type_prefix="cs"):
     def _initialize_from_empty(self):
         self._user_cls = None
         self._class_service_function = None
-        self._options = None
+        self._options = _ServiceOptions()
         self._callables = {}
         self._name = None
 
@@ -659,17 +663,15 @@ More information on class parameterization can be found here: https://modal.com/
         volumes: dict[Union[str, os.PathLike], _Volume] = {},
         retries: Optional[Union[int, Retries]] = None,
         max_containers: Optional[int] = None,  # Limit on the number of containers that can be concurrently running.
+        buffer_containers: Optional[int] = None,  # Additional containers to scale up while Function is active.
         scaledown_window: Optional[int] = None,  # Max amount of time a container can remain idle before scaling down.
         timeout: Optional[int] = None,
-        allow_concurrent_inputs: Optional[int] = None,
         # The following parameters are deprecated
         concurrency_limit: Optional[int] = None,  # Now called `max_containers`
         container_idle_timeout: Optional[int] = None,  # Now called `scaledown_window`
+        allow_concurrent_inputs: Optional[int] = None,  # See `.with_concurrency`
     ) -> "_Cls":
-        """
-        **Beta:** Allows for the runtime modification of a modal.Cls's configuration.
-
-        This is a beta feature and may be unstable.
+        """Create an instance of the Cls with configuration options overridden with new values.
 
         **Usage:**
 
@@ -684,6 +686,13 @@ More information on class parameterization can be found here: https://modal.com/
             resources = convert_fn_config_to_resources_config(cpu=cpu, memory=memory, gpu=gpu, ephemeral_disk=None)
         else:
             resources = None
+
+        if allow_concurrent_inputs is not None:
+            deprecation_warning(
+                (2025, 5, 9),
+                "The `allow_concurrent_inputs` argument is deprecated;"
+                " please use the `.with_concurrency` method instead.",
+            )
 
         async def _load_from_base(new_cls, resolver, existing_object_id):
             # this is a bit confusing, the cls will always have the same metadata
@@ -703,17 +712,77 @@ More information on class parameterization can be found here: https://modal.com/
 
         cls = _Cls._from_loader(_load_from_base, rep=f"{self._name}.with_options(...)", is_another_app=True, deps=_deps)
         cls._initialize_from_other(self)
-        cls._options = _ServiceOptions(
+        cls._options = dataclasses.replace(
+            cls._options,
             secrets=secrets,
             resources=resources,
             retry_policy=retry_policy,
-            # TODO(michael) Update the protos to use the new terminology
-            concurrency_limit=max_containers,
-            task_idle_timeout_secs=scaledown_window,
+            max_containers=max_containers,
+            buffer_containers=buffer_containers,
+            scaledown_window=scaledown_window,
             timeout_secs=timeout,
             validated_volumes=validate_volumes(volumes),
+            # Note: set both for backwards / forwards compatibility
+            # But going forward `.with_concurrency` is the preferred method with distinct parameterization
+            max_concurrent_inputs=allow_concurrent_inputs,
             target_concurrent_inputs=allow_concurrent_inputs,
         )
+        return cls
+
+    def with_concurrency(self: "_Cls", *, max_inputs: int, target_inputs: Optional[int] = None) -> "_Cls":
+        """Create an instance of the Cls with input concurrency enabled or overridden with new values.
+
+        **Usage:**
+
+        ```python notest
+        Model = modal.Cls.from_name("my_app", "Model")
+        ModelUsingGPU = Model.with_options(gpu="A100").with_concurrency(max_inputs=100)
+        ModelUsingGPU().generate.remote(42)  # will run on an A100 GPU with input concurrency enabled
+        ```
+        """
+
+        async def _load_from_base(new_cls, resolver, existing_object_id):
+            if not self.is_hydrated:
+                await resolver.load(self)
+            new_cls._initialize_from_other(self)
+
+        def _deps():
+            return []
+
+        cls = _Cls._from_loader(
+            _load_from_base, rep=f"{self._name}.with_concurrency(...)", is_another_app=True, deps=_deps
+        )
+        cls._initialize_from_other(self)
+        cls._options = dataclasses.replace(
+            cls._options, max_concurrent_inputs=max_inputs, target_concurrent_inputs=target_inputs
+        )
+        return cls
+
+    def with_batching(self: "_Cls", *, max_batch_size: int, wait_ms: int) -> "_Cls":
+        """Create an instance of the Cls with dynamic batching enabled or overridden with new values.
+
+        **Usage:**
+
+        ```python notest
+        Model = modal.Cls.from_name("my_app", "Model")
+        ModelUsingGPU = Model.with_options(gpu="A100").with_batching(max_batch_size=100, batch_wait_ms=1000)
+        ModelUsingGPU().generate.remote(42)  # will run on an A100 GPU with input concurrency enabled
+        ```
+        """
+
+        async def _load_from_base(new_cls, resolver, existing_object_id):
+            if not self.is_hydrated:
+                await resolver.load(self)
+            new_cls._initialize_from_other(self)
+
+        def _deps():
+            return []
+
+        cls = _Cls._from_loader(
+            _load_from_base, rep=f"{self._name}.with_concurrency(...)", is_another_app=True, deps=_deps
+        )
+        cls._initialize_from_other(self)
+        cls._options = dataclasses.replace(cls._options, batch_max_size=max_batch_size, batch_wait_ms=wait_ms)
         return cls
 
     @staticmethod

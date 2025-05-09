@@ -157,6 +157,36 @@ def test_class_with_options(client, servicer):
             Foo.with_options(concurrency_limit=10)()  # type: ignore
 
 
+def test_class_multiple_override_methods(client, servicer):
+    foo = (
+        Foo.with_options(max_containers=1)  # type: ignore
+        .with_batching(max_batch_size=10, wait_ms=10)  # type: ignore
+        .with_concurrency(max_inputs=100)()  # type: ignore
+    )
+
+    with app.run(client=client):
+        with servicer.intercept() as ctx:
+            res = foo.bar.remote(2)
+            function_bind_params: api_pb2.FunctionBindParamsRequest
+            (function_bind_params,) = ctx.get_requests("FunctionBindParams")
+            assert function_bind_params.function_options.concurrency_limit == 1
+            assert function_bind_params.function_options.batch_max_size == 10
+            assert function_bind_params.function_options.batch_linger_ms == 10
+            assert function_bind_params.function_options.max_concurrent_inputs == 100
+    assert res == 4
+
+
+def test_class_multiple_with_options_calls(client, servicer):
+    foo = Foo.with_options(max_containers=1).with_options(max_containers=2)()  # type: ignore
+
+    with app.run(client=client):
+        with servicer.intercept() as ctx:
+            _ = foo.bar.remote(2)
+            function_bind_params: api_pb2.FunctionBindParamsRequest
+            (function_bind_params,) = ctx.get_requests("FunctionBindParams")
+            assert function_bind_params.function_options.concurrency_limit == 2
+
+
 def test_with_options_from_name(servicer):
     unhydrated_volume = modal.Volume.from_name("some_volume", create_if_missing=True)
     unhydrated_secret = modal.Secret.from_dict({"foo": "bar"})
