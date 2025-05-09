@@ -84,7 +84,7 @@ class FilePatternMatcher(_AbstractPatternMatcher):
     def _set_patterns(self, patterns: Sequence[str]) -> None:
         self.patterns = []
         for pattern in list(patterns):
-            pattern = pattern.strip()
+            pattern = pattern.strip().strip("/")
             if not pattern:
                 continue
             pattern = os.path.normpath(pattern)
