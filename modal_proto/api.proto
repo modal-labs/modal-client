@@ -1701,6 +1701,10 @@ message FunctionOptions {
   optional uint32 target_concurrent_inputs = 10;
   bool replace_volume_mounts = 11;
   bool replace_secret_ids = 12;
+  optional uint32 buffer_containers = 13;
+  optional uint32 max_concurrent_inputs = 14;
+  optional uint32 batch_max_size = 15;
+  optional uint64 batch_linger_ms = 16;
 }
 
 message FunctionPrecreateRequest {
