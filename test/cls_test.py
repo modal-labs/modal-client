@@ -159,10 +159,10 @@ def test_class_with_options(client, servicer):
 
 def test_class_multiple_override_methods(client, servicer):
     foo = (
-        Foo.with_options(max_containers=1)
-        .with_batching(max_batch_size=10, wait_ms=10)
-        .with_concurrency(max_inputs=100)()
-    )  # type-ignore
+        Foo.with_options(max_containers=1)  # type: ignore
+        .with_batching(max_batch_size=10, wait_ms=10)  # type: ignore
+        .with_concurrency(max_inputs=100)()  # type: ignore
+    )
 
     with app.run(client=client):
         with servicer.intercept() as ctx:
