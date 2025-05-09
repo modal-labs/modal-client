@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.75.4 (2025-05-09)
+
+- Fixed issue with .spawn_map producing wrong number of arguments
+
+
+
 ### 0.75.3 (2025-05-08)
 
 - New `modal.Dict`s (forthcoming on 2025-05-20) use a new durable storage backend with more "cache-like" behavior - items expire after 7 days of inactivity (no reads or writes). Previously created `modal.Dict`s will continue to use the old backend, but support will eventually be dropped.
