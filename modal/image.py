@@ -279,8 +279,9 @@ def _create_context_mount(
     include_fn = FilePatternMatcher(*copy_patterns)
 
     def ignore_with_include(source: Path) -> bool:
-        relative_source = source.relative_to(context_dir)
-        if not include_fn(relative_source) or ignore_fn(relative_source):
+        if source.is_absolute():
+            source = source.relative_to(context_dir)
+        if not include_fn(source) or ignore_fn(source):
             return True
 
         return False
