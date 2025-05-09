@@ -1027,11 +1027,19 @@ async def test_spawn_map_async(client):
         await dummy_function.spawn_map.aio([1, 2, 3])
 
 
-def test_spawn_map_sync(client):
+def test_spawn_map_sync(client, servicer):
     dummy_function = app.function()(dummy)
 
-    with app.run(client=client):
-        dummy_function.spawn_map([1, 2, 3])
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            dummy_function.spawn_map([1, 2, 3])
+
+        function_map = ctx.pop_request("FunctionMap")
+        assert function_map.function_call_invocation_type == api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
+
+        from modal._serialization import deserialize
+
+        assert deserialize(function_map.pipelined_inputs[0].input.args, client) == ((1,), {})
 
 
 def test_warn_on_local_volume_mount(client, servicer):

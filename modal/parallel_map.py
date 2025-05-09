@@ -496,7 +496,7 @@ async def _spawn_map_async(self, *input_iterators, kwargs={}) -> None:
         errors, log a warning that the function call is waiting to be created.
         """
 
-        return self._spawn_map_inner.aio(args, kwargs, api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC)
+        return self._spawn_map_inner.aio(*args, **kwargs)
 
     input_gen = async_zip(*[sync_or_async_iter(it) for it in input_iterators])
 
