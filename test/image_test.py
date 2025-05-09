@@ -906,6 +906,47 @@ def test_image_dockerfile_copy_ignore_from_file(builder_version, servicer, clien
         }
 
 
+@pytest.mark.parametrize("use_dockerfile", (True, False))
+@pytest.mark.usefixtures("tmp_cwd")
+def test_image_dockerfile_ignore_context_dir(builder_version, servicer, client, use_dockerfile):
+    rel_top_dir = Path("top")
+    rel_top_dir.mkdir()
+    (rel_top_dir / "data.txt").write_text("world")
+    (rel_top_dir / "file.py").write_text("world")
+
+    sub_dir = rel_top_dir / "sub"
+    sub_dir.mkdir()
+    (sub_dir / "notes.txt").write_text("whatever")
+
+    docker_cmd = "COPY . /dummy"
+    dockerfile = rel_top_dir / "Dockerfile"
+    dockerfile.write_text(docker_cmd + "\n")
+
+    dockerignore = rel_top_dir / ".dockerignore"
+    dockerignore.write_text("*.txt")
+
+    app = App()
+    if use_dockerfile:
+        image = Image.debian_slim().from_dockerfile(dockerfile, context_dir=rel_top_dir)
+        layer = 1
+    else:
+        image = Image.debian_slim().dockerfile_commands([docker_cmd], context_dir=rel_top_dir)
+        layer = 0
+    app.function(image=image)(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        assert docker_cmd in layers[layer].dockerfile_commands
+        mount_id = layers[layer].context_mount_id
+        files = set(Path(fn) for fn in servicer.mount_contents[mount_id].keys())
+        assert files == {
+            Path("/") / "Dockerfile",
+            Path("/") / ".dockerignore",
+            Path("/") / "file.py",
+            Path("/") / "sub" / "notes.txt",
+        }
+
+
 @pytest.mark.parametrize("use_callable", (True, False))
 @pytest.mark.parametrize("use_dockerfile", (True, False))
 @pytest.mark.usefixtures("tmp_cwd")
@@ -948,7 +989,7 @@ def test_dockerfile_context_dir(builder_version, servicer, client):
         (Path(context_dir) / "file.py").write_text("world")
 
         image = Image.debian_slim().dockerfile_commands(["COPY . /"], context_dir=context_dir)
-        app = App()
+        app = App(include_source=False)
         app.function(image=image)(dummy)
         with app.run(client=client):
             layers = get_image_layers(image.object_id, servicer)
@@ -1803,17 +1844,37 @@ def test_image_local_dir_ignore_patterns(servicer, client, tmp_path_with_content
             assert len(img._mount_layers) == 0
             layers = get_image_layers(img.object_id, servicer)
             mount_id = layers[0].context_mount_id
-            assert set(servicer.mount_contents[mount_id].keys()) == {f"/place{f}" for f in expected}
         else:
             assert len(img._mount_layers) == 1
             mount_id = img._mount_layers[0].object_id
-            assert set(servicer.mount_contents[mount_id].keys()) == {f"/place{f}" for f in expected}
+        assert servicer.mount_contents[mount_id].keys() == {f"/place{f}" for f in expected}
+
+
+@pytest.mark.parametrize("copy", [True, False])
+def test_image_local_dir_ignore_relative(servicer, client, tmp_path_with_content, copy):
+    assert (tmp_path_with_content / "data.txt").exists()
+    app = App()
+
+    img = Image.from_registry("unknown_image").add_local_dir(
+        tmp_path_with_content, "/place", ignore=["*.txt"], copy=copy
+    )
+
+    app.function(image=img)(dummy)
+    with app.run(client=client):
+        if copy:
+            assert len(img._mount_layers) == 0
+            layers = get_image_layers(img.object_id, servicer)
+            mount_id = layers[0].context_mount_id
+        else:
+            assert len(img._mount_layers) == 1
+            mount_id = img._mount_layers[0].object_id
+        assert "/place/data.txt" not in servicer.mount_contents[mount_id].keys()
 
 
 @pytest.mark.parametrize("copy", [True, False])
 def test_image_add_local_dir_ignore_callable(servicer, client, tmp_path_with_content, copy):
-    def ignore(x):
-        return x != tmp_path_with_content / "data.txt"
+    def ignore(x: Path):
+        return str(x) != "data.txt"
 
     expected = {"/place/data.txt"}
     app = App()
