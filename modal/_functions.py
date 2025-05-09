@@ -1075,7 +1075,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 serialized_params = serialize_proto_params(kwargs_with_defaults)
                 can_use_parent = len(parent._class_parameter_info.schema) == 0  # no parameters
             else:
-                can_use_parent = len(args) + len(kwargs) == 0 and options is None
+                from modal.cls import _ServiceOptions  # Should probably define this dataclass here?
+
+                can_use_parent = len(args) + len(kwargs) == 0 and (options == _ServiceOptions())
                 serialized_params = serialize((args, kwargs))
 
             if can_use_parent:
@@ -1098,14 +1100,18 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 options_pb = api_pb2.FunctionOptions(
                     secret_ids=[s.object_id for s in options.secrets],
                     replace_secret_ids=bool(options.secrets),
-                    resources=options.resources,
-                    retry_policy=options.retry_policy,
-                    concurrency_limit=options.concurrency_limit,
-                    timeout_secs=options.timeout_secs,
-                    task_idle_timeout_secs=options.task_idle_timeout_secs,
                     replace_volume_mounts=len(volume_mounts) > 0,
                     volume_mounts=volume_mounts,
+                    resources=options.resources,
+                    retry_policy=options.retry_policy,
+                    concurrency_limit=options.max_containers,
+                    buffer_containers=options.buffer_containers,
+                    task_idle_timeout_secs=options.scaledown_window,
+                    timeout_secs=options.timeout_secs,
+                    max_concurrent_inputs=options.max_concurrent_inputs,
                     target_concurrent_inputs=options.target_concurrent_inputs,
+                    batch_max_size=options.batch_max_size,
+                    batch_linger_ms=options.batch_wait_ms,
                 )
             else:
                 options_pb = None
@@ -1399,7 +1405,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             definition_id=self._definition_id,
             method_handle_metadata=self._method_handle_metadata,
             function_schema=self._metadata.function_schema if self._metadata else None,
-            input_plane_url=self._input_plane_url
+            input_plane_url=self._input_plane_url,
         )
 
     def _check_no_web_url(self, fn_name: str):
