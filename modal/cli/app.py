@@ -224,10 +224,10 @@ async def history(
         "Time deployed",
         "Client",
         "Deployed by",
+        "Commit",
+        "Tag",
     ]
     rows = []
-    deployments_with_tags = False
-    deployments_with_commit_info = False
     deployments_with_dirty_commit = False
     for idx, app_stats in enumerate(resp.app_deployment_histories):
         style = "bold green" if idx == 0 else ""
@@ -239,24 +239,26 @@ async def history(
             Text(app_stats.deployed_by, style=style),
         ]
 
-        if app_stats.tag:
-            deployments_with_tags = True
-            row.append(Text(app_stats.tag, style=style))
-
         if app_stats.commit_info.commit_hash:
-            deployments_with_commit_info = True
             short_hash = app_stats.commit_info.commit_hash[:7]
             if app_stats.commit_info.dirty:
                 deployments_with_dirty_commit = True
                 short_hash = f"{short_hash}*"
             row.append(Text(short_hash, style=style))
+        else:
+            row.append(None)
+
+        if app_stats.tag:
+            row.append(Text(app_stats.tag, style=style))
+        else:
+            row.append(None)
 
         rows.append(row)
 
-    if deployments_with_tags:
-        columns.append("Tag")
-    if deployments_with_commit_info:
-        columns.append("Commit")
+    # Suppress tag information when no deployments used one
+    if not any(row[-1] for row in rows):
+        rows = [row[:-1] for row in rows]
+        columns = columns[:-1]
 
     rows = sorted(rows, key=lambda x: int(str(x[0])[1:]), reverse=True)
     display_table(columns, rows, json)
