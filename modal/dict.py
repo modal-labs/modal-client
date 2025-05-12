@@ -39,8 +39,8 @@ class _Dict(_Object, type_prefix="di"):
     Dict entries are written to durable storage.
 
     Legacy Dicts (created before 2025-05-20) will still have entries expire 30 days after being
-    last added. Additionally, data is stored in memory on the Modal server and could be lost due to
-    unexpected server restarts. Eventually, these Dicts will be fully sunset.
+    last added. Additionally, contents are stored in memory on the Modal server and could be lost
+    due to unexpected server restarts. Eventually, these Dicts will be fully sunset.
 
     **Usage**
 
