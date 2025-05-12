@@ -200,6 +200,7 @@ def test_clean_patterns_error_single_exception():
 
 def test_match():
     match_tests = [
+        # (pattern , text, should_match, expected_error)
         ("abc", "abc", True, None),
         ("*", "abc", True, None),
         ("*c", "abc", True, None),
@@ -238,6 +239,10 @@ def test_match():
         ("[\\-x]", "x", True, None),
         ("[\\-x]", "-", True, None),
         ("[\\-x]", "a", False, None),
+        ("/abc", "abc", True, None),
+        ("abc/", "abc", True, None),
+        ("/abc/xyz", "abc/xyz", True, None),
+        ("/abc/xyz/", "abc/xyz", True, None),
         # These do not return errors because the Python re.compile() method does
         # not raise an error on invalid syntax like Go does. We can omit the
         # tests though since it doesn't affect behavior on _correct_ syntax.
