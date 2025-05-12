@@ -12,6 +12,18 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.75.8 (2025-05-12)
+
+- Introduced `modal.Cls.with_concurrency` and `modal.Cls.with_batching` for runtime configuration of functionality that is exposed through the `@modal.concurrent` and `@modal.batched` decorators.
+  ```python
+  model = Model.with_options(gpu="H100").with_concurrency(max_inputs=100)()
+  ```
+- Added a deprecation warning when using `allow_concurrent_inputs` in `modal.Cls.with_options`.
+- Added `buffer_containers` to `modal.Cls.with_options`.
+- *Behavior change:* when `modal.Cls.with_options` is called multiple times on the same object, the configurations will be merged rather than using the most recent.
+
+
+
 ### 0.75.4 (2025-05-09)
 
 - Fixed issue with .spawn_map producing wrong number of arguments
