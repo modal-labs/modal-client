@@ -1,10 +1,12 @@
 ## Describe your changes
 
-- _Provide Linear issue reference (e.g. MOD-1234) if available._
+- _Provide Linear issue reference (e.g. CLI-1234) if available._
 
-<details> <summary>Backward/forward compatibility checks</summary>
+<details> <summary>Checklists</summary>
 
 ---
+
+## Compatibility checklist
 
 Check these boxes or delete any item (or this section) if not relevant for this PR.
 
@@ -13,6 +15,16 @@ Check these boxes or delete any item (or this section) if not relevant for this 
 
 Note on protobuf: protobuf message changes in one place may have impact to
 multiple entities (client, server, worker, database). See points above.
+
+
+---
+
+## Release checklist
+
+If you intend for this commit to trigger a full release to PyPI, please ensure that they following steps have been taken:
+
+- [ ] Version file has been updated with the next logical `X.Y.Z` version
+- [ ] Changelog has been cleaned up and given an appropriate subhead
 
 ---
 
