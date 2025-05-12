@@ -14,10 +14,10 @@ from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Optional
 
 import requests
 from invoke import task
+from packaging.version import Version
 from rich.console import Console
 from rich.table import Table
 
@@ -303,26 +303,36 @@ def publish_base_images(
     )
 
 
-@task
-def update_build_number(ctx, new_build_number: Optional[int] = None):
-    from modal_version import build_number as current_build_number
-
-    new_build_number = int(new_build_number) if new_build_number else current_build_number + 1
-    assert new_build_number > current_build_number
-
-    # Add the current Git SHA to the file, so concurrent publish actions of the
-    # client package result in merge conflicts.
-    git_sha = ctx.run("git rev-parse --short=7 HEAD", hide="out").stdout.rstrip()
-
-    with open("modal_version/_version_generated.py", "w") as f:
-        f.write(
-            f"""\
-{copyright_header_full}
-
-# Note: Reset this value to -1 whenever you make a minor `0.X` release of the client.
-build_number = {new_build_number}  # git: {git_sha}
+version_file_contents_template = """\
+# Copyright Modal Labs 2025
+# Supplies the current version of the modal client library.
+__version__ = {}
 """
-        )
+
+
+@task
+def bump_dev_version(ctx, dry_run: bool = False):
+    from modal_version import __version__
+
+    v = Version(__version__)
+
+    git_hash = ctx.run("git rev-parse --short=8 HEAD", hide="out").stdout.rstrip()
+
+    if v.is_prerelease:
+        if not v.is_devrelease:
+            raise RuntimeError("We only know how to auto-bump dev versions")
+        next_version = f"{v.major}.{v.minor}.{v.micro}.dev{v.dev + 1}+{git_hash}"
+    else:
+        next_version = f"{v.major}.{v.minor}.{v.micro + 1}.dev0+{git_hash}"
+
+    version_file_contents = version_file_contents_template.format(next_version)
+    if dry_run:
+        print("Would update modal_version.__init__ to the following:")
+        print(version_file_contents)
+        return
+
+    with open("modal_version/__init__.py", "w") as f:
+        f.write(version_file_contents)
 
 
 @task
