@@ -21,9 +21,9 @@ multiple entities (client, server, worker, database). See points above.
 
 ## Release checklist
 
-If you intend for this commit to trigger a full release to PyPI, please ensure that they following steps have been taken:
+If you intend for this commit to trigger a full release to PyPI, please ensure that the following steps have been taken:
 
-- [ ] Version file has been updated with the next logical `X.Y.Z` version
+- [ ] Version file (`modal_version/__init__.py`) has been updated with the next logical version
 - [ ] Changelog has been cleaned up and given an appropriate subhead
 
 ---
