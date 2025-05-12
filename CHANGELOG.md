@@ -12,6 +12,12 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+### 0.76.3 (2025-05-12)
+
+- Fixed the behavior of `modal app history --json` when the history contains versions with and without commit information or "tag" metadata. Commit information is now always included (with a `null` placeholder when absent), while tag metadata is included only when there is at least one tagged release (other releases will have a `null` placeholder).
+
+
+
 ### 0.76.0 (2025-05-12)
 
 - Fixes the behavior of `ignore=` in `modal.Image` methods, including when `.dockerignore` files are implicitly used in docker-oriented methods. This may result in Image rebuilds with different final inventories:
