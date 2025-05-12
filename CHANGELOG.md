@@ -21,6 +21,8 @@ We appreciate your patience while we speedily work towards a stable release of t
   - **Breaking change**: When providing a custom function to `ignore=`, file paths passed into the function will now be _relative_, rather than absolute.
 
 
+## 0.75
+
 
 ### 0.75.8 (2025-05-12)
 
@@ -64,10 +66,10 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 ### 0.75.0 (2025-05-08)
 
-- Fixes the behavior of `ignore=` in `modal.Image` methods. Exclusion patterns are now correctly interpreted as relative to the directory being added (e.g., `*.json` will now ignore all json files in the top-level of the directory). The fix also affects the interpretation of patterns in `.dockerignore` files used by `modal.Image.from_dockerfile`. **This involves two breaking changes:**
-    - When providing a custom function to `ignore=`, file paths passed into the function will now be _relative_, rather than absolute.
-    - When providing ignore patterns (either as strings or in a `dockerignore` file), an error will be raised if any of the pattens are absolute paths.
+- Introduced some changes to the handling of `ignore=` patterns in `modal.Image` methods. Due to a defect around the handling of leading path delimiter characters, these changes reverted in 0.75.2 and later reintroduced in 0.76.0.
 
+
+## 0.74
 
 
 ### 0.74.63 (2025-05-08)
@@ -120,19 +122,13 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 ### 0.74.48 (2025-05-05)
 
-- Added a method for spawning many calls in parallel.
+- Added a new method for spawning many function calls in parallel: `Function.spawn_map`.
 
 
 
 ### 0.74.46 (2025-05-05)
 
 - Introduces a new `.update_autoscaler()` method, which will replace the existing `.keep_warm()` method with the ability to dynamically change the entire autoscaler configuration (`min_containers`, `max_containers`, `buffer_containers`, and `scaledown_window`).
-
-
-
-### 0.74.45 (2025-05-05)
-
-Add missing return typing hints for all Secret.from methods.
 
 
 
@@ -222,6 +218,8 @@ Add missing return typing hints for all Secret.from methods.
 
 * Introduces a deprecation warning when using explicit constructors (`__init__` methods) on `@modal.cls`-decorated classes. Class parameterization should instead be done via [dataclass-style `modal.parameter()` declarations](https://modal.com/docs/guide/parametrized-functions). Initialization logic should run in `@modal.enter()`-decorated [lifecycle methods](https://modal.com/docs/guide/lifecycle-functions).
 
+
+## 0.73
 
 
 ### 0.73.173 (2025-04-15)
