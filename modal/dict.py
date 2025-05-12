@@ -39,7 +39,7 @@ class _Dict(_Object, type_prefix="di"):
     Dict entries are written to durable storage.
 
     Legacy Dicts (created before 2025-05-20) will still have entries expire 30 days after being
-    last added. Additionally, data are stored in memory on the Modal server and could be lost due to
+    last added. Additionally, data is stored in memory on the Modal server and could be lost due to
     unexpected server restarts. Eventually, these Dicts will be fully sunset.
 
     **Usage**
@@ -80,7 +80,7 @@ class _Dict(_Object, type_prefix="di"):
         environment_name: Optional[str] = None,
         _heartbeat_sleep: float = EPHEMERAL_OBJECT_HEARTBEAT_SLEEP,
     ) -> AsyncIterator["_Dict"]:
-        """Creates a new ephemeral dict within a context manager:
+        """Creates a new ephemeral Dict within a context manager:
 
         Usage:
         ```python
@@ -238,7 +238,10 @@ class _Dict(_Object, type_prefix="di"):
 
     @live_method
     async def len(self) -> int:
-        """Return the length of the dictionary, including any expired keys."""
+        """Return the length of the Dict.
+
+        Note: This is an expensive operation and will return at most 100,000.
+        """
         req = api_pb2.DictLenRequest(dict_id=self.object_id)
         resp = await retry_transient_errors(self._client.stub.DictLen, req)
         return resp.len
@@ -258,7 +261,7 @@ class _Dict(_Object, type_prefix="di"):
 
     @live_method
     async def update(self, other: Optional[Mapping] = None, /, **kwargs) -> None:
-        """Update the dictionary with additional items."""
+        """Update the Dict with additional items."""
         # Support the Python dict.update API
         # https://docs.python.org/3/library/stdtypes.html#dict.update
         contents = {}
@@ -278,7 +281,7 @@ class _Dict(_Object, type_prefix="di"):
 
     @live_method
     async def put(self, key: Any, value: Any, *, skip_if_exists: bool = False) -> bool:
-        """Add a specific key-value pair to the dictionary.
+        """Add a specific key-value pair to the Dict.
 
         Returns True if the key-value pair was added and False if it wasn't because the key already existed and
         `skip_if_exists` was set.
@@ -297,7 +300,7 @@ class _Dict(_Object, type_prefix="di"):
 
     @live_method
     async def __setitem__(self, key: Any, value: Any) -> None:
-        """Set a specific key-value pair to the dictionary.
+        """Set a specific key-value pair to the Dict.
 
         Note: this function will block the event loop when called in an async context.
         """
@@ -305,7 +308,7 @@ class _Dict(_Object, type_prefix="di"):
 
     @live_method
     async def pop(self, key: Any) -> Any:
-        """Remove a key from the dictionary, returning the value if it exists."""
+        """Remove a key from the Dict, returning the value if it exists."""
         req = api_pb2.DictPopRequest(dict_id=self.object_id, key=serialize(key))
         resp = await retry_transient_errors(self._client.stub.DictPop, req)
         if not resp.found:
@@ -314,7 +317,7 @@ class _Dict(_Object, type_prefix="di"):
 
     @live_method
     async def __delitem__(self, key: Any) -> Any:
-        """Delete a key from the dictionary.
+        """Delete a key from the Dict.
 
         Note: this function will block the event loop when called in an async context.
         """
@@ -330,7 +333,7 @@ class _Dict(_Object, type_prefix="di"):
 
     @live_method_gen
     async def keys(self) -> AsyncIterator[Any]:
-        """Return an iterator over the keys in this dictionary.
+        """Return an iterator over the keys in this Dict.
 
         Note that (unlike with Python dicts) the return value is a simple iterator,
         and results are unordered.
@@ -341,7 +344,7 @@ class _Dict(_Object, type_prefix="di"):
 
     @live_method_gen
     async def values(self) -> AsyncIterator[Any]:
-        """Return an iterator over the values in this dictionary.
+        """Return an iterator over the values in this Dict.
 
         Note that (unlike with Python dicts) the return value is a simple iterator,
         and results are unordered.
@@ -352,7 +355,7 @@ class _Dict(_Object, type_prefix="di"):
 
     @live_method_gen
     async def items(self) -> AsyncIterator[tuple[Any, Any]]:
-        """Return an iterator over the (key, value) tuples in this dictionary.
+        """Return an iterator over the (key, value) tuples in this Dict.
 
         Note that (unlike with Python dicts) the return value is a simple iterator,
         and results are unordered.
