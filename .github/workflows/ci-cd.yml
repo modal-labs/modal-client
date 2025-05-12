@@ -25,7 +25,6 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     outputs:
-      client-version: ${{ steps.metadata.outputs.client_version }}
       git-hash: ${{ steps.metadata.outputs.git_hash }}
 
     steps:
@@ -39,13 +38,14 @@ jobs:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
         with:
           token: ${{ steps.generate_token.outputs.token }}
+          depth: 2  # Needed so that we can check whether the version file was modified
 
       - uses: ./.github/actions/setup-cached-python
         with:
           version: "3.10"
 
-      - name: Bump the version number
-        run: inv update-build-number
+      - name: (Optionally) bump the version number
+        run: inv bump-dev-version
 
       - name: Update the changelog
         run: inv update-changelog --sha=$GITHUB_SHA
@@ -53,13 +53,13 @@ jobs:
       - name: Get the current client version
         id: metadata
         run: |
-         echo "client_version=v`python -m modal_version`" >> "$GITHUB_OUTPUT"
+         echo "release_tag=`inv get-release-tag`" >> "$GITHUB_OUTPUT"
          echo "git_hash=`git rev-parse HEAD`" >> "$GITHUB_OUTPUT"
 
       - uses: EndBug/add-and-commit@a94899bca583c204427a224a7af87c02f9b325d5 # v9
         with:
           add: modal_version/_version_generated.py CHANGELOG.md
-          tag: ${{ steps.metadata.outputs.client_version }}
+          tag: ${{ steps.metadata.outputs.release_tag }}
           message: "[auto-commit] [skip ci] Bump the build number"
           pull: "--rebase --autostash"
           default_author: github_actions
