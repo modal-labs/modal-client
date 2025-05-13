@@ -1386,7 +1386,7 @@ message FunctionAsyncInvokeRequest {
   string function_id = 1;
   string parent_input_id = 2;
   FunctionInput input = 3;
-} 
+}
 
 message FunctionAsyncInvokeResponse {
   bool retry_with_blob_upload = 1;
@@ -1897,7 +1897,7 @@ message ImageFromIdRequest {
 message ImageFromIdResponse {
   string image_id = 1;
   ImageMetadata metadata = 2;
-} 
+}
 
 message ImageGetOrCreateRequest {
   Image image = 2;
@@ -2894,6 +2894,13 @@ message VolumeCommitResponse {
   bool skip_reload = 1;
 }
 
+message VolumeCopyFiles2Request {
+  string volume_id = 1;
+  repeated string src_paths = 2;
+  string dst_path = 3;
+  bool recursive = 4;
+}
+
 message VolumeCopyFilesRequest {
   string volume_id = 1;
   repeated string src_paths = 2;
@@ -3305,6 +3312,7 @@ service ModalClient {
   // Volumes
   rpc VolumeCommit(VolumeCommitRequest) returns (VolumeCommitResponse);
   rpc VolumeCopyFiles(VolumeCopyFilesRequest) returns (google.protobuf.Empty);
+  rpc VolumeCopyFiles2(VolumeCopyFiles2Request) returns (google.protobuf.Empty);
   rpc VolumeDelete(VolumeDeleteRequest) returns (google.protobuf.Empty);
   rpc VolumeGetFile(VolumeGetFileRequest) returns (VolumeGetFileResponse);
   rpc VolumeGetFile2(VolumeGetFile2Request) returns (VolumeGetFile2Response);
