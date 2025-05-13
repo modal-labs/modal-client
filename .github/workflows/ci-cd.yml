@@ -25,7 +25,7 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     outputs:
-      git-hash: ${{ steps.metadata.outputs.git_hash }}
+      release-hash: ${{ steps.release-data.outputs.hash }}
 
     steps:
       - name: Generate token for Github PR Bot
@@ -50,19 +50,21 @@ jobs:
       - name: Update the changelog
         run: inv update-changelog --sha=$GITHUB_SHA
 
-      - name: Get release metadata
-        id: metadata
-        run: |
-         echo "release_tag=`inv get-release-tag`" >> "$GITHUB_OUTPUT"
-         echo "git_hash=`git rev-parse HEAD`" >> "$GITHUB_OUTPUT"
+      - name: Get release tag
+        id: tag
+        run: echo "release_tag=`inv get-release-tag`" >> "$GITHUB_OUTPUT"
 
       - uses: EndBug/add-and-commit@a94899bca583c204427a224a7af87c02f9b325d5 # v9
         with:
           add: modal_version/__init__.py CHANGELOG.md
-          tag: ${{ steps.metadata.outputs.release_tag }}
+          tag: ${{ steps.tag.outputs.release_tag }}
           message: "[auto-commit] [skip ci] Bump the build number"
           pull: "--rebase --autostash"
           default_author: github_actions
+
+      - name: Get release hash
+        id: release-data
+        run: echo "hash=`git rev-parse HEAD`" >> "$GITHUB_OUTPUT"
 
       - name: Install the client
         run: |
@@ -193,7 +195,7 @@ jobs:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
         with:
           # Check out the commit that bumped the version, after the merge that triggered the workflow
-          ref: ${{ needs.client-versioning.outputs.git-hash }}
+          ref: ${{ needs.client-versioning.outputs.release-hash }}
 
       - uses: ./.github/actions/setup-cached-python
         with:
@@ -238,7 +240,7 @@ jobs:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
         with:
           # Check out the commit that bumped the version, after the merge that triggered the workflow
-          ref: ${{ needs.client-versioning.outputs.git-hash }}
+          ref: ${{ needs.client-versioning.outputs.release-hash }}
 
       - uses: ./.github/actions/setup-cached-python
         with:
@@ -273,7 +275,7 @@ jobs:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
         with:
           # Check out the commit that bumped the version, after the merge that triggered the workflow
-          ref: ${{ needs.client-versioning.outputs.git-hash }}
+          ref: ${{ needs.client-versioning.outputs.release-hash }}
 
       - uses: ./.github/actions/setup-cached-python
         with:
