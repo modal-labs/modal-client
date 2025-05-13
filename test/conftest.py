@@ -423,7 +423,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 for method_name, method_definition in definition.method_definitions.items()
             },
             function_schema=definition.function_schema,
-            input_plane_url=self._get_input_plane_url(definition)
+            input_plane_url=self._get_input_plane_url(definition),
         )
 
     def get_object_metadata(self, object_id) -> api_pb2.Object:
@@ -1101,7 +1101,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     },
                     class_parameter_info=function_defn.class_parameter_info,
                     function_schema=function_defn.function_schema,
-                    input_plane_url=self._get_input_plane_url(function_defn)
+                    input_plane_url=self._get_input_plane_url(function_defn),
                 ),
                 server_warnings=warnings,
             )
@@ -2102,6 +2102,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 )
             )
         )
+
 
 @pytest.fixture
 def blob_server():
