@@ -194,22 +194,18 @@ class _Volume(_Object, type_prefix="vo"):
         if metadata and isinstance(metadata, api_pb2.VolumeMetadata):
             self._metadata = metadata
         else:
-            raise TypeError(
-                "_hydrate_metadata() requires an `api_pb2.VolumeMetadata` to determine volume version"
-            )
+            raise TypeError("_hydrate_metadata() requires an `api_pb2.VolumeMetadata` to determine volume version")
 
     def _get_metadata(self) -> Optional[Message]:
         return self._metadata
-
 
     @property
     def _is_v1(self) -> bool:
         return self._metadata.version in [
             None,
             api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_UNSPECIFIED,
-            api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_V1
+            api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_V1,
         ]
-
 
     @classmethod
     @asynccontextmanager
@@ -369,21 +365,17 @@ class _Volume(_Object, type_prefix="vo"):
         file's description. If `recursive` is set to True, list all files and folders under the path
         recursively.
         """
-        from modal_version import major_number, minor_number
-
-        # This allows us to remove the server shim after 0.62 is no longer supported.
-        deprecation = deprecation_warning if (major_number, minor_number) <= (0, 62) else deprecation_error
         if path.endswith("**"):
             msg = (
                 "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. "
                 "Please pass recursive=True instead. For the CLI, just remove the glob suffix."
             )
-            deprecation(
+            deprecation_error(
                 (2024, 4, 23),
                 msg,
             )
         elif path.endswith("*"):
-            deprecation(
+            deprecation_error(
                 (2024, 4, 23),
                 (
                     "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. "
@@ -423,7 +415,6 @@ class _Volume(_Object, type_prefix="vo"):
         """
         return self._read_file1(path) if self._is_v1 else self._read_file2(path)
 
-
     async def _read_file1(self, path: str) -> AsyncIterator[bytes]:
         req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path)
         try:
@@ -437,7 +428,6 @@ class _Volume(_Object, type_prefix="vo"):
         else:
             async for data in blob_iter(response.data_blob_id, self._client.stub):
                 yield data
-
 
     async def _read_file2(self, path: str) -> AsyncIterator[bytes]:
         req = api_pb2.VolumeGetFile2Request(volume_id=self.object_id, path=path)
@@ -462,18 +452,15 @@ class _Volume(_Object, type_prefix="vo"):
             async for value in stream:
                 yield value
 
-
     @live_method
     async def read_file_into_fileobj(
-        self,
-        path: str,
-        fileobj: typing.IO[bytes],
-        progress_cb: Optional[Callable[..., Any]] = None
+        self, path: str, fileobj: typing.IO[bytes], progress_cb: Optional[Callable[..., Any]] = None
     ) -> int:
         """mdmd:hidden
         Read volume file into file-like IO object.
         """
         if progress_cb is None:
+
             def progress_cb(*_, **__):
                 pass
 
@@ -482,12 +469,8 @@ class _Volume(_Object, type_prefix="vo"):
         else:
             return await self._read_file_into_fileobj2(path, fileobj, progress_cb)
 
-
     async def _read_file_into_fileobj1(
-        self,
-        path: str,
-        fileobj: typing.IO[bytes],
-        progress_cb: Callable[..., Any]
+        self, path: str, fileobj: typing.IO[bytes], progress_cb: Callable[..., Any]
     ) -> int:
         num_bytes_written = 0
 
@@ -504,12 +487,8 @@ class _Volume(_Object, type_prefix="vo"):
 
         return num_bytes_written
 
-
     async def _read_file_into_fileobj2(
-        self,
-        path: str,
-        fileobj: typing.IO[bytes],
-        progress_cb: Callable[..., Any]
+        self, path: str, fileobj: typing.IO[bytes], progress_cb: Callable[..., Any]
     ) -> int:
         req = api_pb2.VolumeGetFile2Request(volume_id=self.object_id, path=path)
 
@@ -551,7 +530,6 @@ class _Volume(_Object, type_prefix="vo"):
         fileobj.seek(start_pos + total_size)
 
         return total_size
-
 
     @live_method
     async def remove_file(self, path: str, recursive: bool = False) -> None:
@@ -607,12 +585,8 @@ class _Volume(_Object, type_prefix="vo"):
         ```
         """
         return _AbstractVolumeUploadContextManager.resolve(
-            self._metadata.version,
-            self.object_id,
-            self._client,
-            force=force
+            self._metadata.version, self.object_id, self._client, force=force
         )
-
 
     @live_method
     async def _instance_delete(self):
@@ -642,30 +616,26 @@ class _Volume(_Object, type_prefix="vo"):
 
 Volume = synchronize_api(_Volume)
 
+
 # TODO(dflemstr): Find a way to add ABC or AbstractAsyncContextManager superclasses while keeping synchronicity happy.
 class _AbstractVolumeUploadContextManager:
-    async def __aenter__(self):
-        ...
+    async def __aenter__(self): ...
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        ...
-
+    async def __aexit__(self, exc_type, exc_val, exc_tb): ...
 
     def put_file(
         self,
         local_file: Union[Path, str, BinaryIO, BytesIO],
         remote_path: Union[PurePosixPath, str],
         mode: Optional[int] = None,
-    ):
-        ...
+    ): ...
 
     def put_directory(
         self,
         local_path: Union[Path, str],
         remote_path: Union[PurePosixPath, str],
         recursive: bool = True,
-    ):
-        ...
+    ): ...
 
     @staticmethod
     def resolve(
@@ -673,13 +643,12 @@ class _AbstractVolumeUploadContextManager:
         object_id: str,
         client,
         progress_cb: Optional[Callable[..., Any]] = None,
-        force: bool = False
+        force: bool = False,
     ) -> "_AbstractVolumeUploadContextManager":
-
         if version in [
             None,
             api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_UNSPECIFIED,
-            api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_V1
+            api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_V1,
         ]:
             return _VolumeUploadContextManager(object_id, client, progress_cb=progress_cb, force=force)
         elif version == api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_V2:
@@ -689,6 +658,7 @@ class _AbstractVolumeUploadContextManager:
 
 
 AbstractVolumeUploadContextManager = synchronize_api(_AbstractVolumeUploadContextManager)
+
 
 class _VolumeUploadContextManager(_AbstractVolumeUploadContextManager):
     """Context manager for batch-uploading files to a Volume."""
@@ -845,6 +815,7 @@ VolumeUploadContextManager = synchronize_api(_VolumeUploadContextManager)
 
 _FileUploader2 = Callable[[asyncio.Semaphore], Awaitable[FileUploadSpec2]]
 
+
 class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
     """Context manager for batch-uploading files to a Volume version 2."""
 
@@ -898,7 +869,6 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
             upload_specs = await gen_file_upload_specs()
             await self._put_file_specs(upload_specs)
 
-
     def put_file(
         self,
         local_file: Union[Path, str, BinaryIO, BytesIO],
@@ -918,17 +888,11 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
         def gen():
             if isinstance(local_file, str) or isinstance(local_file, Path):
                 yield lambda hash_semaphore: FileUploadSpec2.from_path(
-                    local_file,
-                    PurePosixPath(remote_path),
-                    hash_semaphore,
-                    mode
+                    local_file, PurePosixPath(remote_path), hash_semaphore, mode
                 )
             else:
                 yield lambda hash_semaphore: FileUploadSpec2.from_fileobj(
-                    local_file,
-                    PurePosixPath(remote_path),
-                    hash_semaphore,
-                    mode or 0o644
+                    local_file, PurePosixPath(remote_path), hash_semaphore, mode or 0o644
                 )
 
         self._uploader_generators.append(gen())
@@ -975,16 +939,15 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
             for file_spec in file_specs:
                 blocks = [
                     api_pb2.VolumePutFiles2Request.Block(
-                        contents_sha256=block_sha256,
-                        put_response=put_responses.get(block_sha256)
-                    ) for block_sha256 in file_spec.blocks_sha256
+                        contents_sha256=block_sha256, put_response=put_responses.get(block_sha256)
+                    )
+                    for block_sha256 in file_spec.blocks_sha256
                 ]
-                files.append(api_pb2.VolumePutFiles2Request.File(
-                    path=file_spec.path,
-                    mode=file_spec.mode,
-                    size=file_spec.size,
-                    blocks=blocks
-                ))
+                files.append(
+                    api_pb2.VolumePutFiles2Request.File(
+                        path=file_spec.path, mode=file_spec.mode, size=file_spec.size, blocks=blocks
+                    )
+                )
 
             request = api_pb2.VolumePutFiles2Request(
                 volume_id=self._volume_id,
@@ -1001,11 +964,7 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
                 break
 
             await _put_missing_blocks(
-                file_specs,
-                response.missing_blocks,
-                put_responses,
-                self._put_concurrency,
-                self._progress_cb
+                file_specs, response.missing_blocks, put_responses, self._put_concurrency, self._progress_cb
             )
         else:
             raise RuntimeError("Did not succeed at uploading all files despite supplying all missing blocks")
@@ -1023,7 +982,7 @@ async def _put_missing_blocks(
     missing_blocks: list,
     put_responses: dict[bytes, bytes],
     put_concurrency: int,
-    progress_cb: Callable[..., Any]
+    progress_cb: Callable[..., Any],
 ):
     @dataclass
     class FileProgress:
@@ -1038,7 +997,7 @@ async def _put_missing_blocks(
     async def put_missing_block(
         # TODO(dflemstr): Type is `api_pb2.VolumePutFiles2Response.MissingBlock` but synchronicity gets confused
         # by the nested class (?)
-        missing_block
+        missing_block,
     ) -> (bytes, bytes):
         # Lazily import to keep the eager loading time of this module down
         from ._utils.bytes_io_segment_payload import BytesIOSegmentPayload
@@ -1067,8 +1026,8 @@ async def _put_missing_blocks(
                     block_start,
                     block_length,
                     # limit chunk size somewhat to not keep event loop busy for too long
-                    chunk_size=256*1024,
-                    progress_report_cb=task_progress_cb
+                    chunk_size=256 * 1024,
+                    progress_report_cb=task_progress_cb,
                 )
 
                 async with ClientSessionRegistry.get_session().put(
@@ -1085,10 +1044,7 @@ async def _put_missing_blocks(
 
         return block_sha256, resp_data
 
-    tasks = [
-        asyncio.create_task(put_missing_block(missing_block))
-        for missing_block in missing_blocks
-    ]
+    tasks = [asyncio.create_task(put_missing_block(missing_block)) for missing_block in missing_blocks]
     for task_result in asyncio.as_completed(tasks):
         digest, resp = await task_result
         put_responses[digest] = resp
