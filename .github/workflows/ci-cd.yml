@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
         with:
           token: ${{ steps.generate_token.outputs.token }}
-          depth: 2  # Needed so that we can check whether the version file was modified
+          fetch-depth: 2  # Needed so that we can check whether the version file was modified
 
       - uses: ./.github/actions/setup-cached-python
         with:
