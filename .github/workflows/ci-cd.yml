@@ -193,7 +193,7 @@ jobs:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
         with:
           # Check out the commit that bumped the version, after the merge that triggered the workflow
-          ref: ${{ needs.client-versioning.outputs.git-hash}}
+          ref: ${{ needs.client-versioning.outputs.git-hash }}
 
       - uses: ./.github/actions/setup-cached-python
         with:
@@ -237,7 +237,8 @@ jobs:
     steps:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
         with:
-          ref: v${{ needs.client-versioning.outputs.client-version}}
+          # Check out the commit that bumped the version, after the merge that triggered the workflow
+          ref: ${{ needs.client-versioning.outputs.git-hash }}
 
       - uses: ./.github/actions/setup-cached-python
         with:
@@ -271,7 +272,8 @@ jobs:
     steps:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
         with:
-          ref: ${{ needs.client-versioning.outputs.git-hash}}
+          # Check out the commit that bumped the version, after the merge that triggered the workflow
+          ref: ${{ needs.client-versioning.outputs.git-hash }}
 
       - uses: ./.github/actions/setup-cached-python
         with:
