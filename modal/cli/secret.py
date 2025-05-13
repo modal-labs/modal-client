@@ -48,13 +48,14 @@ async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
 @synchronizer.create_blocking
 async def create(
     secret_name,
-    keyvalues: list[str] = typer.Argument(..., help="Space-separated KEY=VALUE items"),
+    keyvalues: Optional[list[str]] = typer.Argument(default=None, help="Space-separated KEY=VALUE items"),
     env: Optional[str] = ENV_OPTION,
-    force: bool = typer.Option(False, "--force", help="Overwrite the secret if it already exists."),
+    from_env: Optional[list[str]] = typer.Option(default=None, help="Name of environment variable holding the secret"),
+    force: bool = typer.Option(False, "--force", help="Overwrite secrets that already exists."),
 ):
     env = ensure_env(env)
     env_dict = {}
-    for arg in keyvalues:
+    for arg in keyvalues or []:
         if "=" in arg:
             key, value = arg.split("=", 1)
             if value == "-":
@@ -70,8 +71,16 @@ modal secret create my-credentials username=john password=-
 """
             )
 
+    for key in from_env or []:
+        value = os.environ.get(key)
+        if value is None:
+            raise click.UsageError(f"There is no environment variable named '{key}'.")
+        env_dict[key] = value
+
     if not env_dict:
-        raise click.UsageError("You need to specify at least one key for your secret")
+        raise click.UsageError(
+            "You need to specify at least one key for your secret, either as <KEY>=VALUE and/or using --from-env."
+        )
 
     # Create secret
     await _Secret.create_deployed(secret_name, env_dict, overwrite=force)
