@@ -7,7 +7,7 @@ from pathlib import Path, PurePosixPath
 
 from modal import App, FilePatternMatcher
 from modal._utils.blob_utils import LARGE_FILE_LIMIT
-from modal.mount import Mount, module_mount_condition, module_mount_ignore_condition
+from modal.mount import Mount, client_mount_name, module_mount_condition, module_mount_ignore_condition
 from test.helpers import deploy_app_externally
 
 
@@ -199,3 +199,8 @@ def test_missing_python_source_warning(servicer, credentials, supports_dir, monk
         servicer, credentials, "pkg_d.main", cwd=supports_dir, capture_output=True, env={"MODAL_AUTOMOUNT": "0"}
     )
     assert not has_warning(output)
+
+
+def test_client_mount_name():
+    # This is expected to raise if we cannot parse the version correctly
+    assert client_mount_name().startswith("modal-client-mount")
