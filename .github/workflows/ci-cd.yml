@@ -56,10 +56,11 @@ jobs:
 
       - uses: EndBug/add-and-commit@a94899bca583c204427a224a7af87c02f9b325d5 # v9
         with:
-          add: modal_version/__init__.py CHANGELOG.md
-          tag: ${{ steps.tag.outputs.release_tag }}
-          message: "[auto-commit] [skip ci] Bump the build number"
           pull: "--rebase --autostash"
+          add: modal_version/__init__.py CHANGELOG.md
+          commit: "--allow-empty"
+          message: "[auto-commit] [skip ci] Bump the build number"
+          tag: ${{ steps.tag.outputs.release_tag }}
           default_author: github_actions
 
       - name: Get release hash
