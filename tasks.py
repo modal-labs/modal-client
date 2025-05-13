@@ -14,10 +14,10 @@ from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Optional
 
 import requests
 from invoke import task
+from packaging.version import Version
 from rich.console import Console
 from rich.table import Table
 
@@ -303,26 +303,65 @@ def publish_base_images(
     )
 
 
+version_file_contents_template = '''\
+# Copyright Modal Labs 2025
+"""Supplies the current version of the modal client library."""
+
+__version__ = "{}"
+'''
+
+
 @task
-def update_build_number(ctx, new_build_number: Optional[int] = None):
-    from modal_version import build_number as current_build_number
+def bump_dev_version(ctx, dry_run: bool = False, force: bool = False):
+    """Automatically increment the modal version, handling dev releases (but not other pre-releases).
 
-    new_build_number = int(new_build_number) if new_build_number else current_build_number + 1
-    assert new_build_number > current_build_number
+    This only has an effect when the version file was not modified by the most recent git commit
+    (unless `force` is True).
 
-    # Add the current Git SHA to the file, so concurrent publish actions of the
-    # client package result in merge conflicts.
-    git_sha = ctx.run("git rev-parse --short=7 HEAD", hide="out").stdout.rstrip()
+    The version will always be in development after this runs. In the context of the modal client
+    release process, manually updating the version file to a non-development version will trigger
+    a "real" release. Otherwise we'll push the development version to PyPI.
 
-    with open("modal_version/_version_generated.py", "w") as f:
-        f.write(
-            f"""\
-{copyright_header_full}
+    """
+    version_file = "modal_version/__init__.py"
+    commit_files = ctx.run("git diff --name-only HEAD~1 HEAD", hide="out").stdout.splitlines()
+    if version_file in commit_files:
+        print(f"Aborting: {version_file} was modified by the most recent commit")
+        return
 
-# Note: Reset this value to -1 whenever you make a minor `0.X` release of the client.
-build_number = {new_build_number}  # git: {git_sha}
-"""
-        )
+    from modal_version import __version__
+
+    v = Version(__version__)
+
+    git_hash = ctx.run("git rev-parse --short=8 HEAD", hide="out").stdout.rstrip()
+
+    if v.is_prerelease:
+        if not v.is_devrelease:
+            raise RuntimeError("We only know how to auto-bump dev versions")
+        # For dev releases, increment the dev suffix
+        next_version = f"{v.major}.{v.minor}.{v.micro}.dev{v.dev + 1}+{git_hash}"
+    else:
+        # If the most recent commit was *not* a dev release, start the next cycle
+        next_version = f"{v.major}.{v.minor}.{v.micro + 1}.dev0+{git_hash}"
+
+    version_file_contents = version_file_contents_template.format(next_version)
+    if dry_run:
+        print(f"Would update {version_file} to the following:")
+        print(version_file_contents)
+        return
+
+    with open(version_file, "w") as f:
+        f.write(version_file_contents)
+
+
+@task
+def get_release_tag(ctx):
+    """Optionally print a tag name for the current modal client version."""
+    from modal_version import __version__
+
+    v = Version(__version__)
+    if not v.is_devrelease:
+        print(f"v{v}")
 
 
 @task
@@ -382,8 +421,8 @@ def update_changelog(ctx, sha: str = ""):
     from modal_version import __version__
 
     date = datetime.datetime.now().strftime("%Y-%m-%d")
-    new_section = f"### {__version__} ({date})\n\n{update}"
-    final_content = f"{header}\n\n{new_section}\n\n{previous_changelog}"
+    new_section = f"#### {__version__} ({date})\n\n{update}"
+    final_content = f"{header}\n\n{new_section}\n{previous_changelog}"
     with open("CHANGELOG.md", "w") as fid:
         fid.write(final_content)
 
