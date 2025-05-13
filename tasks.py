@@ -325,7 +325,7 @@ def bump_dev_version(ctx, dry_run: bool = False, force: bool = False):
     """
     version_file = "modal_version/__init__.py"
     commit_files = ctx.run("git diff --name-only HEAD~1 HEAD", hide="out").stdout.splitlines()
-    if version_file in commit_files:
+    if version_file in commit_files and not force:
         print(f"Aborting: {version_file} was modified by the most recent commit")
         return
 
@@ -333,16 +333,14 @@ def bump_dev_version(ctx, dry_run: bool = False, force: bool = False):
 
     v = Version(__version__)
 
-    git_hash = ctx.run("git rev-parse --short=8 HEAD", hide="out").stdout.rstrip()
-
     if v.is_prerelease:
         if not v.is_devrelease:
             raise RuntimeError("We only know how to auto-bump dev versions")
         # For dev releases, increment the dev suffix
-        next_version = f"{v.major}.{v.minor}.{v.micro}.dev{v.dev + 1}+{git_hash}"
+        next_version = f"{v.major}.{v.minor}.{v.micro}.dev{v.dev + 1}"
     else:
         # If the most recent commit was *not* a dev release, start the next cycle
-        next_version = f"{v.major}.{v.minor}.{v.micro + 1}.dev0+{git_hash}"
+        next_version = f"{v.major}.{v.minor}.{v.micro + 1}.dev0"
 
     version_file_contents = version_file_contents_template.format(next_version)
     if dry_run:
