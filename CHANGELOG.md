@@ -12,13 +12,6 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-## 0.77
-
-### 0.77.0 (2025-05-13)
-
-- This is the final pre-1.0 release of the Modal client. The next release will be version 1.0. While we do not plan to enforce most major deprecations until later in the 1.0 cycle, there will be some breaking changes introduced in the next release.
-
-## 0.76
 
 ### 0.76.3 (2025-05-12)
 
