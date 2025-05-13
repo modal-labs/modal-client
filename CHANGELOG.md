@@ -12,6 +12,14 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+## 0.77
+
+### 0.77.0 (2025-05-13)
+
+- This is the final pre-1.0 release of the Modal client. The next release will be version 1.0. While we do not plan to enforce most major deprecations until later in the 1.0 cycle, there will be some breaking changes introduced in the next release.
+
+## 0.76
+
 ### 0.76.3 (2025-05-12)
 
 - Fixed the behavior of `modal app history --json` when the history contains versions with and without commit information or "tag" metadata. Commit information is now always included (with a `null` placeholder when absent), while tag metadata is included only when there is at least one tagged release (other releases will have a `null` placeholder).
@@ -20,7 +28,7 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 ### 0.76.0 (2025-05-12)
 
-- Fixes the behavior of `ignore=` in `modal.Image` methods, including when `.dockerignore` files are implicitly used in docker-oriented methods. This may result in Image rebuilds with different final inventories:
+- Fixed the behavior of `ignore=` in `modal.Image` methods, including when `.dockerignore` files are implicitly used in docker-oriented methods. This may result in Image rebuilds with different final inventories:
   - When using `modal.Image.add_local_dir`, exclusion patterns are now correctly interpreted as relative to the directory being added (e.g., `*.json` will now ignore all json files in the top-level of the directory).
   - When using `modal.Image.from_dockerfile`, exclusion patterns are correctly interpreted as relative to the context directory.
   - As in Docker, leading or trailing path delimiters are stripped from the ignore patterns before being applied.
