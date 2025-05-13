@@ -388,9 +388,7 @@ async def _map_helper(
     order_outputs: bool = True,  # return outputs in order
     return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
 ) -> typing.AsyncGenerator[Any, None]:
-    """mdmd:hidden
-
-    Core implementation that supports `_map_async()`, `_starmap_async()` and `_for_each_async()`.
+    """Core implementation that supports `_map_async()`, `_starmap_async()` and `_for_each_async()`.
 
     Runs in an event loop on the main thread. Concurrently feeds new input to the input queue and yields available
     outputs to the caller.
@@ -527,8 +525,7 @@ def _map_sync(
 
 
 async def _spawn_map_async(self, *input_iterators, kwargs={}) -> None:
-    """mdmd:hidden
-    This runs in an event loop on the main thread. It consumes inputs from the input iterators and creates async
+    """This runs in an event loop on the main thread. It consumes inputs from the input iterators and creates async
     function calls for each.
     """
 
