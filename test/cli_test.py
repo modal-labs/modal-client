@@ -35,7 +35,7 @@ import modal
 
 import other_module
 
-app = modal.App("my_app", include_source=True)  # TODO: remove include_source=True)
+app = modal.App("my_app")
 
 # Sanity check that the module is imported properly
 import sys
@@ -164,7 +164,11 @@ def test_run(servicer, set_env_client, supports_dir, monkeypatch, run_command, e
 
 
 def test_run_warns_without_module_flag(
-    servicer, set_env_client, supports_dir, recwarn, monkeypatch, disable_auto_mount
+    servicer,
+    set_env_client,
+    supports_dir,
+    recwarn,
+    monkeypatch,
 ):
     monkeypatch.chdir(supports_dir)
     _run(["run", "-m", f"{app_module}::foo"])
@@ -270,9 +274,7 @@ def test_run_write_result(servicer, set_env_client, test_dir):
         (["--name=deployment_name", "-m", app_module], True, ""),
     ],
 )
-def test_deploy(
-    servicer, set_env_client, supports_dir, monkeypatch, args, success, expected_warning, disable_auto_mount, recwarn
-):
+def test_deploy(servicer, set_env_client, supports_dir, monkeypatch, args, success, expected_warning, recwarn):
     monkeypatch.chdir(supports_dir)
     _run(["deploy"] + args, expected_exit_code=0 if success else 1)
     if success:
@@ -372,7 +374,7 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
         assert "unsupported operand" in str(res.exception)
 
 
-def test_run_parse_args_function(servicer, set_env_client, test_dir, recwarn, disable_auto_mount):
+def test_run_parse_args_function(servicer, set_env_client, test_dir, recwarn):
     app_file = test_dir / "supports" / "app_run_tests" / "cli_args.py"
     res = _run(["run", app_file.as_posix()], expected_exit_code=1, expected_stderr=None)
     assert "Specify a Modal Function or local entrypoint to run" in res.stderr
@@ -1192,7 +1194,7 @@ def test_container_exec(servicer, set_env_client, mock_shell_pty, app):
     sb.terminate()
 
 
-def test_can_run_all_listed_functions_with_includes(supports_on_path, monkeypatch, set_env_client, disable_auto_mount):
+def test_can_run_all_listed_functions_with_includes(supports_on_path, monkeypatch, set_env_client):
     monkeypatch.setenv("TERM", "dumb")  # prevents looking at ansi escape sequences
 
     res = _run(["run", "-m", "multifile_project.main"], expected_exit_code=1)
@@ -1241,14 +1243,14 @@ def test_run_file_with_global_lookups(servicer, set_env_client, supports_dir):
     assert len(ctx.get_requests("FunctionGet")) == 0
 
 
-def test_run_auto_infer_prefer_target_module(servicer, supports_dir, set_env_client, monkeypatch, disable_auto_mount):
+def test_run_auto_infer_prefer_target_module(servicer, supports_dir, set_env_client, monkeypatch):
     monkeypatch.syspath_prepend(supports_dir / "app_run_tests")
     res = _run(["run", "-m", "multifile.util"])
     assert "ran util\nmain func" in res.stdout
 
 
 @pytest.mark.parametrize("func", ["va_entrypoint", "va_function", "VaClass.va_method"])
-def test_cli_run_variadic_args(servicer, set_env_client, test_dir, func, disable_auto_mount):
+def test_cli_run_variadic_args(servicer, set_env_client, test_dir, func):
     app_file = test_dir / "supports" / "app_run_tests" / "variadic_args.py"
 
     @servicer.function_body

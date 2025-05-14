@@ -50,7 +50,7 @@ def test_watch_mounts_requires_running_app():
         app._get_watch_mounts()
 
 
-def test_watch_mounts_includes_function_mounts(client, supports_dir, monkeypatch, disable_auto_mount):
+def test_watch_mounts_includes_function_mounts(client, supports_dir, monkeypatch):
     # TODO: remove this test once public Mount constructions are fully deprecated
     monkeypatch.syspath_prepend(supports_dir)
     app = modal.App()
@@ -65,7 +65,7 @@ def test_watch_mounts_includes_function_mounts(client, supports_dir, monkeypatch
     assert watch_mounts == [pkg_a_mount]
 
 
-def test_watch_mounts_includes_cls_mounts(client, supports_dir, monkeypatch, disable_auto_mount):
+def test_watch_mounts_includes_cls_mounts(client, supports_dir, monkeypatch):
     # TODO: remove this test once public Mount constructions are fully deprecated
     monkeypatch.syspath_prepend(supports_dir)
     app = modal.App()
@@ -82,7 +82,7 @@ def test_watch_mounts_includes_cls_mounts(client, supports_dir, monkeypatch, dis
     assert watch_mounts == [pkg_a_mount]
 
 
-def test_watch_mounts_includes_image_mounts(client, supports_dir, monkeypatch, disable_auto_mount):
+def test_watch_mounts_includes_image_mounts(client, supports_dir, monkeypatch):
     # TODO: remove this test once public Mount constructions are fully deprecated
     monkeypatch.syspath_prepend(supports_dir)
     app = modal.App()
@@ -98,7 +98,7 @@ def test_watch_mounts_includes_image_mounts(client, supports_dir, monkeypatch, d
     assert watch_mounts == [pkg_a_mount]
 
 
-def test_watch_mounts_ignore_non_local(disable_auto_mount, client, servicer):
+def test_watch_mounts_ignore_non_local(client, servicer):
     app = modal.App()
 
     # uses the published client mount - should not be included in watch items
@@ -113,7 +113,7 @@ def test_watch_mounts_ignore_non_local(disable_auto_mount, client, servicer):
     assert len(mounts) == 0
 
 
-def test_add_local_mount_included_in_serve_watchers(servicer, client, supports_on_path, disable_auto_mount):
+def test_add_local_mount_included_in_serve_watchers(servicer, client, supports_on_path):
     deb_slim = modal.Image.debian_slim()
     img = deb_slim.add_local_python_source("pkg_a")
     app = modal.App()

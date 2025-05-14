@@ -2,8 +2,7 @@
 
 from modal import App
 
-# TODO: remove include_source=True when automount is disabled by default
-app = App(name="user_code_import_samples_func_app", include_source=True)
+app = App(name="user_code_import_samples_func_app")
 
 
 @app.function()

@@ -58,45 +58,15 @@ async def env_mount_files():
     return filenames
 
 
-def test_mounted_files_script(servicer, credentials, supports_dir, env_mount_files, server_url_env, monkeypatch):
-    monkeypatch.setenv("MODAL_AUTOMOUNT", "1")  # re-enable automount since that's what we test here
-    print(helpers.deploy_app_externally(servicer, credentials, script_path, cwd=supports_dir))
-    files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
-
-    # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
-    assert files == {
-        "/root/a.py",
-        "/root/b/c.py",
-        "/root/b/e.py",
-        "/root/pkg_b/__init__.py",
-        "/root/pkg_b/f.py",
-        "/root/pkg_b/g/h.py",
-        "/root/script.py",
-    }
-
-
 serialized_fn_path = "pkg_a/serialized_fn.py"
 
 
-def test_mounted_files_serialized(servicer, credentials, supports_dir, env_mount_files, server_url_env, monkeypatch):
-    monkeypatch.delenv("MODAL_AUTOMOUNT")
+def serialized_function_no_automount(servicer, credentials, supports_dir, env_mount_files, server_url_env):
     helpers.deploy_app_externally(servicer, credentials, serialized_fn_path, cwd=supports_dir)
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
 
-    # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
-    assert files == {
-        # should serialized_fn be included? It's not needed to run the function,
-        # but it's loaded into sys.modules at definition time...
-        "/root/serialized_fn.py",
-        # this is mounted under root since it's imported as `import b`
-        # and not `import pkg_a.b` from serialized_fn.py
-        "/root/b/c.py",
-        "/root/b/e.py",  # same as above
-        "/root/a.py",  # same as above
-        "/root/pkg_b/__init__.py",
-        "/root/pkg_b/f.py",
-        "/root/pkg_b/g/h.py",
-    }
+    # We don't automount anymore, nothing should be mounted
+    assert files == {}
 
 
 def test_mounted_files_package(supports_dir, env_mount_files, servicer, server_url_env, token_env):
@@ -117,46 +87,13 @@ def test_mounted_files_package(supports_dir, env_mount_files, servicer, server_u
     }
 
 
-def test_mounted_files_package_with_automount(supports_dir, env_mount_files, servicer, server_url_env, token_env):
-    p = subprocess.run(
-        ["modal", "run", "pkg_a.package"],
-        cwd=supports_dir,
-        env={**os.environ, "MODAL_AUTOMOUNT": "1"},
-    )
-    assert p.returncode == 0
-    files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
-    assert files == {
-        "/root/pkg_a/__init__.py",
-        "/root/pkg_a/a.py",
-        "/root/pkg_a/b/c.py",
-        "/root/pkg_a/b/e.py",
-        "/root/pkg_a/d.py",
-        "/root/pkg_a/package.py",
-        "/root/pkg_a/script.py",
-        "/root/pkg_a/serialized_fn.py",
-        "/root/pkg_b/__init__.py",
-        "/root/pkg_b/f.py",
-        "/root/pkg_b/g/h.py",
-    }
-
-
 @skip_windows("venvs behave differently on Windows.")
 def test_mounted_files_sys_prefix(servicer, supports_dir, venv_path, env_mount_files, server_url_env, token_env):
     # Run with venv activated, so it's on sys.prefix, and modal is dev-installed in the VM
-    subprocess.run(
-        [venv_path / "bin" / "modal", "run", script_path], cwd=supports_dir, env={**os.environ, "MODAL_AUTOMOUNT": "1"}
-    )
+    subprocess.run([venv_path / "bin" / "modal", "run", script_path], cwd=supports_dir, env={**os.environ})
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
-    # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c` or `modal`
-    assert files == {
-        "/root/a.py",
-        "/root/b/c.py",
-        "/root/b/e.py",
-        "/root/script.py",
-        "/root/pkg_b/__init__.py",
-        "/root/pkg_b/f.py",
-        "/root/pkg_b/g/h.py",
-    }
+    # No automount, so we only have the entrypoint file
+    assert files == {"/root/script.py"}
 
 
 @pytest.fixture
@@ -203,9 +140,7 @@ def test_mounted_files_symlinked_python_install(
 
 
 def test_mounted_files_config(servicer, supports_dir, env_mount_files, server_url_env, token_env):
-    p = subprocess.run(
-        ["modal", "run", "pkg_a/script.py"], cwd=supports_dir, env={**os.environ, "MODAL_AUTOMOUNT": "0"}
-    )
+    p = subprocess.run(["modal", "run", "pkg_a/script.py"], cwd=supports_dir, env={**os.environ})
     assert p.returncode == 0
     files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
     assert files == {
@@ -292,31 +227,6 @@ def test_image_mounts_are_not_traversed_on_declaration(supports_dir, monkeypatch
     assert Path(__file__) in files  # this test file should have been included
 
 
-def test_mount_dedupe(servicer, credentials, test_dir, server_url_env):
-    supports_dir = test_dir / "supports"
-    normally_not_included_file = supports_dir / "pkg_a" / "normally_not_included.pyc"
-    normally_not_included_file.touch(exist_ok=True)
-    print(
-        helpers.deploy_app_externally(
-            # no explicit mounts, rely on auto-mounting
-            servicer,
-            credentials,
-            "mount_dedupe.py",
-            cwd=test_dir / "supports",
-            env={**os.environ, "USE_EXPLICIT": "0", "MODAL_AUTOMOUNT": "1"},
-        )
-    )
-    assert servicer.n_mounts == 2
-    # the order isn't strictly defined here
-    entrypoint_mount, pkg_a_mount = sorted(
-        servicer.mounts_excluding_published_client().items(), key=lambda item: len(item[1])
-    )
-    assert entrypoint_mount[1].keys() == {"/root/mount_dedupe.py"}
-    for fn in pkg_a_mount[1].keys():
-        assert fn.startswith("/root/pkg_a")
-    assert "/root/pkg_a/normally_not_included.pyc" not in pkg_a_mount[1].keys()
-
-
 def test_mount_dedupe_explicit(servicer, credentials, supports_dir, server_url_env):
     normally_not_included_file = supports_dir / "pkg_a" / "normally_not_included.pyc"
     normally_not_included_file.touch(exist_ok=True)
@@ -327,7 +237,6 @@ def test_mount_dedupe_explicit(servicer, credentials, supports_dir, server_url_e
             credentials,
             "mount_dedupe.py",
             cwd=supports_dir,
-            env={"USE_EXPLICIT": "1"},
         )
     )
     assert servicer.n_mounts == 3

@@ -41,14 +41,6 @@ SUPPORTED_IMAGE_BUILDER_VERSIONS = [
 ]
 
 
-@pytest.fixture(autouse=True)
-def no_automount(monkeypatch):
-    # no tests in here use automounting, but a lot of them implicitly create
-    # functions w/ lots of modules is sys.modules which will automount
-    # which takes a lot of time, so we disable it
-    monkeypatch.setenv("MODAL_AUTOMOUNT", "0")
-
-
 def dummy() -> None:
     return None
 
@@ -757,7 +749,7 @@ def test_image_add_local_dir(servicer, client, tmp_path_with_content, copy, remo
 
 
 @pytest.mark.usefixtures("tmp_cwd")
-def test_image_docker_command_no_copy_commands(builder_version, servicer, client, disable_auto_mount):
+def test_image_docker_command_no_copy_commands(builder_version, servicer, client):
     # make sure that no mount is created if there are no copy commands
     Path("data.txt").write_text("hello")
     app = App()
@@ -1193,7 +1185,7 @@ def test_hydration_metadata(servicer, client):
             assert_metadata(img, dummy_metadata)
 
 
-cls_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
+cls_app = App()
 
 VARIABLE_5 = 1
 VARIABLE_6 = 1
@@ -1581,7 +1573,7 @@ def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
     assert get_hash(img) == "78d579f243c21dcaa59e5daf97f732e2453b004bc2122de692617d4d725c6184"
 
 
-parallel_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
+parallel_app = App()
 
 
 @parallel_app.function(image=Image.debian_slim().run_commands("sleep 1", "echo hi"))
