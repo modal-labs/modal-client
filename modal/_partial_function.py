@@ -18,7 +18,7 @@ from modal_proto import api_pb2
 from ._functions import _Function
 from ._utils.async_utils import synchronizer
 from ._utils.deprecation import deprecation_warning
-from ._utils.function_utils import callable_has_non_self_non_default_params, callable_has_non_self_params
+from ._utils.function_utils import callable_has_non_self_params
 from .config import logger
 from .exception import InvalidError
 
@@ -181,21 +181,11 @@ class _PartialFunction(typing.Generic[P, ReturnType, OriginalReturnType]):
 
             if require_sync and inspect.iscoroutinefunction(self.raw_f):
                 self.registered = True  # Hacky, avoid false-positive warning
-                raise InvalidError(f"`@modal.{decorator_name}` can't be applied to an async function.")
+                raise InvalidError(f"The `@modal.{decorator_name}` decorator can't be applied to an async function.")
 
             if require_nullary and callable_has_non_self_params(self.raw_f):
                 self.registered = True  # Hacky, avoid false-positive warning
-                if callable_has_non_self_non_default_params(self.raw_f):
-                    raise InvalidError(f"Functions obj by `@modal.{decorator_name}` can't have parameters.")
-                else:
-                    # TODO(michael): probably fine to just make this an error at this point
-                    # but best to do it in a separate PR
-                    deprecation_warning(
-                        (2024, 9, 4),
-                        f"The function obj by `@modal.{decorator_name}` has default parameters, "
-                        "but shouldn't have any parameters - Modal will drop support for "
-                        "default parameters in a future release.",
-                    )
+                raise InvalidError(f"Functions decorated by `@modal.{decorator_name}` can't have parameters.")
 
     def _get_raw_f(self) -> Callable[P, ReturnType]:
         assert self.raw_f is not None
