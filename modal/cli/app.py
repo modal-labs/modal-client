@@ -16,7 +16,8 @@ from modal.client import _Client
 from modal.environments import ensure_env
 from modal_proto import api_pb2
 
-from .utils import ENV_OPTION, display_table, get_app_id_from_name, stream_app_logs, timestamp_to_local
+from .._utils.time_utils import timestamp_to_local
+from .utils import ENV_OPTION, display_table, get_app_id_from_name, stream_app_logs
 
 APP_IDENTIFIER = Argument("", help="App name or ID")
 NAME_OPTION = typer.Option("", "-n", "--name", help="Deprecated: Pass App name as a positional argument")
