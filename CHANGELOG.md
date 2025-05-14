@@ -12,6 +12,11 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.0.dev3 (2025-05-14)
+
+- Functions decorated with `@modal.asgi_app` or `@modal.wsgi_app` are now required to be nullary. Previously, we only warned in the case where a function was defined with all parameters having default arguments.
+
+
 #### 1.0.0.dev2 (2025-05-14)
 
 - Removed backwards compatibility for using `label=` or `tag=` keywords in object lookup methods. We standardized these methods to use `name=` as the parameter name, but we recommend using positional arguments:
