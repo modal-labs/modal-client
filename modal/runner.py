@@ -27,7 +27,6 @@ from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._traceback import print_server_warnings, traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, gather_cancel_on_exc, synchronize_api
-from ._utils.deprecation import deprecation_error
 from ._utils.git_utils import get_git_commit_info
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name, is_valid_tag
@@ -632,24 +631,7 @@ async def _interactive_shell(
                 raise
 
 
-def _run_stub(*args: Any, **kwargs: Any):
-    """mdmd:hidden
-    `run_stub` has been renamed to `run_app` and is deprecated. Please update your code.
-    """
-    deprecation_error(
-        (2024, 5, 1), "`run_stub` has been renamed to `run_app` and is deprecated. Please update your code."
-    )
-
-
-def _deploy_stub(*args: Any, **kwargs: Any):
-    """mdmd:hidden"""
-    message = "`deploy_stub` has been renamed to `deploy_app`. Please update your code."
-    deprecation_error((2024, 5, 1), message)
-
-
 run_app = synchronize_api(_run_app)
 serve_update = synchronize_api(_serve_update)
 deploy_app = synchronize_api(_deploy_app)
 interactive_shell = synchronize_api(_interactive_shell)
-run_stub = synchronize_api(_run_stub)
-deploy_stub = synchronize_api(_deploy_stub)

@@ -11,7 +11,6 @@ from synchronicity.async_wrap import asynccontextmanager
 from modal._output import OutputManager
 
 from ._utils.async_utils import TaskContext, asyncify, synchronize_api, synchronizer
-from ._utils.deprecation import deprecation_error
 from ._utils.logger import logger
 from ._watcher import watch
 from .cli.import_refs import ImportRef, import_app_from_ref
@@ -122,9 +121,4 @@ async def _serve_app(
             yield app
 
 
-def _serve_stub(*args, **kwargs):
-    deprecation_error((2024, 5, 1), "`serve_stub` is deprecated. Please use `serve_app` instead.")
-
-
 serve_app = synchronize_api(_serve_app)
-serve_stub = synchronize_api(_serve_stub)

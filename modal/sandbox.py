@@ -762,23 +762,3 @@ class _Sandbox(_Object, type_prefix="sb"):
 
 
 Sandbox = synchronize_api(_Sandbox)
-
-
-def __getattr__(name):
-    if name == "LogsReader":
-        deprecation_error(
-            (2024, 8, 12),
-            "`modal.sandbox.LogsReader` is deprecated. Please import `modal.io_streams.StreamReader` instead.",
-        )
-        from .io_streams import StreamReader
-
-        return StreamReader
-    elif name == "StreamWriter":
-        deprecation_error(
-            (2024, 8, 12),
-            "`modal.sandbox.StreamWriter` is deprecated. Please import `modal.io_streams.StreamWriter` instead.",
-        )
-        from .io_streams import StreamWriter
-
-        return StreamWriter
-    raise AttributeError(f"module {__name__} has no attribute {name}")
