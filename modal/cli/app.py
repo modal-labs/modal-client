@@ -99,6 +99,7 @@ def logs(
     *,
     name: str = NAME_OPTION,
     env: Optional[str] = ENV_OPTION,
+    timestamps: bool = typer.Option(False, "--timestamps", help="Show timestamps for each log line"),
 ):
     """Show App logs, streaming while active.
 
@@ -119,7 +120,7 @@ def logs(
     """
     app_identifier = warn_on_name_option("logs", app_identifier, name)
     app_id = get_app_id(app_identifier, env)
-    stream_app_logs(app_id)
+    stream_app_logs(app_id, show_timestamps=timestamps)
 
 
 @app_cli.command("rollback", no_args_is_help=True, context_settings={"ignore_unknown_options": True})

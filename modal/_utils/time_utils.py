@@ -1,7 +1,9 @@
+# Copyright Modal Labs 2025
 from datetime import datetime
+from typing import Optional
 
 
-def timestamp_to_local(ts: float, isotz: bool = True) -> str:
+def timestamp_to_local(ts: float, isotz: bool = True) -> Optional[str]:
     if ts > 0:
         locale_tz = datetime.now().astimezone().tzinfo
         dt = datetime.fromtimestamp(ts, tz=locale_tz)

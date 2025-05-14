@@ -22,10 +22,13 @@ from ..exception import NotFoundError
 
 @synchronizer.create_blocking
 async def stream_app_logs(
-    app_id: Optional[str] = None, task_id: Optional[str] = None, app_logs_url: Optional[str] = None
+    app_id: Optional[str] = None,
+    task_id: Optional[str] = None,
+    app_logs_url: Optional[str] = None,
+    show_timestamps: bool = False,
 ):
     client = await _Client.from_env()
-    output_mgr = OutputManager(status_spinner_text=f"Tailing logs for {app_id}")
+    output_mgr = OutputManager(status_spinner_text=f"Tailing logs for {app_id}", show_timestamps=show_timestamps)
     try:
         with output_mgr.show_status_spinner():
             await get_app_logs_loop(client, output_mgr, app_id=app_id, task_id=task_id, app_logs_url=app_logs_url)
