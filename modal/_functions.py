@@ -1184,7 +1184,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     @live_method
     async def keep_warm(self, warm_pool_size: int) -> None:
-        """Set the warm pool size for the Function.
+        """mdmd:hidden
+        Set the warm pool size for the Function.
 
         DEPRECATED: Please adapt your code to use the more general `update_autoscaler` method instead:
 
@@ -1288,7 +1289,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> "_Function":
-        """Lookup a Function from a deployed App by its name.
+        """mdmd:hidden
+        Lookup a Function from a deployed App by its name.
 
         DEPRECATED: This method is deprecated in favor of `modal.Function.from_name`.
 
@@ -1412,7 +1414,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     @property
     @live_method
     async def web_url(self) -> Optional[str]:
-        """Deprecated. Use the `Function.get_web_url()` method instead.
+        """mdmd:hidden
+        Deprecated. Use the `Function.get_web_url()` method instead.
 
         URL of a Function running as a web endpoint.
         """
@@ -1855,7 +1858,8 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
 
 async def _gather(*function_calls: _FunctionCall[T]) -> typing.Sequence[T]:
-    """Deprecated: Please use `modal.FunctionCall.gather()` instead."""
+    """mdmd:hidden
+    Deprecated: Please use `modal.FunctionCall.gather()` instead."""
     deprecation_warning(
         (2025, 2, 24),
         "`modal.functions.gather()` is deprecated; please use `modal.FunctionCall.gather()` instead.",

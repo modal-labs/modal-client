@@ -185,7 +185,8 @@ class _Queue(_Object, type_prefix="qu"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Queue":
-        """Lookup a named Queue.
+        """mdmd:hidden
+        Lookup a named Queue.
 
         DEPRECATED: This method is deprecated in favor of `modal.Queue.from_name`.
 

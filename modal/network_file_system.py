@@ -172,7 +172,8 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_NetworkFileSystem":
-        """Lookup a named NetworkFileSystem.
+        """mdmd:hidden
+        Lookup a named NetworkFileSystem.
 
         DEPRECATED: This method is deprecated in favor of `modal.NetworkFileSystem.from_name`.
 

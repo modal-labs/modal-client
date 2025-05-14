@@ -276,7 +276,8 @@ class _Obj:
         )
 
     async def keep_warm(self, warm_pool_size: int) -> None:
-        """Set the warm pool size for the class containers
+        """mdmd:hidden
+        Set the warm pool size for the class containers
 
         DEPRECATED: Please adapt your code to use the more general `update_autoscaler` method instead:
 
@@ -793,7 +794,8 @@ More information on class parameterization can be found here: https://modal.com/
         environment_name: Optional[str] = None,
         workspace: Optional[str] = None,  # Deprecated and unused
     ) -> "_Cls":
-        """Lookup a Cls from a deployed App by its name.
+        """mdmd:hidden
+        Lookup a Cls from a deployed App by its name.
 
         DEPRECATED: This method is deprecated in favor of `modal.Cls.from_name`.
 

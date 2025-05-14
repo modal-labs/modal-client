@@ -673,7 +673,7 @@ class _Image(_Object, type_prefix="im"):
         return obj
 
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
-        """
+        """mdmd:hidden
         **Deprecated**: Use image.add_local_dir(..., copy=True) or similar instead.
 
         Copy the entire contents of a `modal.Mount` into an image.
@@ -803,7 +803,8 @@ class _Image(_Object, type_prefix="im"):
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
-        """Copy a file into the image as a part of building it.
+        """mdmd:hidden
+        Copy a file into the image as a part of building it.
 
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
@@ -876,7 +877,7 @@ class _Image(_Object, type_prefix="im"):
         # Which follows dockerignore syntax.
         ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
     ) -> "_Image":
-        """
+        """mdmd:hidden
         **Deprecated**: Use image.add_local_dir instead
 
         Copy a directory into the image as a part of building the image.
