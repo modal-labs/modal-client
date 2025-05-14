@@ -8,7 +8,7 @@ from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
 from modal import Client
-from modal.exception import AuthError, ConnectionError, DeprecationError, InvalidError, ServerWarning
+from modal.exception import AuthError, ConnectionError, InvalidError, ServerWarning
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows, skip_windows_unix_socket
@@ -171,7 +171,7 @@ def test_implicit_default_profile_warning(servicer, modal_config, server_url_env
     token_secret = 'as_xyz'
     """
     with modal_config(config):
-        with pytest.raises(DeprecationError, match="Support for using an implicit 'default' profile is deprecated."):
+        with pytest.raises(InvalidError, match="No Modal profile is active"):
             Client.from_env()
 
     config = """
