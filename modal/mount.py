@@ -26,7 +26,7 @@ from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._utils.async_utils import aclosing, async_map, synchronize_api
 from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
-from ._utils.deprecation import deprecation_warning, renamed_parameter
+from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from ._utils.package_utils import get_module_mount_info
@@ -691,7 +691,6 @@ class _Mount(_Object, type_prefix="mo"):
         return mount
 
     @staticmethod
-    @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
         name: str,
         *,
@@ -712,7 +711,6 @@ class _Mount(_Object, type_prefix="mo"):
         return _Mount._from_loader(_load, "Mount()", hydrate_lazily=True)
 
     @classmethod
-    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
         cls: type["_Mount"],
         name: str,

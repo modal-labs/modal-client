@@ -10,7 +10,7 @@ from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._runtime.execution_context import is_local
 from ._utils.async_utils import synchronize_api
-from ._utils.deprecation import deprecation_warning, renamed_parameter
+from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -162,7 +162,6 @@ class _Secret(_Object, type_prefix="st"):
         return _Secret._from_loader(_load, "Secret.from_dotenv()", hydrate_lazily=True)
 
     @staticmethod
-    @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
         name: str,
         *,
@@ -206,7 +205,6 @@ class _Secret(_Object, type_prefix="st"):
         return _Secret._from_loader(_load, "Secret()", hydrate_lazily=True)
 
     @staticmethod
-    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
         name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,

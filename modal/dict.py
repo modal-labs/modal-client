@@ -11,7 +11,7 @@ from ._object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _O
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.deprecation import deprecation_warning, renamed_parameter
+from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -115,7 +115,6 @@ class _Dict(_Object, type_prefix="di"):
             yield cls._new_hydrated(response.dict_id, client, None, is_another_app=True)
 
     @staticmethod
-    @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
         name: str,
         data: Optional[dict] = None,  # DEPRECATED
@@ -159,7 +158,6 @@ class _Dict(_Object, type_prefix="di"):
         return _Dict._from_loader(_load, "Dict()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
-    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
         name: str,
         data: Optional[dict] = None,
@@ -200,7 +198,6 @@ class _Dict(_Object, type_prefix="di"):
         return obj
 
     @staticmethod
-    @renamed_parameter((2024, 12, 18), "label", "name")
     async def delete(
         name: str,
         *,
