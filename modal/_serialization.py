@@ -324,8 +324,8 @@ def _deserialize_asgi(asgi: api_pb2.Asgi) -> Any:
     elif msg_type == "websocket_send":
         return {
             "type": "websocket.send",
-            "bytes": asgi.websocket_send.bytes if asgi.websocket_send.HasField("bytes") else None,
-            "text": asgi.websocket_send.text if asgi.websocket_send.HasField("text") else None,
+            **({"bytes": asgi.websocket_send.bytes} if asgi.websocket_send.HasField("bytes") else {}),
+            **({"text": asgi.websocket_send.text} if asgi.websocket_send.HasField("text") else {}),
         }
     elif msg_type == "websocket_disconnect":
         return {
