@@ -27,7 +27,7 @@ from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
 import modal_proto.api_pb2
-from modal.exception import VolumeUploadTimeoutError
+from modal.exception import InvalidError, VolumeUploadTimeoutError
 from modal_proto import api_pb2
 
 from ._object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _Object, live_method, live_method_gen
@@ -49,7 +49,7 @@ from ._utils.blob_utils import (
     get_file_upload_spec_from_fileobj,
     get_file_upload_spec_from_path,
 )
-from ._utils.deprecation import deprecation_error, deprecation_warning
+from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.http_utils import ClientSessionRegistry
 from ._utils.name_utils import check_object_name
@@ -364,21 +364,14 @@ class _Volume(_Object, type_prefix="vo"):
         recursively.
         """
         if path.endswith("**"):
-            msg = (
+            raise InvalidError(
                 "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. "
                 "Please pass recursive=True instead. For the CLI, just remove the glob suffix."
             )
-            deprecation_error(
-                (2024, 4, 23),
-                msg,
-            )
         elif path.endswith("*"):
-            deprecation_error(
-                (2024, 4, 23),
-                (
-                    "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. "
-                    "Please remove the glob `*` suffix."
-                ),
+            raise InvalidError(
+                "Glob patterns in `volume get` and `Volume.listdir()` are deprecated. "
+                "Please remove the glob `*` suffix."
             )
 
         req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)

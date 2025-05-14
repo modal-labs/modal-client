@@ -15,6 +15,11 @@ We appreciate your patience while we speedily work towards a stable release of t
 #### 1.0.0.dev4 (2025-05-14)
 
 - Removed the `.resolve()` method on Modal objects. This method had not been publicly documented, but where used it can be replaced straightforwardly with `.hydrate()`. Note that explicit hydration should rarely be necessary: in most cases you can rely on lazy hydration semantics (i.e., objects will be hydrated when the first method that requires server metadata is called).
+- Passing flagged options to the `Image.pip_install` package list will now raise an error. Use the `extra_options`  parameter for additional flags that aren't exposed through the `Image.pip_install` signature:
+  ```python
+  image.pip_install("flash-attn", "--no-build-isolation")  # This is now an error!
+  image.pip_install("flash-attn", extra_options="--no-build-isolation")  # Correct spelling
+  ```
 
 
 #### 1.0.0.dev3 (2025-05-14)

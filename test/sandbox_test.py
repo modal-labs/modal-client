@@ -271,9 +271,6 @@ def test_app_sandbox(client, servicer):
     app = App()
     with app.run(client=client):
         # Create sandbox
-        with pytest.raises(DeprecationError, match="`App.spawn_sandbox` is deprecated"):
-            app.spawn_sandbox("bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret])
-
         sb = Sandbox.create("bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret], app=app)
         sb.wait()
         assert sb.stderr.read() == "bye\n"
