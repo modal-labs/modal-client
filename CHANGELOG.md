@@ -12,6 +12,14 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.0.dev10 (2025-05-14)
+
+- We've made some breaking changes to Modal's "automounting" behavior:
+  - Previously, Modal containers would automatically include the source for local Python packages that were imported by your Modal App. Going forward, it will be necessary to explicitly include such packages in the Image (i.e., with `modal.Image.add_local_python_source`). If you've not already adapted your source code in response to warnings about changes in the automount behavior, Apps built with 1.0+ will have different files included and may not run as expected.
+  - Support for the `automount` configuration (`MODAL_AUTOMOUNT`) has been removed; this environment variable will no longer have any effect.
+  - Modal will continue to automatically include the Python module or package where the Function is defined. This is narrower in scope than the old automounting behavior: it's limited to at most a single package, and it includes only `.py` files. The limited automounting can also be disabled in cases where your Image definition already includes the package defining the App: set `include_source=False` in the `modal.App` constructor or `@app.function` decorator.
+
+
 #### 1.0.0.dev6 (2025-05-14)
 
 - Removed the `show_progress` parameter from `modal.App.run`. This parameter has been replaced by the `modal.enable_output` context manager:
