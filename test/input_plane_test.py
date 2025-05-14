@@ -24,3 +24,17 @@ def test_lookup_foo(client, servicer):
     deploy_app(app, "app", client=client)
     f = Function.from_name("app", "foo").hydrate(client)
     assert f.remote() == "attempt_await_bogus_response"
+
+@app.function(experimental_options={"input_plane_region": "us-east"})
+def maybe_fail():
+    raise ValueError("fail")
+
+def test_retry(client, servicer):
+    # Tell the servicer to fail once, and then succeed. The client should retry the failed attempt.
+    servicer.attempts_to_fail = 1
+    with app.run(client=client):
+        assert foo.remote() == "attempt_await_bogus_response"
+    # We don't have a great way to verify the call was actually retried. We can at least check that the servicer
+    # decremented the attempts_to_fail counter, which indicates that the call was retried.
+    assert servicer.attempts_to_fail == 0
+
