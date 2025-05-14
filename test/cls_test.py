@@ -31,7 +31,7 @@ from modal_proto import api_pb2
 
 from .supports.base_class import BaseCls2
 
-app = App("app", include_source=True)
+app = App("app")
 
 
 @pytest.fixture(autouse=True)
@@ -230,7 +230,7 @@ def test_with_options_from_name(servicer):
 # Reusing the app runs into an issue with stale function handles.
 # TODO (akshat): have all the client tests use separate apps, and throw
 # an exception if the user tries to reuse an app.
-app_remote = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
+app_remote = App()
 
 
 @app_remote.cls(cpu=42)
@@ -263,7 +263,7 @@ def test_call_cls_remote_invalid_type(client):
         assert "function" in str(exc)
 
 
-app_2 = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
+app_2 = App()
 
 
 @app_2.cls(cpu=42)
@@ -305,7 +305,7 @@ def test_run_class_serialized(client, servicer):
     assert bound_bar(100) == 1000000
 
 
-app_remote_2 = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
+app_remote_2 = App()
 
 
 @app_remote_2.cls(cpu=42)
@@ -325,7 +325,7 @@ async def test_call_cls_remote_async(client):
         assert await bar_remote.baz.remote.aio(8) == 64  # Mock servicer just squares the argument
 
 
-app_local = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
+app_local = App()
 
 
 @app_local.cls(cpu=42, enable_memory_snapshot=True)
@@ -369,7 +369,7 @@ def test_can_call_remotely_from_local(client):
         assert foo.baz.remote(9) == 81
 
 
-app_remote_3 = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
+app_remote_3 = App()
 
 
 @app_remote_3.cls(cpu=42)
@@ -488,7 +488,7 @@ def test_failed_lookup_error(client, servicer):
         Cls.from_name("my-cls-app", "Foo", environment_name="some-env").hydrate(client=client)
 
 
-baz_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
+baz_app = App()
 
 
 @baz_app.cls()
@@ -505,7 +505,7 @@ def test_call_not_modal_method():
     assert baz.not_modal_method(7) == 35
 
 
-cls_with_enter_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
+cls_with_enter_app = App()
 
 
 def get_thread_id():
@@ -575,7 +575,7 @@ async def test_async_enter_on_local_modal_call():
     assert obj.entered
 
 
-inheritance_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
+inheritance_app = App()
 
 
 class BaseCls:
@@ -599,7 +599,7 @@ def test_derived_cls(client, servicer):
         assert DerivedCls().run.remote(3) == 9
 
 
-inheritance_app_2 = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
+inheritance_app_2 = App()
 
 
 @inheritance_app_2.cls()
@@ -634,7 +634,7 @@ def test_rehydrate(client, servicer, reset_container_app):
     assert obj.bar.local(7) == 343
 
 
-app_unhydrated = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
+app_unhydrated = App()
 
 
 @app_unhydrated.cls()
@@ -649,7 +649,7 @@ def test_unhydrated():
         foo.bar.remote(42)
 
 
-app_method_args = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
+app_method_args = App()
 
 
 @app_method_args.cls(min_containers=5)
@@ -774,7 +774,7 @@ def test_handlers():
     assert list(pfs.keys()) == ["my_exit"]
 
 
-web_app_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
+web_app_app = App()
 
 
 @web_app_app.cls()
@@ -795,7 +795,7 @@ def test_web_cls(client):
         assert c.asgi.get_web_url() == "http://asgi.internal"
 
 
-handler_app = App("handler-app", include_source=True)
+handler_app = App("handler-app")
 
 
 image = Image.debian_slim().pip_install("xyz")
@@ -823,7 +823,7 @@ def test_build_image(client, servicer):
         assert servicer.force_built_images == []
 
 
-other_handler_app = App("other-handler-app", include_source=True)
+other_handler_app = App("other-handler-app")
 
 
 with pytest.warns(DeprecationError, match="@modal.build"):
@@ -848,7 +848,7 @@ def test_force_build_image(client, servicer):
         assert servicer.force_built_images == ["im-3"]
 
 
-build_timeout_handler_app = App("build-timeout-handler-app", include_source=True)
+build_timeout_handler_app = App("build-timeout-handler-app")
 
 
 with pytest.warns(DeprecationError, match="@modal.build"):
@@ -961,7 +961,7 @@ def test_cross_process_userclass_serde(supports_dir):
     assert revived_cls().method() == "a"  # this should be bound to the object
 
 
-app2 = App("app2", include_source=True)
+app2 = App("app2")
 
 
 @app2.cls()
@@ -1052,7 +1052,7 @@ class ParametrizedClass3:
         pass
 
 
-app_batched = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
+app_batched = App()
 
 
 def test_batched_method_duplicate_error(client):
@@ -1129,7 +1129,7 @@ def test_unsupported_function_decorators_on_methods():
                 pass
 
 
-def test_using_method_on_uninstantiated_cls(recwarn, disable_auto_mount):
+def test_using_method_on_uninstantiated_cls(recwarn):
     app = App()
 
     @app.cls(serialized=True)

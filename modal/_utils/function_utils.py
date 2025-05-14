@@ -23,7 +23,7 @@ from .._serialization import (
     signature_to_parameter_specs,
 )
 from .._traceback import append_modal_tb
-from ..config import config, logger
+from ..config import logger
 from ..exception import (
     DeserializationError,
     ExecutionError,
@@ -627,8 +627,7 @@ class FunctionCreationStatus:
 
 class IncludeSourceMode(enum.Enum):
     INCLUDE_NOTHING = False  # can only be set in source, can't be set in config
-    INCLUDE_MAIN_PACKAGE = True  # also represented by AUTOMOUNT=0 in config
-    INCLUDE_FIRST_PARTY = "legacy"  # mounts all "local" modules in sys.modules - represented by AUTOMOUNT=1 in config
+    INCLUDE_MAIN_PACKAGE = True  # Default behavior
 
 
 def get_include_source_mode(function_or_app_specific) -> IncludeSourceMode:
@@ -650,6 +649,4 @@ def get_include_source_mode(function_or_app_specific) -> IncludeSourceMode:
         # explicitly set in app/function
         return IncludeSourceMode(function_or_app_specific)
 
-    # note that the automount config boolean isn't a 1-1 mapping with include_source!
-    legacy_automount_mode: bool = config.get("automount")
-    return IncludeSourceMode.INCLUDE_FIRST_PARTY if legacy_automount_mode else IncludeSourceMode.INCLUDE_MAIN_PACKAGE
+    return IncludeSourceMode.INCLUDE_MAIN_PACKAGE
