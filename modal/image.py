@@ -193,18 +193,6 @@ def _validate_packages(packages: list[str]) -> bool:
     return not any(pkg.startswith("-") for pkg in packages)
 
 
-def _warn_invalid_packages(old_command: str) -> None:
-    deprecation_warning(
-        (2024, 7, 3),
-        "Passing flags to `pip` via the `packages` argument of `pip_install` is deprecated."
-        " Please pass flags via the `extra_options` argument instead."
-        "\nNote that this will cause a rebuild of this image layer."
-        " To avoid rebuilding, you can pass the following to `run_commands` instead:"
-        f'\n`image.run_commands("{old_command}")`',
-        show_source=False,
-    )
-
-
 def _make_pip_install_args(
     find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
     index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
@@ -685,7 +673,7 @@ class _Image(_Object, type_prefix="im"):
         return obj
 
     def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
-        """
+        """mdmd:hidden
         **Deprecated**: Use image.add_local_dir(..., copy=True) or similar instead.
 
         Copy the entire contents of a `modal.Mount` into an image.
@@ -815,7 +803,8 @@ class _Image(_Object, type_prefix="im"):
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
-        """Copy a file into the image as a part of building it.
+        """mdmd:hidden
+        Copy a file into the image as a part of building it.
 
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
@@ -888,7 +877,7 @@ class _Image(_Object, type_prefix="im"):
         # Which follows dockerignore syntax.
         ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
     ) -> "_Image":
-        """
+        """mdmd:hidden
         **Deprecated**: Use image.add_local_dir instead
 
         Copy a directory into the image as a part of building the image.

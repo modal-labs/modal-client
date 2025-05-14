@@ -19,7 +19,6 @@ from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.deprecation import deprecation_error
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
@@ -315,14 +314,12 @@ class _Sandbox(_Object, type_prefix="sb"):
             app_id = container_app.app_id
             app_client = container_app._client
         else:
-            arglist = ", ".join(repr(s) for s in entrypoint_args)
-            deprecation_error(
-                (2024, 9, 14),
-                "Creating a `Sandbox` without an `App` is deprecated.\n\n"
-                "You may pass in an `App` object, or reference one by name with `App.lookup`:\n\n"
+            raise InvalidError(
+                "Sandboxes require an App when created outside of a Modal container.\n\n"
+                "Run an ephemeral App (`with app.run(): ...`), or reference a deployed App using `App.lookup`:\n\n"
                 "```\n"
-                "app = modal.App.lookup('sandbox-app', create_if_missing=True)\n"
-                f"sb = modal.Sandbox.create({arglist}, app=app)\n"
+                'app = modal.App.lookup("sandbox-app", create_if_missing=True)\n'
+                "sb = modal.Sandbox.create(..., app=app)\n"
                 "```",
             )
 

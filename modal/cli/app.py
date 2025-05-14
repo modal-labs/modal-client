@@ -11,7 +11,6 @@ from typer import Argument
 
 from modal._object import _get_environment_name
 from modal._utils.async_utils import synchronizer
-from modal._utils.deprecation import deprecation_warning
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal_proto import api_pb2
@@ -41,18 +40,6 @@ async def get_app_id(app_identifier: str, env: Optional[str], client: Optional[_
     if re.match(r"^ap-[a-zA-Z0-9]{22}$", app_identifier):
         return app_identifier
     return await get_app_id_from_name.aio(app_identifier, env, client)
-
-
-def warn_on_name_option(command: str, app_identifier: str, name: str) -> str:
-    if name:
-        message = (
-            "Passing an App name using --name is deprecated;"
-            " App names can now be passed directly as positional arguments:"
-            f"\n\n    modal app {command} {name} ..."
-        )
-        deprecation_warning((2024, 8, 15), message, show_source=False)
-        return name
-    return app_identifier
 
 
 @app_cli.command("list")
@@ -96,7 +83,6 @@ async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
 def logs(
     app_identifier: str = APP_IDENTIFIER,
     *,
-    name: str = NAME_OPTION,
     env: Optional[str] = ENV_OPTION,
 ):
     """Show App logs, streaming while active.
@@ -116,7 +102,6 @@ def logs(
     ```
 
     """
-    app_identifier = warn_on_name_option("logs", app_identifier, name)
     app_id = get_app_id(app_identifier, env)
     stream_app_logs(app_id)
 
@@ -176,11 +161,9 @@ async def rollback(
 async def stop(
     app_identifier: str = APP_IDENTIFIER,
     *,
-    name: str = NAME_OPTION,
     env: Optional[str] = ENV_OPTION,
 ):
     """Stop an app."""
-    app_identifier = warn_on_name_option("stop", app_identifier, name)
     client = await _Client.from_env()
     app_id = await get_app_id.aio(app_identifier, env)
     req = api_pb2.AppStopRequest(app_id=app_id, source=api_pb2.APP_STOP_SOURCE_CLI)
@@ -193,7 +176,6 @@ async def history(
     app_identifier: str = APP_IDENTIFIER,
     *,
     env: Optional[str] = ENV_OPTION,
-    name: str = NAME_OPTION,
     json: bool = False,
 ):
     """Show App deployment history, for a currently deployed app
@@ -213,7 +195,6 @@ async def history(
     ```
 
     """
-    app_identifier = warn_on_name_option("history", app_identifier, name)
     env = ensure_env(env)
     client = await _Client.from_env()
     app_id = await get_app_id.aio(app_identifier, env, client)

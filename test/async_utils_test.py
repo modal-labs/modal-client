@@ -730,6 +730,7 @@ async def test_callable_to_agen():
 
 
 @pytest.mark.parametrize("in_order", [True, False])
+@pytest.mark.asyncio
 async def test_async_map(in_order):
     result = []
     states = []

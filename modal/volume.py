@@ -251,7 +251,8 @@ class _Volume(_Object, type_prefix="vo"):
         create_if_missing: bool = False,
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> "_Volume":
-        """Lookup a named Volume.
+        """mdmd:hidden
+        Lookup a named Volume.
 
         DEPRECATED: This method is deprecated in favor of `modal.Volume.from_name`.
 

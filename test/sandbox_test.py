@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from modal import App, Image, Mount, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret
-from modal.exception import DeprecationError, InvalidError
+from modal.exception import InvalidError
 from modal.stream_type import StreamType
 from modal_proto import api_pb2
 
@@ -265,7 +265,7 @@ def test_app_sandbox(client, servicer):
     image = Image.debian_slim().pip_install("xyz").add_local_file(__file__, remote_path="/xyz")
     secret = Secret.from_dict({"FOO": "bar"})
 
-    with pytest.raises(DeprecationError, match="Creating a `Sandbox` without an `App`"):
+    with pytest.raises(InvalidError, match="require an App"):
         Sandbox.create("bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret])
 
     app = App()

@@ -276,7 +276,8 @@ class _Obj:
         )
 
     async def keep_warm(self, warm_pool_size: int) -> None:
-        """Set the warm pool size for the class containers
+        """mdmd:hidden
+        Set the warm pool size for the class containers
 
         DEPRECATED: Please adapt your code to use the more general `update_autoscaler` method instead:
 
@@ -593,7 +594,6 @@ More information on class parameterization can be found here: https://modal.com/
         *,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
-        workspace: Optional[str] = None,  # Deprecated and unused
     ) -> "_Cls":
         """Reference a Cls from a deployed App by its name.
 
@@ -607,18 +607,12 @@ More information on class parameterization can be found here: https://modal.com/
         """
         _environment_name = environment_name or config.get("environment")
 
-        if workspace is not None:
-            deprecation_warning(
-                (2025, 1, 27), "The `workspace` argument is no longer used and will be removed in a future release."
-            )
-
         async def _load_remote(self: _Cls, resolver: Resolver, existing_object_id: Optional[str]):
             request = api_pb2.ClassGetRequest(
                 app_name=app_name,
                 object_tag=name,
                 namespace=namespace,
                 environment_name=_environment_name,
-                lookup_published=workspace is not None,
                 only_class_function=True,
             )
             try:
@@ -791,9 +785,9 @@ More information on class parameterization can be found here: https://modal.com/
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
-        workspace: Optional[str] = None,  # Deprecated and unused
     ) -> "_Cls":
-        """Lookup a Cls from a deployed App by its name.
+        """mdmd:hidden
+        Lookup a Cls from a deployed App by its name.
 
         DEPRECATED: This method is deprecated in favor of `modal.Cls.from_name`.
 
@@ -813,7 +807,10 @@ More information on class parameterization can be found here: https://modal.com/
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
         obj = _Cls.from_name(
-            app_name, name, namespace=namespace, environment_name=environment_name, workspace=workspace
+            app_name,
+            name,
+            namespace=namespace,
+            environment_name=environment_name,
         )
         if client is None:
             client = await _Client.from_env()
