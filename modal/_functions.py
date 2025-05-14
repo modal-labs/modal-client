@@ -41,7 +41,7 @@ from ._utils.async_utils import (
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
-from ._utils.deprecation import deprecation_error, deprecation_warning
+from ._utils.deprecation import deprecation_warning
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
@@ -404,12 +404,6 @@ class FunctionStats:
 
     backlog: int
     num_total_runners: int
-
-    def __getattr__(self, name):
-        if name == "num_active_runners":
-            msg = "'FunctionStats.num_active_runners' is no longer available."
-            deprecation_error((2024, 6, 14), msg)
-        raise AttributeError(f"'FunctionStats' object has no attribute '{name}'")
 
 
 def _parse_retries(
