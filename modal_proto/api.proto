@@ -694,7 +694,7 @@ message ClassGetRequest {
   DeploymentNamespace namespace = 3;
   string environment_name = 4;
 
-  bool lookup_published = 8; // Lookup class on app published by another workspace
+  reserved 8; // lookup_published
   reserved 9; // workspace_name
   bool only_class_function = 10; // True starting with 0.67.x clients, which don't create method placeholder functions
 }
