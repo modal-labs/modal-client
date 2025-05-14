@@ -30,7 +30,6 @@ from ._partial_function import (
 )
 from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import (
-    deprecation_error,
     deprecation_warning,
     warn_on_renamed_autoscaler_settings,
 )

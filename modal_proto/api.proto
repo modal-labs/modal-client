@@ -2786,7 +2786,7 @@ message TaskLogs {
   TaskProgress task_progress = 9;
   string function_call_id = 10;
   string input_id = 11;
-  string id = 12;
+  uint64 timestamp_ns = 12;
 }
 
 message TaskLogsBatch {
