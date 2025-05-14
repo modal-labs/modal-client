@@ -32,7 +32,6 @@ from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import (
     deprecation_error,
     deprecation_warning,
-    renamed_parameter,
     warn_on_renamed_autoscaler_settings,
 )
 from ._utils.function_utils import FunctionInfo, is_global_object, is_method_fn
@@ -251,7 +250,6 @@ class _App:
         return self._description
 
     @staticmethod
-    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
         name: str,
         *,
