@@ -10,7 +10,6 @@ from typing_extensions import Self
 
 from ._resolver import Resolver
 from ._utils.async_utils import aclosing
-from ._utils.deprecation import deprecation_warning
 from .client import _Client
 from .config import config, logger
 from .exception import ExecutionError, InvalidError
@@ -236,19 +235,6 @@ class _Object:
             return []
 
         return self._deps if self._deps is not None else default_deps
-
-    async def resolve(self, client: Optional[_Client] = None):
-        """mdmd:hidden"""
-        obj = self.__class__.__name__.strip("_")
-        deprecation_warning(
-            (2025, 1, 16),
-            f"The `{obj}.resolve` method is deprecated and will be removed in a future release."
-            f" Please use `{obj}.hydrate()` or `await {obj}.hydrate.aio()` instead."
-            "\n\nNote that it is rarely necessary to explicitly hydrate objects, as most methods"
-            " will lazily hydrate when needed.",
-            show_source=False,  # synchronicity interferes with attributing source correctly
-        )
-        await self.hydrate(client)
 
     async def hydrate(self, client: Optional[_Client] = None) -> Self:
         """Synchronize the local object with its identity on the Modal server.
