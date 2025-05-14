@@ -1011,13 +1011,16 @@ class _Image(_Object, type_prefix="im"):
         pkgs = _flatten_str_args("pip_install", "packages", packages)
         if not pkgs:
             return self
+        elif not _validate_packages(pkgs):
+            raise InvalidError(
+                "Package list for `Image.pip_install` cannot contain other arguments;"
+                " try the `extra_options` parameter instead."
+            )
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             package_args = shlex.join(sorted(pkgs))
             extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre, extra_options)
             commands = ["FROM base", f"RUN python -m pip install {package_args} {extra_args}"]
-            if not _validate_packages(pkgs):
-                _warn_invalid_packages(commands[-1].split("RUN ")[-1])
             if version > "2023.12":  # Back-compat for legacy trailing space with empty extra_args
                 commands = [cmd.strip() for cmd in commands]
             return DockerfileSpec(commands=commands, context_files={})
