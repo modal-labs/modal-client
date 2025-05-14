@@ -12,6 +12,15 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.0.dev2 (2025-05-14)
+
+- Removed backwards compatibility for using `label=` or `tag=` keywords in object lookup methods. We standardized these methods to use `name=` as the parameter name, but we recommend using positional arguments:
+  ```python
+  f = modal.Function.from_name("my-app", tag="f")  # No longer supported! Will raise an error!
+  f = modal.Function.from_name("my-app", "f")  # Preferred spelling
+  ```
+
+
 ## 0.77
 
 ### 0.77.0 (2025-05-13)
