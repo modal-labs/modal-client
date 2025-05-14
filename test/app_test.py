@@ -417,20 +417,6 @@ def test_app_interactive_no_output(servicer, client):
             assert not app.is_interactive
 
 
-def test_show_progress_deprecations(client, monkeypatch):
-    app = App()
-
-    # If show_progress is set to True, raise that this is deprecated
-    with pytest.raises(DeprecationError, match="enable_output"):
-        with app.run(client=client, show_progress=True):
-            pass
-
-    # If show_progress is set to False, warn that this has no effect
-    with pytest.warns(DeprecationError, match="no effect"):
-        with app.run(client=client, show_progress=False):
-            pass
-
-
 @pytest.mark.asyncio
 async def test_deploy_from_container(servicer, container_client):
     app = App(image=Image.debian_slim().pip_install("pandas"))
