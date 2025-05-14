@@ -1037,44 +1037,6 @@ class _App:
 
         return wrapper
 
-    async def spawn_sandbox(
-        self,
-        *entrypoint_args: str,
-        image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
-        mounts: Sequence[_Mount] = (),  # Mounts to attach to the sandbox.
-        secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
-        network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
-        timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
-        workdir: Optional[str] = None,  # Working directory of the sandbox.
-        gpu: GPU_T = None,
-        cloud: Optional[str] = None,
-        region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the sandbox on.
-        # Specify, in fractional CPU cores, how many CPU cores to request.
-        # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
-        # CPU throttling will prevent a container from exceeding its specified limit.
-        cpu: Optional[Union[float, tuple[float, float]]] = None,
-        # Specify, in MiB, a memory request which is the minimum memory required.
-        # Or, pass (request, limit) to additionally specify a hard limit in MiB.
-        memory: Optional[Union[int, tuple[int, int]]] = None,
-        block_network: bool = False,  # Whether to block network access
-        volumes: dict[
-            Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]
-        ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
-        pty_info: Optional[api_pb2.PTYInfo] = None,
-        _experimental_scheduler_placement: Optional[
-            SchedulerPlacement
-        ] = None,  # Experimental controls over fine-grained scheduling (alpha).
-    ) -> None:
-        """mdmd:hidden"""
-        arglist = ", ".join(repr(s) for s in entrypoint_args)
-        message = (
-            "`App.spawn_sandbox` is deprecated.\n\n"
-            "Sandboxes can be created using the `Sandbox` object:\n\n"
-            f"```\nsb = Sandbox.create({arglist}, app=app)\n```\n\n"
-            "See https://modal.com/docs/guide/sandbox for more info on working with sandboxes."
-        )
-        deprecation_error((2024, 7, 5), message)
-
     def include(self, /, other_app: "_App") -> typing_extensions.Self:
         """Include another App's objects in this one.
 
