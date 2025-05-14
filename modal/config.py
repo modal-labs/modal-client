@@ -51,10 +51,6 @@ Other possible configuration options are:
   Defaults to 10.
   Number of seconds to wait for logs to drain when closing the session,
   before giving up.
-* `automount` (in the .toml file) / `MODAL_AUTOMOUNT` (as an env var).
-  Defaults to True.
-  By default, Modal automatically mounts modules imported in the current scope, that
-  are deemed to be "local". This can be turned off by setting this to False.
 * `force_build` (in the .toml file) / `MODAL_FORCE_BUILD` (as an env var).
   Defaults to False.
   When set, ignores the Image cache and builds all Image layers. Note that this
@@ -233,7 +229,6 @@ _SETTINGS = {
     "sync_entrypoint": _Setting(),
     "logs_timeout": _Setting(10, float),
     "image_id": _Setting(),
-    "automount": _Setting(True, transform=_to_boolean),
     "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),
     "function_runtime_debug": _Setting(False, transform=_to_boolean),  # For internal debugging use.
