@@ -22,7 +22,7 @@ from ._object import (
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, aclosing, async_map, sync_or_async_iter, synchronize_api
 from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
-from ._utils.deprecation import deprecation_warning, renamed_parameter
+from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.hash_utils import get_sha256_hex
 from ._utils.name_utils import check_object_name
@@ -89,7 +89,6 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     """
 
     @staticmethod
-    @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
         name: str,
         *,
@@ -166,7 +165,6 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             yield cls._new_hydrated(response.shared_volume_id, client, None, is_another_app=True)
 
     @staticmethod
-    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
         name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -222,7 +220,6 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         return resp.shared_volume_id
 
     @staticmethod
-    @renamed_parameter((2024, 12, 18), "label", "name")
     async def delete(name: str, client: Optional[_Client] = None, environment_name: Optional[str] = None):
         obj = await _NetworkFileSystem.from_name(name, environment_name=environment_name).hydrate(client)
         req = api_pb2.SharedVolumeDeleteRequest(shared_volume_id=obj.object_id)

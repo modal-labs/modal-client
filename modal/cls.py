@@ -25,7 +25,7 @@ from ._serialization import check_valid_cls_constructor_arg
 from ._traceback import print_server_warnings
 from ._type_manager import parameter_serde_registry
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.deprecation import deprecation_warning, renamed_parameter, warn_on_renamed_autoscaler_settings
+from ._utils.deprecation import deprecation_warning, warn_on_renamed_autoscaler_settings
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
@@ -586,7 +586,6 @@ More information on class parameterization can be found here: https://modal.com/
         return cls
 
     @classmethod
-    @renamed_parameter((2024, 12, 18), "tag", "name")
     def from_name(
         cls: type["_Cls"],
         app_name: str,
@@ -786,7 +785,6 @@ More information on class parameterization can be found here: https://modal.com/
         return cls
 
     @staticmethod
-    @renamed_parameter((2024, 12, 18), "tag", "name")
     async def lookup(
         app_name: str,
         name: str,

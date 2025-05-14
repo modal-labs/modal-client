@@ -49,7 +49,7 @@ from ._utils.blob_utils import (
     get_file_upload_spec_from_fileobj,
     get_file_upload_spec_from_path,
 )
-from ._utils.deprecation import deprecation_error, deprecation_warning, renamed_parameter
+from ._utils.deprecation import deprecation_error, deprecation_warning
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.http_utils import ClientSessionRegistry
 from ._utils.name_utils import check_object_name
@@ -149,7 +149,6 @@ class _Volume(_Object, type_prefix="vo"):
         return self._lock
 
     @staticmethod
-    @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
         name: str,
         *,
@@ -244,7 +243,6 @@ class _Volume(_Object, type_prefix="vo"):
             yield cls._new_hydrated(response.volume_id, client, response.metadata, is_another_app=True)
 
     @staticmethod
-    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
         name: str,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -595,7 +593,6 @@ class _Volume(_Object, type_prefix="vo"):
         )
 
     @staticmethod
-    @renamed_parameter((2024, 12, 18), "label", "name")
     async def delete(name: str, client: Optional[_Client] = None, environment_name: Optional[str] = None):
         obj = await _Volume.from_name(name, environment_name=environment_name).hydrate(client)
         req = api_pb2.VolumeDeleteRequest(volume_id=obj.object_id)

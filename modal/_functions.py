@@ -41,7 +41,7 @@ from ._utils.async_utils import (
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
-from ._utils.deprecation import deprecation_error, deprecation_warning, renamed_parameter
+from ._utils.deprecation import deprecation_error, deprecation_warning
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
@@ -1255,7 +1255,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return cls._from_loader(_load_remote, rep, is_another_app=True, hydrate_lazily=True)
 
     @classmethod
-    @renamed_parameter((2024, 12, 18), "tag", "name")
     def from_name(
         cls: type["_Function"],
         app_name: str,
@@ -1288,7 +1287,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         return cls._from_name(app_name, name, namespace, environment_name)
 
     @staticmethod
-    @renamed_parameter((2024, 12, 18), "tag", "name")
     async def lookup(
         app_name: str,
         name: str,

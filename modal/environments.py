@@ -11,7 +11,7 @@ from modal_proto import api_pb2
 from ._object import _Object
 from ._resolver import Resolver
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.deprecation import deprecation_warning, renamed_parameter
+from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -50,7 +50,6 @@ class _Environment(_Object, type_prefix="en"):
         )
 
     @staticmethod
-    @renamed_parameter((2024, 12, 18), "label", "name")
     def from_name(
         name: str,
         *,
@@ -81,7 +80,6 @@ class _Environment(_Object, type_prefix="en"):
         return _Environment._from_loader(_load, "Environment()", is_another_app=True, hydrate_lazily=True)
 
     @staticmethod
-    @renamed_parameter((2024, 12, 18), "label", "name")
     async def lookup(
         name: str,
         client: Optional[_Client] = None,
