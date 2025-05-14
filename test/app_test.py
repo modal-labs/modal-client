@@ -10,7 +10,7 @@ from modal import App, Image, Mount, Secret, Stub, Volume, enable_output, fastap
 from modal._partial_function import _parse_custom_domains
 from modal._utils.async_utils import synchronizer
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
-from modal.runner import deploy_stub, run_app
+from modal.runner import run_app
 from modal_proto import api_pb2
 
 from .supports import module_1, module_2
@@ -359,12 +359,6 @@ def test_function_named_app():
 def test_stub():
     with pytest.warns(match="App"):
         Stub()
-
-
-def test_deploy_stub():
-    app = App("xyz")
-    with pytest.raises(DeprecationError, match="deploy_app"):
-        deploy_stub(app)
 
 
 def test_app_logs(servicer, client):
