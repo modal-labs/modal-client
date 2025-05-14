@@ -535,14 +535,6 @@ class _App:
         return self._local_entrypoints
 
     @property
-    def indexed_objects(self) -> dict[str, _Object]:
-        deprecation_warning(
-            (2024, 11, 25),
-            "`app.indexed_objects` is deprecated! Use `app.registered_functions` or `app.registered_classes` instead.",
-        )
-        return dict(**self._functions, **self._classes)
-
-    @property
     def registered_web_endpoints(self) -> list[str]:
         """Names of web endpoint (ie. webhook) functions registered on the app."""
         return self._web_endpoints
