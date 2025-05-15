@@ -99,6 +99,7 @@ if TYPE_CHECKING:
     import modal.cls
     import modal.partial_function
 
+MAX_INTERNAL_FAILURE_COUNT = 100
 
 @dataclasses.dataclass
 class _RetryContext:
@@ -384,6 +385,7 @@ class _InputPlaneInvocation:
     async def run_function(self) -> Any:
         # This will retry when the server returns GENERIC_STATUS_INTERNAL_FAILURE, i.e. lost inputs or worker preemption
         # TODO(ryan): add logic to retry for user defined
+        internal_failure_count = 0
         while True:
             await_request = api_pb2.AttemptAwaitRequest(
                 attempt_token=self.attempt_token,
@@ -400,7 +402,11 @@ class _InputPlaneInvocation:
                 return await _process_result(
                     await_response.output.result, await_response.output.data_format, self.stub, self.client
                 )
-            except InternalFailure:
+            except InternalFailure as e:
+                internal_failure_count += 1
+                # Limit the number of times we retry
+                if internal_failure_count >= MAX_INTERNAL_FAILURE_COUNT:
+                    raise e
                 # For system failures on the server, we retry immediately,
                 # and the failure does not count towards the retry policy.
                 retry_request = api_pb2.AttemptRetryRequest(

@@ -1,6 +1,9 @@
 # Copyright Modal Labs 2025
+import pytest
+
 import modal
 from modal import App
+from modal.exception import InternalFailure
 from modal.functions import Function
 from modal.runner import deploy_app
 
@@ -38,3 +41,12 @@ def test_retry(client, servicer):
     # decremented the attempts_to_fail counter, which indicates that the call was retried.
     assert servicer.attempts_to_fail == 0
 
+def test_retry_limit(client, servicer, monkeypatch):
+    monkeypatch.setattr("modal._functions.MAX_INTERNAL_FAILURE_COUNT", 2)
+    # Tell the servicer to fail once, and then succeed. The client should retry the failed attempt.
+    servicer.attempts_to_fail = 3
+    with pytest.raises(InternalFailure):
+        with app.run(client=client):
+            foo.remote()
+    # Verify that the mock server's failure counter was decremented by 2.
+    assert servicer.attempts_to_fail == 1
