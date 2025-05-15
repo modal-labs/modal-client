@@ -337,9 +337,6 @@ def test_function_future(client, servicer):
 
         assert future.object_id not in servicer.cleared_function_calls
 
-        with pytest.raises(Exception, match="Cannot iterate"):
-            next(future.get_gen())
-
 
 @pytest.mark.asyncio
 async def test_function_future_async(client, servicer):
@@ -447,7 +444,7 @@ async def test_generator_future(client, servicer):
     servicer.function_body(later_gen)
     later_modal = app.function()(later_gen)
     with app.run(client=client):
-        with pytest.raises(DeprecationError):
+        with pytest.raises(InvalidError, match="Cannot `spawn` a generator function."):
             later_modal.spawn()
 
 
@@ -731,33 +728,6 @@ def test_invalid_remote_executor_on_asgi_app(client, servicer, remote_executor):
     assert "webhook" in str(excinfo.value) and remote_executor in str(excinfo.value)
 
 
-@pytest.mark.parametrize("is_generator", [False, True])
-def test_from_id_iter_gen(client, servicer, is_generator):
-    app = App()
-
-    f = later_gen if is_generator else later
-
-    servicer.function_body(f)
-    later_modal = app.function()(f)
-    with app.run(client=client):
-        if is_generator:
-            with pytest.raises(DeprecationError):
-                later_modal.spawn()
-            return
-
-        future = later_modal.spawn()
-        assert isinstance(future, FunctionCall)
-
-    assert future.object_id
-    rehydrated_function_call = FunctionCall.from_id(future.object_id, client, is_generator=is_generator)
-    assert rehydrated_function_call.object_id == future.object_id
-
-    if is_generator:
-        assert next(rehydrated_function_call.get_gen()) == "foo"
-    else:
-        assert rehydrated_function_call.get() == "hello"
-
-
 lc_app = App()
 
 
@@ -923,7 +893,7 @@ def test_calls_should_not_unwrap_modal_objects_gen(servicer, client):
     # make sure the serialized object is an actual Dict and not a _Dict in all user code contexts
     with app.run(client=client), modal.Dict.ephemeral(client=client) as some_modal_object:
         assert type(next(foo.remote_gen(some_modal_object))) is modal.Dict
-        with pytest.raises(DeprecationError):
+        with pytest.raises(InvalidError, match="Cannot `spawn` a generator function."):
             foo.spawn(some_modal_object)
 
     assert len(servicer.client_calls) == 1

@@ -1509,20 +1509,6 @@ Use the `Function.get_web_url()` method instead.
             yield res
 
     @synchronizer.no_io_translation
-    async def _call_generator_nowait(self, args, kwargs):
-        deprecation_warning(
-            (2024, 12, 11),
-            "Calling spawn on a generator function is deprecated and will soon raise an exception.",
-        )
-        return await _Invocation.create(
-            self,
-            args,
-            kwargs,
-            client=self.client,
-            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC,
-        )
-
-    @synchronizer.no_io_translation
     @live_method
     async def remote(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
         """
@@ -1634,7 +1620,7 @@ Use the `Function.get_web_url()` method instead.
         """
         self._check_no_web_url("_experimental_spawn")
         if self._is_generator:
-            invocation = await self._call_generator_nowait(args, kwargs)
+            raise InvalidError("Cannot `spawn` a generator function.")
         else:
             invocation = await self._call_function_nowait(
                 args, kwargs, function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
@@ -1666,14 +1652,13 @@ Use the `Function.get_web_url()` method instead.
         """
         self._check_no_web_url("spawn")
         if self._is_generator:
-            invocation = await self._call_generator_nowait(args, kwargs)
+            raise InvalidError("Cannot `spawn` a generator function.")
         else:
             invocation = await self._call_function_nowait(args, kwargs, api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC)
 
         fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(
             invocation.function_call_id, invocation.client, None
         )
-        fc._is_generator = self._is_generator if self._is_generator else False
         return fc
 
     def get_raw_f(self) -> Callable[..., Any]:
@@ -1732,21 +1717,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
         The returned coroutine is not cancellation-safe.
         """
-
-        if self._is_generator:
-            raise Exception("Cannot get the result of a generator function call. Use `get_gen` instead.")
-
         return await self._invocation().poll_function(timeout=timeout)
-
-    async def get_gen(self) -> AsyncGenerator[Any, None]:
-        """
-        Calls the generator remotely, executing it with the given arguments and returning the execution's result.
-        """
-        if not self._is_generator:
-            raise Exception("Cannot iterate over a non-generator function call. Use `get` instead.")
-
-        async for res in self._invocation().run_generator():
-            yield res
 
     async def get_call_graph(self) -> list[InputInfo]:
         """Returns a structure representing the call graph from a given root
@@ -1778,9 +1749,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         await retry_transient_errors(self._client.stub.FunctionCallCancel, request)
 
     @staticmethod
-    async def from_id(
-        function_call_id: str, client: Optional[_Client] = None, is_generator: bool = False
-    ) -> "_FunctionCall[Any]":
+    async def from_id(function_call_id: str, client: Optional[_Client] = None) -> "_FunctionCall[Any]":
         """Instantiate a FunctionCall object from an existing ID.
 
         Examples:
@@ -1803,7 +1772,6 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
             client = await _Client.from_env()
 
         fc: _FunctionCall[Any] = _FunctionCall._new_hydrated(function_call_id, client, None)
-        fc._is_generator = is_generator
         return fc
 
     @staticmethod
