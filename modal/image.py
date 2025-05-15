@@ -437,7 +437,7 @@ class _Image(_Object, type_prefix="im"):
 
     def _add_mount_layer_or_copy(self, mount: _Mount, copy: bool = False):
         if copy:
-            return self.copy_mount(mount, remote_path="/")
+            return self._copy_mount(mount, remote_path="/")
 
         base_image = self
 
@@ -672,23 +672,9 @@ class _Image(_Object, type_prefix="im"):
         )
         return obj
 
-    def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
+    def _copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         """mdmd:hidden
-        **Deprecated**: Use image.add_local_dir(..., copy=True) or similar instead.
-
-        Copy the entire contents of a `modal.Mount` into an image.
-        Useful when files only available locally are required during the image
-        build process.
-
-        **Example**
-
-        ```python notest
-        static_images_dir = "./static"
-        # place all static images in root of mount
-        mount = modal.Mount.from_local_dir(static_images_dir, remote_path="/")
-        # place mount's contents into /static directory of image.
-        image = modal.Image.debian_slim().copy_mount(mount, remote_path="/static")
-        ```
+        Internal
         """
         if not isinstance(mount, _Mount):
             raise InvalidError("The mount argument to copy has to be a Modal Mount object")

@@ -5,6 +5,7 @@ import platform
 import pytest
 from pathlib import Path, PurePosixPath
 
+import modal
 from modal import App, FilePatternMatcher
 from modal._utils.blob_utils import LARGE_FILE_LIMIT
 from modal.mount import Mount, client_mount_name, module_mount_condition, module_mount_ignore_condition
@@ -86,12 +87,12 @@ def dummy():
     pass
 
 
-def test_from_local_python_packages(servicer, client, test_dir, monkeypatch):
+def test_add_local_python_source(servicer, client, test_dir, monkeypatch):
     app = App()
 
     monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
 
-    app.function(mounts=[Mount._from_local_python_packages("pkg_a", "pkg_b", "standalone_file")])(dummy)
+    app.function(image=modal.Image.debian_slim().add_local_python_source("pkg_a", "pkg_b", "standalone_file"))(dummy)
 
     with app.run(client=client):
         files = set(servicer.files_name2sha.keys())
