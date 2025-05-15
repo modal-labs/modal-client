@@ -116,7 +116,7 @@ class InternalFailure(Error):
 
 class _CliUserExecutionError(Exception):
     """mdmd:hidden
-    Private wrapper for exceptions during when importing or running stubs from the CLI.
+    Private wrapper for exceptions during when importing or running Apps from the CLI.
 
     This intentionally does not inherit from `modal.exception.Error` because it
     is a private type that should never bubble up to users. Exceptions raised in

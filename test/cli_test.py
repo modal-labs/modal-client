@@ -178,12 +178,6 @@ def test_run_warns_without_module_flag(
         _run(["run", f"{app_module}::foo"])
 
 
-def test_run_stub(servicer, set_env_client, test_dir):
-    app_file = test_dir / "supports" / "app_run_tests" / "app_was_once_stub.py"
-    with pytest.warns(match="App"):
-        _run(["run", app_file.as_posix() + "::foo"])
-
-
 def test_run_async(servicer, set_env_client, test_dir):
     sync_fn = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
     res = _run(["run", sync_fn.as_posix()])
