@@ -1380,6 +1380,10 @@ message Function {
   // Note the value type as string. Internally we'll coerce all values to string with str().
   // On the server, it's necessary to convert back to the most natural type (e.g. int) when relevant.
   map<string, string> experimental_options = 81;
+
+  // If set, client deps will be mounted into the container, and are
+  // no longer expected to exist in the image itself.
+  bool mount_client_dependencies = 82;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1946,6 +1950,10 @@ message ImageMetadata {
   map<string, string> python_packages = 2;
   // The work directory of the image, defaulting to "/". Not set if missing
   optional string workdir = 3;
+  // The image's libc version
+  optional string libc_version_info = 4;
+  // The builder version for/with which the image was created.
+  optional string image_builder_version = 5;
 }
 
 
