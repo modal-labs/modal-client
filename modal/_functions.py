@@ -6,7 +6,7 @@ import textwrap
 import time
 import typing
 import warnings
-from collections.abc import AsyncGenerator, Collection, Sequence, Sized
+from collections.abc import AsyncGenerator, Sequence, Sized
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Callable, Optional, Union
@@ -100,6 +100,7 @@ if TYPE_CHECKING:
     import modal.partial_function
 
 MAX_INTERNAL_FAILURE_COUNT = 100
+
 
 @dataclasses.dataclass
 class _RetryContext:
@@ -350,7 +351,7 @@ class _InputPlaneInvocation:
         attempt_token: str,
         client: _Client,
         input_item: api_pb2.FunctionPutInputsItem,
-        function_id: str
+        function_id: str,
     ):
         self.stub = stub
         self.client = client  # Used by the deserializer.
@@ -413,7 +414,7 @@ class _InputPlaneInvocation:
                     function_id=self.function_id,
                     parent_input_id=current_input_id() or "",
                     input=self.input_item,
-                    attempt_token=self.attempt_token
+                    attempt_token=self.attempt_token,
                 )
                 retry_response = await retry_transient_errors(self.stub.AttemptRetry, retry_request)
                 self.attempt_token = retry_response.attempt_token
@@ -527,7 +528,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         is_generator: bool = False,
         gpu: Union[GPU_T, list[GPU_T]] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
-        mounts: Collection[_Mount] = (),
         network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
@@ -583,8 +583,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             assert not webhook_config
             assert not schedule
 
-        explicit_mounts = mounts
-
         include_source_mode = get_include_source_mode(include_source)
         if include_source_mode != IncludeSourceMode.INCLUDE_NOTHING:
             entrypoint_mounts = info.get_entrypoint_mount()
@@ -593,7 +591,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         all_mounts = [
             _get_client_mount(),
-            *explicit_mounts,
             *entrypoint_mounts.values(),
         ]
 
@@ -633,7 +630,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     image=image,
                     secrets=secrets,
                     gpu=gpu,
-                    mounts=mounts,
                     network_file_systems=network_file_systems,
                     volumes=volumes,
                     memory=memory,
@@ -741,16 +737,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         def _deps(only_explicit_mounts=False) -> list[_Object]:
             deps: list[_Object] = list(secrets)
-            if only_explicit_mounts:
-                # TODO: this is a bit hacky, but all_mounts may differ in the container vs locally
-                # We don't want the function dependencies to change, so we have this way to force it to
-                # only include its declared dependencies.
-                # Only objects that need interaction within a user's container actually need to be
-                # included when only_explicit_mounts=True, so omitting auto mounts here
-                # wouldn't be a problem as long as Mounts are "passive" and only loaded by the
-                # worker runtime
-                deps += list(explicit_mounts)
-            else:
+            if not only_explicit_mounts:
                 deps += list(all_mounts)
             if proxy:
                 deps.append(proxy)
@@ -1018,7 +1005,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._build_args = dict(  # See get_build_def
             secrets=repr(secrets),
             gpu_config=repr([parse_gpu_config(_gpu) for _gpu in gpus]),
-            mounts=repr(mounts),
             network_file_systems=repr(network_file_systems),
         )
         # these key are excluded if empty to avoid rebuilds on client upgrade

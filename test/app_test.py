@@ -6,7 +6,7 @@ import time
 
 from grpclib import GRPCError, Status
 
-from modal import App, Image, Mount, Secret, Volume, enable_output, fastapi_endpoint, web_endpoint
+from modal import App, Image, Secret, Volume, enable_output, fastapi_endpoint, web_endpoint
 from modal._partial_function import _parse_custom_domains
 from modal._utils.async_utils import synchronizer
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
@@ -218,7 +218,6 @@ def test_init_types():
     App(
         image=Image.debian_slim().pip_install("pandas"),
         secrets=[Secret.from_dict()],
-        mounts=[Mount._from_local_file(__file__)],  # TODO: remove
     )
 
 

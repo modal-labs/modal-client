@@ -5,7 +5,7 @@ import pytest
 import time
 from pathlib import Path
 
-from modal import App, Image, Mount, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret
+from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret
 from modal.exception import InvalidError
 from modal.stream_type import StreamType
 from modal_proto import api_pb2
@@ -41,18 +41,6 @@ def test_sandbox(app, servicer):
 
     assert sb.returncode == 42
     assert sb.poll() == 42
-
-
-@skip_non_subprocess
-def test_sandbox_mount(app, servicer, tmpdir):
-    # TODO: remove once Mounts are fully deprecated (replaced by test_sandbox_mount_layer)
-    tmpdir.join("a.py").write(b"foo")
-
-    sb = Sandbox.create("echo", "hi", mounts=[Mount._from_local_dir(Path(tmpdir), remote_path="/m")], app=app)
-    sb.wait()
-
-    sha = hashlib.sha256(b"foo").hexdigest()
-    assert servicer.files_sha2data[sha]["data"] == b"foo"
 
 
 @skip_non_subprocess

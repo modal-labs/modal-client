@@ -12,6 +12,7 @@ from grpclib import GRPCError, Status
 
 from modal._tunnel import Tunnel
 from modal.cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
+from modal.mount import _Mount
 from modal.volume import _Volume
 from modal_proto import api_pb2
 
@@ -29,7 +30,6 @@ from .file_io import FileWatchEvent, FileWatchEventType, _FileIO
 from .gpu import GPU_T
 from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
-from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .proxy import _Proxy
 from .scheduler_placement import SchedulerPlacement
@@ -85,7 +85,6 @@ class _Sandbox(_Object, type_prefix="sb"):
     def _new(
         entrypoint_args: Sequence[str],
         image: _Image,
-        mounts: Sequence[_Mount],
         secrets: Sequence[_Secret],
         timeout: Optional[int] = None,
         workdir: Optional[str] = None,
@@ -94,6 +93,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         region: Optional[Union[str, Sequence[str]]] = None,
         cpu: Optional[float] = None,
         memory: Optional[Union[int, tuple[int, int]]] = None,
+        mounts: Sequence[_Mount] = (),
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         block_network: bool = False,
         cidr_allowlist: Optional[Sequence[str]] = None,
@@ -217,7 +217,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         app: Optional["modal.app._App"] = None,  # Optionally associate the sandbox with an app
         environment_name: Optional[str] = None,  # Optionally override the default environment
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
-        mounts: Sequence[_Mount] = (),  # Mounts to attach to the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
@@ -264,6 +263,76 @@ class _Sandbox(_Object, type_prefix="sb"):
         sandbox.wait()
         ```
         """
+        return await _Sandbox._create(
+            *entrypoint_args,
+            app=app,
+            environment_name=environment_name,
+            image=image,
+            secrets=secrets,
+            network_file_systems=network_file_systems,
+            timeout=timeout,
+            workdir=workdir,
+            gpu=gpu,
+            cloud=cloud,
+            region=region,
+            cpu=cpu,
+            memory=memory,
+            block_network=block_network,
+            cidr_allowlist=cidr_allowlist,
+            volumes=volumes,
+            pty_info=pty_info,
+            encrypted_ports=encrypted_ports,
+            unencrypted_ports=unencrypted_ports,
+            proxy=proxy,
+            _experimental_enable_snapshot=_experimental_enable_snapshot,
+            _experimental_scheduler_placement=_experimental_scheduler_placement,
+            client=client,
+        )
+
+    @staticmethod
+    async def _create(
+        *entrypoint_args: str,
+        app: Optional["modal.app._App"] = None,  # Optionally associate the sandbox with an app
+        environment_name: Optional[str] = None,  # Optionally override the default environment
+        image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
+        secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
+        mounts: Sequence[_Mount] = (),
+        network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
+        timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
+        workdir: Optional[str] = None,  # Working directory of the sandbox.
+        gpu: GPU_T = None,
+        cloud: Optional[str] = None,
+        region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the sandbox on.
+        # Specify, in fractional CPU cores, how many CPU cores to request.
+        # Or, pass (request, limit) to additionally specify a hard limit in fractional CPU cores.
+        # CPU throttling will prevent a container from exceeding its specified limit.
+        cpu: Optional[Union[float, tuple[float, float]]] = None,
+        # Specify, in MiB, a memory request which is the minimum memory required.
+        # Or, pass (request, limit) to additionally specify a hard limit in MiB.
+        memory: Optional[Union[int, tuple[int, int]]] = None,
+        block_network: bool = False,  # Whether to block network access
+        # List of CIDRs the sandbox is allowed to access. If None, all CIDRs are allowed.
+        cidr_allowlist: Optional[Sequence[str]] = None,
+        volumes: dict[
+            Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]
+        ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
+        pty_info: Optional[api_pb2.PTYInfo] = None,
+        # List of ports to tunnel into the sandbox. Encrypted ports are tunneled with TLS.
+        encrypted_ports: Sequence[int] = [],
+        # List of ports to tunnel into the sandbox without encryption.
+        unencrypted_ports: Sequence[int] = [],
+        # Reference to a Modal Proxy to use in front of this Sandbox.
+        proxy: Optional[_Proxy] = None,
+        # Enable memory snapshots.
+        _experimental_enable_snapshot: bool = False,
+        _experimental_scheduler_placement: Optional[
+            SchedulerPlacement
+        ] = None,  # Experimental controls over fine-grained scheduling (alpha).
+        client: Optional[_Client] = None,
+    ):
+        # This method exposes some internal arguments (currently `mounts`) which are not in the public API
+        # `mounts` is currently only used by modal shell (cli) to provide a function's mounts to the
+        # sandbox that runs the shell session
         from .app import _App
 
         environment_name = _get_environment_name(environment_name)
@@ -274,7 +343,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         obj = _Sandbox._new(
             entrypoint_args,
             image=image or _default_image,
-            mounts=mounts,
             secrets=secrets,
             timeout=timeout,
             workdir=workdir,
@@ -283,6 +351,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             region=region,
             cpu=cpu,
             memory=memory,
+            mounts=mounts,
             network_file_systems=network_file_systems,
             block_network=block_network,
             cidr_allowlist=cidr_allowlist,
