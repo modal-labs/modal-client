@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 import modal
-from modal import Mount
+from modal.mount import Mount
 
 from . import helpers
 
@@ -83,35 +83,6 @@ def test_e2e_modal_run_py_module_mounts(servicer, credentials, supports_dir):
 
 def foo():
     pass
-
-
-def test_mounts_are_not_traversed_on_declaration(supports_dir, monkeypatch, client, server_url_env):
-    # TODO: remove once Mount is fully deprecated (replaced by test_image_mounts_are_not_traversed_on_declaration)
-    return_values = []
-    original = modal.mount._MountDir.get_files_to_upload
-
-    def mock_get_files_to_upload(self):
-        r = list(original(self))
-        return_values.append(r)
-        return r
-
-    monkeypatch.setattr("modal.mount._MountDir.get_files_to_upload", mock_get_files_to_upload)
-    app = modal.App()
-    mount_with_many_files = Mount._from_local_dir(supports_dir / "pkg_a", remote_path="/test")
-    app.function(mounts=[mount_with_many_files])(foo)
-    assert len(return_values) == 0  # ensure we don't look at the files yet
-
-    with app.run(client=client):
-        pass
-
-    assert return_values  # at this point we should have gotten all the mount files
-    # flatten inspected files
-    files = set()
-    for r in return_values:
-        for fn, _ in r:
-            files.add(fn)
-    # sanity check - this test file should be included since we mounted the test dir
-    assert Path(__file__) in files  # this test file should have been included
 
 
 def test_image_mounts_are_not_traversed_on_declaration(supports_dir, monkeypatch, client, server_url_env):

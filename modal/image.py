@@ -437,7 +437,7 @@ class _Image(_Object, type_prefix="im"):
 
     def _add_mount_layer_or_copy(self, mount: _Mount, copy: bool = False):
         if copy:
-            return self.copy_mount(mount, remote_path="/")
+            return self._copy_mount(mount, remote_path="/")
 
         base_image = self
 
@@ -672,23 +672,9 @@ class _Image(_Object, type_prefix="im"):
         )
         return obj
 
-    def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
+    def _copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
         """mdmd:hidden
-        **Deprecated**: Use image.add_local_dir(..., copy=True) or similar instead.
-
-        Copy the entire contents of a `modal.Mount` into an image.
-        Useful when files only available locally are required during the image
-        build process.
-
-        **Example**
-
-        ```python notest
-        static_images_dir = "./static"
-        # place all static images in root of mount
-        mount = modal.Mount.from_local_dir(static_images_dir, remote_path="/")
-        # place mount's contents into /static directory of image.
-        image = modal.Image.debian_slim().copy_mount(mount, remote_path="/static")
-        ```
+        Internal
         """
         if not isinstance(mount, _Mount):
             raise InvalidError("The mount argument to copy has to be a Modal Mount object")
@@ -1892,7 +1878,6 @@ class _Image(_Object, type_prefix="im"):
         *,
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: Union[GPU_T, list[GPU_T]] = None,  # Requested GPU or or list of acceptable GPUs( e.g. ["A10", "A100"])
-        mounts: Sequence[_Mount] = (),  # Mounts attached to the function
         volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},  # Volume mount paths
         network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},  # NFS mount paths
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
@@ -1950,7 +1935,6 @@ class _Image(_Object, type_prefix="im"):
             image=self,  # type: ignore[reportArgumentType]  # TODO: probably conflict with type stub?
             secrets=secrets,
             gpu=gpu,
-            mounts=mounts,
             volumes=volumes,
             network_file_systems=network_file_systems,
             cloud=cloud,

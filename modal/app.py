@@ -44,7 +44,6 @@ from .exception import ExecutionError, InvalidError
 from .functions import Function
 from .gpu import GPU_T
 from .image import _Image
-from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .partial_function import PartialFunction
 from .proxy import _Proxy
@@ -156,7 +155,6 @@ class _App:
     _classes: dict[str, _Cls]
 
     _image: Optional[_Image]
-    _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
     _volumes: dict[Union[str, PurePosixPath], _Volume]
     _web_endpoints: list[str]  # Used by the CLI
@@ -174,7 +172,6 @@ class _App:
         name: Optional[str] = None,
         *,
         image: Optional[_Image] = None,  # default image for all functions (default is `modal.Image.debian_slim()`)
-        mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
         volumes: dict[Union[str, PurePosixPath], _Volume] = {},  # default volumes for all functions
         include_source: Optional[bool] = None,
@@ -195,7 +192,6 @@ class _App:
         self._description = name
         self._include_source_default = include_source
 
-        check_sequence(mounts, _Mount, "`mounts=` has to be a list or tuple of `modal.Mount` objects")
         check_sequence(secrets, _Secret, "`secrets=` has to be a list or tuple of `modal.Secret` objects")
         validate_volumes(volumes)
 
@@ -205,7 +201,6 @@ class _App:
         self._functions = {}
         self._classes = {}
         self._image = image
-        self._mounts = mounts
         self._secrets = secrets
         self._volumes = volumes
         self._local_entrypoints = {}
@@ -446,9 +441,7 @@ class _App:
         if not self._running_app:
             raise ExecutionError("`_get_watch_mounts` requires a running app.")
 
-        all_mounts = [
-            *self._mounts,
-        ]
+        all_mounts = []
         for function in self.registered_functions.values():
             all_mounts.extend(function._serve_mounts)
 
@@ -612,7 +605,6 @@ class _App:
             GPU_T, list[GPU_T]
         ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
-        mounts: Sequence[_Mount] = (),  # Modal Mounts added to the container
         network_file_systems: dict[
             Union[str, PurePosixPath], _NetworkFileSystem
         ] = {},  # Mountpoints for Modal NetworkFileSystems
@@ -792,7 +784,6 @@ class _App:
                 schedule=schedule,
                 is_generator=is_generator,
                 gpu=gpu,
-                mounts=[*self._mounts, *mounts],
                 network_file_systems=network_file_systems,
                 volumes={**self._volumes, **volumes},
                 cpu=cpu,
@@ -843,7 +834,6 @@ class _App:
             GPU_T, list[GPU_T]
         ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
-        mounts: Sequence[_Mount] = (),
         network_file_systems: dict[
             Union[str, PurePosixPath], _NetworkFileSystem
         ] = {},  # Mountpoints for Modal NetworkFileSystems
@@ -965,7 +955,6 @@ class _App:
                 image=image or self._get_default_image(),
                 secrets=[*self._secrets, *secrets],
                 gpu=gpu,
-                mounts=[*self._mounts, *mounts],
                 network_file_systems=network_file_systems,
                 volumes={**self._volumes, **volumes},
                 cpu=cpu,
