@@ -659,7 +659,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         validated_network_file_systems = validate_network_file_systems(network_file_systems)
 
         # Validate image
-        if image is not None and not isinstance(image, _Image):
+        if image is not None and not isinstance(image, _Image):  # type: ignore
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
         method_definitions: Optional[dict[str, api_pb2.MethodDefinition]] = None
