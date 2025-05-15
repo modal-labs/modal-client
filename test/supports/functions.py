@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
 import contextlib
-import pytest
 import threading
 import time
 
@@ -11,7 +10,6 @@ from modal import (
     Sandbox,
     asgi_app,
     batched,
-    build,
     concurrent,
     current_function_call_id,
     current_input_id,
@@ -24,7 +22,6 @@ from modal import (
     wsgi_app,
 )
 from modal._utils.deprecation import deprecation_warning
-from modal.exception import DeprecationError
 from modal.experimental import get_local_input_concurrency, set_local_input_concurrency
 
 SLEEP_DELAY = 0.1
@@ -545,41 +542,6 @@ def cube(x):
     # regardless of the actual funtion.
     assert square.is_hydrated
     return square.remote(x) * x
-
-
-with pytest.warns(DeprecationError, match="@modal.build"):
-
-    @app.cls()
-    class BuildCls:
-        @property
-        def _k(self):
-            return self.__dict__.setdefault("__k", 1)
-
-        @_k.setter
-        def _k(self, v):
-            self.__dict__["__k"] = v
-
-        @enter()
-        def enter1(self):
-            self._k += 10
-
-        @build()
-        def build1(self):
-            self._k += 100
-            return self._k
-
-        @build()
-        def build2(self):
-            self._k += 1000
-            return self._k
-
-        @exit()
-        def exit1(self):
-            raise Exception("exit called!")
-
-        @method()
-        def f(self, x):
-            return self._k * x
 
 
 @app.cls(enable_memory_snapshot=True)

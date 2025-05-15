@@ -13,11 +13,11 @@ from typing import Callable, Literal, Sequence, Union, get_args
 from unittest import mock
 
 import modal
-from modal import App, Dict, Image, Secret, build, environments, method
+from modal import App, Dict, Image, Secret, environments
 from modal._serialization import serialize
 from modal._utils.async_utils import synchronizer
 from modal.client import Client
-from modal.exception import DeprecationError, InvalidError, ModuleNotMountable, VersionError
+from modal.exception import InvalidError, ModuleNotMountable, VersionError
 from modal.experimental import raw_dockerfile_image, raw_registry_image
 from modal.file_pattern_matcher import FilePatternMatcher
 from modal.image import (
@@ -1189,97 +1189,6 @@ cls_app = App()
 
 VARIABLE_5 = 1
 VARIABLE_6 = 1
-
-
-with pytest.warns(DeprecationError, match="@modal.build"):
-
-    @cls_app.cls(
-        image=Image.debian_slim().pip_install("pandas"),
-        secrets=[Secret.from_dict({"xyz": "123"})],
-    )
-    class Foo:
-        @build()
-        def build_func(self):
-            global VARIABLE_5
-
-            print("foo!", VARIABLE_5)
-
-        @method()
-        def f(self):
-            global VARIABLE_6
-
-            print("bar!", VARIABLE_6)
-
-    class FooInstance:
-        not_used_by_build_method: str = "normal"
-        used_by_build_method: str = "normal"
-
-        @build()
-        def build_func(self):
-            global VARIABLE_5
-
-            print("global variable", VARIABLE_5)
-            print("static class var", FooInstance.used_by_build_method)
-            FooInstance.used_by_build_method = "normal"
-
-
-def test_image_cls_var_rebuild(client, servicer):
-    rebuild_app = App()
-    image_ids = []
-    rebuild_app.cls(image=Image.debian_slim())(FooInstance)
-    with rebuild_app.run(client=client):
-        image_ids = list(servicer.images)
-    FooInstance.used_by_build_method = "rebuild"
-    rebuild_app.cls(image=Image.debian_slim())(FooInstance)
-    with rebuild_app.run(client=client):
-        image_ids_rebuild = list(servicer.images)
-    # Ensure that a new image was created
-    assert image_ids[-1] != image_ids_rebuild[-1]
-    FooInstance.used_by_build_method = "normal"
-    rebuild_app.cls(image=Image.debian_slim())(FooInstance)
-    with rebuild_app.run(client=client):
-        image_ids = list(servicer.images)
-    # Ensure that no new image was created
-    assert len(image_ids) == len(image_ids_rebuild)
-
-
-def test_image_cls_var_no_rebuild(client, servicer):
-    rebuild_app = App()
-    image_id = -1
-    rebuild_app.cls(image=Image.debian_slim())(FooInstance)
-    with rebuild_app.run(client=client):
-        image_id = list(servicer.images)[-1]
-    rebuild_app.cls(image=Image.debian_slim())(FooInstance)
-    with rebuild_app.run(client=client):
-        image_id2 = list(servicer.images)[-1]
-    FooInstance.not_used_by_build_method = "no rebuild"
-    rebuild_app.cls(image=Image.debian_slim())(FooInstance)
-    with rebuild_app.run(client=client):
-        image_id3 = list(servicer.images)[-1]
-    assert image_id == image_id2
-    assert image_id2 == image_id3
-
-
-def test_image_build_snapshot(client, servicer):
-    with cls_app.run(client=client):
-        image_id = list(servicer.images)[-1]
-        layers = get_image_layers(image_id, servicer)
-
-        assert "foo!" in layers[0].build_function.definition
-        assert "Secret.from_dict([xyz])" in layers[0].build_function.definition
-        assert any("pip install pandas" in cmd for cmd in layers[1].dockerfile_commands)
-
-        globals = layers[0].build_function.globals
-        assert b"VARIABLE_5" in globals
-
-        # Globals and def for the main function should not affect build step.
-        assert "bar!" not in layers[0].build_function.definition
-        assert b"VARIABLE_6" not in globals
-
-    function_id = servicer.image_build_function_ids[image_id]
-    assert function_id
-    assert servicer.app_functions[function_id].function_name == "Foo.build_func"
-    assert len(servicer.app_functions[function_id].secret_ids) == 1
 
 
 def test_inside_ctx_unhydrated(client):
