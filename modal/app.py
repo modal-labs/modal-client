@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import inspect
 import typing
-import warnings
 from collections.abc import AsyncGenerator, Coroutine, Sequence
 from pathlib import PurePosixPath
 from textwrap import dedent
@@ -76,11 +75,6 @@ class _LocalEntrypoint:
 
     @property
     def app(self) -> "_App":
-        return self._app
-
-    @property
-    def stub(self) -> "_App":
-        # Deprecated soon, only for backwards compatibility
         return self._app
 
 
@@ -781,12 +775,6 @@ class _App:
                 rdma = None
                 i6pn_enabled = i6pn
 
-            if info.function_name.endswith(".app"):
-                warnings.warn(
-                    "Beware: the function name is `app`. Modal will soon rename `Stub` to `App`, "
-                    "so you might run into issues if you have code like `app = modal.App()` in the same scope"
-                )
-
             if is_generator is None:
                 is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
@@ -1096,23 +1084,3 @@ class _App:
 
 
 App = synchronize_api(_App)
-
-
-class _Stub(_App):
-    """mdmd:hidden
-    This enables using a "Stub" class instead of "App".
-
-    For most of Modal's history, the app class was called "Stub", so this exists for
-    backwards compatibility, in order to facilitate moving from "Stub" to "App".
-    """
-
-    def __new__(cls, *args, **kwargs):
-        deprecation_warning(
-            (2024, 4, 29),
-            'The use of "Stub" has been deprecated in favor of "App".'
-            " This is a pure name change with no other implications.",
-        )
-        return _App(*args, **kwargs)
-
-
-Stub = synchronize_api(_Stub)
