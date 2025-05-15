@@ -737,16 +737,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         def _deps(only_explicit_mounts=False) -> list[_Object]:
             deps: list[_Object] = list(secrets)
-            if only_explicit_mounts:
-                # TODO: this is a bit hacky, but all_mounts may differ in the container vs locally
-                # We don't want the function dependencies to change, so we have this way to force it to
-                # only include its declared dependencies.
-                # Only objects that need interaction within a user's container actually need to be
-                # included when only_explicit_mounts=True, so omitting auto mounts here
-                # wouldn't be a problem as long as Mounts are "passive" and only loaded by the
-                # worker runtime
-                pass
-            else:
+            if not only_explicit_mounts:
                 deps += list(all_mounts)
             if proxy:
                 deps.append(proxy)
