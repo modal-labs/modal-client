@@ -11,13 +11,19 @@ from .client import _Client
 
 
 class _SandboxSnapshot(_Object, type_prefix="sn"):
-    """A `SandboxSnapshot` object lets you interact with a stored Sandbox snapshot that was created by calling
-    .snapshot() on a Sandbox instance. This includes both the filesystem and memory state of the original Sandbox at the
-    time the snapshot was taken.
+    """
+    > Sandbox memory snapshots are in **early preview**.
+
+    A `SandboxSnapshot` object lets you interact with a stored Sandbox snapshot that was created by calling
+    `._experimental_snapshot()` on a Sandbox instance. This includes both the filesystem and memory state of
+    the original Sandbox at the time the snapshot was taken.
     """
 
     @staticmethod
     async def from_id(sandbox_snapshot_id: str, client: Optional[_Client] = None):
+        """
+        Construct a `SandboxSnapshot` object from a sandbox snapshot ID.
+        """
         if client is None:
             client = await _Client.from_env()
 
