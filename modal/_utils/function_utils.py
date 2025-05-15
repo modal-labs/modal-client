@@ -466,7 +466,10 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
 
     if result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
         raise FunctionTimeoutError(result.exception)
-    elif result.status == api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
+    elif result.status in [
+        api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE,
+        api_pb2.GenericResult.GENERIC_STATUS_TERMINATED,
+    ]:
         raise InternalFailure(result.exception)
     elif result.status != api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
         if data:
