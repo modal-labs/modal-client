@@ -99,6 +99,8 @@ if TYPE_CHECKING:
     import modal.cls
     import modal.partial_function
 
+MAX_INTERNAL_FAILURE_COUNT = 100
+
 
 @dataclasses.dataclass
 class _RetryContext:
@@ -348,10 +350,14 @@ class _InputPlaneInvocation:
         stub: ModalClientModal,
         attempt_token: str,
         client: _Client,
+        input_item: api_pb2.FunctionPutInputsItem,
+        function_id: str,
     ):
         self.stub = stub
         self.client = client  # Used by the deserializer.
         self.attempt_token = attempt_token
+        self.input_item = input_item
+        self.function_id = function_id
 
     @staticmethod
     async def create(
@@ -365,36 +371,53 @@ class _InputPlaneInvocation:
         stub = await client.get_stub(input_plane_url)
 
         function_id = function.object_id
-        item = await _create_input(args, kwargs, stub, method_name=function._use_method_name)
+        input_item = await _create_input(args, kwargs, stub, method_name=function._use_method_name)
 
         request = api_pb2.AttemptStartRequest(
             function_id=function_id,
             parent_input_id=current_input_id() or "",
-            input=item,
+            input=input_item,
         )
         response = await retry_transient_errors(stub.AttemptStart, request)
         attempt_token = response.attempt_token
 
-        return _InputPlaneInvocation(stub, attempt_token, client)
+        return _InputPlaneInvocation(stub, attempt_token, client, input_item, function_id)
 
     async def run_function(self) -> Any:
-        # TODO(nathan): add retry logic
+        # This will retry when the server returns GENERIC_STATUS_INTERNAL_FAILURE, i.e. lost inputs or worker preemption
+        # TODO(ryan): add logic to retry for user defined
+        internal_failure_count = 0
         while True:
-            request = api_pb2.AttemptAwaitRequest(
+            await_request = api_pb2.AttemptAwaitRequest(
                 attempt_token=self.attempt_token,
                 timeout_secs=OUTPUTS_TIMEOUT,
                 requested_at=time.time(),
             )
-            response: api_pb2.AttemptAwaitResponse = await retry_transient_errors(
+            await_response: api_pb2.AttemptAwaitResponse = await retry_transient_errors(
                 self.stub.AttemptAwait,
-                request,
+                await_request,
                 attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
 
-            if response.HasField("output"):
+            try:
                 return await _process_result(
-                    response.output.result, response.output.data_format, self.stub, self.client
+                    await_response.output.result, await_response.output.data_format, self.stub, self.client
                 )
+            except InternalFailure as e:
+                internal_failure_count += 1
+                # Limit the number of times we retry
+                if internal_failure_count >= MAX_INTERNAL_FAILURE_COUNT:
+                    raise e
+                # For system failures on the server, we retry immediately,
+                # and the failure does not count towards the retry policy.
+                retry_request = api_pb2.AttemptRetryRequest(
+                    function_id=self.function_id,
+                    parent_input_id=current_input_id() or "",
+                    input=self.input_item,
+                    attempt_token=self.attempt_token,
+                )
+                retry_response = await retry_transient_errors(self.stub.AttemptRetry, retry_request)
+                self.attempt_token = retry_response.attempt_token
 
 
 # Wrapper type for api_pb2.FunctionStats
@@ -1503,20 +1526,6 @@ Use the `Function.get_web_url()` method instead.
             yield res
 
     @synchronizer.no_io_translation
-    async def _call_generator_nowait(self, args, kwargs):
-        deprecation_warning(
-            (2024, 12, 11),
-            "Calling spawn on a generator function is deprecated and will soon raise an exception.",
-        )
-        return await _Invocation.create(
-            self,
-            args,
-            kwargs,
-            client=self.client,
-            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC,
-        )
-
-    @synchronizer.no_io_translation
     @live_method
     async def remote(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
         """
@@ -1628,7 +1637,7 @@ Use the `Function.get_web_url()` method instead.
         """
         self._check_no_web_url("_experimental_spawn")
         if self._is_generator:
-            invocation = await self._call_generator_nowait(args, kwargs)
+            raise InvalidError("Cannot `spawn` a generator function.")
         else:
             invocation = await self._call_function_nowait(
                 args, kwargs, function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
@@ -1660,14 +1669,13 @@ Use the `Function.get_web_url()` method instead.
         """
         self._check_no_web_url("spawn")
         if self._is_generator:
-            invocation = await self._call_generator_nowait(args, kwargs)
+            raise InvalidError("Cannot `spawn` a generator function.")
         else:
             invocation = await self._call_function_nowait(args, kwargs, api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC)
 
         fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(
             invocation.function_call_id, invocation.client, None
         )
-        fc._is_generator = self._is_generator if self._is_generator else False
         return fc
 
     def get_raw_f(self) -> Callable[..., Any]:
@@ -1726,21 +1734,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
         The returned coroutine is not cancellation-safe.
         """
-
-        if self._is_generator:
-            raise Exception("Cannot get the result of a generator function call. Use `get_gen` instead.")
-
         return await self._invocation().poll_function(timeout=timeout)
-
-    async def get_gen(self) -> AsyncGenerator[Any, None]:
-        """
-        Calls the generator remotely, executing it with the given arguments and returning the execution's result.
-        """
-        if not self._is_generator:
-            raise Exception("Cannot iterate over a non-generator function call. Use `get` instead.")
-
-        async for res in self._invocation().run_generator():
-            yield res
 
     async def get_call_graph(self) -> list[InputInfo]:
         """Returns a structure representing the call graph from a given root
@@ -1772,9 +1766,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         await retry_transient_errors(self._client.stub.FunctionCallCancel, request)
 
     @staticmethod
-    async def from_id(
-        function_call_id: str, client: Optional[_Client] = None, is_generator: bool = False
-    ) -> "_FunctionCall[Any]":
+    async def from_id(function_call_id: str, client: Optional[_Client] = None) -> "_FunctionCall[Any]":
         """Instantiate a FunctionCall object from an existing ID.
 
         Examples:
@@ -1797,7 +1789,6 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
             client = await _Client.from_env()
 
         fc: _FunctionCall[Any] = _FunctionCall._new_hydrated(function_call_id, client, None)
-        fc._is_generator = is_generator
         return fc
 
     @staticmethod

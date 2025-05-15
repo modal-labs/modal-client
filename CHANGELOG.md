@@ -12,6 +12,16 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.0.dev16 (2025-05-15)
+
+- Referencing the deprecated `modal.Stub` object will now raise an `AttributeError`, whereas previously it was an alias for `modal.App`. This is a simple name change.
+
+
+#### 1.0.0.dev15 (2025-05-15)
+
+- It's no longer possible to invoke a generator Function with `Function.spawn`; previously this warned, now it raises an `InvalidError`. Additionally, the `FunctionCall.get_gen` method has been removed, and it's no longer possible to set `is_generator` when using `FunctionCall.from_id`.
+
+
 #### 1.0.0.dev10 (2025-05-14)
 
 - We've made some breaking changes to Modal's "automounting" behavior:
