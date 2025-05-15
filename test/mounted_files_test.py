@@ -2,28 +2,12 @@
 import os
 import pytest
 import subprocess
-import sys
 from pathlib import Path
 
 import modal
 from modal import Mount
 
 from . import helpers
-
-
-@pytest.fixture
-def venv_path(tmp_path, repo_root):
-    venv_path = tmp_path
-    args = [sys.executable, "-m", "venv", venv_path, "--system-site-packages"]
-    if sys.platform == "win32":
-        # --copies appears to be broken on Python 3.13.0
-        # but I believe it is a no-op on non-windows platforms anyway?
-        args.append("--copies")
-    subprocess.run(args, check=True)
-    # Install Modal and a tiny package in the venv.
-    subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "-e", repo_root], check=True)
-    subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "--force-reinstall", "six"], check=True)
-    yield venv_path
 
 
 @pytest.fixture
@@ -212,29 +196,6 @@ def test_mount_dedupe_relative_path_entrypoint(servicer, credentials, supports_d
 
     # but there should also be only one actual mount if deduplication works as expected
     assert len(servicer.mounts_excluding_published_client()) == 1
-
-
-# @skip_windows("pip-installed pdm seems somewhat broken on windows")
-# @skip_old_py("some weird issues w/ pdm and Python 3.9", min_version=(3, 10, 0))
-@pytest.mark.skip(reason="currently broken on ubuntu github actions")
-def test_pdm_cache_automount_exclude(tmp_path, monkeypatch, supports_dir, servicer, server_url_env, token_env):
-    # check that `pdm`'s cached packages are not included in automounts
-    project_dir = Path(__file__).parent.parent
-    monkeypatch.chdir(tmp_path)
-    subprocess.run(["pdm", "init", "-n"], check=True)
-    subprocess.run(
-        ["pdm", "add", "--dev", project_dir], check=True
-    )  # install workdir modal into venv, not using cache...
-    subprocess.run(["pdm", "config", "--local", "install.cache", "on"], check=True)
-    subprocess.run(["pdm", "add", "six"], check=True)  # single file module
-    subprocess.run(
-        ["pdm", "run", "modal", "deploy", supports_dir / "imports_six.py"], check=True
-    )  # deploy a basically empty function
-
-    files = set(servicer.files_name2sha.keys())
-    assert files == {
-        "/root/imports_six.py",
-    }
 
 
 def test_mount_directory_with_symlinked_file(path_with_symlinked_files, servicer, client):
