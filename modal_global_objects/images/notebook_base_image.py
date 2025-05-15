@@ -69,7 +69,7 @@ def notebook_base_image(*, python_version: Optional[str] = None, force_build: bo
         "websockets",
     ]
 
-    # Kernelshim dependencies.
+    # Kernelshim dependencies. (see NOTEBOOK_KERNELSHIM_DEPENDENCIES)
     kernelshim_packages = [
         "basedpyright>=1.28",
         "fastapi>=0.100",
@@ -82,7 +82,7 @@ def notebook_base_image(*, python_version: Optional[str] = None, force_build: bo
 
     commands: list[str] = [
         "apt-get update",
-        "apt-get install -y libpq-dev pkg-config cmake",
+        "apt-get install -y libpq-dev pkg-config cmake git curl wget unzip zip libsqlite3-dev",
         # Install uv since it's faster than pip for installing packages.
         "pip install uv",
         # https://github.com/astral-sh/uv/issues/11480
