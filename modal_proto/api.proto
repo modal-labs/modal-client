@@ -2972,6 +2972,17 @@ message VolumeHeartbeatRequest {
   string volume_id = 1;
 }
 
+message VolumeListFiles2Request {
+  string volume_id = 1;
+  string path = 2;
+  bool recursive = 4;
+  optional uint32 max_entries = 3;
+}
+
+message VolumeListFiles2Response {
+  repeated FileEntry entries = 1;
+}
+
 message VolumeListFilesRequest {
   string volume_id = 1;
   string path = 2;
@@ -3088,6 +3099,12 @@ message VolumeReloadRequest {
   // NOTE(staffan): Mounting a volume in multiple locations is not supported, so volume_id alone uniquely identifies
   // a volume mount.
   string volume_id = 1;
+}
+
+message VolumeRemoveFile2Request {
+  string volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string path = 2;
+  bool recursive = 3;
 }
 
 message VolumeRemoveFileRequest {
@@ -3329,10 +3346,12 @@ service ModalClient {
   rpc VolumeHeartbeat(VolumeHeartbeatRequest) returns (google.protobuf.Empty);
   rpc VolumeList(VolumeListRequest) returns (VolumeListResponse);
   rpc VolumeListFiles(VolumeListFilesRequest) returns (stream VolumeListFilesResponse);
+  rpc VolumeListFiles2(VolumeListFiles2Request) returns (stream VolumeListFiles2Response);
   rpc VolumePutFiles(VolumePutFilesRequest) returns (google.protobuf.Empty);
   rpc VolumePutFiles2(VolumePutFiles2Request) returns (VolumePutFiles2Response);
   rpc VolumeReload(VolumeReloadRequest) returns (google.protobuf.Empty);
   rpc VolumeRemoveFile(VolumeRemoveFileRequest) returns (google.protobuf.Empty);
+  rpc VolumeRemoveFile2(VolumeRemoveFile2Request) returns (google.protobuf.Empty);
   rpc VolumeRename(VolumeRenameRequest) returns (google.protobuf.Empty);
 
   // Workspaces
