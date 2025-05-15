@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from typing_extensions import assert_type
 
 import modal.partial_function
-from modal import App, Cls, Function, Image, build, enter, exit, method
+from modal import App, Cls, Function, enter, exit, method
 from modal._partial_function import (
     _find_partial_methods_for_user_cls,
     _PartialFunction,
@@ -733,42 +733,28 @@ def test_cls_lookup_update_autoscaler(client, servicer):
         assert len(ctx.get_requests("FunctionBindParams")) == 0  # We did not re-bind
 
 
-with pytest.warns(DeprecationError, match="@modal.build"):
+class ClsWithHandlers:
+    @enter(snap=True)
+    def my_memory_snapshot(self):
+        pass
 
-    class ClsWithHandlers:
-        @build()
-        def my_build(self):
-            pass
+    @enter()
+    def my_enter(self):
+        pass
 
-        @enter(snap=True)
-        def my_memory_snapshot(self):
-            pass
-
-        @enter()
-        def my_enter(self):
-            pass
-
-        @build()
-        @enter()
-        def my_build_and_enter(self):
-            pass
-
-        @exit()
-        def my_exit(self):
-            pass
+    @exit()
+    def my_exit(self):
+        pass
 
 
 def test_handlers():
     pfs: dict[str, _PartialFunction]
 
-    pfs = _find_partial_methods_for_user_cls(ClsWithHandlers, _PartialFunctionFlags.BUILD)
-    assert list(pfs.keys()) == ["my_build", "my_build_and_enter"]
-
     pfs = _find_partial_methods_for_user_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER_PRE_SNAPSHOT)
     assert list(pfs.keys()) == ["my_memory_snapshot"]
 
     pfs = _find_partial_methods_for_user_cls(ClsWithHandlers, _PartialFunctionFlags.ENTER_POST_SNAPSHOT)
-    assert list(pfs.keys()) == ["my_enter", "my_build_and_enter"]
+    assert list(pfs.keys()) == ["my_enter"]
 
     pfs = _find_partial_methods_for_user_cls(ClsWithHandlers, _PartialFunctionFlags.EXIT)
     assert list(pfs.keys()) == ["my_exit"]
@@ -793,88 +779,6 @@ def test_web_cls(client):
         c = WebCls()
         assert c.endpoint.get_web_url() == "http://endpoint.internal"
         assert c.asgi.get_web_url() == "http://asgi.internal"
-
-
-handler_app = App("handler-app")
-
-
-image = Image.debian_slim().pip_install("xyz")
-
-
-with pytest.warns(DeprecationError, match="@modal.build"):
-
-    @handler_app.cls(image=image)
-    class ClsWithBuild:
-        @build()
-        def build(self):
-            pass
-
-        @method()
-        def method(self):
-            pass
-
-
-def test_build_image(client, servicer):
-    with handler_app.run(client=client):
-        service_function = servicer.function_by_name("ClsWithBuild.*")
-        # The function image should have added a new layer with original image as the parent
-        f_image = servicer.images[service_function.image_id]
-        assert f_image.base_images[0].image_id == image.object_id
-        assert servicer.force_built_images == []
-
-
-other_handler_app = App("other-handler-app")
-
-
-with pytest.warns(DeprecationError, match="@modal.build"):
-
-    @other_handler_app.cls(image=image)
-    class ClsWithForceBuild:
-        @build(force=True)
-        def build(self):
-            pass
-
-        @method()
-        def method(self):
-            pass
-
-
-def test_force_build_image(client, servicer):
-    with other_handler_app.run(client=client):
-        service_function = servicer.function_by_name("ClsWithForceBuild.*")
-        # The function image should have added a new layer with original image as the parent
-        f_image = servicer.images[service_function.image_id]
-        assert f_image.base_images[0].image_id == image.object_id
-        assert servicer.force_built_images == ["im-3"]
-
-
-build_timeout_handler_app = App("build-timeout-handler-app")
-
-
-with pytest.warns(DeprecationError, match="@modal.build"):
-
-    @build_timeout_handler_app.cls(image=image)
-    class ClsWithBuildTimeout:
-        @build(timeout=123)
-        def timeout_build(self):
-            pass
-
-        @build()
-        def default_timeout_build(self):
-            pass
-
-        @method()
-        def method(self):
-            pass
-
-
-def test_build_timeout_image(client, servicer):
-    with build_timeout_handler_app.run(client=client):
-        service_function = servicer.function_by_name("ClsWithBuildTimeout.timeout_build")
-        assert service_function.timeout_secs == 123
-
-        service_function = servicer.function_by_name("ClsWithBuildTimeout.default_timeout_build")
-        assert service_function.timeout_secs == 86400
 
 
 @pytest.mark.parametrize("decorator", [enter, exit])
