@@ -16,7 +16,7 @@ from modal.exception import DeprecationError, InvalidError
 from modal.functions import Function
 from modal.partial_function import method, web_server
 
-# Some helper vars for import_stub tests:
+# Some helper vars for import_app tests:
 local_entrypoint_src = """
 import modal
 
