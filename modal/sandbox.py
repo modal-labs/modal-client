@@ -29,7 +29,6 @@ from .file_io import FileWatchEvent, FileWatchEventType, _FileIO
 from .gpu import GPU_T
 from .image import _Image
 from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
-from .mount import _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .proxy import _Proxy
 from .scheduler_placement import SchedulerPlacement
@@ -85,7 +84,6 @@ class _Sandbox(_Object, type_prefix="sb"):
     def _new(
         entrypoint_args: Sequence[str],
         image: _Image,
-        mounts: Sequence[_Mount],
         secrets: Sequence[_Secret],
         timeout: Optional[int] = None,
         workdir: Optional[str] = None,
@@ -130,7 +128,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         validated_volumes = [(k, v) for k, v in validated_volumes if isinstance(v, _Volume)]
 
         def _deps() -> list[_Object]:
-            deps: list[_Object] = [image] + list(mounts) + list(secrets)
+            deps: list[_Object] = [image] + list(secrets)
             for _, vol in validated_network_file_systems:
                 deps.append(vol)
             for _, vol in validated_volumes:
@@ -178,7 +176,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             definition = api_pb2.Sandbox(
                 entrypoint_args=entrypoint_args,
                 image_id=image.object_id,
-                mount_ids=[mount.object_id for mount in mounts] + [mount.object_id for mount in image._mount_layers],
+                mount_ids=[mount.object_id for mount in image._mount_layers],
                 secret_ids=[secret.object_id for secret in secrets],
                 timeout_secs=timeout,
                 workdir=workdir,
@@ -217,7 +215,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         app: Optional["modal.app._App"] = None,  # Optionally associate the sandbox with an app
         environment_name: Optional[str] = None,  # Optionally override the default environment
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
-        mounts: Sequence[_Mount] = (),  # Mounts to attach to the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
         timeout: Optional[int] = None,  # Maximum execution time of the sandbox in seconds.
@@ -274,7 +271,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         obj = _Sandbox._new(
             entrypoint_args,
             image=image or _default_image,
-            mounts=mounts,
             secrets=secrets,
             timeout=timeout,
             workdir=workdir,

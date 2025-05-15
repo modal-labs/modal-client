@@ -1892,7 +1892,6 @@ class _Image(_Object, type_prefix="im"):
         *,
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: Union[GPU_T, list[GPU_T]] = None,  # Requested GPU or or list of acceptable GPUs( e.g. ["A10", "A100"])
-        mounts: Sequence[_Mount] = (),  # Mounts attached to the function
         volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},  # Volume mount paths
         network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},  # NFS mount paths
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
@@ -1950,7 +1949,6 @@ class _Image(_Object, type_prefix="im"):
             image=self,  # type: ignore[reportArgumentType]  # TODO: probably conflict with type stub?
             secrets=secrets,
             gpu=gpu,
-            mounts=mounts,
             volumes=volumes,
             network_file_systems=network_file_systems,
             cloud=cloud,
