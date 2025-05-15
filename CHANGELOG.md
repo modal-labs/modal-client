@@ -12,6 +12,15 @@ We appreciate your patience while we speedily work towards a stable release of t
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.0.dev18 (2025-05-15)
+
+- Removed `modal.Mount` as a public object along with the various `mount=` parameters where Mounts could be passed into the Modal API. Usage can be replaced with `modal.Image` methods, e.g.:
+  ```python
+  @app.function(image=image, mounts=[modal.Mount.from_local_dir("data", "/root/data")])  # This is now an error!
+  @app.function(image=image.add_local_dir("data", "/root/data"))  # Correct spelling
+  ```
+
+
 #### 1.0.0.dev16 (2025-05-15)
 
 - Referencing the deprecated `modal.Stub` object will now raise an `AttributeError`, whereas previously it was an alias for `modal.App`. This is a simple name change.
