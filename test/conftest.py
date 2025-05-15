@@ -310,7 +310,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.function_get_server_warnings = None
         self.resp_jitter_secs: float = 0.0
         self.port = port
-        self.attempts_to_fail = 0
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -2086,22 +2085,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
 
     async def AttemptAwait(self, stream):
-        # TODO(ryan): Eventually we may want to invoke the user's function and return a result.
-        # For now we just return a dummy response
-
-        # To test client retries, test can configure outputs to fail some number of times.
-        status = api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-        if self.attempts_to_fail > 0:
-            status = api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
-            self.attempts_to_fail = self.attempts_to_fail - 1
-
+        # TODO(ryan): Eventually we want to invoke the user's function and return a result.
+        # For now we just return a dummy response which allows the test to verify that the input_plane_region param
+        # was honored, and we hit this endpoint rather than get_outputs.
         await stream.send_message(
             api_pb2.AttemptAwaitResponse(
                 output=api_pb2.FunctionGetOutputsItem(
                     input_id="in-1",
                     idx=0,
                     result=api_pb2.GenericResult(
-                        status=status,
+                        status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
                         data=serialize_data_format("attempt_await_bogus_response", api_pb2.DATA_FORMAT_PICKLE),
                     ),
                     data_format=api_pb2.DATA_FORMAT_PICKLE,
@@ -2109,9 +2102,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 )
             )
         )
-
-    async def AttemptRetry(self, stream):
-        await stream.send_message(api_pb2.AttemptRetryResponse(attempt_token="bogus_retry_token"))
 
 
 @pytest.fixture
