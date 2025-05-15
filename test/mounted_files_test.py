@@ -2,32 +2,12 @@
 import os
 import pytest
 import subprocess
-import sys
 from pathlib import Path
-
-import pytest_asyncio
 
 import modal
 from modal import Mount
-from modal.mount import get_sys_modules_mounts
 
 from . import helpers
-from .supports.skip import skip_windows
-
-
-@pytest.fixture
-def venv_path(tmp_path, repo_root):
-    venv_path = tmp_path
-    args = [sys.executable, "-m", "venv", venv_path, "--system-site-packages"]
-    if sys.platform == "win32":
-        # --copies appears to be broken on Python 3.13.0
-        # but I believe it is a no-op on non-windows platforms anyway?
-        args.append("--copies")
-    subprocess.run(args, check=True)
-    # Install Modal and a tiny package in the venv.
-    subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "-e", repo_root], check=True)
-    subprocess.run([venv_path / "bin" / "python", "-m", "pip", "install", "--force-reinstall", "six"], check=True)
-    yield venv_path
 
 
 @pytest.fixture
@@ -46,34 +26,21 @@ def f():
     pass
 
 
-@pytest_asyncio.fixture
-async def env_mount_files():
-    # If something is installed using pip -e, it will be bundled up as a part of the environment.
-    # Those are env-specific so we ignore those as a part of the test
-    filenames = []
-    for mount in get_sys_modules_mounts().values():
-        async for file_info in mount._get_files(mount.entries):
-            filenames.append(file_info.mount_filename)
-
-    return filenames
-
-
 serialized_fn_path = "pkg_a/serialized_fn.py"
 
 
-def serialized_function_no_automount(servicer, credentials, supports_dir, env_mount_files, server_url_env):
+def serialized_function_no_automount(servicer, credentials, supports_dir, server_url_env):
     helpers.deploy_app_externally(servicer, credentials, serialized_fn_path, cwd=supports_dir)
-    files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
-
+    files = set(servicer.files_name2sha.keys())
     # We don't automount anymore, nothing should be mounted
     assert files == {}
 
 
-def test_mounted_files_package(supports_dir, env_mount_files, servicer, server_url_env, token_env):
+def test_mounted_files_package(supports_dir, servicer, server_url_env, token_env):
     p = subprocess.run(["modal", "run", "pkg_a.package"], cwd=supports_dir)
     assert p.returncode == 0
 
-    files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
+    files = set(servicer.files_name2sha.keys())
     # Assert we include everything from `pkg_a` and `pkg_b` but not `pkg_c`:
     assert files == {
         "/root/pkg_a/__init__.py",
@@ -87,62 +54,10 @@ def test_mounted_files_package(supports_dir, env_mount_files, servicer, server_u
     }
 
 
-@skip_windows("venvs behave differently on Windows.")
-def test_mounted_files_sys_prefix(servicer, supports_dir, venv_path, env_mount_files, server_url_env, token_env):
-    # Run with venv activated, so it's on sys.prefix, and modal is dev-installed in the VM
-    subprocess.run([venv_path / "bin" / "modal", "run", script_path], cwd=supports_dir, env={**os.environ})
-    files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
-    # No automount, so we only have the entrypoint file
-    assert files == {"/root/script.py"}
-
-
-@pytest.fixture
-def symlinked_python_installation_venv_path(tmp_path, repo_root):
-    # sets up a symlink to the python *installation* (not just the python binary)
-    # and initialize the virtualenv using a path via that symlink
-    # This makes the file paths of any stdlib modules use the symlinked path
-    # instead of the original, which is similar to what some tools do (e.g. mise)
-    # and has the potential to break automounting behavior, so we keep this
-    # test as a regression test for that
-    venv_path = tmp_path / "venv"
-    actual_executable = Path(sys.executable).resolve()
-    assert actual_executable.parent.name == "bin"
-    python_install_dir = actual_executable.parent.parent
-    # create a symlink to the python install *root*
-    symlink_python_install = tmp_path / "python-install"
-    symlink_python_install.symlink_to(python_install_dir)
-
-    # use a python executable specified via the above symlink
-    symlink_python_executable = symlink_python_install / "bin" / actual_executable.name
-    # create a new venv
-    subprocess.check_call([symlink_python_executable, "-m", "venv", venv_path, "--copies"])
-    # check that a builtin module, like ast, is indeed identified to be in the non-resolved install path
-    # since this is the source of bugs that we want to assert we don't run into!
-    ast_path = subprocess.check_output(
-        [venv_path / "bin" / "python", "-c", "import ast; print(ast.__file__);"], encoding="utf8"
-    )
-    assert ast_path != Path(ast_path).resolve()
-
-    # install modal from current dir
-    subprocess.check_call([venv_path / "bin" / "pip", "install", repo_root])
-    yield venv_path
-
-
-@skip_windows("venvs behave differently on Windows.")
-def test_mounted_files_symlinked_python_install(
-    symlinked_python_installation_venv_path, supports_dir, server_url_env, token_env, servicer
-):
-    # TODO(elias): This test fails when run from a uv-managed virtualenv
-    subprocess.check_call(
-        [symlinked_python_installation_venv_path / "bin" / "modal", "run", supports_dir / "imports_ast.py"]
-    )
-    assert "/root/ast.py" not in servicer.files_name2sha
-
-
-def test_mounted_files_config(servicer, supports_dir, env_mount_files, server_url_env, token_env):
+def test_mounted_files_config(servicer, supports_dir, server_url_env, token_env):
     p = subprocess.run(["modal", "run", "pkg_a/script.py"], cwd=supports_dir, env={**os.environ})
     assert p.returncode == 0
-    files = set(servicer.files_name2sha.keys()) - set(env_mount_files)
+    files = set(servicer.files_name2sha.keys())
     assert files == {
         "/root/script.py",
     }
@@ -281,29 +196,6 @@ def test_mount_dedupe_relative_path_entrypoint(servicer, credentials, supports_d
 
     # but there should also be only one actual mount if deduplication works as expected
     assert len(servicer.mounts_excluding_published_client()) == 1
-
-
-# @skip_windows("pip-installed pdm seems somewhat broken on windows")
-# @skip_old_py("some weird issues w/ pdm and Python 3.9", min_version=(3, 10, 0))
-@pytest.mark.skip(reason="currently broken on ubuntu github actions")
-def test_pdm_cache_automount_exclude(tmp_path, monkeypatch, supports_dir, servicer, server_url_env, token_env):
-    # check that `pdm`'s cached packages are not included in automounts
-    project_dir = Path(__file__).parent.parent
-    monkeypatch.chdir(tmp_path)
-    subprocess.run(["pdm", "init", "-n"], check=True)
-    subprocess.run(
-        ["pdm", "add", "--dev", project_dir], check=True
-    )  # install workdir modal into venv, not using cache...
-    subprocess.run(["pdm", "config", "--local", "install.cache", "on"], check=True)
-    subprocess.run(["pdm", "add", "six"], check=True)  # single file module
-    subprocess.run(
-        ["pdm", "run", "modal", "deploy", supports_dir / "imports_six.py"], check=True
-    )  # deploy a basically empty function
-
-    files = set(servicer.files_name2sha.keys())
-    assert files == {
-        "/root/imports_six.py",
-    }
 
 
 def test_mount_directory_with_symlinked_file(path_with_symlinked_files, servicer, client):
