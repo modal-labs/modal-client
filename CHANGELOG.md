@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.1.dev0 (2025-05-16)
+
+* Fixes a bug where objects returned by `Sandbox.list` had `returncode == 0` for *running* sandboxes. Now those sandboxes will have a null returncode.
+
+
 ### 1.0.0 (2025-05-16)
 
 With this release, we're beginning to enforce the deprecations discussed in the [1.0 migration guide](https://modal.com/docs/guide/modal-1-0-migration). Going forward, we'll include breaking changes for outstanding deprecations in `1.Y.0` releases, so we recommend pinning Modal on a minor version (`modal~=1.0.0`) if you have not addressed the existing warnings. While we'll continue to make improvements to the Modal API, new deprecations will be introduced at a substantially reduced rate, and support windows for older client versions will lengthen.
