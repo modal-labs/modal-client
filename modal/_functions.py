@@ -1764,12 +1764,11 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         *function_calls: "_FunctionCall[T]",
         return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
     ) -> typing.Sequence[T | BaseException]:
-        """Wait until all Modal FunctionCall objects have results before returning.
+        """Returns a list of results from a variable number of Modal `FunctionCall` objects (as returned by
+        `Function.spawn()`).
 
-        Accepts a variable number of `FunctionCall` objects, as returned by `Function.spawn()`.
-
-        Returns a list of results from each FunctionCall, or raises an exception
-        from the first failing function call.
+        By default, this will raise an exception from the first failing function call. If `return_exceptions=True`, it
+        will instead return a list of results, with exceptions aggregated in the results list.
 
         Examples:
 
