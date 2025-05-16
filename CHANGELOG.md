@@ -2,25 +2,23 @@
 
 This changelog documents user-facing updates (features, enhancements, fixes, and deprecations) to the `modal` client library.
 
-You can also refer to the [1.0 migration guide](https://modal.com/docs/guide/modal-1-0-migration) for a summary of major breaking changes that we are rolling out before releasing version 1.0.
-
 ## Latest
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
 ### 1.0.0 (2025-05-16)
 
-We've made some breaking changes to Modal's "automounting" behavior.
+With this release, we're beginning to enforce the deprecations discussed in the [1.0 migration guide](https://modal.com/docs/guide/modal-1-0-migration). Going forward, we'll include breaking changes for outstanding deprecations in `1.Y.0` releases, so we recommend pinning Modal on a minor version (`modal~=1.0.0`) if you have not addressed the existing warnings. While we'll continue to make improvements to the Modal API, new deprecations will be introduced at a substantially reduced rate, and support windows for older client versions will lengthen.
 
-⚠️️ If you've not already adapted your source code in response to warnings about changes in the automount behavior, Apps built with 1.0+ will have different files included and may not run as expected.
+⚠️ In this release, we've made some breaking changes to Modal's "automounting" behavior.️ If you've not already adapted your source code in response to warnings about automounting, Apps built with 1.0+ will have different files included and may not run as expected:
 
 - Previously, Modal containers would automatically include the source for local Python packages that were imported by your Modal App. Going forward, it will be necessary to explicitly include such packages in the Image (i.e., with `modal.Image.add_local_python_source`).
 - Support for the `automount` configuration (`MODAL_AUTOMOUNT`) has been removed; this environment variable will no longer have any effect.
 - Modal will continue to automatically include the Python module or package where the Function is defined. This is narrower in scope than the old automounting behavior: it's limited to at most a single package, and it includes only `.py` files. The limited automounting can also be disabled in cases where your Image definition already includes the package defining the App: set `include_source=False` in the `modal.App` constructor or `@app.function` decorator.
 
-Additionally, blah blah blah
+Additionally, we have enforced a number of previously-introduced deprecations:
 
-- Removed `modal.Mount` as a public object, along with the various `mount=` parameters where Mounts could be passed into the Modal API. Usage can be replaced with `modal.Image` methods, e.g.:
+- Removed `modal.Mount` as a public object, along with various `mount=` parameters where Mounts could be passed into the Modal API. Usage can be replaced with `modal.Image` methods, e.g.:
   ```python
   @app.function(image=image, mounts=[modal.Mount.from_local_dir("data", "/root/data")])  # This is now an error!
   @app.function(image=image.add_local_dir("data", "/root/data"))  # Correct spelling
@@ -30,7 +28,7 @@ Additionally, blah blah blah
   with modal.enable_output(), app.run():
     ...  # Will produce verbose Modal output
   ```
-- Passing flagged options to the `Image.pip_install` package list will now raise an error. Use the `extra_options`  parameter for additional flags that aren't exposed through the `Image.pip_install` signature:
+- Passing flagged options to the `Image.pip_install` package list will now raise an error. Use the `extra_options`  parameter to specify options that aren't exposed through the `Image.pip_install` signature:
   ```python
   image.pip_install("flash-attn", "--no-build-isolation")  # This is now an error!
   image.pip_install("flash-attn", extra_options="--no-build-isolation")  # Correct spelling
@@ -42,7 +40,7 @@ Additionally, blah blah blah
   ```
 - It's no longer possible to invoke a generator Function with `Function.spawn`; previously this warned, now it raises an `InvalidError`. Additionally, the `FunctionCall.get_gen` method has been removed, and it's no longer possible to set `is_generator` when using `FunctionCall.from_id`.
 - Removed the `.resolve()` method on Modal objects. This method had not been publicly documented, but where used it can be replaced straightforwardly with `.hydrate()`. Note that explicit hydration should rarely be necessary: in most cases you can rely on lazy hydration semantics (i.e., objects will be hydrated when the first method that requires server metadata is called).
-- Functions decorated with `@modal.asgi_app` or `@modal.wsgi_app` are now required to be nullary. Previously, we only warned in the case where a function was defined with all parameters having default arguments.
+- Functions decorated with `@modal.asgi_app` or `@modal.wsgi_app` are now required to be nullary. Previously, we warned in the case where a function was defined with parameters that all had default arguments.
 - Referencing the deprecated `modal.Stub` object will now raise an `AttributeError`, whereas previously it was an alias for `modal.App`. This is a simple name change.
 
 
