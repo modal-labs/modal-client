@@ -1768,7 +1768,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         `Function.spawn()`).
 
         By default, this will raise an exception from the first failing function call. If `return_exceptions=True`, it
-        will instead return a list of results, with exceptions aggregated in the results list.
+        will instead aggregate exceptions in the results list.
 
         Examples:
 
