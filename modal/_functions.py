@@ -1760,13 +1760,15 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         return fc
 
     @staticmethod
-    async def gather(*function_calls: "_FunctionCall[T]") -> typing.Sequence[T]:
-        """Wait until all Modal FunctionCall objects have results before returning.
+    async def gather(
+        *function_calls: "_FunctionCall[T]",
+        return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
+    ) -> typing.Sequence[T | BaseException]:
+        """Returns a list of results from a variable number of Modal `FunctionCall` objects (as returned by
+        `Function.spawn()`).
 
-        Accepts a variable number of `FunctionCall` objects, as returned by `Function.spawn()`.
-
-        Returns a list of results from each FunctionCall, or raises an exception
-        from the first failing function call.
+        By default, this will raise an exception from the first failing function call. If `return_exceptions=True`, it
+        will instead aggregate exceptions in the results list.
 
         Examples:
 
@@ -1779,6 +1781,9 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
         *Added in v0.73.69*: This method replaces the deprecated `modal.functions.gather` function.
         """
+        if return_exceptions:
+            return await asyncio.gather(*[fc.get() for fc in function_calls], return_exceptions=True)
+
         try:
             return await TaskContext.gather(*[fc.get() for fc in function_calls])
         except Exception as exc:
