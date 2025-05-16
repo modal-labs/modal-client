@@ -1428,6 +1428,13 @@ Use the `Function.get_web_url()` method instead.
         assert self._is_generator is not None  # should be set now
         return self._is_generator
 
+    def _get_function_progress_callback(self) -> Optional[Callable[[int, int], None]]:
+        assert self._function_name
+        if output_mgr := _get_output_manager():
+            return output_mgr.function_progress_callback(self._function_name, total=None)
+        else:
+            return None
+
     @live_method_gen
     async def _map(
         self, input_queue: _SynchronizedQueue, order_outputs: bool, return_exceptions: bool
@@ -1445,12 +1452,6 @@ Use the `Function.get_web_url()` method instead.
         if self._is_generator:
             raise InvalidError("A generator function cannot be called with `.map(...)`.")
 
-        assert self._function_name
-        if output_mgr := _get_output_manager():
-            count_update_callback = output_mgr.function_progress_callback(self._function_name, total=None)
-        else:
-            count_update_callback = None
-
         async with aclosing(
             _map_invocation(
                 self,
@@ -1458,7 +1459,7 @@ Use the `Function.get_web_url()` method instead.
                 self.client,
                 order_outputs,
                 return_exceptions,
-                count_update_callback,
+                self._get_function_progress_callback(),
                 api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
             )
         ) as stream:

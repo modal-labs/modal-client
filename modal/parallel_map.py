@@ -529,20 +529,35 @@ async def _spawn_map_async(self, *input_iterators, kwargs={}) -> None:
     function calls for each.
     """
 
-    def _call_with_args(args):
+    count_update_callback = self._get_function_progress_callback()
+    completed, total = 0, 0
+
+    async def _call_with_args(args):
         """
-        Returns co-routine that invokes a function with the given arguments.
+        Co-routine that invokes a function with the given arguments.
 
         On RESOURCE_EXHAUSTED, it will retry indefinitely with exponential backoff up to 30 seconds. Every 10 retriable
         errors, log a warning that the function call is waiting to be created.
         """
+        nonlocal completed, total
 
-        return self._spawn_map_inner.aio(*args, **kwargs)
+        await self._spawn_map_inner.aio(*args, **kwargs)
+        completed += 1
 
-    input_gen = async_zip(*[sync_or_async_iter(it) for it in input_iterators])
+        if count_update_callback:
+            count_update_callback(completed, total)
+
+    async def wrapped_input_gen():
+        nonlocal completed, total
+
+        async for item in async_zip(*[sync_or_async_iter(it) for it in input_iterators]):
+            yield item
+            total += 1
+            if count_update_callback:
+                count_update_callback(completed, total)
 
     # TODO(gongy): Can improve this by creating async_foreach method which foregoes async_merge.
-    async for _ in async_map(input_gen, _call_with_args, concurrency=256):
+    async for _ in async_map(wrapped_input_gen(), _call_with_args, concurrency=256):
         pass
 
 
