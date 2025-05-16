@@ -496,6 +496,24 @@ def test_function_exception(client, servicer):
         assert "foo!" in str(excinfo.value)
 
 
+def test_function_exception_gather(client, servicer):
+    app = App()
+
+    servicer.function_body(failure)
+    failure_modal = app.function()(failure)
+    with app.run(client=client):
+        with pytest.raises(CustomException) as excinfo:
+            FunctionCall.gather(failure_modal.spawn(), failure_modal.spawn())
+        assert "foo!" in str(excinfo.value)
+
+    with app.run(client=client):
+        results = FunctionCall.gather(failure_modal.spawn(), failure_modal.spawn(), return_exceptions=True)
+        for result in results:
+            assert isinstance(result, UserCodeException)
+            assert isinstance(result.exc, CustomException)
+            assert "foo!" in str(result)
+
+
 @pytest.mark.asyncio
 async def test_function_exception_async(client, servicer):
     app = App()
