@@ -462,3 +462,26 @@ def test_sandbox_proxy(app, servicer):
     _ = Sandbox.create(proxy=Proxy.from_name("my-proxy"), app=app)
 
     assert servicer.sandbox_defs[0].proxy_id == "pr-123"
+
+
+def test_sandbox_list_sets_correct_returncode_for_running(client, servicer):
+    with servicer.intercept() as ctx:
+        # test generic status
+        ctx.add_response(
+            "SandboxList",
+            api_pb2.SandboxListResponse(
+                sandboxes=[
+                    api_pb2.SandboxInfo(
+                        id="sb-123",
+                        task_info=api_pb2.TaskInfo(
+                            result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED)
+                        ),
+                    )
+                ]
+            ),
+        )
+        ctx.add_response(
+            "SandboxList", api_pb2.SandboxListResponse(sandboxes=[])
+        )  # list will loop for older sandboxes until no more arrive
+        (list_result,) = list(Sandbox.list(client=client))
+    assert list_result.returncode is None

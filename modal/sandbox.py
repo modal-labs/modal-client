@@ -775,7 +775,6 @@ class _Sandbox(_Object, type_prefix="sb"):
     @property
     def returncode(self) -> Optional[int]:
         """Return code of the Sandbox process if it has finished running, else `None`."""
-
         if self._result is None:
             return None
         # Statuses are converted to exitcodes so we can conform to subprocess API.
@@ -819,8 +818,10 @@ class _Sandbox(_Object, type_prefix="sb"):
                 return
 
             for sandbox_info in resp.sandboxes:
+                sandbox_info: api_pb2.SandboxInfo
                 obj = _Sandbox._new_hydrated(sandbox_info.id, client, None)
-                obj._result = sandbox_info.task_info.result
+                if sandbox_info.task_info.result.status:
+                    obj._result = sandbox_info.task_info.result
                 yield obj
 
             # Fetch the next batch starting from the end of the current one.
