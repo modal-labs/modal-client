@@ -499,7 +499,7 @@ class _Volume(_Object, type_prefix="vo"):
             num_bytes_written = 0
 
             async with download_semaphore, ClientSessionRegistry.get_session().get(url) as get_response:
-                async for chunk in get_response.content:
+                async for chunk in get_response.content.iter_any():
                     num_chunk_bytes_written = 0
 
                     while num_chunk_bytes_written < len(chunk):
