@@ -3,6 +3,7 @@ import asyncio
 import os
 import platform
 import sys
+import urllib.parse
 import warnings
 from collections.abc import AsyncGenerator, AsyncIterator, Collection, Mapping
 from typing import (
@@ -50,8 +51,8 @@ def _get_metadata(client_type: int, credentials: Optional[tuple[str, str]], vers
         "x-modal-client-version": version,
         "x-modal-client-type": str(client_type),
         "x-modal-python-version": python_version,
-        "x-modal-node": platform.node(),
-        "x-modal-platform": platform_str,
+        "x-modal-node": urllib.parse.quote(platform.node()),
+        "x-modal-platform": urllib.parse.quote(platform_str),
     }
     if credentials and client_type == api_pb2.CLIENT_TYPE_CLIENT:
         token_id, token_secret = credentials

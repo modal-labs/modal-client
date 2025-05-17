@@ -3,6 +3,7 @@ import platform
 import pytest
 import subprocess
 import sys
+import urllib.parse
 
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
@@ -26,7 +27,7 @@ def test_client_type(servicer, client):
 
 def test_client_platform_string(servicer, client):
     client.hello()
-    platform_str = servicer.last_metadata["x-modal-platform"]
+    platform_str = urllib.parse.unquote(servicer.last_metadata["x-modal-platform"])
     system, release, machine = platform_str.split("-")
     if platform.system() == "Darwin":
         assert system == "macOS"
