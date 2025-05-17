@@ -51,7 +51,9 @@ class Tunnel:
 
 
 @asynccontextmanager
-async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Client] = None) -> AsyncIterator[Tunnel]:
+async def _forward(
+    port: int, *, unencrypted: bool = False, is_h2: bool = False, client: Optional[_Client] = None
+) -> AsyncIterator[Tunnel]:
     """Expose a port publicly from inside a running Modal container, with TLS.
 
     If `unencrypted` is set, this also exposes the TCP socket without encryption on a random port
@@ -176,7 +178,9 @@ async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Cl
         raise InvalidError("Forwarding ports only works inside a Modal container")
 
     try:
-        response = await client.stub.TunnelStart(api_pb2.TunnelStartRequest(port=port, unencrypted=unencrypted))
+        response = await client.stub.TunnelStart(
+            api_pb2.TunnelStartRequest(port=port, unencrypted=unencrypted, is_h2=is_h2)
+        )
     except GRPCError as exc:
         if exc.status == Status.ALREADY_EXISTS:
             raise InvalidError(f"Port {port} is already forwarded")
