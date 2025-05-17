@@ -109,6 +109,28 @@ def test_secret_create_list_delete(servicer, set_env_client):
     assert "foo" not in _run(["secret", "list"]).stdout
 
 
+@pytest.mark.parametrize(
+    ("keyvalues", "from_envs", "expected_exit_code"),
+    [
+        ([], [], 2),
+        (["key=val"], [], 0),
+        (["key=val"], ["ENV_KEY1"], 0),
+        ([], ["ENV_KEY1"], 0),
+        (["key=val"], ["ENV_KEY1", "ENV_KEY2"], 0),
+        (["key1=val1", "key2=val2"], ["ENV_KEY1", "ENV_KEY2"], 0),
+        (["key=val"], ["MISSING_ENV_KEY"], 2),
+        ([], ["MISSING_ENV_KEY"], 2),
+    ],
+)
+def test_secret_create_from_env(servicer, set_env_client, keyvalues, from_envs, expected_exit_code):
+    args = keyvalues
+    for from_env in from_envs:
+        args += ["--from-env", from_env]
+
+    with mock.patch.dict(os.environ, {e: "foo" for e in ["ENV_KEY1", "ENV_KEY2"]}):
+        _run(["secret", "create", "env-secrets"] + args, expected_exit_code=expected_exit_code)
+
+
 def test_app_token_new(servicer, set_env_client, server_url_env, modal_config):
     servicer.required_creds = {"abc": "xyz"}
     with modal_config() as config_file_path:
