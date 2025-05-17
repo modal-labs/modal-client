@@ -8,7 +8,8 @@ from rich.text import Text
 from modal._object import _get_environment_name
 from modal._pty import get_pty_info
 from modal._utils.async_utils import synchronizer
-from modal.cli.utils import ENV_OPTION, display_table, is_tty, timestamp_to_local
+from modal._utils.time_utils import timestamp_to_local
+from modal.cli.utils import ENV_OPTION, display_table, is_tty
 from modal.client import _Client
 from modal.config import config
 from modal.container_process import _ContainerProcess

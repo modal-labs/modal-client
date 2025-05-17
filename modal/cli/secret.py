@@ -13,7 +13,8 @@ from typer import Argument
 
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
-from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table, timestamp_to_local
+from modal._utils.time_utils import timestamp_to_local
+from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.secret import _Secret

@@ -15,8 +15,9 @@ import modal
 from modal._output import OutputManager, ProgressHandler
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
+from modal._utils.time_utils import timestamp_to_local
 from modal.cli._download import _volume_download
-from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table, timestamp_to_local
+from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.volume import _AbstractVolumeUploadContextManager, _Volume
@@ -203,7 +204,7 @@ async def put(
                     vol.object_id,
                     vol._client,
                     progress_cb=progress_handler.progress,
-                    force=force
+                    force=force,
                 ) as batch:
                     batch.put_directory(local_path, remote_path)
             except FileExistsError as exc:
@@ -219,7 +220,7 @@ async def put(
                     vol.object_id,
                     vol._client,
                     progress_cb=progress_handler.progress,
-                    force=force
+                    force=force,
                 ) as batch:
                     batch.put_file(local_path, remote_path)
 

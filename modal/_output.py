@@ -32,6 +32,7 @@ from rich.progress import (
 from rich.spinner import Spinner
 from rich.text import Text
 
+from modal._utils.time_utils import timestamp_to_local
 from modal_proto import api_pb2
 
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
@@ -81,21 +82,26 @@ def download_progress_bar() -> Progress:
     )
 
 
-class LineBufferedOutput(io.StringIO):
+class LineBufferedOutput:
     """Output stream that buffers lines and passes them to a callback."""
 
     LINE_REGEX = re.compile("(\r\n|\r|\n)")
 
-    def __init__(self, callback: Callable[[str], None]):
+    def __init__(self, callback: Callable[[str], None], show_timestamps: bool):
         self._callback = callback
         self._buf = ""
+        self._show_timestamps = show_timestamps
 
-    def write(self, data: str):
-        chunks = self.LINE_REGEX.split(self._buf + data)
+    def write(self, log: api_pb2.TaskLogs):
+        chunks = self.LINE_REGEX.split(self._buf + log.data)
 
         # re.split("(<exp>)") returns the matched groups, and also the separators.
         # e.g. re.split("(+)", "a+b") returns ["a", "+", "b"].
         # This means that chunks is guaranteed to be odd in length.
+
+        if self._show_timestamps:
+            for i in range(0, len(chunks) - 1, 2):
+                chunks[i] = f"{timestamp_to_local(log.timestamp)} {chunks[i]}"
 
         completed_lines = "".join(chunks[:-1])
         remainder = chunks[-1]
@@ -136,12 +142,14 @@ class OutputManager:
     _app_page_url: str | None
     _show_image_logs: bool
     _status_spinner_live: Live | None
+    _show_timestamps: bool
 
     def __init__(
         self,
         *,
         stdout: io.TextIOWrapper | None = None,
         status_spinner_text: str = "Running app...",
+        show_timestamps: bool = False,
     ):
         self._stdout = stdout or sys.stdout
         self._console = Console(file=stdout, highlight=False)
@@ -156,6 +164,7 @@ class OutputManager:
         self._app_page_url = None
         self._show_image_logs = False
         self._status_spinner_live = None
+        self._show_timestamps = show_timestamps
 
     @classmethod
     def disable(cls):
@@ -355,9 +364,9 @@ class OutputManager:
     async def put_log_content(self, log: api_pb2.TaskLogs):
         stream = self._line_buffers.get(log.file_descriptor)
         if stream is None:
-            stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor))
+            stream = LineBufferedOutput(functools.partial(self._print_log, log.file_descriptor), self._show_timestamps)
             self._line_buffers[log.file_descriptor] = stream
-        stream.write(log.data)
+        stream.write(log)
 
     def flush_lines(self):
         for stream in self._line_buffers.values():

@@ -15,7 +15,8 @@ from modal.client import _Client
 from modal.environments import ensure_env
 from modal_proto import api_pb2
 
-from .utils import ENV_OPTION, display_table, get_app_id_from_name, stream_app_logs, timestamp_to_local
+from .._utils.time_utils import timestamp_to_local
+from .utils import ENV_OPTION, display_table, get_app_id_from_name, stream_app_logs
 
 APP_IDENTIFIER = Argument("", help="App name or ID")
 NAME_OPTION = typer.Option("", "-n", "--name", help="Deprecated: Pass App name as a positional argument")
@@ -84,6 +85,7 @@ def logs(
     app_identifier: str = APP_IDENTIFIER,
     *,
     env: Optional[str] = ENV_OPTION,
+    timestamps: bool = typer.Option(False, "--timestamps", help="Show timestamps for each log line"),
 ):
     """Show App logs, streaming while active.
 
@@ -103,7 +105,7 @@ def logs(
 
     """
     app_id = get_app_id(app_identifier, env)
-    stream_app_logs(app_id)
+    stream_app_logs(app_id, show_timestamps=timestamps)
 
 
 @app_cli.command("rollback", no_args_is_help=True, context_settings={"ignore_unknown_options": True})

@@ -17,8 +17,9 @@ from modal._location import display_location
 from modal._output import OutputManager, ProgressHandler
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
+from modal._utils.time_utils import timestamp_to_local
 from modal.cli._download import _volume_download
-from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table, timestamp_to_local
+from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.network_file_system import _NetworkFileSystem
