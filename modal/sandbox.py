@@ -738,10 +738,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         recursive: Optional[bool] = None,
         timeout: Optional[int] = None,
     ) -> AsyncIterator[FileWatchEvent]:
-        """Watch a file or directory in the Sandbox for changes.
-
-        See the [guide](/docs/guide/sandbox-files#file-watching) for usage information.
-        """
+        """Watch a file or directory in the Sandbox for changes."""
         task_id = await self._get_task_id()
         async for event in _FileIO.watch(path, self._client, task_id, filter, recursive, timeout):
             yield event
