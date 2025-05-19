@@ -423,6 +423,9 @@ class _Image(_Object, type_prefix="im"):
         self._deferred_mounts = other._deferred_mounts
         self._added_python_source_set = other._added_python_source_set
 
+    def _get_metadata(self) -> Optional[Message]:
+        return self._metadata
+
     def _hydrate_metadata(self, metadata: Optional[Message]):
         env_image_id = config.get("image_id")  # set as an env var in containers
         if env_image_id == self.object_id:
@@ -445,7 +448,6 @@ class _Image(_Object, type_prefix="im"):
             self2._hydrate_from_other(base_image)  # same image id as base image as long as it's lazy
             self2._deferred_mounts = tuple(base_image._deferred_mounts) + (mount,)
             self2._serve_mounts = base_image._serve_mounts | ({mount} if mount.is_local() else set())
-            self2._metadata = base_image._metadata
 
         img = _Image._from_loader(_load, "Image(local files)", deps=lambda: [base_image, mount])
         img._added_python_source_set = base_image._added_python_source_set
