@@ -415,6 +415,7 @@ class _InputPlaneInvocation:
                     input=self.input_item,
                     attempt_token=self.attempt_token,
                 )
+                # TODO(ryan): Add exponential backoff?
                 retry_response = await retry_transient_errors(self.stub.AttemptRetry, retry_request)
                 self.attempt_token = retry_response.attempt_token
 
