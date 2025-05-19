@@ -792,7 +792,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     app_name = app.name
 
                 # on builder > 2024.10 we mount client dependencies at runtime
-                mount_client_dependencies = image._metadata.image_builder_version > "2024.10"
+                mount_client_dependencies = False
+                if image._metadata is not None:
+                    mount_client_dependencies = image._metadata.image_builder_version > "2024.10"
 
                 # Relies on dicts being ordered (true as of Python 3.6).
                 volume_mounts = [
