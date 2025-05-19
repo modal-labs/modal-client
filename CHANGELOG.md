@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.1.dev5 (2025-05-19)
+
+- Added a `--timestamps` flag to `modal app logs`, that prepends the timestamp to each log line.
+
+
 #### 1.0.1.dev0 (2025-05-16)
 
 * Fixes a bug where objects returned by `Sandbox.list` had `returncode == 0` for *running* sandboxes. Now those sandboxes will have a null returncode.
