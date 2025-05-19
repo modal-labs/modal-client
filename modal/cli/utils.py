@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
 from collections.abc import Sequence
-from datetime import datetime
 from json import dumps
 from typing import Optional, Union
 
@@ -23,10 +22,13 @@ from ..exception import NotFoundError
 
 @synchronizer.create_blocking
 async def stream_app_logs(
-    app_id: Optional[str] = None, task_id: Optional[str] = None, app_logs_url: Optional[str] = None
+    app_id: Optional[str] = None,
+    task_id: Optional[str] = None,
+    app_logs_url: Optional[str] = None,
+    show_timestamps: bool = False,
 ):
     client = await _Client.from_env()
-    output_mgr = OutputManager(status_spinner_text=f"Tailing logs for {app_id}")
+    output_mgr = OutputManager(status_spinner_text=f"Tailing logs for {app_id}", show_timestamps=show_timestamps)
     try:
         with output_mgr.show_status_spinner():
             await get_app_logs_loop(client, output_mgr, app_id=app_id, task_id=task_id, app_logs_url=app_logs_url)
@@ -59,18 +61,6 @@ async def get_app_id_from_name(name: str, env: Optional[str], client: Optional[_
         env_comment = f" in the '{env_name}' environment" if env_name else ""
         raise NotFoundError(f"Could not find a deployed app named '{name}'{env_comment}.")
     return resp.app_id
-
-
-def timestamp_to_local(ts: float, isotz: bool = True) -> str:
-    if ts > 0:
-        locale_tz = datetime.now().astimezone().tzinfo
-        dt = datetime.fromtimestamp(ts, tz=locale_tz)
-        if isotz:
-            return dt.isoformat(sep=" ", timespec="seconds")
-        else:
-            return f"{datetime.strftime(dt, '%Y-%m-%d %H:%M')} {locale_tz.tzname(dt)}"
-    else:
-        return None
 
 
 def _plain(text: Union[Text, str]) -> str:
