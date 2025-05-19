@@ -52,7 +52,7 @@ class Tunnel:
 
 @asynccontextmanager
 async def _forward(
-    port: int, *, unencrypted: bool = False, is_h2: bool = False, client: Optional[_Client] = None
+    port: int, *, unencrypted: bool = False, tunnel_type: str = "h1", client: Optional[_Client] = None
 ) -> AsyncIterator[Tunnel]:
     """Expose a port publicly from inside a running Modal container, with TLS.
 
@@ -179,7 +179,7 @@ async def _forward(
 
     try:
         response = await client.stub.TunnelStart(
-            api_pb2.TunnelStartRequest(port=port, unencrypted=unencrypted, is_h2=is_h2)
+            api_pb2.TunnelStartRequest(port=port, unencrypted=unencrypted, tunnel_type=tunnel_type)
         )
     except GRPCError as exc:
         if exc.status == Status.ALREADY_EXISTS:

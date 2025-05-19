@@ -100,7 +100,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         cidr_allowlist: Optional[Sequence[str]] = None,
         volumes: dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
         pty_info: Optional[api_pb2.PTYInfo] = None,
-        encrypted_ports: Sequence[Union[int, tuple[int, bool]]] = [],
+        encrypted_ports: Sequence[Union[int, tuple[int, str]]] = [],
         unencrypted_ports: Sequence[int] = [],
         proxy: Optional[_Proxy] = None,
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
@@ -154,19 +154,22 @@ class _Sandbox(_Object, type_prefix="sb"):
                 for path, volume in validated_volumes
             ]
 
+            valid_tunnel_types = ["h1", "h2"]
             open_ports = []
             for x in encrypted_ports:
                 if isinstance(x, int):
-                    port, is_h2 = x, False
+                    port, tunnel_type = x, "h1"
                 elif isinstance(x, tuple) and len(x) == 2:
-                    port, is_h2 = x[0], x[1]
+                    port, tunnel_type = x[0], x[1]
+                    if tunnel_type not in valid_tunnel_types:
+                        raise ValueError(f"Invalid tunnel type: {tunnel_type}. Valid types are: {valid_tunnel_types}")
                 else:
                     raise ValueError(f"Invalid encrypted port specifier: {x}")
 
-                open_ports.append(api_pb2.PortSpec(port=port, unencrypted=False, is_h2=is_h2))
+                open_ports.append(api_pb2.PortSpec(port=port, unencrypted=False, tunnel_type=tunnel_type))
 
             open_ports.extend(
-                [api_pb2.PortSpec(port=port, unencrypted=True, is_h2=False) for port in unencrypted_ports]
+                [api_pb2.PortSpec(port=port, unencrypted=True, tunnel_type="h1") for port in unencrypted_ports]
             )
 
             if block_network:
@@ -253,7 +256,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         ] = {},  # Mount points for Modal Volumes and CloudBucketMounts
         pty_info: Optional[api_pb2.PTYInfo] = None,
         # List of ports to tunnel into the sandbox. Encrypted ports are tunneled with TLS.
-        encrypted_ports: Sequence[Union[int, tuple[int, bool]]] = [],
+        encrypted_ports: Sequence[Union[int, tuple[int, str]]] = [],
         # List of ports to tunnel into the sandbox without encryption.
         unencrypted_ports: Sequence[int] = [],
         # Reference to a Modal Proxy to use in front of this Sandbox.
