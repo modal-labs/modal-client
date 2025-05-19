@@ -240,6 +240,9 @@ _SETTINGS = {
     "cuda_checkpoint_path": _Setting("/__modal/.bin/cuda-checkpoint"),  # Used for snapshotting GPU memory.
     "function_schemas": _Setting(False, transform=_to_boolean),
     "build_validation": _Setting("error", transform=_check_value(["error", "warn", "ignore"])),
+    "event_loop_monitor": _Setting(True, transform=_to_boolean),
+    "event_loop_monitor_period_ms": _Setting(1000, transform=int),
+    "event_loop_monitor_threshold_ms": _Setting(200, transform=int),
 }
 
 

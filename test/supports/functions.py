@@ -688,3 +688,15 @@ class CustomException(Exception):
 @app.function()
 def raises_custom_exception(x):
     raise CustomException("Failure!")
+
+
+@app.function()
+async def blocks_event_loop():
+    time.sleep(1)
+    return 1
+
+
+@app.function()
+def blocks_without_eventloop():
+    time.sleep(1)
+    return 1

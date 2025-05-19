@@ -2,6 +2,7 @@
 # ruff: noqa: E402
 import os
 
+from modal._runtime.event_loop_monitor import configurable_event_loop_monitor
 from modal._runtime.user_code_imports import (
     Service,
     import_class_service,
@@ -189,7 +190,10 @@ def call_function(
         started_at = time.time()
         input_ids, function_call_ids = io_context.input_ids, io_context.function_call_ids
         reset_context = execution_context._set_current_context_ids(input_ids, function_call_ids)
-        async with container_io_manager.handle_input_exception.aio(io_context, started_at):
+        async with (
+            configurable_event_loop_monitor(),
+            container_io_manager.handle_input_exception.aio(io_context, started_at),
+        ):
             res = io_context.call_finalized_function()
             # TODO(erikbern): any exception below shouldn't be considered a user exception
             if io_context.finalized_function.is_generator:

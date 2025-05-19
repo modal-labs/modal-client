@@ -2602,3 +2602,20 @@ def test_custom_exception(servicer, capsys):
     exc = _unwrap_exception(ret)
     assert isinstance(exc, Exception)
     assert repr(exc) == "CustomException('Failure!')"
+
+
+@skip_github_non_linux
+def test_event_loop_monitor_async_blocking_warns(servicer, capsys):
+    ret = _run_container(servicer, "test.supports.functions", "blocks_event_loop")
+    assert _unwrap_scalar(ret) == 1
+    print(capsys.readouterr())
+
+
+@skip_github_non_linux
+def test_event_loop_monitor_sync_blocking_nowarn():
+    pass
+
+
+@skip_github_non_linux
+def test_event_loop_monitor_sync_mixed_class_no_warn():
+    pass
