@@ -10,7 +10,6 @@ from typing import Any, Callable, Literal, Optional
 
 from grpclib import GRPCError
 from grpclib.exceptions import StreamTerminatedError
-from synchronicity.exceptions import UserCodeException
 
 import modal_proto
 from modal_proto import api_pb2
@@ -497,7 +496,7 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
                     append_modal_tb(exc, tb_dict, line_cache)
                 except Exception:
                     pass
-            uc_exc = UserCodeException(exc_with_hints(exc))
+            uc_exc = exc_with_hints(exc)
             raise uc_exc
         raise RemoteError(result.exception)
 
