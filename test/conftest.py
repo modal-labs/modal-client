@@ -2093,7 +2093,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # To test client retries, tests can configure outputs to fail some number of times.
         status = api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
         if self.attempt_await_failures_remaining > 0:
-            status = api_pb2.GenericResult.GENERIC_STATUS_TERMINATED
+            status = api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE
             self.attempt_await_failures_remaining = self.attempt_await_failures_remaining - 1
 
         await stream.send_message(

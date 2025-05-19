@@ -20,17 +20,12 @@ def test_foo(client, servicer):
     with app.run(client=client):
         assert foo.remote() == "attempt_await_bogus_response"
 
-
 def test_lookup_foo(client, servicer):
     # This verifies that FunctionGet returns the input_plane_url in the response, and we then call the input plane.
     modal.App()
     deploy_app(app, "app", client=client)
     f = Function.from_name("app", "foo").hydrate(client)
     assert f.remote() == "attempt_await_bogus_response"
-
-@app.function(experimental_options={"input_plane_region": "us-east"})
-def maybe_fail():
-    raise ValueError("fail")
 
 def test_retry(client, servicer):
     # Tell the servicer to fail once, and then succeed. The client should retry the failed attempt.

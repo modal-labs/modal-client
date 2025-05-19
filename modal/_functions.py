@@ -399,9 +399,10 @@ class _InputPlaneInvocation:
             )
 
             try:
-                return await _process_result(
-                    await_response.output.result, await_response.output.data_format, self.stub, self.client
-                )
+                if await_response.HasField("output"):
+                    return await _process_result(
+                        await_response.output.result, await_response.output.data_format, self.stub, self.client
+                    )
             except InternalFailure as e:
                 internal_failure_count += 1
                 # Limit the number of times we retry
