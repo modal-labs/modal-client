@@ -22,6 +22,7 @@ from typing import (
     Union,
 )
 
+from aiohttp import ClientError
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
@@ -1010,6 +1011,14 @@ async def _put_missing_blocks(
         file_progress.pending_blocks.add(missing_block.block_index)
         task_progress_cb = functools.partial(progress_cb, task_id=file_progress.task_id)
 
+        async def put_missing_block_attempt(payload: BytesIOSegmentPayload) -> bytes:
+            async with ClientSessionRegistry.get_session().put(
+                missing_block.put_url,
+                data=payload,
+            ) as response:
+                response.raise_for_status()
+                return await response.content.read()
+
         async with put_semaphore:
             with file_spec.source() as source_fp:
                 payload = BytesIOSegmentPayload(
@@ -1020,13 +1029,20 @@ async def _put_missing_blocks(
                     chunk_size=256 * 1024,
                     progress_report_cb=task_progress_cb,
                 )
-
-                async with ClientSessionRegistry.get_session().put(
-                    missing_block.put_url,
-                    data=payload,
-                ) as response:
-                    response.raise_for_status()
-                    resp_data = await response.content.read()
+                num_retries = 3
+                err = None
+                for attempt in range(num_retries):
+                    try:
+                        # TODO(dflemstr): can't use `payload.reset_on_error()` here because many blocks share the same
+                        #  `task_progress_cb`. Can we rewind a specific amount?
+                        with payload.reset_on_error():
+                            resp_data = await put_missing_block_attempt(payload)
+                        break
+                    except ClientError as e:
+                        err = e
+                else:
+                    if err:
+                        raise err
 
         file_progress.pending_blocks.remove(missing_block.block_index)
 
