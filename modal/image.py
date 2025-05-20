@@ -647,7 +647,13 @@ class _Image(_Object, type_prefix="im"):
                     metadata = resp.metadata
 
             if result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
-                raise RemoteError(f"Image build for {image_id} failed with the exception:\n{result.exception}")
+                if result.exception:
+                    raise RemoteError(f"Image build for {image_id} failed with the exception:\n{result.exception}")
+                else:
+                    msg = f"Image build for {image_id} failed. See build logs for more details."
+                    if not _get_output_manager():
+                        msg += " Use `modal.enable_output()` to print logs from the process building the Image."
+                    raise RemoteError(msg)
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
                 raise RemoteError(f"Image build for {image_id} terminated due to external shut-down. Please try again.")
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
