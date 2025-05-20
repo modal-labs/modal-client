@@ -375,10 +375,16 @@ class _Volume(_Object, type_prefix="vo"):
                 "Please remove the glob `*` suffix."
             )
 
-        req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)
-        async for batch in self._client.stub.VolumeListFiles.unary_stream(req):
-            for entry in batch.entries:
-                yield FileEntry._from_proto(entry)
+        if self._is_v1:
+            req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)
+            async for batch in self._client.stub.VolumeListFiles.unary_stream(req):
+                for entry in batch.entries:
+                    yield FileEntry._from_proto(entry)
+        else:
+            req = api_pb2.VolumeListFiles2Request(volume_id=self.object_id, path=path, recursive=recursive)
+            async for batch in self._client.stub.VolumeListFiles2.unary_stream(req):
+                for entry in batch.entries:
+                    yield FileEntry._from_proto(entry)
 
     @live_method
     async def listdir(self, path: str, *, recursive: bool = False) -> list[FileEntry]:
@@ -526,8 +532,12 @@ class _Volume(_Object, type_prefix="vo"):
     @live_method
     async def remove_file(self, path: str, recursive: bool = False) -> None:
         """Remove a file or directory from a volume."""
-        req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
-        await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
+        if self._is_v1:
+            req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
+            await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
+        else:
+            req = api_pb2.VolumeRemoveFile2Request(volume_id=self.object_id, path=path, recursive=recursive)
+            await retry_transient_errors(self._client.stub.VolumeRemoveFile2, req)
 
     @live_method
     async def copy_files(self, src_paths: Sequence[str], dst_path: str) -> None:
