@@ -34,7 +34,6 @@ from modal._utils.function_utils import (
 from modal._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, RetryWarningMessage, retry_transient_errors
 from modal._utils.jwt_utils import DecodedJwt
 from modal.config import logger
-from modal.exception import _ContainerException
 from modal.retries import RetryManager
 from modal_proto import api_pb2
 
@@ -314,8 +313,6 @@ async def _map_invocation(
         try:
             output = await _process_result(item.result, item.data_format, client.stub, client)
         except Exception as e:
-            if isinstance(e, _ContainerException):
-                e = e.unwrap()
             if return_exceptions:
                 output = e
             else:

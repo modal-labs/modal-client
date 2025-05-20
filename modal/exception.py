@@ -23,8 +23,11 @@ class Error(Exception):
 
 
 class _ContainerException(Exception):
-    # internal wrapper that distinguishes errors raised by user code in containers
-    # from internal errors in the Modal SDK or server
+    # Internal wrapper that distinguishes errors raised by user code in containers
+    # from internal errors in the Modal SDK or server.
+
+    # This should never be raised into user code
+
     def __init__(self, ex: BaseException):
         self.ex = ex
 

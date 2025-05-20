@@ -459,8 +459,15 @@ manually, for example:
 
 
 async def _process_result(result: api_pb2.GenericResult, data_format: int, stub, client=None):
-    # Note that the caller of this function is responsible for unwrapping potential ContainerExceptions
-    # when the original exception is supposed to be raised to callers
+    try:
+        return await _process_result_wrap_exceptions(result, data_format, stub, client)
+    except _ContainerException as exc:
+        raise exc.unwrap()
+
+
+async def _process_result_wrap_exceptions(result: api_pb2.GenericResult, data_format: int, stub, client=None):
+    # use with caution - this returns _ContainerException-wrapped remote container exceptions
+    # as a way to disambiguate user exceptions from Modal SDK exceptions (used for retry logic etc.)
     if result.WhichOneof("data_oneof") == "data_blob_id":
         data = await blob_download(result.data_blob_id, stub)
     else:
