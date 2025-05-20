@@ -423,6 +423,9 @@ class _Image(_Object, type_prefix="im"):
         self._deferred_mounts = other._deferred_mounts
         self._added_python_source_set = other._added_python_source_set
 
+    def _get_metadata(self) -> Optional[Message]:
+        return self._metadata
+
     def _hydrate_metadata(self, metadata: Optional[Message]):
         env_image_id = config.get("image_id")  # set as an env var in containers
         if env_image_id == self.object_id:

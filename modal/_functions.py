@@ -99,6 +99,7 @@ if TYPE_CHECKING:
     import modal.cls
     import modal.partial_function
 
+MAX_INTERNAL_FAILURE_COUNT = 8
 
 @dataclasses.dataclass
 class _RetryContext:
@@ -348,10 +349,14 @@ class _InputPlaneInvocation:
         stub: ModalClientModal,
         attempt_token: str,
         client: _Client,
+        input_item: api_pb2.FunctionPutInputsItem,
+        function_id: str,
     ):
         self.stub = stub
         self.client = client  # Used by the deserializer.
         self.attempt_token = attempt_token
+        self.input_item = input_item
+        self.function_id = function_id
 
     @staticmethod
     async def create(
@@ -365,36 +370,55 @@ class _InputPlaneInvocation:
         stub = await client.get_stub(input_plane_url)
 
         function_id = function.object_id
-        item = await _create_input(args, kwargs, stub, method_name=function._use_method_name)
+        input_item = await _create_input(args, kwargs, stub, method_name=function._use_method_name)
 
         request = api_pb2.AttemptStartRequest(
             function_id=function_id,
             parent_input_id=current_input_id() or "",
-            input=item,
+            input=input_item,
         )
         response = await retry_transient_errors(stub.AttemptStart, request)
         attempt_token = response.attempt_token
 
-        return _InputPlaneInvocation(stub, attempt_token, client)
+        return _InputPlaneInvocation(stub, attempt_token, client, input_item, function_id)
 
     async def run_function(self) -> Any:
-        # TODO(nathan): add retry logic
+        # This will retry when the server returns GENERIC_STATUS_INTERNAL_FAILURE, i.e. lost inputs or worker preemption
+        # TODO(ryan): add logic to retry for user defined retry policy
+        internal_failure_count = 0
         while True:
-            request = api_pb2.AttemptAwaitRequest(
+            await_request = api_pb2.AttemptAwaitRequest(
                 attempt_token=self.attempt_token,
                 timeout_secs=OUTPUTS_TIMEOUT,
                 requested_at=time.time(),
             )
-            response: api_pb2.AttemptAwaitResponse = await retry_transient_errors(
+            await_response: api_pb2.AttemptAwaitResponse = await retry_transient_errors(
                 self.stub.AttemptAwait,
-                request,
+                await_request,
                 attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
 
-            if response.HasField("output"):
-                return await _process_result(
-                    response.output.result, response.output.data_format, self.stub, self.client
+            try:
+                if await_response.HasField("output"):
+                    return await _process_result(
+                        await_response.output.result, await_response.output.data_format, self.stub, self.client
+                    )
+            except InternalFailure as e:
+                internal_failure_count += 1
+                # Limit the number of times we retry
+                if internal_failure_count >= MAX_INTERNAL_FAILURE_COUNT:
+                    raise e
+                # For system failures on the server, we retry immediately,
+                # and the failure does not count towards the retry policy.
+                retry_request = api_pb2.AttemptRetryRequest(
+                    function_id=self.function_id,
+                    parent_input_id=current_input_id() or "",
+                    input=self.input_item,
+                    attempt_token=self.attempt_token,
                 )
+                # TODO(ryan): Add exponential backoff?
+                retry_response = await retry_transient_errors(self.stub.AttemptRetry, retry_request)
+                self.attempt_token = retry_response.attempt_token
 
 
 # Wrapper type for api_pb2.FunctionStats

@@ -6,10 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.0.1.dev0 (2025-05-16)
+### 1.0.1 (2025-05-19)
 
-* Fixes a bug where objects returned by `Sandbox.list` had `returncode == 0` for *running* sandboxes. Now those sandboxes will have a null returncode.
-
+- Added a `--timestamps` flag to `modal app logs` that prepends a timestamp to each log line.
+- Fixed a bug where objects returned by `Sandbox.list` had `returncode == 0` for *running* Sandboxes. Now the return code for running Sandboxes will be `None`.
+- Fixed a bug affecting systems where the `sys.platform.node` name includes unicode characters.
 
 ### 1.0.0 (2025-05-16)
 
