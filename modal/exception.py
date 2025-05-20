@@ -28,7 +28,7 @@ class _ContainerException(Exception):
     def __init__(self, ex: BaseException):
         self.ex = ex
 
-    def unwrap(self):
+    def unwrap(self) -> BaseException:
         return self.ex
 
 

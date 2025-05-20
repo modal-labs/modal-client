@@ -9,7 +9,6 @@ import typing
 from contextlib import contextmanager
 
 from grpclib import Status
-from synchronicity.exceptions import UserCodeException
 
 import modal
 from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, fastapi_endpoint
@@ -357,6 +356,18 @@ async def test_function_future_async(client, servicer):
         assert future.object_id not in servicer.cleared_function_calls  # keep results around a bit longer for futures
 
 
+def test_function_spawn_exception(client, servicer):
+    app = App()
+
+    servicer.function_body(failure)
+    failure_modal_func = app.function()(failure)
+
+    with app.run(client=client):
+        function_call = failure_modal_func.spawn()
+        with pytest.raises(CustomException):
+            function_call.get()
+
+
 def later_gen():
     yield "foo"
 
@@ -533,7 +544,7 @@ def test_map_exceptions(client, servicer):
 
         res = list(custom_function_modal.map(range(6), return_exceptions=True))
         assert res[:4] == [0, 1, 4, 9] and res[5] == 25
-        assert type(res[4]) is UserCodeException and "bad" in str(res[4])
+        assert type(res[4]) is CustomException and "bad" in str(res[4])
 
 
 def import_failure():
