@@ -307,7 +307,7 @@ def later():
     return "hello"
 
 
-def test_function_future(client, servicer):
+def test_function_spawn(client, servicer):
     app = App()
 
     servicer.function_body(later)
@@ -338,7 +338,7 @@ def test_function_future(client, servicer):
 
 
 @pytest.mark.asyncio
-async def test_function_future_async(client, servicer):
+async def test_function_spawn_async(client, servicer):
     app = App()
 
     servicer.function_body(later)
@@ -366,6 +366,23 @@ def test_function_spawn_exception(client, servicer):
         function_call = failure_modal_func.spawn()
         with pytest.raises(CustomException):
             function_call.get()
+
+
+def failure_gen():
+    raise CustomException("foo")
+    yield
+
+
+def test_generator_exception(client, servicer):
+    app = App()
+
+    servicer.function_body(failure_gen)
+    failure_modal_func = app.function()(failure_gen)
+
+    with app.run(client=client):
+        with pytest.raises(CustomException):
+            for res in failure_modal_func.remote_gen():
+                assert False
 
 
 def later_gen():
@@ -449,7 +466,7 @@ async def test_generator_async(client, servicer):
 
 
 @pytest.mark.asyncio
-async def test_generator_future(client, servicer):
+async def test_generator_spawn(client, servicer):
     app = App()
 
     servicer.function_body(later_gen)

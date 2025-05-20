@@ -1522,8 +1522,11 @@ Use the `Function.get_web_url()` method instead.
             client=self.client,
             function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY,
         )
-        async for res in invocation.run_generator():
-            yield res
+        try:
+            async for res in invocation.run_generator():
+                yield res
+        except _ContainerException as container_exc:
+            raise container_exc.unwrap()
 
     @synchronizer.no_io_translation
     @live_method
