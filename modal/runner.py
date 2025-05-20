@@ -601,8 +601,9 @@ async def _interactive_shell(
             "MODAL_ENVIRONMENT": _get_environment_name(),
         }
         secrets = kwargs.pop("secrets", []) + [_Secret.from_dict(sandbox_env)]
+
         with enable_output():  # show any image build logs
-            sandbox = await _Sandbox.create(
+            sandbox = await _Sandbox._create(
                 "sleep",
                 "100000",
                 app=_app,

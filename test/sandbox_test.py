@@ -5,8 +5,8 @@ import pytest
 import time
 from pathlib import Path
 
-from modal import App, Image, Mount, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret
-from modal.exception import DeprecationError, InvalidError
+from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret
+from modal.exception import InvalidError
 from modal.stream_type import StreamType
 from modal_proto import api_pb2
 
@@ -41,18 +41,6 @@ def test_sandbox(app, servicer):
 
     assert sb.returncode == 42
     assert sb.poll() == 42
-
-
-@skip_non_subprocess
-def test_sandbox_mount(app, servicer, tmpdir):
-    # TODO: remove once Mounts are fully deprecated (replaced by test_sandbox_mount_layer)
-    tmpdir.join("a.py").write(b"foo")
-
-    sb = Sandbox.create("echo", "hi", mounts=[Mount._from_local_dir(Path(tmpdir), remote_path="/m")], app=app)
-    sb.wait()
-
-    sha = hashlib.sha256(b"foo").hexdigest()
-    assert servicer.files_sha2data[sha]["data"] == b"foo"
 
 
 @skip_non_subprocess
@@ -265,7 +253,7 @@ def test_app_sandbox(client, servicer):
     image = Image.debian_slim().pip_install("xyz").add_local_file(__file__, remote_path="/xyz")
     secret = Secret.from_dict({"FOO": "bar"})
 
-    with pytest.raises(DeprecationError, match="Creating a `Sandbox` without an `App`"):
+    with pytest.raises(InvalidError, match="require an App"):
         Sandbox.create("bash", "-c", "echo bye >&2 && echo hi", image=image, secrets=[secret])
 
     app = App()
@@ -474,3 +462,51 @@ def test_sandbox_proxy(app, servicer):
     _ = Sandbox.create(proxy=Proxy.from_name("my-proxy"), app=app)
 
     assert servicer.sandbox_defs[0].proxy_id == "pr-123"
+
+
+def test_sandbox_list_sets_correct_returncode_for_running(client, servicer):
+    with servicer.intercept() as ctx:
+        # test generic status
+        ctx.add_response(
+            "SandboxList",
+            api_pb2.SandboxListResponse(
+                sandboxes=[
+                    api_pb2.SandboxInfo(
+                        id="sb-123",
+                        task_info=api_pb2.TaskInfo(
+                            result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_UNSPECIFIED)
+                        ),
+                    )
+                ]
+            ),
+        )
+        ctx.add_response(
+            "SandboxList", api_pb2.SandboxListResponse(sandboxes=[])
+        )  # list will loop for older sandboxes until no more arrive
+        (list_result,) = list(Sandbox.list(client=client))
+    assert list_result.returncode is None
+
+
+def test_sandbox_list_sets_correct_returncode_for_stopped(client, servicer):
+    with servicer.intercept() as ctx:
+        # test generic status
+        ctx.add_response(
+            "SandboxList",
+            api_pb2.SandboxListResponse(
+                sandboxes=[
+                    api_pb2.SandboxInfo(
+                        id="sb-123",
+                        task_info=api_pb2.TaskInfo(
+                            result=api_pb2.GenericResult(
+                                status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS, exitcode=0
+                            )
+                        ),
+                    )
+                ]
+            ),
+        )
+        ctx.add_response(
+            "SandboxList", api_pb2.SandboxListResponse(sandboxes=[])
+        )  # list will loop for older sandboxes until no more arrive
+        (list_result,) = list(Sandbox.list(client=client))
+    assert list_result.returncode == 0

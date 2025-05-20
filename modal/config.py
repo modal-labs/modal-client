@@ -51,10 +51,6 @@ Other possible configuration options are:
   Defaults to 10.
   Number of seconds to wait for logs to drain when closing the session,
   before giving up.
-* `automount` (in the .toml file) / `MODAL_AUTOMOUNT` (as an env var).
-  Defaults to True.
-  By default, Modal automatically mounts modules imported in the current scope, that
-  are deemed to be "local". This can be turned off by setting this to False.
 * `force_build` (in the .toml file) / `MODAL_FORCE_BUILD` (as an env var).
   Defaults to False.
   When set, ignores the Image cache and builds all Image layers. Note that this
@@ -91,14 +87,12 @@ import logging
 import os
 import typing
 import warnings
-from textwrap import dedent
 from typing import Any, Callable, Optional
 
 from google.protobuf.empty_pb2 import Empty
 
 from modal_proto import api_pb2
 
-from ._utils.deprecation import deprecation_error
 from ._utils.logger import configure_logger
 from .exception import InvalidError
 
@@ -186,16 +180,12 @@ def _check_config() -> None:
             f"({user_config_path})."
         )
     elif num_profiles > 1 and num_active == 0 and _profile == "default":
-        # Eventually we plan to have num_profiles > 1 with num_active = 0 be an error
-        # But we want to give users time to activate one of their profiles without disruption
-        message = dedent(
-            """
-            Support for using an implicit 'default' profile is deprecated.
-            Please use `modal profile activate` to activate one of your profiles.
-            (Use `modal profile list` to see the options.)
-            """
+        # TODO: We should get rid of the `_profile = "default"` concept entirely now
+        raise InvalidError(
+            "No Modal profile is active.\n\n"
+            "Please fix by running `modal profile activate` or by editing your Modal config file "
+            f"({user_config_path})."
         )
-        deprecation_error((2024, 2, 6), message)
 
 
 _profile = os.environ.get("MODAL_PROFILE") or _config_active_profile()
@@ -233,7 +223,6 @@ _SETTINGS = {
     "sync_entrypoint": _Setting(),
     "logs_timeout": _Setting(10, float),
     "image_id": _Setting(),
-    "automount": _Setting(True, transform=_to_boolean),
     "heartbeat_interval": _Setting(15, float),
     "function_runtime": _Setting(),
     "function_runtime_debug": _Setting(False, transform=_to_boolean),  # For internal debugging use.

@@ -150,16 +150,16 @@ async def test_workspace_lookup(servicer, server_url_env):
     assert resp.username == "test-username"
 
 
-@pytest.mark.parametrize("automount", ["false", "'false'", "'False'", "'0'", 0, "''"])
-def test_config_boolean(modal_config, automount):
+@pytest.mark.parametrize("arg", ["false", "'false'", "'False'", "'0'", 0, "''"])
+def test_config_boolean(modal_config, arg):
     modal_toml = f"""
     [prof-1]
     token_id = 'ak-abc'
     token_secret = 'as_xyz'
-    automount = {automount}
+    force_build = {arg}
     """
     with modal_config(modal_toml):
-        assert not Config().get("automount", "prof-1")
+        assert not Config().get("force_build", "prof-1")
 
 
 def test_malformed_config_better(modal_config):

@@ -22,7 +22,7 @@ from modal_proto import api_pb2
 from test.conftest import GrpcErrorAndCount
 from test.helpers import deploy_app_externally
 
-app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
+app = App()
 
 
 if os.environ.get("GITHUB_ACTIONS") == "true":
@@ -337,9 +337,6 @@ def test_function_future(client, servicer):
 
         assert future.object_id not in servicer.cleared_function_calls
 
-        with pytest.raises(Exception, match="Cannot iterate"):
-            next(future.get_gen())
-
 
 @pytest.mark.asyncio
 async def test_function_future_async(client, servicer):
@@ -447,7 +444,7 @@ async def test_generator_future(client, servicer):
     servicer.function_body(later_gen)
     later_modal = app.function()(later_gen)
     with app.run(client=client):
-        with pytest.raises(DeprecationError):
+        with pytest.raises(InvalidError, match="Cannot `spawn` a generator function."):
             later_modal.spawn()
 
 
@@ -731,34 +728,7 @@ def test_invalid_remote_executor_on_asgi_app(client, servicer, remote_executor):
     assert "webhook" in str(excinfo.value) and remote_executor in str(excinfo.value)
 
 
-@pytest.mark.parametrize("is_generator", [False, True])
-def test_from_id_iter_gen(client, servicer, is_generator):
-    app = App()
-
-    f = later_gen if is_generator else later
-
-    servicer.function_body(f)
-    later_modal = app.function()(f)
-    with app.run(client=client):
-        if is_generator:
-            with pytest.raises(DeprecationError):
-                later_modal.spawn()
-            return
-
-        future = later_modal.spawn()
-        assert isinstance(future, FunctionCall)
-
-    assert future.object_id
-    rehydrated_function_call = FunctionCall.from_id(future.object_id, client, is_generator=is_generator)
-    assert rehydrated_function_call.object_id == future.object_id
-
-    if is_generator:
-        assert next(rehydrated_function_call.get_gen()) == "foo"
-    else:
-        assert rehydrated_function_call.get() == "hello"
-
-
-lc_app = App(include_source=True)  # TODO: remove include_source=True when automount is disabled by default
+lc_app = App()
 
 
 @lc_app.function()
@@ -923,13 +893,13 @@ def test_calls_should_not_unwrap_modal_objects_gen(servicer, client):
     # make sure the serialized object is an actual Dict and not a _Dict in all user code contexts
     with app.run(client=client), modal.Dict.ephemeral(client=client) as some_modal_object:
         assert type(next(foo.remote_gen(some_modal_object))) is modal.Dict
-        with pytest.raises(DeprecationError):
+        with pytest.raises(InvalidError, match="Cannot `spawn` a generator function."):
             foo.spawn(some_modal_object)
 
     assert len(servicer.client_calls) == 1
 
 
-def test_function_deps_have_ids(client, servicer, monkeypatch, test_dir, set_env_client, disable_auto_mount):
+def test_function_deps_have_ids(client, servicer, monkeypatch, test_dir, set_env_client):
     monkeypatch.syspath_prepend(test_dir / "supports")
     app = App()
     app.function(
@@ -952,7 +922,7 @@ def test_function_deps_have_ids(client, servicer, monkeypatch, test_dir, set_env
         assert dep.object_id
 
 
-def test_no_state_reuse(client, servicer, supports_dir, disable_auto_mount):
+def test_no_state_reuse(client, servicer, supports_dir):
     # two separate instances of the same mount content - triggers deduplication logic
 
     img = (
@@ -1117,30 +1087,21 @@ def test_from_name_web_url(servicer, set_env_client):
 
 
 @pytest.mark.parametrize(
-    ["config_automount", "app_constructor_value", "function_decorator_value", "expected_mounts"],
+    ["app_constructor_value", "function_decorator_value", "expected_mounts"],
     [
-        (None, None, None, 2),  # default with no options: entrypoint + first party (automount)
-        ("0", None, None, 1),  # automount=0 in config - entrypoint only. Warn about config being deprecated
-        ("1", None, None, 2),  # automount=1 explicit in config. Warn about config based automount=1 going away
-        ("1", "False", None, 0),  # automount=1 explicit in config. Warn about config based automount=1 going away
-        ("0", "False", None, 0),
-        (None, "False", None, 0),
-        (None, "False", "True", 1),
-        (None, "True", "False", 0),
-        # "legacy" mode is currently not enabled except as the default value
-        # (None, "False", "'legacy'", 2),
-        # (None, "True", "'legacy'", 2),
+        (None, None, 1),
+        ("False", None, 0),
+        ("False", "True", 1),
+        ("True", "False", 0),
     ],
 )
 def test_include_source_mode(
     app_constructor_value,
     function_decorator_value,
-    config_automount,
     expected_mounts,
     servicer,
     credentials,
     tmp_path,
-    monkeypatch,
 ):
     # a little messy since it tests the "end to end" mounting behavior for the app
     app_constructor_value = "None" if app_constructor_value is None else app_constructor_value
@@ -1159,12 +1120,7 @@ def f():
     (tmp_path / "mod.py").touch()  # some file
     entrypoint_file.write_text(src)
 
-    monkeypatch.delenv("MODAL_AUTOMOUNT")
-    if config_automount is not None:
-        env = {**os.environ, "MODAL_AUTOMOUNT": config_automount}
-    else:
-        env = {**os.environ}
-    output = deploy_app_externally(servicer, credentials, str(entrypoint_file), env=env)
+    output = deploy_app_externally(servicer, credentials, str(entrypoint_file), env={**os.environ})
     print(output)
     mounts = servicer.mounts_excluding_published_client()
 

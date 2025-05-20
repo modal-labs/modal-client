@@ -166,7 +166,8 @@ class _Dict(_Object, type_prefix="di"):
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Dict":
-        """Lookup a named Dict.
+        """mdmd:hidden
+        Lookup a named Dict.
 
         DEPRECATED: This method is deprecated in favor of `modal.Dict.from_name`.
 

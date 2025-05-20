@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import inspect
 import typing
-import warnings
 from collections.abc import AsyncGenerator, Coroutine, Sequence
 from pathlib import PurePosixPath
 from textwrap import dedent
@@ -30,7 +29,6 @@ from ._partial_function import (
 )
 from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import (
-    deprecation_error,
     deprecation_warning,
     warn_on_renamed_autoscaler_settings,
 )
@@ -46,7 +44,6 @@ from .exception import ExecutionError, InvalidError
 from .functions import Function
 from .gpu import GPU_T
 from .image import _Image
-from .mount import _Mount
 from .network_file_system import _NetworkFileSystem
 from .partial_function import PartialFunction
 from .proxy import _Proxy
@@ -77,11 +74,6 @@ class _LocalEntrypoint:
 
     @property
     def app(self) -> "_App":
-        return self._app
-
-    @property
-    def stub(self) -> "_App":
-        # Deprecated soon, only for backwards compatibility
         return self._app
 
 
@@ -163,7 +155,6 @@ class _App:
     _classes: dict[str, _Cls]
 
     _image: Optional[_Image]
-    _mounts: Sequence[_Mount]
     _secrets: Sequence[_Secret]
     _volumes: dict[Union[str, PurePosixPath], _Volume]
     _web_endpoints: list[str]  # Used by the CLI
@@ -181,7 +172,6 @@ class _App:
         name: Optional[str] = None,
         *,
         image: Optional[_Image] = None,  # default image for all functions (default is `modal.Image.debian_slim()`)
-        mounts: Sequence[_Mount] = [],  # default mounts for all functions
         secrets: Sequence[_Secret] = [],  # default secrets for all functions
         volumes: dict[Union[str, PurePosixPath], _Volume] = {},  # default volumes for all functions
         include_source: Optional[bool] = None,
@@ -202,7 +192,6 @@ class _App:
         self._description = name
         self._include_source_default = include_source
 
-        check_sequence(mounts, _Mount, "`mounts=` has to be a list or tuple of `modal.Mount` objects")
         check_sequence(secrets, _Secret, "`secrets=` has to be a list or tuple of `modal.Secret` objects")
         validate_volumes(volumes)
 
@@ -212,7 +201,6 @@ class _App:
         self._functions = {}
         self._classes = {}
         self._image = image
-        self._mounts = mounts
         self._secrets = secrets
         self._volumes = volumes
         self._local_entrypoints = {}
@@ -453,9 +441,7 @@ class _App:
         if not self._running_app:
             raise ExecutionError("`_get_watch_mounts` requires a running app.")
 
-        all_mounts = [
-            *self._mounts,
-        ]
+        all_mounts = []
         for function in self.registered_functions.values():
             all_mounts.extend(function._serve_mounts)
 
@@ -534,14 +520,6 @@ class _App:
     def registered_entrypoints(self) -> dict[str, _LocalEntrypoint]:
         """All local CLI entrypoints registered on the app."""
         return self._local_entrypoints
-
-    @property
-    def indexed_objects(self) -> dict[str, _Object]:
-        deprecation_warning(
-            (2024, 11, 25),
-            "`app.indexed_objects` is deprecated! Use `app.registered_functions` or `app.registered_classes` instead.",
-        )
-        return dict(**self._functions, **self._classes)
 
     @property
     def registered_web_endpoints(self) -> list[str]:
@@ -627,7 +605,6 @@ class _App:
             GPU_T, list[GPU_T]
         ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
-        mounts: Sequence[_Mount] = (),  # Modal Mounts added to the container
         network_file_systems: dict[
             Union[str, PurePosixPath], _NetworkFileSystem
         ] = {},  # Mountpoints for Modal NetworkFileSystems
@@ -790,12 +767,6 @@ class _App:
                 rdma = None
                 i6pn_enabled = i6pn
 
-            if info.function_name.endswith(".app"):
-                warnings.warn(
-                    "Beware: the function name is `app`. Modal will soon rename `Stub` to `App`, "
-                    "so you might run into issues if you have code like `app = modal.App()` in the same scope"
-                )
-
             if is_generator is None:
                 is_generator = inspect.isgeneratorfunction(raw_f) or inspect.isasyncgenfunction(raw_f)
 
@@ -813,7 +784,6 @@ class _App:
                 schedule=schedule,
                 is_generator=is_generator,
                 gpu=gpu,
-                mounts=[*self._mounts, *mounts],
                 network_file_systems=network_file_systems,
                 volumes={**self._volumes, **volumes},
                 cpu=cpu,
@@ -864,7 +834,6 @@ class _App:
             GPU_T, list[GPU_T]
         ] = None,  # GPU request as string ("any", "T4", ...), object (`modal.GPU.A100()`, ...), or a list of either
         serialized: bool = False,  # Whether to send the function over using cloudpickle.
-        mounts: Sequence[_Mount] = (),
         network_file_systems: dict[
             Union[str, PurePosixPath], _NetworkFileSystem
         ] = {},  # Mountpoints for Modal NetworkFileSystems
@@ -986,7 +955,6 @@ class _App:
                 image=image or self._get_default_image(),
                 secrets=[*self._secrets, *secrets],
                 gpu=gpu,
-                mounts=[*self._mounts, *mounts],
                 network_file_systems=network_file_systems,
                 volumes={**self._volumes, **volumes},
                 cpu=cpu,
@@ -1105,23 +1073,3 @@ class _App:
 
 
 App = synchronize_api(_App)
-
-
-class _Stub(_App):
-    """mdmd:hidden
-    This enables using a "Stub" class instead of "App".
-
-    For most of Modal's history, the app class was called "Stub", so this exists for
-    backwards compatibility, in order to facilitate moving from "Stub" to "App".
-    """
-
-    def __new__(cls, *args, **kwargs):
-        deprecation_warning(
-            (2024, 4, 29),
-            'The use of "Stub" has been deprecated in favor of "App".'
-            " This is a pure name change with no other implications.",
-        )
-        return _App(*args, **kwargs)
-
-
-Stub = synchronize_api(_Stub)

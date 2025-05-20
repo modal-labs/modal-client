@@ -6,7 +6,7 @@ import textwrap
 import time
 import typing
 import warnings
-from collections.abc import AsyncGenerator, Collection, Sequence, Sized
+from collections.abc import AsyncGenerator, Sequence, Sized
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, Any, Callable, Optional, Union
@@ -41,7 +41,7 @@ from ._utils.async_utils import (
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
-from ._utils.deprecation import deprecation_error, deprecation_warning
+from ._utils.deprecation import deprecation_warning
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
@@ -71,7 +71,7 @@ from .exception import (
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
-from .mount import _get_client_mount, _Mount, get_sys_modules_mounts
+from .mount import _get_client_mount, _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .output import _get_output_manager
 from .parallel_map import (
@@ -99,6 +99,7 @@ if TYPE_CHECKING:
     import modal.cls
     import modal.partial_function
 
+MAX_INTERNAL_FAILURE_COUNT = 8
 
 @dataclasses.dataclass
 class _RetryContext:
@@ -348,10 +349,14 @@ class _InputPlaneInvocation:
         stub: ModalClientModal,
         attempt_token: str,
         client: _Client,
+        input_item: api_pb2.FunctionPutInputsItem,
+        function_id: str,
     ):
         self.stub = stub
         self.client = client  # Used by the deserializer.
         self.attempt_token = attempt_token
+        self.input_item = input_item
+        self.function_id = function_id
 
     @staticmethod
     async def create(
@@ -365,36 +370,55 @@ class _InputPlaneInvocation:
         stub = await client.get_stub(input_plane_url)
 
         function_id = function.object_id
-        item = await _create_input(args, kwargs, stub, method_name=function._use_method_name)
+        input_item = await _create_input(args, kwargs, stub, method_name=function._use_method_name)
 
         request = api_pb2.AttemptStartRequest(
             function_id=function_id,
             parent_input_id=current_input_id() or "",
-            input=item,
+            input=input_item,
         )
         response = await retry_transient_errors(stub.AttemptStart, request)
         attempt_token = response.attempt_token
 
-        return _InputPlaneInvocation(stub, attempt_token, client)
+        return _InputPlaneInvocation(stub, attempt_token, client, input_item, function_id)
 
     async def run_function(self) -> Any:
-        # TODO(nathan): add retry logic
+        # This will retry when the server returns GENERIC_STATUS_INTERNAL_FAILURE, i.e. lost inputs or worker preemption
+        # TODO(ryan): add logic to retry for user defined retry policy
+        internal_failure_count = 0
         while True:
-            request = api_pb2.AttemptAwaitRequest(
+            await_request = api_pb2.AttemptAwaitRequest(
                 attempt_token=self.attempt_token,
                 timeout_secs=OUTPUTS_TIMEOUT,
                 requested_at=time.time(),
             )
-            response: api_pb2.AttemptAwaitResponse = await retry_transient_errors(
+            await_response: api_pb2.AttemptAwaitResponse = await retry_transient_errors(
                 self.stub.AttemptAwait,
-                request,
+                await_request,
                 attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
 
-            if response.HasField("output"):
-                return await _process_result(
-                    response.output.result, response.output.data_format, self.stub, self.client
+            try:
+                if await_response.HasField("output"):
+                    return await _process_result(
+                        await_response.output.result, await_response.output.data_format, self.stub, self.client
+                    )
+            except InternalFailure as e:
+                internal_failure_count += 1
+                # Limit the number of times we retry
+                if internal_failure_count >= MAX_INTERNAL_FAILURE_COUNT:
+                    raise e
+                # For system failures on the server, we retry immediately,
+                # and the failure does not count towards the retry policy.
+                retry_request = api_pb2.AttemptRetryRequest(
+                    function_id=self.function_id,
+                    parent_input_id=current_input_id() or "",
+                    input=self.input_item,
+                    attempt_token=self.attempt_token,
                 )
+                # TODO(ryan): Add exponential backoff?
+                retry_response = await retry_transient_errors(self.stub.AttemptRetry, retry_request)
+                self.attempt_token = retry_response.attempt_token
 
 
 # Wrapper type for api_pb2.FunctionStats
@@ -404,12 +428,6 @@ class FunctionStats:
 
     backlog: int
     num_total_runners: int
-
-    def __getattr__(self, name):
-        if name == "num_active_runners":
-            msg = "'FunctionStats.num_active_runners' is no longer available."
-            deprecation_error((2024, 6, 14), msg)
-        raise AttributeError(f"'FunctionStats' object has no attribute '{name}'")
 
 
 def _parse_retries(
@@ -511,7 +529,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         is_generator: bool = False,
         gpu: Union[GPU_T, list[GPU_T]] = None,
         # TODO: maybe break this out into a separate decorator for notebooks.
-        mounts: Collection[_Mount] = (),
         network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},
         volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},
         webhook_config: Optional[api_pb2.WebhookConfig] = None,
@@ -567,8 +584,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             assert not webhook_config
             assert not schedule
 
-        explicit_mounts = mounts
-
         include_source_mode = get_include_source_mode(include_source)
         if include_source_mode != IncludeSourceMode.INCLUDE_NOTHING:
             entrypoint_mounts = info.get_entrypoint_mount()
@@ -577,33 +592,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         all_mounts = [
             _get_client_mount(),
-            *explicit_mounts,
             *entrypoint_mounts.values(),
         ]
-
-        if include_source_mode is IncludeSourceMode.INCLUDE_FIRST_PARTY and is_local():
-            auto_mounts = get_sys_modules_mounts()
-            # don't need to add entrypoint modules to automounts:
-            for entrypoint_module in entrypoint_mounts:
-                auto_mounts.pop(entrypoint_module, None)
-
-            warn_missing_modules = set(auto_mounts.keys()) - image._added_python_source_set
-
-            if warn_missing_modules:
-                python_stringified_modules = ", ".join(f'"{mod}"' for mod in sorted(warn_missing_modules))
-                deprecation_warning(
-                    (2025, 2, 3),
-                    (
-                        'Modal will stop implicitly adding local Python modules to the Image ("automounting") in a '
-                        "future update. The following modules need to be explicitly added for future "
-                        "compatibility:\n"
-                    )
-                    + "\n".join(sorted([f"* {m}" for m in warn_missing_modules]))
-                    + "\n\n"
-                    + (f"e.g.:\nimage_with_source = my_image.add_local_python_source({python_stringified_modules})\n\n")
-                    + "For more information, see https://modal.com/docs/guide/modal-1-0-migration",
-                )
-            all_mounts += auto_mounts.values()
 
         retry_policy = _parse_retries(
             retries, f"Function '{info.get_tag()}'" if info.raw_f else f"Class '{info.get_tag()}'"
@@ -641,7 +631,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     image=image,
                     secrets=secrets,
                     gpu=gpu,
-                    mounts=mounts,
                     network_file_systems=network_file_systems,
                     volumes=volumes,
                     memory=memory,
@@ -749,16 +738,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
         def _deps(only_explicit_mounts=False) -> list[_Object]:
             deps: list[_Object] = list(secrets)
-            if only_explicit_mounts:
-                # TODO: this is a bit hacky, but all_mounts may differ in the container vs locally
-                # We don't want the function dependencies to change, so we have this way to force it to
-                # only include its declared dependencies.
-                # Only objects that need interaction within a user's container actually need to be
-                # included when only_explicit_mounts=True, so omitting auto mounts here
-                # wouldn't be a problem as long as Mounts are "passive" and only loaded by the
-                # worker runtime
-                deps += list(explicit_mounts)
-            else:
+            if not only_explicit_mounts:
                 deps += list(all_mounts)
             if proxy:
                 deps.append(proxy)
@@ -1026,7 +1006,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         obj._build_args = dict(  # See get_build_def
             secrets=repr(secrets),
             gpu_config=repr([parse_gpu_config(_gpu) for _gpu in gpus]),
-            mounts=repr(mounts),
             network_file_systems=repr(network_file_systems),
         )
         # these key are excluded if empty to avoid rebuilds on client upgrade
@@ -1190,7 +1169,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
 
     @live_method
     async def keep_warm(self, warm_pool_size: int) -> None:
-        """Set the warm pool size for the Function.
+        """mdmd:hidden
+        Set the warm pool size for the Function.
 
         DEPRECATED: Please adapt your code to use the more general `update_autoscaler` method instead:
 
@@ -1294,7 +1274,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> "_Function":
-        """Lookup a Function from a deployed App by its name.
+        """mdmd:hidden
+        Lookup a Function from a deployed App by its name.
 
         DEPRECATED: This method is deprecated in favor of `modal.Function.from_name`.
 
@@ -1418,7 +1399,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     @property
     @live_method
     async def web_url(self) -> Optional[str]:
-        """Deprecated. Use the `Function.get_web_url()` method instead.
+        """mdmd:hidden
+        Deprecated. Use the `Function.get_web_url()` method instead.
 
         URL of a Function running as a web endpoint.
         """
@@ -1536,20 +1518,6 @@ Use the `Function.get_web_url()` method instead.
             yield res
 
     @synchronizer.no_io_translation
-    async def _call_generator_nowait(self, args, kwargs):
-        deprecation_warning(
-            (2024, 12, 11),
-            "Calling spawn on a generator function is deprecated and will soon raise an exception.",
-        )
-        return await _Invocation.create(
-            self,
-            args,
-            kwargs,
-            client=self.client,
-            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC,
-        )
-
-    @synchronizer.no_io_translation
     @live_method
     async def remote(self, *args: P.args, **kwargs: P.kwargs) -> ReturnType:
         """
@@ -1661,7 +1629,7 @@ Use the `Function.get_web_url()` method instead.
         """
         self._check_no_web_url("_experimental_spawn")
         if self._is_generator:
-            invocation = await self._call_generator_nowait(args, kwargs)
+            raise InvalidError("Cannot `spawn` a generator function.")
         else:
             invocation = await self._call_function_nowait(
                 args, kwargs, function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
@@ -1693,14 +1661,13 @@ Use the `Function.get_web_url()` method instead.
         """
         self._check_no_web_url("spawn")
         if self._is_generator:
-            invocation = await self._call_generator_nowait(args, kwargs)
+            raise InvalidError("Cannot `spawn` a generator function.")
         else:
             invocation = await self._call_function_nowait(args, kwargs, api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC)
 
         fc: _FunctionCall[ReturnType] = _FunctionCall._new_hydrated(
             invocation.function_call_id, invocation.client, None
         )
-        fc._is_generator = self._is_generator if self._is_generator else False
         return fc
 
     def get_raw_f(self) -> Callable[..., Any]:
@@ -1759,21 +1726,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
         The returned coroutine is not cancellation-safe.
         """
-
-        if self._is_generator:
-            raise Exception("Cannot get the result of a generator function call. Use `get_gen` instead.")
-
         return await self._invocation().poll_function(timeout=timeout)
-
-    async def get_gen(self) -> AsyncGenerator[Any, None]:
-        """
-        Calls the generator remotely, executing it with the given arguments and returning the execution's result.
-        """
-        if not self._is_generator:
-            raise Exception("Cannot iterate over a non-generator function call. Use `get` instead.")
-
-        async for res in self._invocation().run_generator():
-            yield res
 
     async def get_call_graph(self) -> list[InputInfo]:
         """Returns a structure representing the call graph from a given root
@@ -1805,9 +1758,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         await retry_transient_errors(self._client.stub.FunctionCallCancel, request)
 
     @staticmethod
-    async def from_id(
-        function_call_id: str, client: Optional[_Client] = None, is_generator: bool = False
-    ) -> "_FunctionCall[Any]":
+    async def from_id(function_call_id: str, client: Optional[_Client] = None) -> "_FunctionCall[Any]":
         """Instantiate a FunctionCall object from an existing ID.
 
         Examples:
@@ -1830,7 +1781,6 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
             client = await _Client.from_env()
 
         fc: _FunctionCall[Any] = _FunctionCall._new_hydrated(function_call_id, client, None)
-        fc._is_generator = is_generator
         return fc
 
     @staticmethod
@@ -1861,7 +1811,8 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
 
 async def _gather(*function_calls: _FunctionCall[T]) -> typing.Sequence[T]:
-    """Deprecated: Please use `modal.FunctionCall.gather()` instead."""
+    """mdmd:hidden
+    Deprecated: Please use `modal.FunctionCall.gather()` instead."""
     deprecation_warning(
         (2025, 2, 24),
         "`modal.functions.gather()` is deprecated; please use `modal.FunctionCall.gather()` instead.",

@@ -193,18 +193,6 @@ def _validate_packages(packages: list[str]) -> bool:
     return not any(pkg.startswith("-") for pkg in packages)
 
 
-def _warn_invalid_packages(old_command: str) -> None:
-    deprecation_warning(
-        (2024, 7, 3),
-        "Passing flags to `pip` via the `packages` argument of `pip_install` is deprecated."
-        " Please pass flags via the `extra_options` argument instead."
-        "\nNote that this will cause a rebuild of this image layer."
-        " To avoid rebuilding, you can pass the following to `run_commands` instead:"
-        f'\n`image.run_commands("{old_command}")`',
-        show_source=False,
-    )
-
-
 def _make_pip_install_args(
     find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
     index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
@@ -435,6 +423,9 @@ class _Image(_Object, type_prefix="im"):
         self._deferred_mounts = other._deferred_mounts
         self._added_python_source_set = other._added_python_source_set
 
+    def _get_metadata(self) -> Optional[Message]:
+        return self._metadata
+
     def _hydrate_metadata(self, metadata: Optional[Message]):
         env_image_id = config.get("image_id")  # set as an env var in containers
         if env_image_id == self.object_id:
@@ -449,7 +440,7 @@ class _Image(_Object, type_prefix="im"):
 
     def _add_mount_layer_or_copy(self, mount: _Mount, copy: bool = False):
         if copy:
-            return self.copy_mount(mount, remote_path="/")
+            return self._copy_mount(mount, remote_path="/")
 
         base_image = self
 
@@ -684,23 +675,9 @@ class _Image(_Object, type_prefix="im"):
         )
         return obj
 
-    def copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
-        """
-        **Deprecated**: Use image.add_local_dir(..., copy=True) or similar instead.
-
-        Copy the entire contents of a `modal.Mount` into an image.
-        Useful when files only available locally are required during the image
-        build process.
-
-        **Example**
-
-        ```python notest
-        static_images_dir = "./static"
-        # place all static images in root of mount
-        mount = modal.Mount.from_local_dir(static_images_dir, remote_path="/")
-        # place mount's contents into /static directory of image.
-        image = modal.Image.debian_slim().copy_mount(mount, remote_path="/static")
-        ```
+    def _copy_mount(self, mount: _Mount, remote_path: Union[str, Path] = ".") -> "_Image":
+        """mdmd:hidden
+        Internal
         """
         if not isinstance(mount, _Mount):
             raise InvalidError("The mount argument to copy has to be a Modal Mount object")
@@ -815,7 +792,8 @@ class _Image(_Object, type_prefix="im"):
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
     def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
-        """Copy a file into the image as a part of building it.
+        """mdmd:hidden
+        Copy a file into the image as a part of building it.
 
         This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
         works in a `Dockerfile`.
@@ -888,7 +866,7 @@ class _Image(_Object, type_prefix="im"):
         # Which follows dockerignore syntax.
         ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
     ) -> "_Image":
-        """
+        """mdmd:hidden
         **Deprecated**: Use image.add_local_dir instead
 
         Copy a directory into the image as a part of building the image.
@@ -1903,7 +1881,6 @@ class _Image(_Object, type_prefix="im"):
         *,
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
         gpu: Union[GPU_T, list[GPU_T]] = None,  # Requested GPU or or list of acceptable GPUs( e.g. ["A10", "A100"])
-        mounts: Sequence[_Mount] = (),  # Mounts attached to the function
         volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},  # Volume mount paths
         network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},  # NFS mount paths
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
@@ -1961,7 +1938,6 @@ class _Image(_Object, type_prefix="im"):
             image=self,  # type: ignore[reportArgumentType]  # TODO: probably conflict with type stub?
             secrets=secrets,
             gpu=gpu,
-            mounts=mounts,
             volumes=volumes,
             network_file_systems=network_file_systems,
             cloud=cloud,

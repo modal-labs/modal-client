@@ -16,7 +16,7 @@ from modal.exception import DeprecationError, InvalidError
 from modal.functions import Function
 from modal.partial_function import method, web_server
 
-# Some helper vars for import_stub tests:
+# Some helper vars for import_app tests:
 local_entrypoint_src = """
 import modal
 
@@ -27,8 +27,8 @@ def main():
 """
 python_module_src = """
 import modal
-app = modal.App("FOO", include_source=True)  # TODO: remove include_source=True)
-other_app = modal.App("BAR", include_source=True)  # TODO: remove include_source=True)
+app = modal.App("FOO")
+other_app = modal.App("BAR")
 @other_app.function()
 def func():
     pass
@@ -43,8 +43,8 @@ assert not __package__
 
 python_package_src = """
 import modal
-app = modal.App("FOO", include_source=True)  # TODO: remove include_source=True)
-other_app = modal.App("BAR", include_source=True)  # TODO: remove include_source=True)
+app = modal.App("FOO")
+other_app = modal.App("BAR")
 @other_app.function()
 def func():
     pass
@@ -53,8 +53,8 @@ assert __package__ == "pack005"
 
 python_subpackage_src = """
 import modal
-app = modal.App("FOO", include_source=True)  # TODO: remove include_source=True)
-other_app = modal.App("BAR", include_source=True)  # TODO: remove include_source=True)
+app = modal.App("FOO")
+other_app = modal.App("BAR")
 @other_app.function()
 def func():
     pass
@@ -63,8 +63,8 @@ assert __package__ == "pack007.sub009"
 
 python_file_src = """
 import modal
-app = modal.App("FOO", include_source=True)  # TODO: remove include_source=True)
-other_app = modal.App("BAR", include_source=True)  # TODO: remove include_source=True)
+app = modal.App("FOO")
+other_app = modal.App("BAR")
 @other_app.function()
 def func():
     pass

@@ -6,7 +6,7 @@ import time
 
 from grpclib import GRPCError, Status
 
-from modal import App, Image, Mount, Secret, Stub, Volume, enable_output, fastapi_endpoint, web_endpoint
+from modal import App, Image, Secret, Volume, enable_output, fastapi_endpoint, web_endpoint
 from modal._partial_function import _parse_custom_domains
 from modal._utils.async_utils import synchronizer
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
@@ -218,7 +218,6 @@ def test_init_types():
     App(
         image=Image.debian_slim().pip_install("pandas"),
         secrets=[Secret.from_dict()],
-        mounts=[Mount._from_local_file(__file__)],  # TODO: remove
     )
 
 
@@ -342,23 +341,6 @@ def test_app(client):
 def test_non_string_app_name():
     with pytest.raises(InvalidError, match="Must be string"):
         App(Image.debian_slim())  # type: ignore
-
-
-def test_function_named_app():
-    # Make sure we have a helpful warning when a user's function is named "app"
-    # as it might collide with the App variable name (in particular if people
-    # find & replace "stub" with "app").
-    app = App()
-
-    with pytest.warns(match="app"):
-
-        @app.function(serialized=True)
-        def app(): ...
-
-
-def test_stub():
-    with pytest.warns(match="App"):
-        Stub()
 
 
 def test_app_logs(servicer, client):

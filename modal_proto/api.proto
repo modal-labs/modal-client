@@ -694,7 +694,7 @@ message ClassGetRequest {
   DeploymentNamespace namespace = 3;
   string environment_name = 4;
 
-  bool lookup_published = 8; // Lookup class on app published by another workspace
+  reserved 8; // lookup_published
   reserved 9; // workspace_name
   bool only_class_function = 10; // True starting with 0.67.x clients, which don't create method placeholder functions
 }
@@ -1380,6 +1380,10 @@ message Function {
   // Note the value type as string. Internally we'll coerce all values to string with str().
   // On the server, it's necessary to convert back to the most natural type (e.g. int) when relevant.
   map<string, string> experimental_options = 81;
+
+  // If set, client deps will be mounted into the container, and are
+  // no longer expected to exist in the image itself.
+  bool mount_client_dependencies = 82;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1946,6 +1950,10 @@ message ImageMetadata {
   map<string, string> python_packages = 2;
   // The work directory of the image, defaulting to "/". Not set if missing
   optional string workdir = 3;
+  // The image's libc version
+  optional string libc_version_info = 4;
+  // The builder version for/with which the image was created.
+  optional string image_builder_version = 5;
 }
 
 
@@ -2787,7 +2795,7 @@ message TaskLogs {
   TaskProgress task_progress = 9;
   string function_call_id = 10;
   string input_id = 11;
-  string id = 12;
+  uint64 timestamp_ns = 12;
 }
 
 message TaskLogsBatch {
@@ -2966,6 +2974,17 @@ message VolumeHeartbeatRequest {
   string volume_id = 1;
 }
 
+message VolumeListFiles2Request {
+  string volume_id = 1;
+  string path = 2;
+  bool recursive = 4;
+  optional uint32 max_entries = 3;
+}
+
+message VolumeListFiles2Response {
+  repeated FileEntry entries = 1;
+}
+
 message VolumeListFilesRequest {
   string volume_id = 1;
   string path = 2;
@@ -3082,6 +3101,12 @@ message VolumeReloadRequest {
   // NOTE(staffan): Mounting a volume in multiple locations is not supported, so volume_id alone uniquely identifies
   // a volume mount.
   string volume_id = 1;
+}
+
+message VolumeRemoveFile2Request {
+  string volume_id = 1 [ (modal.options.audit_target_attr) = true ];
+  string path = 2;
+  bool recursive = 3;
 }
 
 message VolumeRemoveFileRequest {
@@ -3323,10 +3348,12 @@ service ModalClient {
   rpc VolumeHeartbeat(VolumeHeartbeatRequest) returns (google.protobuf.Empty);
   rpc VolumeList(VolumeListRequest) returns (VolumeListResponse);
   rpc VolumeListFiles(VolumeListFilesRequest) returns (stream VolumeListFilesResponse);
+  rpc VolumeListFiles2(VolumeListFiles2Request) returns (stream VolumeListFiles2Response);
   rpc VolumePutFiles(VolumePutFilesRequest) returns (google.protobuf.Empty);
   rpc VolumePutFiles2(VolumePutFiles2Request) returns (VolumePutFiles2Response);
   rpc VolumeReload(VolumeReloadRequest) returns (google.protobuf.Empty);
   rpc VolumeRemoveFile(VolumeRemoveFileRequest) returns (google.protobuf.Empty);
+  rpc VolumeRemoveFile2(VolumeRemoveFile2Request) returns (google.protobuf.Empty);
   rpc VolumeRename(VolumeRenameRequest) returns (google.protobuf.Empty);
 
   // Workspaces

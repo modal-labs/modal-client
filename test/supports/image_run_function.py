@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2022
 import modal
 
-app = modal.App("a", include_source=True)  # TODO: remove include_source=True)
-other = modal.App("b", include_source=True)  # TODO: remove include_source=True)
+app = modal.App("a")
+other = modal.App("b")
 
 
 def builder_function():

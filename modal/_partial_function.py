@@ -649,7 +649,7 @@ def _web_server(
 def _build(
     _warn_parentheses_missing=None, *, force: bool = False, timeout: int = 86400
 ) -> Callable[[Union[_PartialFunction, NullaryMethod]], _PartialFunction]:
-    """
+    """mdmd:hidden
     Decorator for methods that execute at _build time_ to create a new Image layer.
 
     **Deprecated**: This function is deprecated. We recommend using `modal.Volume`

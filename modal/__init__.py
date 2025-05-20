@@ -11,7 +11,7 @@ from modal_version import __version__
 try:
     from ._runtime.execution_context import current_function_call_id, current_input_id, interact, is_local
     from ._tunnel import Tunnel, forward
-    from .app import App, Stub
+    from .app import App
     from .client import Client
     from .cloud_bucket_mount import CloudBucketMount
     from .cls import Cls, parameter
@@ -20,7 +20,6 @@ try:
     from .file_pattern_matcher import FilePatternMatcher
     from .functions import Function, FunctionCall
     from .image import Image
-    from .mount import Mount
     from .network_file_system import NetworkFileSystem
     from .output import enable_output
     from .partial_function import (
@@ -54,6 +53,7 @@ except Exception:
     print()
     raise
 
+
 __all__ = [
     "__version__",
     "App",
@@ -66,7 +66,6 @@ __all__ = [
     "Function",
     "FunctionCall",
     "Image",
-    "Mount",
     "NetworkFileSystem",
     "Period",
     "Proxy",
@@ -77,7 +76,6 @@ __all__ = [
     "SandboxSnapshot",
     "SchedulerPlacement",
     "Secret",
-    "Stub",
     "Tunnel",
     "Volume",
     "asgi_app",
@@ -99,3 +97,11 @@ __all__ = [
     "web_server",
     "wsgi_app",
 ]
+
+
+def __getattr__(name):
+    if name == "Stub":
+        raise AttributeError(
+            "Module 'modal' has no attribute 'Stub'. Use `modal.App` instead. This is a simple name change."
+        )
+    raise AttributeError(f"module 'modal' has no attribute '{name}'")

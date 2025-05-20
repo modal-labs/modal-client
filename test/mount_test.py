@@ -5,10 +5,10 @@ import platform
 import pytest
 from pathlib import Path, PurePosixPath
 
+import modal
 from modal import App, FilePatternMatcher
 from modal._utils.blob_utils import LARGE_FILE_LIMIT
 from modal.mount import Mount, client_mount_name, module_mount_condition, module_mount_ignore_condition
-from test.helpers import deploy_app_externally
 
 
 @pytest.mark.asyncio
@@ -87,12 +87,12 @@ def dummy():
     pass
 
 
-def test_from_local_python_packages(servicer, client, test_dir, monkeypatch):
+def test_add_local_python_source(servicer, client, test_dir, monkeypatch):
     app = App()
 
     monkeypatch.syspath_prepend((test_dir / "supports").as_posix())
 
-    app.function(mounts=[Mount._from_local_python_packages("pkg_a", "pkg_b", "standalone_file")])(dummy)
+    app.function(image=modal.Image.debian_slim().add_local_python_source("pkg_a", "pkg_b", "standalone_file"))(dummy)
 
     with app.run(client=client):
         files = set(servicer.files_name2sha.keys())
@@ -169,36 +169,6 @@ def test_mount_from_local_dir_ignore(test_dir, tmp_path_with_content):
 
     file_names = [file.mount_filename for file in Mount._get_files(entries=mount.entries)]
     assert set(file_names) == expected
-
-
-def test_missing_python_source_warning(servicer, credentials, supports_dir, monkeypatch):
-    # should warn if function doesn't have an imported non-third-party package attached
-    # either through add OR copy mode, unless automount=False mode is used
-    monkeypatch.delenv("MODAL_AUTOMOUNT")  # prevent autoused disable_automount fixture
-
-    def has_warning(output: str):
-        return '.add_local_python_source("pkg_a")' in output
-
-    output = deploy_app_externally(servicer, credentials, "pkg_d.main", cwd=supports_dir, capture_output=True)
-    assert has_warning(output)
-
-    # adding the source to the image should make the warning disappear
-    output = deploy_app_externally(
-        servicer, credentials, "pkg_d.main", cwd=supports_dir, capture_output=True, env={"ADD_SOURCE": "add"}
-    )
-    assert not has_warning(output)
-
-    # *copying* the source to the image should make the warning disappear too
-    output = deploy_app_externally(
-        servicer, credentials, "pkg_d.main", cwd=supports_dir, capture_output=True, env={"ADD_SOURCE": "copy"}
-    )
-    assert not has_warning(output)
-
-    # disabling auto-mount explicitly should make warning disappear
-    output = deploy_app_externally(
-        servicer, credentials, "pkg_d.main", cwd=supports_dir, capture_output=True, env={"MODAL_AUTOMOUNT": "0"}
-    )
-    assert not has_warning(output)
 
 
 def test_client_mount_name():

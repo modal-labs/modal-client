@@ -23,7 +23,7 @@ from collections import defaultdict
 from collections.abc import Iterator
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Optional, Union, get_args
+from typing import Any, Callable, Optional, Union, get_args
 
 import aiohttp.web
 import aiohttp.web_runner
@@ -310,6 +310,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.function_get_server_warnings = None
         self.resp_jitter_secs: float = 0.0
         self.port = port
+        # AttemptAwait will return a failure until this is 0. It is decremented by 1 each time AttemptAwait is called.
+        self.attempt_await_failures_remaining = 0
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -1940,10 +1942,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def VolumeRemoveFile(self, stream):
         req = await stream.recv_message()
+        self._volume_remove_file(req)
+        await stream.send_message(Empty())
+
+    async def VolumeRemoveFile2(self, stream):
+        req = await stream.recv_message()
+        self._volume_remove_file(req)
+        await stream.send_message(Empty())
+
+    def _volume_remove_file(self, req: Union[api_pb2.VolumeRemoveFileRequest, api_pb2.VolumeRemoveFile2Request]):
         if req.path not in self.volumes[req.volume_id].files:
             raise GRPCError(Status.INVALID_ARGUMENT, "File not found")
         del self.volumes[req.volume_id].files[req.path]
-        await stream.send_message(Empty())
 
     async def VolumeRename(self, stream):
         req = await stream.recv_message()
@@ -1955,6 +1965,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def VolumeListFiles(self, stream):
         req = await stream.recv_message()
+        await self._volume_list_files(stream, req, lambda entries: api_pb2.VolumeListFilesResponse(entries=entries))
+
+    async def VolumeListFiles2(self, stream):
+        req = await stream.recv_message()
+        await self._volume_list_files(stream, req, lambda entries: api_pb2.VolumeListFiles2Response(entries=entries))
+
+    async def _volume_list_files(
+        self,
+        stream,
+        req: Union[api_pb2.VolumeListFilesRequest, api_pb2.VolumeListFiles2Request],
+        make_resp: Callable[
+            [list[api_pb2.FileEntry]],
+            Union[api_pb2.VolumeListFilesResponse, api_pb2.VolumeListFiles2Response]
+        ]
+    ):
         path = req.path if req.path else "/"
         if path.startswith("/"):
             path = path[1:]
@@ -1965,7 +1990,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         for k, vol_file in self.volumes[req.volume_id].files.items():
             if not path or k == path or (k.startswith(path + "/") and (req.recursive or "/" not in k[len(path) + 1 :])):
                 entry = api_pb2.FileEntry(path=k, type=api_pb2.FileEntry.FileType.FILE, size=len(vol_file.data))
-                await stream.send_message(api_pb2.VolumeListFilesResponse(entries=[entry]))
+                await stream.send_message(make_resp([entry]))
                 found_file = True
 
         if path and not found_file:
@@ -2085,16 +2110,22 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
 
     async def AttemptAwait(self, stream):
-        # TODO(ryan): Eventually we want to invoke the user's function and return a result.
-        # For now we just return a dummy response which allows the test to verify that the input_plane_region param
-        # was honored, and we hit this endpoint rather than get_outputs.
+        # TODO(ryan): Eventually we may want to invoke the user's function and return a result.
+        # For now we just return a dummy response
+
+        # To test client retries, tests can configure outputs to fail some number of times.
+        status = api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
+        if self.attempt_await_failures_remaining > 0:
+            status = api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE
+            self.attempt_await_failures_remaining = self.attempt_await_failures_remaining - 1
+
         await stream.send_message(
             api_pb2.AttemptAwaitResponse(
                 output=api_pb2.FunctionGetOutputsItem(
                     input_id="in-1",
                     idx=0,
                     result=api_pb2.GenericResult(
-                        status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+                        status=status,
                         data=serialize_data_format("attempt_await_bogus_response", api_pb2.DATA_FORMAT_PICKLE),
                     ),
                     data_format=api_pb2.DATA_FORMAT_PICKLE,
@@ -2102,6 +2133,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 )
             )
         )
+
+    async def AttemptRetry(self, stream):
+        await stream.send_message(api_pb2.AttemptRetryResponse(attempt_token="bogus_retry_token"))
 
 
 @pytest.fixture

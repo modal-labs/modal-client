@@ -116,7 +116,7 @@ class InternalFailure(Error):
 
 class _CliUserExecutionError(Exception):
     """mdmd:hidden
-    Private wrapper for exceptions during when importing or running stubs from the CLI.
+    Private wrapper for exceptions during when importing or running Apps from the CLI.
 
     This intentionally does not inherit from `modal.exception.Error` because it
     is a private type that should never bubble up to users. Exceptions raised in
@@ -161,6 +161,8 @@ def simulate_preemption(wait_seconds: int, jitter_seconds: int = 0):
     See https://modal.com/docs/guide/preemption for more details on preemption
     handling.
     """
+    if wait_seconds <= 0:
+        raise ValueError("Time to wait must be greater than 0")
     signal.signal(signal.SIGALRM, _simulate_preemption_interrupt)
     jitter = random.randrange(0, jitter_seconds) if jitter_seconds else 0
     signal.alarm(wait_seconds + jitter)

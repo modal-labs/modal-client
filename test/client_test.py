@@ -3,12 +3,13 @@ import platform
 import pytest
 import subprocess
 import sys
+import urllib.parse
 
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
 from modal import Client
-from modal.exception import AuthError, ConnectionError, DeprecationError, InvalidError, ServerWarning
+from modal.exception import AuthError, ConnectionError, InvalidError, ServerWarning
 from modal_proto import api_pb2
 
 from .supports.skip import skip_windows, skip_windows_unix_socket
@@ -24,9 +25,24 @@ def test_client_type(servicer, client):
     assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CLIENT)
 
 
+CHALLENGING_PLATFORM_NODE = "\0äbc \n"
+
+
+@pytest.fixture
+def _patch_platform_node(monkeypatch):
+    # Platform info is read when the client is created, so have to patch it before the fixture is requested
+    monkeypatch.setattr("modal.client.platform.node", lambda: CHALLENGING_PLATFORM_NODE)
+
+
+def test_client_node_string(servicer, _patch_platform_node, client):
+    client.hello()
+    platform_str = urllib.parse.unquote(servicer.last_metadata["x-modal-node"])
+    assert platform_str == CHALLENGING_PLATFORM_NODE
+
+
 def test_client_platform_string(servicer, client):
     client.hello()
-    platform_str = servicer.last_metadata["x-modal-platform"]
+    platform_str = urllib.parse.unquote(servicer.last_metadata["x-modal-platform"])
     system, release, machine = platform_str.split("-")
     if platform.system() == "Darwin":
         assert system == "macOS"
@@ -171,7 +187,7 @@ def test_implicit_default_profile_warning(servicer, modal_config, server_url_env
     token_secret = 'as_xyz'
     """
     with modal_config(config):
-        with pytest.raises(DeprecationError, match="Support for using an implicit 'default' profile is deprecated."):
+        with pytest.raises(InvalidError, match="No Modal profile is active"):
             Client.from_env()
 
     config = """

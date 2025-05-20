@@ -251,7 +251,8 @@ class _Volume(_Object, type_prefix="vo"):
         create_if_missing: bool = False,
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> "_Volume":
-        """Lookup a named Volume.
+        """mdmd:hidden
+        Lookup a named Volume.
 
         DEPRECATED: This method is deprecated in favor of `modal.Volume.from_name`.
 
@@ -374,10 +375,16 @@ class _Volume(_Object, type_prefix="vo"):
                 "Please remove the glob `*` suffix."
             )
 
-        req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)
-        async for batch in self._client.stub.VolumeListFiles.unary_stream(req):
-            for entry in batch.entries:
-                yield FileEntry._from_proto(entry)
+        if self._is_v1:
+            req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)
+            async for batch in self._client.stub.VolumeListFiles.unary_stream(req):
+                for entry in batch.entries:
+                    yield FileEntry._from_proto(entry)
+        else:
+            req = api_pb2.VolumeListFiles2Request(volume_id=self.object_id, path=path, recursive=recursive)
+            async for batch in self._client.stub.VolumeListFiles2.unary_stream(req):
+                for entry in batch.entries:
+                    yield FileEntry._from_proto(entry)
 
     @live_method
     async def listdir(self, path: str, *, recursive: bool = False) -> list[FileEntry]:
@@ -498,7 +505,7 @@ class _Volume(_Object, type_prefix="vo"):
             num_bytes_written = 0
 
             async with download_semaphore, ClientSessionRegistry.get_session().get(url) as get_response:
-                async for chunk in get_response.content:
+                async for chunk in get_response.content.iter_any():
                     num_chunk_bytes_written = 0
 
                     while num_chunk_bytes_written < len(chunk):
@@ -525,8 +532,12 @@ class _Volume(_Object, type_prefix="vo"):
     @live_method
     async def remove_file(self, path: str, recursive: bool = False) -> None:
         """Remove a file or directory from a volume."""
-        req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
-        await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
+        if self._is_v1:
+            req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
+            await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
+        else:
+            req = api_pb2.VolumeRemoveFile2Request(volume_id=self.object_id, path=path, recursive=recursive)
+            await retry_transient_errors(self._client.stub.VolumeRemoveFile2, req)
 
     @live_method
     async def copy_files(self, src_paths: Sequence[str], dst_path: str) -> None:

@@ -7,10 +7,9 @@ from pathlib import Path
 from watchfiles import Change
 
 import modal
-from modal import method
 from modal._watcher import _watch_args_from_mounts
 from modal.exception import ExecutionError
-from modal.mount import _get_client_mount, _Mount
+from modal.mount import _Mount
 
 
 @pytest.mark.asyncio
@@ -50,60 +49,12 @@ def test_watch_mounts_requires_running_app():
         app._get_watch_mounts()
 
 
-def test_watch_mounts_includes_function_mounts(client, supports_dir, monkeypatch, disable_auto_mount):
-    # TODO: remove this test once public Mount constructions are fully deprecated
-    monkeypatch.syspath_prepend(supports_dir)
-    app = modal.App()
-    pkg_a_mount = modal.Mount._from_local_python_packages("pkg_a")
-
-    @app.function(mounts=[pkg_a_mount], serialized=True)
-    def f():
-        pass
-
-    with app.run(client=client):
-        watch_mounts = app._get_watch_mounts()
-    assert watch_mounts == [pkg_a_mount]
-
-
-def test_watch_mounts_includes_cls_mounts(client, supports_dir, monkeypatch, disable_auto_mount):
-    # TODO: remove this test once public Mount constructions are fully deprecated
-    monkeypatch.syspath_prepend(supports_dir)
-    app = modal.App()
-    pkg_a_mount = modal.Mount._from_local_python_packages("pkg_a")
-
-    @app.cls(mounts=[pkg_a_mount], serialized=True)
-    class A:
-        @method()
-        def foo(self):
-            pass
-
-    with app.run(client=client):
-        watch_mounts = app._get_watch_mounts()
-    assert watch_mounts == [pkg_a_mount]
-
-
-def test_watch_mounts_includes_image_mounts(client, supports_dir, monkeypatch, disable_auto_mount):
-    # TODO: remove this test once public Mount constructions are fully deprecated
-    monkeypatch.syspath_prepend(supports_dir)
-    app = modal.App()
-    pkg_a_mount = modal.Mount._from_local_python_packages("pkg_a")
-    image = modal.Image.debian_slim().copy_mount(pkg_a_mount)
-
-    @app.function(image=image, serialized=True)
-    def f():
-        pass
-
-    with app.run(client=client):
-        watch_mounts = app._get_watch_mounts()
-    assert watch_mounts == [pkg_a_mount]
-
-
-def test_watch_mounts_ignore_non_local(disable_auto_mount, client, servicer):
+def test_watch_mounts_ignore_non_local(client, servicer):
     app = modal.App()
 
     # uses the published client mount - should not be included in watch items
     # serialized=True avoids auto-mounting the entrypoint
-    @app.function(mounts=[_get_client_mount()], serialized=True)
+    @app.function(serialized=True)
     def dummy():
         pass
 
@@ -113,7 +64,7 @@ def test_watch_mounts_ignore_non_local(disable_auto_mount, client, servicer):
     assert len(mounts) == 0
 
 
-def test_add_local_mount_included_in_serve_watchers(servicer, client, supports_on_path, disable_auto_mount):
+def test_add_local_mount_included_in_serve_watchers(servicer, client, supports_on_path):
     deb_slim = modal.Image.debian_slim()
     img = deb_slim.add_local_python_source("pkg_a")
     app = modal.App()
