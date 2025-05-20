@@ -700,3 +700,21 @@ async def blocks_event_loop():
 def blocks_without_eventloop():
     time.sleep(1)
     return 1
+
+
+@app.cls()
+class MixedClassBlockingInSyncMethod:
+    @modal.method()
+    async def async_method(self):
+        await asyncio.sleep(1)
+        return 1
+
+    @modal.method()
+    async def bad_async_method(self):
+        time.sleep(1)
+        return 1
+
+    @modal.method()
+    def non_async_method(self):
+        time.sleep(1)
+        return 2

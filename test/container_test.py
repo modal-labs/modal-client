@@ -2605,17 +2605,52 @@ def test_custom_exception(servicer, capsys):
 
 
 @skip_github_non_linux
-def test_event_loop_monitor_async_blocking_warns(servicer, capsys):
-    ret = _run_container(servicer, "test.supports.functions", "blocks_event_loop")
+def test_event_loop_monitor_async_blocking_warns(servicer, caplog):
+    ret = _run_container(servicer, "test.supports.functions", "blocks_event_loop", inputs=_get_inputs(args=((), {})))
     assert _unwrap_scalar(ret) == 1
-    print(capsys.readouterr())
+    assert "Detected an asyncio event loop delay" in caplog.messages[0]
 
 
 @skip_github_non_linux
-def test_event_loop_monitor_sync_blocking_nowarn():
-    pass
+def test_event_loop_monitor_sync_blocking_nowarn(servicer, caplog):
+    ret = _run_container(
+        servicer, "test.supports.functions", "blocks_without_eventloop", inputs=_get_inputs(args=((), {}))
+    )
+    assert _unwrap_scalar(ret) == 1
+    assert len(caplog.messages) == 0
 
 
 @skip_github_non_linux
-def test_event_loop_monitor_sync_mixed_class_no_warn():
-    pass
+@pytest.mark.parametrize("concurrent_inputs", [1, 2])
+def test_event_loop_monitor_mixed_well_behaved_class_no_warn(servicer, caplog, concurrent_inputs):
+    # "well behaved" async method + sync method
+    inputs = _get_multi_inputs_with_methods([("non_async_method", (), {}), ("async_method", (), {})])
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "MixedClassBlockingInSyncMethod.*",
+        inputs=inputs,
+        is_class=True,
+        target_concurrent_inputs=concurrent_inputs,
+    )
+    results = [deserialize(it.result.data, ret.client) for it in ret.items]
+    assert set(results) == {2, 1}
+    assert len(caplog.messages) == 0
+
+
+@skip_github_non_linux
+@pytest.mark.parametrize("concurrent_inputs", [1, 2])
+def test_event_loop_monitor_mixed_badly_behaved_class_warn(servicer, caplog, concurrent_inputs):
+    # "badly behaved" async method + sync method
+    inputs = _get_multi_inputs_with_methods([("non_async_method", (), {}), ("bad_async_method", (), {})])
+    ret = _run_container(
+        servicer,
+        "test.supports.functions",
+        "MixedClassBlockingInSyncMethod.*",
+        inputs=inputs,
+        is_class=True,
+        target_concurrent_inputs=concurrent_inputs,
+    )
+    results = [deserialize(it.result.data, ret.client) for it in ret.items]
+    assert set(results) == {2, 1}
+    assert "Detected an asyncio event loop delay" in caplog.messages[0]
