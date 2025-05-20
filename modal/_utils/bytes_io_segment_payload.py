@@ -52,12 +52,16 @@ class BytesIOSegmentPayload(BytesIOPayload):
         self._value.seek(self.initial_seek_pos)
 
     @contextmanager
-    def reset_on_error(self):
+    def reset_on_error(self, subtract_progress: bool = False):
         try:
             yield
         except Exception as exc:
             try:
-                self.progress_report_cb(reset=True)
+                if subtract_progress:
+                    negative_progress = -self.num_bytes_read
+                    self.progress_report_cb(advance=negative_progress)
+                else:
+                    self.progress_report_cb(reset=True)
             except Exception as cb_exc:
                 raise cb_exc from exc
             raise exc

@@ -1033,9 +1033,7 @@ async def _put_missing_blocks(
                 err = None
                 for attempt in range(num_retries):
                     try:
-                        # TODO(dflemstr): can't use `payload.reset_on_error()` here because many blocks share the same
-                        #  `task_progress_cb`. Can we rewind a specific amount?
-                        with payload.reset_on_error():
+                        with payload.reset_on_error(subtract_progress=True):
                             resp_data = await put_missing_block_attempt(payload)
                         break
                     except ClientError as e:
