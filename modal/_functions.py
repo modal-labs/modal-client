@@ -15,8 +15,8 @@ import typing_extensions
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
-from synchronicity.exceptions import UserCodeException
 
+from modal.exception import _ContainerException
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
@@ -100,6 +100,7 @@ if TYPE_CHECKING:
     import modal.partial_function
 
 MAX_INTERNAL_FAILURE_COUNT = 8
+
 
 @dataclasses.dataclass
 class _RetryContext:
@@ -258,6 +259,7 @@ class _Invocation:
 
     async def _get_single_output(self, expected_jwt: Optional[str] = None) -> Any:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
+        # raises wrapped internal _ContainerExceptions if they occur
         item: api_pb2.FunctionGetOutputsItem = (
             await self.pop_function_call_outputs(
                 timeout=None,
@@ -285,15 +287,16 @@ class _Invocation:
         while True:
             try:
                 return await self._get_single_output(ctx.input_jwt)
-            except (UserCodeException, FunctionTimeoutError) as exc:
+            except (_ContainerException, FunctionTimeoutError):
                 delay_ms = user_retry_manager.get_delay_ms()
                 if delay_ms is None:
-                    raise exc
+                    raise
                 await asyncio.sleep(delay_ms / 1000)
             except InternalFailure:
                 # For system failures on the server, we retry immediately,
                 # and the failure does not count towards the retry policy.
                 pass
+
             await self._retry_input()
 
     async def poll_function(self, timeout: Optional[float] = None):
@@ -311,9 +314,12 @@ class _Invocation:
         elif len(response.outputs) == 0:
             raise TimeoutError()
 
-        return await _process_result(
-            response.outputs[0].result, response.outputs[0].data_format, self.stub, self.client
-        )
+        try:
+            return await _process_result(
+                response.outputs[0].result, response.outputs[0].data_format, self.stub, self.client
+            )
+        except _ContainerException as container_exception:
+            raise container_exception.unwrap()
 
     async def run_generator(self):
         items_received = 0
@@ -1484,8 +1490,10 @@ Use the `Function.get_web_url()` method instead.
                 client=self.client,
                 function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
             )
-
-        return await invocation.run_function()
+        try:
+            return await invocation.run_function()
+        except _ContainerException as container_exc:
+            raise container_exc.unwrap()
 
     async def _call_function_nowait(
         self,

@@ -10,7 +10,6 @@ from typing import Any, Callable, Literal, Optional
 
 from grpclib import GRPCError
 from grpclib.exceptions import StreamTerminatedError
-from synchronicity.exceptions import UserCodeException
 
 import modal_proto
 from modal_proto import api_pb2
@@ -31,6 +30,7 @@ from ..exception import (
     InternalFailure,
     InvalidError,
     RemoteError,
+    _ContainerException,
 )
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
 from .blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
@@ -459,6 +459,8 @@ manually, for example:
 
 
 async def _process_result(result: api_pb2.GenericResult, data_format: int, stub, client=None):
+    # Note that the caller of this function is responsible for unwrapping potential ContainerExceptions
+    # when the original exception is supposed to be raised to callers
     if result.WhichOneof("data_oneof") == "data_blob_id":
         data = await blob_download(result.data_blob_id, stub)
     else:
@@ -497,8 +499,9 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
                     append_modal_tb(exc, tb_dict, line_cache)
                 except Exception:
                     pass
-            uc_exc = UserCodeException(exc_with_hints(exc))
-            raise uc_exc
+
+            raise _ContainerException(exc_with_hints(exc))
+
         raise RemoteError(result.exception)
 
     try:

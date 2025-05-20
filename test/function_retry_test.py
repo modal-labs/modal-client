@@ -57,7 +57,8 @@ def test_all_retries_fail_raises_error(client, setup_app_and_function, monkeypat
     with app.run(client=client):
         with pytest.raises(FunctionCallCountException) as exc_info:
             # The client should give up after the 4th call.
-            f.remote(5)
+            res = f.remote(5)
+            print(res)
         # Assert the function was called 4 times - the original call plus 3 retries
         assert exc_info.value.function_call_count == 4
 
