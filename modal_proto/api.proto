@@ -2586,6 +2586,7 @@ message SandboxWaitResponse {
 message Schedule {
   message Cron {
     string cron_string = 1;
+    string timezone = 2;
   }
   message Period {
     int32 years = 1;
