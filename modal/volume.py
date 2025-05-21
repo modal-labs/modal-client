@@ -22,7 +22,6 @@ from typing import (
     Union,
 )
 
-from aiohttp import ClientError
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
@@ -39,7 +38,8 @@ from ._utils.async_utils import (
     async_map,
     async_map_ordered,
     asyncnullcontext,
-    synchronize_api, retry,
+    retry,
+    synchronize_api,
 )
 from ._utils.blob_utils import (
     BLOCK_SIZE,
@@ -826,7 +826,7 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
         progress_cb: Optional[Callable[..., Any]] = None,
         force: bool = False,
         hash_concurrency: int = multiprocessing.cpu_count(),
-        put_concurrency: int = multiprocessing.cpu_count(),
+        put_concurrency: int = 128,
     ):
         """mdmd:hidden"""
         self._volume_id = volume_id
