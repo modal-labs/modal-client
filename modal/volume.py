@@ -39,7 +39,7 @@ from ._utils.async_utils import (
     async_map,
     async_map_ordered,
     asyncnullcontext,
-    synchronize_api,
+    synchronize_api, retry,
 )
 from ._utils.blob_utils import (
     BLOCK_SIZE,
@@ -1011,13 +1011,15 @@ async def _put_missing_blocks(
         file_progress.pending_blocks.add(missing_block.block_index)
         task_progress_cb = functools.partial(progress_cb, task_id=file_progress.task_id)
 
+        @retry(n_attempts=5, base_delay=0.5, timeout=None)
         async def put_missing_block_attempt(payload: BytesIOSegmentPayload) -> bytes:
-            async with ClientSessionRegistry.get_session().put(
-                missing_block.put_url,
-                data=payload,
-            ) as response:
-                response.raise_for_status()
-                return await response.content.read()
+            with payload.reset_on_error(subtract_progress=True):
+                async with ClientSessionRegistry.get_session().put(
+                    missing_block.put_url,
+                    data=payload,
+                ) as response:
+                    response.raise_for_status()
+                    return await response.content.read()
 
         async with put_semaphore:
             with file_spec.source() as source_fp:
@@ -1029,18 +1031,7 @@ async def _put_missing_blocks(
                     chunk_size=256 * 1024,
                     progress_report_cb=task_progress_cb,
                 )
-                num_retries = 3
-                err = None
-                for attempt in range(num_retries):
-                    try:
-                        with payload.reset_on_error(subtract_progress=True):
-                            resp_data = await put_missing_block_attempt(payload)
-                        break
-                    except ClientError as e:
-                        err = e
-                else:
-                    if err:
-                        raise err
+                resp_data = await put_missing_block_attempt(payload)
 
         file_progress.pending_blocks.remove(missing_block.block_index)
 
