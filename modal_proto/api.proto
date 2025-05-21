@@ -1216,6 +1216,8 @@ message FileEntry {
     FILE = 1;
     DIRECTORY = 2;
     SYMLINK = 3;
+    FIFO = 4;
+    SOCKET = 5;
   }
   string path = 1;
   FileType type = 2;

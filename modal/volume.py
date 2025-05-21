@@ -68,6 +68,8 @@ class FileEntryType(enum.IntEnum):
     FILE = 1
     DIRECTORY = 2
     SYMLINK = 3
+    FIFO = 4
+    SOCKET = 5
 
 
 @dataclass(frozen=True)
