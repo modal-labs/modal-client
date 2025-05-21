@@ -2153,6 +2153,7 @@ message PTYInfo {
 message PortSpec {
   uint32 port = 1;
   bool unencrypted = 2;
+  optional string tunnel_type = 3;
 }
 
 message PortSpecs {
@@ -2876,6 +2877,7 @@ message TunnelData {
 message TunnelStartRequest {
   uint32 port = 1;
   bool unencrypted = 2;
+  optional string tunnel_type = 3;
 }
 
 message TunnelStartResponse {
