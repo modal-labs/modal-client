@@ -1442,7 +1442,9 @@ class _Image(_Object, type_prefix="im"):
             if version > "2024.10":
                 # for convenience when launching in a sandbox: sleep for 48h
                 commands.append(f'CMD ["sleep", "{48 * 3600}"]')
-            context_files = {CONTAINER_REQUIREMENTS_PATH: _get_modal_requirements_path(version, python_version)}
+            context_files = {}
+            if version <= "2024.10":
+                context_files = {CONTAINER_REQUIREMENTS_PATH: _get_modal_requirements_path(version, python_version)}
             return DockerfileSpec(commands=commands, context_files=context_files)
 
         return _Image._from_args(
@@ -1517,12 +1519,15 @@ class _Image(_Object, type_prefix="im"):
 
         # Note: this change is because we install dependencies with uv in 2024.10+
         requirements_prefix = "python -m " if builder_version < "2024.10" else ""
-        modal_requirements_commands = [
-            f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
-            f"RUN python -m pip install --upgrade {_base_image_config('package_tools', builder_version)}",
-            f"RUN {requirements_prefix}{_get_modal_requirements_command(builder_version)}",
-        ]
-        if builder_version > "2023.12":
+        modal_requirements_commands = []
+        if builder_version <= "2024.10":
+            # past 2024.10, client dependencies are mounted at runtime
+            modal_requirements_commands.extend([
+                f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
+                f"RUN python -m pip install --upgrade {_base_image_config('package_tools', builder_version)}",
+                f"RUN {requirements_prefix}{_get_modal_requirements_command(builder_version)}",
+            ])
+        if  "2024.10" >= builder_version > "2023.12":
             modal_requirements_commands.append(f"RUN rm {CONTAINER_REQUIREMENTS_PATH}")
 
         return [
@@ -1585,7 +1590,9 @@ class _Image(_Object, type_prefix="im"):
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             commands = _Image._registry_setup_commands(tag, version, setup_dockerfile_commands, add_python)
-            context_files = {CONTAINER_REQUIREMENTS_PATH: _get_modal_requirements_path(version, add_python)}
+            context_files = {}
+            if version <= "2024.10":
+                context_files = {CONTAINER_REQUIREMENTS_PATH: _get_modal_requirements_path(version, add_python)}
             return DockerfileSpec(commands=commands, context_files=context_files)
 
         return _Image._from_args(
@@ -1792,8 +1799,10 @@ class _Image(_Object, type_prefix="im"):
 
         def build_dockerfile_python(version: ImageBuilderVersion) -> DockerfileSpec:
             commands = _Image._registry_setup_commands("base", version, [], add_python)
-            requirements_path = _get_modal_requirements_path(version, add_python)
-            context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
+            context_files = {}
+            if version <= "2024.10":
+                requirements_path = _get_modal_requirements_path(version, add_python)
+                context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
             return DockerfileSpec(commands=commands, context_files=context_files)
 
         return _Image._from_args(
@@ -1810,22 +1819,35 @@ class _Image(_Object, type_prefix="im"):
             raise TypeError("The `python_version` argument should be a string, not a float.")
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            requirements_path = _get_modal_requirements_path(version, python_version)
-            context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
+            context_files = {}
+            if version <= "2024.10":
+                requirements_path = _get_modal_requirements_path(version, python_version)
+                context_files = {CONTAINER_REQUIREMENTS_PATH: requirements_path}
             full_python_version = _dockerhub_python_version(version, python_version)
             debian_codename = _base_image_config("debian", version)
 
             commands = [
                 f"FROM python:{full_python_version}-slim-{debian_codename}",
-                f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
+            ]
+            if version <= "2024.10":
+                commands.extend([
+                    f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
+                ])
+            commands.extend([
                 "RUN apt-get update",
                 "RUN apt-get install -y gcc gfortran build-essential",
                 f"RUN pip install --upgrade {_base_image_config('package_tools', version)}",
-                f"RUN {_get_modal_requirements_command(version)}",
+            ])
+            if version <= "2024.10":
+                # after 2024.10, modal requirements are mounted at runtime
+                commands.extend([
+                    f"RUN {_get_modal_requirements_command(version)}",
+                ])
+            commands.extend([
                 # Set debian front-end to non-interactive to avoid users getting stuck with input prompts.
                 "RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections",
-            ]
-            if version > "2023.12":
+            ])
+            if "2024.10" >= version > "2023.12":
                 commands.append(f"RUN rm {CONTAINER_REQUIREMENTS_PATH}")
             if version > "2024.10":
                 # for convenience when launching in a sandbox: sleep for 48h
