@@ -38,6 +38,7 @@ from ._utils.async_utils import (
     async_map,
     async_map_ordered,
     asyncnullcontext,
+    retry,
     synchronize_api,
 )
 from ._utils.blob_utils import (
@@ -835,7 +836,7 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
         progress_cb: Optional[Callable[..., Any]] = None,
         force: bool = False,
         hash_concurrency: int = multiprocessing.cpu_count(),
-        put_concurrency: int = multiprocessing.cpu_count(),
+        put_concurrency: int = 128,
     ):
         """mdmd:hidden"""
         self._volume_id = volume_id
@@ -1020,6 +1021,16 @@ async def _put_missing_blocks(
         file_progress.pending_blocks.add(missing_block.block_index)
         task_progress_cb = functools.partial(progress_cb, task_id=file_progress.task_id)
 
+        @retry(n_attempts=5, base_delay=0.5, timeout=None)
+        async def put_missing_block_attempt(payload: BytesIOSegmentPayload) -> bytes:
+            with payload.reset_on_error(subtract_progress=True):
+                async with ClientSessionRegistry.get_session().put(
+                    missing_block.put_url,
+                    data=payload,
+                ) as response:
+                    response.raise_for_status()
+                    return await response.content.read()
+
         async with put_semaphore:
             with file_spec.source() as source_fp:
                 payload = BytesIOSegmentPayload(
@@ -1030,13 +1041,7 @@ async def _put_missing_blocks(
                     chunk_size=256 * 1024,
                     progress_report_cb=task_progress_cb,
                 )
-
-                async with ClientSessionRegistry.get_session().put(
-                    missing_block.put_url,
-                    data=payload,
-                ) as response:
-                    response.raise_for_status()
-                    resp_data = await response.content.read()
+                resp_data = await put_missing_block_attempt(payload)
 
         file_progress.pending_blocks.remove(missing_block.block_index)
 

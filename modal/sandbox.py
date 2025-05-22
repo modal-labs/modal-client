@@ -260,7 +260,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         client: Optional[_Client] = None,
     ) -> "_Sandbox":
         """
-        Create a new Sandbox to run untrusted, arbitrary code.
+        Create a new Sandbox to run untrusted, arbitrary code. The Sandbox's corresponding container
+        will be created asynchronously.
 
         **Usage**
 

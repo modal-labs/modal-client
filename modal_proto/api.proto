@@ -2153,7 +2153,7 @@ message PTYInfo {
 message PortSpec {
   uint32 port = 1;
   bool unencrypted = 2;
-  string tunnel_type = 3;
+  optional string tunnel_type = 3;
 }
 
 message PortSpecs {
@@ -2587,6 +2587,7 @@ message SandboxWaitResponse {
 message Schedule {
   message Cron {
     string cron_string = 1;
+    string timezone = 2;
   }
   message Period {
     int32 years = 1;
@@ -2877,7 +2878,7 @@ message TunnelData {
 message TunnelStartRequest {
   uint32 port = 1;
   bool unencrypted = 2;
-  string tunnel_type = 3;
+  optional string tunnel_type = 3;
 }
 
 message TunnelStartResponse {
