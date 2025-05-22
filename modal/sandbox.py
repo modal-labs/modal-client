@@ -154,10 +154,8 @@ class _Sandbox(_Object, type_prefix="sb"):
                 for path, volume in validated_volumes
             ]
 
-            open_ports = [api_pb2.PortSpec(port=port, unencrypted=False, tunnel_type="h1") for port in encrypted_ports]
-            open_ports.extend(
-                [api_pb2.PortSpec(port=port, unencrypted=True, tunnel_type="h1") for port in unencrypted_ports]
-            )
+            open_ports = [api_pb2.PortSpec(port=port, unencrypted=False) for port in encrypted_ports]
+            open_ports.extend([api_pb2.PortSpec(port=port, unencrypted=True) for port in unencrypted_ports])
             open_ports.extend(
                 [api_pb2.PortSpec(port=port, unencrypted=False, tunnel_type="h2") for port in encrypted_ports_h2]
             )
