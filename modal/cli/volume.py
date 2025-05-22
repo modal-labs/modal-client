@@ -154,6 +154,10 @@ async def ls(
                 filetype = "dir"
             elif entry.type == api_pb2.FileEntry.FileType.SYMLINK:
                 filetype = "link"
+            elif entry.type == api_pb2.FileEntry.FileType.FIFO:
+                filetype = "fifo"
+            elif entry.type == api_pb2.FileEntry.FileType.SOCKET:
+                filetype = "socket"
             else:
                 filetype = "file"
             rows.append(
