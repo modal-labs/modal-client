@@ -9,7 +9,6 @@ import typing
 from contextlib import contextmanager
 
 from grpclib import Status
-from synchronicity.exceptions import UserCodeException
 
 import modal
 from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, fastapi_endpoint
@@ -308,7 +307,7 @@ def later():
     return "hello"
 
 
-def test_function_future(client, servicer):
+def test_function_spawn(client, servicer):
     app = App()
 
     servicer.function_body(later)
@@ -339,7 +338,7 @@ def test_function_future(client, servicer):
 
 
 @pytest.mark.asyncio
-async def test_function_future_async(client, servicer):
+async def test_function_spawn_async(client, servicer):
     app = App()
 
     servicer.function_body(later)
@@ -355,6 +354,35 @@ async def test_function_future_async(client, servicer):
         servicer.function_is_running = False
         assert await future.get.aio(0.01) == "hello"
         assert future.object_id not in servicer.cleared_function_calls  # keep results around a bit longer for futures
+
+
+def test_function_spawn_exception(client, servicer):
+    app = App()
+
+    servicer.function_body(failure)
+    failure_modal_func = app.function()(failure)
+
+    with app.run(client=client):
+        function_call = failure_modal_func.spawn()
+        with pytest.raises(CustomException):
+            function_call.get()
+
+
+def failure_gen():
+    raise CustomException("foo")
+    yield
+
+
+def test_generator_exception(client, servicer):
+    app = App()
+
+    servicer.function_body(failure_gen)
+    failure_modal_func = app.function()(failure_gen)
+
+    with app.run(client=client):
+        with pytest.raises(CustomException):
+            for res in failure_modal_func.remote_gen():
+                assert False
 
 
 def later_gen():
@@ -438,7 +466,7 @@ async def test_generator_async(client, servicer):
 
 
 @pytest.mark.asyncio
-async def test_generator_future(client, servicer):
+async def test_generator_spawn(client, servicer):
     app = App()
 
     servicer.function_body(later_gen)
@@ -533,7 +561,7 @@ def test_map_exceptions(client, servicer):
 
         res = list(custom_function_modal.map(range(6), return_exceptions=True))
         assert res[:4] == [0, 1, 4, 9] and res[5] == 25
-        assert type(res[4]) is UserCodeException and "bad" in str(res[4])
+        assert type(res[4]) is CustomException and "bad" in str(res[4])
 
 
 def import_failure():
