@@ -40,6 +40,7 @@ def notebook_base_image(*, python_version: Optional[str] = None, force_build: bo
         "jax[cuda12]",
         "keras",
         "matplotlib",
+        "nbformat",
         "numba",
         "numpy",
         "openai",

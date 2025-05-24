@@ -38,6 +38,7 @@ from ._utils.async_utils import (
     async_map,
     async_map_ordered,
     asyncnullcontext,
+    retry,
     synchronize_api,
 )
 from ._utils.blob_utils import (
@@ -375,10 +376,16 @@ class _Volume(_Object, type_prefix="vo"):
                 "Please remove the glob `*` suffix."
             )
 
-        req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)
-        async for batch in self._client.stub.VolumeListFiles.unary_stream(req):
-            for entry in batch.entries:
-                yield FileEntry._from_proto(entry)
+        if self._is_v1:
+            req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)
+            async for batch in self._client.stub.VolumeListFiles.unary_stream(req):
+                for entry in batch.entries:
+                    yield FileEntry._from_proto(entry)
+        else:
+            req = api_pb2.VolumeListFiles2Request(volume_id=self.object_id, path=path, recursive=recursive)
+            async for batch in self._client.stub.VolumeListFiles2.unary_stream(req):
+                for entry in batch.entries:
+                    yield FileEntry._from_proto(entry)
 
     @live_method
     async def listdir(self, path: str, *, recursive: bool = False) -> list[FileEntry]:
@@ -499,7 +506,7 @@ class _Volume(_Object, type_prefix="vo"):
             num_bytes_written = 0
 
             async with download_semaphore, ClientSessionRegistry.get_session().get(url) as get_response:
-                async for chunk in get_response.content:
+                async for chunk in get_response.content.iter_any():
                     num_chunk_bytes_written = 0
 
                     while num_chunk_bytes_written < len(chunk):
@@ -526,8 +533,12 @@ class _Volume(_Object, type_prefix="vo"):
     @live_method
     async def remove_file(self, path: str, recursive: bool = False) -> None:
         """Remove a file or directory from a volume."""
-        req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
-        await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
+        if self._is_v1:
+            req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
+            await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
+        else:
+            req = api_pb2.VolumeRemoveFile2Request(volume_id=self.object_id, path=path, recursive=recursive)
+            await retry_transient_errors(self._client.stub.VolumeRemoveFile2, req)
 
     @live_method
     async def copy_files(self, src_paths: Sequence[str], dst_path: str) -> None:
@@ -825,7 +836,7 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
         progress_cb: Optional[Callable[..., Any]] = None,
         force: bool = False,
         hash_concurrency: int = multiprocessing.cpu_count(),
-        put_concurrency: int = multiprocessing.cpu_count(),
+        put_concurrency: int = 128,
     ):
         """mdmd:hidden"""
         self._volume_id = volume_id
@@ -1010,6 +1021,16 @@ async def _put_missing_blocks(
         file_progress.pending_blocks.add(missing_block.block_index)
         task_progress_cb = functools.partial(progress_cb, task_id=file_progress.task_id)
 
+        @retry(n_attempts=5, base_delay=0.5, timeout=None)
+        async def put_missing_block_attempt(payload: BytesIOSegmentPayload) -> bytes:
+            with payload.reset_on_error(subtract_progress=True):
+                async with ClientSessionRegistry.get_session().put(
+                    missing_block.put_url,
+                    data=payload,
+                ) as response:
+                    response.raise_for_status()
+                    return await response.content.read()
+
         async with put_semaphore:
             with file_spec.source() as source_fp:
                 payload = BytesIOSegmentPayload(
@@ -1020,13 +1041,7 @@ async def _put_missing_blocks(
                     chunk_size=256 * 1024,
                     progress_report_cb=task_progress_cb,
                 )
-
-                async with ClientSessionRegistry.get_session().put(
-                    missing_block.put_url,
-                    data=payload,
-                ) as response:
-                    response.raise_for_status()
-                    resp_data = await response.content.read()
+                resp_data = await put_missing_block_attempt(payload)
 
         file_progress.pending_blocks.remove(missing_block.block_index)
 
