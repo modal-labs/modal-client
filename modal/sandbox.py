@@ -517,7 +517,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return self._tunnels
 
-    async def terminate(self):
+    async def terminate(self) -> None:
         """Terminate Sandbox execution.
 
         This is a no-op if the Sandbox has already finished running."""
@@ -525,7 +525,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         await retry_transient_errors(
             self._client.stub.SandboxTerminate, api_pb2.SandboxTerminateRequest(sandbox_id=self.object_id)
         )
-        await self.wait(raise_on_termination=False)
 
     async def poll(self) -> Optional[int]:
         """Check if the Sandbox has finished running.
@@ -541,7 +540,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return self.returncode
 
-    async def _get_task_id(self):
+    async def _get_task_id(self) -> str:
         while not self._task_id:
             resp = await self._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id))
             self._task_id = resp.task_id
