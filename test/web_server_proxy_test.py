@@ -85,8 +85,11 @@ async def lifespan_ctx_manager(asgi_app):
 async def test_web_server_wrapper_immediate_disconnect(http_dummy_server: DummyHttpServer):
     proxy_asgi_app = modal._runtime.asgi.web_server_proxy(http_dummy_server.host, http_dummy_server.port)
 
+    msgs = [{"type": "http.request", "body": b"a", "more_body": True}, {"type": "http.disconnect"}]
+
     async def recv():
-        return {"type": "http.disconnect"}
+        msg = msgs.pop(0)
+        return msg
 
     async def send(msg):
         print("msg", msg)
