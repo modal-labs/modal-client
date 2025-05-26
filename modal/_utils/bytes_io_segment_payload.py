@@ -80,7 +80,7 @@ class BytesIOSegmentPayload(BytesIOPayload):
         # but on aiohttp 3.12+ `write_with_length` is called directly.
         await self.write_with_length(writer, None)
 
-    async def write_with_length(self, writer: AbstractStreamWriter, content_length: int | None) -> None:
+    async def write_with_length(self, writer: AbstractStreamWriter, content_length: Optional[int]):
         loop = asyncio.get_event_loop()
 
         async def safe_read():
