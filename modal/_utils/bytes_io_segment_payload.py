@@ -76,14 +76,21 @@ class BytesIOSegmentPayload(BytesIOPayload):
         return self._md5_checksum
 
     async def write(self, writer: "AbstractStreamWriter"):
+        # On aiohttp < 3.12.0 - this is the method that's being called on a custom payload,
+        # but on aiohttp 3.12+ `write_with_length` is called directly.
+        await self.write_with_length(writer, None)
+
+    async def write_with_length(self, writer: AbstractStreamWriter, content_length: int | None) -> None:
         loop = asyncio.get_event_loop()
 
         async def safe_read():
             read_start = self.initial_seek_pos + self.segment_start + self.num_bytes_read
             self._value.seek(read_start)
             num_bytes = min(self.chunk_size, self.remaining_bytes())
-            chunk = await loop.run_in_executor(None, self._value.read, num_bytes)
+            if content_length is not None:
+                num_bytes = min(num_bytes, content_length)
 
+            chunk = await loop.run_in_executor(None, self._value.read, num_bytes)
             await loop.run_in_executor(None, self._md5_checksum.update, chunk)
             self.num_bytes_read += len(chunk)
             return chunk
