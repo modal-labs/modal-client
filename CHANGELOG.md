@@ -6,9 +6,9 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.0.2.dev8 (2025-05-26)
+### 1.0.2 (2025-05-26)
 
-* Fixes compatibility with the recently released `aiohttp` v3.12.0
+* Fixed an incompatibility with the recently released `aiohttp` v3.12.0, causing issues with volume and large input uploads.
 
 
 ### 1.0.1 (2025-05-19)
