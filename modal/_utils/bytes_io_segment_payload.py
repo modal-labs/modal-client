@@ -50,6 +50,7 @@ class BytesIOSegmentPayload(Payload):
         self.reset_state()
 
     def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+        self._value.seek(self.initial_seek_pos)
         return self._value.read().decode(encoding, errors)
 
     def reset_state(self):
