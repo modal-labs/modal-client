@@ -8,14 +8,14 @@ from typing import BinaryIO, Callable, Optional
 # Note: this module needs to import aiohttp in global scope
 # This takes about 50ms and isn't needed in many cases for Modal execution
 # To avoid this, we import it in local scope when needed (blob_utils.py)
-from aiohttp import BytesIOPayload
+from aiohttp import Payload
 from aiohttp.abc import AbstractStreamWriter
 
 # read ~16MiB chunks by default
 DEFAULT_SEGMENT_CHUNK_SIZE = 2**24
 
 
-class BytesIOSegmentPayload(BytesIOPayload):
+class BytesIOSegmentPayload(Payload):
     """Modified bytes payload for concurrent sends of chunks from the same file.
 
     Adds:
@@ -25,6 +25,8 @@ class BytesIOSegmentPayload(BytesIOPayload):
 
     Feels like this should be in some standard lib...
     """
+
+    _value: BinaryIO
 
     def __init__(
         self,
@@ -36,6 +38,7 @@ class BytesIOSegmentPayload(BytesIOPayload):
     ):
         # not thread safe constructor!
         super().__init__(bytes_io)
+        self._size = segment_length
         self.initial_seek_pos = bytes_io.tell()
         self.segment_start = segment_start
         self.segment_length = segment_length
@@ -45,6 +48,10 @@ class BytesIOSegmentPayload(BytesIOPayload):
         self.chunk_size = chunk_size
         self.progress_report_cb = progress_report_cb or (lambda *_, **__: None)
         self.reset_state()
+
+    def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+        self._value.seek(self.initial_seek_pos)
+        return self._value.read().decode(encoding, errors)
 
     def reset_state(self):
         self._md5_checksum = hashlib.md5()
