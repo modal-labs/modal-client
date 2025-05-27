@@ -647,7 +647,13 @@ class _Image(_Object, type_prefix="im"):
                     metadata = resp.metadata
 
             if result.status == api_pb2.GenericResult.GENERIC_STATUS_FAILURE:
-                raise RemoteError(f"Image build for {image_id} failed with the exception:\n{result.exception}")
+                if result.exception:
+                    raise RemoteError(f"Image build for {image_id} failed with the exception:\n{result.exception}")
+                else:
+                    msg = f"Image build for {image_id} failed. See build logs for more details."
+                    if not _get_output_manager():
+                        msg += " (Hint: Use `modal.enable_output()` to see logs from the process building the Image.)"
+                    raise RemoteError(msg)
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
                 raise RemoteError(f"Image build for {image_id} terminated due to external shut-down. Please try again.")
             elif result.status == api_pb2.GenericResult.GENERIC_STATUS_TIMEOUT:
@@ -1522,12 +1528,14 @@ class _Image(_Object, type_prefix="im"):
         modal_requirements_commands = []
         if builder_version <= "2024.10":
             # past 2024.10, client dependencies are mounted at runtime
-            modal_requirements_commands.extend([
-                f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
-                f"RUN python -m pip install --upgrade {_base_image_config('package_tools', builder_version)}",
-                f"RUN {requirements_prefix}{_get_modal_requirements_command(builder_version)}",
-            ])
-        if  "2024.10" >= builder_version > "2023.12":
+            modal_requirements_commands.extend(
+                [
+                    f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
+                    f"RUN python -m pip install --upgrade {_base_image_config('package_tools', builder_version)}",
+                    f"RUN {requirements_prefix}{_get_modal_requirements_command(builder_version)}",
+                ]
+            )
+        if "2024.10" >= builder_version > "2023.12":
             modal_requirements_commands.append(f"RUN rm {CONTAINER_REQUIREMENTS_PATH}")
 
         return [
@@ -1830,23 +1838,31 @@ class _Image(_Object, type_prefix="im"):
                 f"FROM python:{full_python_version}-slim-{debian_codename}",
             ]
             if version <= "2024.10":
-                commands.extend([
-                    f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
-                ])
-            commands.extend([
-                "RUN apt-get update",
-                "RUN apt-get install -y gcc gfortran build-essential",
-                f"RUN pip install --upgrade {_base_image_config('package_tools', version)}",
-            ])
+                commands.extend(
+                    [
+                        f"COPY {CONTAINER_REQUIREMENTS_PATH} {CONTAINER_REQUIREMENTS_PATH}",
+                    ]
+                )
+            commands.extend(
+                [
+                    "RUN apt-get update",
+                    "RUN apt-get install -y gcc gfortran build-essential",
+                    f"RUN pip install --upgrade {_base_image_config('package_tools', version)}",
+                ]
+            )
             if version <= "2024.10":
                 # after 2024.10, modal requirements are mounted at runtime
-                commands.extend([
-                    f"RUN {_get_modal_requirements_command(version)}",
-                ])
-            commands.extend([
-                # Set debian front-end to non-interactive to avoid users getting stuck with input prompts.
-                "RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections",
-            ])
+                commands.extend(
+                    [
+                        f"RUN {_get_modal_requirements_command(version)}",
+                    ]
+                )
+            commands.extend(
+                [
+                    # Set debian front-end to non-interactive to avoid users getting stuck with input prompts.
+                    "RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections",
+                ]
+            )
             if "2024.10" >= version > "2023.12":
                 commands.append(f"RUN rm {CONTAINER_REQUIREMENTS_PATH}")
             if version > "2024.10":
