@@ -11,7 +11,7 @@ from modal.mount import (
 )
 from modal_proto import api_pb2
 
-REMOTE_PACKAGES_PATH = "/__modal/.client_pkgs"
+REMOTE_PACKAGES_PATH = "/__modal/deps"
 REMOTE_SITECUSTOMIZE_PATH = "/pkg/sitecustomize.py"
 
 SITECUSTOMIZE_CONTENT = """
