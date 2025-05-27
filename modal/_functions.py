@@ -72,7 +72,7 @@ from .exception import (
 )
 from .gpu import GPU_T, parse_gpu_config
 from .image import _Image
-from .mount import _get_client_mount, _Mount, PYTHON_STANDALONE_VERSIONS
+from .mount import PYTHON_STANDALONE_VERSIONS, _get_client_mount, _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .output import _get_output_manager
 from .parallel_map import (
