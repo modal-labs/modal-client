@@ -109,7 +109,7 @@ modal secret create my-credentials username=john password="$PASSWORD"
 
     for k, v in env_dict.items():
         if not isinstance(k, str) or not k:
-            raise click.UsageError(f"Invalid key for secret '{k}'")
+            raise click.UsageError(f"Invalid key: '{k}'")
         if not isinstance(v, str):
             raise click.UsageError(f"Non-string value for secret '{k}'")
 
