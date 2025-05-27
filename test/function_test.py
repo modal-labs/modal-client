@@ -157,6 +157,19 @@ def synchronicity_loop_delay_tracker():
     done = True
 
 
+def test_map_empty_input(client):
+    app = App()
+
+    @app.function(serialized=True)
+    def f():
+        pass
+
+    with app.run(client=client):
+        l = list(f.starmap(() for _ in range(0)))
+        print(l)
+        assert l == []
+
+
 def test_map_blocking_iterator_blocking_synchronicity_loop(client):
     app = App()
     SLEEP_DUR = 0.5

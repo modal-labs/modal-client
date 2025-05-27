@@ -243,9 +243,12 @@ async def _map_invocation(
             retried_outputs
 
         last_entry_id = "0-0"
-
+        print("HAVE ALL", have_all_inputs, outputs_completed < inputs_created)
         while not have_all_inputs or outputs_completed < inputs_created:
-            logger.debug(f"Requesting outputs. Have {outputs_completed} outputs, {inputs_created} inputs.")
+            logger.debug(
+                f"Requesting outputs. Have {outputs_completed} outputs, {inputs_created} inputs. {repr(have_all_inputs)}"
+            )
+            print()
             # Get input_jwts of all items in the WAITING_FOR_OUTPUT state.
             # The server uses these to track for lost inputs.
             input_jwts = [input_jwt for input_jwt in map_items_manager.get_input_jwts_waiting_for_output()]
