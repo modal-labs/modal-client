@@ -915,7 +915,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             environment_id = f"en-{len(self.environments) + 1}"
             self.environments[name] = environment_id
-        image_builder_version = max(get_args(ImageBuilderVersion))
+        image_builder_version = max([v for v in get_args(ImageBuilderVersion) if v != "PREVIEW"])
         settings = api_pb2.EnvironmentSettings(image_builder_version=image_builder_version)
         metadata = api_pb2.EnvironmentMetadata(name=name, settings=settings)
         await stream.send_message(
