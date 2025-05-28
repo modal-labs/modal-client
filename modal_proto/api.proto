@@ -254,6 +254,7 @@ enum TaskState {
 }
 
 enum TunnelType {
+  TUNNEL_TYPE_UNSPECIFIED = 0;
   TUNNEL_TYPE_H2 = 1; // HTTP/2 tunnel
 }
 
