@@ -253,6 +253,10 @@ enum TaskState {
   TASK_STATE_LOADING_CHECKPOINT_IMAGE = 11;
 }
 
+enum TunnelType {
+  TUNNEL_TYPE_H2 = 1; // HTTP/2 tunnel
+}
+
 enum VolumeFsVersion {
   VOLUME_FS_VERSION_UNSPECIFIED = 0;
   VOLUME_FS_VERSION_V1 = 1;
@@ -2153,7 +2157,7 @@ message PTYInfo {
 message PortSpec {
   uint32 port = 1;
   bool unencrypted = 2;
-  optional string tunnel_type = 3;
+  optional TunnelType tunnel_type = 3;
 }
 
 message PortSpecs {
@@ -2878,7 +2882,7 @@ message TunnelData {
 message TunnelStartRequest {
   uint32 port = 1;
   bool unencrypted = 2;
-  optional string tunnel_type = 3;
+  optional TunnelType tunnel_type = 3;
 }
 
 message TunnelStartResponse {
