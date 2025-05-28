@@ -323,6 +323,7 @@ class _ContainerIOManager:
         self._heartbeat_loop = None
         self._heartbeat_condition = None
         self._waiting_for_memory_snapshot = False
+        self._cuda_checkpoint_session = None
 
         self._is_interactivity_enabled = False
         self._fetching_inputs = True
@@ -881,13 +882,11 @@ class _ContainerIOManager:
         # Restore GPU memory.
         if self.function_def._experimental_enable_gpu_snapshot and self.function_def.resources.gpu_config.gpu_type:
             logger.debug("GPU memory snapshot enabled. Attempting to restore GPU memory.")
-            gpu_process_state = gpu_memory_snapshot.get_state()
-            if gpu_process_state != gpu_memory_snapshot.CudaCheckpointState.CHECKPOINTED:
-                raise ValueError(
-                    "Cannot restore GPU state if GPU isn't in a 'checkpointed' state. "
-                    f"Current GPU state: {gpu_process_state}"
-                )
-            gpu_memory_snapshot.toggle()
+
+            assert self._cuda_checkpoint_session, (
+                "CudaCheckpointSession not found when attempting to restore GPU memory"
+            )
+            self._cuda_checkpoint_session.restore()
 
         # Restore input to default state.
         self.current_input_id = None
@@ -907,14 +906,9 @@ class _ContainerIOManager:
             # Snapshot GPU memory.
             if self.function_def._experimental_enable_gpu_snapshot and self.function_def.resources.gpu_config.gpu_type:
                 logger.debug("GPU memory snapshot enabled. Attempting to snapshot GPU memory.")
-                gpu_process_state = gpu_memory_snapshot.get_state()
-                if gpu_process_state != gpu_memory_snapshot.CudaCheckpointState.RUNNING:
-                    raise ValueError(
-                        f"Cannot snapshot GPU state if it isn't running. Current GPU state: {gpu_process_state}"
-                    )
 
-                gpu_memory_snapshot.toggle()
-                gpu_memory_snapshot.wait_for_state(gpu_memory_snapshot.CudaCheckpointState.CHECKPOINTED)
+                self._cuda_checkpoint_session = gpu_memory_snapshot.CudaCheckpointSession()
+                self._cuda_checkpoint_session.checkpoint()
 
             # Notify the heartbeat loop that the snapshot phase has begun in order to
             # prevent it from sending heartbeat RPCs
