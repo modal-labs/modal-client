@@ -179,7 +179,7 @@ async def _forward(
 
     try:
         response = await client.stub.TunnelStart(
-            api_pb2.TunnelStartRequest(port=port, unencrypted=unencrypted, tunnel_type=tunnel_type)
+            api_pb2.TunnelStartRequest(port=port, unencrypted=unencrypted, tunnel_type=api_pb2.TUNNEL_TYPE_H2)
         )
     except GRPCError as exc:
         if exc.status == Status.ALREADY_EXISTS:
