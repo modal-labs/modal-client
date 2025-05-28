@@ -6,6 +6,30 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.3.dev1 (2025-05-27)
+
+- `Sandbox.terminate` no longer waits for container shutdown completion, but it still ensures that a terminated container will shutdown imminently. Status quo behavior (i.e., waiting until the sandbox is actually terminated) can be restored by putting `sb.wait(raise_on_termination=False)` after the termination.
+
+
+#### 1.0.3.dev0 (2025-05-27)
+
+- Added support for specifying a timezone on `Cron` schedules, helpful if you e.g. want a `Function` to run at 6am local time, regardless of whether daylight saving is in effect or not, for example:
+  ```
+  import modal
+  app = modal.App()
+  
+  
+  @app.function(schedule=modal.Cron("* 6 * * *"), timezone="America/New_York")
+  def f():
+      print("This function will run every day at 6am New York time.")
+  ```
+
+
+### 1.0.2 (2025-05-26)
+
+* Fixed an incompatibility with the recently released `aiohttp` v3.12.0, causing issues with volume and large input uploads.
+
+
 ### 1.0.1 (2025-05-19)
 
 - Added a `--timestamps` flag to `modal app logs` that prepends a timestamp to each log line.
