@@ -9,7 +9,6 @@ import dataclasses
 import os
 import time
 import typing
-import warnings
 from collections.abc import AsyncGenerator
 from multiprocessing.synchronize import Event
 from typing import TYPE_CHECKING, Any, Optional, TypeVar
@@ -296,12 +295,8 @@ async def _run_app(
 
     output_mgr = _get_output_manager()
     if interactive and output_mgr is None:
-        warnings.warn(
-            "Interactive mode is disabled because no output manager is active. "
-            "Use 'with modal.enable_output():' to enable interactive mode and see logs.",
-            stacklevel=2,
-        )
-        interactive = False
+        msg = "Interactive mode requires the context manager: `with modal.enable_output():`"
+        raise InvalidError(msg)
 
     running_app: RunningApp = await _init_local_app_new(
         client,

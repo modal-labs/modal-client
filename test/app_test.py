@@ -2,6 +2,7 @@
 import asyncio
 import logging
 import pytest
+import re
 import time
 
 from grpclib import GRPCError, Status
@@ -387,7 +388,8 @@ def test_app_interactive(servicer, client, capsys):
 def test_app_interactive_no_output(servicer, client):
     app = App()
 
-    with pytest.warns(match="Interactive mode is disabled because no output manager is active"):
+    msg = re.escape("Interactive mode requires the context manager: `with modal.enable_output():`")
+    with pytest.raises(InvalidError, match=msg):
         with app.run(client=client, interactive=True):
             # Verify that interactive mode was disabled
             assert not app.is_interactive
