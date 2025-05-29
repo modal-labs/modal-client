@@ -26,11 +26,13 @@ def create_client_dependencies(
     python_version: str,
     platform: str,
     arch: str,
+    uv_python_platform: str = None,
 ):
     profile_environment = config.get("environment")
 
     abi_tag = "cp" + python_version.replace(".", "")
     mount_name = f"{builder_version}-{abi_tag}-{platform}-{arch}"
+    uv_python_platform = uv_python_platform or f"{arch}-{platform}"
 
     try:
         Mount.from_name(mount_name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL).hydrate()
@@ -56,7 +58,7 @@ def create_client_dependencies(
                 "--target",
                 tmpd,
                 "--python-platform",
-                f"{arch}-{platform}",
+                uv_python_platform,
                 "--python-version",
                 python_version,
             ],
@@ -77,7 +79,6 @@ def create_client_dependencies(
                 sitecustomize.name,
                 remote_path=REMOTE_SITECUSTOMIZE_PATH,
             )
-            print(f"📜 Added sitecustomize.py to {REMOTE_SITECUSTOMIZE_PATH}.")
 
             python_mount._deploy(
                 mount_name,
@@ -89,9 +90,21 @@ def create_client_dependencies(
 
 def main(client=None):
     for python_version in PYTHON_STANDALONE_VERSIONS:
-        for platform in ["manylinux_2_17"]:
-            create_client_dependencies("PREVIEW", python_version, platform, "x86_64")
-
+        # glibc >= 2.17
+        create_client_dependencies(
+            "PREVIEW",
+            python_version,
+            "manylinux_2_17",
+            "x86_64",
+        )
+        # musl >= 1.2
+        create_client_dependencies(
+            "PREVIEW",
+            python_version,
+            "musllinux_1_2",
+            "x86_64",
+            uv_python_platform="x86_64-unknown-linux-musl"
+        )
 
 if __name__ == "__main__":
     main()
