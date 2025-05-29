@@ -52,7 +52,11 @@ class Tunnel:
 
 @asynccontextmanager
 async def _forward(
-    port: int, *, unencrypted: bool = False, tunnel_type: Optional["api_pb2.TunnelType.ValueType"] = None, client: Optional[_Client] = None
+    port: int,
+    *,
+    unencrypted: bool = False,
+    tunnel_type: Optional["api_pb2.TunnelType.ValueType"] = None,
+    client: Optional[_Client] = None,
 ) -> AsyncIterator[Tunnel]:
     """Expose a port publicly from inside a running Modal container, with TLS.
 
