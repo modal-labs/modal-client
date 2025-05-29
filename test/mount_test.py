@@ -75,13 +75,13 @@ def test_create_mount(servicer, client):
 def test_create_mount_file_errors(servicer, tmp_path, client):
     invalid_dir = tmp_path / "xyz"
     m = Mount._from_local_dir(invalid_dir, remote_path="/xyz")
-    msg = re.escape(f"Local dir: {os.fspath(invalid_dir)} does not exist")
+    msg = re.escape(f"local dir {os.fspath(invalid_dir)} does not exist")
     with pytest.raises(FileNotFoundError, match=msg):
         m._deploy("my-mount", client=client)
 
     invalid_file = tmp_path / "xyz.txt"
     m = Mount._from_local_file(invalid_file, remote_path="/xyz.txt")
-    msg = re.escape(f"Local file: {os.fspath(invalid_file)} does not exist")
+    msg = re.escape(f"local file {os.fspath(invalid_file)} does not exist")
     with pytest.raises(FileNotFoundError, match=msg):
         m._deploy("my-mount", client=client)
 
@@ -90,7 +90,7 @@ def test_create_mount_file_errors(servicer, tmp_path, client):
         pass
     m = Mount._from_local_dir(not_a_dir, remote_path="/abc")
 
-    msg = re.escape(f"Local dir: {os.fspath(not_a_dir)} is not a directory")
+    msg = re.escape(f"local dir {os.fspath(not_a_dir)} is not a directory")
     with pytest.raises(NotADirectoryError, match=msg):
         m._deploy("my-mount", client=client)
 

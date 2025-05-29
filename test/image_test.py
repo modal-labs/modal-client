@@ -680,7 +680,7 @@ def test_image_add_local_file_error(tmp_path, client):
     img = Image.debian_slim().add_local_file(unknown_file, "/file.txt")
     app.function(image=img)(dummy)
 
-    msg = f"Local file: {unknown_file} does not exists"
+    msg = f"local file {unknown_file} does not exists"
     with pytest.raises(FileNotFoundError, match=msg):
         with app.run(client=client):
             pass
@@ -693,7 +693,7 @@ def test_image_add_local_dir_err(tmp_path, client):
     img = Image.debian_slim().add_local_dir(unknown_dir, "/file.txt")
     app.function(image=img)(dummy)
 
-    msg = f"Local dir: {unknown_dir} does not exist"
+    msg = f"local dir {unknown_dir} does not exist"
     with pytest.raises(FileNotFoundError, match=msg):
         with app.run(client=client):
             pass
