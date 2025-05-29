@@ -101,6 +101,7 @@ if TYPE_CHECKING:
 
 MAX_INTERNAL_FAILURE_COUNT = 8
 
+
 @dataclasses.dataclass
 class _RetryContext:
     function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType"
@@ -1661,8 +1662,8 @@ Use the `Function.get_web_url()` method instead.
     async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> "_FunctionCall[ReturnType]":
         """Calls the function with the given arguments, without waiting for the results.
 
-        Returns a `modal.FunctionCall` object, that can later be polled or
-        waited for using `.get(timeout=...)`.
+        Returns a [`modal.FunctionCall`](/docs/reference/modal.FunctionCall) object, that can later be polled or
+        waited for using [`.get(timeout=...)`](/docs/reference/modal.FunctionCall#get).
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
         """
         self._check_no_web_url("spawn")
