@@ -48,6 +48,8 @@ def create_client_dependencies(
                 "pip",
                 "install",
                 "--strict",
+                "--no-deps",
+                "--no-cache",
                 "-r",
                 requirements,
                 "--compile-bytecode",
