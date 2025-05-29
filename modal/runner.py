@@ -295,7 +295,11 @@ async def _run_app(
 
     output_mgr = _get_output_manager()
     if interactive and output_mgr is None:
-        msg = "Interactive mode requires the context manager: `with modal.enable_output():`"
+        msg = (
+            "If you are using the `modal` CLI, then remove the --quiet flag to use interactive mode. "
+            "If you are using `app.run()`, then add the `modal.enable_output()` context manager to use interactive "
+            "mode."
+        )
         raise InvalidError(msg)
 
     running_app: RunningApp = await _init_local_app_new(
