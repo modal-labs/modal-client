@@ -171,6 +171,14 @@ def _write_local_result(result_path: str, res: Any):
         fid.write(res)
 
 
+def _validate_interactive_quiet_params(ctx):
+    interactive = ctx.obj["interactive"]
+    show_progress = ctx.obj["show_progress"]
+
+    if not show_progress and interactive:
+        raise InvalidError("To use interactive mode, remove the --quiet flag")
+
+
 def _make_click_function(app, signature: CliRunnableSignature, inner: Callable[[tuple[str, ...], dict[str, Any]], Any]):
     @click.pass_context
     def f(ctx, **kwargs):
@@ -179,6 +187,8 @@ def _make_click_function(app, signature: CliRunnableSignature, inner: Callable[[
             args = ctx.args
         else:
             args = ()
+
+        _validate_interactive_quiet_params(ctx)
 
         show_progress: bool = ctx.obj["show_progress"]
         with enable_output(show_progress):
@@ -290,6 +300,8 @@ def _get_click_command_for_local_entrypoint(app: App, entrypoint: LocalEntrypoin
         if signature.has_variadic_args:
             assert len(args) == 0 and len(kwargs) == 0
             args = ctx.args
+
+        _validate_interactive_quiet_params(ctx)
 
         show_progress: bool = ctx.obj["show_progress"]
         with enable_output(show_progress):

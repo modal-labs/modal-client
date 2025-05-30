@@ -357,6 +357,35 @@ def test_run_local_entrypoint(servicer, set_env_client, test_dir):
     assert len(servicer.client_calls) == 4
 
 
+def test_run_local_entrypoint_error(servicer, set_env_client, test_dir):
+    app_file = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
+    _run(
+        ["run", "-iq", app_file.as_posix()],
+        expected_exit_code=1,
+        expected_error="To use interactive mode, remove the --quiet flag",
+    )
+
+
+def test_run_function_error(servicer, set_env_client, test_dir):
+    app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
+
+    _run(
+        ["run", "-iq", app_file.as_posix()],
+        expected_exit_code=1,
+        expected_error="To use interactive mode, remove the --quiet flag",
+    )
+
+
+def test_run_cls_error(servicer, set_env_client, test_dir):
+    app_file = test_dir / "supports" / "app_run_tests" / "cls.py"
+
+    _run(
+        ["run", "-iq", f"{app_file.as_posix()}::AParametrized.some_method", "--x", "42", "--y", "1000"],
+        expected_exit_code=1,
+        expected_error="To use interactive mode, remove the --quiet flag",
+    )
+
+
 def test_run_local_entrypoint_invalid_with_app_run(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "local_entrypoint_invalid.py"
 
