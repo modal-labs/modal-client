@@ -1018,6 +1018,75 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
         )
 
+    def uv_install(
+        self,
+        *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
+        index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
+        extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
+        pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
+        extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
+    ) -> "_Image":
+        """Install a list of Python packages using pip.
+
+        **Examples**
+
+        Simple installation:
+        ```python
+        image = modal.Image.debian_slim().pip_install("click", "httpx~=0.23.3")
+        ```
+
+        More complex installation:
+        ```python
+        image = (
+            modal.Image.from_registry(
+                "nvidia/cuda:12.2.0-devel-ubuntu22.04", add_python="3.11"
+            )
+            .pip_install(
+                "ninja",
+                "packaging",
+                "wheel",
+                "transformers==4.40.2",
+            )
+            .pip_install(
+                "flash-attn==2.5.8", extra_options="--no-build-isolation"
+            )
+        )
+        ```
+        """
+        pkgs = _flatten_str_args("pip_install", "packages", packages)
+        if not pkgs:
+            return self
+        elif not _validate_packages(pkgs):
+            raise InvalidError(
+                "Package list for `Image.pip_install` cannot contain other arguments;"
+                " try the `extra_options` parameter instead."
+            )
+
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+            package_args = shlex.join(sorted(pkgs))
+            extra_args = _make_pip_install_args(find_links, index_url, extra_index_url, pre, extra_options)
+            commands = [
+                "FROM base",
+                "RUN (command -v uv || pip install uv &>/dev/null)"
+                + f" && uv pip install --system {package_args} {extra_args}",
+            ]
+            if version > "2023.12":  # Back-compat for legacy trailing space with empty extra_args
+                commands = [cmd.strip() for cmd in commands]
+            return DockerfileSpec(commands=commands, context_files={})
+
+        gpu_config = parse_gpu_config(gpu)
+        return _Image._from_args(
+            base_images={"base": self},
+            dockerfile_function=build_dockerfile,
+            force_build=self.force_build or force_build,
+            gpu_config=gpu_config,
+            secrets=secrets,
+        )
+
     def pip_install_private_repos(
         self,
         *repositories: str,
