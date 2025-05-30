@@ -109,6 +109,53 @@ def test_secret_create_list_delete(servicer, set_env_client):
     assert "foo" not in _run(["secret", "list"]).stdout
 
 
+@pytest.mark.parametrize(
+    ("env_content", "expected_exit_code", "expected_stderr"),
+    [
+        ("KEY1=VAL1\nKEY2=VAL2", 0, None),
+        ("", 2, "You need to specify at least one key for your secret"),
+        ("=VAL", 2, "You need to specify at least one key for your secret"),
+        ("KEY=", 0, None),
+        ("KEY=413", 0, None),  # dotenv reads everything as string...
+        ("KEY", 2, "Non-string value"),  # ... except this, which is read as None
+    ],
+)
+def test_secret_create_from_dotenv(
+    servicer, set_env_client, tmp_path, env_content, expected_exit_code, expected_stderr
+):
+    env_file = tmp_path / ".env"
+    env_file.write_text(env_content)
+    _run(
+        ["secret", "create", "foo", "--from-dotenv", env_file.as_posix()],
+        expected_exit_code=expected_exit_code,
+        expected_stderr=expected_stderr,
+    )
+
+
+@pytest.mark.parametrize(
+    ("json_content", "expected_exit_code", "expected_stderr"),
+    [
+        ('{"KEY1": "VAL1",\n"KEY2": "VAL2"}', 0, None),
+        ("", 2, "Could not parse JSON file"),
+        ("{}", 2, "You need to specify at least one key for your secret"),
+        ('{"": ""}', 2, "Invalid key"),
+        ('{"KEY": ""}', 0, None),
+        ('{"KEY": "413"}', 0, None),
+        ('{"KEY": null}', 2, "Non-string value"),
+        ('{"KEY": 413}', 2, "Non-string value"),
+        ('{"KEY": {"NESTED": "val"}}', 2, "Non-string value"),
+    ],
+)
+def test_secret_create_from_json(servicer, set_env_client, tmp_path, json_content, expected_exit_code, expected_stderr):
+    json_file = tmp_path / "test.json"
+    json_file.write_text(json_content)
+    _run(
+        ["secret", "create", "foo", "--from-json", json_file.as_posix()],
+        expected_exit_code=expected_exit_code,
+        expected_stderr=expected_stderr,
+    )
+
+
 def test_app_token_new(servicer, set_env_client, server_url_env, modal_config):
     servicer.required_creds = {"abc": "xyz"}
     with modal_config() as config_file_path:
