@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.3.dev9 (2025-05-30)
+
+- Added `--from-dotenv` and `--from-json` flags to `modal secret create`, which allows creating secrets by reading the secret value from local files.
+
+
 #### 1.0.3.dev1 (2025-05-27)
 
 - `Sandbox.terminate` no longer waits for container shutdown completion, but it still ensures that a terminated container will shutdown imminently. Status quo behavior (i.e., waiting until the sandbox is actually terminated) can be restored by putting `sb.wait(raise_on_termination=False)` after the termination.
