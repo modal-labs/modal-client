@@ -4,7 +4,8 @@ import queue
 import time
 
 from modal import Queue
-from modal.exception import InvalidError, NotFoundError
+from modal.exception import InvalidError, NotFoundError, PendingDeprecationError
+from modal_proto import api_pb2
 
 from .supports.skip import skip_macos, skip_windows
 
@@ -119,3 +120,19 @@ def test_queue_lazy_hydrate_from_name(set_env_client):
 def test_invalid_name(name):
     with pytest.raises(InvalidError, match="Invalid Queue name"):
         Queue.from_name(name)
+
+
+def test_queue_namespace_deprecated(servicer, client):
+    # Test from_name with namespace parameter warns
+    with pytest.warns(PendingDeprecationError, match="The `namespace` parameter for `modal.Queue` is deprecated"):
+        Queue.from_name("test-queue", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
+
+    # Test that from_name without namespace parameter doesn't warn about namespace
+    import warnings
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        Queue.from_name("test-queue")
+    # Filter out any unrelated warnings
+    namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
+    assert len(namespace_warnings) == 0
