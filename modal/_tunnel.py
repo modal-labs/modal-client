@@ -51,12 +51,7 @@ class Tunnel:
 
 
 @asynccontextmanager
-async def _forward(
-    port: int,
-    *,
-    unencrypted: bool = False,
-    client: Optional[_Client] = None,
-) -> AsyncIterator[Tunnel]:
+async def _forward(port: int, *, unencrypted: bool = False, client: Optional[_Client] = None) -> AsyncIterator[Tunnel]:
     """Expose a port publicly from inside a running Modal container, with TLS.
 
     If `unencrypted` is set, this also exposes the TCP socket without encryption on a random port
