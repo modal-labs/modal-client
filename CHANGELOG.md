@@ -6,6 +6,14 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.3.dev13 (2025-05-30)
+
+- Added a new `h2_ports` parameter to `Sandbox.create` for exposing encrypted ports using HTTP/2. The following example will create an H2 port on 5002 and an HTTPS over HTTP/1.1 port on 5003.
+```
+sb = modal.Sandbox.create(app=app, h2_ports = [5002], encrypted_ports = [5003])
+```
+
+
 #### 1.0.3.dev9 (2025-05-30)
 
 - Added `--from-dotenv` and `--from-json` flags to `modal secret create`, which allows creating secrets by reading the secret value from local files.
