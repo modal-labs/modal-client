@@ -834,7 +834,6 @@ async def _create_single_mount(
     import tempfile
 
     profile_environment = config.get("environment")
-
     abi_tag = "cp" + python_version.replace(".", "")
     mount_name = f"{builder_version}-{abi_tag}-{platform}-{arch}"
     uv_python_platform = uv_python_platform or f"{arch}-{platform}"
