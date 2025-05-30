@@ -15,8 +15,8 @@ import typing_extensions
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
-from synchronicity.exceptions import UserCodeException
 
+from modal.exception import _ContainerException
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
@@ -50,6 +50,7 @@ from ._utils.function_utils import (
     IncludeSourceMode,
     _create_input,
     _process_result,
+    _process_result_wrap_exceptions,
     _stream_function_call_data,
     get_function_type,
     get_include_source_mode,
@@ -257,8 +258,9 @@ class _Invocation:
             request,
         )
 
-    async def _get_single_output(self, expected_jwt: Optional[str] = None) -> Any:
+    async def _get_single_output_wrap_exceptions(self, expected_jwt: Optional[str] = None) -> Any:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
+        # raises wrapped internal _ContainerExceptions if they occur
         item: api_pb2.FunctionGetOutputsItem = (
             await self.pop_function_call_outputs(
                 timeout=None,
@@ -266,36 +268,40 @@ class _Invocation:
                 input_jwts=[expected_jwt] if expected_jwt else None,
             )
         ).outputs[0]
-        return await _process_result(item.result, item.data_format, self.stub, self.client)
+        return await _process_result_wrap_exceptions(item.result, item.data_format, self.stub, self.client)
 
     async def run_function(self) -> Any:
-        # Use retry logic only if retry policy is specified and
-        ctx = self._retry_context
-        if (
-            not ctx
-            or not ctx.retry_policy
-            or ctx.retry_policy.retries == 0
-            or ctx.function_call_invocation_type != api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
-            or not ctx.sync_client_retries_enabled
-        ):
-            return await self._get_single_output()
+        try:
+            # Use retry logic only if retry policy is specified and
+            ctx = self._retry_context
+            if (
+                not ctx
+                or not ctx.retry_policy
+                or ctx.retry_policy.retries == 0
+                or ctx.function_call_invocation_type != api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
+                or not ctx.sync_client_retries_enabled
+            ):
+                return await self._get_single_output_wrap_exceptions()
 
-        # User errors including timeouts are managed by the user specified retry policy.
-        user_retry_manager = RetryManager(ctx.retry_policy)
+            # User errors including timeouts are managed by the user specified retry policy.
+            user_retry_manager = RetryManager(ctx.retry_policy)
 
-        while True:
-            try:
-                return await self._get_single_output(ctx.input_jwt)
-            except (UserCodeException, FunctionTimeoutError) as exc:
-                delay_ms = user_retry_manager.get_delay_ms()
-                if delay_ms is None:
-                    raise exc
-                await asyncio.sleep(delay_ms / 1000)
-            except InternalFailure:
-                # For system failures on the server, we retry immediately,
-                # and the failure does not count towards the retry policy.
-                pass
-            await self._retry_input()
+            while True:
+                try:
+                    return await self._get_single_output_wrap_exceptions(ctx.input_jwt)
+                except (_ContainerException, FunctionTimeoutError):
+                    delay_ms = user_retry_manager.get_delay_ms()
+                    if delay_ms is None:
+                        raise
+                    await asyncio.sleep(delay_ms / 1000)
+                except InternalFailure:
+                    # For system failures on the server, we retry immediately,
+                    # and the failure does not count towards the retry policy.
+                    pass
+
+                await self._retry_input()
+        except _ContainerException as exc:
+            raise exc.unwrap()
 
     async def poll_function(self, timeout: Optional[float] = None):
         """Waits up to timeout for a result from a function.
@@ -1491,7 +1497,6 @@ Use the `Function.get_web_url()` method instead.
                 client=self.client,
                 function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
             )
-
         return await invocation.run_function()
 
     async def _call_function_nowait(
