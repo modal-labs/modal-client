@@ -15,7 +15,7 @@ import modal
 from modal import App, Image, NetworkFileSystem, Proxy, asgi_app, batched, fastapi_endpoint
 from modal._utils.async_utils import synchronize_api
 from modal._vendor import cloudpickle
-from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
+from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError, PendingDeprecationError
 from modal.functions import Function, FunctionCall
 from modal.runner import deploy_app
 from modal_proto import api_pb2
@@ -1407,3 +1407,19 @@ def test_restrict_modal_access(client, servicer):
             pass
 
     assert ctx.get_requests("FunctionCreate")[0].function.untrusted == False
+
+
+def test_function_namespace_deprecated(servicer, client):
+    # Test from_name with namespace parameter warns
+    with pytest.warns(PendingDeprecationError, match="The `namespace` parameter for `modal.Function` is deprecated"):
+        Function.from_name("test-app", "test-function", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
+
+    # Test that from_name without namespace parameter doesn't warn about namespace
+    import warnings
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        Function.from_name("test-app", "test-function")
+    # Filter out any unrelated warnings
+    namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
+    assert len(namespace_warnings) == 0

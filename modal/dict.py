@@ -11,7 +11,7 @@ from ._object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _O
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.deprecation import deprecation_warning
+from ._utils.deprecation import _ARGUMENT_NOT_PASSED, deprecation_warning, warn_if_passing_namespace
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -119,7 +119,7 @@ class _Dict(_Object, type_prefix="di"):
         name: str,
         data: Optional[dict] = None,  # DEPRECATED
         *,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=_ARGUMENT_NOT_PASSED,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Dict":
@@ -135,6 +135,7 @@ class _Dict(_Object, type_prefix="di"):
         ```
         """
         check_object_name(name, "Dict")
+        namespace = warn_if_passing_namespace(namespace, "modal.Dict")
 
         if data:
             deprecation_warning(
@@ -161,7 +162,7 @@ class _Dict(_Object, type_prefix="di"):
     async def lookup(
         name: str,
         data: Optional[dict] = None,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=_ARGUMENT_NOT_PASSED,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -185,6 +186,7 @@ class _Dict(_Object, type_prefix="di"):
             " It can be replaced with `modal.Dict.from_name`."
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
+        namespace = warn_if_passing_namespace(namespace, "modal.Dict")
         obj = _Dict.from_name(
             name,
             data=data,
