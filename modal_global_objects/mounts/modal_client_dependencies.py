@@ -1,10 +1,12 @@
 # Copyright Modal Labs 2025
+import asyncio
 import subprocess
 import tempfile
 
+from modal.client import Client
 from modal.config import config
 from modal.exception import NotFoundError
-from modal.image import ImageBuilderVersion
+from modal.image import ImageBuilderVersion, _get_modal_requirements_path
 from modal.mount import (
     PYTHON_STANDALONE_VERSIONS,
     Mount,
@@ -21,7 +23,8 @@ SITECUSTOMIZE_CONTENT = f"""
 import sys; sys.path.append('{REMOTE_PACKAGES_PATH}')
 """.strip()
 
-def create_client_dependencies(
+async def _create_single_mount(
+    client: Client,
     builder_version: ImageBuilderVersion,
     python_version: str,
     platform: str,
@@ -35,7 +38,7 @@ def create_client_dependencies(
     uv_python_platform = uv_python_platform or f"{arch}-{platform}"
 
     try:
-        Mount.from_name(mount_name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL).hydrate()
+        await Mount.from_name(mount_name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL).hydrate(client)
         print(f"✅ Found existing mount {mount_name} in global namespace.")
         return
     except NotFoundError:
@@ -43,7 +46,7 @@ def create_client_dependencies(
 
     with tempfile.TemporaryDirectory() as tmpd:
         print(f"📦 Building {mount_name}.")
-        requirements = f"modal/requirements/{builder_version}.txt"
+        requirements = _get_modal_requirements_path(builder_version)
         subprocess.run(
             [
                 "uv",
@@ -65,6 +68,7 @@ def create_client_dependencies(
             check=True,
             capture_output=True,
         )
+
         print(f"🌐 Downloaded and unpacked packages to {tmpd}.")
 
         python_mount = Mount._from_local_dir(tmpd, remote_path=REMOTE_PACKAGES_PATH)
@@ -80,31 +84,38 @@ def create_client_dependencies(
                 remote_path=REMOTE_SITECUSTOMIZE_PATH,
             )
 
-            python_mount._deploy(
+            await python_mount._deploy.aio(
                 mount_name,
                 api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
                 environment_name=profile_environment,
+                client=client,
             )
             print(f"✅ Deployed mount {mount_name} to global namespace.")
 
 
-def main(client=None):
+async def create_client_dependency_mounts(client=None):
     for python_version in PYTHON_STANDALONE_VERSIONS:
         # glibc >= 2.17
-        create_client_dependencies(
+        await _create_single_mount(
+            client,
             "PREVIEW",
             python_version,
             "manylinux_2_17",
             "x86_64",
         )
         # musl >= 1.2
-        create_client_dependencies(
+        await _create_single_mount(
+            client,
             "PREVIEW",
             python_version,
             "musllinux_1_2",
             "x86_64",
             uv_python_platform="x86_64-unknown-linux-musl"
         )
+
+def main():
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(create_client_dependency_mounts())
 
 if __name__ == "__main__":
     main()
