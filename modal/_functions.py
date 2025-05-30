@@ -40,7 +40,7 @@ from ._utils.async_utils import (
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
-from ._utils.deprecation import deprecation_warning
+from ._utils.deprecation import _ARGUMENT_NOT_PASSED, deprecation_warning, warn_if_passing_namespace
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
@@ -1241,7 +1241,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         await self.update_autoscaler(min_containers=warm_pool_size)
 
     @classmethod
-    def _from_name(cls, app_name: str, name: str, namespace, environment_name: Optional[str]):
+    def _from_name(
+        cls,
+        app_name: str,
+        name: str,
+        namespace=_ARGUMENT_NOT_PASSED,
+        environment_name: Optional[str] = None,
+    ):
         # internal function lookup implementation that allows lookup of class "service functions"
         # in addition to non-class functions
         async def _load_remote(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
@@ -1249,7 +1255,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
                 object_tag=name,
-                namespace=namespace,
+                namespace=namespace,  # type: ignore
                 environment_name=_get_environment_name(environment_name, resolver) or "",
             )
             try:
@@ -1276,7 +1282,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         app_name: str,
         name: str,
         *,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=_ARGUMENT_NOT_PASSED,
         environment_name: Optional[str] = None,
     ) -> "_Function":
         """Reference a Function from a deployed App by its name.
@@ -1300,13 +1306,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 f"instance.{method_name}.remote(...)\n",
             )
 
+        namespace = warn_if_passing_namespace(namespace, "modal.Function")
         return cls._from_name(app_name, name, namespace, environment_name)
 
     @staticmethod
     async def lookup(
         app_name: str,
         name: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=_ARGUMENT_NOT_PASSED,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> "_Function":
@@ -1328,6 +1335,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             " It can be replaced with `modal.Function.from_name`."
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
+        namespace = warn_if_passing_namespace(namespace, "modal.Function")
         obj = _Function.from_name(app_name, name, namespace=namespace, environment_name=environment_name)
         if client is None:
             client = await _Client.from_env()
