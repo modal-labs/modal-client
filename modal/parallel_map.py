@@ -2,6 +2,7 @@
 import asyncio
 import time
 import typing
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
@@ -91,6 +92,9 @@ async def _map_invocation(
     num_inputs = 0
     num_outputs = 0
 
+    input_ids_by_idx: dict[int, str] = {}
+    output_items_by_idx: dict[int, list[str]] = defaultdict(list)
+
     def count_update():
         if count_update_callback is not None:
             count_update_callback(num_outputs, num_inputs)
@@ -157,6 +161,9 @@ async def _map_invocation(
 
             count_update()
             for item in resp.inputs:
+                if item.idx in input_ids_by_idx:
+                    print("Duplicate input for index", item.idx, "input_id", item.input_id)
+                input_ids_by_idx[item.idx] = item.input_id
                 pending_outputs.setdefault(item.input_id, 0)
             logger.debug(
                 f"Successfully pushed {len(items)} inputs to server. "
@@ -168,7 +175,7 @@ async def _map_invocation(
 
     async def get_all_outputs():
         assert client.stub
-        nonlocal num_inputs, num_outputs, have_all_inputs
+        nonlocal num_inputs, num_outputs, have_all_inputs, input_ids_by_idx, output_items_by_idx
         last_entry_id = "0-0"
         while not have_all_inputs or len(pending_outputs) > len(completed_outputs):
             request = api_pb2.FunctionGetOutputsRequest(
@@ -190,6 +197,14 @@ async def _map_invocation(
 
             last_entry_id = response.last_entry_id
             for item in response.outputs:
+                items = output_items_by_idx[item.idx]
+                items.append(item)
+                if len(items) > 1:
+                    print(f"Duplicate output for index {item.idx}")
+                    print(f"input_items_by_idx[{item.idx}]: {input_ids_by_idx[item.idx]}")
+                    for i, enumerated_item in enumerate(items):
+                        print(f"item  {i}: {enumerated_item}")
+                        print(f"exists in sent input_ids: {enumerated_item.input_id in input_ids_by_idx.values()}")
                 pending_outputs.setdefault(item.input_id, 0)
                 if item.input_id in completed_outputs:
                     # If this input is already completed, it means the output has already been
@@ -229,6 +244,7 @@ async def _map_invocation(
     async def poll_outputs():
         # map to store out-of-order outputs received
         received_outputs = {}
+        seen_outputs: defaultdict[int, int] = defaultdict(int)
         output_idx = 0
 
         async with aclosing(
@@ -241,6 +257,9 @@ async def _map_invocation(
                 else:
                     # hold on to outputs for function maps, so we can reorder them correctly.
                     received_outputs[idx] = output
+                    if seen_outputs[idx] > 0:
+                        raise ValueError(f"Duplicate output for index {idx}")
+                    seen_outputs[idx] = seen_outputs[idx] + 1
                     while output_idx in received_outputs:
                         output = received_outputs.pop(output_idx)
                         yield _OutputValue(output)
