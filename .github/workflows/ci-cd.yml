@@ -283,6 +283,9 @@ jobs:
       - name: Build client package (installs all dependencies)
         run: pip install -e .
 
+      - name: Install uv
+        run: pip install uv
+
       - name: Publish mounts
         run: python -m modal_global_objects.mounts.modal_client_dependencies
 
