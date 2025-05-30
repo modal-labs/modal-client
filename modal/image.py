@@ -1087,6 +1087,46 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
         )
 
+    def uv_sync(
+        self,
+        pyproject_toml: str = "./pyproject.toml",  # Path to a pyproject.toml file.
+        uv_lock_file: str = "./uv.lock",  # Path to a uv.lock file.
+        *,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
+    ) -> "_Image":
+        """Install a list of Python packages from a local `requirements.txt` file."""
+
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+            pyproject_toml_path = os.path.expanduser(pyproject_toml)
+            uv_lock_file_path = os.path.expanduser(uv_lock_file)
+            context_files = {
+                "/.pyproject.toml": pyproject_toml_path,
+                "/.uv.lock": uv_lock_file_path,
+            }
+
+            commands = [
+                "FROM base",
+                "RUN mkdir -p /.uv",
+                "COPY /.pyproject.toml /.uv/pyproject.toml",
+                "COPY /.uv.lock /.uv/uv.lock",
+                "RUN uv sync --project /.uv"
+                + " --frozen --python-preference only-system --no-install-workspace --compile-bytecode",
+                "ENV PATH=/.uv/.venv/bin:$PATH",
+            ]
+            if version > "2023.12":  # Back-compat for legacy whitespace with empty find_link / extra args
+                commands = [cmd.strip() for cmd in commands]
+            return DockerfileSpec(commands=commands, context_files=context_files)
+
+        return _Image._from_args(
+            base_images={"base": self},
+            dockerfile_function=build_dockerfile,
+            force_build=self.force_build or force_build,
+            gpu_config=parse_gpu_config(gpu),
+            secrets=secrets,
+        )
+
     def pip_install_private_repos(
         self,
         *repositories: str,
