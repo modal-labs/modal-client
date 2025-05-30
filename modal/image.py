@@ -1018,6 +1018,64 @@ class _Image(_Object, type_prefix="im"):
             secrets=secrets,
         )
 
+    def uv_sync(
+        self,
+        pyproject_toml: str = "./pyproject.toml",  # Path to a pyproject.toml file.
+        uv_lock_file: str = "./uv.lock",  # Path to a uv.lock file.
+        *,
+        find_links: Optional[str] = None,  # Passes -f (--find-links) uv sync
+        default_index: Optional[str] = None,  # Passes --default-index to uv sync
+        index: Optional[str] = None,  # Passes --index to uv sync
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
+    ) -> "_Image":
+        """Update the project's environment using `uv sync`."""
+
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+            pyproject_toml_path = os.path.expanduser(pyproject_toml)
+            uv_lock_file_path = os.path.expanduser(uv_lock_file)
+            context_files = {
+                "/.pyproject.toml": pyproject_toml_path,
+                "/.uv.lock": uv_lock_file_path,
+            }
+
+            # Using --frozen rather than --locked here, since Modal inserts a proxy PyPI index,
+            # which affects the lock file. With --frozen, uv will use the versions in the
+            # lockfile as the source of truth.
+            uv_sync_args = [
+                "--project=/.uv",
+                "--frozen",
+                "--python-preference=only-system",
+                "--no-install-workspace",
+            ]
+            if default_index:
+                uv_sync_args.append(f"--default-index={default_index}")
+            if find_links:
+                uv_sync_args.append(f"--find-links={find_links}")
+            if index:
+                uv_sync_args.append(f"--index={index}")
+
+            commands = [
+                "FROM base",
+                "RUN mkdir -p /.uv",
+                "COPY /.pyproject.toml /.uv/pyproject.toml",
+                "COPY /.uv.lock /.uv/uv.lock",
+                f"RUN uv sync {' '.join(uv_sync_args)}",
+                "ENV PATH=/.uv/.venv/bin:$PATH",
+            ]
+            if version > "2023.12":  # Back-compat for legacy whitespace with empty find_link / extra args
+                commands = [cmd.strip() for cmd in commands]
+            return DockerfileSpec(commands=commands, context_files=context_files)
+
+        return _Image._from_args(
+            base_images={"base": self},
+            dockerfile_function=build_dockerfile,
+            force_build=self.force_build or force_build,
+            gpu_config=parse_gpu_config(gpu),
+            secrets=secrets,
+        )
+
     def pip_install_private_repos(
         self,
         *repositories: str,
