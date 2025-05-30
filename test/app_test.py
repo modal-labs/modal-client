@@ -388,7 +388,7 @@ def test_app_interactive(servicer, client, capsys):
 def test_app_interactive_no_output(servicer, client):
     app = App()
 
-    msg = re.escape("If you are using the `modal` CLI, then remove the --quiet flag")
+    msg = re.escape("Use the `modal.enable_output()` context manager to enable interactive mode.")
     with pytest.raises(InvalidError, match=msg):
         with app.run(client=client, interactive=True):
             # Verify that interactive mode was disabled
