@@ -1957,11 +1957,11 @@ message ImageMetadata {
   // package name -> version. Empty if missing
   map<string, string> python_packages = 2;
 
-  // The working directory of the image, defaulting to "/". Not set if missing.
+  // The working directory of the image, as an absolute file path.
   //
-  // Note that this is NOT the actual working directory of the image, especially
-  // for runner tasks. Please see `ImageManifest.workdir` instead. This field
-  // should not be used in any future code.
+  // For most images, this is not set, which means to use the default workdir:
+  // - On function runners, the default is `/root` (home directory).
+  // - For image builds and sandbox environments, it is `/`.
   optional string workdir = 3;
 
   // The version of glibc in this image, if any.
