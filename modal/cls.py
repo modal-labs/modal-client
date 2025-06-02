@@ -88,6 +88,29 @@ class _ServiceOptions:
     batch_max_size: Optional[int] = None
     batch_wait_ms: Optional[int] = None
 
+    def merge_options(self, **options) -> "_ServiceOptions":
+        """Implement protobuf-like MergeFrom semantics for this dataclass.
+
+        This mostly exists to support "stacking" of `.with_options()` calls.
+        """
+        # Resources needs special merge handling,
+        # because the individual fields are exposed as parameters in the public API.
+        new_resources: api_pb2.Resources = options.pop("resources", api_pb2.Resources())
+        merged_resources = api_pb2.Resources()
+        merged_resources.MergeFrom(self.resources)
+        merged_resources.MergeFrom(new_resources)
+
+        # Volumes are passed in the public API as dictionaries and we need to implement a dict merge
+        new_volumes: typing.Sequence[tuple[str, _Volume]] = options.pop("volumes", ())
+        new_volume_mount_points = {k for k, _ in new_volumes}
+        merged_volumes = [(k, v) for k, v in self.validated_volumes if k not in new_volume_mount_points] + new_volumes
+
+        return _ServiceOptions(
+            resources=merged_resources,
+            validated_volumes=merged_volumes,
+            **options,
+        )
+
 
 def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name: str):
     """Binds an "instance service function" to a specific method using metadata for that method
