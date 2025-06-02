@@ -974,6 +974,7 @@ async def test_async_map_concurrency():
     async def mapper(x):
         nonlocal active_mappers
         active_mappers += 1
+        await asyncio.sleep(0.1)  # Simulate some async work
         active_mappers_history.append(active_mappers)
         await asyncio.sleep(0.1)  # Simulate some async work
         active_mappers -= 1
@@ -982,7 +983,7 @@ async def test_async_map_concurrency():
     result = [item async for item in async_map(sync_or_async_iter(range(10)), mapper, concurrency=3)]
     assert sorted(result) == [x * 2 for x in range(10)]
     assert max(active_mappers_history) == 3
-    assert active_mappers_history.count(3) >= 7  # 2, ... 3, 4, 5 and 6, 7, 8 (9 *could* also be active with 3)
+    assert active_mappers_history == [3] * 9 + [1]  # first 9 items would have 3 concurrency, last item 1
 
 
 @pytest.mark.asyncio
@@ -1356,3 +1357,61 @@ async def test_timed_priority_queue_duplicates():
     assert queue.qsize() == 2
     items = await consumer()
     assert len([it for it in items]) == 2
+
+
+@pytest.mark.asyncio
+async def test_mapper_that_aborts_cancellation_still_exits():
+    async def mapper(x):
+        # This aborts cancellation but still resolves quickly
+        try:
+            await asyncio.sleep(0.1)
+        except asyncio.CancelledError:
+            return x * 100
+        return x
+
+    async def it():
+        yield 1
+        raise SampleException()
+
+    # The following should not inf-loop
+    with pytest.raises(SampleException):
+        # This should not deadlock!
+        async for res in async_map(it(), mapper, 1):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_merge_cancellation_timeout():
+    cleanup_event = asyncio.Event()
+
+    async def non_cooperative_gen():
+        yield 0
+        try:
+            await asyncio.sleep(0.5)
+        except asyncio.CancelledError:
+            pass
+        await cleanup_event.wait()
+        yield 1  # should not happen
+
+    side_effect = []
+
+    async def f():
+        async with aclosing(async_merge(non_cooperative_gen(), cancellation_timeout=1.0)) as stream:
+            async for res in stream:
+                side_effect.append(res)
+
+    t = asyncio.create_task(f())
+    await asyncio.sleep(0.2)  # let task get started
+    t.cancel()
+    t0 = time.monotonic()
+    with pytest.raises(asyncio.CancelledError):
+        async with asyncio.timeout(2.0):
+            await t
+    # first output arrives before cancellation, undefined if the ones yielded during cancellation
+    # should be in result set - probably not!
+    assert side_effect == [0]
+    assert 0.95 < time.monotonic() - t0 < 1.5
+
+    # clean up
+    cleanup_event.set()
+    await asyncio.sleep(0.1)  # allow the non_cooperative_gen to exit to clean up tasks
