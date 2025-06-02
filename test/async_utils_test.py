@@ -24,6 +24,7 @@ from modal._utils.async_utils import (
     async_merge,
     async_zip,
     callable_to_agen,
+    prevent_cancellation_abortion,
     queue_batch_iterator,
     retry,
     sync_or_async_iter,
@@ -1415,3 +1416,22 @@ async def test_merge_cancellation_timeout():
     # clean up
     cleanup_event.set()
     await asyncio.sleep(0.1)  # allow the non_cooperative_gen to exit to clean up tasks
+
+
+@pytest.mark.asyncio
+async def test_prevent_cancellation_abortion():
+    async def rogue_coro():
+        try:
+            await asyncio.sleep(1)
+            return 0
+        except asyncio.CancelledError:
+            return 1
+
+    t = asyncio.create_task(prevent_cancellation_abortion(rogue_coro()))
+    t2 = asyncio.create_task(rogue_coro())  # without prevent_cancellation_abortion for reference
+    await asyncio.sleep(0.1)
+    t.cancel()
+    t2.cancel()
+    assert await t2 == 1
+    with pytest.raises(asyncio.CancelledError):
+        await t
