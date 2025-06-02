@@ -157,6 +157,7 @@ def synchronicity_loop_delay_tracker():
     done = True
 
 
+@pytest.mark.timeout(5)
 def test_map_empty_input(client):
     app = App()
 

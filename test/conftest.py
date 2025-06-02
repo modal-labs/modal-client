@@ -1279,7 +1279,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
             await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[output]))
         else:
-            await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[], num_unfinished_inputs=1))
+            await asyncio.sleep(request.timeout)
+            await stream.send_message(
+                api_pb2.FunctionGetOutputsResponse(
+                    outputs=[], num_unfinished_inputs=1 if self.function_is_running else 0
+                )
+            )
 
     async def FunctionGetSerialized(self, stream):
         await stream.send_message(
@@ -1342,10 +1347,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.ImageGetOrCreateRequest = await stream.recv_message()
         for image_id, image in self.images.items():
             if request.image.SerializeToString() == image.SerializeToString():
-                await stream.send_message(api_pb2.ImageGetOrCreateResponse(
-                    image_id=image_id,
-                    metadata=api_pb2.ImageMetadata(image_builder_version=self.image_builder_versions[image_id]),
-                ))
+                await stream.send_message(
+                    api_pb2.ImageGetOrCreateResponse(
+                        image_id=image_id,
+                        metadata=api_pb2.ImageMetadata(image_builder_version=self.image_builder_versions[image_id]),
+                    )
+                )
                 return
         idx = len(self.images) + 1
         image_id = f"im-{idx}"
@@ -1355,10 +1362,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.image_builder_versions[image_id] = request.builder_version
         if request.force_build:
             self.force_built_images.append(image_id)
-        await stream.send_message(api_pb2.ImageGetOrCreateResponse(
-            image_id=image_id,
-            metadata=api_pb2.ImageMetadata(image_builder_version=request.builder_version),
-        ))
+        await stream.send_message(
+            api_pb2.ImageGetOrCreateResponse(
+                image_id=image_id,
+                metadata=api_pb2.ImageMetadata(image_builder_version=request.builder_version),
+            )
+        )
 
     async def ImageJoinStreaming(self, stream):
         req = await stream.recv_message()
@@ -1379,7 +1388,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
                 metadata=api_pb2.ImageMetadata(
                     image_builder_version=self.image_builder_versions.get(req.image_id),
-                )
+                ),
             )
         )
 
@@ -1985,9 +1994,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         stream,
         req: Union[api_pb2.VolumeListFilesRequest, api_pb2.VolumeListFiles2Request],
         make_resp: Callable[
-            [list[api_pb2.FileEntry]],
-            Union[api_pb2.VolumeListFilesResponse, api_pb2.VolumeListFiles2Response]
-        ]
+            [list[api_pb2.FileEntry]], Union[api_pb2.VolumeListFilesResponse, api_pb2.VolumeListFiles2Response]
+        ],
     ):
         path = req.path if req.path else "/"
         if path.startswith("/"):
