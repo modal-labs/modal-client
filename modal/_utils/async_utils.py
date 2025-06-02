@@ -810,14 +810,7 @@ async def async_map(
         while True:
             item = await queue.get()
             if isinstance(item, ValueWrapper):
-                res = await async_mapper_func(item.value)
-                if asyncio.current_task().cancelling():
-                    # if the async_mapper_func is somehow uncooperative during cancellation
-                    # or if it resolves to a *value* instead of CancelledError due to a race
-                    # this makes sure we don't end up
-                    asyncio.current_task().cancel()
-                    break
-
+                res = await prevent_cancellation_abortion(async_mapper_func(item.value))
                 yield res
             elif isinstance(item, ExceptionWrapper):
                 raise item.value
