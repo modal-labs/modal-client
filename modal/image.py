@@ -1034,14 +1034,14 @@ class _Image(_Object, type_prefix="im"):
         """
         Install a list of Python packages from private git repositories using pip.
 
-        This method currently supports Github and Gitlab only.
+        This method currently supports GitHub and GitLab only.
 
-        - **Github:** Provide a `modal.Secret` that contains a `GITHUB_TOKEN` key-value pair
-        - **Gitlab:** Provide a `modal.Secret` that contains a `GITLAB_TOKEN` key-value pair
+        - **GitHub:** Provide a `modal.Secret` that contains a `GITHUB_TOKEN` key-value pair
+        - **GitLab:** Provide a `modal.Secret` that contains a `GITLAB_TOKEN` key-value pair
 
         These API tokens should have permissions to read the list of private repositories provided as arguments.
 
-        We recommend using Github's ['fine-grained' access tokens](https://github.blog/2022-10-18-introducing-fine-grained-personal-access-tokens-for-github/).
+        We recommend using GitHub's ['fine-grained' access tokens](https://github.blog/2022-10-18-introducing-fine-grained-personal-access-tokens-for-github/).
         These tokens are repo-scoped, and avoid granting read permission across all of a user's private repos.
 
         **Example**
