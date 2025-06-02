@@ -840,7 +840,7 @@ async def _create_single_mount(
 
     if check_if_exists:
         try:
-            Mount.from_name(mount_name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL).hydrate(client)
+            await Mount.from_name(mount_name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL).hydrate.aio(client)
             print(f"✅ Found existing mount {mount_name} in global namespace.")
             return
         except modal.exception.NotFoundError:
