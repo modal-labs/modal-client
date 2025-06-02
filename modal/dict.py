@@ -2,7 +2,7 @@
 from collections.abc import AsyncIterator, Mapping
 from typing import Any, Optional
 
-from grpclib import GRPCError
+from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
@@ -151,7 +151,12 @@ class _Dict(_Object, type_prefix="di"):
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
                 data=serialized,
             )
-            response = await resolver.client.stub.DictGetOrCreate(req)
+            try:
+                response = await resolver.client.stub.DictGetOrCreate(req)
+            except GRPCError as e:
+                if e.status == Status.NOT_FOUND:
+                    e.message = f"Dict '{name}' not found"
+                raise e
             logger.debug(f"Created dict with id {response.dict_id}")
             self._hydrate(response.dict_id, resolver.client, None)
 

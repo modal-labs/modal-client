@@ -187,7 +187,12 @@ class _Volume(_Object, type_prefix="vo"):
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
                 version=version,
             )
-            response = await resolver.client.stub.VolumeGetOrCreate(req)
+            try:
+                response = await resolver.client.stub.VolumeGetOrCreate(req)
+            except GRPCError as e:
+                if e.status == Status.NOT_FOUND:
+                    e.message = f"Volume '{name}' not found"
+                raise e
             self._hydrate(response.volume_id, resolver.client, response.metadata)
 
         return _Volume._from_loader(_load, "Volume()", hydrate_lazily=True)

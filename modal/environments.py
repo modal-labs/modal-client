@@ -5,6 +5,7 @@ from typing import Optional
 from google.protobuf.empty_pb2 import Empty
 from google.protobuf.message import Message
 from google.protobuf.wrappers_pb2 import StringValue
+from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
 
@@ -72,7 +73,12 @@ class _Environment(_Object, type_prefix="en"):
                     else api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED
                 ),
             )
-            response = await retry_transient_errors(resolver.client.stub.EnvironmentGetOrCreate, request)
+            try:
+                response = await retry_transient_errors(resolver.client.stub.EnvironmentGetOrCreate, request)
+            except GRPCError as e:
+                if e.status == Status.NOT_FOUND:
+                    e.message = f"Environment '{name}' not found"
+                raise e
             logger.debug(f"Created environment with id {response.environment_id}")
             self._hydrate(response.environment_id, resolver.client, response.metadata)
 

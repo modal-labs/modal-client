@@ -123,10 +123,13 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
                 response = await resolver.client.stub.SharedVolumeGetOrCreate(req)
                 self._hydrate(response.shared_volume_id, resolver.client, None)
             except GRPCError as exc:
-                if exc.status == Status.NOT_FOUND and exc.message == "App has wrong entity vo":
-                    raise InvalidError(
-                        f"Attempted to mount: `{name}` as a NetworkFileSystem " + "which already exists as a Volume"
-                    )
+                if exc.status == Status.NOT_FOUND:
+                    if exc.message == "App has wrong entity vo":
+                        raise InvalidError(
+                            f"Attempted to mount: `{name}` as a NetworkFileSystem " + "which already exists as a Volume"
+                        )
+                    else:
+                        exc.message = f"NetworkFileSystem '{name}' not found"
                 raise
 
         return _NetworkFileSystem._from_loader(_load, "NetworkFileSystem()", hydrate_lazily=True)
