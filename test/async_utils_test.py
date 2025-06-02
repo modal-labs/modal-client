@@ -1406,12 +1406,11 @@ async def test_merge_cancellation_timeout():
     t.cancel()
     t0 = time.monotonic()
     with pytest.raises(asyncio.CancelledError):
-        async with asyncio.timeout(2.0):
-            await t
+        await t
+    assert 0.95 < time.monotonic() - t0 < 1.5
     # first output arrives before cancellation, undefined if the ones yielded during cancellation
     # should be in result set - probably not!
     assert side_effect == [0]
-    assert 0.95 < time.monotonic() - t0 < 1.5
 
     # clean up
     cleanup_event.set()
