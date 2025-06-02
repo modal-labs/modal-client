@@ -567,8 +567,12 @@ class _Volume(_Object, type_prefix="vo"):
         like `os.rename()` and then `commit()` the volume. The `copy_files()` method is useful when you don't have
         the volume mounted as a filesystem, e.g. when running a script on your local computer.
         """
-        request = api_pb2.VolumeCopyFilesRequest(volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path)
-        await retry_transient_errors(self._client.stub.VolumeCopyFiles, request, base_delay=1)
+        if self._is_v1:
+            request = api_pb2.VolumeCopyFilesRequest(volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path)
+            await retry_transient_errors(self._client.stub.VolumeCopyFiles, request, base_delay=1)
+        else:
+            request = api_pb2.VolumeCopyFiles2Request(volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path)
+            await retry_transient_errors(self._client.stub.VolumeCopyFiles2, request, base_delay=1)
 
     @live_method
     async def batch_upload(self, force: bool = False) -> "_AbstractVolumeUploadContextManager":
