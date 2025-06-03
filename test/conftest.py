@@ -2094,6 +2094,15 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def VolumeCopyFiles(self, stream):
         req = await stream.recv_message()
+        self._copy_files(req)
+        await stream.send_message(Empty())
+
+    async def VolumeCopyFiles2(self, stream):
+        req = await stream.recv_message()
+        self._copy_files(req)
+        await stream.send_message(Empty())
+
+    def _copy_files(self, req):
         for src_path in req.src_paths:
             if src_path not in self.volumes[req.volume_id].files:
                 raise GRPCError(Status.NOT_FOUND, f"Source file not found: {src_path}")
@@ -2107,7 +2116,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
             else:
                 dst_path = req.dst_path
             self.volumes[req.volume_id].files[dst_path] = src_file
-        await stream.send_message(Empty())
 
     async def AttemptStart(self, stream):
         request: api_pb2.AttemptStartRequest = await stream.recv_message()
