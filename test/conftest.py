@@ -214,7 +214,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.files_name2sha = {}
         self.files_sha2data = {}
         self.function_id_for_function_call = {}
-        self.client_calls = {}
+        self.function_call_inputs = {}
+        self.function_call_inputs_update_event = asyncio.Event()
         self.sync_client_retries_enabled = False
         self.function_is_running = False
         self.n_functions = 0
@@ -1163,7 +1164,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def FunctionRetryInputs(self, stream):
         request: api_pb2.FunctionRetryInputsRequest = await stream.recv_message()
         function_id, function_call_id = decode_function_call_jwt(request.function_call_jwt)
-        function_call_inputs = self.client_calls.setdefault(function_call_id, [])
+        function_call_inputs = self.function_call_inputs.setdefault(function_call_id, [])
         input_jwts = []
         for item in request.inputs:
             if item.input.WhichOneof("args_oneof") == "args":
@@ -1174,6 +1175,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             idx, input_id, function_call_id, _, _ = decode_input_jwt(item.input_jwt)
             input_jwts.append(encode_input_jwt(idx, input_id, function_call_id, self.next_entry_id(), item.retry_count))
             function_call_inputs.append(((idx, input_id, item.retry_count), (args, kwargs)))
+            self.function_call_inputs_update_event.set()
         await stream.send_message(api_pb2.FunctionRetryInputsResponse(input_jwts=input_jwts))
 
     async def FunctionPutInputs(self, stream):
@@ -1206,18 +1208,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
             args, kwargs = deserialize(item.input.args, None)
         else:
             args, kwargs = deserialize(self.blobs[item.input.args_blob_id], None)
-        function_call_inputs = self.client_calls.setdefault(function_call_id, [])
+        function_call_inputs = self.function_call_inputs.setdefault(function_call_id, [])
         function_call_inputs.append(((item.idx, input_id, retry_count), (args, kwargs)))
+        self.function_call_inputs_update_event.set()
 
     async def FunctionGetOutputs(self, stream):
         request: api_pb2.FunctionGetOutputsRequest = await stream.recv_message()
         if request.clear_on_success:
             self.cleared_function_calls.add(request.function_call_id)
 
-        client_calls = self.client_calls.get(request.function_call_id, [])
-        if client_calls and not self.function_is_running:
-            popidx = len(client_calls) // 2  # simulate that results don't always come in order
-            (idx, input_id, retry_count), (args, kwargs) = client_calls.pop(popidx)
+        fc_inputs = self.function_call_inputs.setdefault(request.function_call_id, [])
+        if fc_inputs and not self.function_is_running:
+            popidx = len(fc_inputs) // 2  # simulate that results don't always come in order
+            (idx, input_id, retry_count), (args, kwargs) = fc_inputs.pop(popidx)
             output_exc = None
             try:
                 res = self._function_body(*args, **kwargs)
@@ -1279,12 +1282,21 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
             await stream.send_message(api_pb2.FunctionGetOutputsResponse(outputs=[output]))
         else:
-            await asyncio.sleep(request.timeout)
-            await stream.send_message(
-                api_pb2.FunctionGetOutputsResponse(
-                    outputs=[], num_unfinished_inputs=1 if self.function_is_running else 0
+            # wait for there to be at least one input, since that will allow a subsequent call to
+            # get the associated output using the above branch
+            if len(fc_inputs):
+                await stream.send_message(
+                    api_pb2.FunctionGetOutputsResponse(outputs=[], num_unfinished_inputs=len(fc_inputs))
                 )
-            )
+            else:
+                try:
+                    await asyncio.wait_for(self.function_call_inputs_update_event.wait(), timeout=request.timeout)
+                except asyncio.TimeoutError:
+                    pass
+                self.function_call_inputs_update_event.clear()
+                await stream.send_message(
+                    api_pb2.FunctionGetOutputsResponse(outputs=[], num_unfinished_inputs=len(fc_inputs))
+                )
 
     async def FunctionGetSerialized(self, stream):
         await stream.send_message(
