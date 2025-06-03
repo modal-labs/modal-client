@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.3.dev20 (2025-06-03)
+
+Raises error earlier when using interactive mode without using the `modal.enable_output` context manager.
+
+
 #### 1.0.3.dev13 (2025-05-30)
 
 - Added a new `h2_ports` parameter to `Sandbox.create` for exposing encrypted ports using HTTP/2. The following example will create an H2 port on 5002 and an HTTPS over HTTP/1.1 port on 5003.
