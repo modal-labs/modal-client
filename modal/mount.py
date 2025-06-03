@@ -21,7 +21,7 @@ from modal_version import __version__
 
 from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
-from ._utils.async_utils import aclosing, async_map, synchronize_api
+from ._utils.async_utils import TaskContext, aclosing, async_map, synchronize_api
 from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
 from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import retry_transient_errors
@@ -814,6 +814,7 @@ def _is_modal_path(remote_path: PurePosixPath):
             return True
     return False
 
+
 REMOTE_PACKAGES_PATH = "/__modal/deps"
 REMOTE_SITECUSTOMIZE_PATH = "/pkg/sitecustomize.py"
 
@@ -823,6 +824,7 @@ SITECUSTOMIZE_CONTENT = f"""
 # while prioritizing user-installed packages.
 import sys; sys.path.append('{REMOTE_PACKAGES_PATH}')
 """.strip()
+
 
 async def _create_single_mount(
     client: _Client,
@@ -899,23 +901,32 @@ async def _create_single_mount(
 
 
 async def _create_client_dependency_mounts(client=None, check_if_exists=True):
+    coros = []
     for python_version in PYTHON_STANDALONE_VERSIONS:
         # glibc >= 2.17
-        await _create_single_mount(
-            client,
-            "PREVIEW",
-            python_version,
-            "manylinux_2_17",
-            "x86_64",
-            check_if_exists=check_if_exists,
+        coros.append(
+            _create_single_mount(
+                client,
+                "PREVIEW",
+                python_version,
+                "manylinux_2_17",
+                "x86_64",
+                check_if_exists=check_if_exists,
+            )
         )
         # musl >= 1.2
-        await _create_single_mount(
-            client,
-            "PREVIEW",
-            python_version,
-            "musllinux_1_2",
-            "x86_64",
-            uv_python_platform="x86_64-unknown-linux-musl",
-            check_if_exists=check_if_exists,
+        coros.append(
+            _create_single_mount(
+                client,
+                "PREVIEW",
+                python_version,
+                "musllinux_1_2",
+                "x86_64",
+                uv_python_platform="x86_64-unknown-linux-musl",
+                check_if_exists=check_if_exists,
+            )
         )
+    await TaskContext.gather(*coros)
+
+
+create_client_dependency_mounts = synchronize_api(_create_client_dependency_mounts)
