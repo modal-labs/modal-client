@@ -115,7 +115,8 @@ class _MountFile(_MountEntry):
     def get_files_to_upload(self):
         local_file = self.local_file.resolve()
         if not local_file.exists():
-            raise FileNotFoundError(local_file)
+            msg = f"local file {local_file} does not exist"
+            raise FileNotFoundError(msg)
 
         rel_filename = self.remote_path
         yield local_file, rel_filename
@@ -144,10 +145,12 @@ class _MountDir(_MountEntry):
         local_dir = self.local_dir.expanduser().absolute()
 
         if not local_dir.exists():
-            raise FileNotFoundError(local_dir)
+            msg = f"local dir {local_dir} does not exist"
+            raise FileNotFoundError(msg)
 
         if not local_dir.is_dir():
-            raise NotADirectoryError(local_dir)
+            msg = f"local dir {local_dir} is not a directory"
+            raise NotADirectoryError(msg)
 
         if self.recursive:
             gen = (os.path.join(root, name) for root, dirs, files in os.walk(local_dir) for name in files)
