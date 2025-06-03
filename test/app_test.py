@@ -388,8 +388,8 @@ def test_app_interactive(servicer, client, capsys):
 def test_app_interactive_no_output(servicer, client):
     app = App()
 
-    msg = re.escape("Use the `modal.enable_output()` context manager to enable interactive mode.")
-    with pytest.raises(InvalidError, match=msg):
+    msg = "Interactive mode requires output to be enabled. (Use the the `modal.enable_output()` context manager.)"
+    with pytest.raises(InvalidError, match=re.escape(msg)):
         with app.run(client=client, interactive=True):
             # Verify that interactive mode was disabled
             assert not app.is_interactive

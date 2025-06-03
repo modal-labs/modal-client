@@ -295,7 +295,7 @@ async def _run_app(
 
     output_mgr = _get_output_manager()
     if interactive and output_mgr is None:
-        msg = "Use the `modal.enable_output()` context manager to enable interactive mode."
+        msg = "Interactive mode requires output to be enabled. (Use the the `modal.enable_output()` context manager.)"
         raise InvalidError(msg)
 
     running_app: RunningApp = await _init_local_app_new(
