@@ -380,7 +380,7 @@ async def test_volume_copy_1(client, tmp_path, servicer, version):
         object_id = vol.object_id
 
         # copy file from src_path to dst_path
-        vol.copy_files([src_path], dst_path)
+        vol.copy_files([src_path], dst_path, False)
 
     assert servicer.volumes[object_id].files.keys() == {src_path, dst_path}
 
@@ -402,7 +402,7 @@ async def test_volume_copy_2(client, tmp_path, servicer, version):
                 batch.put_file(local_file_path, file_path)
             object_id = vol.object_id
 
-        vol.copy_files(file_paths, "test_dir")
+        vol.copy_files(file_paths, "test_dir", False)
 
     returned_volume_files = [Path(file) for file in servicer.volumes[object_id].files.keys()]
     expected_volume_files = [
