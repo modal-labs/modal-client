@@ -67,7 +67,8 @@ class VolumeFile:
     data: bytes
     mode: int
     data_blob_id: Optional[str] = None
-    block_hashes: list[bytes] = dataclasses.field(default_factory=list)
+    data_sha256_hex: Optional[str] = None
+    block_hashes: Optional[list[bytes]] = None
 
 
 @dataclasses.dataclass
@@ -154,7 +155,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     client_addr: str
     container_addr: str
 
-    def __init__(self, blob_host, blobs, blocks, credentials, port):
+    def __init__(self, blob_host, blobs, blocks, files_sha2data, credentials, port):
         self.default_published_client_mount = "mo-123"
         self.use_blob_outputs = False
         self.put_outputs_barrier = threading.Barrier(
@@ -212,7 +213,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_mount_files = 0
         self.mount_contents = {self.default_published_client_mount: {"/pkg/modal_client.py": "0x1337"}}
         self.files_name2sha = {}
-        self.files_sha2data = {}
+        self.files_sha2data = files_sha2data
         self.function_id_for_function_call = {}
         self.client_calls = {}
         self.sync_client_retries_enabled = False
@@ -1926,23 +1927,44 @@ class MockClientServicer(api_grpc.ModalClientBase):
         def ceildiv(a: int, b: int) -> int:
             return -(a // -b)
 
+        if vol_file.data_blob_id:
+            file_size = len(self.blobs[vol_file.data_blob_id])
+        else:
+            file_size = len(vol_file.data)
+
         total_start = req.start
-        total_end = req.start + (req.len or len(vol_file.data))
+        total_end = req.start + (req.len or file_size)
 
-        block_start = min(total_start // BLOCK_SIZE, len(vol_file.block_hashes))
-        block_end = min(ceildiv(total_end, BLOCK_SIZE), len(vol_file.block_hashes))
-
-        for idx, block_hash in enumerate(vol_file.block_hashes[block_start:block_end]):
+        def slice_block(block_idx: int):
             # Crude port of internal `blocks_for_byte_slice` algorithm:
-            start = total_start % BLOCK_SIZE if idx == 0 else 0
-            end = (
+            slice_start = total_start % BLOCK_SIZE if block_idx == 0 else 0
+            slice_end = (
                 (((total_end - 1) % BLOCK_SIZE) + 1 if total_end > 0 else 0)
-                if idx == (block_end - block_start - 1)
+                if block_idx == (block_end - block_start - 1)
                 else BLOCK_SIZE
             )
-            length = end - start
+            return slice_start, slice_end
 
-            get_urls.append(f"{self.blob_host}/block/test-get-request:{block_hash.hex()}:{start}:{length}")
+        # Check if file was created using VolumePutFiles instead of VolumePutFiles2, which is supported since
+        # VolumePutFiles2 should support volumefs1 volumes now.
+        if vol_file.block_hashes is None:
+            block_start = min(total_start, file_size) // BLOCK_SIZE
+            block_end = ceildiv(min(total_end, file_size), BLOCK_SIZE)
+            assert vol_file.data_sha256_hex is not None
+
+            for idx in range(block_start, block_end):
+                start, end = slice_block(idx)
+                length = end - start
+                get_urls.append(f"{self.blob_host}/block/test-get-request:v1:{vol_file.data_sha256_hex}:{idx}:{start}:{length}")
+        else:
+            block_start = min(total_start // BLOCK_SIZE, len(vol_file.block_hashes))
+            block_end = min(ceildiv(total_end, BLOCK_SIZE), len(vol_file.block_hashes))
+            assert vol_file.data_blob_id is None
+
+            for idx, block_hash in enumerate(vol_file.block_hashes[block_start:block_end]):
+                start, end = slice_block(idx)
+                length = end - start
+                get_urls.append(f"{self.blob_host}/block/test-get-request:v2:{block_hash.hex()}:{start}:{length}")
 
         response = api_pb2.VolumeGetFile2Response(
             get_urls=get_urls, size=len(vol_file.data), start=total_start, len=total_end - total_start
@@ -2022,6 +2044,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.volumes[req.volume_id].files[file.filename] = VolumeFile(
                 data=blob_data["data"],
                 data_blob_id=blob_data["data_blob_id"],
+                data_sha256_hex=file.sha256_hex,
                 mode=file.mode,
             )
         await stream.send_message(Empty())
@@ -2160,6 +2183,7 @@ def blob_server():
     blobs = {}
     blob_parts: dict[str, dict[int, bytes]] = defaultdict(dict)
     blocks = {}
+    files_sha2data: dict[str, dict] = {}
 
     async def upload(request):
         blob_id = request.query["blob_id"]
@@ -2215,14 +2239,29 @@ def blob_server():
     async def get_block(request):
         token = request.match_info["token"]
 
-        magic, block_id, start, length = token.split(":")
+        magic, version, *rest = token.split(":")
         if magic != "test-get-request":
             return aiohttp.web.Response(status=400, text="bad token")
 
-        start = int(start)
-        length = int(length)
+        if version == "v1":
+            file_sha256_hex, block_idx, start, length = rest
+            start = BLOCK_SIZE * int(block_idx) + int(start)
+            length = int(length)
+            file_data = files_sha2data[file_sha256_hex]
+            blob_id = file_data["data_blob_id"]
+            if blob_id:
+                body = blobs[blob_id][start:start + length]
+            else:
+                body = file_data["data"][start : start + length]
+        elif version == "v2":
+            block_id, start, length = rest
+            start = int(start)
+            length = int(length)
+            body = blocks[block_id][start : start + length]
+        else:
+            return aiohttp.web.Response(status=404)
 
-        return aiohttp.web.Response(body=blocks[block_id][start : start + length])
+        return aiohttp.web.Response(body=body)
 
     app = aiohttp.web.Application()
     app.add_routes([aiohttp.web.put("/upload", upload)])
@@ -2259,7 +2298,7 @@ def blob_server():
     thread = threading.Thread(target=run_server_other_thread)
     thread.start()
     started.wait()
-    yield host, blobs, blocks
+    yield host, blobs, blocks, files_sha2data
     stop_server.set()
     thread.join()
 
@@ -2311,8 +2350,8 @@ def credentials():
 async def servicer(blob_server, temporary_sock_path, credentials):
     port = find_free_port()
 
-    blob_host, blobs, blocks = blob_server
-    servicer = MockClientServicer(blob_host, blobs, blocks, credentials, port)  # type: ignore
+    blob_host, blobs, blocks, files_sha2data = blob_server
+    servicer = MockClientServicer(blob_host, blobs, blocks, files_sha2data, credentials, port)  # type: ignore
 
     if platform.system() != "Windows":
         async with run_server(servicer, host="0.0.0.0", port=port):
