@@ -290,6 +290,7 @@ class _Mount(_Object, type_prefix="mo"):
     _deployment_name: Optional[str] = None
     _namespace: Optional[int] = None
     _environment_name: Optional[str] = None
+    _allow_overwrite: bool = False
     _content_checksum_sha256_hex: Optional[str] = None
 
     @staticmethod
@@ -600,11 +601,16 @@ class _Mount(_Object, type_prefix="mo"):
         # Build the mount.
         status_row.message(f"Creating mount {message_label}: Finalizing index of {len(files)} files")
         if self._deployment_name:
+            creation_type = (
+                api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
+                if self._allow_overwrite
+                else api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS
+            )
             req = api_pb2.MountGetOrCreateRequest(
                 deployment_name=self._deployment_name,
                 namespace=self._namespace,
                 environment_name=self._environment_name,
-                object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
+                object_creation_type=creation_type,
                 files=files,
             )
         elif resolver.app_id is not None:
@@ -736,7 +742,9 @@ class _Mount(_Object, type_prefix="mo"):
         self: "_Mount",
         deployment_name: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        *,
         environment_name: Optional[str] = None,
+        allow_overwrite: bool = False,
         client: Optional[_Client] = None,
     ) -> None:
         check_object_name(deployment_name, "Mount")
@@ -744,6 +752,7 @@ class _Mount(_Object, type_prefix="mo"):
         self._deployment_name = deployment_name
         self._namespace = namespace
         self._environment_name = environment_name
+        self._allow_overwrite = allow_overwrite
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client, environment_name=environment_name)
@@ -826,7 +835,7 @@ import sys; sys.path.append('{REMOTE_PACKAGES_PATH}')
 """.strip()
 
 
-async def _create_single_mount(
+async def _create_single_client_dependency_mount(
     client: _Client,
     builder_version: str,
     python_version: str,
@@ -834,8 +843,8 @@ async def _create_single_mount(
     arch: str,
     uv_python_platform: str = None,
     check_if_exists: bool = True,
+    allow_overwrite: bool = False,
 ):
-    import subprocess
     import tempfile
 
     profile_environment = config.get("environment")
@@ -846,15 +855,15 @@ async def _create_single_mount(
     if check_if_exists:
         try:
             await Mount.from_name(mount_name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL).hydrate.aio(client)
-            print(f"✅ Found existing mount {mount_name} in global namespace.")
+            print(f"➖ Found existing mount {mount_name} in global namespace.")
             return
         except modal.exception.NotFoundError:
             pass
 
-    with tempfile.TemporaryDirectory() as tmpd:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpd:
         print(f"📦 Building {mount_name}.")
         requirements = os.path.join(os.path.dirname(__file__), f"requirements/{builder_version}.txt")
-        subprocess.run(
+        cmd = " ".join(
             [
                 "uv",
                 "pip",
@@ -871,10 +880,19 @@ async def _create_single_mount(
                 uv_python_platform,
                 "--python-version",
                 python_version,
-            ],
-            check=True,
-            capture_output=True,
+            ]
         )
+        proc = await asyncio.create_subprocess_shell(
+            cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.wait()
+        if proc.returncode:
+            stdout, stderr = await proc.communicate()
+            print(stdout.decode("utf-8"))
+            print(stderr.decode("utf-8"))
+            raise RuntimeError(f"Subprocess failed with {proc.returncode}", proc.args)
 
         print(f"🌐 Downloaded and unpacked packages to {tmpd}.")
 
@@ -895,6 +913,7 @@ async def _create_single_mount(
                 mount_name,
                 api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
                 environment_name=profile_environment,
+                allow_overwrite=allow_overwrite,
                 client=client,
             )
             print(f"✅ Deployed mount {mount_name} to global namespace.")
@@ -902,34 +921,37 @@ async def _create_single_mount(
 
 async def _create_client_dependency_mounts(
     client=None,
-    check_if_exists=True,
     python_versions: list[str] = list(PYTHON_STANDALONE_VERSIONS),
+    check_if_exists=True,
 ):
     coros = []
-    for python_version in python_versions:
-        # glibc >= 2.17
-        coros.append(
-            _create_single_mount(
-                client,
-                "PREVIEW",
-                python_version,
-                "manylinux_2_17",
-                "x86_64",
-                check_if_exists=check_if_exists,
+    for builder_version in ["PREVIEW"]:
+        for python_version in python_versions:
+            # glibc >= 2.17
+            coros.append(
+                _create_single_client_dependency_mount(
+                    client,
+                    builder_version,
+                    python_version,
+                    "manylinux_2_17",
+                    "x86_64",
+                    check_if_exists=check_if_exists,
+                    allow_overwrite=builder_version != "PREVIEW",
+                )
             )
-        )
-        # musl >= 1.2
-        coros.append(
-            _create_single_mount(
-                client,
-                "PREVIEW",
-                python_version,
-                "musllinux_1_2",
-                "x86_64",
-                uv_python_platform="x86_64-unknown-linux-musl",
-                check_if_exists=check_if_exists,
+            # musl >= 1.2
+            coros.append(
+                _create_single_client_dependency_mount(
+                    client,
+                    builder_version,
+                    python_version,
+                    "musllinux_1_2",
+                    "x86_64",
+                    uv_python_platform="x86_64-unknown-linux-musl",
+                    check_if_exists=check_if_exists,
+                    allow_overwrite=builder_version != "PREVIEW",
+                )
             )
-        )
     await TaskContext.gather(*coros)
 
 
