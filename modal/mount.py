@@ -10,7 +10,7 @@ import typing
 import warnings
 from collections.abc import AsyncGenerator
 from pathlib import Path, PurePosixPath
-from typing import Callable, Optional, Sequence, Union
+from typing import Callable, Iterable, Optional, Sequence, Union
 
 from google.protobuf.message import Message
 
@@ -900,9 +900,13 @@ async def _create_single_mount(
             print(f"✅ Deployed mount {mount_name} to global namespace.")
 
 
-async def _create_client_dependency_mounts(client=None, check_if_exists=True):
+async def _create_client_dependency_mounts(
+    client=None,
+    check_if_exists=True,
+    python_versions: Iterable[str] = PYTHON_STANDALONE_VERSIONS.keys(),
+):
     coros = []
-    for python_version in PYTHON_STANDALONE_VERSIONS:
+    for python_version in python_versions:
         # glibc >= 2.17
         coros.append(
             _create_single_mount(
