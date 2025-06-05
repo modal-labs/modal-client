@@ -3,6 +3,7 @@ import asyncio
 import enum
 import time
 import typing
+from asyncio import FIRST_COMPLETED
 from dataclasses import dataclass
 from typing import Any, Callable, Optional
 
@@ -110,6 +111,7 @@ async def _map_invocation(
     max_inputs_outstanding = response.max_inputs_outstanding or MAX_INPUTS_OUTSTANDING_DEFAULT
 
     have_all_inputs = False
+    map_done_event = asyncio.Event()
     inputs_created = 0
     inputs_sent = 0
     inputs_retried = 0
@@ -122,10 +124,6 @@ async def _map_invocation(
     stale_retry_duplicates = 0
     no_context_duplicates = 0
 
-    def count_update():
-        if count_update_callback is not None:
-            count_update_callback(outputs_completed, inputs_created)
-
     retry_queue = TimestampPriorityQueue()
     completed_outputs: set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
     input_queue: asyncio.Queue[api_pb2.FunctionPutInputsItem | None] = asyncio.Queue()
@@ -134,9 +132,8 @@ async def _map_invocation(
     )
 
     async def create_input(argskwargs):
-        nonlocal inputs_created
         idx = inputs_created
-        inputs_created += 1
+        update_state(set_inputs_created=inputs_created + 1)
         (args, kwargs) = argskwargs
         return await _create_input(args, kwargs, client.stub, idx=idx, method_name=function._use_method_name)
 
@@ -147,9 +144,27 @@ async def _map_invocation(
                 break
             yield raw_input  # args, kwargs
 
-    async def drain_input_generator():
-        nonlocal have_all_inputs
+    def update_state(set_have_all_inputs=None, set_inputs_created=None, set_outputs_completed=None):
+        # This should be the only method that needs nonlocal of the following vars
+        nonlocal have_all_inputs, inputs_created, outputs_completed
+        assert set_have_all_inputs is not False  # not allowed
+        assert set_inputs_created is None or set_inputs_created > inputs_created
+        assert set_outputs_completed is None or set_outputs_completed > outputs_completed
+        if set_have_all_inputs is not None:
+            have_all_inputs = set_have_all_inputs
+        if set_inputs_created is not None:
+            inputs_created = set_inputs_created
+        if set_outputs_completed is not None:
+            outputs_completed = set_outputs_completed
 
+        if count_update_callback is not None:
+            count_update_callback(outputs_completed, inputs_created)
+
+        if have_all_inputs and outputs_completed >= inputs_created:
+            # map is done
+            map_done_event.set()
+
+    async def drain_input_generator():
         # Parallelize uploading blobs
         async with aclosing(
             async_map_ordered(input_iter(), create_input, concurrency=BLOB_MAX_PARALLELISM)
@@ -159,12 +174,12 @@ async def _map_invocation(
 
         # close queue iterator
         await input_queue.put(None)
-        have_all_inputs = True
+        update_state(set_have_all_inputs=True)
         yield
 
     async def pump_inputs():
         assert client.stub
-        nonlocal inputs_created, inputs_sent
+        nonlocal inputs_sent
         async for items in queue_batch_iterator(input_queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
             # Add items to the manager. Their state will be SENDING.
             await map_items_manager.add_items(items)
@@ -178,7 +193,6 @@ async def _map_invocation(
             )
 
             resp = await send_inputs(client.stub.FunctionPutInputs, request)
-            count_update()
             inputs_sent += len(items)
             # Change item state to WAITING_FOR_OUTPUT, and set the input_id and input_jwt which are in the response.
             map_items_manager.handle_put_inputs_response(resp.inputs)
@@ -231,11 +245,8 @@ async def _map_invocation(
     async def get_all_outputs():
         assert client.stub
         nonlocal \
-            inputs_created, \
             successful_completions, \
             failed_completions, \
-            outputs_completed, \
-            have_all_inputs, \
             outputs_received, \
             already_complete_duplicates, \
             no_context_duplicates, \
@@ -244,7 +255,7 @@ async def _map_invocation(
 
         last_entry_id = "0-0"
 
-        while not have_all_inputs or outputs_completed < inputs_created:
+        while not map_done_event.is_set():
             logger.debug(f"Requesting outputs. Have {outputs_completed} outputs, {inputs_created} inputs.")
             # Get input_jwts of all items in the WAITING_FOR_OUTPUT state.
             # The server uses these to track for lost inputs.
@@ -258,12 +269,26 @@ async def _map_invocation(
                 requested_at=time.time(),
                 input_jwts=input_jwts,
             )
-            response = await retry_transient_errors(
-                client.stub.FunctionGetOutputs,
-                request,
-                max_retries=20,
-                attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
+            get_response_task = asyncio.create_task(
+                retry_transient_errors(
+                    client.stub.FunctionGetOutputs,
+                    request,
+                    max_retries=20,
+                    attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
+                )
             )
+            map_done_task = asyncio.create_task(map_done_event.wait())
+            done, pending = await asyncio.wait([get_response_task, map_done_task], return_when=FIRST_COMPLETED)
+            if get_response_task in done:
+                map_done_task.cancel()
+                response = get_response_task.result()
+            else:
+                assert map_done_event.is_set()
+                # map is done, cancel the pending call
+                get_response_task.cancel()
+                # not strictly necessary - don't leave dangling task
+                await asyncio.gather(get_response_task, return_exceptions=True)
+                return
 
             last_entry_id = response.last_entry_id
             now_seconds = int(time.time())
@@ -288,7 +313,7 @@ async def _map_invocation(
 
                 if output_type == _OutputType.SUCCESSFUL_COMPLETION or output_type == _OutputType.FAILED_COMPLETION:
                     completed_outputs.add(item.input_id)
-                    outputs_completed += 1
+                    update_state(set_outputs_completed=outputs_completed + 1)
                     yield item
 
     async def get_all_outputs_and_clean_up():
@@ -328,7 +353,6 @@ async def _map_invocation(
             async_map_ordered(get_all_outputs_and_clean_up(), fetch_output, concurrency=BLOB_MAX_PARALLELISM)
         ) as streamer:
             async for idx, output in streamer:
-                count_update()
                 if not order_outputs:
                     yield _OutputValue(output)
                 else:
@@ -401,7 +425,7 @@ async def _map_helper(
     """
 
     raw_input_queue: Any = SynchronizedQueue()  # type: ignore
-    raw_input_queue.init()
+    await raw_input_queue.init.aio()
 
     async def feed_queue():
         async with aclosing(async_input_gen) as streamer:

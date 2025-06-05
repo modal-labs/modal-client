@@ -45,7 +45,6 @@ from ._utils.blob_utils import (
     BLOCK_SIZE,
     FileUploadSpec,
     FileUploadSpec2,
-    blob_iter,
     blob_upload_file,
     get_file_upload_spec_from_fileobj,
     get_file_upload_spec_from_path,
@@ -69,6 +68,8 @@ class FileEntryType(enum.IntEnum):
     FILE = 1
     DIRECTORY = 2
     SYMLINK = 3
+    FIFO = 4
+    SOCKET = 5
 
 
 @dataclass(frozen=True)
@@ -398,7 +399,7 @@ class _Volume(_Object, type_prefix="vo"):
         return [entry async for entry in self.iterdir(path, recursive=recursive)]
 
     @live_method_gen
-    def read_file(self, path: str) -> AsyncIterator[bytes]:
+    async def read_file(self, path: str) -> AsyncIterator[bytes]:
         """
         Read a file from the modal.Volume.
 
@@ -412,23 +413,6 @@ class _Volume(_Object, type_prefix="vo"):
         print(len(data))  # == 1024 * 1024
         ```
         """
-        return self._read_file1(path) if self._is_v1 else self._read_file2(path)
-
-    async def _read_file1(self, path: str) -> AsyncIterator[bytes]:
-        req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path)
-        try:
-            response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
-        except GRPCError as exc:
-            raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
-        # TODO(Jonathon): use ranged requests.
-        if response.WhichOneof("data_oneof") == "data":
-            yield response.data
-            return
-        else:
-            async for data in blob_iter(response.data_blob_id, self._client.stub):
-                yield data
-
-    async def _read_file2(self, path: str) -> AsyncIterator[bytes]:
         req = api_pb2.VolumeGetFile2Request(volume_id=self.object_id, path=path)
 
         try:
@@ -459,36 +443,9 @@ class _Volume(_Object, type_prefix="vo"):
         Read volume file into file-like IO object.
         """
         if progress_cb is None:
-
             def progress_cb(*_, **__):
                 pass
 
-        if self._is_v1:
-            return await self._read_file_into_fileobj1(path, fileobj, progress_cb)
-        else:
-            return await self._read_file_into_fileobj2(path, fileobj, progress_cb)
-
-    async def _read_file_into_fileobj1(
-        self, path: str, fileobj: typing.IO[bytes], progress_cb: Callable[..., Any]
-    ) -> int:
-        num_bytes_written = 0
-
-        async for chunk in self._read_file1(path):
-            num_chunk_bytes_written = 0
-
-            while num_chunk_bytes_written < len(chunk):
-                # TODO(dflemstr): this is a small write, but nonetheless might block the event loop for some time:
-                n = fileobj.write(chunk)
-                num_chunk_bytes_written += n
-                progress_cb(advance=n)
-
-            num_bytes_written += len(chunk)
-
-        return num_bytes_written
-
-    async def _read_file_into_fileobj2(
-        self, path: str, fileobj: typing.IO[bytes], progress_cb: Callable[..., Any]
-    ) -> int:
         req = api_pb2.VolumeGetFile2Request(volume_id=self.object_id, path=path)
 
         try:
@@ -565,8 +522,12 @@ class _Volume(_Object, type_prefix="vo"):
         like `os.rename()` and then `commit()` the volume. The `copy_files()` method is useful when you don't have
         the volume mounted as a filesystem, e.g. when running a script on your local computer.
         """
-        request = api_pb2.VolumeCopyFilesRequest(volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path)
-        await retry_transient_errors(self._client.stub.VolumeCopyFiles, request, base_delay=1)
+        if self._is_v1:
+            request = api_pb2.VolumeCopyFilesRequest(volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path)
+            await retry_transient_errors(self._client.stub.VolumeCopyFiles, request, base_delay=1)
+        else:
+            request = api_pb2.VolumeCopyFiles2Request(volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path)
+            await retry_transient_errors(self._client.stub.VolumeCopyFiles2, request, base_delay=1)
 
     @live_method
     async def batch_upload(self, force: bool = False) -> "_AbstractVolumeUploadContextManager":

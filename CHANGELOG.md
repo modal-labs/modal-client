@@ -6,6 +6,48 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.3.dev25 (2025-06-05)
+
+* Fixed an issue where `Function.map()` and similar methods would stall for 55 seconds when passed an empty iterator as input, instead of completing immediately.
+
+
+#### 1.0.3.dev20 (2025-06-03)
+
+Raises error earlier when using interactive mode without using the `modal.enable_output` context manager.
+
+
+#### 1.0.3.dev13 (2025-05-30)
+
+- Added a new `h2_ports` parameter to `Sandbox.create` for exposing encrypted ports using HTTP/2. The following example will create an H2 port on 5002 and an HTTPS over HTTP/1.1 port on 5003.
+```
+sb = modal.Sandbox.create(app=app, h2_ports = [5002], encrypted_ports = [5003])
+```
+
+
+#### 1.0.3.dev9 (2025-05-30)
+
+- Added `--from-dotenv` and `--from-json` flags to `modal secret create`, which allows creating secrets by reading the secret value from local files.
+
+
+#### 1.0.3.dev1 (2025-05-27)
+
+- `Sandbox.terminate` no longer waits for container shutdown completion, but it still ensures that a terminated container will shutdown imminently. Status quo behavior (i.e., waiting until the sandbox is actually terminated) can be restored by putting `sb.wait(raise_on_termination=False)` after the termination.
+
+
+#### 1.0.3.dev0 (2025-05-27)
+
+- Added support for specifying a timezone on `Cron` schedules, helpful if you e.g. want a `Function` to run at 6am local time, regardless of whether daylight saving is in effect or not, for example:
+  ```
+  import modal
+  app = modal.App()
+  
+  
+  @app.function(schedule=modal.Cron("* 6 * * *"), timezone="America/New_York")
+  def f():
+      print("This function will run every day at 6am New York time.")
+  ```
+
+
 ### 1.0.2 (2025-05-26)
 
 * Fixed an incompatibility with the recently released `aiohttp` v3.12.0, causing issues with volume and large input uploads.

@@ -253,6 +253,11 @@ enum TaskState {
   TASK_STATE_LOADING_CHECKPOINT_IMAGE = 11;
 }
 
+enum TunnelType {
+  TUNNEL_TYPE_UNSPECIFIED = 0;
+  TUNNEL_TYPE_H2 = 1; // HTTP/2 tunnel
+}
+
 enum VolumeFsVersion {
   VOLUME_FS_VERSION_UNSPECIFIED = 0;
   VOLUME_FS_VERSION_V1 = 1;
@@ -1216,6 +1221,8 @@ message FileEntry {
     FILE = 1;
     DIRECTORY = 2;
     SYMLINK = 3;
+    FIFO = 4;
+    SOCKET = 5;
   }
   string path = 1;
   FileType type = 2;
@@ -1945,13 +1952,21 @@ message ImageJoinStreamingResponse {
 message ImageMetadata {
   // The output of `python -VV. Not set if missing
   optional string python_version_info = 1;
+
   // Installed python packages, as listed by by `pip list`.
   // package name -> version. Empty if missing
   map<string, string> python_packages = 2;
-  // The work directory of the image, defaulting to "/". Not set if missing
+
+  // The working directory of the image, as an absolute file path.
+  //
+  // For most images, this is not set, which means to use the default workdir:
+  // - On function runners, the default is `/root` (home directory).
+  // - For image builds and sandbox environments, it is `/`.
   optional string workdir = 3;
-  // The image's libc version
+
+  // The version of glibc in this image, if any.
   optional string libc_version_info = 4;
+
   // The builder version for/with which the image was created.
   optional string image_builder_version = 5;
 }
@@ -2153,7 +2168,7 @@ message PTYInfo {
 message PortSpec {
   uint32 port = 1;
   bool unencrypted = 2;
-  optional string tunnel_type = 3;
+  optional TunnelType tunnel_type = 3;
 }
 
 message PortSpecs {
@@ -2878,7 +2893,7 @@ message TunnelData {
 message TunnelStartRequest {
   uint32 port = 1;
   bool unencrypted = 2;
-  optional string tunnel_type = 3;
+  optional TunnelType tunnel_type = 3;
 }
 
 message TunnelStartResponse {
