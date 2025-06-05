@@ -900,9 +900,13 @@ async def _create_single_mount(
             print(f"✅ Deployed mount {mount_name} to global namespace.")
 
 
-async def _create_client_dependency_mounts(client=None, check_if_exists=True):
+async def _create_client_dependency_mounts(
+    client=None,
+    check_if_exists=True,
+    python_versions: list[str] = list(PYTHON_STANDALONE_VERSIONS),
+):
     coros = []
-    for python_version in PYTHON_STANDALONE_VERSIONS:
+    for python_version in python_versions:
         # glibc >= 2.17
         coros.append(
             _create_single_mount(

@@ -498,7 +498,7 @@ class _Volume(_Object, type_prefix="vo"):
             await retry_transient_errors(self._client.stub.VolumeRemoveFile2, req)
 
     @live_method
-    async def copy_files(self, src_paths: Sequence[str], dst_path: str) -> None:
+    async def copy_files(self, src_paths: Sequence[str], dst_path: str, recursive: bool = False) -> None:
         """
         Copy files within the volume from src_paths to dst_path.
         The semantics of the copy operation follow those of the UNIX cp command.
@@ -523,10 +523,17 @@ class _Volume(_Object, type_prefix="vo"):
         the volume mounted as a filesystem, e.g. when running a script on your local computer.
         """
         if self._is_v1:
-            request = api_pb2.VolumeCopyFilesRequest(volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path)
+            if recursive:
+                raise ValueError("`recursive` is not supported for V1 volumes")
+
+            request = api_pb2.VolumeCopyFilesRequest(
+                volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path, recursive=recursive
+            )
             await retry_transient_errors(self._client.stub.VolumeCopyFiles, request, base_delay=1)
         else:
-            request = api_pb2.VolumeCopyFiles2Request(volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path)
+            request = api_pb2.VolumeCopyFiles2Request(
+                volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path, recursive=recursive
+            )
             await retry_transient_errors(self._client.stub.VolumeCopyFiles2, request, base_delay=1)
 
     @live_method
