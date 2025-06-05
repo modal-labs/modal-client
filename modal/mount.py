@@ -839,9 +839,9 @@ async def _create_single_client_dependency_mount(
     client: _Client,
     builder_version: str,
     python_version: str,
-    platform: str,
     arch: str,
-    uv_python_platform: str = None,
+    platform: str,
+    uv_python_platform: str,
     check_if_exists: bool = True,
     allow_overwrite: bool = False,
 ):
@@ -850,7 +850,6 @@ async def _create_single_client_dependency_mount(
     profile_environment = config.get("environment")
     abi_tag = "cp" + python_version.replace(".", "")
     mount_name = f"{builder_version}-{abi_tag}-{platform}-{arch}"
-    uv_python_platform = uv_python_platform or f"{arch}-{platform}"
 
     if check_if_exists:
         try:
@@ -894,7 +893,7 @@ async def _create_single_client_dependency_mount(
             print(stderr.decode("utf-8"))
             raise RuntimeError(f"Subprocess failed with {proc.returncode}", proc.args)
 
-        print(f"🌐 Downloaded and unpacked packages to {tmpd}.")
+        print(f"🌐 Downloaded and unpacked {mount_name} packages to {tmpd}.")
 
         python_mount = Mount._from_local_dir(tmpd, remote_path=REMOTE_PACKAGES_PATH)
 
@@ -924,34 +923,27 @@ async def _create_client_dependency_mounts(
     python_versions: list[str] = list(PYTHON_STANDALONE_VERSIONS),
     check_if_exists=True,
 ):
+    arch = "x86_64"
+    platform_tags = [
+        ("manylinux_2_17", f"{arch}-manylinux_2_17"),  # glibc >= 2.17
+        ("musllinux_1_2", f"{arch}-unknown-linux-musl"),  # musl >= 1.2
+    ]
     coros = []
     for builder_version in ["PREVIEW"]:
         for python_version in python_versions:
-            # glibc >= 2.17
-            coros.append(
-                _create_single_client_dependency_mount(
-                    client,
-                    builder_version,
-                    python_version,
-                    "manylinux_2_17",
-                    "x86_64",
-                    check_if_exists=check_if_exists,
-                    allow_overwrite=builder_version != "PREVIEW",
+            for platform, uv_python_platform in platform_tags:
+                coros.append(
+                    _create_single_client_dependency_mount(
+                        client,
+                        builder_version,
+                        python_version,
+                        arch,
+                        platform,
+                        uv_python_platform,
+                        check_if_exists=builder_version != "PREVIEW",
+                        allow_overwrite=builder_version == "PREVIEW",
+                    )
                 )
-            )
-            # musl >= 1.2
-            coros.append(
-                _create_single_client_dependency_mount(
-                    client,
-                    builder_version,
-                    python_version,
-                    "musllinux_1_2",
-                    "x86_64",
-                    uv_python_platform="x86_64-unknown-linux-musl",
-                    check_if_exists=check_if_exists,
-                    allow_overwrite=builder_version != "PREVIEW",
-                )
-            )
     await TaskContext.gather(*coros)
 
 
