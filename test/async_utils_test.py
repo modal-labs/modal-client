@@ -1356,3 +1356,32 @@ async def test_timed_priority_queue_duplicates():
     assert queue.qsize() == 2
     items = await consumer()
     assert len([it for it in items]) == 2
+
+
+@pytest.mark.asyncio
+async def test_cancel_stuff():
+    synchronizer = Synchronizer()
+
+    @synchronizer.wrap
+    async def do_stuff(i):
+        await asyncio.sleep(1)
+        if i == 500:
+            raise SampleException("something went wrong")
+        return i
+
+    async def c():
+        try:
+            async with aclosing(async_map(sync_or_async_iter(range(1000)), do_stuff.aio, 256)) as stream:
+                async for i in stream:
+                    pass
+                print("loop done")
+        finally:
+            print("exit", sys.exc_info()[0])
+
+    t = asyncio.create_task(c())
+    await asyncio.sleep(2)
+    print("cancelling")
+    t.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        print("waiting")
+        await t
