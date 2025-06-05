@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.3.dev28 (2025-06-05)
+
+* Fixes a rare race condition that could sometimes make `Function.map` and similar calls deadlock
+
+
 #### 1.0.3.dev25 (2025-06-05)
 
 * Fixed an issue where `Function.map()` and similar methods would stall for 55 seconds when passed an empty iterator as input, instead of completing immediately.
