@@ -673,6 +673,36 @@ def test_poetry(builder_version, servicer, client):
             assert context_files == {"/.poetry.lock", "/.pyproject.toml"}
 
 
+def test_uv_sync(builder_version, servicer, client):
+    uv_lock_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_project", "uv.lock")
+
+    image = Image.debian_slim().uv_sync(uv_lock_path)
+
+    app = App()
+    app.function(image=image)(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        context_files = {f.filename for layer in layers for f in layer.context_files}
+        if builder_version <= "2024.10":
+            assert context_files == {"/.uv.lock", "/.pyproject.toml", "/modal_requirements.txt"}
+        else:
+            assert context_files == {"/.uv.lock", "/.pyproject.toml"}
+
+
+def test_uv_sync_error(client, tmp_path):
+    uv_lock_path = os.path.join(tmp_path, "uv.lock")
+    image = Image.debian_slim().uv_sync(uv_lock_path)
+
+    app = App()
+    app.function(image=image)(dummy)
+
+    msg = "pyproject.toml does not exist in the same directory as the uv.lock file"
+    with pytest.raises(InvalidError, match=msg):
+        with app.run(client=client):
+            pass
+
+
 def test_image_add_local_file_error(tmp_path, client):
     app = App()
 

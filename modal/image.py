@@ -1299,6 +1299,64 @@ class _Image(_Object, type_prefix="im"):
             gpu_config=parse_gpu_config(gpu),
         )
 
+    def uv_sync(
+        self,
+        lockfile: str = "./uv.lock",  # Path to lockfile
+        # Path to pyproject.toml. If not provided, then use file in the same directory as the lockfile
+        pyproject_toml: Optional[str] = None,
+        *,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
+    ) -> "_Image":
+        """Install dependencies from a local `uv.lock` file using `uv sync`.
+
+        Note that only dependencies are installed. Please use `add_local_python_source` to include local python source
+        files. Please ensure that `modal` is a dependency by running `uv add modal`.
+        """
+
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+            lockfile_ = os.path.expanduser(lockfile)
+            if pyproject_toml is None:
+                parent_dir = os.path.dirname(lockfile_)
+                pyproject_toml_ = os.path.join(parent_dir, "pyproject.toml")
+                # TODO: Error with pyproject_toml_ does not exist
+                if not os.path.exists(pyproject_toml_):
+                    msg = "pyproject.toml does not exist in the same directory as the uv.lock file"
+                    raise InvalidError(msg)
+            else:
+                pyproject_toml_ = os.path.expanduser(lockfile)
+
+            uv_root = "/.uv"
+            context_files = {"/.uv.lock": lockfile_, "/.pyproject.toml": pyproject_toml_}
+
+            uv_sync_args = [
+                f"--project={uv_root}",
+                "--frozen",  # Do not update `uv.lock`
+                "--no-install-workspace",  # Do not install the root project or any "uv workspace"
+                "--no-cache",  # Cache is not persisted, so we disable it
+            ]
+            uv_sync_args_joined = " ".join(uv_sync_args)
+
+            commands = [
+                "FROM base",
+                "RUN python -m pip install uv",
+                f"COPY /.pyproject.toml {uv_root}/pyproject.toml",
+                f"COPY /.uv.lock {uv_root}/uv.lock",
+                f"RUN uv sync {uv_sync_args_joined}",
+                f"ENV PATH={uv_root}/.venv/bin:$PATH UV_PYTHON={uv_root}/.venv",
+            ]
+
+            return DockerfileSpec(commands=commands, context_files=context_files)
+
+        return _Image._from_args(
+            base_images={"base": self},
+            dockerfile_function=build_dockerfile,
+            force_build=self.force_build or force_build,
+            secrets=secrets,
+            gpu_config=parse_gpu_config(gpu),
+        )
+
     def dockerfile_commands(
         self,
         *dockerfile_commands: Union[str, list[str]],
