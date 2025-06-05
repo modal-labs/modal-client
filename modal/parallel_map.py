@@ -425,7 +425,7 @@ async def _map_helper(
     """
 
     raw_input_queue: Any = SynchronizedQueue()  # type: ignore
-    raw_input_queue.init()
+    await raw_input_queue.init.aio()
 
     async def feed_queue():
         async with aclosing(async_input_gen) as streamer:
