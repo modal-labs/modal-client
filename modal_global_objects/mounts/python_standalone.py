@@ -27,7 +27,7 @@ def publish_python_standalone_mount(client, version: str) -> None:
     mount_name = python_standalone_mount_name(f"{version}-{libc}")
     try:
         Mount.from_name(mount_name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL).hydrate(client)
-        print(f"✅ Found existing mount {mount_name} in global namespace.")
+        print(f"➖ Found existing mount {mount_name} in global namespace.")
     except NotFoundError:
         print(f"📦 Unpacking python-build-standalone for {version}-{libc}.")
         with tempfile.TemporaryDirectory() as d:
