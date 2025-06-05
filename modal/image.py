@@ -1320,7 +1320,6 @@ class _Image(_Object, type_prefix="im"):
             if pyproject_toml is None:
                 parent_dir = os.path.dirname(lockfile_)
                 pyproject_toml_ = os.path.join(parent_dir, "pyproject.toml")
-                # TODO: Error with pyproject_toml_ does not exist
                 if not os.path.exists(pyproject_toml_):
                     msg = "pyproject.toml does not exist in the same directory as the uv.lock file"
                     raise InvalidError(msg)
