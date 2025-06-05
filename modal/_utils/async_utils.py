@@ -690,7 +690,7 @@ async def async_merge(
     assert values == {1, "a", 2, "b"}
     ```
     """
-    queue: asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper]] = asyncio.Queue()  # maxsize=len(generators) * 10)
+    queue: asyncio.Queue[Union[ValueWrapper[T], ExceptionWrapper]] = asyncio.Queue(maxsize=len(generators) * 10)
 
     async def producer(generator: AsyncGenerator[T, None]):
         try:
