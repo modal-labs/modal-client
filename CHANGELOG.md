@@ -6,51 +6,29 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.0.3.dev28 (2025-06-05)
+### 1.0.3 (2025-06-05)
 
-* Fixes a rare race condition that could sometimes make `Function.map` and similar calls deadlock
+This release contains several new features, improvements, and bug fixes:
 
-
-#### 1.0.3.dev25 (2025-06-05)
-
-* Fixed an issue where `Function.map()` and similar methods would stall for 55 seconds when passed an empty iterator as input, instead of completing immediately.
-
-
-#### 1.0.3.dev20 (2025-06-03)
-
-Raises error earlier when using interactive mode without using the `modal.enable_output` context manager.
-
-
-#### 1.0.3.dev13 (2025-05-30)
-
-- Added a new `h2_ports` parameter to `Sandbox.create` for exposing encrypted ports using HTTP/2. The following example will create an H2 port on 5002 and an HTTPS over HTTP/1.1 port on 5003.
-```
-sb = modal.Sandbox.create(app=app, h2_ports = [5002], encrypted_ports = [5003])
-```
-
-
-#### 1.0.3.dev9 (2025-05-30)
-
-- Added `--from-dotenv` and `--from-json` flags to `modal secret create`, which allows creating secrets by reading the secret value from local files.
-
-
-#### 1.0.3.dev1 (2025-05-27)
-
-- `Sandbox.terminate` no longer waits for container shutdown completion, but it still ensures that a terminated container will shutdown imminently. Status quo behavior (i.e., waiting until the sandbox is actually terminated) can be restored by putting `sb.wait(raise_on_termination=False)` after the termination.
-
-
-#### 1.0.3.dev0 (2025-05-27)
-
-- Added support for specifying a timezone on `Cron` schedules, helpful if you e.g. want a `Function` to run at 6am local time, regardless of whether daylight saving is in effect or not, for example:
-  ```
+* Added support for specifying a timezone on `Cron` schedules, which allows you to run a Function at a specific local time regardless of daylight savings:
+  ```python
   import modal
   app = modal.App()
   
-  
-  @app.function(schedule=modal.Cron("* 6 * * *"), timezone="America/New_York")
+  @app.function(schedule=modal.Cron("* 6 * * *"), timezone="America/New_York")  # Use tz database naming conventions
   def f():
       print("This function will run every day at 6am New York time.")
   ```
+* Added an `h2_ports` parameter to `Sandbox.create`, which exposes encrypted ports using HTTP/2. The following example will create an H2 port on 5002 and a port using HTTPS over HTTP/1.1 on 5003:
+  ```python
+  sb = modal.Sandbox.create(app=app, h2_ports = [5002], encrypted_ports = [5003])
+  ```
+* Added `--from-dotenv` and `--from-json` options to `modal secret create`, which will read from local files to populate Secret contents.
+* `Sandbox.terminate` no longer waits for container shutdown to complete before returning. It still ensures that a terminated container will shutdown imminently. To restore the previous behavior (i.e., to wait until the Sandbox is actually terminated), call `sb.wait(raise_on_termination=False)` after calling `sb.terminate()`.
+* Improved performance and stability for `modal volume get`.
+* Fixed a rare race condition that could sometimes make `Function.map` and similar calls deadlock.
+* Fixed an issue where `Function.map()` and similar methods would stall for 55 seconds when passed an empty iterator as input instead of completing immediately.
+* We now raise an error during App setup when using interactive mode without the `modal.enable_output` context manager. Previously, this would run the App but raise when `modal.interact()` was called.
 
 
 ### 1.0.2 (2025-05-26)
