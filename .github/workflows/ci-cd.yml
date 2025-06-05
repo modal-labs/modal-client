@@ -182,7 +182,7 @@ jobs:
 
       - name: Check entrypoint import
         run: |
-          python -c 'import modal._container_entrypoint'
+          python -c 'import modal._container_entrypoint; import modal._runtime.asgi'
           if [ "${{ matrix.image-builder-version }}" == "2024.04" ]; then python -c 'import fastapi'; fi
 
   publish-client:
