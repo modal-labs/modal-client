@@ -15,7 +15,7 @@ def publish_client_mount(client):
     profile_environment = config.get("environment")
     try:
         Mount.from_name(name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL).hydrate(client)
-        print(f"✅ Found existing mount {name} in global namespace.")
+        print(f"➖ Found existing mount {name} in global namespace.")
     except NotFoundError:
         mount._deploy(
             name,
