@@ -265,12 +265,13 @@ async def rm(
 async def cp(
     volume_name: str,
     paths: list[str],  # accepts multiple paths, last path is treated as destination path
+    recursive: bool = Option(False, "-r", "--recursive", help="Copy directories recursively"),
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
     volume = _Volume.from_name(volume_name, environment_name=env)
     *src_paths, dst_path = paths
-    await volume.copy_files(src_paths, dst_path)
+    await volume.copy_files(src_paths, dst_path, recursive)
 
 
 @volume_cli.command(
