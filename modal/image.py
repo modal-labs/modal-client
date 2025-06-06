@@ -1344,7 +1344,7 @@ class _Image(_Object, type_prefix="im"):
                 f"COPY /.pyproject.toml {uv_root}/pyproject.toml",
                 f"COPY /.uv.lock {uv_root}/uv.lock",
                 f"RUN uv sync {uv_sync_args_joined}",
-                f"ENV PATH={uv_root}/.venv/bin:$PATH UV_PYTHON={uv_root}/.venv",
+                f"ENV PATH={uv_root}/.venv/bin:$PATH",
             ]
 
             return DockerfileSpec(commands=commands, context_files=context_files)
