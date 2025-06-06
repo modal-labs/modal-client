@@ -22,6 +22,19 @@ class Error(Exception):
     """
 
 
+class _ContainerException(Exception):
+    # Internal wrapper that distinguishes errors raised by user code in containers
+    # from internal errors in the Modal SDK or server.
+
+    # This should never be raised into user code
+
+    def __init__(self, ex: BaseException):
+        self.ex = ex
+
+    def unwrap(self) -> BaseException:
+        return self.ex
+
+
 class RemoteError(Error):
     """Raised when an error occurs on the Modal server."""
 
