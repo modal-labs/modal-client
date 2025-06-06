@@ -697,7 +697,7 @@ def test_uv_sync_error(client, tmp_path):
     app = App()
     app.function(image=image)(dummy)
 
-    msg = "pyproject.toml does not exist in the same directory as the uv.lock file"
+    msg = "A pyproject.toml file does not exist in the same directory as the uv.lock file"
     with pytest.raises(InvalidError, match=msg):
         with app.run(client=client):
             pass

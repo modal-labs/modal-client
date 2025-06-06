@@ -1301,18 +1301,22 @@ class _Image(_Object, type_prefix="im"):
 
     def uv_sync(
         self,
-        lockfile: str = "./uv.lock",  # Path to lockfile
+        lockfile: str = "./uv.lock",  # Path to local lockfile
         # Path to pyproject.toml. If not provided, then use file in the same directory as the lockfile
         pyproject_toml: Optional[str] = None,
         *,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
+        extra_options: str = "",  # Extra options to pass to `uv sync`
+        uv_version: Optional[str] = None,  # uv version to use
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
-        """Install dependencies from a local `uv.lock` file using `uv sync`.
+        """Creates a virtual environment with the dependencies in `uv.lock` file using `uv sync`.
+
+        `pip` is used to update the `uv` version, ensure that `pip` is available in your base image.
 
         Note that only dependencies are installed. Please use `add_local_python_source` to include local python source
-        files. Please ensure that `modal` is a dependency by running `uv add modal`.
+        files.
         """
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
@@ -1321,7 +1325,10 @@ class _Image(_Object, type_prefix="im"):
                 parent_dir = os.path.dirname(lockfile_)
                 pyproject_toml_ = os.path.join(parent_dir, "pyproject.toml")
                 if not os.path.exists(pyproject_toml_):
-                    msg = "pyproject.toml does not exist in the same directory as the uv.lock file"
+                    msg = (
+                        "A pyproject.toml file does not exist in the same directory as the uv.lock file. Expected "
+                        f"{pyproject_toml_} to exist"
+                    )
                     raise InvalidError(msg)
             else:
                 pyproject_toml_ = os.path.expanduser(lockfile)
@@ -1336,15 +1343,18 @@ class _Image(_Object, type_prefix="im"):
                 "--no-cache",  # Cache is not persisted, so we disable it
                 "--no-managed-python",  # Use the system python interpreter to create venv
                 "--compile-bytecode",
+                extra_options,
             ]
             uv_sync_args_joined = " ".join(uv_sync_args)
 
             # TODO Make user configurable through a kwargs
-            UV_VERSION = "0.7.11"
+            commands = ["FROM base"]
+            if uv_version is None:
+                commands.append("RUN python -m pip install uv --upgrade")
+            else:
+                commands.append(f"RUN python -m pip install uv=={uv_version}")
 
-            commands = [
-                "FROM base",
-                f"RUN python -m pip install uv=={UV_VERSION}",
+            commands += [
                 f"COPY /.pyproject.toml {uv_root}/pyproject.toml",
                 f"COPY /.uv.lock {uv_root}/uv.lock",
                 f"RUN uv sync {uv_sync_args_joined}",
