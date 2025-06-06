@@ -1334,12 +1334,13 @@ class _Image(_Object, type_prefix="im"):
                 "--frozen",  # Do not update `uv.lock`
                 "--no-install-workspace",  # Do not install the root project or any "uv workspace"
                 "--no-cache",  # Cache is not persisted, so we disable it
+                "--no-managed-python",  # Use the system python interpreter to create venv
             ]
             uv_sync_args_joined = " ".join(uv_sync_args)
 
             commands = [
                 "FROM base",
-                "RUN python -m pip install uv",
+                "RUN python -m pip install uv --upgrade",
                 f"COPY /.pyproject.toml {uv_root}/pyproject.toml",
                 f"COPY /.uv.lock {uv_root}/uv.lock",
                 f"RUN uv sync {uv_sync_args_joined}",
