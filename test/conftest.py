@@ -1976,7 +1976,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             for idx in range(block_start, block_end):
                 start, end = slice_block(idx)
                 length = end - start
-                get_urls.append(f"{self.blob_host}/block/test-get-request:v1:{vol_file.data_sha256_hex}:{idx}:{start}:{length}")
+                get_urls.append(
+                    f"{self.blob_host}/block/test-get-request:v1:{vol_file.data_sha256_hex}:{idx}:{start}:{length}"
+                )
         else:
             block_start = min(total_start // BLOCK_SIZE, len(vol_file.block_hashes))
             block_end = min(ceildiv(total_end, BLOCK_SIZE), len(vol_file.block_hashes))
@@ -2270,7 +2272,7 @@ def blob_server():
             file_data = files_sha2data[file_sha256_hex]
             blob_id = file_data["data_blob_id"]
             if blob_id:
-                body = blobs[blob_id][start:start + length]
+                body = blobs[blob_id][start : start + length]
             else:
                 body = file_data["data"][start : start + length]
         elif version == "v2":
@@ -2462,7 +2464,7 @@ def mock_dir_factory():
         cwd = os.getcwd()
         try:
             os.chdir(root_dir)
-            yield
+            yield root_dir
         finally:
             os.chdir(cwd)
             shutil.rmtree(root_dir, ignore_errors=True)
