@@ -2,10 +2,11 @@
 import os
 import pytest
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import modal
-from modal.mount import Mount
+from modal.file_pattern_matcher import FilePatternMatcher
+from modal.mount import Mount, _MountDir
 
 from . import helpers
 
@@ -111,6 +112,45 @@ def test_image_mounts_are_not_traversed_on_declaration(supports_dir, monkeypatch
             files.add(fn)
     # sanity check - this test file should be included since we mounted the test dir
     assert Path(__file__) in files  # this test file should have been included
+
+
+def test_get_files_to_upload_ignore(mock_dir):
+    with mock_dir(
+        {
+            "venv": {"file_venv": ""},
+            "dir_a": {"dir_a_a": {"file_a_a": ""}, "venv": {"file_a_a_venv": ""}},
+            "dir_b": {"dir_b_a": {"file_b_a": ""}, "venv": {"file_b_a_venv": ""}},
+            "dir_c": {"venv": ""},  # a file named venv
+        }
+    ) as mock_dir:
+        mock_path = Path(mock_dir).resolve()
+
+        mount_dir = _MountDir(
+            local_dir=mock_path,
+            remote_path=PurePosixPath("/root"),
+            ignore=FilePatternMatcher("**/venv/"),
+            recursive=True,
+        )
+
+        # _walk_and_prune should prune out all ignored directories, but not yet files
+        included_files = set(mount_dir._walk_and_prune(mock_path))
+        assert len(included_files) == 3
+        expected_files = {
+            (mock_path / "dir_a" / "dir_a_a" / "file_a_a").as_posix(),
+            (mock_path / "dir_b" / "dir_b_a" / "file_b_a").as_posix(),
+            (mock_path / "dir_c" / "venv").as_posix(),  # a file named venv, not ignored
+        }
+        assert included_files == expected_files
+
+        # after get_files_to_upload, both files and directories should be pruned out
+        files = list(mount_dir.get_files_to_upload())
+        assert len(files) == 2
+        included_files = {file[0].as_posix() for file in files}
+        expected_files = {
+            (mock_path / "dir_a" / "dir_a_a" / "file_a_a").as_posix(),
+            (mock_path / "dir_b" / "dir_b_a" / "file_b_a").as_posix(),
+        }
+        assert included_files == expected_files
 
 
 def test_mount_dedupe_explicit(servicer, credentials, supports_dir, server_url_env):
