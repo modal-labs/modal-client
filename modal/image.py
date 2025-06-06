@@ -1421,11 +1421,10 @@ class _Image(_Object, type_prefix="im"):
         extra_options_args = shlex.split(extra_options)
         remote_volume_path = "/uv_cache"
 
+        volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {}
         if cache_volume is not None:
-            volumes = {remote_volume_path: cache_volume}
+            volumes[remote_volume_path] = cache_volume
             extra_options_args.append(f"--cache-dir={remote_volume_path}")
-        else:
-            volumes = {}
 
         if uv_version is None:
             image = self.dockerfile_commands("COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv")
