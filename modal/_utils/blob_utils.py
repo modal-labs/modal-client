@@ -182,23 +182,14 @@ def get_content_length(data: BinaryIO) -> int:
     return content_length - pos
 
 
-async def _blob_upload(
-    upload_hashes: UploadHashes, data: Union[bytes, BinaryIO], stub, progress_report_cb: Optional[Callable] = None
+async def _blob_upload_without_fallback(
+    content_length: int,
+    resp: api_pb2.BlobCreateResponse,
+    data: Union[bytes, BinaryIO],
+    upload_hashes: UploadHashes,
+    stub,
+    progress_report_cb: Optional[Callable] = None,
 ) -> str:
-    if isinstance(data, bytes):
-        data = BytesIO(data)
-
-    content_length = get_content_length(data)
-
-    req = api_pb2.BlobCreateRequest(
-        content_md5=upload_hashes.md5_base64,
-        content_sha256_base64=upload_hashes.sha256_base64,
-        content_length=content_length,
-    )
-    resp = await retry_transient_errors(stub.BlobCreate, req)
-
-    blob_id = resp.blob_id
-
     if resp.WhichOneof("upload_type_oneof") == "multipart":
         await perform_multipart_upload(
             data,
@@ -220,6 +211,93 @@ async def _blob_upload(
             payload,
             # for single part uploads, we use server side md5 checksums
             content_md5_b64=upload_hashes.md5_base64,
+        )
+
+    return resp.blob_id
+
+
+async def _blob_upload_with_fallback(
+    content_length: int,
+    resp: api_pb2.BlobCreateResponse,
+    data: Union[bytes, BinaryIO],
+    upload_hashes: UploadHashes,
+    stub,
+    progress_report_cb: Optional[Callable] = None,
+) -> str:
+    if len(resp.multiparts) > 0:
+        for idx, (part, blob) in enumerate(zip(resp.multiparts, resp.blob_ids)):
+            try:
+                await perform_multipart_upload(
+                    data,
+                    content_length=content_length,
+                    max_part_size=part.part_length,
+                    part_urls=part.upload_urls,
+                    completion_url=part.completion_url,
+                    upload_chunk_size=DEFAULT_SEGMENT_CHUNK_SIZE,
+                    progress_report_cb=progress_report_cb,
+                )
+                return blob
+            except Exception as e:
+                if idx == len(resp.multiparts) - 1:
+                    raise e
+                logger.warn(f"Error when uploading inputs: {e}")
+                logger.warn("Trying backup url...")
+                continue
+    else:
+        from .bytes_io_segment_payload import BytesIOSegmentPayload
+
+        payload = BytesIOSegmentPayload(
+            data, segment_start=0, segment_length=content_length, progress_report_cb=progress_report_cb
+        )
+        for idx, (url, blob) in enumerate(zip(resp.upload_urls, resp.blob_ids)):
+            try:
+                await _upload_to_s3_url(
+                    url,
+                    payload,
+                    # for single part uploads, we use server side md5 checksums
+                    content_md5_b64=upload_hashes.md5_base64,
+                )
+                return blob
+            except Exception as e:
+                if idx == len(resp.upload_urls) - 1:
+                    raise e
+                logger.warn(f"Error when uploading inputs: {e}")
+                logger.warn("Trying backup url...")
+                continue
+
+
+async def _blob_upload(
+    upload_hashes: UploadHashes, data: Union[bytes, BinaryIO], stub, progress_report_cb: Optional[Callable] = None
+) -> str:
+    if isinstance(data, bytes):
+        data = BytesIO(data)
+
+    content_length = get_content_length(data)
+
+    req = api_pb2.BlobCreateRequest(
+        content_md5=upload_hashes.md5_base64,
+        content_sha256_base64=upload_hashes.sha256_base64,
+        content_length=content_length,
+    )
+    resp = await retry_transient_errors(stub.BlobCreate, req)
+    is_legacy_server = len(resp.blob_ids) == 0
+    if is_legacy_server:
+        blob_id = await _blob_upload_without_fallback(
+            content_length,
+            resp,
+            data,
+            upload_hashes,
+            stub,
+            progress_report_cb,
+        )
+    else:
+        blob_id = await _blob_upload_with_fallback(
+            content_length,
+            resp,
+            data,
+            upload_hashes,
+            stub,
+            progress_report_cb,
         )
 
     if progress_report_cb:
@@ -380,7 +458,9 @@ def get_file_upload_spec_from_fileobj(fp: BinaryIO, mount_filename: PurePosixPat
         mode,
     )
 
+
 _FileUploadSource2 = Callable[[], ContextManager[BinaryIO]]
+
 
 @dataclasses.dataclass
 class FileUploadSpec2:
@@ -392,7 +472,6 @@ class FileUploadSpec2:
     blocks_sha256: list[bytes]
     mode: int  # file permission bits (last 12 bits of st_mode)
     size: int
-
 
     @staticmethod
     async def from_path(
@@ -416,7 +495,6 @@ class FileUploadSpec2:
             hash_semaphore,
         )
 
-
     @staticmethod
     async def from_fileobj(
         source_fp: Union[BinaryIO, BytesIO],
@@ -426,6 +504,7 @@ class FileUploadSpec2:
     ) -> "FileUploadSpec2":
         try:
             fileno = source_fp.fileno()
+
             def source():
                 new_fd = os.dup(fileno)
                 fp = os.fdopen(new_fd, "rb")
@@ -436,6 +515,7 @@ class FileUploadSpec2:
             # `.fileno()` not available; assume BytesIO-like type
             source_fp = cast(BytesIO, source_fp)
             buffer = source_fp.getbuffer()
+
             def source():
                 return BytesIO(buffer)
 
@@ -446,7 +526,6 @@ class FileUploadSpec2:
             mode,
             hash_semaphore,
         )
-
 
     @staticmethod
     async def _create(

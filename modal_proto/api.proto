@@ -647,6 +647,10 @@ message BlobCreateResponse {
     string upload_url = 1;
     MultiPartUpload multipart = 3;
   }
+
+  repeated string blob_ids = 4;
+  repeated string upload_urls = 5;
+  repeated MultiPartUpload multiparts = 6;
 }
 
 message BlobGetRequest {
