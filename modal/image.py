@@ -1299,6 +1299,78 @@ class _Image(_Object, type_prefix="im"):
             gpu_config=parse_gpu_config(gpu),
         )
 
+    def uv_sync(
+        self,
+        lockfile: str = "./uv.lock",  # Path to local lockfile
+        # Path to pyproject.toml. If not provided, then use file in the same directory as the lockfile
+        pyproject_toml: Optional[str] = None,
+        *,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
+        extra_options: str = "",  # Extra options to pass to `uv sync`
+        uv_version: Optional[str] = None,  # uv version to use
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
+    ) -> "_Image":
+        """Creates a virtual environment with the dependencies in `uv.lock` file using `uv sync`.
+
+        **Examples**
+        ```python
+        image = modal.Image.debian_slim().uv_sync()
+        ```
+        """
+
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+            lockfile_ = os.path.expanduser(lockfile)
+            if pyproject_toml is None:
+                parent_dir = os.path.dirname(lockfile_)
+                pyproject_toml_ = os.path.join(parent_dir, "pyproject.toml")
+                if not os.path.exists(pyproject_toml_):
+                    msg = f"Expected {pyproject_toml_} to exist in the same directory as the uv.lock file"
+                    raise InvalidError(msg)
+            else:
+                pyproject_toml_ = os.path.expanduser(pyproject_toml)
+                if not os.path.exists(pyproject_toml_):
+                    msg = f"Expected {pyproject_toml_} to exist"
+                    raise InvalidError(msg)
+
+            uv_root = "/.uv"
+            context_files = {"/.uv.lock": lockfile_, "/.pyproject.toml": pyproject_toml_}
+
+            uv_sync_args = [
+                f"--project={uv_root}",
+                "--frozen",  # Do not update `uv.lock`
+                "--no-install-workspace",  # Do not install the root project or any "uv workspace"
+                "--no-cache",  # Cache is not persisted, so we disable it
+                "--no-managed-python",  # Use the system python interpreter to create venv
+                "--compile-bytecode",
+                extra_options,
+            ]
+            uv_sync_args_joined = " ".join(uv_sync_args)
+
+            # TODO Make user configurable through a kwargs
+            commands = ["FROM base"]
+            if uv_version is None:
+                commands.append("COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv")
+            else:
+                commands.append(f"COPY --from=ghcr.io/astral-sh/uv:{uv_version} /uv /usr/local/bin/uv")
+
+            commands += [
+                f"COPY /.pyproject.toml {uv_root}/pyproject.toml",
+                f"COPY /.uv.lock {uv_root}/uv.lock",
+                f"RUN uv sync {uv_sync_args_joined}",
+                f"ENV PATH={uv_root}/.venv/bin:$PATH",
+            ]
+
+            return DockerfileSpec(commands=commands, context_files=context_files)
+
+        return _Image._from_args(
+            base_images={"base": self},
+            dockerfile_function=build_dockerfile,
+            force_build=self.force_build or force_build,
+            secrets=secrets,
+            gpu_config=parse_gpu_config(gpu),
+        )
+
     def dockerfile_commands(
         self,
         *dockerfile_commands: Union[str, list[str]],
