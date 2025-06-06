@@ -327,6 +327,18 @@ def _create_context_mount_function(
         return auto_created_context_mount_fn
 
 
+def _uv_pip_install(pkgs: list[str], extra_options_args: list[str]):
+    """Run uv pip install with pkgs and extra_options_args."""
+    from subprocess import run
+
+    package_args = sorted(pkgs)
+    run(
+        ["uv", "pip", "install", "--python", sys.executable, "--compile-bytecode", "--link-mode", "copy"]
+        + extra_options_args
+        + package_args
+    )
+
+
 class _ImageRegistryConfig:
     """mdmd:hidden"""
 
@@ -1373,6 +1385,60 @@ class _Image(_Object, type_prefix="im"):
                 ignore=ignore, dockerfile_cmds=cmds, context_mount=context_mount, context_dir=context_dir
             ),
             force_build=self.force_build or force_build,
+        )
+
+    def uv_pip_install(
+        self,
+        *packages: Union[str, list[str]],
+        extra_options: str = "",  # Additional options to pass to pip install
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
+        uv_version: Optional[str] = None,
+        cache_volume: Optional[Union[_Volume, _CloudBucketMount]] = None,
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
+    ):
+        """Install a list of Python packages using `uv pip install`.
+
+        **Examples**
+        ```python
+        image = modal.Image.debian_slim().uv_pip_install("numpy")
+        ```
+
+        To speed up installation, you can pass in a volume cache:
+        ```python
+        cache_volume = modal.Volume.from_name(name="uv-cache-volume", create_if_missing=True)
+        image = modal.Image.debian_slim().uv_pip_install("torch", cache_volume=cache_volume)
+        ```
+        """
+        pkgs = _flatten_str_args("uv_pip_install", "packages", packages)
+        if not pkgs:
+            return self
+        elif not _validate_packages(pkgs):
+            raise InvalidError(
+                "Package list for `Image.uv_pip_install` cannot contain other arguments;"
+                " try the `extra_options` parameter instead."
+            )
+
+        extra_options_args = shlex.split(extra_options)
+        remote_volume_path = "/uv_cache"
+        if cache_volume is not None:
+            volumes = {remote_volume_path: cache_volume}
+            extra_options_args.append(f"--cache-dir={remote_volume_path}")
+        else:
+            volumes = {}
+
+        if uv_version is None:
+            image = self.dockerfile_commands("COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv")
+        else:
+            image = self.dockerfile_commands(f"COPY --from=ghcr.io/astral-sh/uv:{uv_version} /uv /usr/local/bin/uv")
+
+        return image.run_function(
+            _uv_pip_install,
+            volumes=volumes,
+            kwargs={"pkgs": pkgs, "extra_options_args": extra_options_args},
+            force_build=force_build,
+            secrets=secrets,
+            gpu=gpu,
         )
 
     def entrypoint(
