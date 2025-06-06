@@ -1338,9 +1338,12 @@ class _Image(_Object, type_prefix="im"):
             ]
             uv_sync_args_joined = " ".join(uv_sync_args)
 
+            # TODO Make user configurable through a kwargs
+            UV_VERSION = "0.7.11"
+
             commands = [
                 "FROM base",
-                "RUN python -m pip install uv --upgrade",
+                f"RUN python -m pip install uv=={UV_VERSION}",
                 f"COPY /.pyproject.toml {uv_root}/pyproject.toml",
                 f"COPY /.uv.lock {uv_root}/uv.lock",
                 f"RUN uv sync {uv_sync_args_joined}",
