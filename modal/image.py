@@ -1313,10 +1313,10 @@ class _Image(_Object, type_prefix="im"):
     ) -> "_Image":
         """Creates a virtual environment with the dependencies in `uv.lock` file using `uv sync`.
 
-        `pip` is used to update the `uv` version, ensure that `pip` is available in your base image.
-
-        Note that only dependencies are installed. Please use `add_local_python_source` to include local python source
-        files.
+        **Examples**
+        ```python
+        image = modal.Image.debian_slim().uv_sync()
+        ```
         """
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
@@ -1350,9 +1350,9 @@ class _Image(_Object, type_prefix="im"):
             # TODO Make user configurable through a kwargs
             commands = ["FROM base"]
             if uv_version is None:
-                commands.append("RUN python -m pip install uv --upgrade")
+                commands.append("COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv")
             else:
-                commands.append(f"RUN python -m pip install uv=={uv_version}")
+                commands.append(f"COPY --from=ghcr.io/astral-sh/uv:{uv_version} /uv /usr/local/bin/uv")
 
             commands += [
                 f"COPY /.pyproject.toml {uv_root}/pyproject.toml",
