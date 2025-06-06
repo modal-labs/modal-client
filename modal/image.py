@@ -331,11 +331,10 @@ def _uv_pip_install(pkgs: list[str], extra_options_args: list[str]):
     """Run uv pip install with pkgs and extra_options_args."""
     from subprocess import run
 
-    package_args = sorted(pkgs)
     run(
         ["uv", "pip", "install", "--python", sys.executable, "--compile-bytecode", "--link-mode", "copy"]
         + extra_options_args
-        + package_args
+        + pkgs
     )
 
 
@@ -1436,7 +1435,7 @@ class _Image(_Object, type_prefix="im"):
         return image.run_function(
             _uv_pip_install,
             volumes=volumes,
-            kwargs={"pkgs": pkgs, "extra_options_args": extra_options_args},
+            kwargs={"pkgs": sorted(pkgs), "extra_options_args": extra_options_args},
             force_build=force_build,
             secrets=secrets,
             gpu=gpu,
