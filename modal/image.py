@@ -1421,6 +1421,7 @@ class _Image(_Object, type_prefix="im"):
 
         extra_options_args = shlex.split(extra_options)
         remote_volume_path = "/uv_cache"
+
         if cache_volume is not None:
             volumes = {remote_volume_path: cache_volume}
             extra_options_args.append(f"--cache-dir={remote_volume_path}")

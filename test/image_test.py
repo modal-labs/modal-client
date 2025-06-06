@@ -207,6 +207,28 @@ def test_image_python_packages(builder_version, servicer, client):
             pass
 
 
+@pytest.mark.parametrize("uv_version, with_volume", [(None, True), ("0.7.9", False)])
+def test_image_uv_pip_install(builder_version, servicer, client, uv_version, with_volume):
+    app = App()
+
+    if with_volume:
+        cache_vol = modal.Volume.from_name("volume_cache", create_if_missing=True)
+    else:
+        cache_vol = None
+
+    image = Image.debian_slim().uv_pip_install("scikit-learn", uv_version=uv_version, cache_volume=cache_vol)
+
+    uv_tag = uv_version if uv_version else "latest"
+
+    app.function(image=image)(dummy)
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        assert any(
+            f"COPY --from=ghcr.io/astral-sh/uv:{uv_tag} /uv /usr/local/bin/uv" in cmd
+            for cmd in layers[1].dockerfile_commands
+        )
+
+
 def test_run_commands_secrets_type_validation(builder_version, servicer, client):
     app = App()
     image = Image.debian_slim().run_commands(
