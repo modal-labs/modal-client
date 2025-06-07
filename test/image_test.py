@@ -338,6 +338,35 @@ def test_from_registry_add_python(builder_version, servicer, client):
             assert not any("ln -s /usr/local/bin/python3" in cmd for cmd in commands)
 
 
+def test_image_uv_sync(builder_version, servicer, client, tmp_path):
+    pyproject_toml = tmp_path / "pyproject.toml"
+    uv_lock = tmp_path / "uv.lock"
+
+    pyproject_toml.touch()
+    uv_lock.touch()
+
+    app = App()
+    image = Image.debian_slim().uv_sync(
+        str(pyproject_toml),
+        str(uv_lock),
+        find_links="foo-link",
+        default_index="foo-default-index",
+        index="foo-index",
+    )
+    app.function(image=image)(dummy)
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        uv_sync_cmds = [cmd for cmd in layers[0].dockerfile_commands if "uv sync" in cmd]
+        assert len(uv_sync_cmds) == 1
+        uv_sync_cmd = uv_sync_cmds[0]
+        for cmd_arg in [
+            "--find-links=foo-link",
+            "--default-index=foo-default-index",
+            "--index=foo-index",
+        ]:
+            assert cmd_arg in uv_sync_cmd
+
+
 def test_image_pip_install_pyproject(builder_version, servicer, client):
     pyproject_toml = os.path.join(os.path.dirname(__file__), "supports/test-pyproject.toml")
 
