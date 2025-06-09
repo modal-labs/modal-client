@@ -1053,11 +1053,11 @@ def test_batch_function_invalid_error():
     with pytest.raises(InvalidError, match="must be a non-negative integer"):
         app.function(batched(max_batch_size=1, wait_ms=-1))(dummy)
 
-    with pytest.raises(InvalidError, match="must be less than"):
-        app.function(batched(max_batch_size=1000, wait_ms=1))(dummy)
+    with pytest.raises(InvalidError, match="cannot be greater than"):
+        app.function(batched(max_batch_size=1000 + 1, wait_ms=1))(dummy)
 
-    with pytest.raises(InvalidError, match="must be less than"):
-        app.function(batched(max_batch_size=1, wait_ms=10 * 60 * 1000))(dummy)
+    with pytest.raises(InvalidError, match="cannot be greater than"):
+        app.function(batched(max_batch_size=1, wait_ms=10 * 60 * 1000 + 1))(dummy)
 
     with pytest.raises(InvalidError, match="cannot return generators"):
 
