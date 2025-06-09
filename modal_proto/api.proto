@@ -647,6 +647,11 @@ message BlobCreateResponse {
     string upload_url = 1;
     MultiPartUpload multipart = 3;
   }
+  repeated string blob_ids = 4;
+  oneof upload_types_oneof {
+    UploadUrlList upload_urls = 5;
+    MultiPartUploadList multiparts = 6;
+  }
 }
 
 message BlobGetRequest {
@@ -2053,6 +2058,10 @@ message MultiPartUpload {
   string completion_url = 3;
 }
 
+message MultiPartUploadList {
+  repeated MultiPartUpload items = 1;
+}
+
 message NetworkAccess {
   enum NetworkAccessType {
     UNSPECIFIED = 0;
@@ -2912,6 +2921,10 @@ message TunnelStopRequest {
 
 message TunnelStopResponse {
   bool exists = 1;
+}
+
+message UploadUrlList {
+  repeated string items = 1;
 }
 
 message VolumeCommitRequest {
