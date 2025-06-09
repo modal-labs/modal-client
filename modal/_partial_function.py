@@ -789,12 +789,12 @@ def _batched(
         )
     if max_batch_size < 1:
         raise InvalidError("max_batch_size must be a positive integer.")
-    if max_batch_size >= MAX_MAX_BATCH_SIZE:
-        raise InvalidError(f"max_batch_size must be less than {MAX_MAX_BATCH_SIZE}.")
+    if max_batch_size > MAX_MAX_BATCH_SIZE:
+        raise InvalidError(f"max_batch_size cannot be greater than {MAX_MAX_BATCH_SIZE}.")
     if wait_ms < 0:
         raise InvalidError("wait_ms must be a non-negative integer.")
-    if wait_ms >= MAX_BATCH_WAIT_MS:
-        raise InvalidError(f"wait_ms must be less than {MAX_BATCH_WAIT_MS}.")
+    if wait_ms > MAX_BATCH_WAIT_MS:
+        raise InvalidError(f"wait_ms cannot be greater than {MAX_BATCH_WAIT_MS}.")
 
     flags = _PartialFunctionFlags.CALLABLE_INTERFACE | _PartialFunctionFlags.BATCHED
     params = _PartialFunctionParams(batch_max_size=max_batch_size, batch_wait_ms=wait_ms)
