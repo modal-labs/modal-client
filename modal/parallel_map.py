@@ -593,7 +593,7 @@ def _spawn_map_sync(self, *input_iterators, kwargs={}) -> None:
 
     return run_coroutine_in_temporary_event_loop(
         _spawn_map_async(self, *input_iterators, kwargs=kwargs),
-        "You can't run Function.spawn_map() from an async function. Use Function.map.aio() instead.",
+        "You can't run Function.spawn_map() from an async function. Use Function.spawn_map.aio() instead.",
     )
 
 
