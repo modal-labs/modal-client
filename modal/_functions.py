@@ -141,7 +141,13 @@ class _Invocation:
         stub = client.stub
 
         function_id = function.object_id
-        item = await _create_input(args, kwargs, stub, method_name=function._use_method_name)
+        item = await _create_input(
+            args,
+            kwargs,
+            stub,
+            method_name=function._use_method_name,
+            function_call_invocation_type=function_call_invocation_type,
+        )
 
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
