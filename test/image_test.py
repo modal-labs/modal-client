@@ -684,6 +684,10 @@ def test_uv_sync(builder_version, servicer, client):
     with app.run(client=client):
         layers = get_image_layers(image.object_id, servicer)
         context_files = {f.filename for layer in layers for f in layer.context_files}
+        assert "COPY /.pyproject.toml /.uv/pyproject.toml" in layers[0].dockerfile_commands
+        assert "COPY /.uv.lock /.uv/uv.lock" in layers[0].dockerfile_commands
+        assert any("--frozen" in cmd for cmd in layers[0].dockerfile_commands)
+
         if builder_version <= "2024.10":
             assert context_files == {"/.uv.lock", "/.pyproject.toml", "/modal_requirements.txt"}
         else:
@@ -700,6 +704,10 @@ def test_uv_sync_just_pyproject(builder_version, servicer, client):
 
     with app.run(client=client):
         layers = get_image_layers(image.object_id, servicer)
+        assert "COPY /.pyproject.toml /.uv/pyproject.toml" in layers[0].dockerfile_commands
+        assert "COPY /.uv.lock /.uv/uv.lock" not in layers[0].dockerfile_commands
+        assert not any("--frozen" in cmd for cmd in layers[0].dockerfile_commands)
+
         context_files = {f.filename for layer in layers for f in layer.context_files}
         if builder_version <= "2024.10":
             assert context_files == {"/.pyproject.toml", "/modal_requirements.txt"}
