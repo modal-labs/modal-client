@@ -674,9 +674,9 @@ def test_poetry(builder_version, servicer, client):
 
 
 def test_uv_sync(builder_version, servicer, client):
-    uv_lock_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_project", "uv.lock")
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_project")
 
-    image = Image.debian_slim().uv_sync(uv_lock_path)
+    image = Image.debian_slim().uv_sync(uv_project_path)
 
     app = App()
     app.function(image=image)(dummy)
@@ -690,14 +690,31 @@ def test_uv_sync(builder_version, servicer, client):
             assert context_files == {"/.uv.lock", "/.pyproject.toml"}
 
 
-def test_uv_sync_error(client, tmp_path):
-    uv_lock_path = os.path.join(tmp_path, "uv.lock")
-    image = Image.debian_slim().uv_sync(uv_lock_path)
+def test_uv_sync_just_pyproject(builder_version, servicer, client):
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_sync_just_pyproject")
+
+    image = Image.debian_slim().uv_sync(uv_project_path)
 
     app = App()
     app.function(image=image)(dummy)
 
-    msg = "exist in the same directory as the uv.lock file"
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        context_files = {f.filename for layer in layers for f in layer.context_files}
+        if builder_version <= "2024.10":
+            assert context_files == {"/.pyproject.toml", "/modal_requirements.txt"}
+        else:
+            assert context_files == {"/.pyproject.toml"}
+
+
+def test_uv_sync_error(client, tmp_path):
+    image = Image.debian_slim().uv_sync(tmp_path)
+
+    app = App()
+    app.function(image=image)(dummy)
+
+    expected_pyproject_file = os.path.join(tmp_path, "pyproject.toml")
+    msg = f"Expected {expected_pyproject_file} to exist"
     with pytest.raises(InvalidError, match=msg):
         with app.run(client=client):
             pass

@@ -1301,9 +1301,7 @@ class _Image(_Object, type_prefix="im"):
 
     def uv_sync(
         self,
-        lockfile: str = "./uv.lock",  # Path to local lockfile
-        # Path to pyproject.toml. If not provided, then use file in the same directory as the lockfile
-        pyproject_toml: Optional[str] = None,
+        uv_project_dir: str = "./",  # Path to local uv mananged project
         *,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         extra_options: str = "",  # Extra options to pass to `uv sync`
@@ -1320,21 +1318,22 @@ class _Image(_Object, type_prefix="im"):
         """
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            lockfile_ = os.path.expanduser(lockfile)
-            if pyproject_toml is None:
-                parent_dir = os.path.dirname(lockfile_)
-                pyproject_toml_ = os.path.join(parent_dir, "pyproject.toml")
-                if not os.path.exists(pyproject_toml_):
-                    msg = f"Expected {pyproject_toml_} to exist in the same directory as the uv.lock file"
-                    raise InvalidError(msg)
-            else:
-                pyproject_toml_ = os.path.expanduser(pyproject_toml)
-                if not os.path.exists(pyproject_toml_):
-                    msg = f"Expected {pyproject_toml_} to exist"
-                    raise InvalidError(msg)
+            uv_project_dir_ = os.path.expanduser(uv_project_dir)
+            pyproject_toml = os.path.join(uv_project_dir_, "pyproject.toml")
+
+            context_files = {}
+
+            if not os.path.exists(pyproject_toml):
+                msg = f"Expected {pyproject_toml} to exist in {uv_project_dir}"
+                raise InvalidError(msg)
+
+            context_files["/.pyproject.toml"] = pyproject_toml
+
+            uv_lock = os.path.join(uv_project_dir_, "uv.lock")
+            if os.path.exists(uv_lock):
+                context_files["/.uv.lock"] = uv_lock
 
             uv_root = "/.uv"
-            context_files = {"/.uv.lock": lockfile_, "/.pyproject.toml": pyproject_toml_}
 
             uv_sync_args = [
                 f"--project={uv_root}",
@@ -1347,7 +1346,6 @@ class _Image(_Object, type_prefix="im"):
             ]
             uv_sync_args_joined = " ".join(uv_sync_args)
 
-            # TODO Make user configurable through a kwargs
             commands = ["FROM base"]
             if uv_version is None:
                 commands.append("COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv")
