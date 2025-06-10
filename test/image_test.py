@@ -715,6 +715,20 @@ def test_uv_sync_just_pyproject(builder_version, servicer, client):
             assert context_files == {"/.pyproject.toml"}
 
 
+def test_uv_sync_no_modal(builder_version, client):
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_no_modal")
+
+    image = Image.debian_slim().uv_sync(uv_project_path)
+
+    app = App()
+    app.function(image=image)(dummy)
+
+    if builder_version <= "2024.10":
+        with pytest.raises(InvalidError, match="requires modal to be specified"):
+            with app.run(client=client):
+                pass
+
+
 def test_uv_sync_error(client, tmp_path):
     image = Image.debian_slim().uv_sync(tmp_path)
 
