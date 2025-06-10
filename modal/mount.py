@@ -141,6 +141,8 @@ class _MountDir(_MountEntry):
 
     def _walk_and_prune(self, top_dir: Path) -> Generator[str, None, None]:
         for root, dirs, files in os.walk(top_dir, topdown=True):
+            # with topdown=True, os.walk allows modifying the dirnames list in-place, and will only
+            # recurse into dirs that are not ignored.
             dirs[:] = [d for d in dirs if not self.ignore(Path(os.path.join(root, d)).relative_to(top_dir))]
             for file in files:
                 yield os.path.join(root, file)
