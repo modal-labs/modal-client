@@ -173,11 +173,7 @@ class _FileIO(Generic[T]):
                 raise ValueError(f"Invalid file mode: {mode}")
             seen_chars.add(char)
 
-    def _handle_error(self, error: api_pb2.SystemErrorMessage) -> None:
-        error_class = ERROR_MAPPING.get(error.error_code, FilesystemExecutionError)
-        raise error_class(error.error_message)
-
-    async def _consume_output(self, exec_id: str) -> AsyncIterator[Optional[bytes]]:
+    async def _consume_output(self, exec_id: str) -> AsyncIterator[Optional[bytes] | Exception]:
         req = api_pb2.ContainerFilesystemExecGetOutputRequest(
             exec_id=exec_id,
             timeout=55,
@@ -187,7 +183,8 @@ class _FileIO(Generic[T]):
                 yield None
                 break
             if batch.HasField("error"):
-                self._handle_error(batch.error)
+                error_class = ERROR_MAPPING.get(batch.error.error_code, FilesystemExecutionError)
+                yield error_class(batch.error.error_message)
             for message in batch.output:
                 yield message
 
@@ -475,6 +472,8 @@ class _FileIO(Generic[T]):
                     item = self._watch_output_buffer.pop(0)
                     if item is None:
                         break
+                    if isinstance(item, Exception):
+                        raise item
                     buffer += item
                     # a single event may be split across multiple messages
                     # the end of an event is marked by two newlines
