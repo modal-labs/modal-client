@@ -1321,6 +1321,13 @@ class _Image(_Object, type_prefix="im"):
             uv_project_dir_ = os.path.expanduser(uv_project_dir)
             pyproject_toml = os.path.join(uv_project_dir_, "pyproject.toml")
 
+            uv_root = "/.uv"
+            commands = ["FROM base"]
+            if uv_version is None:
+                commands.append("COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv")
+            else:
+                commands.append(f"COPY --from=ghcr.io/astral-sh/uv:{uv_version} /uv /usr/local/bin/uv")
+
             context_files = {}
 
             if not os.path.exists(pyproject_toml):
@@ -1328,12 +1335,12 @@ class _Image(_Object, type_prefix="im"):
                 raise InvalidError(msg)
 
             context_files["/.pyproject.toml"] = pyproject_toml
+            commands.append(f"COPY /.pyproject.toml {uv_root}/pyproject.toml")
 
             uv_lock = os.path.join(uv_project_dir_, "uv.lock")
             if os.path.exists(uv_lock):
                 context_files["/.uv.lock"] = uv_lock
-
-            uv_root = "/.uv"
+                commands.append(f"COPY /.uv.lock {uv_root}/uv.lock")
 
             uv_sync_args = [
                 f"--project={uv_root}",
@@ -1346,15 +1353,7 @@ class _Image(_Object, type_prefix="im"):
             ]
             uv_sync_args_joined = " ".join(uv_sync_args)
 
-            commands = ["FROM base"]
-            if uv_version is None:
-                commands.append("COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv")
-            else:
-                commands.append(f"COPY --from=ghcr.io/astral-sh/uv:{uv_version} /uv /usr/local/bin/uv")
-
             commands += [
-                f"COPY /.pyproject.toml {uv_root}/pyproject.toml",
-                f"COPY /.uv.lock {uv_root}/uv.lock",
                 f"RUN uv sync {uv_sync_args_joined}",
                 f"ENV PATH={uv_root}/.venv/bin:$PATH",
             ]
