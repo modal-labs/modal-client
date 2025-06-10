@@ -1317,6 +1317,33 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
 
+        def _check_pyproject_toml(pyproject_toml: str, version: ImageBuilderVersion):
+            if not os.path.exists(pyproject_toml):
+                msg = f"Expected {pyproject_toml} to exist in {uv_project_dir}"
+                raise InvalidError(msg)
+
+            if version > "2024.10":
+                # For builder version > 2024.10, modal is mounted at the end and is not
+                # a requirement in `uv.lock`
+                return
+
+            import toml
+
+            with open(pyproject_toml) as f:
+                pyproject_toml_content = toml.load(f)
+            dependencies = pyproject_toml_content["project"]["dependencies"]
+
+            PACKAGE_REGEX = re.compile(r"^[\w-]+")
+
+            def _extract_package(package) -> str:
+                m = PACKAGE_REGEX.match(package)
+                return m.group(0) if m else ""
+
+            if not any(_extract_package(dependency) == "modal" for dependency in dependencies):
+                raise InvalidError(
+                    "Image builder version <= 2024.10 requires modal to be specified in your pyproject.toml file"
+                )
+
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             uv_project_dir_ = os.path.expanduser(uv_project_dir)
             pyproject_toml = os.path.join(uv_project_dir_, "pyproject.toml")
@@ -1339,9 +1366,7 @@ class _Image(_Object, type_prefix="im"):
 
             context_files = {}
 
-            if not os.path.exists(pyproject_toml):
-                msg = f"Expected {pyproject_toml} to exist in {uv_project_dir}"
-                raise InvalidError(msg)
+            _check_pyproject_toml(pyproject_toml, version)
 
             context_files["/.pyproject.toml"] = pyproject_toml
             commands.append(f"COPY /.pyproject.toml {uv_root}/pyproject.toml")
