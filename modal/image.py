@@ -1322,7 +1322,16 @@ class _Image(_Object, type_prefix="im"):
             pyproject_toml = os.path.join(uv_project_dir_, "pyproject.toml")
 
             uv_root = "/.uv"
+            uv_sync_args = [
+                f"--project={uv_root}",
+                "--no-install-workspace",  # Do not install the root project or any "uv workspace"
+                "--no-cache",  # Cache is not persisted, so we disable it
+                "--no-managed-python",  # Use the system python interpreter to create venv
+                "--compile-bytecode",
+                extra_options,
+            ]
             commands = ["FROM base"]
+
             if uv_version is None:
                 commands.append("COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv")
             else:
@@ -1342,15 +1351,9 @@ class _Image(_Object, type_prefix="im"):
                 context_files["/.uv.lock"] = uv_lock
                 commands.append(f"COPY /.uv.lock {uv_root}/uv.lock")
 
-            uv_sync_args = [
-                f"--project={uv_root}",
-                "--frozen",  # Do not update `uv.lock`
-                "--no-install-workspace",  # Do not install the root project or any "uv workspace"
-                "--no-cache",  # Cache is not persisted, so we disable it
-                "--no-managed-python",  # Use the system python interpreter to create venv
-                "--compile-bytecode",
-                extra_options,
-            ]
+                # Do not update `uv.lock` when we have one
+                uv_sync_args.append("--frozen")
+
             uv_sync_args_joined = " ".join(uv_sync_args)
 
             commands += [
