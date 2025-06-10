@@ -144,7 +144,7 @@ class _FileIO(Generic[T]):
     _task_id: str = ""
     _file_descriptor: str = ""
     _client: _Client
-    _watch_output_buffer: list[bytes | None | Exception] = []
+    _watch_output_buffer: list[Optional[bytes] | Exception] = []
 
     def __init__(self, client: _Client, task_id: str) -> None:
         self._client = client
@@ -173,7 +173,7 @@ class _FileIO(Generic[T]):
                 raise ValueError(f"Invalid file mode: {mode}")
             seen_chars.add(char)
 
-    async def _consume_output(self, exec_id: str) -> AsyncIterator[bytes | None | Exception]:
+    async def _consume_output(self, exec_id: str) -> AsyncIterator[Optional[bytes] | Exception]:
         req = api_pb2.ContainerFilesystemExecGetOutputRequest(
             exec_id=exec_id,
             timeout=55,
