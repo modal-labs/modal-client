@@ -781,7 +781,7 @@ def test_uv_sync_error(client, tmp_path):
     app.function(image=image)(dummy)
 
     expected_pyproject_file = os.path.join(tmp_path, "pyproject.toml")
-    msg = f"Expected {expected_pyproject_file} to exist"
+    msg = re.escape(f"Expected {expected_pyproject_file} to exist")
     with pytest.raises(InvalidError, match=msg):
         with app.run(client=client):
             pass
