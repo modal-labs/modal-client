@@ -394,6 +394,8 @@ class _Dict(_Object, type_prefix="di"):
         async for resp in self._client.stub.DictContents.unary_stream(req):
             yield (deserialize(resp.key, self._client), deserialize(resp.value, self._client))
 
+    objects = _dict_object_namespace
 
-Dict = synchronize_api(_Dict)
-setattr(Dict, "objects", _dict_object_namespace)
+
+# Dict = synchronize_api(_Dict)
+# setattr(Dict, "objects", _dict_object_namespace)
