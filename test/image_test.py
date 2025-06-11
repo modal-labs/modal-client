@@ -115,7 +115,7 @@ def test_python_version_validation(builder_version):
 def test_dockerhub_python_version(builder_version):
     assert _dockerhub_python_version(builder_version, "3.9.1") == "3.9.1"
 
-    expected_39_full = {"2023.12": "3.9.15", "2024.04": "3.9.19", "2024.10": "3.9.20", "PREVIEW": "3.9.20"}[
+    expected_39_full = {"2023.12": "3.9.15", "2024.04": "3.9.19", "2024.10": "3.9.20", "PREVIEW": "3.9.22"}[
         builder_version
     ]
     assert _dockerhub_python_version(builder_version, "3.9") == expected_39_full
@@ -671,6 +671,32 @@ def test_poetry(builder_version, servicer, client):
             assert context_files == {"/.poetry.lock", "/.pyproject.toml", "/modal_requirements.txt"}
         else:
             assert context_files == {"/.poetry.lock", "/.pyproject.toml"}
+
+
+def test_image_add_local_file_error(tmp_path, client):
+    app = App()
+
+    unknown_file = tmp_path / "does-not-exist.txt"
+    img = Image.debian_slim().add_local_file(unknown_file, "/file.txt")
+    app.function(image=img)(dummy)
+
+    msg = re.escape(f"local file {unknown_file} does not exist")
+    with pytest.raises(FileNotFoundError, match=msg):
+        with app.run(client=client):
+            pass
+
+
+def test_image_add_local_dir_err(tmp_path, client):
+    app = App()
+
+    unknown_dir = tmp_path / "does-not-exist"
+    img = Image.debian_slim().add_local_dir(unknown_dir, "/file.txt")
+    app.function(image=img)(dummy)
+
+    msg = re.escape(f"local dir {unknown_dir} does not exist")
+    with pytest.raises(FileNotFoundError, match=msg):
+        with app.run(client=client):
+            pass
 
 
 @pytest.mark.parametrize(["copy"], [(True,), (False,)])

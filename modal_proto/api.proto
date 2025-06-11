@@ -2440,6 +2440,9 @@ message Sandbox {
 
   // If set, overrides the runtime used by the function, either "runc" or "gvisor".
   optional string runtime = 28;
+
+  // If set, the sandbox will be created with verbose logging enabled.
+  bool verbose = 29;
 }
 
 message SandboxCreateRequest {

@@ -342,7 +342,7 @@ def test_run_custom_app(servicer, set_env_client, test_dir):
 def test_run_aiofunc(servicer, set_env_client, test_dir):
     app_file = test_dir / "supports" / "app_run_tests" / "async_app.py"
     _run(["run", app_file.as_posix()])
-    assert len(servicer.client_calls) == 1
+    assert len(servicer.function_call_inputs) == 1
 
 
 def test_run_local_entrypoint(servicer, set_env_client, test_dir):
@@ -350,11 +350,40 @@ def test_run_local_entrypoint(servicer, set_env_client, test_dir):
 
     res = _run(["run", app_file.as_posix() + "::app.main"])  # explicit name
     assert "called locally" in res.stdout
-    assert len(servicer.client_calls) == 2
+    assert len(servicer.function_call_inputs) == 2
 
     res = _run(["run", app_file.as_posix()])  # only one entry-point, no name needed
     assert "called locally" in res.stdout
-    assert len(servicer.client_calls) == 4
+    assert len(servicer.function_call_inputs) == 4
+
+
+def test_run_local_entrypoint_error(servicer, set_env_client, test_dir):
+    app_file = test_dir / "supports" / "app_run_tests" / "local_entrypoint.py"
+    _run(
+        ["run", "-iq", app_file.as_posix()],
+        expected_exit_code=1,
+        expected_error="To use interactive mode, remove the --quiet flag",
+    )
+
+
+def test_run_function_error(servicer, set_env_client, test_dir):
+    app_file = test_dir / "supports" / "app_run_tests" / "default_app.py"
+
+    _run(
+        ["run", "-iq", app_file.as_posix()],
+        expected_exit_code=1,
+        expected_error="To use interactive mode, remove the --quiet flag",
+    )
+
+
+def test_run_cls_error(servicer, set_env_client, test_dir):
+    app_file = test_dir / "supports" / "app_run_tests" / "cls.py"
+
+    _run(
+        ["run", "-iq", f"{app_file.as_posix()}::AParametrized.some_method", "--x", "42", "--y", "1000"],
+        expected_exit_code=1,
+        expected_error="To use interactive mode, remove the --quiet flag",
+    )
 
 
 def test_run_local_entrypoint_invalid_with_app_run(servicer, set_env_client, test_dir):
@@ -363,7 +392,7 @@ def test_run_local_entrypoint_invalid_with_app_run(servicer, set_env_client, tes
     res = _run(["run", app_file.as_posix()], expected_exit_code=1)
     assert "app is already running" in str(res.exception.__cause__).lower()
     assert "unreachable" not in res.stdout
-    assert len(servicer.client_calls) == 0
+    assert len(servicer.function_call_inputs) == 0
 
 
 def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
@@ -400,7 +429,7 @@ def test_run_parse_args_entrypoint(servicer, set_env_client, test_dir):
     for args, expected in valid_call_args:
         res = _run(args)
         assert expected in res.stdout
-        assert len(servicer.client_calls) == 0
+        assert len(servicer.function_call_inputs) == 0
 
     res = _run(["run", f"{app_file.as_posix()}::unparseable_annot", "--i=20"], expected_exit_code=1)
     assert "Parameter `i` has unparseable annotation: typing.Union[int, str]" in str(res.exception)

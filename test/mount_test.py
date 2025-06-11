@@ -3,6 +3,7 @@ import hashlib
 import os
 import platform
 import pytest
+import re
 from pathlib import Path, PurePosixPath
 
 import modal
@@ -71,15 +72,26 @@ def test_create_mount(servicer, client):
     assert repr(Path(local_dir)) in repr(m)
 
 
-def test_create_mount_file_errors(servicer, tmpdir, client):
-    m = Mount._from_local_dir(Path(tmpdir) / "xyz", remote_path="/xyz")
-    with pytest.raises(FileNotFoundError):
+def test_create_mount_file_errors(servicer, tmp_path, client):
+    invalid_dir = tmp_path / "xyz"
+    m = Mount._from_local_dir(invalid_dir, remote_path="/xyz")
+    msg = re.escape(f"local dir {os.fspath(invalid_dir)} does not exist")
+    with pytest.raises(FileNotFoundError, match=msg):
         m._deploy("my-mount", client=client)
 
-    with open(tmpdir / "abc", "w"):
+    invalid_file = tmp_path / "xyz.txt"
+    m = Mount._from_local_file(invalid_file, remote_path="/xyz.txt")
+    msg = re.escape(f"local file {os.fspath(invalid_file)} does not exist")
+    with pytest.raises(FileNotFoundError, match=msg):
+        m._deploy("my-mount", client=client)
+
+    not_a_dir = tmp_path / "abc"
+    with open(not_a_dir, "w"):
         pass
-    m = Mount._from_local_dir(Path(tmpdir) / "abc", remote_path="/abc")
-    with pytest.raises(NotADirectoryError):
+    m = Mount._from_local_dir(not_a_dir, remote_path="/abc")
+
+    msg = re.escape(f"local dir {os.fspath(not_a_dir)} is not a directory")
+    with pytest.raises(NotADirectoryError, match=msg):
         m._deploy("my-mount", client=client)
 
 

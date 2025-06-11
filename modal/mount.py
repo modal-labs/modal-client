@@ -21,7 +21,7 @@ from modal_version import __version__
 
 from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
-from ._utils.async_utils import aclosing, async_map, synchronize_api
+from ._utils.async_utils import TaskContext, aclosing, async_map, synchronize_api
 from ._utils.blob_utils import FileUploadSpec, blob_upload_file, get_file_upload_spec_from_path
 from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import retry_transient_errors
@@ -115,7 +115,8 @@ class _MountFile(_MountEntry):
     def get_files_to_upload(self):
         local_file = self.local_file.resolve()
         if not local_file.exists():
-            raise FileNotFoundError(local_file)
+            msg = f"local file {local_file} does not exist"
+            raise FileNotFoundError(msg)
 
         rel_filename = self.remote_path
         yield local_file, rel_filename
@@ -144,10 +145,12 @@ class _MountDir(_MountEntry):
         local_dir = self.local_dir.expanduser().absolute()
 
         if not local_dir.exists():
-            raise FileNotFoundError(local_dir)
+            msg = f"local dir {local_dir} does not exist"
+            raise FileNotFoundError(msg)
 
         if not local_dir.is_dir():
-            raise NotADirectoryError(local_dir)
+            msg = f"local dir {local_dir} is not a directory"
+            raise NotADirectoryError(msg)
 
         if self.recursive:
             gen = (os.path.join(root, name) for root, dirs, files in os.walk(local_dir) for name in files)
@@ -287,6 +290,7 @@ class _Mount(_Object, type_prefix="mo"):
     _deployment_name: Optional[str] = None
     _namespace: Optional[int] = None
     _environment_name: Optional[str] = None
+    _allow_overwrite: bool = False
     _content_checksum_sha256_hex: Optional[str] = None
 
     @staticmethod
@@ -597,11 +601,16 @@ class _Mount(_Object, type_prefix="mo"):
         # Build the mount.
         status_row.message(f"Creating mount {message_label}: Finalizing index of {len(files)} files")
         if self._deployment_name:
+            creation_type = (
+                api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING
+                if self._allow_overwrite
+                else api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS
+            )
             req = api_pb2.MountGetOrCreateRequest(
                 deployment_name=self._deployment_name,
                 namespace=self._namespace,
                 environment_name=self._environment_name,
-                object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
+                object_creation_type=creation_type,
                 files=files,
             )
         elif resolver.app_id is not None:
@@ -733,7 +742,9 @@ class _Mount(_Object, type_prefix="mo"):
         self: "_Mount",
         deployment_name: Optional[str] = None,
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        *,
         environment_name: Optional[str] = None,
+        allow_overwrite: bool = False,
         client: Optional[_Client] = None,
     ) -> None:
         check_object_name(deployment_name, "Mount")
@@ -741,6 +752,7 @@ class _Mount(_Object, type_prefix="mo"):
         self._deployment_name = deployment_name
         self._namespace = namespace
         self._environment_name = environment_name
+        self._allow_overwrite = allow_overwrite
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client, environment_name=environment_name)
@@ -811,6 +823,7 @@ def _is_modal_path(remote_path: PurePosixPath):
             return True
     return False
 
+
 REMOTE_PACKAGES_PATH = "/__modal/deps"
 REMOTE_SITECUSTOMIZE_PATH = "/pkg/sitecustomize.py"
 
@@ -821,35 +834,35 @@ SITECUSTOMIZE_CONTENT = f"""
 import sys; sys.path.append('{REMOTE_PACKAGES_PATH}')
 """.strip()
 
-async def _create_single_mount(
+
+async def _create_single_client_dependency_mount(
     client: _Client,
     builder_version: str,
     python_version: str,
-    platform: str,
     arch: str,
-    uv_python_platform: str = None,
+    platform: str,
+    uv_python_platform: str,
     check_if_exists: bool = True,
+    allow_overwrite: bool = False,
 ):
-    import subprocess
     import tempfile
 
     profile_environment = config.get("environment")
     abi_tag = "cp" + python_version.replace(".", "")
     mount_name = f"{builder_version}-{abi_tag}-{platform}-{arch}"
-    uv_python_platform = uv_python_platform or f"{arch}-{platform}"
 
     if check_if_exists:
         try:
             await Mount.from_name(mount_name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL).hydrate.aio(client)
-            print(f"✅ Found existing mount {mount_name} in global namespace.")
+            print(f"➖ Found existing mount {mount_name} in global namespace.")
             return
         except modal.exception.NotFoundError:
             pass
 
-    with tempfile.TemporaryDirectory() as tmpd:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpd:
         print(f"📦 Building {mount_name}.")
         requirements = os.path.join(os.path.dirname(__file__), f"requirements/{builder_version}.txt")
-        subprocess.run(
+        cmd = " ".join(
             [
                 "uv",
                 "pip",
@@ -866,12 +879,21 @@ async def _create_single_mount(
                 uv_python_platform,
                 "--python-version",
                 python_version,
-            ],
-            check=True,
-            capture_output=True,
+            ]
         )
+        proc = await asyncio.create_subprocess_shell(
+            cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.wait()
+        if proc.returncode:
+            stdout, stderr = await proc.communicate()
+            print(stdout.decode("utf-8"))
+            print(stderr.decode("utf-8"))
+            raise RuntimeError(f"Subprocess failed with {proc.returncode}", proc.args)
 
-        print(f"🌐 Downloaded and unpacked packages to {tmpd}.")
+        print(f"🌐 Downloaded and unpacked {mount_name} packages to {tmpd}.")
 
         python_mount = Mount._from_local_dir(tmpd, remote_path=REMOTE_PACKAGES_PATH)
 
@@ -890,29 +912,39 @@ async def _create_single_mount(
                 mount_name,
                 api_pb2.DEPLOYMENT_NAMESPACE_GLOBAL,
                 environment_name=profile_environment,
+                allow_overwrite=allow_overwrite,
                 client=client,
             )
             print(f"✅ Deployed mount {mount_name} to global namespace.")
 
 
-async def _create_client_dependency_mounts(client=None, check_if_exists=True):
-    for python_version in PYTHON_STANDALONE_VERSIONS:
-        # glibc >= 2.17
-        await _create_single_mount(
-            client,
-            "PREVIEW",
-            python_version,
-            "manylinux_2_17",
-            "x86_64",
-            check_if_exists=check_if_exists,
-        )
-        # musl >= 1.2
-        await _create_single_mount(
-            client,
-            "PREVIEW",
-            python_version,
-            "musllinux_1_2",
-            "x86_64",
-            uv_python_platform="x86_64-unknown-linux-musl",
-            check_if_exists=check_if_exists,
-        )
+async def _create_client_dependency_mounts(
+    client=None,
+    python_versions: list[str] = list(PYTHON_STANDALONE_VERSIONS),
+    check_if_exists=True,
+):
+    arch = "x86_64"
+    platform_tags = [
+        ("manylinux_2_17", f"{arch}-manylinux_2_17"),  # glibc >= 2.17
+        ("musllinux_1_2", f"{arch}-unknown-linux-musl"),  # musl >= 1.2
+    ]
+    coros = []
+    for builder_version in ["PREVIEW"]:
+        for python_version in python_versions:
+            for platform, uv_python_platform in platform_tags:
+                coros.append(
+                    _create_single_client_dependency_mount(
+                        client,
+                        builder_version,
+                        python_version,
+                        arch,
+                        platform,
+                        uv_python_platform,
+                        check_if_exists=builder_version != "PREVIEW",
+                        allow_overwrite=builder_version == "PREVIEW",
+                    )
+                )
+    await TaskContext.gather(*coros)
+
+
+create_client_dependency_mounts = synchronize_api(_create_client_dependency_mounts)
