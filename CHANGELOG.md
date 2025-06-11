@@ -6,6 +6,16 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.4.dev5 (2025-06-11)
+
+- When `verbose=True` is set in `Sandbox.create()`, execs and file system operations are logged in the sandbox logs. For example, 
+```
+p = sb.exec("python", "-c", "print('hello')")
+```
+logs
+<img width="538" alt="image" src="https://github.com/user-attachments/assets/597ef68f-71b7-40d7-b6a6-7a563a582faa" />
+
+
 ### 1.0.3 (2025-06-05)
 
 This release contains several new features, improvements, and bug fixes:
