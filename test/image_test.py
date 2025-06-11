@@ -742,6 +742,25 @@ def test_uv_sync_no_modal(builder_version, client):
                 pass
 
 
+@pytest.mark.parametrize("kwargs", [{"group": "group1"}, {"optional": "extra1"}])
+def test_uv_sync_modal_in_group_or_extra(builder_version, client, servicer, kwargs):
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_no_modal")
+
+    image = Image.debian_slim().uv_sync(uv_project_path, **kwargs)
+
+    app = App()
+    app.function(image=image)(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        if "group" in kwargs:
+            group = kwargs["group"]
+            assert any(f"--group={group}" in cmd for cmd in layers[0].dockerfile_commands)
+        if "optional" in kwargs:
+            optional = kwargs["optional"]
+            assert any(f"--optional={optional}" in cmd for cmd in layers[0].dockerfile_commands)
+
+
 def test_uv_lock_workspaces_error(builder_version, client):
     uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_workspace")
 

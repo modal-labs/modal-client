@@ -1320,7 +1320,9 @@ class _Image(_Object, type_prefix="im"):
         ```
         """
 
-        def _check_pyproject_toml(pyproject_toml: str, version: ImageBuilderVersion):
+        def _check_pyproject_toml(
+            pyproject_toml: str, version: ImageBuilderVersion, group: Optional[str], optional: Optional[str]
+        ):
             if not os.path.exists(pyproject_toml):
                 msg = f"Expected {pyproject_toml} to exist in {uv_project_dir}"
                 raise InvalidError(msg)
@@ -1343,6 +1345,21 @@ class _Image(_Object, type_prefix="im"):
                 return
 
             dependencies = pyproject_toml_content["project"]["dependencies"]
+
+            if (
+                group is not None
+                and "dependency-groups" in pyproject_toml_content
+                and group in pyproject_toml_content["dependency-groups"]
+            ):
+                dependencies += pyproject_toml_content["dependency-groups"][group]
+
+            if (
+                optional is not None
+                and "project" in pyproject_toml_content
+                and "optional-dependencies" in pyproject_toml_content["project"]
+                and optional in pyproject_toml_content["project"]["optional-dependencies"]
+            ):
+                dependencies += pyproject_toml_content["project"]["optional-dependencies"][optional]
 
             PACKAGE_REGEX = re.compile(r"^[\w-]+")
 
@@ -1382,7 +1399,7 @@ class _Image(_Object, type_prefix="im"):
 
             context_files = {}
 
-            _check_pyproject_toml(pyproject_toml, version)
+            _check_pyproject_toml(pyproject_toml, version, group=group, optional=optional)
 
             context_files["/.pyproject.toml"] = pyproject_toml
             commands.append(f"COPY /.pyproject.toml {uv_root}/pyproject.toml")
