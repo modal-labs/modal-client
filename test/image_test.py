@@ -673,10 +673,18 @@ def test_poetry(builder_version, servicer, client):
             assert context_files == {"/.poetry.lock", "/.pyproject.toml"}
 
 
-def test_uv_sync(builder_version, servicer, client):
+@pytest.mark.parametrize(
+    "group, optional, frozen",
+    [
+        ("group1", None, False),
+        (None, "extra1", True),
+        ("group1", "extra1", True),
+    ],
+)
+def test_uv_sync(builder_version, servicer, client, group, optional, frozen):
     uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_project")
 
-    image = Image.debian_slim().uv_sync(uv_project_path)
+    image = Image.debian_slim().uv_sync(uv_project_path, group=group, optional=optional, frozen=frozen)
 
     app = App()
     app.function(image=image)(dummy)
@@ -686,7 +694,12 @@ def test_uv_sync(builder_version, servicer, client):
         context_files = {f.filename for layer in layers for f in layer.context_files}
         assert "COPY /.pyproject.toml /.uv/pyproject.toml" in layers[0].dockerfile_commands
         assert "COPY /.uv.lock /.uv/uv.lock" in layers[0].dockerfile_commands
-        assert any("--frozen" in cmd for cmd in layers[0].dockerfile_commands)
+        if frozen:
+            assert any("--frozen" in cmd for cmd in layers[0].dockerfile_commands)
+        if group is not None:
+            assert any(f"--group={group}" in cmd for cmd in layers[0].dockerfile_commands)
+        if optional is not None:
+            assert any(f"--optional={optional}" in cmd for cmd in layers[0].dockerfile_commands)
 
         if builder_version <= "2024.10":
             assert context_files == {"/.uv.lock", "/.pyproject.toml", "/modal_requirements.txt"}

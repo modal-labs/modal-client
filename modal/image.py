@@ -1304,6 +1304,9 @@ class _Image(_Object, type_prefix="im"):
         uv_project_dir: str = "./",  # Path to local uv mananged project
         *,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
+        group: Optional[str] = None,  # Dependency group to install using `uv sync --group`
+        optional: Optional[str] = None,  # Optional dependencies to install using `uv sync --optional`
+        frozen: bool = True,  # If True, then we run `uv sync --frozen` when a uv.lock file is present
         extra_options: str = "",  # Extra options to pass to `uv sync`
         uv_version: Optional[str] = None,  # uv version to use
         secrets: Sequence[_Secret] = [],
@@ -1365,6 +1368,11 @@ class _Image(_Object, type_prefix="im"):
                 "--compile-bytecode",
                 extra_options,
             ]
+            if group is not None:
+                uv_sync_args.append(f"--group={group}")
+            if optional is not None:
+                uv_sync_args.append(f"--optional={optional}")
+
             commands = ["FROM base"]
 
             if uv_version is None:
@@ -1384,12 +1392,15 @@ class _Image(_Object, type_prefix="im"):
                 context_files["/.uv.lock"] = uv_lock
                 commands.append(f"COPY /.uv.lock {uv_root}/uv.lock")
 
-                # Do not update `uv.lock` when we have one. By default, `uv sync` will update the
-                # the dependencies in the `uv.lock` file dynamically. If one wants the runtime environment
-                # to match the local `uv.lock`, we should not update the `uv.lock` file during build time.
-                uv_sync_args.append("--frozen")
+                if frozen:
+                    # Do not update `uv.lock` when we have one when `frozen=True`. This it ehd efault because this
+                    # ensures that the runtime environment matches the local `uv.lock`.
+                    #
+                    # If `frozen=False`, then `uv sync` will update the the dependencies in the `uv.lock` file
+                    # during build time.
+                    uv_sync_args.append("--frozen")
 
-            uv_sync_args_joined = " ".join(uv_sync_args)
+            uv_sync_args_joined = " ".join(uv_sync_args).strip()
 
             commands += [
                 f"RUN /usr/local/bin/uv sync {uv_sync_args_joined}",
