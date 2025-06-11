@@ -149,6 +149,7 @@ class _FileIO(Generic[T]):
     def __init__(self, client: _Client, task_id: str) -> None:
         self._client = client
         self._task_id = task_id
+        self._watch_output_buffer = []
 
     def _validate_mode(self, mode: str) -> None:
         if not any(char in mode for char in "rwax"):
