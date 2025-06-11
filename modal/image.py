@@ -1376,7 +1376,9 @@ class _Image(_Object, type_prefix="im"):
                 context_files["/.uv.lock"] = uv_lock
                 commands.append(f"COPY /.uv.lock {uv_root}/uv.lock")
 
-                # Do not update `uv.lock` when we have one
+                # Do not update `uv.lock` when we have one. By default, `uv sync` will update the
+                # the dependencies in the `uv.lock` file dynamically. If one wants the runtime environment
+                # to match the local `uv.lock`, we should not update the `uv.lock` file during build time.
                 uv_sync_args.append("--frozen")
 
             uv_sync_args_joined = " ".join(uv_sync_args)
