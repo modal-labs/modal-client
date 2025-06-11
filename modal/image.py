@@ -1227,14 +1227,15 @@ class _Image(_Object, type_prefix="im"):
         poetry_lockfile: Optional[str] = None,  # Path to lockfile. If not provided, uses poetry.lock in same directory.
         *,
         ignore_lockfile: bool = False,  # If set to True, do not use poetry.lock, even when present
-        # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
-        old_installer: bool = False,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         # Selected optional dependency groups to install (See https://python-poetry.org/docs/cli/#install)
         with_: list[str] = [],
         # Selected optional dependency groups to exclude (See https://python-poetry.org/docs/cli/#install)
         without: list[str] = [],
         only: list[str] = [],  # Only install dependency groups specifed in this list.
+        poetry_version: Optional[str] = None,  # Version of poetry to install; default depends on image builder version
+        # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
+        old_installer: bool = False,
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
@@ -1250,7 +1251,11 @@ class _Image(_Object, type_prefix="im"):
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             context_files = {"/.pyproject.toml": os.path.expanduser(poetry_pyproject_toml)}
 
-            commands = ["FROM base", "RUN python -m pip install poetry~=1.7"]
+            if poetry_version is None:
+                poetry_spec = "~=1.7" if version <= "2024.10" else "~=2.0"
+            else:
+                poetry_spec = f"=={poetry_version}"
+            commands = ["FROM base", f"RUN python -m pip install poetry{poetry_spec}"]
 
             if old_installer:
                 commands += ["RUN poetry config experimental.new-installer false"]
@@ -1281,7 +1286,8 @@ class _Image(_Object, type_prefix="im"):
 
             if only:
                 install_cmd += f" --only {','.join(only)}"
-            install_cmd += " --compile"  # no .pyc compilation slows down cold-start.
+
+            install_cmd += " --compile"  # Always compile .pyc during build; avoid recompiling on every cold start
 
             commands += [
                 "COPY /.pyproject.toml /tmp/poetry/pyproject.toml",
