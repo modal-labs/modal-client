@@ -1322,15 +1322,23 @@ class _Image(_Object, type_prefix="im"):
                 msg = f"Expected {pyproject_toml} to exist in {uv_project_dir}"
                 raise InvalidError(msg)
 
+            import toml
+
+            with open(pyproject_toml) as f:
+                pyproject_toml_content = toml.load(f)
+
+            if (
+                "tool" in pyproject_toml_content
+                and "uv" in pyproject_toml_content["tool"]
+                and "workspace" in pyproject_toml_content["tool"]["uv"]
+            ):
+                raise InvalidError("uv workspaces are not support")
+
             if version > "2024.10":
                 # For builder version > 2024.10, modal is mounted at runtime and is not
                 # a requirement in `uv.lock`
                 return
 
-            import toml
-
-            with open(pyproject_toml) as f:
-                pyproject_toml_content = toml.load(f)
             dependencies = pyproject_toml_content["project"]["dependencies"]
 
             PACKAGE_REGEX = re.compile(r"^[\w-]+")

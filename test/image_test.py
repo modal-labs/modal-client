@@ -729,6 +729,19 @@ def test_uv_sync_no_modal(builder_version, client):
                 pass
 
 
+def test_uv_lock_workspaces_error(builder_version, client):
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_workspace")
+
+    image = Image.debian_slim().uv_sync(uv_project_path)
+
+    app = App()
+    app.function(image=image)(dummy)
+
+    with pytest.raises(InvalidError, match="uv workspaces are not support"):
+        with app.run(client=client):
+            pass
+
+
 def test_uv_sync_error(client, tmp_path):
     image = Image.debian_slim().uv_sync(tmp_path)
 
