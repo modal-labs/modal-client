@@ -178,14 +178,14 @@ def test_class_multiple_override_methods(client, servicer):
 
 def test_class_multiple_with_options_calls(client, servicer):
     foo = (
-        Foo.with_options(
+        Foo.with_options(  # type: ignore
             gpu="A10:4",
             memory=1024,
             cpu=8,
             buffer_containers=2,
             max_containers=5,
             volumes={"/data": Volume.from_name("data", create_if_missing=True)},
-        ).with_options(
+        ).with_options(  # type: ignore
             gpu="A100",
             memory=2048,
             max_containers=10,
