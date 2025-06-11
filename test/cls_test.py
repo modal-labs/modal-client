@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from typing_extensions import assert_type
 
 import modal.partial_function
-from modal import App, Cls, Function, Image, build, enter, exit, method
+from modal import App, Cls, Function, Image, Volume, build, enter, exit, method
 from modal._partial_function import (
     _find_partial_methods_for_user_cls,
     _PartialFunction,
@@ -177,14 +177,35 @@ def test_class_multiple_override_methods(client, servicer):
 
 
 def test_class_multiple_with_options_calls(client, servicer):
-    foo = Foo.with_options(max_containers=1).with_options(max_containers=2)()  # type: ignore
+    foo = (
+        Foo.with_options(
+            gpu="A10:4",
+            memory=1024,
+            cpu=8,
+            buffer_containers=2,
+            max_containers=5,
+            volumes={"/data": Volume.from_name("data", create_if_missing=True)},
+        ).with_options(
+            gpu="A100",
+            memory=2048,
+            max_containers=10,
+            volumes={"/weights": Volume.from_name("weights", create_if_missing=True)},
+        )
+    )()  # type: ignore
 
     with app.run(client=client):
         with servicer.intercept() as ctx:
             _ = foo.bar.remote(2)
             function_bind_params: api_pb2.FunctionBindParamsRequest
             (function_bind_params,) = ctx.get_requests("FunctionBindParams")
-            assert function_bind_params.function_options.concurrency_limit == 2
+            assert function_bind_params.function_options.resources.milli_cpu == 8000
+            assert function_bind_params.function_options.resources.memory_mb == 2048
+            assert function_bind_params.function_options.resources.gpu_config.gpu_type == "A100"
+            assert function_bind_params.function_options.resources.gpu_config.count == 1
+            assert function_bind_params.function_options.buffer_containers == 2
+            assert function_bind_params.function_options.concurrency_limit == 10
+            assert len(function_bind_params.function_options.volume_mounts) == 1
+            assert function_bind_params.function_options.volume_mounts[0].mount_path == "/weights"
 
 
 def test_with_options_from_name(servicer):

@@ -88,28 +88,24 @@ class _ServiceOptions:
     batch_max_size: Optional[int] = None
     batch_wait_ms: Optional[int] = None
 
-    def merge_options(self, **options) -> "_ServiceOptions":
+    def merge_options(self, new_options: "_ServiceOptions") -> "_ServiceOptions":
         """Implement protobuf-like MergeFrom semantics for this dataclass.
 
         This mostly exists to support "stacking" of `.with_options()` calls.
         """
-        # Resources needs special merge handling,
-        # because the individual fields are exposed as parameters in the public API.
-        new_resources: api_pb2.Resources = options.pop("resources", api_pb2.Resources())
+        new_options_dict = dataclasses.asdict(new_options)
+
+        # Resources needs special merge handling because individual fields are parameters in the public API
         merged_resources = api_pb2.Resources()
-        merged_resources.MergeFrom(self.resources)
-        merged_resources.MergeFrom(new_resources)
+        if self.resources:
+            merged_resources.MergeFrom(self.resources)
+        if new_resources := new_options_dict.pop("resources"):
+            merged_resources.MergeFrom(new_resources)
+        self.resources = merged_resources
 
-        # Volumes are passed in the public API as dictionaries and we need to implement a dict merge
-        new_volumes: typing.Sequence[tuple[str, _Volume]] = options.pop("volumes", ())
-        new_volume_mount_points = {k for k, _ in new_volumes}
-        merged_volumes = [(k, v) for k, v in self.validated_volumes if k not in new_volume_mount_points] + new_volumes
-
-        return _ServiceOptions(
-            resources=merged_resources,
-            validated_volumes=merged_volumes,
-            **options,
-        )
+        for key, value in new_options_dict.items():
+            if value:
+                setattr(self, key, value)
 
 
 def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name: str):
@@ -687,14 +683,29 @@ More information on class parameterization can be found here: https://modal.com/
         container_idle_timeout: Optional[int] = None,  # Now called `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # See `.with_concurrency`
     ) -> "_Cls":
-        """Create an instance of the Cls with configuration options overridden with new values.
+        """Override the static Function configuration at runtime.
+
+        This method will return a new instance of the cls that will autoscale independently of the
+        original instance. Note that options cannot be "unset" with this method (i.e., if a GPU
+        is configured in the `@app.cls()` decorator, passing `gpu=None` here will not create a
+        CPU-only instance).
 
         **Usage:**
+
+        You can use this method after looking up the Cls from a deployed App or if you have a
+        direct reference to a Cls from another Function or local entrypoint on its App:
 
         ```python notest
         Model = modal.Cls.from_name("my_app", "Model")
         ModelUsingGPU = Model.with_options(gpu="A100")
         ModelUsingGPU().generate.remote(42)  # will run with an A100 GPU
+        ```
+
+        The method can be called multiple times to "stack" updates, but note that container
+        arguments (i.e. `volumes` and `secrets`) will not be merged:
+
+        ```python notest
+        Model.with_options(gpu="A100").with_options(scaledown_window=300)  # will use an A100 with slower scaledown
         ```
         """
         retry_policy = _parse_retries(retries, f"Class {self.__name__}" if self._user_cls else "")
@@ -728,21 +739,23 @@ More information on class parameterization can be found here: https://modal.com/
 
         cls = _Cls._from_loader(_load_from_base, rep=f"{self._name}.with_options(...)", is_another_app=True, deps=_deps)
         cls._initialize_from_other(self)
-        cls._options = dataclasses.replace(
-            cls._options,
+
+        new_options = _ServiceOptions(
             secrets=secrets,
+            validated_volumes=validate_volumes(volumes),
             resources=resources,
             retry_policy=retry_policy,
             max_containers=max_containers,
             buffer_containers=buffer_containers,
             scaledown_window=scaledown_window,
             timeout_secs=timeout,
-            validated_volumes=validate_volumes(volumes),
             # Note: set both for backwards / forwards compatibility
             # But going forward `.with_concurrency` is the preferred method with distinct parameterization
             max_concurrent_inputs=allow_concurrent_inputs,
             target_concurrent_inputs=allow_concurrent_inputs,
         )
+
+        cls._options.merge_options(new_options)
         return cls
 
     def with_concurrency(self: "_Cls", *, max_inputs: int, target_inputs: Optional[int] = None) -> "_Cls":
