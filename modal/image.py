@@ -1251,20 +1251,20 @@ class _Image(_Object, type_prefix="im"):
                 commands.append(f"COPY --from=ghcr.io/astral-sh/uv:{uv_version} /uv /usr/local/bin/uv")
 
             # TODO: Assumes python is on the python and uv is installing into the first python in the path
-            uv_pip_args = ["--python $(which python)", "--no-cache"]
+            uv_pip_args = ["--python $(which python)"]
 
             if find_links:
-                uv_pip_args.append(f"--find-links {find_links}")
+                uv_pip_args.append(f"--find-links {shlex.quote(find_links)}")
             if index_url:
-                uv_pip_args.append(f"--index-url {index_url}")
+                uv_pip_args.append(f"--index-url {shlex.quote(index_url)}")
             if extra_index_url:
-                uv_pip_args.append(f"--extra-index-url {extra_index_url}")
+                uv_pip_args.append(f"--extra-index-url {shlex.quote(extra_index_url)}")
             if pre:
                 uv_pip_args.append("--prerelease allow")
             if extra_options:
                 uv_pip_args.append(extra_options)
-            uv_pip_args.extend(sorted(pkgs))
 
+            uv_pip_args.extend(shlex.quote(p) for p in sorted(pkgs))
             uv_pip_args_joined = " ".join(uv_pip_args)
 
             commands += [
