@@ -190,8 +190,8 @@ def test_class_multiple_with_options_calls(client, servicer):
             memory=2048,
             max_containers=10,
             volumes={"/weights": Volume.from_name("weights", create_if_missing=True)},
-        )
-    )()  # type: ignore
+        )()  # type: ignore
+    )
 
     with app.run(client=client):
         with servicer.intercept() as ctx:

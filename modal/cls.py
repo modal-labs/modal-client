@@ -75,6 +75,7 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
 
 @dataclasses.dataclass()
 class _ServiceOptions:
+    # Note that default values should always be "untruthy" so we can detect when they are not set
     secrets: typing.Collection[_Secret] = ()
     validated_volumes: typing.Sequence[tuple[str, _Volume]] = ()
     resources: Optional[api_pb2.Resources] = None
@@ -104,7 +105,7 @@ class _ServiceOptions:
         self.resources = merged_resources
 
         for key, value in new_options_dict.items():
-            if value:
+            if value:  # Only overwrite data when the value was set in the new options
                 setattr(self, key, value)
 
 
@@ -782,9 +783,9 @@ More information on class parameterization can be found here: https://modal.com/
             _load_from_base, rep=f"{self._name}.with_concurrency(...)", is_another_app=True, deps=_deps
         )
         cls._initialize_from_other(self)
-        cls._options = dataclasses.replace(
-            cls._options, max_concurrent_inputs=max_inputs, target_concurrent_inputs=target_inputs
-        )
+
+        concurrency_options = _ServiceOptions(max_concurrent_inputs=max_inputs, target_concurrent_inputs=target_inputs)
+        cls._options.merge_options(concurrency_options)
         return cls
 
     def with_batching(self: "_Cls", *, max_batch_size: int, wait_ms: int) -> "_Cls":
@@ -811,7 +812,9 @@ More information on class parameterization can be found here: https://modal.com/
             _load_from_base, rep=f"{self._name}.with_concurrency(...)", is_another_app=True, deps=_deps
         )
         cls._initialize_from_other(self)
-        cls._options = dataclasses.replace(cls._options, batch_max_size=max_batch_size, batch_wait_ms=wait_ms)
+
+        batching_options = _ServiceOptions(batch_max_size=max_batch_size, batch_wait_ms=wait_ms)
+        cls._options.merge_options(batching_options)
         return cls
 
     @staticmethod
