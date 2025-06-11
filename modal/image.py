@@ -1224,11 +1224,11 @@ class _Image(_Object, type_prefix="im"):
     def uv_pip_install(
         self,
         *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
-        find_links: Optional[str] = None,  # Passes -f (--find-links) pip install
-        index_url: Optional[str] = None,  # Passes -i (--index-url) to pip install
-        extra_index_url: Optional[str] = None,  # Passes --extra-index-url to pip install
-        pre: bool = False,  # Passes --pre (allow pre-releases) to pip install
-        extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation --no-clean"
+        find_links: Optional[str] = None,  # Passes -f (--find-links) uv pip install
+        index_url: Optional[str] = None,  # Passes -i (--index-url) to uv pip install
+        extra_index_url: Optional[str] = None,  # Passes --extra-index-url to uv pip install
+        pre: bool = False,  # Allow pre-releases using uv pip install --prerelease allow
+        extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation"
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         uv_version: Optional[str] = None,  # uv version to use
         secrets: Sequence[_Secret] = [],
