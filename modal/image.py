@@ -1240,7 +1240,7 @@ class _Image(_Object, type_prefix="im"):
 
         Simple installation:
         ```python
-        image = modal.Image.debian_slim().pip_install("torch==2.7.1", "numpy")
+        image = modal.Image.debian_slim().uv_pip_install("torch==2.7.1", "numpy")
         ```
         """
 
