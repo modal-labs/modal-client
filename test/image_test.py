@@ -207,6 +207,35 @@ def test_image_python_packages(builder_version, servicer, client):
             pass
 
 
+def test_image_uv_python_packages(builder_version, servicer, client):
+    app = App()
+    image = (
+        Image.debian_slim()
+        .pip_install("sklearn[xyz]")
+        .pip_install("numpy", "scipy", extra_index_url="https://xyz", find_links="https://abc?q=123", pre=True)
+        .pip_install("flash-attn", extra_options="--no-build-isolation")
+        .pip_install("pandas", pre=True)
+    )
+    app.function(image=image)(dummy)
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        assert any("/usr/local/bin/uv pip install 'sklearn[xyz]'" in cmd for cmd in layers[3].dockerfile_commands)
+        assert any(
+            "/usr/local/bin/uv pip install --python $(which python) --no-cache numpy scipy "
+            "--find-links 'https://abc?q=123' --extra-index-url https://xyz --prerelease allow" in cmd
+            for cmd in layers[2].dockerfile_commands
+        )
+        assert any(
+            "/usr/local/bin/uv pip install --python $(which python) --no-cache flash-attn "
+            "--no-build-isolation --no-cache-dir" in cmd
+            for cmd in layers[1].dockerfile_commands
+        )
+        assert any(
+            "/usr/local/bin/uv pip install --python $(which python) --no-cache pandas --prerelease allow" in cmd
+            for cmd in layers[0].dockerfile_commands
+        )
+
+
 def test_run_commands_secrets_type_validation(builder_version, servicer, client):
     app = App()
     image = Image.debian_slim().run_commands(
