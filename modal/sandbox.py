@@ -255,13 +255,14 @@ class _Sandbox(_Object, type_prefix="sb"):
         unencrypted_ports: Sequence[int] = [],
         # Reference to a Modal Proxy to use in front of this Sandbox.
         proxy: Optional[_Proxy] = None,
+        # Enable verbose logging for sandbox operations.
+        verbose: bool = False,
         # Enable memory snapshots.
         _experimental_enable_snapshot: bool = False,
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
-        verbose: bool = False,
     ) -> "_Sandbox":
         """
         Create a new Sandbox to run untrusted, arbitrary code. The Sandbox's corresponding container
