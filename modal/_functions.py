@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2023
 import asyncio
 import dataclasses
+import functools
 import inspect
 import textwrap
 import time
@@ -15,7 +16,6 @@ import typing_extensions
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
-from synchronicity.exceptions import UserCodeException
 
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
@@ -51,6 +51,7 @@ from ._utils.function_utils import (
     _create_input,
     _process_result,
     _stream_function_call_data,
+    _WrappedUserException,
     get_function_type,
     get_include_source_mode,
     is_async,
@@ -109,6 +110,17 @@ class _RetryContext:
     input_id: str
     item: api_pb2.FunctionPutInputsItem
     sync_client_retries_enabled: bool
+
+
+def unwrap_user_exceptions(f):
+    @functools.wraps(f)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await f(*args, **kwargs)
+        except _WrappedUserException as wrapped_user_exc:
+            raise wrapped_user_exc.exc
+
+    return wrapper
 
 
 class _Invocation:
@@ -266,6 +278,7 @@ class _Invocation:
         ).outputs[0]
         return await _process_result(item.result, item.data_format, self.stub, self.client)
 
+    @unwrap_user_exceptions
     async def run_function(self) -> Any:
         # Use retry logic only if retry policy is specified and
         ctx = self._retry_context
@@ -284,7 +297,7 @@ class _Invocation:
         while True:
             try:
                 return await self._get_single_output(ctx.input_jwt)
-            except (UserCodeException, FunctionTimeoutError) as exc:
+            except (_WrappedUserException, FunctionTimeoutError) as exc:
                 delay_ms = user_retry_manager.get_delay_ms()
                 if delay_ms is None:
                     raise exc
@@ -1407,7 +1420,11 @@ Use the `Function.get_web_url()` method instead.
 
     @live_method_gen
     async def _map(
-        self, input_queue: _SynchronizedQueue, order_outputs: bool, return_exceptions: bool
+        self,
+        input_queue: _SynchronizedQueue,
+        order_outputs: bool,
+        return_exceptions: bool,
+        wrap_returned_exceptions: bool,
     ) -> AsyncGenerator[Any, None]:
         """mdmd:hidden
 
@@ -1435,6 +1452,7 @@ Use the `Function.get_web_url()` method instead.
                 self.client,
                 order_outputs,
                 return_exceptions,
+                wrap_returned_exceptions,
                 count_update_callback,
                 api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
             )

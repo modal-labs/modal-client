@@ -8,6 +8,7 @@ from typing import Any, Callable, Optional
 
 from grpclib import Status
 
+import modal.exception
 from modal._runtime.execution_context import current_input_id
 from modal._utils.async_utils import (
     AsyncOrSyncIterable,
@@ -30,6 +31,7 @@ from modal._utils.function_utils import (
     OUTPUTS_TIMEOUT,
     _create_input,
     _process_result,
+    _WrappedUserException,
 )
 from modal._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, RetryWarningMessage, retry_transient_errors
 from modal._utils.jwt_utils import DecodedJwt
@@ -88,6 +90,7 @@ async def _map_invocation(
     client: "modal.client._Client",
     order_outputs: bool,
     return_exceptions: bool,
+    wrap_returned_exceptions: bool,
     count_update_callback: Optional[Callable[[int, int], None]],
     function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
 ):
@@ -313,8 +316,13 @@ async def _map_invocation(
         try:
             output = await _process_result(item.result, item.data_format, client.stub, client)
         except Exception as e:
+            if isinstance(e, _WrappedUserException):
+                e = e.exc  # unwrap
             if return_exceptions:
-                output = e
+                if wrap_returned_exceptions:
+                    output = modal.exception.UserCodeException(e)  # legacy/deprecated unintentional wrapping
+                else:
+                    output = e
             else:
                 raise e
         return (item.idx, output)
@@ -387,6 +395,7 @@ async def _map_helper(
     kwargs={},  # any extra keyword arguments for the function
     order_outputs: bool = True,  # return outputs in order
     return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
+    wrap_returned_exceptions: bool = True,
 ) -> typing.AsyncGenerator[Any, None]:
     """Core implementation that supports `_map_async()`, `_starmap_async()` and `_for_each_async()`.
 
@@ -417,7 +426,9 @@ async def _map_helper(
     # synchronicity-wrapped, since they accept executable code in the form of iterators that we don't want to run inside
     # the synchronicity thread. Instead, we delegate to `._map()` with a safer Queue as input.
     async with aclosing(
-        async_merge(self._map.aio(raw_input_queue, order_outputs, return_exceptions), feed_queue())
+        async_merge(
+            self._map.aio(raw_input_queue, order_outputs, return_exceptions, wrap_returned_exceptions), feed_queue()
+        )
     ) as map_output_stream:
         async for output in map_output_stream:
             yield output
@@ -432,10 +443,16 @@ async def _map_async(
     kwargs={},  # any extra keyword arguments for the function
     order_outputs: bool = True,  # return outputs in order
     return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
+    wrap_returned_exceptions: bool = True,  # wrap returned exceptions in modal.exception.UserCodeException
 ) -> typing.AsyncGenerator[Any, None]:
     async_input_gen = async_zip(*[sync_or_async_iter(it) for it in input_iterators])
     async for output in _map_helper(
-        self, async_input_gen, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
+        self,
+        async_input_gen,
+        kwargs=kwargs,
+        order_outputs=order_outputs,
+        return_exceptions=return_exceptions,
+        wrap_returned_exceptions=wrap_returned_exceptions,
     ):
         yield output
 
@@ -448,6 +465,7 @@ async def _starmap_async(
     kwargs={},
     order_outputs: bool = True,
     return_exceptions: bool = False,
+    wrap_returned_exceptions: bool = True,
 ) -> typing.AsyncIterable[Any]:
     async for output in _map_helper(
         self,
@@ -455,6 +473,7 @@ async def _starmap_async(
         kwargs=kwargs,
         order_outputs=order_outputs,
         return_exceptions=return_exceptions,
+        wrap_returned_exceptions=wrap_returned_exceptions,
     ):
         yield output
 
@@ -476,6 +495,7 @@ def _map_sync(
     kwargs={},  # any extra keyword arguments for the function
     order_outputs: bool = True,  # return outputs in order
     return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
+    wrap_returned_exceptions: bool = True,
 ) -> AsyncOrSyncIterable:
     """Parallel map over a set of inputs.
 
@@ -516,7 +536,12 @@ def _map_sync(
 
     return AsyncOrSyncIterable(
         _map_async(
-            self, *input_iterators, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
+            self,
+            *input_iterators,
+            kwargs=kwargs,
+            order_outputs=order_outputs,
+            return_exceptions=return_exceptions,
+            wrap_returned_exceptions=wrap_returned_exceptions,
         ),
         nested_async_message=(
             "You can't iter(Function.map()) from an async function. Use async for ... in Function.map.aio() instead."
@@ -596,6 +621,7 @@ def _starmap_sync(
     kwargs={},
     order_outputs: bool = True,
     return_exceptions: bool = False,
+    wrap_returned_exceptions: bool = True,
 ) -> AsyncOrSyncIterable:
     """Like `map`, but spreads arguments over multiple function arguments.
 
@@ -615,7 +641,12 @@ def _starmap_sync(
     """
     return AsyncOrSyncIterable(
         _starmap_async(
-            self, input_iterator, kwargs=kwargs, order_outputs=order_outputs, return_exceptions=return_exceptions
+            self,
+            input_iterator,
+            kwargs=kwargs,
+            order_outputs=order_outputs,
+            return_exceptions=return_exceptions,
+            wrap_returned_exceptions=wrap_returned_exceptions,
         ),
         nested_async_message=(
             "You can't `iter(Function.starmap())` from an async function. "

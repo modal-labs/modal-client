@@ -2,6 +2,10 @@
 import random
 import signal
 
+import synchronicity.exceptions
+
+UserCodeException = synchronicity.exceptions.UserCodeException  # Deprecated type used for return_exception wrapping
+
 
 class Error(Exception):
     """
