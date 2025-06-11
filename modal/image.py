@@ -1323,7 +1323,7 @@ class _Image(_Object, type_prefix="im"):
                 raise InvalidError(msg)
 
             if version > "2024.10":
-                # For builder version > 2024.10, modal is mounted at the end and is not
+                # For builder version > 2024.10, modal is mounted at runtime and is not
                 # a requirement in `uv.lock`
                 return
 
@@ -1382,7 +1382,7 @@ class _Image(_Object, type_prefix="im"):
             uv_sync_args_joined = " ".join(uv_sync_args)
 
             commands += [
-                f"RUN uv sync {uv_sync_args_joined}",
+                f"RUN /usr/local/bin/uv sync {uv_sync_args_joined}",
                 f"ENV PATH={uv_root}/.venv/bin:$PATH",
             ]
 
