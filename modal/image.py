@@ -1234,6 +1234,16 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
+        """Install a list of Python packages using uv pip install.
+
+        **Examples**
+
+        Simple installation:
+        ```python
+        image = modal.Image.debian_slim().pip_install("torch==2.7.1", "numpy")
+        ```
+        """
+
         pkgs = _flatten_str_args("uv_pip_install", "packages", packages)
         if not pkgs:
             return self
