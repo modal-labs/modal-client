@@ -2793,6 +2793,7 @@ message TaskInfo {
   modal.client.GenericResult result = 4;
   double enqueued_at = 5;
   string gpu_type = 6;
+  string sandbox_id = 7;
 }
 
 message TaskListRequest {
