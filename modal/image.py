@@ -1324,8 +1324,7 @@ class _Image(_Object, type_prefix="im"):
             pyproject_toml: str, version: ImageBuilderVersion, group: Optional[str], optional: Optional[str]
         ):
             if not os.path.exists(pyproject_toml):
-                msg = f"Expected {pyproject_toml} to exist"
-                raise InvalidError(msg)
+                raise InvalidError(f"Expected {pyproject_toml} to exist")
 
             import toml
 
