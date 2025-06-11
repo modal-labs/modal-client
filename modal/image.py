@@ -1379,7 +1379,6 @@ class _Image(_Object, type_prefix="im"):
             uv_sync_args = [
                 f"--project={uv_root}",
                 "--no-install-workspace",  # Do not install the root project or any "uv workspace"
-                "--no-cache",  # Cache is not persisted, so we disable it
                 "--no-managed-python",  # Use the system python interpreter to create venv
                 "--compile-bytecode",
             ]
