@@ -1417,7 +1417,7 @@ class _Image(_Object, type_prefix="im"):
                     # during build time.
                     uv_sync_args.append("--frozen")
 
-            uv_sync_args_joined = shlex.join(uv_sync_args).strip()
+            uv_sync_args_joined = " ".join(uv_sync_args).strip()
 
             commands += [
                 f"RUN /usr/local/bin/uv sync {uv_sync_args_joined}",
