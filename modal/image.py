@@ -1382,12 +1382,13 @@ class _Image(_Object, type_prefix="im"):
                 "--no-cache",  # Cache is not persisted, so we disable it
                 "--no-managed-python",  # Use the system python interpreter to create venv
                 "--compile-bytecode",
-                extra_options,
             ]
             if group is not None:
                 uv_sync_args.append(f"--group={group}")
             if optional is not None:
                 uv_sync_args.append(f"--optional={optional}")
+            if extra_options:
+                uv_sync_args.append(extra_options)
 
             commands = ["FROM base"]
 
