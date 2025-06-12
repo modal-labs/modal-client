@@ -699,15 +699,17 @@ More information on class parameterization can be found here: https://modal.com/
         ```python notest
         Model = modal.Cls.from_name("my_app", "Model")
         ModelUsingGPU = Model.with_options(gpu="A100")
-        ModelUsingGPU().generate.remote(42)  # will run with an A100 GPU
+        ModelUsingGPU().generate.remote(input_prompt)  # Run with an A100 GPU
         ```
 
-        The method can be called multiple times to "stack" updates, but note that container
-        arguments (i.e. `volumes` and `secrets`) will not be merged:
+        The method can be called multiple times to "stack" updates:
 
         ```python notest
-        Model.with_options(gpu="A100").with_options(scaledown_window=300)  # will use an A100 with slower scaledown
+        Model.with_options(gpu="A100").with_options(scaledown_window=300)  # Use an A100 with slow scaledown
         ```
+
+        Note that container arguments (i.e. `volumes` and `secrets`) passed in subsequent calls
+        will not be merged.
         """
         retry_policy = _parse_retries(retries, f"Class {self.__name__}" if self._user_cls else "")
         if gpu or cpu or memory:
