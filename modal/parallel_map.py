@@ -792,12 +792,12 @@ class _MapItemContext:
             delay_ms = 0
 
         # None means the maximum number of retries has been reached, so output the error
-        if delay_ms is None:
+        if delay_ms is None or item.result.status == api_pb2.GenericResult.GENERIC_STATUS_TERMINATED:
             self.state = _MapItemState.COMPLETE
             return _OutputType.FAILED_COMPLETION
 
         self.state = _MapItemState.WAITING_TO_RETRY
-        print("RETRYING", item.idx, item.retry_count, item.result.status)
+
         await retry_queue.put(now_seconds + (delay_ms / 1000), item.idx)
 
         return _OutputType.RETRYING

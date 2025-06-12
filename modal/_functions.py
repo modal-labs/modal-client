@@ -283,7 +283,11 @@ class _Invocation:
 
         while True:
             item = await self._get_single_output(ctx.input_jwt)
-            if item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+            if item.result.status in (
+                api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+                api_pb2.GenericResult.GENERIC_STATUS_TERMINATED,
+            ):
+                # success or cancellations are "final" results
                 return await _process_result(item.result, item.data_format, self.stub, self.client)
 
             if item.result.status != api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
@@ -399,27 +403,27 @@ class _InputPlaneInvocation:
                 attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
 
-            try:
-                if await_response.HasField("output"):
-                    return await _process_result(
-                        await_response.output.result, await_response.output.data_format, self.stub, self.client
-                    )
-            except InternalFailure as e:
-                internal_failure_count += 1
-                # Limit the number of times we retry
-                if internal_failure_count >= MAX_INTERNAL_FAILURE_COUNT:
-                    raise e
-                # For system failures on the server, we retry immediately,
-                # and the failure does not count towards the retry policy.
-                retry_request = api_pb2.AttemptRetryRequest(
-                    function_id=self.function_id,
-                    parent_input_id=current_input_id() or "",
-                    input=self.input_item,
-                    attempt_token=self.attempt_token,
+            if await_response.HasField("output"):
+                if await_response.output.result.status == api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
+                    internal_failure_count += 1
+                    # Limit the number of times we retry
+                    if internal_failure_count < MAX_INTERNAL_FAILURE_COUNT:
+                        # For system failures on the server, we retry immediately,
+                        # and the failure does not count towards the retry policy.
+                        retry_request = api_pb2.AttemptRetryRequest(
+                            function_id=self.function_id,
+                            parent_input_id=current_input_id() or "",
+                            input=self.input_item,
+                            attempt_token=self.attempt_token,
+                        )
+                        # TODO(ryan): Add exponential backoff?
+                        retry_response = await retry_transient_errors(self.stub.AttemptRetry, retry_request)
+                        self.attempt_token = retry_response.attempt_token
+                        continue
+
+                return await _process_result(
+                    await_response.output.result, await_response.output.data_format, self.stub, self.client
                 )
-                # TODO(ryan): Add exponential backoff?
-                retry_response = await retry_transient_errors(self.stub.AttemptRetry, retry_request)
-                self.attempt_token = retry_response.attempt_token
 
 
 # Wrapper type for api_pb2.FunctionStats

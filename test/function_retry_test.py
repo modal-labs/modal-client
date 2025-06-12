@@ -3,6 +3,7 @@ import pytest
 
 import modal
 from modal import App
+from modal.exception import RemoteError
 from modal.retries import RetryManager
 from modal_proto import api_pb2
 
@@ -51,7 +52,7 @@ def setup_app_and_function(servicer):
     return app, f
 
 
-def test_all_retries_fail_raises_error(client, setup_app_and_function, monkeypatch, servicer):
+def test_all_retries_fail_raises_error(client, setup_app_and_function, servicer):
     servicer.sync_client_retries_enabled = True
     app, f = setup_app_and_function
     with app.run(client=client):
@@ -62,15 +63,18 @@ def test_all_retries_fail_raises_error(client, setup_app_and_function, monkeypat
         assert exc_info.value.function_call_count == 4
 
 
-def test_failures_followed_by_success(client, setup_app_and_function, monkeypatch, servicer):
+def test_failures_followed_by_success(client, setup_app_and_function, servicer):
     servicer.sync_client_retries_enabled = True
     app, f = setup_app_and_function
-    with app.run(client=client):
-        function_call_count = f.remote(3)
-        assert function_call_count == 3
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            function_call_count = f.remote(3)
+            assert function_call_count == 3
+
+    assert len(ctx.get_requests("FunctionRetryInputs")) == 2
 
 
-def test_no_retries_when_first_call_succeeds(client, setup_app_and_function, monkeypatch, servicer):
+def test_no_retries_when_first_call_succeeds(client, setup_app_and_function, servicer):
     servicer.sync_client_retries_enabled = True
     app, f = setup_app_and_function
     with app.run(client=client):
@@ -78,7 +82,31 @@ def test_no_retries_when_first_call_succeeds(client, setup_app_and_function, mon
         assert function_call_count == 1
 
 
-def test_no_retries_when_client_retries_disabled(client, setup_app_and_function, monkeypatch, servicer):
+def test_no_retries_when_call_cancelled(client, setup_app_and_function, servicer):
+    servicer.sync_client_retries_enabled = True
+    app, f = setup_app_and_function
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGetOutputs",
+            api_pb2.FunctionGetOutputsResponse(
+                outputs=[
+                    api_pb2.FunctionGetOutputsItem(
+                        result=api_pb2.GenericResult(
+                            status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED, exception="cancelled"
+                        ),
+                    )
+                ]
+            ),
+        )
+
+        with app.run(client=client):
+            with pytest.raises(RemoteError, match="cancelled"):
+                f.remote(1)
+
+        assert not ctx.get_requests("FunctionRetryInputs")  # no retries
+
+
+def test_no_retries_when_client_retries_disabled(client, setup_app_and_function, servicer):
     servicer.sync_client_retries_enabled = False
     app, f = setup_app_and_function
     with app.run(client=client):
@@ -98,7 +126,7 @@ def test_retry_delay_ms():
     assert RetryManager._retry_delay_ms(2, retry_policy) == 6000
 
 
-def test_lost_inputs_retried(client, setup_app_and_function, monkeypatch, servicer):
+def test_lost_inputs_retried(client, setup_app_and_function, servicer):
     servicer.sync_client_retries_enabled = True
     app, f = setup_app_and_function
     # The client should retry if it receives a internal failure status.
@@ -110,7 +138,7 @@ def test_lost_inputs_retried(client, setup_app_and_function, monkeypatch, servic
         assert function_call_count == 10
 
 
-def test_map_fails_immediately_without_retries(client, setup_app_and_function, monkeypatch, servicer):
+def test_map_fails_immediately_without_retries(client, setup_app_and_function, servicer):
     servicer.sync_client_retries_enabled = False
     app, f = setup_app_and_function
     with app.run(client=client):
@@ -119,24 +147,29 @@ def test_map_fails_immediately_without_retries(client, setup_app_and_function, m
         assert exc_info.value.function_call_count == 1
 
 
-def test_map_all_retries_fail_raises_error(client, setup_app_and_function, monkeypatch, servicer):
+def test_map_all_retries_fail_raises_error(client, setup_app_and_function, servicer):
     servicer.sync_client_retries_enabled = True
     app, f = setup_app_and_function
-    with app.run(client=client):
-        with pytest.raises(FunctionCallCountException) as exc_info:
-            list(f.map([999]))
-        assert exc_info.value.function_call_count == 4
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            with pytest.raises(FunctionCallCountException) as exc_info:
+                list(f.map([999]))
+            assert exc_info.value.function_call_count == 4
+    assert len(ctx.get_requests("FunctionRetryInputs")) == 3
 
 
-def test_map_failures_followed_by_success(client, setup_app_and_function, monkeypatch, servicer):
+def test_map_failures_followed_by_success(client, setup_app_and_function, servicer):
     servicer.sync_client_retries_enabled = True
     app, f = setup_app_and_function
-    with app.run(client=client):
-        results = list(f.map([3, 3, 3]))
-        assert set(results) == {3, 4, 5}
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            results = list(f.map([3, 3, 3]))
+            assert set(results) == {3, 4, 5}
+
+    assert len(ctx.get_requests("FunctionRetryInputs")) == 2
 
 
-def test_map_no_retries_when_first_call_succeeds(client, setup_app_and_function, monkeypatch, servicer):
+def test_map_no_retries_when_first_call_succeeds(client, setup_app_and_function, servicer):
     servicer.sync_client_retries_enabled = True
     app, f = setup_app_and_function
     with app.run(client=client):
@@ -144,7 +177,7 @@ def test_map_no_retries_when_first_call_succeeds(client, setup_app_and_function,
         assert set(results) == {1, 2, 3}
 
 
-def test_map_lost_inputs_retried(client, setup_app_and_function, monkeypatch, servicer):
+def test_map_lost_inputs_retried(client, setup_app_and_function, servicer):
     servicer.sync_client_retries_enabled = True
     app, f = setup_app_and_function
     # The client should retry if it receives a internal failure status.
@@ -153,3 +186,29 @@ def test_map_lost_inputs_retried(client, setup_app_and_function, monkeypatch, se
     with app.run(client=client):
         results = list(f.map([3, 3, 3]))
         assert set(results) == {3, 4, 5}
+
+
+def test_map_cancelled_inputs_not_retried(client, setup_app_and_function, servicer):
+    servicer.sync_client_retries_enabled = True
+    app, f = setup_app_and_function
+    # The client should retry if it receives a internal failure status.
+    servicer.failure_status = api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE
+
+    with servicer.intercept() as ctx:
+        ctx.add_response(
+            "FunctionGetOutputs",
+            api_pb2.FunctionGetOutputsResponse(
+                outputs=[
+                    api_pb2.FunctionGetOutputsItem(
+                        result=api_pb2.GenericResult(
+                            status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED, exception="cancelled"
+                        ),
+                    )
+                ]
+            ),
+        )
+        with app.run(client=client):
+            with pytest.raises(RemoteError, match="cancelled"):
+                list(f.map([3, 3, 3]))
+
+        assert ctx.get_requests("FunctionRetryInputs") == []
