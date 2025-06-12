@@ -256,7 +256,7 @@ def test_service_options_defaults_untruthiness():
     # In the future we may change the implementation to use an "Unset" sentinel default, in
     # which case we wouldn't need this assertion.
     default_options = _ServiceOptions()
-    for value in dataclasses.asdict(default_options).values():
+    for value in dataclasses.asdict(default_options).values():  # type: ignore  # synchronicity type stubs
         assert not value
 
 
