@@ -457,14 +457,6 @@ manually, for example:
     return exc
 
 
-class _WrappedUserException(Exception):
-    # internal usage only - allows for distinguishing user exceptions from Modal exceptions
-    # Note this is intentionally different from synchronicity.UserCodeException which is
-    # something used to keep synchronicity tracebacks cleaner
-    def __init__(self, exc: BaseException):
-        self.exc = exc
-
-
 async def _process_result(result: api_pb2.GenericResult, data_format: int, stub, client=None):
     if result.WhichOneof("data_oneof") == "data_blob_id":
         data = await blob_download(result.data_blob_id, stub)
@@ -505,9 +497,8 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
                 except Exception:
                     pass
 
-            # allow disambiguation of Modal exceptions and exceptions in user code by wrapping the latter:
-            raise _WrappedUserException(exc_with_hints(exc))
-        # TODO (elias): Could non-data exceptions still be user code? If so - would retries be prevented by this:
+            raise exc_with_hints(exc)
+
         raise RemoteError(result.exception)
 
     try:

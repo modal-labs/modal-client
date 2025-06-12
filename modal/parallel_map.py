@@ -31,7 +31,6 @@ from modal._utils.function_utils import (
     OUTPUTS_TIMEOUT,
     _create_input,
     _process_result,
-    _WrappedUserException,
 )
 from modal._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, RetryWarningMessage, retry_transient_errors
 from modal._utils.jwt_utils import DecodedJwt
@@ -316,11 +315,12 @@ async def _map_invocation(
         try:
             output = await _process_result(item.result, item.data_format, client.stub, client)
         except Exception as e:
-            if isinstance(e, _WrappedUserException):
-                e = e.exc  # unwrap
             if return_exceptions:
                 if wrap_returned_exceptions:
-                    output = modal.exception.UserCodeException(e)  # legacy/deprecated unintentional wrapping
+                    # Prior to client 1.0.5 there was a bug where return_exceptions would wrap
+                    # any returned exceptions in a synchronicity.UserCodeException. This adds
+                    # deprecated non-breaking compatibility bandaid for migrating away from that:
+                    output = modal.exception.UserCodeException(e)
                 else:
                     output = e
             else:
@@ -773,6 +773,7 @@ class _MapItemContext:
             return _OutputType.FAILED_COMPLETION
 
         self.state = _MapItemState.WAITING_TO_RETRY
+        print("RETRYING", item.idx, item.retry_count, item.result.status)
         await retry_queue.put(now_seconds + (delay_ms / 1000), item.idx)
 
         return _OutputType.RETRYING

@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2023
 import asyncio
 import dataclasses
-import functools
 import inspect
 import textwrap
 import time
@@ -51,7 +50,6 @@ from ._utils.function_utils import (
     _create_input,
     _process_result,
     _stream_function_call_data,
-    _WrappedUserException,
     get_function_type,
     get_include_source_mode,
     is_async,
@@ -64,8 +62,6 @@ from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from .config import config
 from .exception import (
     ExecutionError,
-    FunctionTimeoutError,
-    InternalFailure,
     InvalidError,
     NotFoundError,
     OutputExpiredError,
@@ -110,17 +106,6 @@ class _RetryContext:
     input_id: str
     item: api_pb2.FunctionPutInputsItem
     sync_client_retries_enabled: bool
-
-
-def unwrap_user_exceptions(f):
-    @functools.wraps(f)
-    async def wrapper(*args, **kwargs):
-        try:
-            return await f(*args, **kwargs)
-        except _WrappedUserException as wrapped_user_exc:
-            raise wrapped_user_exc.exc
-
-    return wrapper
 
 
 class _Invocation:
@@ -267,7 +252,7 @@ class _Invocation:
             request,
         )
 
-    async def _get_single_output(self, expected_jwt: Optional[str] = None) -> Any:
+    async def _get_single_output(self, expected_jwt: Optional[str] = None) -> api_pb2.FunctionGetOutputsItem:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
             await self.pop_function_call_outputs(
@@ -276,9 +261,8 @@ class _Invocation:
                 input_jwts=[expected_jwt] if expected_jwt else None,
             )
         ).outputs[0]
-        return await _process_result(item.result, item.data_format, self.stub, self.client)
+        return item
 
-    @unwrap_user_exceptions
     async def run_function(self) -> Any:
         # Use retry logic only if retry policy is specified and
         ctx = self._retry_context
@@ -289,23 +273,26 @@ class _Invocation:
             or ctx.function_call_invocation_type != api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
             or not ctx.sync_client_retries_enabled
         ):
-            return await self._get_single_output()
+            item = await self._get_single_output()
+            return await _process_result(item.result, item.data_format, self.stub, self.client)
 
         # User errors including timeouts are managed by the user specified retry policy.
         user_retry_manager = RetryManager(ctx.retry_policy)
 
         while True:
-            try:
-                return await self._get_single_output(ctx.input_jwt)
-            except (_WrappedUserException, FunctionTimeoutError) as exc:
+            item = await self._get_single_output(ctx.input_jwt)
+            if item.result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS:
+                return await _process_result(item.result, item.data_format, self.stub, self.client)
+
+            if item.result.status != api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
+                # non-internal failures get a delay before retrying
                 delay_ms = user_retry_manager.get_delay_ms()
                 if delay_ms is None:
-                    raise exc
+                    # no more retries, this should raise an error when the non-success status is converted
+                    # to an exception:
+                    return await _process_result(item.result, item.data_format, self.stub, self.client)
                 await asyncio.sleep(delay_ms / 1000)
-            except InternalFailure:
-                # For system failures on the server, we retry immediately,
-                # and the failure does not count towards the retry policy.
-                pass
+
             await self._retry_input()
 
     async def poll_function(self, timeout: Optional[float] = None):
