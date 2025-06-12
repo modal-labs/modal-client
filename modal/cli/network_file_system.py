@@ -203,8 +203,11 @@ async def rm(
 ):
     ensure_env(env)
     volume = _NetworkFileSystem.from_name(volume_name)
+    console = Console()
     try:
         await volume.remove_file(remote_path, recursive=recursive)
+        console.print(OutputManager.step_completed(f"{remote_path} was deleted successfully!"))
+
     except GRPCError as exc:
         if exc.status in (Status.NOT_FOUND, Status.INVALID_ARGUMENT):
             raise UsageError(exc.message)
