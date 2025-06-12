@@ -597,6 +597,20 @@ def shell(
     modal shell hello_world.py -c 'uv pip list' > env.txt
     ```
     """
+
+    if container_or_function and len(sys.argv) > 3:
+        supported_opts = {"--cmd"}
+        ignored_or_unrecognized = [
+            arg
+            for arg in sys.argv[3:]
+            if arg.startswith("-") and not any(arg.startswith(opt) for opt in supported_opts)
+        ]
+        if ignored_or_unrecognized:
+            print(
+                "Warning: The following arguments are ignored when using modal shell with a function: "
+                f"{', '.join(ignored_or_unrecognized)}"
+            )
+
     env = ensure_env(env)
 
     if pty is None:
