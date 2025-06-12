@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.4.dev9 (2025-06-12)
+
+- Added support for `modal shell --secret SECRET_NAME`
+
+
 #### 1.0.4.dev8 (2025-06-12)
 
 - Updated `Sandbox.watch()` so that exceptions are raised in (and can be caught by) the calling task.
