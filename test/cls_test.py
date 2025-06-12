@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import dataclasses
 import inspect
 import pytest
 import subprocess
@@ -19,6 +20,7 @@ from modal._partial_function import (
 from modal._serialization import deserialize, deserialize_params, serialize
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import FunctionInfo
+from modal.cls import _ServiceOptions
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import (
     PartialFunction,
@@ -157,7 +159,7 @@ def test_class_with_options(client, servicer):
             Foo.with_options(concurrency_limit=10)()  # type: ignore
 
 
-def test_class_multiple_override_methods(client, servicer):
+def test_class_multiple_dynamic_parameterization_methods(client, servicer):
     foo = (
         Foo.with_options(max_containers=1)  # type: ignore
         .with_batching(max_batch_size=10, wait_ms=10)  # type: ignore
@@ -246,6 +248,16 @@ def test_with_options_from_name(servicer):
     function_map: api_pb2.FunctionMapRequest
     (function_map,) = ctx.get_requests("FunctionMap")
     assert function_map.function_id == "fu-124"  # the bound function
+
+
+def test_service_options_defaults_untruthiness():
+    # For `.with_options()` stacking (method-chaining) to work, the default values of the
+    # internal _ServiceOptions dataclass should be be untruthy. This test just asserts that.
+    # In the future we may change the implementation to use an "Unset" sentinel default, in
+    # which case we wouldn't need this assertion.
+    default_options = _ServiceOptions()
+    for value in dataclasses.asdict(default_options).values():
+        assert not value
 
 
 # Reusing the app runs into an issue with stale function handles.
