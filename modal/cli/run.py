@@ -27,6 +27,7 @@ from ..functions import Function
 from ..image import Image
 from ..output import enable_output
 from ..runner import deploy_app, interactive_shell, run_app
+from ..secret import Secret
 from ..serving import serve_app
 from ..volume import Volume
 from .import_refs import (
@@ -531,6 +532,10 @@ def shell(
             " Can be used multiple times."
         ),
     ),
+    secret: Optional[list[str]] = typer.Option(
+        default=None,
+        help=("Name of a `modal.Secret` to mount inside the shell (if not using REF). Can be used multiple times."),
+    ),
     cpu: Optional[int] = typer.Option(default=None, help="Number of CPUs to allocate to the shell (if not using REF)."),
     memory: Optional[int] = typer.Option(
         default=None, help="Memory to allocate for the shell, in MiB (if not using REF)."
@@ -660,6 +665,7 @@ def shell(
     else:
         modal_image = Image.from_registry(image, add_python=add_python) if image else None
         volumes = {} if volume is None else {f"/mnt/{vol}": Volume.from_name(vol) for vol in volume}
+        secrets = [] if secret is None else [Secret.from_name(s) for s in secret]
         start_shell = partial(
             interactive_shell,
             image=modal_image,
@@ -668,6 +674,7 @@ def shell(
             gpu=gpu,
             cloud=cloud,
             volumes=volumes,
+            secrets=secrets,
             region=region.split(",") if region else [],
             pty=pty,
         )
