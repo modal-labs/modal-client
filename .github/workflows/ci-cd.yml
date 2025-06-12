@@ -182,7 +182,7 @@ jobs:
 
       - name: Check entrypoint import
         run: |
-          python -c 'import modal._container_entrypoint'
+          python -c 'import modal._container_entrypoint; import modal._runtime.asgi'
           if [ "${{ matrix.image-builder-version }}" == "2024.04" ]; then python -c 'import fastapi'; fi
 
   publish-client:
@@ -255,6 +255,40 @@ jobs:
 
       - name: Publish mounts
         run: python -m modal_global_objects.mounts.python_standalone
+
+  publish-client-dependency-mounts:
+    name: Publish client dependency mounts
+    if: github.ref == 'refs/heads/main'
+    needs: [client-versioning, client-test, publish-client]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      MODAL_LOGLEVEL: DEBUG
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+
+    steps:
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
+        with:
+          # Check out the commit that bumped the version, after the merge that triggered the workflow
+          ref: ${{ needs.client-versioning.outputs.release-hash }}
+
+      - uses: ./.github/actions/setup-cached-python
+        with:
+          version: "3.11"
+
+      - name: Build protobuf
+        run: inv protoc
+
+      - name: Build client package (installs all dependencies)
+        run: pip install -e .
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Publish mounts
+        run: python -m modal_global_objects.mounts.modal_client_dependencies
+
 
   publish-base-images:
     name: |

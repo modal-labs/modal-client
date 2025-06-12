@@ -96,10 +96,16 @@ async def test_volume_get(servicer, client, tmp_path, version, file_contents_siz
     data = b""
     for chunk in vol.read_file(file_path):
         data += chunk
+
+    # Faster assert to avoid huge error when there are large content differences:
+    assert len(data) == file_contents_size
     assert data == file_contents
 
     output = io.BytesIO()
     vol.read_file_into_fileobj(file_path, output)
+
+    # Faster assert to avoid huge error when there are large content differences:
+    assert len(output.getvalue()) == file_contents_size
     assert output.getvalue() == file_contents
 
     with pytest.raises(FileNotFoundError):
@@ -267,7 +273,7 @@ async def test_volume_upload_large_file(client, tmp_path, servicer, blob_server)
         assert servicer.volumes[object_id].files["/a"].data == b""
         assert servicer.volumes[object_id].files["/a"].data_blob_id == "bl-1"
 
-        _, blobs, _ = blob_server
+        _, blobs, _, _ = blob_server
         assert blobs["bl-1"] == b"hello world, this is a lot of text"
 
 
@@ -308,7 +314,7 @@ async def test_volume_upload_large_stream(client, servicer, blob_server):
         assert servicer.volumes[object_id].files["/a"].data == b""
         assert servicer.volumes[object_id].files["/a"].data_blob_id == "bl-1"
 
-        _, blobs, _ = blob_server
+        _, blobs, _, _ = blob_server
         assert blobs["bl-1"] == b"hello world, this is a lot of text"
 
 
@@ -374,7 +380,7 @@ async def test_volume_copy_1(client, tmp_path, servicer, version):
         object_id = vol.object_id
 
         # copy file from src_path to dst_path
-        vol.copy_files([src_path], dst_path)
+        vol.copy_files([src_path], dst_path, False)
 
     assert servicer.volumes[object_id].files.keys() == {src_path, dst_path}
 
@@ -396,7 +402,7 @@ async def test_volume_copy_2(client, tmp_path, servicer, version):
                 batch.put_file(local_file_path, file_path)
             object_id = vol.object_id
 
-        vol.copy_files(file_paths, "test_dir")
+        vol.copy_files(file_paths, "test_dir", False)
 
     returned_volume_files = [Path(file) for file in servicer.volumes[object_id].files.keys()]
     expected_volume_files = [

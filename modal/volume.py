@@ -38,13 +38,13 @@ from ._utils.async_utils import (
     async_map,
     async_map_ordered,
     asyncnullcontext,
+    retry,
     synchronize_api,
 )
 from ._utils.blob_utils import (
     BLOCK_SIZE,
     FileUploadSpec,
     FileUploadSpec2,
-    blob_iter,
     blob_upload_file,
     get_file_upload_spec_from_fileobj,
     get_file_upload_spec_from_path,
@@ -68,6 +68,8 @@ class FileEntryType(enum.IntEnum):
     FILE = 1
     DIRECTORY = 2
     SYMLINK = 3
+    FIFO = 4
+    SOCKET = 5
 
 
 @dataclass(frozen=True)
@@ -375,10 +377,16 @@ class _Volume(_Object, type_prefix="vo"):
                 "Please remove the glob `*` suffix."
             )
 
-        req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)
-        async for batch in self._client.stub.VolumeListFiles.unary_stream(req):
-            for entry in batch.entries:
-                yield FileEntry._from_proto(entry)
+        if self._is_v1:
+            req = api_pb2.VolumeListFilesRequest(volume_id=self.object_id, path=path, recursive=recursive)
+            async for batch in self._client.stub.VolumeListFiles.unary_stream(req):
+                for entry in batch.entries:
+                    yield FileEntry._from_proto(entry)
+        else:
+            req = api_pb2.VolumeListFiles2Request(volume_id=self.object_id, path=path, recursive=recursive)
+            async for batch in self._client.stub.VolumeListFiles2.unary_stream(req):
+                for entry in batch.entries:
+                    yield FileEntry._from_proto(entry)
 
     @live_method
     async def listdir(self, path: str, *, recursive: bool = False) -> list[FileEntry]:
@@ -391,9 +399,13 @@ class _Volume(_Object, type_prefix="vo"):
         return [entry async for entry in self.iterdir(path, recursive=recursive)]
 
     @live_method_gen
-    def read_file(self, path: str) -> AsyncIterator[bytes]:
+    async def read_file(self, path: str) -> AsyncIterator[bytes]:
         """
         Read a file from the modal.Volume.
+
+        Note - this function is primarily intended to be used outside of a Modal App.
+        For more information on downloading files from a Modal Volume, see
+        [the guide](/docs/guide/volumes).
 
         **Example:**
 
@@ -405,23 +417,6 @@ class _Volume(_Object, type_prefix="vo"):
         print(len(data))  # == 1024 * 1024
         ```
         """
-        return self._read_file1(path) if self._is_v1 else self._read_file2(path)
-
-    async def _read_file1(self, path: str) -> AsyncIterator[bytes]:
-        req = api_pb2.VolumeGetFileRequest(volume_id=self.object_id, path=path)
-        try:
-            response = await retry_transient_errors(self._client.stub.VolumeGetFile, req)
-        except GRPCError as exc:
-            raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
-        # TODO(Jonathon): use ranged requests.
-        if response.WhichOneof("data_oneof") == "data":
-            yield response.data
-            return
-        else:
-            async for data in blob_iter(response.data_blob_id, self._client.stub):
-                yield data
-
-    async def _read_file2(self, path: str) -> AsyncIterator[bytes]:
         req = api_pb2.VolumeGetFile2Request(volume_id=self.object_id, path=path)
 
         try:
@@ -456,32 +451,6 @@ class _Volume(_Object, type_prefix="vo"):
             def progress_cb(*_, **__):
                 pass
 
-        if self._is_v1:
-            return await self._read_file_into_fileobj1(path, fileobj, progress_cb)
-        else:
-            return await self._read_file_into_fileobj2(path, fileobj, progress_cb)
-
-    async def _read_file_into_fileobj1(
-        self, path: str, fileobj: typing.IO[bytes], progress_cb: Callable[..., Any]
-    ) -> int:
-        num_bytes_written = 0
-
-        async for chunk in self._read_file1(path):
-            num_chunk_bytes_written = 0
-
-            while num_chunk_bytes_written < len(chunk):
-                # TODO(dflemstr): this is a small write, but nonetheless might block the event loop for some time:
-                n = fileobj.write(chunk)
-                num_chunk_bytes_written += n
-                progress_cb(advance=n)
-
-            num_bytes_written += len(chunk)
-
-        return num_bytes_written
-
-    async def _read_file_into_fileobj2(
-        self, path: str, fileobj: typing.IO[bytes], progress_cb: Callable[..., Any]
-    ) -> int:
         req = api_pb2.VolumeGetFile2Request(volume_id=self.object_id, path=path)
 
         try:
@@ -499,7 +468,7 @@ class _Volume(_Object, type_prefix="vo"):
             num_bytes_written = 0
 
             async with download_semaphore, ClientSessionRegistry.get_session().get(url) as get_response:
-                async for chunk in get_response.content:
+                async for chunk in get_response.content.iter_any():
                     num_chunk_bytes_written = 0
 
                     while num_chunk_bytes_written < len(chunk):
@@ -526,11 +495,15 @@ class _Volume(_Object, type_prefix="vo"):
     @live_method
     async def remove_file(self, path: str, recursive: bool = False) -> None:
         """Remove a file or directory from a volume."""
-        req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
-        await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
+        if self._is_v1:
+            req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
+            await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
+        else:
+            req = api_pb2.VolumeRemoveFile2Request(volume_id=self.object_id, path=path, recursive=recursive)
+            await retry_transient_errors(self._client.stub.VolumeRemoveFile2, req)
 
     @live_method
-    async def copy_files(self, src_paths: Sequence[str], dst_path: str) -> None:
+    async def copy_files(self, src_paths: Sequence[str], dst_path: str, recursive: bool = False) -> None:
         """
         Copy files within the volume from src_paths to dst_path.
         The semantics of the copy operation follow those of the UNIX cp command.
@@ -554,8 +527,19 @@ class _Volume(_Object, type_prefix="vo"):
         like `os.rename()` and then `commit()` the volume. The `copy_files()` method is useful when you don't have
         the volume mounted as a filesystem, e.g. when running a script on your local computer.
         """
-        request = api_pb2.VolumeCopyFilesRequest(volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path)
-        await retry_transient_errors(self._client.stub.VolumeCopyFiles, request, base_delay=1)
+        if self._is_v1:
+            if recursive:
+                raise ValueError("`recursive` is not supported for V1 volumes")
+
+            request = api_pb2.VolumeCopyFilesRequest(
+                volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path, recursive=recursive
+            )
+            await retry_transient_errors(self._client.stub.VolumeCopyFiles, request, base_delay=1)
+        else:
+            request = api_pb2.VolumeCopyFiles2Request(
+                volume_id=self.object_id, src_paths=src_paths, dst_path=dst_path, recursive=recursive
+            )
+            await retry_transient_errors(self._client.stub.VolumeCopyFiles2, request, base_delay=1)
 
     @live_method
     async def batch_upload(self, force: bool = False) -> "_AbstractVolumeUploadContextManager":
@@ -825,7 +809,7 @@ class _VolumeUploadContextManager2(_AbstractVolumeUploadContextManager):
         progress_cb: Optional[Callable[..., Any]] = None,
         force: bool = False,
         hash_concurrency: int = multiprocessing.cpu_count(),
-        put_concurrency: int = multiprocessing.cpu_count(),
+        put_concurrency: int = 128,
     ):
         """mdmd:hidden"""
         self._volume_id = volume_id
@@ -1010,6 +994,16 @@ async def _put_missing_blocks(
         file_progress.pending_blocks.add(missing_block.block_index)
         task_progress_cb = functools.partial(progress_cb, task_id=file_progress.task_id)
 
+        @retry(n_attempts=5, base_delay=0.5, timeout=None)
+        async def put_missing_block_attempt(payload: BytesIOSegmentPayload) -> bytes:
+            with payload.reset_on_error(subtract_progress=True):
+                async with ClientSessionRegistry.get_session().put(
+                    missing_block.put_url,
+                    data=payload,
+                ) as response:
+                    response.raise_for_status()
+                    return await response.content.read()
+
         async with put_semaphore:
             with file_spec.source() as source_fp:
                 payload = BytesIOSegmentPayload(
@@ -1020,13 +1014,7 @@ async def _put_missing_blocks(
                     chunk_size=256 * 1024,
                     progress_report_cb=task_progress_cb,
                 )
-
-                async with ClientSessionRegistry.get_session().put(
-                    missing_block.put_url,
-                    data=payload,
-                ) as response:
-                    response.raise_for_status()
-                    resp_data = await response.content.read()
+                resp_data = await put_missing_block_attempt(payload)
 
         file_progress.pending_blocks.remove(missing_block.block_index)
 

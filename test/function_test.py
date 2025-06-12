@@ -157,6 +157,20 @@ def synchronicity_loop_delay_tracker():
     done = True
 
 
+@pytest.mark.timeout(5)
+def test_map_empty_input(client):
+    app = App()
+
+    @app.function(serialized=True)
+    def f():
+        pass
+
+    with app.run(client=client):
+        l = list(f.starmap(() for _ in range(0)))
+        print(l)
+        assert l == []
+
+
 def test_map_blocking_iterator_blocking_synchronicity_loop(client):
     app = App()
     SLEEP_DUR = 0.5
@@ -881,7 +895,7 @@ def test_calls_should_not_unwrap_modal_objects(servicer, client):
             assert type(ret) is modal.Dict
         foo.for_each([some_modal_object])
 
-    assert len(servicer.client_calls) == 5
+    assert len(servicer.function_call_inputs) == 5
 
 
 def assert_is_wrapped_dict_gen(some_arg):
@@ -900,7 +914,7 @@ def test_calls_should_not_unwrap_modal_objects_gen(servicer, client):
         with pytest.raises(InvalidError, match="Cannot `spawn` a generator function."):
             foo.spawn(some_modal_object)
 
-    assert len(servicer.client_calls) == 1
+    assert len(servicer.function_call_inputs) == 1
 
 
 def test_function_deps_have_ids(client, servicer, monkeypatch, test_dir, set_env_client):
@@ -963,7 +977,7 @@ async def test_map_large_inputs(client, servicer, monkeypatch, blob_server):
     app = App()
     dummy_modal = app.function()(dummy)
 
-    _, blobs, _ = blob_server
+    _, blobs, _, _ = blob_server
     async with app.run.aio(client=client):
         assert len(blobs) == 0
         assert [a async for a in dummy_modal.map.aio(range(100))] == [i**2 for i in range(100)]
@@ -1043,11 +1057,11 @@ def test_batch_function_invalid_error():
     with pytest.raises(InvalidError, match="must be a non-negative integer"):
         app.function(batched(max_batch_size=1, wait_ms=-1))(dummy)
 
-    with pytest.raises(InvalidError, match="must be less than"):
-        app.function(batched(max_batch_size=1000, wait_ms=1))(dummy)
+    with pytest.raises(InvalidError, match="cannot be greater than"):
+        app.function(batched(max_batch_size=1000 + 1, wait_ms=1))(dummy)
 
-    with pytest.raises(InvalidError, match="must be less than"):
-        app.function(batched(max_batch_size=1, wait_ms=10 * 60 * 1000))(dummy)
+    with pytest.raises(InvalidError, match="cannot be greater than"):
+        app.function(batched(max_batch_size=1, wait_ms=10 * 60 * 1000 + 1))(dummy)
 
     with pytest.raises(InvalidError, match="cannot return generators"):
 

@@ -6,10 +6,51 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.0.1.dev0 (2025-05-16)
+#### 1.0.4.dev5 (2025-06-11)
 
-* Fixes a bug where objects returned by `Sandbox.list` had `returncode == 0` for *running* sandboxes. Now those sandboxes will have a null returncode.
+- When `verbose=True` is set in `Sandbox.create()`, execs and file system operations are logged in the sandbox logs. For example, 
+```
+p = sb.exec("python", "-c", "print('hello')")
+```
+logs
+<img width="538" alt="image" src="https://github.com/user-attachments/assets/597ef68f-71b7-40d7-b6a6-7a563a582faa" />
 
+
+### 1.0.3 (2025-06-05)
+
+This release contains several new features, improvements, and bug fixes:
+
+* Added support for specifying a timezone on `Cron` schedules, which allows you to run a Function at a specific local time regardless of daylight savings:
+  ```python
+  import modal
+  app = modal.App()
+  
+  @app.function(schedule=modal.Cron("* 6 * * *"), timezone="America/New_York")  # Use tz database naming conventions
+  def f():
+      print("This function will run every day at 6am New York time.")
+  ```
+* Added an `h2_ports` parameter to `Sandbox.create`, which exposes encrypted ports using HTTP/2. The following example will create an H2 port on 5002 and a port using HTTPS over HTTP/1.1 on 5003:
+  ```python
+  sb = modal.Sandbox.create(app=app, h2_ports = [5002], encrypted_ports = [5003])
+  ```
+* Added `--from-dotenv` and `--from-json` options to `modal secret create`, which will read from local files to populate Secret contents.
+* `Sandbox.terminate` no longer waits for container shutdown to complete before returning. It still ensures that a terminated container will shutdown imminently. To restore the previous behavior (i.e., to wait until the Sandbox is actually terminated), call `sb.wait(raise_on_termination=False)` after calling `sb.terminate()`.
+* Improved performance and stability for `modal volume get`.
+* Fixed a rare race condition that could sometimes make `Function.map` and similar calls deadlock.
+* Fixed an issue where `Function.map()` and similar methods would stall for 55 seconds when passed an empty iterator as input instead of completing immediately.
+* We now raise an error during App setup when using interactive mode without the `modal.enable_output` context manager. Previously, this would run the App but raise when `modal.interact()` was called.
+
+
+### 1.0.2 (2025-05-26)
+
+* Fixed an incompatibility with the recently released `aiohttp` v3.12.0, causing issues with volume and large input uploads.
+
+
+### 1.0.1 (2025-05-19)
+
+- Added a `--timestamps` flag to `modal app logs` that prepends a timestamp to each log line.
+- Fixed a bug where objects returned by `Sandbox.list` had `returncode == 0` for *running* Sandboxes. Now the return code for running Sandboxes will be `None`.
+- Fixed a bug affecting systems where the `sys.platform.node` name includes unicode characters.
 
 ### 1.0.0 (2025-05-16)
 

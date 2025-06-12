@@ -115,7 +115,7 @@ def test_python_version_validation(builder_version):
 def test_dockerhub_python_version(builder_version):
     assert _dockerhub_python_version(builder_version, "3.9.1") == "3.9.1"
 
-    expected_39_full = {"2023.12": "3.9.15", "2024.04": "3.9.19", "2024.10": "3.9.20", "PREVIEW": "3.9.20"}[
+    expected_39_full = {"2023.12": "3.9.15", "2024.04": "3.9.19", "2024.10": "3.9.20", "PREVIEW": "3.9.22"}[
         builder_version
     ]
     assert _dockerhub_python_version(builder_version, "3.9") == expected_39_full
@@ -138,17 +138,20 @@ def test_image_base(builder_version, servicer, client, test_dir):
         app.function(image=image)(dummy)
         with app.run(client=client):
             commands = get_all_dockerfile_commands(image.object_id, servicer)
-            assert "COPY /modal_requirements.txt /modal_requirements.txt" in commands
-            if builder_version == "2023.12":
-                assert "pip install -r /modal_requirements.txt" in commands
-            else:
-                assert "rm /modal_requirements.txt" in commands
-                if builder_version == "2024.04":
-                    assert "pip install --no-cache --no-deps -r /modal_requirements.txt" in commands
+            if builder_version <= "2024.10":
+                assert "COPY /modal_requirements.txt /modal_requirements.txt" in commands
+                if builder_version == "2023.12":
+                    assert "pip install -r /modal_requirements.txt" in commands
                 else:
-                    assert (
-                        "uv pip install --system --compile-bytecode --no-cache --no-deps -r /modal_requirements.txt"
-                    ) in commands
+                    assert "rm /modal_requirements.txt" in commands
+                    if builder_version == "2024.04":
+                        assert "pip install --no-cache --no-deps -r /modal_requirements.txt" in commands
+                    else:
+                        assert (
+                            "uv pip install --system --compile-bytecode --no-cache --no-deps -r /modal_requirements.txt"
+                        ) in commands
+            else:
+                assert "modal_requirements.txt" not in commands
 
 
 @pytest.mark.parametrize("python_version", [None, "3.10", "3.11.4"])
@@ -664,7 +667,36 @@ def test_poetry(builder_version, servicer, client):
     with app.run(client=client):
         layers = get_image_layers(image.object_id, servicer)
         context_files = {f.filename for layer in layers for f in layer.context_files}
-        assert context_files == {"/.poetry.lock", "/.pyproject.toml", "/modal_requirements.txt"}
+        if builder_version <= "2024.10":
+            assert context_files == {"/.poetry.lock", "/.pyproject.toml", "/modal_requirements.txt"}
+        else:
+            assert context_files == {"/.poetry.lock", "/.pyproject.toml"}
+
+
+def test_image_add_local_file_error(tmp_path, client):
+    app = App()
+
+    unknown_file = tmp_path / "does-not-exist.txt"
+    img = Image.debian_slim().add_local_file(unknown_file, "/file.txt")
+    app.function(image=img)(dummy)
+
+    msg = re.escape(f"local file {unknown_file} does not exist")
+    with pytest.raises(FileNotFoundError, match=msg):
+        with app.run(client=client):
+            pass
+
+
+def test_image_add_local_dir_err(tmp_path, client):
+    app = App()
+
+    unknown_dir = tmp_path / "does-not-exist"
+    img = Image.debian_slim().add_local_dir(unknown_dir, "/file.txt")
+    app.function(image=img)(dummy)
+
+    msg = re.escape(f"local dir {unknown_dir} does not exist")
+    with pytest.raises(FileNotFoundError, match=msg):
+        with app.run(client=client):
+            pass
 
 
 @pytest.mark.parametrize(["copy"], [(True,), (False,)])
@@ -1597,7 +1629,10 @@ def test_image_parallel_build(builder_version, servicer, client):
 
         await stream.send_message(
             api_pb2.ImageJoinStreamingResponse(
-                result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS)
+                result=api_pb2.GenericResult(
+                    status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+                ),
+                metadata=api_pb2.ImageMetadata(image_builder_version="foobar"),
             )
         )
 
@@ -1793,12 +1828,14 @@ def test_image_only_joins_unfinished_steps(servicer, client):
                     api_pb2.ImageGetOrCreateResponse(
                         image_id="im-123",
                         result=api_pb2.GenericResult(status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS),
+                        metadata=api_pb2.ImageMetadata(),
                     )
                 )
             else:
                 await stream.send_message(
                     api_pb2.ImageGetOrCreateResponse(
                         image_id="im-124",
+                        metadata=api_pb2.ImageMetadata(),
                     )
                 )
 

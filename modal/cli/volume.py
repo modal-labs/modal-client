@@ -15,8 +15,9 @@ import modal
 from modal._output import OutputManager, ProgressHandler
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
+from modal._utils.time_utils import timestamp_to_local
 from modal.cli._download import _volume_download
-from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table, timestamp_to_local
+from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.volume import _AbstractVolumeUploadContextManager, _Volume
@@ -153,6 +154,10 @@ async def ls(
                 filetype = "dir"
             elif entry.type == api_pb2.FileEntry.FileType.SYMLINK:
                 filetype = "link"
+            elif entry.type == api_pb2.FileEntry.FileType.FIFO:
+                filetype = "fifo"
+            elif entry.type == api_pb2.FileEntry.FileType.SOCKET:
+                filetype = "socket"
             else:
                 filetype = "file"
             rows.append(
@@ -203,7 +208,7 @@ async def put(
                     vol.object_id,
                     vol._client,
                     progress_cb=progress_handler.progress,
-                    force=force
+                    force=force,
                 ) as batch:
                     batch.put_directory(local_path, remote_path)
             except FileExistsError as exc:
@@ -219,7 +224,7 @@ async def put(
                     vol.object_id,
                     vol._client,
                     progress_cb=progress_handler.progress,
-                    force=force
+                    force=force,
                 ) as batch:
                     batch.put_file(local_path, remote_path)
 
@@ -260,12 +265,13 @@ async def rm(
 async def cp(
     volume_name: str,
     paths: list[str],  # accepts multiple paths, last path is treated as destination path
+    recursive: bool = Option(False, "-r", "--recursive", help="Copy directories recursively"),
     env: Optional[str] = ENV_OPTION,
 ):
     ensure_env(env)
     volume = _Volume.from_name(volume_name, environment_name=env)
     *src_paths, dst_path = paths
-    await volume.copy_files(src_paths, dst_path)
+    await volume.copy_files(src_paths, dst_path, recursive)
 
 
 @volume_cli.command(

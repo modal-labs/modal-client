@@ -100,10 +100,12 @@ class _Sandbox(_Object, type_prefix="sb"):
         volumes: dict[Union[str, os.PathLike], Union[_Volume, _CloudBucketMount]] = {},
         pty_info: Optional[api_pb2.PTYInfo] = None,
         encrypted_ports: Sequence[int] = [],
+        h2_ports: Sequence[int] = [],
         unencrypted_ports: Sequence[int] = [],
         proxy: Optional[_Proxy] = None,
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
         enable_snapshot: bool = False,
+        verbose: bool = False,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -155,6 +157,12 @@ class _Sandbox(_Object, type_prefix="sb"):
 
             open_ports = [api_pb2.PortSpec(port=port, unencrypted=False) for port in encrypted_ports]
             open_ports.extend([api_pb2.PortSpec(port=port, unencrypted=True) for port in unencrypted_ports])
+            open_ports.extend(
+                [
+                    api_pb2.PortSpec(port=port, unencrypted=False, tunnel_type=api_pb2.TUNNEL_TYPE_H2)
+                    for port in h2_ports
+                ]
+            )
 
             if block_network:
                 # If the network is blocked, cidr_allowlist is invalid as we don't allow any network access.
@@ -198,6 +206,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 network_access=network_access,
                 proxy_id=(proxy.object_id if proxy else None),
                 enable_snapshot=enable_snapshot,
+                verbose=verbose,
             )
 
             # Note - `resolver.app_id` will be `None` for app-less sandboxes
@@ -240,10 +249,14 @@ class _Sandbox(_Object, type_prefix="sb"):
         pty_info: Optional[api_pb2.PTYInfo] = None,
         # List of ports to tunnel into the sandbox. Encrypted ports are tunneled with TLS.
         encrypted_ports: Sequence[int] = [],
+        # List of encrypted ports to tunnel into the sandbox, using HTTP/2.
+        h2_ports: Sequence[int] = [],
         # List of ports to tunnel into the sandbox without encryption.
         unencrypted_ports: Sequence[int] = [],
         # Reference to a Modal Proxy to use in front of this Sandbox.
         proxy: Optional[_Proxy] = None,
+        # Enable verbose logging for sandbox operations.
+        verbose: bool = False,
         # Enable memory snapshots.
         _experimental_enable_snapshot: bool = False,
         _experimental_scheduler_placement: Optional[
@@ -252,7 +265,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         client: Optional[_Client] = None,
     ) -> "_Sandbox":
         """
-        Create a new Sandbox to run untrusted, arbitrary code.
+        Create a new Sandbox to run untrusted, arbitrary code. The Sandbox's corresponding container
+        will be created asynchronously.
 
         **Usage**
 
@@ -282,11 +296,13 @@ class _Sandbox(_Object, type_prefix="sb"):
             volumes=volumes,
             pty_info=pty_info,
             encrypted_ports=encrypted_ports,
+            h2_ports=h2_ports,
             unencrypted_ports=unencrypted_ports,
             proxy=proxy,
             _experimental_enable_snapshot=_experimental_enable_snapshot,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
             client=client,
+            verbose=verbose,
         )
 
     @staticmethod
@@ -319,6 +335,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         pty_info: Optional[api_pb2.PTYInfo] = None,
         # List of ports to tunnel into the sandbox. Encrypted ports are tunneled with TLS.
         encrypted_ports: Sequence[int] = [],
+        # List of encrypted ports to tunnel into the sandbox, using HTTP/2.
+        h2_ports: Sequence[int] = [],
         # List of ports to tunnel into the sandbox without encryption.
         unencrypted_ports: Sequence[int] = [],
         # Reference to a Modal Proxy to use in front of this Sandbox.
@@ -329,6 +347,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
+        verbose: bool = False,
     ):
         # This method exposes some internal arguments (currently `mounts`) which are not in the public API
         # `mounts` is currently only used by modal shell (cli) to provide a function's mounts to the
@@ -358,10 +377,12 @@ class _Sandbox(_Object, type_prefix="sb"):
             volumes=volumes,
             pty_info=pty_info,
             encrypted_ports=encrypted_ports,
+            h2_ports=h2_ports,
             unencrypted_ports=unencrypted_ports,
             proxy=proxy,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
             enable_snapshot=_experimental_enable_snapshot,
+            verbose=verbose,
         )
         obj._enable_snapshot = _experimental_enable_snapshot
 
@@ -516,7 +537,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return self._tunnels
 
-    async def terminate(self):
+    async def terminate(self) -> None:
         """Terminate Sandbox execution.
 
         This is a no-op if the Sandbox has already finished running."""
@@ -524,7 +545,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         await retry_transient_errors(
             self._client.stub.SandboxTerminate, api_pb2.SandboxTerminateRequest(sandbox_id=self.object_id)
         )
-        await self.wait(raise_on_termination=False)
 
     async def poll(self) -> Optional[int]:
         """Check if the Sandbox has finished running.
@@ -540,7 +560,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return self.returncode
 
-    async def _get_task_id(self):
+    async def _get_task_id(self) -> str:
         while not self._task_id:
             resp = await self._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id))
             self._task_id = resp.task_id

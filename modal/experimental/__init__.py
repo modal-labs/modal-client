@@ -94,8 +94,9 @@ async def raw_dockerfile_image(
 
     Unlike for `modal.Image.from_dockerfile`, the provided recipe will not be embellished with
     steps to install dependencies for the Modal client package. As a consequence, the resulting
-    Image cannot be used with a modal Function unless those dependencies are added in a subsequent
-    layer. It _can_ be directly used with a modal Sandbox, which does not need the Modal client.
+    Image cannot be used with a modal Function unless those dependencies are already included
+    as part of the base Dockerfile recipe or are added in a subsequent layer. The Image _can_ be
+    directly used with a modal Sandbox, which does not need the Modal client.
 
     We expect to support this experimental function until the `2025.04` Modal Image Builder is
     stable, at which point Modal Image recipes will no longer install the client dependencies
@@ -127,8 +128,9 @@ async def raw_registry_image(
 
     Unlike for `modal.Image.from_registry`, the provided recipe will not be embellished with
     steps to install dependencies for the Modal client package. As a consequence, the resulting
-    Image cannot be used with a modal Function unless those dependencies are added in a subsequent
-    layer. It _can_ be directly used with a modal Sandbox, which does not need the Modal client.
+    Image cannot be used with a modal Function unless those dependencies are already included
+    as part of the registry Image or are added in a subsequent layer. The Image _can_ be
+    directly used with a modal Sandbox, which does not need the Modal client.
 
     We expect to support this experimental function until the `2025.04` Modal Image Builder is
     stable, at which point Modal Image recipes will no longer install the client dependencies

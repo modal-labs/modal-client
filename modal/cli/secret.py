@@ -1,7 +1,9 @@
 # Copyright Modal Labs 2022
+import json
 import os
 import platform
 import subprocess
+from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Optional
 
@@ -13,7 +15,8 @@ from typer import Argument
 
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
-from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table, timestamp_to_local
+from modal._utils.time_utils import timestamp_to_local
+from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
 from modal.environments import ensure_env
 from modal.secret import _Secret
@@ -47,14 +50,17 @@ async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
 @secret_cli.command("create", help="Create a new secret.")
 @synchronizer.create_blocking
 async def create(
-    secret_name,
-    keyvalues: list[str] = typer.Argument(..., help="Space-separated KEY=VALUE items"),
+    secret_name: str,
+    keyvalues: Optional[list[str]] = typer.Argument(default=None, help="Space-separated KEY=VALUE items."),
     env: Optional[str] = ENV_OPTION,
+    from_dotenv: Optional[Path] = typer.Option(default=None, help="Path to a .env file to load secrets from."),
+    from_json: Optional[Path] = typer.Option(default=None, help="Path to a JSON file to load secrets from."),
     force: bool = typer.Option(False, "--force", help="Overwrite the secret if it already exists."),
 ):
     env = ensure_env(env)
     env_dict = {}
-    for arg in keyvalues:
+
+    for arg in keyvalues or []:
         if "=" in arg:
             key, value = arg.split("=", 1)
             if value == "-":
@@ -62,16 +68,50 @@ async def create(
             env_dict[key] = value
         else:
             raise click.UsageError(
-                """Each item should be of the form <KEY>=VALUE. To enter secrets using your $EDITOR, use `<KEY>=-`.
+                """Each item should be of the form <KEY>=VALUE. To enter secrets using your $EDITOR, use `<KEY>=-`. To
+enter secrets from environment variables, use `<KEY>="$ENV_VAR"`.
 
 E.g.
 
 modal secret create my-credentials username=john password=-
+modal secret create my-credentials username=john password="$PASSWORD"
 """
             )
 
+    if from_dotenv:
+        if not from_dotenv.is_file():
+            raise click.UsageError(f"Could not read .env file at {from_dotenv}")
+
+        try:
+            from dotenv import dotenv_values
+        except ImportError:
+            raise ImportError(
+                "Need the `python-dotenv` package installed. You can install it by running `pip install python-dotenv`."
+            )
+
+        try:
+            env_dict.update(dotenv_values(from_dotenv))
+        except Exception as e:
+            raise click.UsageError(f"Could not parse .env file at {from_dotenv}: {e}")
+
+    if from_json:
+        if not from_json.is_file():
+            raise click.UsageError(f"Could not read JSON file at {from_json}")
+
+        try:
+            with from_json.open("r") as f:
+                env_dict.update(json.load(f))
+        except Exception as e:
+            raise click.UsageError(f"Could not parse JSON file at {from_json}: {e}")
+
     if not env_dict:
         raise click.UsageError("You need to specify at least one key for your secret")
+
+    for k, v in env_dict.items():
+        if not isinstance(k, str) or not k:
+            raise click.UsageError(f"Invalid key: '{k}'")
+        if not isinstance(v, str):
+            raise click.UsageError(f"Non-string value for secret '{k}'")
 
     # Create secret
     await _Secret.create_deployed(secret_name, env_dict, overwrite=force)
