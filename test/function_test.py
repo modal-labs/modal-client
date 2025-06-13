@@ -549,6 +549,10 @@ def test_map_exceptions(client, servicer):
         assert res[:4] == [0, 1, 4, 9] and res[5] == 25
         assert type(res[4]) is UserCodeException and "bad" in str(res[4])
 
+        res = list(custom_function_modal.map(range(6), return_exceptions=True, wrap_returned_exceptions=False))
+        assert res[:4] == [0, 1, 4, 9] and res[5] == 25
+        assert type(res[4]) is CustomException and "bad" in str(res[4])
+
 
 def import_failure():
     raise ImportError("attempted relative import with no known parent package")
