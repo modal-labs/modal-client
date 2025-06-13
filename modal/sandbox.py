@@ -106,6 +106,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
         enable_snapshot: bool = False,
         verbose: bool = False,
+        user: Optional[api_pb2.ProcessUser] = None,
     ) -> "_Sandbox":
         """mdmd:hidden"""
 
@@ -207,6 +208,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 proxy_id=(proxy.object_id if proxy else None),
                 enable_snapshot=enable_snapshot,
                 verbose=verbose,
+                user=user,
             )
 
             # Note - `resolver.app_id` will be `None` for app-less sandboxes
@@ -257,6 +259,8 @@ class _Sandbox(_Object, type_prefix="sb"):
         proxy: Optional[_Proxy] = None,
         # Enable verbose logging for sandbox operations.
         verbose: bool = False,
+        # Set the user ID and group ID of the sandbox.
+        user: Optional[api_pb2.ProcessUser] = None,
         # Enable memory snapshots.
         _experimental_enable_snapshot: bool = False,
         _experimental_scheduler_placement: Optional[
@@ -299,10 +303,11 @@ class _Sandbox(_Object, type_prefix="sb"):
             h2_ports=h2_ports,
             unencrypted_ports=unencrypted_ports,
             proxy=proxy,
+            verbose=verbose,
+            user=user,
             _experimental_enable_snapshot=_experimental_enable_snapshot,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
             client=client,
-            verbose=verbose,
         )
 
     @staticmethod
@@ -341,13 +346,16 @@ class _Sandbox(_Object, type_prefix="sb"):
         unencrypted_ports: Sequence[int] = [],
         # Reference to a Modal Proxy to use in front of this Sandbox.
         proxy: Optional[_Proxy] = None,
+        # Enable verbose logging for sandbox operations.
+        verbose: bool = False,
+        # Set the user ID and group ID of the sandbox.
+        user: Optional[api_pb2.ProcessUser] = None,
         # Enable memory snapshots.
         _experimental_enable_snapshot: bool = False,
         _experimental_scheduler_placement: Optional[
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
-        verbose: bool = False,
     ):
         # This method exposes some internal arguments (currently `mounts`) which are not in the public API
         # `mounts` is currently only used by modal shell (cli) to provide a function's mounts to the
@@ -380,9 +388,10 @@ class _Sandbox(_Object, type_prefix="sb"):
             h2_ports=h2_ports,
             unencrypted_ports=unencrypted_ports,
             proxy=proxy,
+            verbose=verbose,
+            user=user,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
             enable_snapshot=_experimental_enable_snapshot,
-            verbose=verbose,
         )
         obj._enable_snapshot = _experimental_enable_snapshot
 

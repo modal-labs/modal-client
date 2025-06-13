@@ -2443,6 +2443,14 @@ message Sandbox {
 
   // If set, the sandbox will be created with verbose logging enabled.
   bool verbose = 29;
+
+  // If set, the sandbox will be created with the specified user.
+  optional ProcessUser user = 30;
+}
+
+message ProcessUser {
+  uint32 uid = 1;
+  uint32 gid = 2;
 }
 
 message SandboxCreateRequest {
