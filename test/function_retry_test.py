@@ -195,18 +195,24 @@ def test_map_cancelled_inputs_not_retried(client, setup_app_and_function, servic
     servicer.failure_status = api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE
 
     with servicer.intercept() as ctx:
-        ctx.add_response(
-            "FunctionGetOutputs",
-            api_pb2.FunctionGetOutputsResponse(
-                outputs=[
-                    api_pb2.FunctionGetOutputsItem(
-                        result=api_pb2.GenericResult(
-                            status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED, exception="cancelled"
-                        ),
-                    )
-                ]
-            ),
-        )
+
+        async def FunctionGetOutputs(servicer, stream):
+            # don't send response until an input arrives - otherwise it could cause a race
+            await servicer.function_call_inputs_update_event.wait()
+            await stream.send_message(
+                api_pb2.FunctionGetOutputsResponse(
+                    outputs=[
+                        api_pb2.FunctionGetOutputsItem(
+                            result=api_pb2.GenericResult(
+                                status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED, exception="cancelled"
+                            ),
+                        )
+                    ]
+                )
+            )
+
+        ctx.set_responder("FunctionGetOutputs", FunctionGetOutputs)
+
         with app.run(client=client):
             with pytest.raises(RemoteError, match="cancelled"):
                 list(f.map([3, 3, 3]))
