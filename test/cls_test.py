@@ -1,4 +1,5 @@
 # Copyright Modal Labs 2022
+import dataclasses
 import inspect
 import pytest
 import subprocess
@@ -10,7 +11,7 @@ from typing import TYPE_CHECKING
 from typing_extensions import assert_type
 
 import modal.partial_function
-from modal import App, Cls, Function, Image, build, enter, exit, method
+from modal import App, Cls, Function, Image, Volume, build, enter, exit, method
 from modal._partial_function import (
     _find_partial_methods_for_user_cls,
     _PartialFunction,
@@ -19,6 +20,7 @@ from modal._partial_function import (
 from modal._serialization import deserialize, deserialize_params, serialize
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import FunctionInfo
+from modal.cls import _ServiceOptions
 from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
 from modal.partial_function import (
     PartialFunction,
@@ -157,7 +159,7 @@ def test_class_with_options(client, servicer):
             Foo.with_options(concurrency_limit=10)()  # type: ignore
 
 
-def test_class_multiple_override_methods(client, servicer):
+def test_class_multiple_dynamic_parameterization_methods(client, servicer):
     foo = (
         Foo.with_options(max_containers=1)  # type: ignore
         .with_batching(max_batch_size=10, wait_ms=10)  # type: ignore
@@ -177,14 +179,35 @@ def test_class_multiple_override_methods(client, servicer):
 
 
 def test_class_multiple_with_options_calls(client, servicer):
-    foo = Foo.with_options(max_containers=1).with_options(max_containers=2)()  # type: ignore
+    foo = (
+        Foo.with_options(  # type: ignore
+            gpu="A10:4",
+            memory=1024,
+            cpu=8,
+            buffer_containers=2,
+            max_containers=5,
+            volumes={"/data": Volume.from_name("data", create_if_missing=True)},
+        ).with_options(  # type: ignore
+            gpu="A100",
+            memory=2048,
+            max_containers=10,
+            volumes={"/weights": Volume.from_name("weights", create_if_missing=True)},
+        )()  # type: ignore
+    )
 
     with app.run(client=client):
         with servicer.intercept() as ctx:
             _ = foo.bar.remote(2)
             function_bind_params: api_pb2.FunctionBindParamsRequest
             (function_bind_params,) = ctx.get_requests("FunctionBindParams")
-            assert function_bind_params.function_options.concurrency_limit == 2
+            assert function_bind_params.function_options.resources.milli_cpu == 8000
+            assert function_bind_params.function_options.resources.memory_mb == 2048
+            assert function_bind_params.function_options.resources.gpu_config.gpu_type == "A100"
+            assert function_bind_params.function_options.resources.gpu_config.count == 1
+            assert function_bind_params.function_options.buffer_containers == 2
+            assert function_bind_params.function_options.concurrency_limit == 10
+            assert len(function_bind_params.function_options.volume_mounts) == 1
+            assert function_bind_params.function_options.volume_mounts[0].mount_path == "/weights"
 
 
 def test_with_options_from_name(servicer):
@@ -225,6 +248,16 @@ def test_with_options_from_name(servicer):
     function_map: api_pb2.FunctionMapRequest
     (function_map,) = ctx.get_requests("FunctionMap")
     assert function_map.function_id == "fu-124"  # the bound function
+
+
+def test_service_options_defaults_untruthiness():
+    # For `.with_options()` stacking (method-chaining) to work, the default values of the
+    # internal _ServiceOptions dataclass should be be untruthy. This test just asserts that.
+    # In the future we may change the implementation to use an "Unset" sentinel default, in
+    # which case we wouldn't need this assertion.
+    default_options = _ServiceOptions()
+    for value in dataclasses.asdict(default_options).values():  # type: ignore  # synchronicity type stubs
+        assert not value
 
 
 # Reusing the app runs into an issue with stale function handles.
