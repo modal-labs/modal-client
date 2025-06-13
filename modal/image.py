@@ -1299,6 +1299,140 @@ class _Image(_Object, type_prefix="im"):
             gpu_config=parse_gpu_config(gpu),
         )
 
+    def uv_sync(
+        self,
+        uv_project_dir: str = "./",  # Path to local uv mananged project
+        *,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
+        group: Optional[str] = None,  # Dependency group to install using `uv sync --group`
+        optional: Optional[str] = None,  # Optional dependencies to install using `uv sync --optional`
+        frozen: bool = True,  # If True, then we run `uv sync --frozen` when a uv.lock file is present
+        extra_options: str = "",  # Extra options to pass to `uv sync`
+        uv_version: Optional[str] = None,  # uv version to use
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
+    ) -> "_Image":
+        """Creates a virtual environment with the dependencies in `uv.lock` file using `uv sync`.
+
+        **Examples**
+        ```python
+        image = modal.Image.debian_slim().uv_sync()
+        ```
+        """
+
+        def _check_pyproject_toml(
+            pyproject_toml: str, version: ImageBuilderVersion, group: Optional[str], optional: Optional[str]
+        ):
+            if not os.path.exists(pyproject_toml):
+                raise InvalidError(f"Expected {pyproject_toml} to exist")
+
+            import toml
+
+            with open(pyproject_toml) as f:
+                pyproject_toml_content = toml.load(f)
+
+            if (
+                "tool" in pyproject_toml_content
+                and "uv" in pyproject_toml_content["tool"]
+                and "workspace" in pyproject_toml_content["tool"]["uv"]
+            ):
+                raise InvalidError("uv workspaces are not support")
+
+            if version > "2024.10":
+                # For builder version > 2024.10, modal is mounted at runtime and is not
+                # a requirement in `uv.lock`
+                return
+
+            dependencies = pyproject_toml_content["project"]["dependencies"]
+
+            if (
+                group is not None
+                and "dependency-groups" in pyproject_toml_content
+                and group in pyproject_toml_content["dependency-groups"]
+            ):
+                dependencies += pyproject_toml_content["dependency-groups"][group]
+
+            if (
+                optional is not None
+                and "project" in pyproject_toml_content
+                and "optional-dependencies" in pyproject_toml_content["project"]
+                and optional in pyproject_toml_content["project"]["optional-dependencies"]
+            ):
+                dependencies += pyproject_toml_content["project"]["optional-dependencies"][optional]
+
+            PACKAGE_REGEX = re.compile(r"^[\w-]+")
+
+            def _extract_package(package) -> str:
+                m = PACKAGE_REGEX.match(package)
+                return m.group(0) if m else ""
+
+            if not any(_extract_package(dependency) == "modal" for dependency in dependencies):
+                raise InvalidError(
+                    "Image builder version <= 2024.10 requires modal to be specified in your pyproject.toml file"
+                )
+
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+            uv_project_dir_ = os.path.expanduser(uv_project_dir)
+            pyproject_toml = os.path.join(uv_project_dir_, "pyproject.toml")
+
+            uv_root = "/.uv"
+            uv_sync_args = [
+                f"--project={uv_root}",
+                "--no-install-workspace",  # Do not install the root project or any "uv workspace"
+                "--no-managed-python",  # Use the system python interpreter to create venv
+                "--compile-bytecode",
+            ]
+            if group is not None:
+                uv_sync_args.append(f"--group={group}")
+            if optional is not None:
+                uv_sync_args.append(f"--optional={optional}")
+            if extra_options:
+                uv_sync_args.append(extra_options)
+
+            commands = ["FROM base"]
+
+            if uv_version is None:
+                commands.append("COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv")
+            else:
+                commands.append(f"COPY --from=ghcr.io/astral-sh/uv:{uv_version} /uv /usr/local/bin/uv")
+
+            context_files = {}
+
+            _check_pyproject_toml(pyproject_toml, version, group=group, optional=optional)
+
+            context_files["/.pyproject.toml"] = pyproject_toml
+            commands.append(f"COPY /.pyproject.toml {uv_root}/pyproject.toml")
+
+            uv_lock = os.path.join(uv_project_dir_, "uv.lock")
+            if os.path.exists(uv_lock):
+                context_files["/.uv.lock"] = uv_lock
+                commands.append(f"COPY /.uv.lock {uv_root}/uv.lock")
+
+                if frozen:
+                    # Do not update `uv.lock` when we have one when `frozen=True`. This it ehd efault because this
+                    # ensures that the runtime environment matches the local `uv.lock`.
+                    #
+                    # If `frozen=False`, then `uv sync` will update the the dependencies in the `uv.lock` file
+                    # during build time.
+                    uv_sync_args.append("--frozen")
+
+            uv_sync_args_joined = " ".join(uv_sync_args).strip()
+
+            commands += [
+                f"RUN /usr/local/bin/uv sync {uv_sync_args_joined}",
+                f"ENV PATH={uv_root}/.venv/bin:$PATH",
+            ]
+
+            return DockerfileSpec(commands=commands, context_files=context_files)
+
+        return _Image._from_args(
+            base_images={"base": self},
+            dockerfile_function=build_dockerfile,
+            force_build=self.force_build or force_build,
+            secrets=secrets,
+            gpu_config=parse_gpu_config(gpu),
+        )
+
     def dockerfile_commands(
         self,
         *dockerfile_commands: Union[str, list[str]],
