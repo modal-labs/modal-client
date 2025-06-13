@@ -342,7 +342,7 @@ async def _map_invocation(
         except Exception as e:
             if return_exceptions:
                 if wrap_returned_exceptions:
-                    # Prior to client 1.0.5 there was a bug where return_exceptions would wrap
+                    # Prior to client 1.0.4 there was a bug where return_exceptions would wrap
                     # any returned exceptions in a synchronicity.UserCodeException. This adds
                     # deprecated non-breaking compatibility bandaid for migrating away from that:
                     output = modal.exception.UserCodeException(e)
