@@ -6,6 +6,14 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.4.dev12 (2025-06-13)
+
+- When `Cls.with_options` is called multiple times on the same `Cls` instance, the overrides will now be merged. For example, the following will use an H100 GPU with 8 CPUS:
+  ```python
+  Model.with_options(cpu=8, gpu="A100").with_options(gpu="H100")
+  ```
+
+
 #### 1.0.4.dev9 (2025-06-12)
 
 - Added support for `modal shell --secret SECRET_NAME`
