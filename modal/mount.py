@@ -8,7 +8,7 @@ import re
 import time
 import typing
 import warnings
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Generator
 from pathlib import Path, PurePosixPath
 from typing import Callable, Optional, Sequence, Union
 
@@ -139,6 +139,14 @@ class _MountDir(_MountEntry):
     def description(self):
         return str(self.local_dir.expanduser().absolute())
 
+    def _walk_and_prune(self, top_dir: Path) -> Generator[str, None, None]:
+        for root, dirs, files in os.walk(top_dir, topdown=True):
+            # with topdown=True, os.walk allows modifying the dirnames list in-place, and will only
+            # recurse into dirs that are not ignored.
+            dirs[:] = [d for d in dirs if not self.ignore(Path(os.path.join(root, d)).relative_to(top_dir))]
+            for file in files:
+                yield os.path.join(root, file)
+
     def get_files_to_upload(self):
         # we can't use .resolve() eagerly here since that could end up "renaming" symlinked files
         # see test_mount_directory_with_symlinked_file
@@ -153,7 +161,7 @@ class _MountDir(_MountEntry):
             raise NotADirectoryError(msg)
 
         if self.recursive:
-            gen = (os.path.join(root, name) for root, dirs, files in os.walk(local_dir) for name in files)
+            gen = self._walk_and_prune(local_dir)
         else:
             gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
 
