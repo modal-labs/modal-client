@@ -579,7 +579,8 @@ def shell(
     modal shell hello_world.py::my_function
     ```
 
-    Or, if you're using a [modal.Cls](https://modal.com/docs/reference/modal.Cls), you can refer to a `@modal.method` directly:
+    Or, if you're using a [modal.Cls](https://modal.com/docs/reference/modal.Cls)
+    you can refer to a `@modal.method` directly:
 
     ```
     modal shell hello_world.py::MyClass.my_method

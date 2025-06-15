@@ -657,7 +657,7 @@ class _App:
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
         allow_cross_region_volumes: Optional[bool] = None,  # Always True on the Modal backend now
     ) -> _FunctionDecoratorType:
-        """Decorator to register a new Modal [Function](https://modal.com/docs/reference/modal.Function) with this App."""
+        """Decorator to register a new Modal Function with this App."""
         if isinstance(_warn_parentheses_missing, _Image):
             # Handle edge case where maybe (?) some users passed image as a positional arg
             raise InvalidError("`image` needs to be a keyword argument: `@app.function(image=image)`.")

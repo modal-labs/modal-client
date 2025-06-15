@@ -1662,8 +1662,9 @@ Use the `Function.get_web_url()` method instead.
     async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> "_FunctionCall[ReturnType]":
         """Calls the function with the given arguments, without waiting for the results.
 
-        Returns a [`modal.FunctionCall`](https://modal.com/docs/reference/modal.FunctionCall) object, that can later be polled or
-        waited for using [`.get(timeout=...)`](https://modal.com/docs/reference/modal.FunctionCall#get).
+        Returns a [`modal.FunctionCall`](https://modal.com/docs/reference/modal.FunctionCall) object
+        that can later be polled or waited for using
+        [`.get(timeout=...)`](https://modal.com/docs/reference/modal.FunctionCall#get).
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
         """
         self._check_no_web_url("spawn")
