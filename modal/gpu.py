@@ -166,7 +166,7 @@ __doc__ = """
 **GPU configuration shortcodes**
 
 You can pass a wide range of `str` values for the `gpu` parameter of
-[`@app.function`](/docs/reference/modal.App#function).
+[`@app.function`](https://modal.com/docs/reference/modal.App#function).
 
 For instance:
 - `gpu="H100"` will attach 1 H100 GPU to each container
