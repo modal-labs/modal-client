@@ -5,7 +5,7 @@ import signal
 
 class Error(Exception):
     """
-    Base class for all Modal errors. See [`modal.exception`](/docs/reference/modal.exception) for the specialized
+    Base class for all Modal errors. See [`modal.exception`](https://modal.com/docs/reference/modal.exception) for the specialized
     error classes.
 
     **Usage**

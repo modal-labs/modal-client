@@ -1662,8 +1662,8 @@ Use the `Function.get_web_url()` method instead.
     async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> "_FunctionCall[ReturnType]":
         """Calls the function with the given arguments, without waiting for the results.
 
-        Returns a [`modal.FunctionCall`](/docs/reference/modal.FunctionCall) object, that can later be polled or
-        waited for using [`.get(timeout=...)`](/docs/reference/modal.FunctionCall#get).
+        Returns a [`modal.FunctionCall`](https://modal.com/docs/reference/modal.FunctionCall) object, that can later be polled or
+        waited for using [`.get(timeout=...)`](https://modal.com/docs/reference/modal.FunctionCall#get).
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
         """
         self._check_no_web_url("spawn")
@@ -1739,7 +1739,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         """Returns a structure representing the call graph from a given root
         call ID, along with the status of execution for each node.
 
-        See [`modal.call_graph`](/docs/reference/modal.call_graph) reference page
+        See [`modal.call_graph`](https://modal.com/docs/reference/modal.call_graph) reference page
         for documentation on the structure of the returned `InputInfo` items.
         """
         assert self._client and self._client.stub
@@ -1753,7 +1753,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         terminate_containers: bool = False,
     ):
         """Cancels the function call, which will stop its execution and mark its inputs as
-        [`TERMINATED`](/docs/reference/modal.call_graph#modalcall_graphinputstatus).
+        [`TERMINATED`](https://modal.com/docs/reference/modal.call_graph#modalcall_graphinputstatus).
 
         If `terminate_containers=True` - the containers running the cancelled inputs are all terminated
         causing any non-cancelled inputs on those containers to be rescheduled in new containers.
