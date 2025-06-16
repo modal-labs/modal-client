@@ -510,3 +510,24 @@ def test_sandbox_list_sets_correct_returncode_for_stopped(client, servicer):
         )  # list will loop for older sandboxes until no more arrive
         (list_result,) = list(Sandbox.list(client=client))
     assert list_result.returncode == 0
+
+
+def test_sandbox_list_returns_tags(client, servicer):
+    with servicer.intercept() as ctx:
+        # test generic status
+        ctx.add_response(
+            "SandboxList",
+            api_pb2.SandboxListResponse(
+                sandboxes=[
+                    api_pb2.SandboxInfo(
+                        id="sb-123",
+                        tags=[api_pb2.SandboxTag(tag_name="foo", tag_value="bar")],
+                    )
+                ]
+            ),
+        )
+        ctx.add_response(
+            "SandboxList", api_pb2.SandboxListResponse(sandboxes=[])
+        )  # list will loop for older sandboxes until no more arrive
+        (list_result,) = list(Sandbox.list(client=client))
+    assert list_result.tags == {"foo": "bar"}
