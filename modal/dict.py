@@ -78,6 +78,7 @@ class _Dict(_Object, type_prefix="di"):
 
     @property
     def name(self) -> Optional[str]:
+        """Name of Dict."""
         return self._name
 
     @classmethod
