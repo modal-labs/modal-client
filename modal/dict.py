@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator, Mapping
 from typing import Any, Optional, cast
 
 from grpclib import GRPCError
+from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
@@ -28,6 +29,7 @@ class _DictObjectNamespaceAsync:
         self,
         environment_name: Optional[str] = None,
     ) -> list["_Dict"]:
+        """Return a list of Dicts."""
         client = await self._get_client()
         env_name = cast(str, _get_environment_name(environment_name))
         request = api_pb2.DictListRequest(environment_name=env_name)
@@ -39,6 +41,7 @@ class _DictObjectNamespaceAsync:
         name: str,
         environment_name: Optional[str] = None,
     ) -> None:
+        """Delete Dict object with name."""
         client = await self._get_client()
         obj = await _Dict.from_name(name, environment_name=environment_name).hydrate(client)
         req = api_pb2.DictDeleteRequest(dict_id=obj.object_id)
@@ -102,6 +105,10 @@ class _Dict(_Object, type_prefix="di"):
         raise RuntimeError(
             "`Dict(...)` constructor is not allowed. Please use `Dict.from_name` or `Dict.ephemeral` instead"
         )
+
+    @classproperty
+    def objects(cls):
+        return _dict_object_namespace
 
     @classmethod
     @asynccontextmanager
@@ -394,8 +401,5 @@ class _Dict(_Object, type_prefix="di"):
         async for resp in self._client.stub.DictContents.unary_stream(req):
             yield (deserialize(resp.key, self._client), deserialize(resp.value, self._client))
 
-    objects = _dict_object_namespace
 
-
-# Dict = synchronize_api(_Dict)
-# setattr(Dict, "objects", _dict_object_namespace)
+Dict = synchronize_api(_Dict)
