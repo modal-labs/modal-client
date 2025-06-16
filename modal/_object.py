@@ -34,7 +34,6 @@ class _Object:
     _load: Optional[Callable[[Self, Resolver, Optional[str]], Awaitable[None]]]
     _preload: Optional[Callable[[Self, Resolver, Optional[str]], Awaitable[None]]]
     _rep: str
-    _is_another_app: bool
     _hydrate_lazily: bool
     _deps: Optional[Callable[..., Sequence["_Object"]]]
     _deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None
@@ -60,7 +59,6 @@ class _Object:
         self,
         rep: str,
         load: Optional[Callable[[Self, Resolver, Optional[str]], Awaitable[None]]] = None,
-        is_another_app: bool = False,
         preload: Optional[Callable[[Self, Resolver, Optional[str]], Awaitable[None]]] = None,
         hydrate_lazily: bool = False,
         deps: Optional[Callable[..., Sequence["_Object"]]] = None,
@@ -70,7 +68,6 @@ class _Object:
         self._load = load
         self._preload = preload
         self._rep = rep
-        self._is_another_app = is_another_app
         self._hydrate_lazily = hydrate_lazily
         self._deps = deps
         self._deduplication_key = deduplication_key

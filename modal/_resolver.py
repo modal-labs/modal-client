@@ -108,16 +108,6 @@ class Resolver:
             await obj._preload(obj, self, existing_object_id)
 
     async def load(self, obj: "modal._object._Object", existing_object_id: Optional[str] = None):
-        if obj._is_hydrated and obj._is_another_app:
-            # No need to reload this, it won't typically change
-            if obj.local_uuid not in self._local_uuid_to_future:
-                # a bit dumb - but we still need to store a reference to the object here
-                # to be able to include all referenced objects when setting up the app
-                fut: Future = Future()
-                fut.set_result(obj)
-                self._local_uuid_to_future[obj.local_uuid] = fut
-            return obj
-
         deduplication_key: Optional[Hashable] = None
         if obj._deduplication_key:
             deduplication_key = await obj._deduplication_key()
@@ -154,8 +144,7 @@ class Resolver:
                 # Check that the id of functions didn't change
                 # Persisted refs are ignored because their life cycle is managed independently.
                 if (
-                    not obj._is_another_app
-                    and existing_object_id is not None
+                    existing_object_id is not None
                     and existing_object_id.startswith("fu-")
                     and obj.object_id != existing_object_id
                 ):
