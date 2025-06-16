@@ -375,7 +375,9 @@ class _InputPlaneInvocation:
         stub = await client.get_stub(input_plane_url)
 
         function_id = function.object_id
-        input_item = await _create_input(args, kwargs, stub, method_name=function._use_method_name)
+        control_plane_stub = client.stub
+        # Note: Blob upload is done on the control plane stub, not the input plane stub!
+        input_item = await _create_input(args, kwargs, control_plane_stub, method_name=function._use_method_name)
 
         request = api_pb2.AttemptStartRequest(
             function_id=function_id,
