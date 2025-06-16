@@ -278,17 +278,19 @@ async def _map_invocation(
                 )
             )
             map_done_task = asyncio.create_task(map_done_event.wait())
-            done, pending = await asyncio.wait([get_response_task, map_done_task], return_when=FIRST_COMPLETED)
-            if get_response_task in done:
-                map_done_task.cancel()
-                response = get_response_task.result()
-            else:
-                assert map_done_event.is_set()
-                # map is done, cancel the pending call
+            try:
+                done, pending = await asyncio.wait([get_response_task, map_done_task], return_when=FIRST_COMPLETED)
+                if get_response_task in done:
+                    map_done_task.cancel()
+                    response = get_response_task.result()
+                else:
+                    assert map_done_event.is_set()
+                    # map is done - no more outputs, so return early
+                    return
+            finally:
+                # clean up tasks, in case of cancellations etc.
                 get_response_task.cancel()
-                # not strictly necessary - don't leave dangling task
-                await asyncio.gather(get_response_task, return_exceptions=True)
-                return
+                map_done_task.cancel()
 
             last_entry_id = response.last_entry_id
             now_seconds = int(time.time())
@@ -716,6 +718,7 @@ class _MapItemContext:
         Return True if input state was changed to COMPLETE, otherwise False.
         """
         # If the item is already complete, this is a duplicate output and can be ignored.
+
         if self.state == _MapItemState.COMPLETE:
             logger.debug(
                 f"Received output for input marked as complete. Must be duplicate, so ignoring. "
