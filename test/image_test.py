@@ -699,7 +699,7 @@ def test_poetry_commands(builder_version, servicer, client, poetry_version):
         if builder_version <= "2024.10":
             poetry_spec = "~=1.7" if poetry_version is None else f"=={poetry_version}"
         else:
-            poetry_spec = "~=2.0" if poetry_version is None else f"=={poetry_version}"
+            poetry_spec = "" if poetry_version is None else f"=={poetry_version}"
         assert f"python -m pip install poetry{poetry_spec}" in dockerfile_commands
         assert "poetry config virtualenvs.create false" in dockerfile_commands
         assert "poetry install --no-root --with foo,bar --without buz" in dockerfile_commands

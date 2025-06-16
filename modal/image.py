@@ -1252,7 +1252,7 @@ class _Image(_Object, type_prefix="im"):
             context_files = {"/.pyproject.toml": os.path.expanduser(poetry_pyproject_toml)}
 
             if poetry_version is None:
-                poetry_spec = "~=1.7" if version <= "2024.10" else "~=2.0"
+                poetry_spec = "~=1.7" if version <= "2024.10" else ""
             else:
                 poetry_spec = f"=={poetry_version}"
             commands = ["FROM base", f"RUN python -m pip install poetry{poetry_spec}"]
