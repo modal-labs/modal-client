@@ -303,7 +303,7 @@ Additionally, we have enforced a number of previously-introduced deprecations:
 
 ### 0.74.7 (2025-04-17)
 
-- Modal will now raise an error if local files included in the App are modified during the build process. This behavior can be controlled with the `MODAL_BUILD_VALIDATION` configuration, which accepts `error` (default), `warning`, or `ignore`.
+- Modal will now raise an error if local files included in the App are modified during the build process. This behavior can be controlled with the `MODAL_BUILD_VALIDATION` configuration, which accepts `error` (default), `warn`, or `ignore`.
 
 
 
