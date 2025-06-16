@@ -1307,3 +1307,36 @@ def test_concurrent_decorator_stacked_with_method_decorator():
             @modal.concurrent(max_inputs=10)
             def method(self):
                 pass
+
+
+def test_parameter_inheritance(client):
+    app = modal.App("inherit-params")
+
+    class Base:
+        a: int = modal.parameter()  # parameter in base class
+
+    @app.cls(serialized=True)
+    class ConcatenatingParams(Base):
+        b: str = modal.parameter()  # add additional parameter
+
+    @app.cls(serialized=True)
+    class RepeatingParams(Base):
+        # In versions prior to ~1.0.5, base class parameters were not
+        # included, so subclasses would always have to repeat parameters
+        # from the base class.
+        # We allow this as long as the definitions are the same
+        a: int = modal.parameter()  # redefine base class parameter
+        b: str = modal.parameter()
+
+    @app.cls(serialized=True)
+    class ChangingParameterDefinitions(Base):
+        # change type of base class parameter - not allowed
+        # this is similar to how type checkers normally don't let you do this
+        a: str = modal.parameter()
+
+    with app.run(client=client):
+        ConcatenatingParams(a=10, b="hello").update_autoscaler()  # stupid way of hydrating the class
+        RepeatingParams(a=10, b="hello").update_autoscaler()
+        with pytest.raises(TypeError):
+            ChangingParameterDefinitions(a=10).update_autoscaler()
+        ChangingParameterDefinitions(a="10").update_autoscaler()

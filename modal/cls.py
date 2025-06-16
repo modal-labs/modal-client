@@ -54,7 +54,9 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
         return inspect.signature(user_cls)
     else:
         constructor_parameters = []
-        for name, annotation_value in user_cls.__dict__.get("__annotations__", {}).items():
+        for name, annotation_value in typing.get_type_hints(
+            user_cls
+        ).items():  # .__dict__.get("__annotations__", {}).items():
             if hasattr(user_cls, name):
                 parameter_spec = getattr(user_cls, name)
                 if is_parameter(parameter_spec):
