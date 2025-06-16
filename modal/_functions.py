@@ -15,7 +15,6 @@ import typing_extensions
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
-from synchronicity.exceptions import UserCodeException
 
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
@@ -63,8 +62,6 @@ from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from .config import config
 from .exception import (
     ExecutionError,
-    FunctionTimeoutError,
-    InternalFailure,
     InvalidError,
     NotFoundError,
     OutputExpiredError,
@@ -257,7 +254,7 @@ class _Invocation:
             request,
         )
 
-    async def _get_single_output(self, expected_jwt: Optional[str] = None) -> Any:
+    async def _get_single_output(self, expected_jwt: Optional[str] = None) -> api_pb2.FunctionGetOutputsItem:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
             await self.pop_function_call_outputs(
@@ -266,7 +263,7 @@ class _Invocation:
                 input_jwts=[expected_jwt] if expected_jwt else None,
             )
         ).outputs[0]
-        return await _process_result(item.result, item.data_format, self.stub, self.client)
+        return item
 
     async def run_function(self) -> Any:
         # Use retry logic only if retry policy is specified and
@@ -278,23 +275,30 @@ class _Invocation:
             or ctx.function_call_invocation_type != api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
             or not ctx.sync_client_retries_enabled
         ):
-            return await self._get_single_output()
+            item = await self._get_single_output()
+            return await _process_result(item.result, item.data_format, self.stub, self.client)
 
         # User errors including timeouts are managed by the user specified retry policy.
         user_retry_manager = RetryManager(ctx.retry_policy)
 
         while True:
-            try:
-                return await self._get_single_output(ctx.input_jwt)
-            except (UserCodeException, FunctionTimeoutError) as exc:
+            item = await self._get_single_output(ctx.input_jwt)
+            if item.result.status in (
+                api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+                api_pb2.GenericResult.GENERIC_STATUS_TERMINATED,
+            ):
+                # success or cancellations are "final" results
+                return await _process_result(item.result, item.data_format, self.stub, self.client)
+
+            if item.result.status != api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
+                # non-internal failures get a delay before retrying
                 delay_ms = user_retry_manager.get_delay_ms()
                 if delay_ms is None:
-                    raise exc
+                    # no more retries, this should raise an error when the non-success status is converted
+                    # to an exception:
+                    return await _process_result(item.result, item.data_format, self.stub, self.client)
                 await asyncio.sleep(delay_ms / 1000)
-            except InternalFailure:
-                # For system failures on the server, we retry immediately,
-                # and the failure does not count towards the retry policy.
-                pass
+
             await self._retry_input()
 
     async def poll_function(self, timeout: Optional[float] = None):
@@ -399,27 +403,27 @@ class _InputPlaneInvocation:
                 attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
             )
 
-            try:
-                if await_response.HasField("output"):
-                    return await _process_result(
-                        await_response.output.result, await_response.output.data_format, self.stub, self.client
-                    )
-            except InternalFailure as e:
-                internal_failure_count += 1
-                # Limit the number of times we retry
-                if internal_failure_count >= MAX_INTERNAL_FAILURE_COUNT:
-                    raise e
-                # For system failures on the server, we retry immediately,
-                # and the failure does not count towards the retry policy.
-                retry_request = api_pb2.AttemptRetryRequest(
-                    function_id=self.function_id,
-                    parent_input_id=current_input_id() or "",
-                    input=self.input_item,
-                    attempt_token=self.attempt_token,
+            if await_response.HasField("output"):
+                if await_response.output.result.status == api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
+                    internal_failure_count += 1
+                    # Limit the number of times we retry
+                    if internal_failure_count < MAX_INTERNAL_FAILURE_COUNT:
+                        # For system failures on the server, we retry immediately,
+                        # and the failure does not count towards the retry policy.
+                        retry_request = api_pb2.AttemptRetryRequest(
+                            function_id=self.function_id,
+                            parent_input_id=current_input_id() or "",
+                            input=self.input_item,
+                            attempt_token=self.attempt_token,
+                        )
+                        # TODO(ryan): Add exponential backoff?
+                        retry_response = await retry_transient_errors(self.stub.AttemptRetry, retry_request)
+                        self.attempt_token = retry_response.attempt_token
+                        continue
+
+                return await _process_result(
+                    await_response.output.result, await_response.output.data_format, self.stub, self.client
                 )
-                # TODO(ryan): Add exponential backoff?
-                retry_response = await retry_transient_errors(self.stub.AttemptRetry, retry_request)
-                self.attempt_token = retry_response.attempt_token
 
 
 # Wrapper type for api_pb2.FunctionStats
@@ -1438,7 +1442,11 @@ Use the `Function.get_web_url()` method instead.
 
     @live_method_gen
     async def _map(
-        self, input_queue: _SynchronizedQueue, order_outputs: bool, return_exceptions: bool
+        self,
+        input_queue: _SynchronizedQueue,
+        order_outputs: bool,
+        return_exceptions: bool,
+        wrap_returned_exceptions: bool,
     ) -> AsyncGenerator[Any, None]:
         """mdmd:hidden
 
@@ -1466,6 +1474,7 @@ Use the `Function.get_web_url()` method instead.
                 self.client,
                 order_outputs,
                 return_exceptions,
+                wrap_returned_exceptions,
                 count_update_callback,
                 api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
             )
