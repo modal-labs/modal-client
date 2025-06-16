@@ -550,8 +550,8 @@ class _App:
         modal run app_module.py
         ```
 
-        Note that an explicit [`app.run()`](/docs/reference/modal.App#run) is not needed, as an
-        [app](/docs/guide/apps) is automatically created for you.
+        Note that an explicit [`app.run()`](https://modal.com/docs/reference/modal.App#run) is not needed, as an
+        [app](https://modal.com/docs/guide/apps) is automatically created for you.
 
         **Multiple Entrypoints**
 
@@ -657,7 +657,7 @@ class _App:
         _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
         allow_cross_region_volumes: Optional[bool] = None,  # Always True on the Modal backend now
     ) -> _FunctionDecoratorType:
-        """Decorator to register a new Modal [Function](/docs/reference/modal.Function) with this App."""
+        """Decorator to register a new Modal Function with this App."""
         if isinstance(_warn_parentheses_missing, _Image):
             # Handle edge case where maybe (?) some users passed image as a positional arg
             raise InvalidError("`image` needs to be a keyword argument: `@app.function(image=image)`.")
@@ -881,7 +881,7 @@ class _App:
         allow_cross_region_volumes: Optional[bool] = None,  # Always True on the Modal backend now
     ) -> Callable[[Union[CLS_T, _PartialFunction]], CLS_T]:
         """
-        Decorator to register a new Modal [Cls](/docs/reference/modal.Cls) with this App.
+        Decorator to register a new Modal [Cls](https://modal.com/docs/reference/modal.Cls) with this App.
         """
         if _warn_parentheses_missing:
             raise InvalidError("Did you forget parentheses? Suggestion: `@app.cls()`.")

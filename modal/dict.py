@@ -94,7 +94,7 @@ class _Dict(_Object, type_prefix="di"):
     the `.aio` suffix on the method, whereas their operator-based analogues will always
     run synchronously and block the event loop.
 
-    For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-dicts).
+    For more examples, see the [guide](https://modal.com/docs/guide/dicts-and-queues#modal-dicts).
     """
 
     def __init__(self, data={}):

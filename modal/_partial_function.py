@@ -538,7 +538,7 @@ def _wsgi_app(
     Web Server Gateway Interface (WSGI) is a standard for synchronous Python web apps.
     It has been [succeeded by the ASGI interface](https://asgi.readthedocs.io/en/latest/introduction.html#wsgi-compatibility)
     which is compatible with ASGI and supports additional functionality such as web sockets.
-    Modal supports ASGI via [`asgi_app`](/docs/reference/modal.asgi_app).
+    Modal supports ASGI via [`asgi_app`](https://modal.com/docs/reference/modal.asgi_app).
 
     **Usage:**
 
