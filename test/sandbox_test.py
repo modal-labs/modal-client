@@ -207,6 +207,20 @@ def test_sandbox_stdout(app, servicer):
 
 
 @skip_non_subprocess
+def test_sandbox_stdout_next(app, servicer):
+    """Test that we can iterate on a StreamReader directly, without a call to __aiter__()."""
+
+    # normal sequence of reads
+    sb = Sandbox.create("bash", "-c", "for i in $(seq 1 3); do echo foo $i; done", app=app)
+    line = next(sb.stdout)
+    assert line == "foo 1\n"
+    line = next(sb.stdout)
+    assert line == "foo 2\n"
+    line = next(sb.stdout)
+    assert line == "foo 3\n"
+
+
+@skip_non_subprocess
 @pytest.mark.asyncio
 async def test_sandbox_async_for(app, servicer):
     sb = await Sandbox.create.aio("bash", "-c", "echo hello && echo world && echo bye >&2", app=app)
