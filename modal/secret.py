@@ -24,9 +24,9 @@ class _Secret(_Object, type_prefix="st"):
 
     Secrets are a secure way to add credentials and other sensitive information
     to the containers your functions run in. You can create and edit secrets on
-    [the dashboard](/secrets), or programmatically from Python code.
+    [the dashboard](https://modal.com/secrets), or programmatically from Python code.
 
-    See [the secrets guide page](/docs/guide/secrets) for more information.
+    See [the secrets guide page](https://modal.com/docs/guide/secrets) for more information.
     """
 
     @staticmethod
