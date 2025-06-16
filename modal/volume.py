@@ -403,6 +403,10 @@ class _Volume(_Object, type_prefix="vo"):
         """
         Read a file from the modal.Volume.
 
+        Note - this function is primarily intended to be used outside of a Modal App.
+        For more information on downloading files from a Modal Volume, see
+        [the guide](https://modal.com/docs/guide/volumes).
+
         **Example:**
 
         ```python notest
@@ -443,6 +447,7 @@ class _Volume(_Object, type_prefix="vo"):
         Read volume file into file-like IO object.
         """
         if progress_cb is None:
+
             def progress_cb(*_, **__):
                 pass
 
