@@ -1301,11 +1301,11 @@ class _Image(_Object, type_prefix="im"):
 
     def uv_sync(
         self,
-        uv_project_dir: str = "./",  # Path to local uv mananged project
+        uv_project_dir: str = "./",  # Path to local uv managed project
         *,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         group: Optional[str] = None,  # Dependency group to install using `uv sync --group`
-        optional: Optional[str] = None,  # Optional dependencies to install using `uv sync --optional`
+        extra: Optional[str] = None,  # Optional dependencies to install using `uv sync --extra`
         frozen: bool = True,  # If True, then we run `uv sync --frozen` when a uv.lock file is present
         extra_options: str = "",  # Extra options to pass to `uv sync`
         uv_version: Optional[str] = None,  # uv version to use
@@ -1321,7 +1321,7 @@ class _Image(_Object, type_prefix="im"):
         """
 
         def _check_pyproject_toml(
-            pyproject_toml: str, version: ImageBuilderVersion, group: Optional[str], optional: Optional[str]
+            pyproject_toml: str, version: ImageBuilderVersion, group: Optional[str], extra: Optional[str]
         ):
             if not os.path.exists(pyproject_toml):
                 raise InvalidError(f"Expected {pyproject_toml} to exist")
@@ -1353,12 +1353,12 @@ class _Image(_Object, type_prefix="im"):
                 dependencies += pyproject_toml_content["dependency-groups"][group]
 
             if (
-                optional is not None
+                extra is not None
                 and "project" in pyproject_toml_content
                 and "optional-dependencies" in pyproject_toml_content["project"]
-                and optional in pyproject_toml_content["project"]["optional-dependencies"]
+                and extra in pyproject_toml_content["project"]["optional-dependencies"]
             ):
-                dependencies += pyproject_toml_content["project"]["optional-dependencies"][optional]
+                dependencies += pyproject_toml_content["project"]["optional-dependencies"][extra]
 
             PACKAGE_REGEX = re.compile(r"^[\w-]+")
 
@@ -1384,21 +1384,21 @@ class _Image(_Object, type_prefix="im"):
             ]
             if group is not None:
                 uv_sync_args.append(f"--group={group}")
-            if optional is not None:
-                uv_sync_args.append(f"--optional={optional}")
+            if extra is not None:
+                uv_sync_args.append(f"--extra={extra}")
             if extra_options:
                 uv_sync_args.append(extra_options)
 
             commands = ["FROM base"]
 
             if uv_version is None:
-                commands.append("COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv")
+                commands.append("COPY --from=ghcr.io/astral-sh/uv:latest /uv /.uv/uv")
             else:
-                commands.append(f"COPY --from=ghcr.io/astral-sh/uv:{uv_version} /uv /usr/local/bin/uv")
+                commands.append(f"COPY --from=ghcr.io/astral-sh/uv:{uv_version} /uv /.uv/uv")
 
             context_files = {}
 
-            _check_pyproject_toml(pyproject_toml, version, group=group, optional=optional)
+            _check_pyproject_toml(pyproject_toml, version, group=group, extra=extra)
 
             context_files["/.pyproject.toml"] = pyproject_toml
             commands.append(f"COPY /.pyproject.toml {uv_root}/pyproject.toml")
@@ -1419,7 +1419,7 @@ class _Image(_Object, type_prefix="im"):
             uv_sync_args_joined = " ".join(uv_sync_args).strip()
 
             commands += [
-                f"RUN /usr/local/bin/uv sync {uv_sync_args_joined}",
+                f"RUN /.uv/uv sync {uv_sync_args_joined}",
                 f"ENV PATH={uv_root}/.venv/bin:$PATH",
             ]
 

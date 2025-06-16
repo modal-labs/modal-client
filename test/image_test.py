@@ -674,17 +674,17 @@ def test_poetry(builder_version, servicer, client):
 
 
 @pytest.mark.parametrize(
-    "group, optional, frozen",
+    "group, extra, frozen",
     [
         ("group1", None, False),
         (None, "extra1", True),
         ("group1", "extra1", True),
     ],
 )
-def test_uv_sync(builder_version, servicer, client, group, optional, frozen):
+def test_uv_sync(builder_version, servicer, client, group, extra, frozen):
     uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_project")
 
-    image = Image.debian_slim().uv_sync(uv_project_path, group=group, optional=optional, frozen=frozen)
+    image = Image.debian_slim().uv_sync(uv_project_path, group=group, extra=extra, frozen=frozen)
 
     app = App()
     app.function(image=image)(dummy)
@@ -698,8 +698,8 @@ def test_uv_sync(builder_version, servicer, client, group, optional, frozen):
             assert any("--frozen" in cmd for cmd in layers[0].dockerfile_commands)
         if group is not None:
             assert any(f"--group={group}" in cmd for cmd in layers[0].dockerfile_commands)
-        if optional is not None:
-            assert any(f"--optional={optional}" in cmd for cmd in layers[0].dockerfile_commands)
+        if extra is not None:
+            assert any(f"--extra={extra}" in cmd for cmd in layers[0].dockerfile_commands)
 
         if builder_version <= "2024.10":
             assert context_files == {"/.uv.lock", "/.pyproject.toml", "/modal_requirements.txt"}
@@ -742,7 +742,7 @@ def test_uv_sync_no_modal(builder_version, client):
                 pass
 
 
-@pytest.mark.parametrize("kwargs", [{"group": "group1"}, {"optional": "extra1"}])
+@pytest.mark.parametrize("kwargs", [{"group": "group1"}, {"extra": "extra1"}])
 def test_uv_sync_modal_in_group_or_extra(builder_version, client, servicer, kwargs):
     uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_no_modal")
 
@@ -756,9 +756,9 @@ def test_uv_sync_modal_in_group_or_extra(builder_version, client, servicer, kwar
         if "group" in kwargs:
             group = kwargs["group"]
             assert any(f"--group={group}" in cmd for cmd in layers[0].dockerfile_commands)
-        if "optional" in kwargs:
-            optional = kwargs["optional"]
-            assert any(f"--optional={optional}" in cmd for cmd in layers[0].dockerfile_commands)
+        if "extra" in kwargs:
+            extra = kwargs["extra"]
+            assert any(f"--extra={extra}" in cmd for cmd in layers[0].dockerfile_commands)
 
 
 def test_uv_lock_workspaces_error(builder_version, client):
