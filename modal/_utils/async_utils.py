@@ -396,7 +396,7 @@ class _WarnIfGeneratorIsNotConsumed:
         return await self.gen.aclose()
 
 
-_BlockingWarnIfGeneratorIsNotConsumed = synchronize_api(_WarnIfGeneratorIsNotConsumed)
+synchronize_api(_WarnIfGeneratorIsNotConsumed)
 
 
 class _WarnIfNonWrappedGeneratorIsNotConsumed(_WarnIfGeneratorIsNotConsumed):
@@ -647,9 +647,7 @@ class StopSentinelType: ...
 STOP_SENTINEL = StopSentinelType()
 
 
-async def async_merge(
-    *generators: AsyncGenerator[T, None], cancellation_timeout: float = 10.0
-) -> AsyncGenerator[T, None]:
+async def async_merge(*generators: AsyncGenerator[T, None]) -> AsyncGenerator[T, None]:
     """
     Asynchronously merges multiple async generators into a single async generator.
 
@@ -694,9 +692,8 @@ async def async_merge(
 
     async def producer(generator: AsyncGenerator[T, None]):
         try:
-            async with aclosing(generator) as stream:
-                async for item in stream:
-                    await queue.put(ValueWrapper(item))
+            async for item in generator:
+                await queue.put(ValueWrapper(item))
         except Exception as e:
             await queue.put(ExceptionWrapper(e))
 
@@ -738,20 +735,15 @@ async def async_merge(
             new_output_task = asyncio.create_task(queue.get())
 
     finally:
-        unfinished_tasks = [t for t in tasks | {new_output_task} if not t.done()]
-        for t in unfinished_tasks:
-            t.cancel()
-        try:
-            await asyncio.wait_for(
-                asyncio.shield(
-                    # we need to `shield` the `gather` to ensure cooperation with the timeout
-                    # all underlying tasks have been marked as cancelled at this point anyway
-                    asyncio.gather(*unfinished_tasks, return_exceptions=True)
-                ),
-                timeout=cancellation_timeout,
-            )
-        except asyncio.TimeoutError:
-            logger.debug("Timed out while cleaning up async_merge")
+        if not new_output_task.done():
+            new_output_task.cancel()
+        for task in tasks:
+            if not task.done():
+                try:
+                    task.cancel()
+                    await task
+                except asyncio.CancelledError:
+                    pass
 
 
 async def callable_to_agen(awaitable: Callable[[], Awaitable[T]]) -> AsyncGenerator[T, None]:
@@ -769,34 +761,16 @@ async def gather_cancel_on_exc(*coros_or_futures):
         raise
 
 
-async def prevent_cancellation_abortion(coro):
-    # if this is cancelled, it will wait for coro cancellation handling
-    # and then unconditionally re-raises a CancelledError, even if the underlying coro
-    # doesn't re-raise the cancellation itself
-    t = asyncio.create_task(coro)
-    try:
-        return await asyncio.shield(t)
-    except asyncio.CancelledError:
-        if t.cancelled():
-            # coro cancelled itself - reraise
-            raise
-        t.cancel()  # cancel task
-        await t  # this *normally* reraises
-        raise  # if the above somehow resolved, by swallowing cancellation - we still raise
-
-
 async def async_map(
     input_generator: AsyncGenerator[T, None],
     async_mapper_func: Callable[[T], Awaitable[V]],
     concurrency: int,
-    cancellation_timeout: float = 10.0,
 ) -> AsyncGenerator[V, None]:
     queue: asyncio.Queue[Union[ValueWrapper[T], StopSentinelType]] = asyncio.Queue(maxsize=concurrency * 2)
 
     async def producer() -> AsyncGenerator[V, None]:
-        async with aclosing(input_generator) as stream:
-            async for item in stream:
-                await queue.put(ValueWrapper(item))
+        async for item in input_generator:
+            await queue.put(ValueWrapper(item))
 
         for _ in range(concurrency):
             await queue.put(STOP_SENTINEL)
@@ -810,17 +784,14 @@ async def async_map(
         while True:
             item = await queue.get()
             if isinstance(item, ValueWrapper):
-                res = await prevent_cancellation_abortion(async_mapper_func(item.value))
-                yield res
+                yield await async_mapper_func(item.value)
             elif isinstance(item, ExceptionWrapper):
                 raise item.value
             else:
                 assert_type(item, StopSentinelType)
                 break
 
-    async with aclosing(
-        async_merge(*[worker() for i in range(concurrency)], producer(), cancellation_timeout=cancellation_timeout)
-    ) as stream:
+    async with aclosing(async_merge(*[worker() for _ in range(concurrency)], producer())) as stream:
         async for item in stream:
             yield item
 
