@@ -172,8 +172,6 @@ class _Dict(_Object, type_prefix="di"):
     def __repr__(self):
         if self.name is not None:
             return f"Dict.from_name('{self.name}')"
-        elif self._object_id is not None:
-            return f"Dict(object_id='{self._object_id}')"
         else:
             return "Dict()"
 

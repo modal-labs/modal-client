@@ -42,7 +42,6 @@ def test_dict_ephemeral(servicer, client):
         assert d.len() == 1
         assert d["foo"] == 42
         time.sleep(1.5)  # Make time for 2 heartbeats
-        assert str(d) == f"Dict(object_id='{d.object_id}')"
     assert servicer.n_dict_heartbeats == 2
 
 
@@ -53,7 +52,7 @@ def test_dict_lazy_hydrate_named(set_env_client, servicer):
         d["foo"] = 42
         assert d["foo"] == 42
         assert len(ctx.get_requests("DictGetOrCreate")) == 1  # just sanity check that object is only hydrated once...
-        assert str(d) == "Dict.from_name('food')"
+        assert str(d) == "Dict.from_name('foo')"
 
 
 @pytest.mark.parametrize("name", ["has space", "has/slash", "a" * 65])
