@@ -2503,6 +2503,7 @@ message SandboxInfo {
   double created_at = 3;
   TaskInfo task_info = 4;
   string app_id = 5;
+  repeated SandboxTag tags = 6; // TODO: Not yet exposed in client library.
 
   reserved 2; // modal.client.Sandbox definition
 }
