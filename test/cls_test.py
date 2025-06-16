@@ -1332,11 +1332,12 @@ def test_parameter_inheritance(client):
     class ChangingParameterDefinitions(Base):
         # change type of base class parameter - not allowed
         # this is similar to how type checkers normally don't let you do this
-        a: str = modal.parameter()
+        a: str = modal.parameter()  # type: ignore  # this isn't allowed by type checkers
 
     with app.run(client=client):
-        ConcatenatingParams(a=10, b="hello").update_autoscaler()  # stupid way of hydrating the class
-        RepeatingParams(a=10, b="hello").update_autoscaler()
+        # use .update_autoscaler()
+        ConcatenatingParams(a=10, b="hello").update_autoscaler()  # type: ignore
+        RepeatingParams(a=10, b="hello").update_autoscaler()  # type: ignore
         with pytest.raises(TypeError):
-            ChangingParameterDefinitions(a=10).update_autoscaler()
-        ChangingParameterDefinitions(a="10").update_autoscaler()
+            ChangingParameterDefinitions(a=10).update_autoscaler()  # type: ignore
+        ChangingParameterDefinitions(a="10").update_autoscaler()  # type: ignore
