@@ -416,7 +416,6 @@ class _Image(_Object, type_prefix="im"):
         self.force_build = False
 
     def _initialize_from_other(self, other: "_Image"):
-        # used by .clone()
         self.inside_exceptions = other.inside_exceptions
         self.force_build = other.force_build
         self._serve_mounts = other._serve_mounts
