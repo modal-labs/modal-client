@@ -22,18 +22,23 @@ VERSIONS = [
     api_pb2.VOLUME_FS_VERSION_V2,
 ]
 
+
 def dummy():
     pass
 
+
+@pytest.mark.parametrize("read_only", [True, False])
 @pytest.mark.parametrize("version", VERSIONS)
-def test_volume_mount(client, servicer, version):
+def test_volume_mount(client, servicer, version, read_only):
     app = modal.App()
-    vol = modal.Volume.from_name("xyz", create_if_missing=True, version=version)
+    vol = modal.Volume.from_name("xyz", create_if_missing=True, version=version, read_only=read_only)
 
     _ = app.function(volumes={"/root/foo": vol})(dummy)
 
-    with app.run(client=client):
-        pass
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            req = ctx.pop_request("FunctionCreate")
+            assert req.function.volume_mounts[0].read_only == read_only
 
 
 def test_volume_bad_paths():

@@ -833,6 +833,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         mount_path=path,
                         volume_id=volume.object_id,
                         allow_background_commits=True,
+                        read_only=volume.read_only,
                     )
                     for path, volume in validated_volumes_no_cloud_buckets
                 ]
@@ -1086,6 +1087,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         mount_path=path,
                         volume_id=volume.object_id,
                         allow_background_commits=True,
+                        read_only=volume.read_only,
                     )
                     for path, volume in options.validated_volumes
                 ]

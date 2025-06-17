@@ -135,6 +135,11 @@ class _Volume(_Object, type_prefix="vo"):
 
     _lock: Optional[asyncio.Lock] = None
     _metadata: "typing.Optional[api_pb2.VolumeMetadata]"
+    _read_only: bool = False
+
+    @property
+    def read_only(self) -> bool:
+        return self._read_only
 
     async def _get_lock(self):
         # To (mostly*) prevent multiple concurrent operations on the same volume, which can cause problems under
@@ -157,6 +162,7 @@ class _Volume(_Object, type_prefix="vo"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
+        read_only: bool = False,  # Configure volume to be read-only.
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> "_Volume":
         """Reference a Volume by name, creating if necessary.
@@ -189,7 +195,9 @@ class _Volume(_Object, type_prefix="vo"):
             response = await resolver.client.stub.VolumeGetOrCreate(req)
             self._hydrate(response.volume_id, resolver.client, response.metadata)
 
-        return _Volume._from_loader(_load, "Volume()", hydrate_lazily=True)
+        obj = _Volume._from_loader(_load, "Volume()", hydrate_lazily=True)
+        obj._read_only = read_only
+        return obj
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         if metadata and isinstance(metadata, api_pb2.VolumeMetadata):
