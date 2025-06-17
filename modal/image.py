@@ -1256,9 +1256,9 @@ class _Image(_Object, type_prefix="im"):
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             commands = ["FROM base"]
             if uv_version is None:
-                commands.append("COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv")
+                commands.append("COPY --from=ghcr.io/astral-sh/uv:latest /uv /.uv/uv")
             else:
-                commands.append(f"COPY --from=ghcr.io/astral-sh/uv:{uv_version} /uv /usr/local/bin/uv")
+                commands.append(f"COPY --from=ghcr.io/astral-sh/uv:{uv_version} /uv /.uv/uv")
 
             # TODO: Assumes python is on the PATH and uv is installing into the first python in the path
             uv_pip_args = ["--python $(which python)"]
@@ -1278,7 +1278,7 @@ class _Image(_Object, type_prefix="im"):
             uv_pip_args_joined = " ".join(uv_pip_args)
 
             commands += [
-                f"RUN /usr/local/bin/uv pip install {uv_pip_args_joined}",
+                f"RUN /.uv/uv pip install {uv_pip_args_joined}",
             ]
 
             return DockerfileSpec(commands=commands, context_files={})
