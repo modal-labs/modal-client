@@ -21,7 +21,7 @@ class ModalMagics(Magics):
         **Example:**
 
         ```python notest
-        %modal from main/my-app import my_function, MyClass as Foo
+        %modal from my-app import my_function, MyClass as Foo
 
         # Now you can call my_function() and Foo from your notebook.
         my_function.remote()
@@ -30,7 +30,7 @@ class ModalMagics(Magics):
         """
         line = line.strip()
         if not line.startswith("from "):
-            print("Invalid syntax. Use: %modal from <env>/<app> import <function|Class>[, <function|Class> [as alias]]")
+            print("Invalid syntax. Use: %modal from [env/]<app> import <function|Class>[, <function|Class> [as alias]]")
             return
 
         # Remove the initial "from "
