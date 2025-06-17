@@ -40,11 +40,12 @@ class ModalMagics(Magics):
             print("Invalid syntax. Missing 'import' keyword.")
             return
 
-        # Parse environment and app from "env/app"
+        # Parse environment and app from "[env/]app"
+        environment: str | None
         if "/" not in env_app_part:
-            print("Invalid app specification. Expected format: <env>/<app>")
-            return
-        environment, app = env_app_part.split("/", 1)
+            environment, app = None, env_app_part
+        else:
+            environment, app = env_app_part.split("/", 1)
 
         # Parse the import items (multiple imports separated by commas)
         import_items = [item.strip() for item in import_part.split(",")]
@@ -73,7 +74,10 @@ class ModalMagics(Magics):
 
             # Set the loaded object in the notebook namespace
             self.shell.user_ns[alias] = obj  # type: ignore
-            print(f"Loaded {alias!r} from environment {environment!r} and app {app!r}.")
+            if environment:
+                print(f"Loaded {alias!r} from environment {environment!r} and app {app!r}.")
+            else:
+                print(f"Loaded {alias!r} from app {app!r}.")
 
 
 def load_ipython_extension(ipython):
