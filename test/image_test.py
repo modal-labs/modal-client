@@ -1499,6 +1499,9 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
     )
     assert get_hash(img) == "a25dd4cc2e8d88f92bfdaf2e82b9d74144d1928926bf6be2ca1cdfbbf562189e"
 
+    img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
+    assert get_hash(img) == "96db07228af97052da00d2f5c1d7f530a6ccc58a6e3b1ecb829dc0de0d7a55b5"
+
 
 @pytest.fixture
 def force_2024_04(modal_config):
@@ -1567,6 +1570,9 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
     )
     assert get_hash(img) == "bfce5811c04c1243f12cbb9cca1522cb901f52410986925bcfa3b3c2d7adc7a0"
 
+    img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
+    assert get_hash(img) == "0efb6bbfe5740bc68736a2b031673d45e37cafcdb1e9a5bdc884f97e0dcb7e7a"
+
 
 @pytest.fixture
 def force_2024_10(modal_config):
@@ -1634,6 +1640,9 @@ def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
         poetry_lockfile=test_dir / "supports" / "special_poetry.lock",
     )
     assert get_hash(img) == "78d579f243c21dcaa59e5daf97f732e2453b004bc2122de692617d4d725c6184"
+
+    img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
+    assert get_hash(img) == "84e6ac376505853b4585b6bea7357749bfc48bfd309c02375d47c38937c4b601"
 
 
 parallel_app = App()
