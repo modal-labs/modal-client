@@ -181,8 +181,6 @@ def test_class_multiple_dynamic_parameterization_methods(client, servicer):
 @pytest.mark.parametrize("read_only", [True, False])
 def test_class_multiple_with_options_calls(client, servicer, read_only):
     weights_volume = Volume.from_name("weights", create_if_missing=True).with_options(read_only=read_only)
-    if read_only:
-        weights_volume = weights_volume.with_read_only()
     foo = (
         Foo.with_options(  # type: ignore
             gpu="A10:4",
