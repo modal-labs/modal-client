@@ -28,6 +28,7 @@ from grpclib.protocol import H2Protocol
 from modal.exception import AuthError, ConnectionError
 from modal_version import __version__
 
+from .async_utils import retry
 from .logger import logger
 
 RequestType = TypeVar("RequestType", bound=Message)
@@ -167,8 +168,9 @@ def create_channel(
     return channel
 
 
+@retry(n_attempts=5, base_delay=0.1)
 async def connect_channel(channel: grpclib.client.Channel):
-    """Connects socket (potentially raising errors raising to connectivity."""
+    """Connect to socket and raise exceptions when there is a connection issue."""
     await channel.__connect__()
 
 
