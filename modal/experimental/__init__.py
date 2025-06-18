@@ -269,6 +269,12 @@ FlashManager = synchronize_api(_FlashManager)
 
 @synchronizer.create_blocking
 async def flash_forward(port: int) -> _FlashManager:
+    """
+    Forward a port to the Modal Flash service, exposing that port as a stable web endpoint.
+
+    This is a highly experimental method that can break or be removed at any time without warning.
+    Do not use this method unless explicitly instructed to do so by Modal support.
+    """
     client = await _Client.from_env()
 
     manager = _FlashManager(client, port)
