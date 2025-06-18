@@ -198,6 +198,7 @@ async def retry_transient_errors(
     total_timeout: Optional[float] = None,  # timeout for the entire function call
     attempt_timeout_floor=2.0,  # always have at least this much timeout (only for total_timeout)
     retry_warning_message: Optional[RetryWarningMessage] = None,
+    input_plane_region: Optional[str] = None,
 ) -> ResponseType:
     """Retry on transient gRPC failures with back-off until max_retries is reached.
     If max_retries is None, retry forever."""
@@ -219,6 +220,8 @@ async def retry_transient_errors(
         metadata = [("x-idempotency-key", idempotency_key), ("x-retry-attempt", str(n_retries))]
         if n_retries > 0:
             metadata.append(("x-retry-delay", str(time.time() - t0)))
+        if input_plane_region:
+            metadata.append(("x-input-plane-region", input_plane_region))
         timeouts = []
         if attempt_timeout is not None:
             timeouts.append(attempt_timeout)

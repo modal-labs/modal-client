@@ -356,12 +356,14 @@ class _InputPlaneInvocation:
         client: _Client,
         input_item: api_pb2.FunctionPutInputsItem,
         function_id: str,
+        input_plane_region: str,
     ):
         self.stub = stub
         self.client = client  # Used by the deserializer.
         self.attempt_token = attempt_token
         self.input_item = input_item
         self.function_id = function_id
+        self.input_plane_region = input_plane_region
 
     @staticmethod
     async def create(
@@ -371,6 +373,7 @@ class _InputPlaneInvocation:
         *,
         client: _Client,
         input_plane_url: str,
+        input_plane_region: str,
     ) -> "_InputPlaneInvocation":
         stub = await client.get_stub(input_plane_url)
 
@@ -384,10 +387,10 @@ class _InputPlaneInvocation:
             parent_input_id=current_input_id() or "",
             input=input_item,
         )
-        response = await retry_transient_errors(stub.AttemptStart, request)
+        response = await retry_transient_errors(stub.AttemptStart, request, input_plane_region=input_plane_region)
         attempt_token = response.attempt_token
 
-        return _InputPlaneInvocation(stub, attempt_token, client, input_item, function_id)
+        return _InputPlaneInvocation(stub, attempt_token, client, input_item, function_id, input_plane_region)
 
     async def run_function(self) -> Any:
         # This will retry when the server returns GENERIC_STATUS_INTERNAL_FAILURE, i.e. lost inputs or worker preemption
@@ -403,6 +406,7 @@ class _InputPlaneInvocation:
                 self.stub.AttemptAwait,
                 await_request,
                 attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
+                input_plane_region=self.input_plane_region,
             )
 
             if await_response.HasField("output"):
@@ -419,7 +423,11 @@ class _InputPlaneInvocation:
                             attempt_token=self.attempt_token,
                         )
                         # TODO(ryan): Add exponential backoff?
-                        retry_response = await retry_transient_errors(self.stub.AttemptRetry, retry_request)
+                        retry_response = await retry_transient_errors(
+                            self.stub.AttemptRetry,
+                            retry_request,
+                            input_plane_region=self.input_plane_region,
+                        )
                         self.attempt_token = retry_response.attempt_token
                         continue
 
@@ -779,6 +787,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     req.method_definitions[method_name].CopyFrom(method_definition)
             elif webhook_config:
                 req.webhook_config.CopyFrom(webhook_config)
+
+            # TODO(ben-okeefe): Clarify about hydration and potentially adding input_plane_region to the request
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
