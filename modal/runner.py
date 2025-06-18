@@ -26,6 +26,7 @@ from ._pty import get_pty_info
 from ._resolver import Resolver
 from ._traceback import print_server_warnings, traceback_contains_remote_call
 from ._utils.async_utils import TaskContext, gather_cancel_on_exc, synchronize_api
+from ._utils.deprecation import _ARGUMENT_NOT_PASSED, warn_if_passing_namespace
 from ._utils.git_utils import get_git_commit_info
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name, is_valid_tag
@@ -102,7 +103,7 @@ async def _init_local_app_new(
 async def _init_local_app_from_name(
     client: _Client,
     name: str,
-    namespace: Any,
+    namespace: "api_pb2.DeploymentNamespace.ValueType",
     environment_name: str = "",
 ) -> RunningApp:
     # Look up any existing deployment
@@ -467,7 +468,7 @@ class DeployResult:
 async def _deploy_app(
     app: _App,
     name: Optional[str] = None,
-    namespace: Any = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+    namespace: Any = _ARGUMENT_NOT_PASSED,
     client: Optional[_Client] = None,
     environment_name: Optional[str] = None,
     tag: str = "",
@@ -478,6 +479,8 @@ async def _deploy_app(
     """
     if environment_name is None:
         environment_name = typing.cast(str, config.get("environment"))
+
+    namespace = warn_if_passing_namespace(namespace, "deploy_app")
 
     name = name or app.name or ""
     if not name:

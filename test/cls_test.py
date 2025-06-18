@@ -21,7 +21,7 @@ from modal._serialization import deserialize, deserialize_params, serialize
 from modal._utils.async_utils import synchronizer
 from modal._utils.function_utils import FunctionInfo
 from modal.cls import _ServiceOptions
-from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError
+from modal.exception import DeprecationError, ExecutionError, InvalidError, NotFoundError, PendingDeprecationError
 from modal.partial_function import (
     PartialFunction,
     asgi_app,
@@ -1307,3 +1307,19 @@ def test_concurrent_decorator_stacked_with_method_decorator():
             @modal.concurrent(max_inputs=10)
             def method(self):
                 pass
+
+
+def test_cls_namespace_deprecated(servicer, client):
+    # Test from_name with namespace parameter warns
+    with pytest.warns(PendingDeprecationError, match="The `namespace` parameter for `modal.Cls` is deprecated"):
+        Cls.from_name("test-app", "test-cls", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
+
+    # Test that from_name without namespace parameter doesn't warn about namespace
+    import warnings
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        Cls.from_name("test-app", "test-cls")
+    # Filter out any unrelated warnings
+    namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
+    assert len(namespace_warnings) == 0

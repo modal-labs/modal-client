@@ -7,6 +7,8 @@ from typing import Any, Callable, TypeVar
 
 from typing_extensions import ParamSpec  # Needed for Python 3.9
 
+from modal_proto import api_pb2
+
 from ..exception import DeprecationError, PendingDeprecationError
 
 _INTERNAL_MODULES = ["modal", "synchronicity"]
@@ -122,3 +124,40 @@ def warn_on_renamed_autoscaler_settings(func: Callable[P, R]) -> Callable[P, R]:
         return func(*args, **kwargs)
 
     return wrapper
+
+
+# Utilities for deprecating the namespace parameter across Modal resources
+class _ArgumentNotPassedType:
+    """Sentinel object to detect when an argument is explicitly passed vs using default."""
+
+    def __repr__(self) -> str:
+        return f"{__name__}._ARGUMENT_NOT_PASSED"
+
+
+_ARGUMENT_NOT_PASSED = _ArgumentNotPassedType()
+
+
+def warn_if_passing_namespace(
+    namespace,
+    resource_name: str = "Modal resource",
+) -> "api_pb2.DeploymentNamespace.ValueType":
+    """Issue deprecation warning for namespace parameter and return appropriate default.
+
+    Args:
+        namespace: The namespace parameter value (may be sentinel or actual value)
+        resource_name: Name of the resource type for the warning message
+
+    Returns:
+        The appropriate namespace value to use
+    """
+    if namespace is _ARGUMENT_NOT_PASSED:
+        return api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE
+    else:
+        deprecation_warning(
+            (2025, 6, 17),
+            f"The `namespace` parameter for `{resource_name}` is deprecated and will be"
+            " removed in a future release. It is no longer needed, so can be removed"
+            " from your code.",
+            pending=True,
+        )
+        return namespace  # type: ignore

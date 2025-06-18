@@ -49,7 +49,7 @@ from ._utils.blob_utils import (
     get_file_upload_spec_from_fileobj,
     get_file_upload_spec_from_path,
 )
-from ._utils.deprecation import deprecation_warning
+from ._utils.deprecation import _ARGUMENT_NOT_PASSED, deprecation_warning, warn_if_passing_namespace
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.http_utils import ClientSessionRegistry
 from ._utils.name_utils import check_object_name
@@ -154,7 +154,7 @@ class _Volume(_Object, type_prefix="vo"):
     def from_name(
         name: str,
         *,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=_ARGUMENT_NOT_PASSED,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
@@ -177,6 +177,7 @@ class _Volume(_Object, type_prefix="vo"):
         ```
         """
         check_object_name(name, "Volume")
+        namespace = warn_if_passing_namespace(namespace, "modal.Volume")
 
         async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.VolumeGetOrCreateRequest(
@@ -247,7 +248,7 @@ class _Volume(_Object, type_prefix="vo"):
     @staticmethod
     async def lookup(
         name: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=_ARGUMENT_NOT_PASSED,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -272,6 +273,7 @@ class _Volume(_Object, type_prefix="vo"):
             " It can be replaced with `modal.Volume.from_name`."
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
+        namespace = warn_if_passing_namespace(namespace, "modal.Volume")
         obj = _Volume.from_name(
             name,
             namespace=namespace,
@@ -288,13 +290,14 @@ class _Volume(_Object, type_prefix="vo"):
     @staticmethod
     async def create_deployed(
         deployment_name: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=_ARGUMENT_NOT_PASSED,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> str:
         """mdmd:hidden"""
         check_object_name(deployment_name, "Volume")
+        namespace = warn_if_passing_namespace(namespace, "modal.Volume")
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.VolumeGetOrCreateRequest(

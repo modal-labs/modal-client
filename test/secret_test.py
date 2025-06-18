@@ -5,7 +5,8 @@ import tempfile
 from unittest import mock
 
 from modal import App, Secret
-from modal.exception import InvalidError
+from modal.exception import DeprecationError, InvalidError, PendingDeprecationError
+from modal_proto import api_pb2
 
 from .supports.skip import skip_old_py
 
@@ -86,3 +87,20 @@ def test_secret_from_name(servicer, client):
     app.function(secrets=[secret])(dummy)
     with app.run(client=client):
         assert secret.object_id == secret_id
+
+
+def test_secret_namespace_deprecated(servicer, client):
+    with pytest.warns(PendingDeprecationError, match="The `namespace` parameter for `modal.Secret` is deprecated"):
+        Secret.from_name("my-secret", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
+
+    with pytest.warns(PendingDeprecationError, match="The `namespace` parameter for `modal.Secret` is deprecated"):
+        Secret.create_deployed(
+            "my-secret", {"FOO": "123"}, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, client=client
+        )
+
+    with pytest.warns() as record:
+        Secret.lookup("my-secret", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, client=client)
+    # Should warn about both the deprecated lookup method and the deprecated namespace parameter
+    assert len(record) >= 2
+    assert any(isinstance(w.message, DeprecationError) for w in record)
+    assert any(isinstance(w.message, PendingDeprecationError) for w in record)
