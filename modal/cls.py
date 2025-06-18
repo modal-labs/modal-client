@@ -26,7 +26,6 @@ from ._traceback import print_server_warnings
 from ._type_manager import parameter_serde_registry
 from ._utils.async_utils import synchronize_api, synchronizer
 from ._utils.deprecation import (
-    _ARGUMENT_NOT_PASSED,
     deprecation_warning,
     warn_if_passing_namespace,
     warn_on_renamed_autoscaler_settings,
@@ -617,7 +616,7 @@ More information on class parameterization can be found here: https://modal.com/
         app_name: str,
         name: str,
         *,
-        namespace: Any = _ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
+        namespace: Any = None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
     ) -> "_Cls":
         """Reference a Cls from a deployed App by its name.
@@ -829,7 +828,7 @@ More information on class parameterization can be found here: https://modal.com/
     async def lookup(
         app_name: str,
         name: str,
-        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
+        namespace=None,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> "_Cls":
