@@ -10,7 +10,7 @@ from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._runtime.execution_context import is_local
 from ._utils.async_utils import synchronize_api
-from ._utils.deprecation import _ARGUMENT_NOT_PASSED, deprecation_warning, warn_if_passing_namespace
+from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -165,7 +165,7 @@ class _Secret(_Object, type_prefix="st"):
     def from_name(
         name: str,
         *,
-        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
+        namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
         required_keys: list[
             str
@@ -208,7 +208,7 @@ class _Secret(_Object, type_prefix="st"):
     @staticmethod
     async def lookup(
         name: str,
-        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
+        namespace=None,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         required_keys: list[str] = [],
@@ -236,7 +236,7 @@ class _Secret(_Object, type_prefix="st"):
     async def create_deployed(
         deployment_name: str,
         env_dict: dict[str, str],
-        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
+        namespace=None,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         overwrite: bool = False,

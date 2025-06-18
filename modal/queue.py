@@ -14,7 +14,7 @@ from ._object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _O
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_is_not_consumed
-from ._utils.deprecation import _ARGUMENT_NOT_PASSED, deprecation_warning, warn_if_passing_namespace
+from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -148,7 +148,7 @@ class _Queue(_Object, type_prefix="qu"):
     def from_name(
         name: str,
         *,
-        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
+        namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Queue":
@@ -181,7 +181,7 @@ class _Queue(_Object, type_prefix="qu"):
     @staticmethod
     async def lookup(
         name: str,
-        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
+        namespace=None,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,

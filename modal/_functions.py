@@ -40,7 +40,7 @@ from ._utils.async_utils import (
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
-from ._utils.deprecation import _ARGUMENT_NOT_PASSED, deprecation_warning, warn_if_passing_namespace
+from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
@@ -1237,7 +1237,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         cls,
         app_name: str,
         name: str,
-        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
+        namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
     ):
         # internal function lookup implementation that allows lookup of class "service functions"
@@ -1274,7 +1274,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         app_name: str,
         name: str,
         *,
-        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
+        namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
     ) -> "_Function":
         """Reference a Function from a deployed App by its name.
@@ -1305,7 +1305,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     async def lookup(
         app_name: str,
         name: str,
-        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
+        namespace=None,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> "_Function":

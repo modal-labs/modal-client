@@ -22,7 +22,7 @@ from ._object import (
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, aclosing, async_map, sync_or_async_iter, synchronize_api
 from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
-from ._utils.deprecation import _ARGUMENT_NOT_PASSED, deprecation_warning, warn_if_passing_namespace
+from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.hash_utils import get_sha256_hex
 from ._utils.name_utils import check_object_name
@@ -92,7 +92,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     def from_name(
         name: str,
         *,
-        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
+        namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_NetworkFileSystem":
@@ -168,7 +168,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     @staticmethod
     async def lookup(
         name: str,
-        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
+        namespace=None,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -205,7 +205,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     @staticmethod
     async def create_deployed(
         deployment_name: str,
-        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
+        namespace=None,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> str:

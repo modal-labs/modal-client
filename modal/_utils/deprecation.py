@@ -127,30 +127,20 @@ def warn_on_renamed_autoscaler_settings(func: Callable[P, R]) -> Callable[P, R]:
 
 
 # Utilities for deprecating the namespace parameter across Modal resources
-class _ArgumentNotPassedType:
-    """Sentinel object to detect when an argument is explicitly passed vs using default."""
-
-    def __repr__(self) -> str:
-        return f"{__name__}._ARGUMENT_NOT_PASSED"
-
-
-_ARGUMENT_NOT_PASSED = _ArgumentNotPassedType()
-
-
 def warn_if_passing_namespace(
-    namespace,
-    resource_name: str = "Modal resource",
+    namespace: Any,
+    resource_name: str,
 ) -> "api_pb2.DeploymentNamespace.ValueType":
     """Issue deprecation warning for namespace parameter and return appropriate default.
 
     Args:
-        namespace: The namespace parameter value (may be sentinel or actual value)
+        namespace: The namespace parameter value (may be None or actual value)
         resource_name: Name of the resource type for the warning message
 
     Returns:
         The appropriate namespace value to use
     """
-    if namespace is _ARGUMENT_NOT_PASSED:
+    if namespace is None:
         return api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE
     else:
         deprecation_warning(
