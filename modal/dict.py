@@ -25,6 +25,8 @@ def _serialize_dict(data):
 
 
 class _DictObjectNamespaceAsync:
+    """Namespace for managing Dict objects."""
+
     async def list(
         self,
         environment_name: Optional[str] = None,
@@ -108,6 +110,19 @@ class _Dict(_Object, type_prefix="di"):
 
     @classproperty
     def objects(cls):
+        """Namespace for managing Dict objects.
+
+        Usage:
+        ```python
+        from modal import Dict
+
+        all_dicts = Dict.objects.list()
+
+        d = modal.Dict.from_name("my-dict", create_if_missing=True)
+        Dict.objects.delete("my-dict")
+        ```
+
+        """
         return _dict_object_namespace
 
     @classmethod
