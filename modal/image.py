@@ -1263,6 +1263,7 @@ class _Image(_Object, type_prefix="im"):
             # TODO: Using `which python` assumes:
             # - python is on the PATH and uv is installing into the first python in the PATH
             # - the shell supports backticks for substitution
+            # - `which` command is on the PATH
             uv_pip_args = ["--python `which python`"]
 
             if find_links:
