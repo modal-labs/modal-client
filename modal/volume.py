@@ -142,9 +142,16 @@ class _Volume(_Object, type_prefix="vo"):
     def read_only(self) -> bool:
         return self._read_only
 
-    def with_read_only(self) -> "_Volume":
+    def with_options(
+        self,
+        *,
+        read_only: Optional[bool] = None,  # Configure Volume to be read-only.
+    ) -> "_Volume":
+        """Configure Volume to mount as read-only"""
+        if read_only is None:
+            return self
         volume = deepcopy(self)
-        volume._read_only = True
+        volume._read_only = read_only
         return volume
 
     async def _get_lock(self):
