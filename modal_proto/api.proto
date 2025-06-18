@@ -1242,6 +1242,22 @@ message FilesystemRuntimeOutputBatch {
   bool eof = 4;
 }
 
+message FlashContainerDeregisterRequest {
+  string service_name = 1;
+}
+
+message FlashContainerRegisterRequest {
+  string service_name = 1;
+  uint32 priority = 2;
+  uint32 weight = 3;
+  string host = 4;
+  uint32 port = 5;
+}
+
+message FlashContainerRegisterResponse {
+  string url = 1;
+}
+
 message Function {
   string module_name = 1;
   string function_name = 2;
@@ -3267,6 +3283,10 @@ service ModalClient {
   rpc EnvironmentGetOrCreate(EnvironmentGetOrCreateRequest) returns (EnvironmentGetOrCreateResponse);
   rpc EnvironmentList(google.protobuf.Empty) returns (EnvironmentListResponse);
   rpc EnvironmentUpdate(EnvironmentUpdateRequest) returns (EnvironmentListItem);
+
+  // Modal Flash (experimental)
+  rpc FlashContainerDeregister(FlashContainerDeregisterRequest) returns (google.protobuf.Empty);
+  rpc FlashContainerRegister(FlashContainerRegisterRequest) returns (FlashContainerRegisterResponse);
 
   // Functions
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);
