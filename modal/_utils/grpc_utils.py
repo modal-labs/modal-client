@@ -170,7 +170,7 @@ def create_channel(
 
 @retry(n_attempts=5, base_delay=0.1)
 async def connect_channel(channel: grpclib.client.Channel):
-    """Connect to socket and potentially raising errors when we are unable to connect."""
+    """Connect to socket and raise exceptions when there is a connection issue."""
     await channel.__connect__()
 
 
