@@ -1237,7 +1237,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         cls,
         app_name: str,
         name: str,
-        namespace=_ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
     ):
         # internal function lookup implementation that allows lookup of class "service functions"
@@ -1274,7 +1274,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         app_name: str,
         name: str,
         *,
-        namespace=_ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
     ) -> "_Function":
         """Reference a Function from a deployed App by its name.
@@ -1305,7 +1305,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     async def lookup(
         app_name: str,
         name: str,
-        namespace=_ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> "_Function":

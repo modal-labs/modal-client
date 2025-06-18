@@ -117,9 +117,9 @@ class _Dict(_Object, type_prefix="di"):
     @staticmethod
     def from_name(
         name: str,
-        data: Optional[dict] = None,  # DEPRECATED
+        data: Optional[dict] = None,  # DEPRECATED, mdmd:line-hidden
         *,
-        namespace=_ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Dict":
@@ -162,7 +162,7 @@ class _Dict(_Object, type_prefix="di"):
     async def lookup(
         name: str,
         data: Optional[dict] = None,
-        namespace=_ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,

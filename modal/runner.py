@@ -468,7 +468,7 @@ class DeployResult:
 async def _deploy_app(
     app: _App,
     name: Optional[str] = None,
-    namespace: Any = _ARGUMENT_NOT_PASSED,
+    namespace: Any = _ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
     client: Optional[_Client] = None,
     environment_name: Optional[str] = None,
     tag: str = "",
