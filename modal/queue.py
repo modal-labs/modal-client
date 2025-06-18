@@ -148,7 +148,7 @@ class _Queue(_Object, type_prefix="qu"):
     def from_name(
         name: str,
         *,
-        namespace=_ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Queue":
@@ -181,7 +181,7 @@ class _Queue(_Object, type_prefix="qu"):
     @staticmethod
     async def lookup(
         name: str,
-        namespace=_ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,

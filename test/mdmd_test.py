@@ -54,6 +54,25 @@ def foo(a: str, *args, **kwargs):
     )
 
 
+def test_complex_function_signature_with_line_hidden():
+    def foo(
+        a: str,
+        *args,  # mdmd:line-hidden
+        **kwargs,
+    ):
+        pass
+
+    assert (
+        mdmd.function_str("foo", foo)
+        == """```python
+def foo(
+    a: str,
+    **kwargs,
+):
+```\n\n"""
+    )
+
+
 def test_function_has_docstring():
     def foo():
         """short description
@@ -87,6 +106,33 @@ class Foo(object)
 ```
 
 The all important Foo
+
+### bar
+
+```python
+def bar(self, baz: str):
+```
+
+Bars the foo with the baz
+"""
+    )
+
+
+def test_simple_class_with_docstring_with_line_hidden():
+    class Foo:
+        """The all important Foo mdmd:line-hidden"""
+
+        def bar(self, baz: str):
+            """Bars the foo with the baz
+
+            This won't be included mdmd:line-hidden
+            """
+
+    assert (
+        mdmd.class_str("Foo", Foo)
+        == """```python
+class Foo(object)
+```
 
 ### bar
 
