@@ -118,7 +118,7 @@ class _Dict(_Object, type_prefix="di"):
 
         all_dicts = Dict.objects.list()
 
-        d = modal.Dict.from_name("my-dict", create_if_missing=True)
+        d = Dict.from_name("my-dict", create_if_missing=True)
         Dict.objects.delete("my-dict")
         ```
 
