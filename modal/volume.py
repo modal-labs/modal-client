@@ -10,6 +10,7 @@ import re
 import time
 import typing
 from collections.abc import AsyncGenerator, AsyncIterator, Generator, Sequence
+from copy import deepcopy
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path, PurePosixPath
@@ -141,6 +142,11 @@ class _Volume(_Object, type_prefix="vo"):
     def read_only(self) -> bool:
         return self._read_only
 
+    def with_read_only(self) -> "_Volume":
+        volume = deepcopy(self)
+        volume._read_only = True
+        return volume
+
     async def _get_lock(self):
         # To (mostly*) prevent multiple concurrent operations on the same volume, which can cause problems under
         # some unlikely circumstances.
@@ -162,7 +168,6 @@ class _Volume(_Object, type_prefix="vo"):
         namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
-        read_only: bool = False,  # Configure volume to be read-only.
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> "_Volume":
         """Reference a Volume by name, creating if necessary.
@@ -196,7 +201,6 @@ class _Volume(_Object, type_prefix="vo"):
             self._hydrate(response.volume_id, resolver.client, response.metadata)
 
         obj = _Volume._from_loader(_load, "Volume()", hydrate_lazily=True)
-        obj._read_only = read_only
         return obj
 
     def _hydrate_metadata(self, metadata: Optional[Message]):

@@ -31,7 +31,9 @@ def dummy():
 @pytest.mark.parametrize("version", VERSIONS)
 def test_volume_mount(client, servicer, version, read_only):
     app = modal.App()
-    vol = modal.Volume.from_name("xyz", create_if_missing=True, version=version, read_only=read_only)
+    vol = modal.Volume.from_name("xyz", create_if_missing=True, version=version)
+    if read_only:
+        vol = vol.with_read_only()
 
     _ = app.function(volumes={"/root/foo": vol})(dummy)
 
