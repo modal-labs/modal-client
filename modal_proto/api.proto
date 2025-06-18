@@ -715,6 +715,7 @@ message ClassGetResponse {
   repeated Warning server_warnings = 3;
 }
 
+//TODO:(ben-okeefe) handle hydrating region
 message ClassHandleMetadata {
   repeated ClassMethod methods = 1;
   string class_function_id = 2;
@@ -1703,6 +1704,7 @@ message FunctionHandleMetadata {
   map<string, FunctionHandleMetadata> method_handle_metadata = 44;
   FunctionSchema function_schema = 45;
   optional string input_plane_url = 46;
+  optional string input_plane_region = 47;
 }
 
 message FunctionInput {

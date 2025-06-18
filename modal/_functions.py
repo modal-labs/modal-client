@@ -1383,6 +1383,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._method_handle_metadata = dict(metadata.method_handle_metadata)
         self._definition_id = metadata.definition_id
         self._input_plane_url = metadata.input_plane_url
+        self._input_plane_region = metadata.input_plane_region
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
@@ -1398,6 +1399,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             method_handle_metadata=self._method_handle_metadata,
             function_schema=self._metadata.function_schema if self._metadata else None,
             input_plane_url=self._input_plane_url,
+            input_plane_region=self._input_plane_region,
         )
 
     def _check_no_web_url(self, fn_name: str):
@@ -1493,6 +1495,7 @@ Use the `Function.get_web_url()` method instead.
                 kwargs,
                 client=self.client,
                 input_plane_url=self._input_plane_url,
+                input_plane_region=self._input_plane_region,
             )
         else:
             invocation = await _Invocation.create(
