@@ -165,7 +165,7 @@ class _Secret(_Object, type_prefix="st"):
     def from_name(
         name: str,
         *,
-        namespace: Union[api_pb2.DeploymentNamespace.ValueType, object] = _ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,
         environment_name: Optional[str] = None,
         required_keys: list[
             str
@@ -208,7 +208,7 @@ class _Secret(_Object, type_prefix="st"):
     @staticmethod
     async def lookup(
         name: str,
-        namespace: Union[api_pb2.DeploymentNamespace.ValueType, object] = _ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         required_keys: list[str] = [],
@@ -236,7 +236,7 @@ class _Secret(_Object, type_prefix="st"):
     async def create_deployed(
         deployment_name: str,
         env_dict: dict[str, str],
-        namespace: Union[api_pb2.DeploymentNamespace.ValueType, object] = _ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         overwrite: bool = False,

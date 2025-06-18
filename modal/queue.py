@@ -3,7 +3,7 @@ import queue  # The system library
 import time
 import warnings
 from collections.abc import AsyncGenerator, AsyncIterator
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
@@ -148,7 +148,7 @@ class _Queue(_Object, type_prefix="qu"):
     def from_name(
         name: str,
         *,
-        namespace: Union[api_pb2.DeploymentNamespace.ValueType, object] = _ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Queue":
@@ -181,7 +181,7 @@ class _Queue(_Object, type_prefix="qu"):
     @staticmethod
     async def lookup(
         name: str,
-        namespace: Union[api_pb2.DeploymentNamespace.ValueType, object] = _ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,

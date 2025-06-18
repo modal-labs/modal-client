@@ -11,7 +11,7 @@ import time
 import typing
 from collections.abc import AsyncGenerator
 from multiprocessing.synchronize import Event
-from typing import TYPE_CHECKING, Any, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Optional, TypeVar
 
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
@@ -103,7 +103,7 @@ async def _init_local_app_new(
 async def _init_local_app_from_name(
     client: _Client,
     name: str,
-    namespace: api_pb2.DeploymentNamespace.ValueType,
+    namespace: "api_pb2.DeploymentNamespace.ValueType",
     environment_name: str = "",
 ) -> RunningApp:
     # Look up any existing deployment
@@ -468,7 +468,7 @@ class DeployResult:
 async def _deploy_app(
     app: _App,
     name: Optional[str] = None,
-    namespace: Union[Any, object] = _ARGUMENT_NOT_PASSED,
+    namespace: Any = _ARGUMENT_NOT_PASSED,
     client: Optional[_Client] = None,
     environment_name: Optional[str] = None,
     tag: str = "",

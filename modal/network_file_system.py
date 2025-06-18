@@ -92,7 +92,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     def from_name(
         name: str,
         *,
-        namespace: Union[api_pb2.DeploymentNamespace.ValueType, object] = _ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_NetworkFileSystem":
@@ -168,7 +168,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     @staticmethod
     async def lookup(
         name: str,
-        namespace: Union[api_pb2.DeploymentNamespace.ValueType, object] = _ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -205,7 +205,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     @staticmethod
     async def create_deployed(
         deployment_name: str,
-        namespace: Union[api_pb2.DeploymentNamespace.ValueType, object] = _ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> str:

@@ -1,6 +1,6 @@
 # Copyright Modal Labs 2022
 from collections.abc import AsyncIterator, Mapping
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 from grpclib import GRPCError
 from synchronicity.async_wrap import asynccontextmanager
@@ -119,7 +119,7 @@ class _Dict(_Object, type_prefix="di"):
         name: str,
         data: Optional[dict] = None,  # DEPRECATED
         *,
-        namespace: Union[api_pb2.DeploymentNamespace.ValueType, object] = _ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Dict":
@@ -162,7 +162,7 @@ class _Dict(_Object, type_prefix="di"):
     async def lookup(
         name: str,
         data: Optional[dict] = None,
-        namespace: Union[api_pb2.DeploymentNamespace.ValueType, object] = _ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,

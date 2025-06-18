@@ -1,11 +1,9 @@
 # Copyright Modal Labs 2024
-from __future__ import annotations
-
 import functools
 import sys
 import warnings
 from datetime import date
-from typing import Any, Callable, TypeVar, Union
+from typing import Any, Callable, TypeVar
 
 from typing_extensions import ParamSpec  # Needed for Python 3.9
 
@@ -133,16 +131,16 @@ class _ArgumentNotPassedType:
     """Sentinel object to detect when an argument is explicitly passed vs using default."""
 
     def __repr__(self) -> str:
-        return "modal._utils.deprecation._ARGUMENT_NOT_PASSED"
+        return f"{__name__}._ARGUMENT_NOT_PASSED"
 
 
 _ARGUMENT_NOT_PASSED = _ArgumentNotPassedType()
 
 
 def warn_if_passing_namespace(
-    namespace: Union[api_pb2.DeploymentNamespace.ValueType, object],
+    namespace,
     resource_name: str = "Modal resource",
-) -> api_pb2.DeploymentNamespace.ValueType:
+) -> "api_pb2.DeploymentNamespace.ValueType":
     """Issue deprecation warning for namespace parameter and return appropriate default.
 
     Args:
