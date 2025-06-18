@@ -154,7 +154,7 @@ class _Volume(_Object, type_prefix="vo"):
     def from_name(
         name: str,
         *,
-        namespace=_ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
@@ -248,7 +248,7 @@ class _Volume(_Object, type_prefix="vo"):
     @staticmethod
     async def lookup(
         name: str,
-        namespace=_ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -290,7 +290,7 @@ class _Volume(_Object, type_prefix="vo"):
     @staticmethod
     async def create_deployed(
         deployment_name: str,
-        namespace=_ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,

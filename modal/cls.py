@@ -617,7 +617,7 @@ More information on class parameterization can be found here: https://modal.com/
         app_name: str,
         name: str,
         *,
-        namespace: Any = _ARGUMENT_NOT_PASSED,
+        namespace: Any = _ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
     ) -> "_Cls":
         """Reference a Cls from a deployed App by its name.
@@ -829,7 +829,7 @@ More information on class parameterization can be found here: https://modal.com/
     async def lookup(
         app_name: str,
         name: str,
-        namespace=_ARGUMENT_NOT_PASSED,
+        namespace=_ARGUMENT_NOT_PASSED,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> "_Cls":
