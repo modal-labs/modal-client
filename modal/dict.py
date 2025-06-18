@@ -56,8 +56,7 @@ class _DictObjectNamespaceAsync:
         return self._client
 
 
-_DictObjectNamespace = synchronize_api(_DictObjectNamespaceAsync)
-_dict_object_namespace = _DictObjectNamespace()
+DictObjectNamespace = synchronize_api(_DictObjectNamespaceAsync)
 
 
 class _Dict(_Object, type_prefix="di"):
@@ -123,7 +122,7 @@ class _Dict(_Object, type_prefix="di"):
         ```
 
         """
-        return _dict_object_namespace
+        return DictObjectNamespace()
 
     @classmethod
     @asynccontextmanager
