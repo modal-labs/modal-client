@@ -224,7 +224,13 @@ class _FlashManager:
     async def _start(self):
         tunnel = await self.tunnel_manager.__aenter__()
 
-        host, port = tunnel.url.split("://")[1].split(":")
+        hostname = tunnel.url.split("://")[1]
+        if ":" in hostname:
+            host, port = hostname.split(":")
+        else:
+            host = hostname
+            port = "443"
+
         self.heartbeat_task = asyncio.create_task(self._run_heartbeat(host, int(port)))
 
     async def _run_heartbeat(self, host: str, port: int):
@@ -238,7 +244,7 @@ class _FlashManager:
                         host=host,
                         port=port,
                     ),
-                    timeout=1,
+                    timeout=10,
                 )
                 if first_registration:
                     logger.warning(f"[Modal Flash] Listening at {resp.url}")
