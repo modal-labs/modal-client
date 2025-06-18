@@ -1260,8 +1260,10 @@ class _Image(_Object, type_prefix="im"):
             else:
                 commands.append(f"COPY --from=ghcr.io/astral-sh/uv:{uv_version} /uv /.uv/uv")
 
-            # TODO: Assumes python is on the PATH and uv is installing into the first python in the path
-            uv_pip_args = ["--python $(which python)"]
+            # TODO: Using `which python` assumes:
+            # - python is on the PATH and uv is installing into the first python in the PATH
+            # - the shell supports backticks for substitution
+            uv_pip_args = ["--python `which python`"]
 
             if find_links:
                 uv_pip_args.append(f"--find-links {shlex.quote(find_links)}")
