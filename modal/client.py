@@ -6,6 +6,7 @@ import sys
 import urllib.parse
 import warnings
 from collections.abc import AsyncGenerator, AsyncIterator, Collection, Mapping
+from contextlib import contextmanager
 from typing import (
     Any,
     ClassVar,
@@ -18,6 +19,7 @@ from typing import (
 import grpclib.client
 from google.protobuf import empty_pb2
 from google.protobuf.message import Message
+from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal._utils.async_utils import synchronizer
@@ -29,7 +31,7 @@ from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import ConnectionManager, retry_transient_errors
 from .config import _check_config, _is_remote, config, logger
-from .exception import AuthError, ClientClosed
+from .exception import AuthError, ClientClosed, NotFoundError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
@@ -352,6 +354,17 @@ class _Client:
 Client = synchronize_api(_Client)
 
 
+@contextmanager
+def grpc_error_converter():
+    try:
+        yield
+    except GRPCError as exc:
+        # skip all internal frames from grpclib
+        if exc.status == Status.NOT_FOUND:
+            raise NotFoundError(exc.message) from None
+        raise exc from None
+
+
 class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
     # Calls a grpclib.UnaryUnaryMethod using a specific Client instance, respecting
     # if that client is closed etc. and possibly introducing Modal-specific retry logic
@@ -393,7 +406,8 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         #
         # [1]: https://github.com/vmagamedov/grpclib/blob/62f968a4c84e3f64e6966097574ff0a59969ea9b/grpclib/client.py#L844
         self.wrapped_method.channel = await self.client._get_channel(self.server_url)
-        return await self.client._call_unary(self.wrapped_method, req, timeout=timeout, metadata=metadata)
+        with grpc_error_converter():
+            return await self.client._call_unary(self.wrapped_method, req, timeout=timeout, metadata=metadata)
 
 
 class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
@@ -422,5 +436,6 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
             logger.debug(f"refreshing client after snapshot for {self.name.rsplit('/', 1)[1]}")
             self.client = await _Client.from_env()
         self.wrapped_method.channel = await self.client._get_channel(self.server_url)
-        async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
-            yield response
+        with grpc_error_converter():
+            async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
+                yield response

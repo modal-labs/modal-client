@@ -172,6 +172,7 @@ class _Queue(_Object, type_prefix="qu"):
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
             )
+
             response = await resolver.client.stub.QueueGetOrCreate(req)
             self._hydrate(response.queue_id, resolver.client, None)
 
