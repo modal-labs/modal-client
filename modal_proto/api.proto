@@ -715,7 +715,6 @@ message ClassGetResponse {
   repeated Warning server_warnings = 3;
 }
 
-//TODO:(ben-okeefe) handle hydrating region
 message ClassHandleMetadata {
   repeated ClassMethod methods = 1;
   string class_function_id = 2;

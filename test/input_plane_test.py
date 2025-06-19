@@ -19,6 +19,7 @@ def test_foo(client, servicer):
     # This verifies that FunctionCreate returns the input_plane_region in the response, and call the input plane.
     with app.run(client=client):
         assert foo.remote() == "attempt_await_bogus_response"
+        assert foo._get_metadata().input_plane_url is not None
         assert foo._get_metadata().input_plane_region == "us-east"
 
 
@@ -27,8 +28,9 @@ def test_lookup_foo(client, servicer):
     modal.App()
     deploy_app(app, "app", client=client)
     f = Function.from_name("app", "foo").hydrate(client)
-    assert f._get_metadata().input_plane_region == "us-east"
     assert f.remote() == "attempt_await_bogus_response"
+    assert f._get_metadata().input_plane_url is not None
+    assert f._get_metadata().input_plane_region == "us-east"
 
 
 def test_retry(client, servicer):

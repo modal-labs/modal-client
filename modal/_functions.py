@@ -387,7 +387,9 @@ class _InputPlaneInvocation:
             parent_input_id=current_input_id() or "",
             input=input_item,
         )
-        response = await retry_transient_errors(stub.AttemptStart, request, input_plane_region=input_plane_region)
+        response = await retry_transient_errors(
+            stub.AttemptStart, request, base_metadata=[("x-input-plane-region", input_plane_region)]
+        )
         attempt_token = response.attempt_token
 
         return _InputPlaneInvocation(stub, attempt_token, client, input_item, function_id, input_plane_region)
@@ -406,7 +408,7 @@ class _InputPlaneInvocation:
                 self.stub.AttemptAwait,
                 await_request,
                 attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
-                input_plane_region=self.input_plane_region,
+                base_metadata=[("x-input-plane-region", self.input_plane_region)],
             )
 
             if await_response.HasField("output"):
@@ -426,7 +428,7 @@ class _InputPlaneInvocation:
                         retry_response = await retry_transient_errors(
                             self.stub.AttemptRetry,
                             retry_request,
-                            input_plane_region=self.input_plane_region,
+                            base_metadata=[("x-input-plane-region", self.input_plane_region)],
                         )
                         self.attempt_token = retry_response.attempt_token
                         continue
@@ -788,7 +790,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             elif webhook_config:
                 req.webhook_config.CopyFrom(webhook_config)
 
-            # TODO(ben-okeefe): Clarify about hydration and potentially adding input_plane_region to the request
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
