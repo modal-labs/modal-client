@@ -1,8 +1,13 @@
 # Copyright Modal Labs 2024
 import pytest
+import types
+import typing
 from pathlib import Path
 from traceback import extract_tb
 
+from grpclib import GRPCError, Status
+
+import modal
 from modal._traceback import (
     append_modal_tb,
     extract_traceback,
@@ -10,6 +15,7 @@ from modal._traceback import (
     traceback_contains_remote_call,
 )
 from modal._vendor import tblib
+from modal.exception import NotFoundError
 
 from .supports.raise_error import raise_error
 
@@ -158,3 +164,101 @@ def test_traceback_contains_remote_call():
 
     tb = tblib.Traceback.from_dict(tb_dict_from_stack_dicts(make_tb_stack(stack)))
     assert traceback_contains_remote_call(tb)
+
+
+ModuleOrFilename = typing.Union[types.ModuleType, str]
+
+
+def to_path(mof: ModuleOrFilename) -> Path:
+    if isinstance(mof, str):
+        return Path(mof)
+    module_file = Path(mof.__file__)
+    if module_file.name == "__init__.py":
+        return module_file.parent
+    return module_file
+
+
+def assert_expected_traceback(traceback, expected_module_frames: list[tuple[ModuleOrFilename, str]]):
+    failure = False
+    for i, frame in enumerate(traceback):
+        if i >= len(expected_module_frames):
+            failure = "(past end of expected traceback)"
+        else:
+            expected_path = to_path(expected_module_frames[i][0])
+            expected_name = expected_module_frames[i][1]
+            if expected_path != Path(frame.path) or expected_name != frame.name:
+                failure = f"Expected: {str(expected_path)}, {expected_name}"
+
+        if failure:
+            full_tb = "\n".join(f"{'>>>' if i == j else ''}{frame}" for j, frame in enumerate(traceback))
+            raise AssertionError(f"Unexpected traceback frame:\n{full_tb}\n{failure}")
+
+
+def test_internal_frame_suppression_graceful_error(set_env_client, servicer):
+    # when converting a grpc error into a modal error, like modal.exceptions.NotFoundError
+    with pytest.raises(NotFoundError):
+        modal.Queue.from_name("asdlfjkjalsdkf").get()
+
+    with servicer.intercept() as ctx:
+
+        async def QueueGetOrCreate(self, stream):
+            raise GRPCError(Status.NOT_FOUND)
+
+        ctx.set_responder("QueueGetOrCreate", QueueGetOrCreate)
+
+        with pytest.raises(NotFoundError) as exc_info:
+            modal.Queue.from_name("asdlfjkjalsdkf").get()
+
+        assert_expected_traceback(
+            exc_info.traceback,
+            [
+                (__file__, "test_internal_frame_suppression_graceful_error"),  # this frame
+                (modal._object, "wrapped"),  # from @live_method calling .hydrate()
+                (modal.queue, "_load"),
+            ],
+        )
+
+
+def test_internal_frame_suppression_internal_error(set_env_client, servicer):
+    with pytest.raises(NotFoundError):
+        modal.Queue.from_name("asdlfjkjalsdkf").get()
+
+    with servicer.intercept() as ctx:
+
+        async def QueueGetOrCreate(self, stream):
+            raise GRPCError(status=Status.INTERNAL, message="kaboom")
+
+        ctx.set_responder("QueueGetOrCreate", QueueGetOrCreate)
+        with pytest.raises(GRPCError, match="kaboom") as exc_info:
+            modal.Queue.from_name("asdlfjkjalsdkf").get()
+
+        assert_expected_traceback(
+            exc_info.traceback,
+            [
+                (__file__, "test_internal_frame_suppression_internal_error"),  # this frame
+                (modal._object, "wrapped"),  # from @live_method calling .hydrate()
+                (modal.queue, "_load"),
+            ],
+        )
+
+
+def test_internal_frame_suppression_full_trace(set_env_client, servicer, monkeypatch):
+    monkeypatch.setenv("MODAL_TRACEBACK", "1")
+
+    with pytest.raises(NotFoundError):
+        modal.Queue.from_name("asdlfjkjalsdkf").get()
+
+    with servicer.intercept() as ctx:
+
+        async def QueueGetOrCreate(self, stream):
+            await stream.recv_message()
+            raise GRPCError(status=Status.INTERNAL, message="kaboom")
+
+        ctx.set_responder("QueueGetOrCreate", QueueGetOrCreate)
+        with pytest.raises(GRPCError, match="kaboom") as exc:
+            modal.Queue.from_name("asdlfjkjalsdkf").get()
+
+        print(len(exc.traceback))
+
+        for frame in exc.traceback:
+            print(frame.name, frame.statement, frame.path)
