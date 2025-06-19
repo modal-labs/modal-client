@@ -1,5 +1,7 @@
 # Copyright Modal Labs 2025
+import asyncio
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional, Union
@@ -11,11 +13,13 @@ from .._functions import _Function
 from .._object import _get_environment_name
 from .._partial_function import _clustered
 from .._runtime.container_io_manager import _ContainerIOManager
+from .._tunnel import _forward as _forward_tunnel
 from .._utils.async_utils import synchronize_api, synchronizer
 from .._utils.deprecation import deprecation_warning
 from .._utils.grpc_utils import retry_transient_errors
 from ..client import _Client
 from ..cls import _Obj
+from ..config import logger
 from ..exception import InvalidError
 from ..image import DockerfileSpec, ImageBuilderVersion, _Image, _ImageRegistryConfig
 from ..secret import _Secret
@@ -209,3 +213,76 @@ async def update_autoscaler(
 
     request = api_pb2.FunctionUpdateSchedulingParamsRequest(function_id=f.object_id, settings=settings)
     await retry_transient_errors(client.stub.FunctionUpdateSchedulingParams, request)
+
+
+class _FlashManager:
+    def __init__(self, client: _Client, port: int):
+        self.client = client
+        self.port = port
+        self.tunnel_manager = _forward_tunnel(port, client=client)
+
+    async def _start(self):
+        tunnel = await self.tunnel_manager.__aenter__()
+
+        hostname = tunnel.url.split("://")[1]
+        if ":" in hostname:
+            host, port = hostname.split(":")
+        else:
+            host = hostname
+            port = "443"
+
+        self.heartbeat_task = asyncio.create_task(self._run_heartbeat(host, int(port)))
+
+    async def _run_heartbeat(self, host: str, port: int):
+        first_registration = True
+        while True:
+            try:
+                resp = await self.client.stub.FlashContainerRegister(
+                    api_pb2.FlashContainerRegisterRequest(
+                        priority=10,
+                        weight=5,
+                        host=host,
+                        port=port,
+                    ),
+                    timeout=10,
+                )
+                if first_registration:
+                    logger.warning(f"[Modal Flash] Listening at {resp.url}")
+                    first_registration = False
+            except asyncio.CancelledError:
+                logger.warning("[Modal Flash] Shutting down...")
+                break
+            except Exception as e:
+                logger.error(f"[Modal Flash] Heartbeat failed: {e}")
+
+            try:
+                await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                logger.warning("[Modal Flash] Shutting down...")
+                break
+
+    async def stop(self):
+        self.heartbeat_task.cancel()
+        await retry_transient_errors(
+            self.client.stub.FlashContainerDeregister,
+            api_pb2.FlashContainerDeregisterRequest(),
+        )
+        await self.tunnel_manager.__aexit__(*sys.exc_info())
+
+
+FlashManager = synchronize_api(_FlashManager)
+
+
+@synchronizer.create_blocking
+async def flash_forward(port: int) -> _FlashManager:
+    """
+    Forward a port to the Modal Flash service, exposing that port as a stable web endpoint.
+
+    This is a highly experimental method that can break or be removed at any time without warning.
+    Do not use this method unless explicitly instructed to do so by Modal support.
+    """
+    client = await _Client.from_env()
+
+    manager = _FlashManager(client, port)
+    await manager._start()
+    return manager

@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.5.dev2 (2025-06-16)
+
+* Added a `wrap_returned_exceptions: bool = True` argument to the `Function.map` family of functions. Setting this to False will instead return the original exception type, which will be the default behavior in a future version of Modal.
+
+
 ### 1.0.4 (2025-06-13)
 
 - When `modal.Cls.with_options` is called multiple times on the same instance, the overrides will now be merged. For example, the following configuration will use an H100 GPU and request 16 CPU cores:
@@ -298,7 +303,7 @@ Additionally, we have enforced a number of previously-introduced deprecations:
 
 ### 0.74.7 (2025-04-17)
 
-- Modal will now raise an error if local files included in the App are modified during the build process. This behavior can be controlled with the `MODAL_BUILD_VALIDATION` configuration, which accepts `error` (default), `warning`, or `ignore`.
+- Modal will now raise an error if local files included in the App are modified during the build process. This behavior can be controlled with the `MODAL_BUILD_VALIDATION` configuration, which accepts `error` (default), `warn`, or `ignore`.
 
 
 
