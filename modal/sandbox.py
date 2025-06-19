@@ -151,6 +151,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                     mount_path=path,
                     volume_id=volume.object_id,
                     allow_background_commits=True,
+                    read_only=volume.read_only,
                 )
                 for path, volume in validated_volumes
             ]

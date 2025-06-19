@@ -10,6 +10,7 @@ import re
 import time
 import typing
 from collections.abc import AsyncGenerator, AsyncIterator, Generator, Sequence
+from copy import deepcopy
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path, PurePosixPath
@@ -135,6 +136,23 @@ class _Volume(_Object, type_prefix="vo"):
 
     _lock: Optional[asyncio.Lock] = None
     _metadata: "typing.Optional[api_pb2.VolumeMetadata]"
+    _read_only: bool = False
+
+    @property
+    def read_only(self) -> bool:
+        return self._read_only
+
+    def with_options(
+        self,
+        *,
+        read_only: Optional[bool] = None,  # Configure Volume to be read-only.
+    ) -> "_Volume":
+        """Configure Volume to mount as read-only"""
+        if read_only is None:
+            return self
+        volume = deepcopy(self)
+        volume._read_only = read_only
+        return volume
 
     async def _get_lock(self):
         # To (mostly*) prevent multiple concurrent operations on the same volume, which can cause problems under
@@ -189,7 +207,8 @@ class _Volume(_Object, type_prefix="vo"):
             response = await resolver.client.stub.VolumeGetOrCreate(req)
             self._hydrate(response.volume_id, resolver.client, response.metadata)
 
-        return _Volume._from_loader(_load, "Volume()", hydrate_lazily=True)
+        obj = _Volume._from_loader(_load, "Volume()", hydrate_lazily=True)
+        return obj
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         if metadata and isinstance(metadata, api_pb2.VolumeMetadata):
