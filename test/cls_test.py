@@ -1330,8 +1330,7 @@ def test_parameter_inheritance(client):
 
     @app.cls(serialized=True)
     class ChangingParameterDefinitions(Base):
-        # change type of base class parameter - not allowed
-        # this is similar to how type checkers normally don't let you do this
+        # change type of base class parameter, allowed but frowned upon
         a: str = modal.parameter()  # type: ignore  # this isn't allowed by type checkers
 
     with app.run(client=client):
