@@ -6,7 +6,6 @@ import sys
 import urllib.parse
 import warnings
 from collections.abc import AsyncGenerator, AsyncIterator, Collection, Mapping
-from contextlib import contextmanager
 from typing import (
     Any,
     ClassVar,
@@ -354,15 +353,27 @@ class _Client:
 Client = synchronize_api(_Client)
 
 
-@contextmanager
-def grpc_error_converter():
-    try:
-        yield
-    except GRPCError as exc:
+class grpc_error_converter:
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc, traceback) -> bool:
         # skip all internal frames from grpclib
-        if exc.status == Status.NOT_FOUND:
-            raise NotFoundError(exc.message) from None
-        raise exc from None
+        with suppress_tb_frames(1):
+            if isinstance(exc, GRPCError):
+                if exc.status == Status.NOT_FOUND:
+                    raise NotFoundError(exc.message) from None
+
+                if not config.get("traceback"):
+                    # just include the frame in grpclib that actually raises the GRPCError
+                    tb = exc.__traceback__
+                    while tb.tb_next:
+                        tb = tb.tb_next
+                    exc.with_traceback(tb)
+
+                raise exc from None
+
+        return False
 
 
 class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
@@ -406,7 +417,7 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         #
         # [1]: https://github.com/vmagamedov/grpclib/blob/62f968a4c84e3f64e6966097574ff0a59969ea9b/grpclib/client.py#L844
         self.wrapped_method.channel = await self.client._get_channel(self.server_url)
-        with suppress_tb_frames(3):
+        with suppress_tb_frames(1):
             with grpc_error_converter():
                 return await self.client._call_unary(self.wrapped_method, req, timeout=timeout, metadata=metadata)
 
@@ -437,7 +448,7 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
             logger.debug(f"refreshing client after snapshot for {self.name.rsplit('/', 1)[1]}")
             self.client = await _Client.from_env()
         self.wrapped_method.channel = await self.client._get_channel(self.server_url)
-        with suppress_tb_frames(3):
+        with suppress_tb_frames(1):
             with grpc_error_converter():
                 async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
                     yield response

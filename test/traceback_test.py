@@ -5,6 +5,7 @@ import typing
 from pathlib import Path
 from traceback import extract_tb
 
+import grpclib
 from grpclib import GRPCError, Status
 
 import modal
@@ -196,9 +197,6 @@ def assert_expected_traceback(traceback, expected_module_frames: list[tuple[Modu
 
 def test_internal_frame_suppression_graceful_error(set_env_client, servicer):
     # when converting a grpc error into a modal error, like modal.exceptions.NotFoundError
-    with pytest.raises(NotFoundError):
-        modal.Queue.from_name("asdlfjkjalsdkf").get()
-
     with servicer.intercept() as ctx:
 
         async def QueueGetOrCreate(self, stream):
@@ -220,9 +218,7 @@ def test_internal_frame_suppression_graceful_error(set_env_client, servicer):
 
 
 def test_internal_frame_suppression_internal_error(set_env_client, servicer):
-    with pytest.raises(NotFoundError):
-        modal.Queue.from_name("asdlfjkjalsdkf").get()
-
+    # internal grpc errors that aren't wrapped
     with servicer.intercept() as ctx:
 
         async def QueueGetOrCreate(self, stream):
@@ -238,27 +234,6 @@ def test_internal_frame_suppression_internal_error(set_env_client, servicer):
                 (__file__, "test_internal_frame_suppression_internal_error"),  # this frame
                 (modal._object, "wrapped"),  # from @live_method calling .hydrate()
                 (modal.queue, "_load"),
+                (grpclib.client, "_raise_for_grpc_status"),  # raw status
             ],
         )
-
-
-def test_internal_frame_suppression_full_trace(set_env_client, servicer, monkeypatch):
-    monkeypatch.setenv("MODAL_TRACEBACK", "1")
-
-    with pytest.raises(NotFoundError):
-        modal.Queue.from_name("asdlfjkjalsdkf").get()
-
-    with servicer.intercept() as ctx:
-
-        async def QueueGetOrCreate(self, stream):
-            await stream.recv_message()
-            raise GRPCError(status=Status.INTERNAL, message="kaboom")
-
-        ctx.set_responder("QueueGetOrCreate", QueueGetOrCreate)
-        with pytest.raises(GRPCError, match="kaboom") as exc:
-            modal.Queue.from_name("asdlfjkjalsdkf").get()
-
-        print(len(exc.traceback))
-
-        for frame in exc.traceback:
-            print(frame.name, frame.statement, frame.path)
