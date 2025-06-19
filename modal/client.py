@@ -365,6 +365,26 @@ def grpc_error_converter():
         raise exc from None
 
 
+class suppress_tb_frames:
+    def __init__(self, n: int):
+        self.n = n
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc, traceback) -> bool:
+        # modify traceback on exception object
+        final_tb = traceback
+        for _ in range(self.n):
+            final_tb = final_tb.tb_next
+
+        # for some reason, the traceback cleanup here can't be moved into a context manager :(
+        exc.with_traceback(final_tb).add_note(
+            "Internal modal traceback frames are suppressed for readability. Use MODAL_TRACEBACK=1 to show all."
+        )
+        return False
+
+
 class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
     # Calls a grpclib.UnaryUnaryMethod using a specific Client instance, respecting
     # if that client is closed etc. and possibly introducing Modal-specific retry logic
@@ -406,8 +426,9 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         #
         # [1]: https://github.com/vmagamedov/grpclib/blob/62f968a4c84e3f64e6966097574ff0a59969ea9b/grpclib/client.py#L844
         self.wrapped_method.channel = await self.client._get_channel(self.server_url)
-        with grpc_error_converter():
-            return await self.client._call_unary(self.wrapped_method, req, timeout=timeout, metadata=metadata)
+        with suppress_tb_frames(3):
+            with grpc_error_converter():
+                return await self.client._call_unary(self.wrapped_method, req, timeout=timeout, metadata=metadata)
 
 
 class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
@@ -436,6 +457,7 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
             logger.debug(f"refreshing client after snapshot for {self.name.rsplit('/', 1)[1]}")
             self.client = await _Client.from_env()
         self.wrapped_method.channel = await self.client._get_channel(self.server_url)
-        with grpc_error_converter():
-            async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
-                yield response
+        with suppress_tb_frames(3):
+            with grpc_error_converter():
+                async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
+                    yield response
