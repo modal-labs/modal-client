@@ -26,7 +26,7 @@ from modal._utils.async_utils import synchronizer
 from modal_proto import api_grpc, api_pb2, modal_api_grpc
 from modal_version import __version__
 
-from ._traceback import print_server_warnings
+from ._traceback import print_server_warnings, suppress_tb_frames
 from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import ConnectionManager, retry_transient_errors
@@ -363,26 +363,6 @@ def grpc_error_converter():
         if exc.status == Status.NOT_FOUND:
             raise NotFoundError(exc.message) from None
         raise exc from None
-
-
-class suppress_tb_frames:
-    def __init__(self, n: int):
-        self.n = n
-
-    def __enter__(self):
-        pass
-
-    def __exit__(self, exc_type, exc, traceback) -> bool:
-        # modify traceback on exception object
-        final_tb = traceback
-        for _ in range(self.n):
-            final_tb = final_tb.tb_next
-
-        # for some reason, the traceback cleanup here can't be moved into a context manager :(
-        exc.with_traceback(final_tb).add_note(
-            "Internal modal traceback frames are suppressed for readability. Use MODAL_TRACEBACK=1 to show all."
-        )
-        return False
 
 
 class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):

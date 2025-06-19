@@ -8,6 +8,7 @@ from asyncio import Future
 from collections.abc import Hashable
 from typing import TYPE_CHECKING, Optional
 
+from modal._traceback import suppress_tb_frames
 from modal_proto import api_pb2
 
 from ._utils.async_utils import TaskContext
@@ -162,8 +163,9 @@ class Resolver:
             self._local_uuid_to_future[obj.local_uuid] = cached_future
             if deduplication_key is not None:
                 self._deduplication_cache[deduplication_key] = cached_future
-
-        return await cached_future
+        with suppress_tb_frames(2):
+            # skip current frame + `loader()` closure frame from above
+            return await cached_future
 
     def objects(self) -> list["modal._object._Object"]:
         unique_objects: dict[str, "modal._object._Object"] = {}
