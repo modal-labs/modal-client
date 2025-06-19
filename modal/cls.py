@@ -126,6 +126,11 @@ def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name:
         method_metadata = cls._method_metadata[method_name]
         new_function._hydrate(service_function.object_id, service_function.client, method_metadata)
 
+        # Ensure fields that are only present on the class service-function
+        # metadata are propagated to the per-method handle.
+        if not new_function._input_plane_url and service_function._input_plane_url:
+            new_function._input_plane_url = service_function._input_plane_url
+
     async def _load(fun: "_Function", resolver: Resolver, existing_object_id: Optional[str]):
         # there is currently no actual loading logic executed to create each method on
         # the *parametrized* instance of a class - it uses the parameter-bound service-function
