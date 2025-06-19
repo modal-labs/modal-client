@@ -153,5 +153,6 @@ class suppress_tb_frames:
         exc.with_traceback(final_tb)
         notes = getattr(exc, "__notes__", [])
         if traceback_suppression_note not in notes:
-            exc.add_note(traceback_suppression_note)
+            # .add_note was added in Python 3.11
+            notes.append(traceback_suppression_note)
         return False
