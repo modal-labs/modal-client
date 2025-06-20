@@ -388,7 +388,7 @@ class _InputPlaneInvocation:
             input=input_item,
         )
         response = await retry_transient_errors(
-            stub.AttemptStart, request, metadata=[("x-input-plane-region", input_plane_region)]
+            stub.AttemptStart, request, metadata=[("x-modal-input-plane-region", input_plane_region)]
         )
         attempt_token = response.attempt_token
 
@@ -408,7 +408,7 @@ class _InputPlaneInvocation:
                 self.stub.AttemptAwait,
                 await_request,
                 attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
-                metadata=[("x-input-plane-region", self.input_plane_region)],
+                metadata=[("x-modal-input-plane-region", self.input_plane_region)],
             )
 
             if await_response.HasField("output"):
@@ -428,7 +428,7 @@ class _InputPlaneInvocation:
                         retry_response = await retry_transient_errors(
                             self.stub.AttemptRetry,
                             retry_request,
-                            metadata=[("x-input-plane-region", self.input_plane_region)],
+                            metadata=[("x-modal-input-plane-region", self.input_plane_region)],
                         )
                         self.attempt_token = retry_response.attempt_token
                         continue
