@@ -1566,6 +1566,8 @@ message FunctionData {
   FunctionSchema function_schema = 32;
 
   map<string, string> experimental_options = 33;
+
+  repeated string flash_service_urls = 34;
 }
 
 message FunctionExtended {
