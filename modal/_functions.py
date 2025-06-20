@@ -356,12 +356,14 @@ class _InputPlaneInvocation:
         client: _Client,
         input_item: api_pb2.FunctionPutInputsItem,
         function_id: str,
+        input_plane_region: str,
     ):
         self.stub = stub
         self.client = client  # Used by the deserializer.
         self.attempt_token = attempt_token
         self.input_item = input_item
         self.function_id = function_id
+        self.input_plane_region = input_plane_region
 
     @staticmethod
     async def create(
@@ -371,6 +373,7 @@ class _InputPlaneInvocation:
         *,
         client: _Client,
         input_plane_url: str,
+        input_plane_region: str,
     ) -> "_InputPlaneInvocation":
         stub = await client.get_stub(input_plane_url)
 
@@ -384,10 +387,13 @@ class _InputPlaneInvocation:
             parent_input_id=current_input_id() or "",
             input=input_item,
         )
-        response = await retry_transient_errors(stub.AttemptStart, request)
+        metadata: list[tuple[str, str]] = []
+        if input_plane_region and input_plane_region != "":
+            metadata.append(("x-modal-input-plane-region", input_plane_region))
+        response = await retry_transient_errors(stub.AttemptStart, request, metadata=metadata)
         attempt_token = response.attempt_token
 
-        return _InputPlaneInvocation(stub, attempt_token, client, input_item, function_id)
+        return _InputPlaneInvocation(stub, attempt_token, client, input_item, function_id, input_plane_region)
 
     async def run_function(self) -> Any:
         # This will retry when the server returns GENERIC_STATUS_INTERNAL_FAILURE, i.e. lost inputs or worker preemption
@@ -399,10 +405,14 @@ class _InputPlaneInvocation:
                 timeout_secs=OUTPUTS_TIMEOUT,
                 requested_at=time.time(),
             )
+            metadata: list[tuple[str, str]] = []
+            if self.input_plane_region and self.input_plane_region != "":
+                metadata.append(("x-modal-input-plane-region", self.input_plane_region))
             await_response: api_pb2.AttemptAwaitResponse = await retry_transient_errors(
                 self.stub.AttemptAwait,
                 await_request,
                 attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
+                metadata=metadata,
             )
 
             if await_response.HasField("output"):
@@ -419,7 +429,11 @@ class _InputPlaneInvocation:
                             attempt_token=self.attempt_token,
                         )
                         # TODO(ryan): Add exponential backoff?
-                        retry_response = await retry_transient_errors(self.stub.AttemptRetry, retry_request)
+                        retry_response = await retry_transient_errors(
+                            self.stub.AttemptRetry,
+                            retry_request,
+                            metadata=metadata,
+                        )
                         self.attempt_token = retry_response.attempt_token
                         continue
 
@@ -779,6 +793,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     req.method_definitions[method_name].CopyFrom(method_definition)
             elif webhook_config:
                 req.webhook_config.CopyFrom(webhook_config)
+
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
@@ -1383,6 +1398,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._method_handle_metadata = dict(metadata.method_handle_metadata)
         self._definition_id = metadata.definition_id
         self._input_plane_url = metadata.input_plane_url
+        self._input_plane_region = metadata.input_plane_region
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
@@ -1398,6 +1414,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             method_handle_metadata=self._method_handle_metadata,
             function_schema=self._metadata.function_schema if self._metadata else None,
             input_plane_url=self._input_plane_url,
+            input_plane_region=self._input_plane_region,
         )
 
     def _check_no_web_url(self, fn_name: str):
@@ -1493,6 +1510,7 @@ Use the `Function.get_web_url()` method instead.
                 kwargs,
                 client=self.client,
                 input_plane_url=self._input_plane_url,
+                input_plane_region=self._input_plane_region,
             )
         else:
             invocation = await _Invocation.create(
