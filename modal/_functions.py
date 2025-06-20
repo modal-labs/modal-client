@@ -356,7 +356,7 @@ class _InputPlaneInvocation:
         client: _Client,
         input_item: api_pb2.FunctionPutInputsItem,
         function_id: str,
-        input_plane_region: str | None,
+        input_plane_region: str | None = None,
     ):
         self.stub = stub
         self.client = client  # Used by the deserializer.
@@ -373,7 +373,7 @@ class _InputPlaneInvocation:
         *,
         client: _Client,
         input_plane_url: str,
-        input_plane_region: str | None,
+        input_plane_region: str | None = None,
     ) -> "_InputPlaneInvocation":
         stub = await client.get_stub(input_plane_url)
 
