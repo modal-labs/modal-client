@@ -1412,6 +1412,8 @@ message Function {
   // If set, client deps will be mounted into the container, and are
   // no longer expected to exist in the image itself.
   bool mount_client_dependencies = 82;
+
+  repeated string flash_service_urls = 83;
 }
 
 message FunctionAsyncInvokeRequest {
