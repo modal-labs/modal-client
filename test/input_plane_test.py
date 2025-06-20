@@ -16,16 +16,22 @@ def foo():
 
 
 def test_foo(client, servicer):
-    # This verifies that FunctionCreate returns the input_plane_url in the response, and we then call the input plane.
+    # This verifies that FunctionCreate returns the input_plane_region in the response, and call the input plane.
     with app.run(client=client):
         assert foo.remote() == "attempt_await_bogus_response"
+        assert foo._get_metadata().input_plane_url is not None
+        assert foo._get_metadata().input_plane_region == "us-east"
+
 
 def test_lookup_foo(client, servicer):
-    # This verifies that FunctionGet returns the input_plane_url in the response, and we then call the input plane.
+    # This verifies that FunctionGet returns the input_plane_region in the response, and we call the input plane.
     modal.App()
     deploy_app(app, "app", client=client)
     f = Function.from_name("app", "foo").hydrate(client)
     assert f.remote() == "attempt_await_bogus_response"
+    assert f._get_metadata().input_plane_url is not None
+    assert f._get_metadata().input_plane_region == "us-east"
+
 
 def test_retry(client, servicer):
     # Tell the servicer to fail once, and then succeed. The client should retry the failed attempt.
@@ -35,6 +41,7 @@ def test_retry(client, servicer):
     # We don't have a great way to verify the call was actually retried. We can at least check that the servicer
     # decremented the attempts_to_fail counter, which indicates that the call was retried.
     assert servicer.attempt_await_failures_remaining == 0
+
 
 def test_retry_limit(client, servicer, monkeypatch):
     monkeypatch.setattr("modal._functions.MAX_INTERNAL_FAILURE_COUNT", 2)

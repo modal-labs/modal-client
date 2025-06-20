@@ -1703,6 +1703,7 @@ message FunctionHandleMetadata {
   map<string, FunctionHandleMetadata> method_handle_metadata = 44;
   FunctionSchema function_schema = 45;
   optional string input_plane_url = 46;
+  optional string input_plane_region = 47;
 }
 
 message FunctionInput {
