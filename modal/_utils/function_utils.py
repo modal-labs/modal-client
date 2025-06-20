@@ -603,6 +603,14 @@ class FunctionCreationStatus:
                     f"Custom domain for {self.tag} => [magenta underline]{custom_domain.url}[/magenta underline]"
                 )
 
+        elif self.response.function.flash_service_urls:
+            for flash_service_url in self.response.function.flash_service_urls:
+                flash_service_url_status_row = self.resolver.add_status_row()
+                flash_service_url_status_row.finish(
+                    f"Created flash service endpoint for {self.tag} => "
+                    f"[magenta underline]{flash_service_url}[/magenta underline]"
+                )
+
         else:
             for warning in self.response.server_warnings:
                 self.status_row.warning(warning)
