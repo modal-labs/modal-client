@@ -198,7 +198,7 @@ async def retry_transient_errors(
     total_timeout: Optional[float] = None,  # timeout for the entire function call
     attempt_timeout_floor=2.0,  # always have at least this much timeout (only for total_timeout)
     retry_warning_message: Optional[RetryWarningMessage] = None,
-    base_metadata: list[tuple[str, str]] = [],
+    metadata: list[tuple[str, str]] = [],
 ) -> ResponseType:
     """Retry on transient gRPC failures with back-off until max_retries is reached.
     If max_retries is None, retry forever."""
@@ -217,13 +217,13 @@ async def retry_transient_errors(
         total_deadline = None
 
     while True:
-        metadata = [
+        attempt_metadata = [
             ("x-idempotency-key", idempotency_key),
             ("x-retry-attempt", str(n_retries)),
-            *base_metadata,
+            *metadata,
         ]
         if n_retries > 0:
-            metadata.append(("x-retry-delay", str(time.time() - t0)))
+            attempt_metadata.append(("x-retry-delay", str(time.time() - t0)))
         timeouts = []
         if attempt_timeout is not None:
             timeouts.append(attempt_timeout)
@@ -234,7 +234,7 @@ async def retry_transient_errors(
         else:
             timeout = None
         try:
-            return await fn(*args, metadata=metadata, timeout=timeout)
+            return await fn(*args, metadata=attempt_metadata, timeout=timeout)
         except (StreamTerminatedError, GRPCError, OSError, asyncio.TimeoutError, AttributeError) as exc:
             if isinstance(exc, GRPCError) and exc.status not in status_codes:
                 if exc.status == Status.UNAUTHENTICATED:
