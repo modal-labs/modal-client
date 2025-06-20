@@ -28,7 +28,7 @@ async def test_http_channel(servicer, credentials):
 
     req = api_pb2.BlobCreateRequest()
     resp = await client_stub.BlobCreate(req, metadata=metadata)
-    assert resp.blob_id
+    assert len(resp.blob_ids) > 0
 
     channel.close()
 
@@ -47,7 +47,7 @@ async def test_unix_channel(servicer):
 
     req = api_pb2.BlobCreateRequest()
     resp = await client_stub.BlobCreate(req, metadata=metadata)
-    assert resp.blob_id
+    assert len(resp.blob_ids) > 0
 
     channel.close()
 
