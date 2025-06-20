@@ -1,8 +1,9 @@
 # Copyright Modal Labs 2022
 from collections.abc import AsyncIterator, Mapping
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from grpclib import GRPCError
+from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
@@ -21,6 +22,41 @@ from .exception import RequestSizeError
 
 def _serialize_dict(data):
     return [api_pb2.DictEntry(key=serialize(k), value=serialize(v)) for k, v in data.items()]
+
+
+class _DictObjectNamespaceAsync:
+    """Namespace for managing Dict objects."""
+
+    async def list(
+        self,
+        environment_name: Optional[str] = None,
+    ) -> list["_Dict"]:
+        """Return a list of Dicts."""
+        client = await self._get_client()
+        env_name = cast(str, _get_environment_name(environment_name))
+        request = api_pb2.DictListRequest(environment_name=env_name)
+        response = await retry_transient_errors(client.stub.DictList, request)
+        return [_Dict.from_name(name=d.name, environment_name=env_name) for d in response.dicts]
+
+    async def delete(
+        self,
+        name: str,
+        environment_name: Optional[str] = None,
+    ) -> None:
+        """Delete Dict object with name."""
+        client = await self._get_client()
+        obj = await _Dict.from_name(name, environment_name=environment_name).hydrate(client)
+        req = api_pb2.DictDeleteRequest(dict_id=obj.object_id)
+        await retry_transient_errors(client.stub.DictDelete, req)
+
+    async def _get_client(self) -> _Client:
+        if hasattr(self, "_client"):
+            return self._client
+        self._client = await _Client.from_env()
+        return self._client
+
+
+DictObjectNamespace = synchronize_api(_DictObjectNamespaceAsync)
 
 
 class _Dict(_Object, type_prefix="di"):
@@ -70,6 +106,23 @@ class _Dict(_Object, type_prefix="di"):
         raise RuntimeError(
             "`Dict(...)` constructor is not allowed. Please use `Dict.from_name` or `Dict.ephemeral` instead"
         )
+
+    @classproperty
+    def objects(cls):
+        """Namespace for managing Dict objects.
+
+        Usage:
+        ```python
+        from modal import Dict
+
+        all_dicts = Dict.objects.list()
+
+        d = Dict.from_name("my-dict", create_if_missing=True)
+        Dict.objects.delete("my-dict")
+        ```
+
+        """
+        return DictObjectNamespace()
 
     @classmethod
     @asynccontextmanager
