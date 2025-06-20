@@ -109,6 +109,13 @@ async def test_retry_transient_errors(servicer, client):
     await wrapped_blob_create.aio(req, metadata=[("x-modal-input-plane-region", "us-east")])
     assert servicer.blob_create_metadata.get("x-modal-input-plane-region") == "us-east"
 
+    # Check input_plane_region not included
+    servicer.fail_blob_create = [Status.UNAVAILABLE] * 3
+    await wrapped_blob_create.aio(req)
+    assert servicer.blob_create_metadata.get("x-idempotency-key")
+    assert servicer.blob_create_metadata.get("x-retry-attempt") == "3"
+    assert servicer.blob_create_metadata.get("x-modal-input-plane-region") is None
+
     # Check all metadata is included
     servicer.fail_blob_create = [Status.UNAVAILABLE] * 3
     await wrapped_blob_create.aio(req, metadata=[("x-modal-input-plane-region", "us-east")])

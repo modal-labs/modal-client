@@ -356,7 +356,7 @@ class _InputPlaneInvocation:
         client: _Client,
         input_item: api_pb2.FunctionPutInputsItem,
         function_id: str,
-        input_plane_region: str | None = None,
+        input_plane_region: str,
     ):
         self.stub = stub
         self.client = client  # Used by the deserializer.
@@ -373,7 +373,7 @@ class _InputPlaneInvocation:
         *,
         client: _Client,
         input_plane_url: str,
-        input_plane_region: str | None = None,
+        input_plane_region: str,
     ) -> "_InputPlaneInvocation":
         stub = await client.get_stub(input_plane_url)
 
@@ -388,7 +388,7 @@ class _InputPlaneInvocation:
             input=input_item,
         )
         metadata: list[tuple[str, str]] = []
-        if input_plane_region:
+        if input_plane_region and input_plane_region != "":
             metadata.append(("x-modal-input-plane-region", input_plane_region))
         response = await retry_transient_errors(stub.AttemptStart, request, metadata=metadata)
         attempt_token = response.attempt_token
@@ -406,7 +406,7 @@ class _InputPlaneInvocation:
                 requested_at=time.time(),
             )
             metadata: list[tuple[str, str]] = []
-            if self.input_plane_region:
+            if self.input_plane_region and self.input_plane_region != "":
                 metadata.append(("x-modal-input-plane-region", self.input_plane_region))
             await_response: api_pb2.AttemptAwaitResponse = await retry_transient_errors(
                 self.stub.AttemptAwait,
