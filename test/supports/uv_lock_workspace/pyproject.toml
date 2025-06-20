@@ -1,0 +1,13 @@
+[project]
+name = "my-app"
+version = "0.1.0"
+description = "An example of uv workspace"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["modal"]
+
+[tool.uv.sources]
+my-app = { workspace = true }
+
+[tool.uv.workspace]
+members = ["packages/*"]
