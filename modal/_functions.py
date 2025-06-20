@@ -356,7 +356,7 @@ class _InputPlaneInvocation:
         client: _Client,
         input_item: api_pb2.FunctionPutInputsItem,
         function_id: str,
-        input_plane_region: str,
+        input_plane_region: str | None,
     ):
         self.stub = stub
         self.client = client  # Used by the deserializer.
@@ -373,7 +373,7 @@ class _InputPlaneInvocation:
         *,
         client: _Client,
         input_plane_url: str,
-        input_plane_region: str,
+        input_plane_region: str | None,
     ) -> "_InputPlaneInvocation":
         stub = await client.get_stub(input_plane_url)
 
@@ -387,9 +387,10 @@ class _InputPlaneInvocation:
             parent_input_id=current_input_id() or "",
             input=input_item,
         )
-        response = await retry_transient_errors(
-            stub.AttemptStart, request, metadata=[("x-modal-input-plane-region", input_plane_region)]
-        )
+        metadata: list[tuple[str, str]] = []
+        if input_plane_region:
+            metadata.append(("x-modal-input-plane-region", input_plane_region))
+        response = await retry_transient_errors(stub.AttemptStart, request, metadata=metadata)
         attempt_token = response.attempt_token
 
         return _InputPlaneInvocation(stub, attempt_token, client, input_item, function_id, input_plane_region)
@@ -404,11 +405,14 @@ class _InputPlaneInvocation:
                 timeout_secs=OUTPUTS_TIMEOUT,
                 requested_at=time.time(),
             )
+            metadata: list[tuple[str, str]] = []
+            if self.input_plane_region:
+                metadata.append(("x-modal-input-plane-region", self.input_plane_region))
             await_response: api_pb2.AttemptAwaitResponse = await retry_transient_errors(
                 self.stub.AttemptAwait,
                 await_request,
                 attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
-                metadata=[("x-modal-input-plane-region", self.input_plane_region)],
+                metadata=metadata,
             )
 
             if await_response.HasField("output"):
@@ -428,7 +432,7 @@ class _InputPlaneInvocation:
                         retry_response = await retry_transient_errors(
                             self.stub.AttemptRetry,
                             retry_request,
-                            metadata=[("x-modal-input-plane-region", self.input_plane_region)],
+                            metadata=metadata,
                         )
                         self.attempt_token = retry_response.attempt_token
                         continue
