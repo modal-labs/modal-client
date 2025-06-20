@@ -696,20 +696,26 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 upload_url = f"{self.blob_host}/upload?blob_id={blob_id}&part_number={part_number}"
                 upload_urls.append(upload_url)
 
+            multipart = api_pb2.MultiPartUpload(
+                part_length=self.blob_multipart_threshold,
+                upload_urls=upload_urls,
+                completion_url=f"{self.blob_host}/complete_multipart?blob_id={blob_id}",
+            )
             await stream.send_message(
                 api_pb2.BlobCreateResponse(
-                    blob_id=blob_id,
-                    multipart=api_pb2.MultiPartUpload(
-                        part_length=self.blob_multipart_threshold,
-                        upload_urls=upload_urls,
-                        completion_url=f"{self.blob_host}/complete_multipart?blob_id={blob_id}",
-                    ),
+                    blob_ids=[blob_id, blob_id],
+                    multiparts=api_pb2.MultiPartUploadList(items=[multipart, multipart]),
                 )
             )
         else:
             blob_id = await self.next_blob_id()
             upload_url = f"{self.blob_host}/upload?blob_id={blob_id}"
-            await stream.send_message(api_pb2.BlobCreateResponse(blob_id=blob_id, upload_url=upload_url))
+            await stream.send_message(
+                api_pb2.BlobCreateResponse(
+                    blob_ids=[blob_id, blob_id],
+                    upload_urls=api_pb2.UploadUrlList(items=[upload_url, upload_url]),
+                )
+            )
 
     async def next_blob_id(self):
         self.n_blobs += 1
