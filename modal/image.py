@@ -1221,6 +1221,79 @@ class _Image(_Object, type_prefix="im"):
             gpu_config=parse_gpu_config(gpu),
         )
 
+    def uv_pip_install(
+        self,
+        *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        find_links: Optional[str] = None,  # Passes -f (--find-links) uv pip install
+        index_url: Optional[str] = None,  # Passes -i (--index-url) to uv pip install
+        extra_index_url: Optional[str] = None,  # Passes --extra-index-url to uv pip install
+        pre: bool = False,  # Allow pre-releases using uv pip install --prerelease allow
+        extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation"
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
+        uv_version: Optional[str] = None,  # uv version to use
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
+    ) -> "_Image":
+        """Install a list of Python packages using uv pip install.
+
+        **Examples**
+
+        Simple installation:
+        ```python
+        image = modal.Image.debian_slim().uv_pip_install("torch==2.7.1", "numpy")
+        ```
+        """
+
+        pkgs = _flatten_str_args("uv_pip_install", "packages", packages)
+        if not pkgs:
+            return self
+        elif not _validate_packages(pkgs):
+            raise InvalidError(
+                "Package list for `Image.uv_pip_install` cannot contain other arguments;"
+                " try the `extra_options` parameter instead."
+            )
+
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+            commands = ["FROM base"]
+            if uv_version is None:
+                commands.append("COPY --from=ghcr.io/astral-sh/uv:latest /uv /.uv/uv")
+            else:
+                commands.append(f"COPY --from=ghcr.io/astral-sh/uv:{uv_version} /uv /.uv/uv")
+
+            # TODO: Using `which python` assumes:
+            # - python is on the PATH and uv is installing into the first python in the PATH
+            # - the shell supports backticks for substitution
+            # - `which` command is on the PATH
+            uv_pip_args = ["--python `which python`"]
+
+            if find_links:
+                uv_pip_args.append(f"--find-links {shlex.quote(find_links)}")
+            if index_url:
+                uv_pip_args.append(f"--index-url {shlex.quote(index_url)}")
+            if extra_index_url:
+                uv_pip_args.append(f"--extra-index-url {shlex.quote(extra_index_url)}")
+            if pre:
+                uv_pip_args.append("--prerelease allow")
+            if extra_options:
+                uv_pip_args.append(extra_options)
+
+            uv_pip_args.extend(shlex.quote(p) for p in sorted(pkgs))
+            uv_pip_args_joined = " ".join(uv_pip_args)
+
+            commands += [
+                f"RUN /.uv/uv pip install {uv_pip_args_joined}",
+            ]
+
+            return DockerfileSpec(commands=commands, context_files={})
+
+        return _Image._from_args(
+            base_images={"base": self},
+            dockerfile_function=build_dockerfile,
+            force_build=self.force_build or force_build,
+            gpu_config=parse_gpu_config(gpu),
+            secrets=secrets,
+        )
+
     def poetry_install_from_file(
         self,
         poetry_pyproject_toml: str,
