@@ -11,7 +11,7 @@ from modal_proto import api_pb2
 from .._clustered_functions import ClusterInfo, get_cluster_info as _get_cluster_info
 from .._functions import _Function
 from .._object import _get_environment_name
-from .._partial_function import _clustered
+from .._partial_function import _clustered, _torchrun
 from .._runtime.container_io_manager import _ContainerIOManager
 from .._tunnel import _forward as _forward_tunnel
 from .._utils.async_utils import synchronize_api, synchronizer
@@ -50,6 +50,7 @@ def get_cluster_info() -> ClusterInfo:
 
 
 clustered = synchronize_api(_clustered, target_module=__name__)
+torchrun = synchronize_api(_torchrun, target_module=__name__)
 
 
 @dataclass
