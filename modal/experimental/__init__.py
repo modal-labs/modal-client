@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2025
 import asyncio
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional, Union
@@ -219,6 +220,7 @@ class _FlashManager:
         self.client = client
         self.port = port
         self.tunnel_manager = _forward_tunnel(port, client=client)
+        self.stopped = False
 
     async def _start(self):
         tunnel = await self.tunnel_manager.__aenter__()
@@ -267,10 +269,17 @@ class _FlashManager:
             api_pb2.FlashContainerDeregisterRequest(),
         )
 
+        self.stopped = True
         logger.warning("[Modal Flash] No longer accepting new requests.")
 
         # NOTE(gongy): We skip calling TunnelStop to avoid interrupting in-flight requests.
         # It is up to the user to wait after calling .stop() to drain in-flight requests.
+
+    async def close(self):
+        if not self.stopped:
+            await self.stop()
+
+        await self.tunnel_manager.__aexit__(*sys.exc_info())
 
 
 FlashManager = synchronize_api(_FlashManager)
