@@ -223,9 +223,9 @@ class _FlashManager:
         self.stopped = False
 
     async def _start(self):
-        tunnel = await self.tunnel_manager.__aenter__()
+        self.tunnel = await self.tunnel_manager.__aenter__()
 
-        hostname = tunnel.url.split("://")[1]
+        hostname = self.tunnel.url.split("://")[1]
         if ":" in hostname:
             host, port = hostname.split(":")
         else:
@@ -270,7 +270,7 @@ class _FlashManager:
         )
 
         self.stopped = True
-        logger.warning("[Modal Flash] No longer accepting new requests.")
+        logger.warning(f"[Modal Flash] No longer accepting new requests on {self.tunnel.url}.")
 
         # NOTE(gongy): We skip calling TunnelStop to avoid interrupting in-flight requests.
         # It is up to the user to wait after calling .stop() to drain in-flight requests.
@@ -279,6 +279,7 @@ class _FlashManager:
         if not self.stopped:
             await self.stop()
 
+        logger.warning(f"[Modal Flash] Closing tunnel on {self.tunnel.url}.")
         await self.tunnel_manager.__aexit__(*sys.exc_info())
 
 
