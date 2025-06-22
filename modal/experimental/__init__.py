@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2025
 import asyncio
 import os
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional, Union
@@ -261,16 +260,17 @@ class _FlashManager:
                 logger.warning("[Modal Flash] Shutting down...")
                 break
 
-    async def stop(self, grace_period_secs: int = 15):
-        logger.warning(f"[Modal Flash] Shutting down, waiting {grace_period_secs} seconds for requests to finish.")
+    async def stop(self):
         self.heartbeat_task.cancel()
         await retry_transient_errors(
             self.client.stub.FlashContainerDeregister,
             api_pb2.FlashContainerDeregisterRequest(),
         )
-        await asyncio.sleep(grace_period_secs)
-        logger.warning("[Modal Flash] Shutting down tunnel.")
-        await self.tunnel_manager.__aexit__(*sys.exc_info())
+
+        logger.warning("[Modal Flash] No longer accepting new requests.")
+
+        # NOTE(gongy): We skip calling TunnelStop to avoid interrupting in-flight requests.
+        # It is up to the user to wait after calling .stop() to drain in-flight requests.
 
 
 FlashManager = synchronize_api(_FlashManager)
