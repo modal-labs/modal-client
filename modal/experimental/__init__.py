@@ -261,12 +261,15 @@ class _FlashManager:
                 logger.warning("[Modal Flash] Shutting down...")
                 break
 
-    async def stop(self):
+    async def stop(self, grace_period_secs: int = 15):
+        logger.warning(f"[Modal Flash] Shutting down, waiting {grace_period_secs} seconds for requests to finish.")
         self.heartbeat_task.cancel()
         await retry_transient_errors(
             self.client.stub.FlashContainerDeregister,
             api_pb2.FlashContainerDeregisterRequest(),
         )
+        await asyncio.sleep(grace_period_secs)
+        logger.warning("[Modal Flash] Shutting down tunnel.")
         await self.tunnel_manager.__aexit__(*sys.exc_info())
 
 
