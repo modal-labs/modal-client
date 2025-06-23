@@ -12,3 +12,4 @@ build/
 *.pyi
 **/*.txt
 **/.DS_Store
+.claude/settings.local.json
