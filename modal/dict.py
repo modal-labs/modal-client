@@ -135,7 +135,7 @@ class _Dict(_Object, type_prefix="di"):
         ```
         """
         check_object_name(name, "Dict")
-        namespace = warn_if_passing_namespace(namespace, "modal.Dict")
+        warn_if_passing_namespace(namespace, "modal.Dict")
 
         if data:
             deprecation_warning(
@@ -147,7 +147,7 @@ class _Dict(_Object, type_prefix="di"):
             serialized = _serialize_dict(data if data is not None else {})
             req = api_pb2.DictGetOrCreateRequest(
                 deployment_name=name,
-                namespace=namespace,
+                namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
                 data=serialized,
@@ -186,11 +186,11 @@ class _Dict(_Object, type_prefix="di"):
             " It can be replaced with `modal.Dict.from_name`."
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
-        namespace = warn_if_passing_namespace(namespace, "modal.Dict")
+        warn_if_passing_namespace(namespace, "modal.Dict")
         obj = _Dict.from_name(
             name,
             data=data,
-            namespace=namespace,
+            namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
             environment_name=environment_name,
             create_if_missing=create_if_missing,
         )

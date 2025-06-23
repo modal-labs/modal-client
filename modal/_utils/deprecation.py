@@ -7,8 +7,6 @@ from typing import Any, Callable, TypeVar
 
 from typing_extensions import ParamSpec  # Needed for Python 3.9
 
-from modal_proto import api_pb2
-
 from ..exception import DeprecationError, PendingDeprecationError
 
 _INTERNAL_MODULES = ["modal", "synchronicity"]
@@ -130,19 +128,14 @@ def warn_on_renamed_autoscaler_settings(func: Callable[P, R]) -> Callable[P, R]:
 def warn_if_passing_namespace(
     namespace: Any,
     resource_name: str,
-) -> "api_pb2.DeploymentNamespace.ValueType":
-    """Issue deprecation warning for namespace parameter and return appropriate default.
+) -> None:
+    """Issue deprecation warning for namespace parameter if non-None value is passed.
 
     Args:
         namespace: The namespace parameter value (may be None or actual value)
         resource_name: Name of the resource type for the warning message
-
-    Returns:
-        The appropriate namespace value to use
     """
-    if namespace is None:
-        return api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE
-    else:
+    if namespace is not None:
         deprecation_warning(
             (2025, 6, 17),
             f"The `namespace` parameter for `{resource_name}` is deprecated and will be"
@@ -150,4 +143,3 @@ def warn_if_passing_namespace(
             " from your code.",
             pending=True,
         )
-        return namespace  # type: ignore
