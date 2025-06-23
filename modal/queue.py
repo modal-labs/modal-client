@@ -64,7 +64,7 @@ class _Queue(_Object, type_prefix="qu"):
     assert queue.get() == 42
     ```
 
-    For more examples, see the [guide](/docs/guide/dicts-and-queues#modal-queues).
+    For more examples, see the [guide](https://modal.com/docs/guide/dicts-and-queues#modal-queues).
 
     **Queue partitions (beta)**
 

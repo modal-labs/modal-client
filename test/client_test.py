@@ -8,6 +8,8 @@ import urllib.parse
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
+import modal._runtime
+import modal._utils.grpc_utils
 from modal import Client
 from modal.exception import AuthError, ConnectionError, InvalidError, ServerWarning
 from modal_proto import api_pb2
@@ -61,9 +63,16 @@ async def test_container_client_type(servicer, container_client):
     assert servicer.last_metadata["x-modal-client-type"] == str(api_pb2.CLIENT_TYPE_CONTAINER)
 
 
+@pytest.fixture
+def no_retry_connect_channel(monkeypatch):
+    # Make the error appear faster during test
+    org_connect_channel = modal._utils.grpc_utils.connect_channel
+    monkeypatch.setattr(modal._utils.grpc_utils, "connect_channel", org_connect_channel.__wrapped__)
+
+
 @pytest.mark.asyncio
 @pytest.mark.timeout(TEST_TIMEOUT)
-async def test_client_dns_failure():
+async def test_client_dns_failure(no_retry_connect_channel):
     with pytest.raises(ConnectionError) as excinfo:
         async with Client("https://xyz.invalid", api_pb2.CLIENT_TYPE_CONTAINER, None):
             pass
@@ -73,7 +82,7 @@ async def test_client_dns_failure():
 @pytest.mark.asyncio
 @pytest.mark.timeout(TEST_TIMEOUT)
 @skip_windows("Windows test crashes on connection failure")
-async def test_client_connection_failure():
+async def test_client_connection_failure(no_retry_connect_channel):
     with pytest.raises(ConnectionError) as excinfo:
         async with Client("https://localhost:443", api_pb2.CLIENT_TYPE_CONTAINER, None):
             pass
@@ -83,7 +92,7 @@ async def test_client_connection_failure():
 @pytest.mark.asyncio
 @pytest.mark.timeout(TEST_TIMEOUT)
 @skip_windows_unix_socket
-async def test_client_connection_failure_unix_socket():
+async def test_client_connection_failure_unix_socket(no_retry_connect_channel):
     with pytest.raises(ConnectionError) as excinfo:
         async with Client("unix:/tmp/xyz.txt", api_pb2.CLIENT_TYPE_CONTAINER, None):
             pass

@@ -396,7 +396,7 @@ class _WarnIfGeneratorIsNotConsumed:
         return await self.gen.aclose()
 
 
-synchronize_api(_WarnIfGeneratorIsNotConsumed)
+_BlockingWarnIfGeneratorIsNotConsumed = synchronize_api(_WarnIfGeneratorIsNotConsumed)
 
 
 class _WarnIfNonWrappedGeneratorIsNotConsumed(_WarnIfGeneratorIsNotConsumed):

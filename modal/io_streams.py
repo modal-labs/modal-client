@@ -302,20 +302,24 @@ class _StreamReader(Generic[T]):
                     line, self._line_buffer = self._line_buffer.split(b"\n", 1)
                     yield line + b"\n"
 
-    def __aiter__(self) -> AsyncIterator[T]:
-        """mdmd:hidden"""
+    def _ensure_stream(self) -> AsyncGenerator[Optional[bytes], None]:
         if not self._stream:
             if self._by_line:
                 self._stream = self._get_logs_by_line()
             else:
                 self._stream = self._get_logs()
+        return self._stream
+
+    def __aiter__(self) -> AsyncIterator[T]:
+        """mdmd:hidden"""
+        self._ensure_stream()
         return self
 
     async def __anext__(self) -> T:
         """mdmd:hidden"""
-        assert self._stream is not None
+        stream = self._ensure_stream()
 
-        value = await self._stream.__anext__()
+        value = await stream.__anext__()
 
         # The stream yields None if it receives an EOF batch.
         if value is None:

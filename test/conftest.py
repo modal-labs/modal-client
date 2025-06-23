@@ -405,6 +405,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         input_plane_region = definition.experimental_options.get("input_plane_region")
         return f"http://127.0.0.1:{self.port}" if input_plane_region else None
 
+    def _get_input_plane_region(self, definition: Union[api_pb2.Function, api_pb2.FunctionData]) -> Optional[str]:
+        input_plane_region = definition.experimental_options.get("input_plane_region")
+        return input_plane_region
+
     def get_function_metadata(self, object_id: str) -> api_pb2.FunctionHandleMetadata:
         definition: api_pb2.Function = self.app_functions[object_id]
         return api_pb2.FunctionHandleMetadata(
@@ -428,6 +432,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             },
             function_schema=definition.function_schema,
             input_plane_url=self._get_input_plane_url(definition),
+            input_plane_region=self._get_input_plane_region(definition),
         )
 
     def get_object_metadata(self, object_id) -> api_pb2.Object:
@@ -691,20 +696,26 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 upload_url = f"{self.blob_host}/upload?blob_id={blob_id}&part_number={part_number}"
                 upload_urls.append(upload_url)
 
+            multipart = api_pb2.MultiPartUpload(
+                part_length=self.blob_multipart_threshold,
+                upload_urls=upload_urls,
+                completion_url=f"{self.blob_host}/complete_multipart?blob_id={blob_id}",
+            )
             await stream.send_message(
                 api_pb2.BlobCreateResponse(
-                    blob_id=blob_id,
-                    multipart=api_pb2.MultiPartUpload(
-                        part_length=self.blob_multipart_threshold,
-                        upload_urls=upload_urls,
-                        completion_url=f"{self.blob_host}/complete_multipart?blob_id={blob_id}",
-                    ),
+                    blob_ids=[blob_id, blob_id],
+                    multiparts=api_pb2.MultiPartUploadList(items=[multipart, multipart]),
                 )
             )
         else:
             blob_id = await self.next_blob_id()
             upload_url = f"{self.blob_host}/upload?blob_id={blob_id}"
-            await stream.send_message(api_pb2.BlobCreateResponse(blob_id=blob_id, upload_url=upload_url))
+            await stream.send_message(
+                api_pb2.BlobCreateResponse(
+                    blob_ids=[blob_id, blob_id],
+                    upload_urls=api_pb2.UploadUrlList(items=[upload_url, upload_url]),
+                )
+            )
 
     async def next_blob_id(self):
         self.n_blobs += 1
@@ -1106,6 +1117,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     class_parameter_info=function_defn.class_parameter_info,
                     function_schema=function_defn.function_schema,
                     input_plane_url=self._get_input_plane_url(function_defn),
+                    input_plane_region=self._get_input_plane_region(function_defn),
                 ),
                 server_warnings=warnings,
             )
@@ -1976,7 +1988,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             for idx in range(block_start, block_end):
                 start, end = slice_block(idx)
                 length = end - start
-                get_urls.append(f"{self.blob_host}/block/test-get-request:v1:{vol_file.data_sha256_hex}:{idx}:{start}:{length}")
+                get_urls.append(
+                    f"{self.blob_host}/block/test-get-request:v1:{vol_file.data_sha256_hex}:{idx}:{start}:{length}"
+                )
         else:
             block_start = min(total_start // BLOCK_SIZE, len(vol_file.block_hashes))
             block_end = min(ceildiv(total_end, BLOCK_SIZE), len(vol_file.block_hashes))
@@ -2270,7 +2284,7 @@ def blob_server():
             file_data = files_sha2data[file_sha256_hex]
             blob_id = file_data["data_blob_id"]
             if blob_id:
-                body = blobs[blob_id][start:start + length]
+                body = blobs[blob_id][start : start + length]
             else:
                 body = file_data["data"][start : start + length]
         elif version == "v2":

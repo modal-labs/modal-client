@@ -15,7 +15,6 @@ import typing_extensions
 from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
-from synchronicity.exceptions import UserCodeException
 
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
@@ -63,8 +62,6 @@ from .cloud_bucket_mount import _CloudBucketMount, cloud_bucket_mounts_to_proto
 from .config import config
 from .exception import (
     ExecutionError,
-    FunctionTimeoutError,
-    InternalFailure,
     InvalidError,
     NotFoundError,
     OutputExpiredError,
@@ -257,7 +254,7 @@ class _Invocation:
             request,
         )
 
-    async def _get_single_output(self, expected_jwt: Optional[str] = None) -> Any:
+    async def _get_single_output(self, expected_jwt: Optional[str] = None) -> api_pb2.FunctionGetOutputsItem:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
             await self.pop_function_call_outputs(
@@ -266,7 +263,7 @@ class _Invocation:
                 input_jwts=[expected_jwt] if expected_jwt else None,
             )
         ).outputs[0]
-        return await _process_result(item.result, item.data_format, self.stub, self.client)
+        return item
 
     async def run_function(self) -> Any:
         # Use retry logic only if retry policy is specified and
@@ -278,23 +275,30 @@ class _Invocation:
             or ctx.function_call_invocation_type != api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC
             or not ctx.sync_client_retries_enabled
         ):
-            return await self._get_single_output()
+            item = await self._get_single_output()
+            return await _process_result(item.result, item.data_format, self.stub, self.client)
 
         # User errors including timeouts are managed by the user specified retry policy.
         user_retry_manager = RetryManager(ctx.retry_policy)
 
         while True:
-            try:
-                return await self._get_single_output(ctx.input_jwt)
-            except (UserCodeException, FunctionTimeoutError) as exc:
+            item = await self._get_single_output(ctx.input_jwt)
+            if item.result.status in (
+                api_pb2.GenericResult.GENERIC_STATUS_SUCCESS,
+                api_pb2.GenericResult.GENERIC_STATUS_TERMINATED,
+            ):
+                # success or cancellations are "final" results
+                return await _process_result(item.result, item.data_format, self.stub, self.client)
+
+            if item.result.status != api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
+                # non-internal failures get a delay before retrying
                 delay_ms = user_retry_manager.get_delay_ms()
                 if delay_ms is None:
-                    raise exc
+                    # no more retries, this should raise an error when the non-success status is converted
+                    # to an exception:
+                    return await _process_result(item.result, item.data_format, self.stub, self.client)
                 await asyncio.sleep(delay_ms / 1000)
-            except InternalFailure:
-                # For system failures on the server, we retry immediately,
-                # and the failure does not count towards the retry policy.
-                pass
+
             await self._retry_input()
 
     async def poll_function(self, timeout: Optional[float] = None):
@@ -352,12 +356,14 @@ class _InputPlaneInvocation:
         client: _Client,
         input_item: api_pb2.FunctionPutInputsItem,
         function_id: str,
+        input_plane_region: str,
     ):
         self.stub = stub
         self.client = client  # Used by the deserializer.
         self.attempt_token = attempt_token
         self.input_item = input_item
         self.function_id = function_id
+        self.input_plane_region = input_plane_region
 
     @staticmethod
     async def create(
@@ -367,21 +373,27 @@ class _InputPlaneInvocation:
         *,
         client: _Client,
         input_plane_url: str,
+        input_plane_region: str,
     ) -> "_InputPlaneInvocation":
         stub = await client.get_stub(input_plane_url)
 
         function_id = function.object_id
-        input_item = await _create_input(args, kwargs, stub, method_name=function._use_method_name)
+        control_plane_stub = client.stub
+        # Note: Blob upload is done on the control plane stub, not the input plane stub!
+        input_item = await _create_input(args, kwargs, control_plane_stub, method_name=function._use_method_name)
 
         request = api_pb2.AttemptStartRequest(
             function_id=function_id,
             parent_input_id=current_input_id() or "",
             input=input_item,
         )
-        response = await retry_transient_errors(stub.AttemptStart, request)
+        metadata: list[tuple[str, str]] = []
+        if input_plane_region and input_plane_region != "":
+            metadata.append(("x-modal-input-plane-region", input_plane_region))
+        response = await retry_transient_errors(stub.AttemptStart, request, metadata=metadata)
         attempt_token = response.attempt_token
 
-        return _InputPlaneInvocation(stub, attempt_token, client, input_item, function_id)
+        return _InputPlaneInvocation(stub, attempt_token, client, input_item, function_id, input_plane_region)
 
     async def run_function(self) -> Any:
         # This will retry when the server returns GENERIC_STATUS_INTERNAL_FAILURE, i.e. lost inputs or worker preemption
@@ -393,33 +405,41 @@ class _InputPlaneInvocation:
                 timeout_secs=OUTPUTS_TIMEOUT,
                 requested_at=time.time(),
             )
+            metadata: list[tuple[str, str]] = []
+            if self.input_plane_region and self.input_plane_region != "":
+                metadata.append(("x-modal-input-plane-region", self.input_plane_region))
             await_response: api_pb2.AttemptAwaitResponse = await retry_transient_errors(
                 self.stub.AttemptAwait,
                 await_request,
                 attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
+                metadata=metadata,
             )
 
-            try:
-                if await_response.HasField("output"):
-                    return await _process_result(
-                        await_response.output.result, await_response.output.data_format, self.stub, self.client
-                    )
-            except InternalFailure as e:
-                internal_failure_count += 1
-                # Limit the number of times we retry
-                if internal_failure_count >= MAX_INTERNAL_FAILURE_COUNT:
-                    raise e
-                # For system failures on the server, we retry immediately,
-                # and the failure does not count towards the retry policy.
-                retry_request = api_pb2.AttemptRetryRequest(
-                    function_id=self.function_id,
-                    parent_input_id=current_input_id() or "",
-                    input=self.input_item,
-                    attempt_token=self.attempt_token,
+            if await_response.HasField("output"):
+                if await_response.output.result.status == api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE:
+                    internal_failure_count += 1
+                    # Limit the number of times we retry
+                    if internal_failure_count < MAX_INTERNAL_FAILURE_COUNT:
+                        # For system failures on the server, we retry immediately,
+                        # and the failure does not count towards the retry policy.
+                        retry_request = api_pb2.AttemptRetryRequest(
+                            function_id=self.function_id,
+                            parent_input_id=current_input_id() or "",
+                            input=self.input_item,
+                            attempt_token=self.attempt_token,
+                        )
+                        # TODO(ryan): Add exponential backoff?
+                        retry_response = await retry_transient_errors(
+                            self.stub.AttemptRetry,
+                            retry_request,
+                            metadata=metadata,
+                        )
+                        self.attempt_token = retry_response.attempt_token
+                        continue
+
+                return await _process_result(
+                    await_response.output.result, await_response.output.data_format, self.stub, self.client
                 )
-                # TODO(ryan): Add exponential backoff?
-                retry_response = await retry_transient_errors(self.stub.AttemptRetry, retry_request)
-                self.attempt_token = retry_response.attempt_token
 
 
 # Wrapper type for api_pb2.FunctionStats
@@ -773,6 +793,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     req.method_definitions[method_name].CopyFrom(method_definition)
             elif webhook_config:
                 req.webhook_config.CopyFrom(webhook_config)
+
             response = await retry_transient_errors(resolver.client.stub.FunctionPrecreate, req)
             self._hydrate(response.function_id, resolver.client, response.handle_metadata)
 
@@ -1377,6 +1398,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._method_handle_metadata = dict(metadata.method_handle_metadata)
         self._definition_id = metadata.definition_id
         self._input_plane_url = metadata.input_plane_url
+        self._input_plane_region = metadata.input_plane_region
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
@@ -1392,6 +1414,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             method_handle_metadata=self._method_handle_metadata,
             function_schema=self._metadata.function_schema if self._metadata else None,
             input_plane_url=self._input_plane_url,
+            input_plane_region=self._input_plane_region,
         )
 
     def _check_no_web_url(self, fn_name: str):
@@ -1438,7 +1461,11 @@ Use the `Function.get_web_url()` method instead.
 
     @live_method_gen
     async def _map(
-        self, input_queue: _SynchronizedQueue, order_outputs: bool, return_exceptions: bool
+        self,
+        input_queue: _SynchronizedQueue,
+        order_outputs: bool,
+        return_exceptions: bool,
+        wrap_returned_exceptions: bool,
     ) -> AsyncGenerator[Any, None]:
         """mdmd:hidden
 
@@ -1466,6 +1493,7 @@ Use the `Function.get_web_url()` method instead.
                 self.client,
                 order_outputs,
                 return_exceptions,
+                wrap_returned_exceptions,
                 count_update_callback,
                 api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
             )
@@ -1482,6 +1510,7 @@ Use the `Function.get_web_url()` method instead.
                 kwargs,
                 client=self.client,
                 input_plane_url=self._input_plane_url,
+                input_plane_region=self._input_plane_region,
             )
         else:
             invocation = await _Invocation.create(
@@ -1662,8 +1691,9 @@ Use the `Function.get_web_url()` method instead.
     async def spawn(self, *args: P.args, **kwargs: P.kwargs) -> "_FunctionCall[ReturnType]":
         """Calls the function with the given arguments, without waiting for the results.
 
-        Returns a [`modal.FunctionCall`](/docs/reference/modal.FunctionCall) object, that can later be polled or
-        waited for using [`.get(timeout=...)`](/docs/reference/modal.FunctionCall#get).
+        Returns a [`modal.FunctionCall`](https://modal.com/docs/reference/modal.FunctionCall) object
+        that can later be polled or waited for using
+        [`.get(timeout=...)`](https://modal.com/docs/reference/modal.FunctionCall#get).
         Conceptually similar to `multiprocessing.pool.apply_async`, or a Future/Promise in other contexts.
         """
         self._check_no_web_url("spawn")
@@ -1739,7 +1769,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         """Returns a structure representing the call graph from a given root
         call ID, along with the status of execution for each node.
 
-        See [`modal.call_graph`](/docs/reference/modal.call_graph) reference page
+        See [`modal.call_graph`](https://modal.com/docs/reference/modal.call_graph) reference page
         for documentation on the structure of the returned `InputInfo` items.
         """
         assert self._client and self._client.stub
@@ -1753,7 +1783,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         terminate_containers: bool = False,
     ):
         """Cancels the function call, which will stop its execution and mark its inputs as
-        [`TERMINATED`](/docs/reference/modal.call_graph#modalcall_graphinputstatus).
+        [`TERMINATED`](https://modal.com/docs/reference/modal.call_graph#modalcall_graphinputstatus).
 
         If `terminate_containers=True` - the containers running the cancelled inputs are all terminated
         causing any non-cancelled inputs on those containers to be rescheduled in new containers.

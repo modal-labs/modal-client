@@ -6,21 +6,38 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.0.4.dev5 (2025-06-11)
+#### 1.0.5.dev21 (2025-06-23)
 
-- When `verbose=True` is set in `Sandbox.create()`, execs and file system operations are logged in the sandbox logs. For example, 
-```
-p = sb.exec("python", "-c", "print('hello')")
-```
-logs
-<img width="538" alt="image" src="https://github.com/user-attachments/assets/597ef68f-71b7-40d7-b6a6-7a563a582faa" />
+- Improves reliability of the CLI when connecting to Modal.
+
+
+#### 1.0.5.dev20 (2025-06-23)
+
+* When an `@app.cls()`-decorated class inherits from other classes and those classes have `modal.parameter()` definitions, the base class parameters will be included in the parameter set for the modal Cls.
+
+
+#### 1.0.5.dev2 (2025-06-16)
+
+* Added a `wrap_returned_exceptions: bool = True` argument to the `Function.map` family of functions. Setting this to False will instead return the original exception type, which will be the default behavior in a future version of Modal.
+
+
+### 1.0.4 (2025-06-13)
+
+- When `modal.Cls.with_options` is called multiple times on the same instance, the overrides will now be merged. For example, the following configuration will use an H100 GPU and request 16 CPU cores:
+  ```python
+  Model.with_options(gpu="A100", cpu=16).with_options(gpu="H100")
+  ```
+- Added a `--secret` option to `modal shell` for including environment variables defined by named Secret(s) in the shell session:
+  ```
+  modal shell --secret huggingface --secret wandb
+  ```
+- Added a `verbose: bool` option to `modal.Sandbox.create()`. When this is set to `True`, execs and file system operations will appear in the Sandbox logs.
+- Updated `modal.Sandbox.watch()` so that exceptions are now raised in (and can be caught by) the calling task.
 
 
 ### 1.0.3 (2025-06-05)
 
-This release contains several new features, improvements, and bug fixes:
-
-* Added support for specifying a timezone on `Cron` schedules, which allows you to run a Function at a specific local time regardless of daylight savings:
+- Added support for specifying a timezone on `Cron` schedules, which allows you to run a Function at a specific local time regardless of daylight savings:
   ```python
   import modal
   app = modal.App()
@@ -29,21 +46,21 @@ This release contains several new features, improvements, and bug fixes:
   def f():
       print("This function will run every day at 6am New York time.")
   ```
-* Added an `h2_ports` parameter to `Sandbox.create`, which exposes encrypted ports using HTTP/2. The following example will create an H2 port on 5002 and a port using HTTPS over HTTP/1.1 on 5003:
+- Added an `h2_ports` parameter to `Sandbox.create`, which exposes encrypted ports using HTTP/2. The following example will create an H2 port on 5002 and a port using HTTPS over HTTP/1.1 on 5003:
   ```python
   sb = modal.Sandbox.create(app=app, h2_ports = [5002], encrypted_ports = [5003])
   ```
-* Added `--from-dotenv` and `--from-json` options to `modal secret create`, which will read from local files to populate Secret contents.
-* `Sandbox.terminate` no longer waits for container shutdown to complete before returning. It still ensures that a terminated container will shutdown imminently. To restore the previous behavior (i.e., to wait until the Sandbox is actually terminated), call `sb.wait(raise_on_termination=False)` after calling `sb.terminate()`.
-* Improved performance and stability for `modal volume get`.
-* Fixed a rare race condition that could sometimes make `Function.map` and similar calls deadlock.
-* Fixed an issue where `Function.map()` and similar methods would stall for 55 seconds when passed an empty iterator as input instead of completing immediately.
-* We now raise an error during App setup when using interactive mode without the `modal.enable_output` context manager. Previously, this would run the App but raise when `modal.interact()` was called.
+- Added `--from-dotenv` and `--from-json` options to `modal secret create`, which will read from local files to populate Secret contents.
+- `Sandbox.terminate` no longer waits for container shutdown to complete before returning. It still ensures that a terminated container will shutdown imminently. To restore the previous behavior (i.e., to wait until the Sandbox is actually terminated), call `sb.wait(raise_on_termination=False)` after calling `sb.terminate()`.
+- Improved performance and stability for `modal volume get`.
+- Fixed a rare race condition that could sometimes make `Function.map` and similar calls deadlock.
+- Fixed an issue where `Function.map()` and similar methods would stall for 55 seconds when passed an empty iterator as input instead of completing immediately.
+- We now raise an error during App setup when using interactive mode without the `modal.enable_output` context manager. Previously, this would run the App but raise when `modal.interact()` was called.
 
 
 ### 1.0.2 (2025-05-26)
 
-* Fixed an incompatibility with the recently released `aiohttp` v3.12.0, causing issues with volume and large input uploads.
+- Fixed an incompatibility with breaking changes in `aiohttp` v3.12.0, which caused issues with Volume and large input uploads. The issues typically manifest as `Local data and remote data checksum mismatch` or `'_io.BufferedReader' object has no attribute 'getbuffer'` errors.
 
 
 ### 1.0.1 (2025-05-19)
@@ -296,7 +313,7 @@ Additionally, we have enforced a number of previously-introduced deprecations:
 
 ### 0.74.7 (2025-04-17)
 
-- Modal will now raise an error if local files included in the App are modified during the build process. This behavior can be controlled with the `MODAL_BUILD_VALIDATION` configuration, which accepts `error` (default), `warning`, or `ignore`.
+- Modal will now raise an error if local files included in the App are modified during the build process. This behavior can be controlled with the `MODAL_BUILD_VALIDATION` configuration, which accepts `error` (default), `warn`, or `ignore`.
 
 
 
