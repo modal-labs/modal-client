@@ -629,14 +629,14 @@ More information on class parameterization can be found here: https://modal.com/
         Model = modal.Cls.from_name("other-app", "Model")
         ```
         """
-        namespace = warn_if_passing_namespace(namespace, "modal.Cls")
+        warn_if_passing_namespace(namespace, "modal.Cls")
         _environment_name = environment_name or config.get("environment")
 
         async def _load_remote(self: _Cls, resolver: Resolver, existing_object_id: Optional[str]):
             request = api_pb2.ClassGetRequest(
                 app_name=app_name,
                 object_tag=name,
-                namespace=namespace,
+                namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
                 environment_name=_environment_name,
                 only_class_function=True,
             )
@@ -852,11 +852,11 @@ More information on class parameterization can be found here: https://modal.com/
             " It can be replaced with `modal.Cls.from_name`."
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
-        namespace = warn_if_passing_namespace(namespace, "modal.Cls")
+        warn_if_passing_namespace(namespace, "modal.Cls")
         obj = _Cls.from_name(
             app_name,
             name,
-            namespace=namespace,
+            namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
             environment_name=environment_name,
         )
         if client is None:

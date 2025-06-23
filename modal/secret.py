@@ -185,12 +185,12 @@ class _Secret(_Object, type_prefix="st"):
            ...
         ```
         """
-        namespace = warn_if_passing_namespace(namespace, "modal.Secret")
+        warn_if_passing_namespace(namespace, "modal.Secret")
 
         async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SecretGetOrCreateRequest(
                 deployment_name=name,
-                namespace=namespace,
+                namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
                 environment_name=_get_environment_name(environment_name, resolver),
                 required_keys=required_keys,
             )
@@ -221,10 +221,13 @@ class _Secret(_Object, type_prefix="st"):
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
 
-        namespace = warn_if_passing_namespace(namespace, "modal.Secret")
+        warn_if_passing_namespace(namespace, "modal.Secret")
 
         obj = _Secret.from_name(
-            name, namespace=namespace, environment_name=environment_name, required_keys=required_keys
+            name,
+            namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+            environment_name=environment_name,
+            required_keys=required_keys,
         )
         if client is None:
             client = await _Client.from_env()
@@ -242,7 +245,7 @@ class _Secret(_Object, type_prefix="st"):
         overwrite: bool = False,
     ) -> str:
         """mdmd:hidden"""
-        namespace = warn_if_passing_namespace(namespace, "modal.Secret")
+        warn_if_passing_namespace(namespace, "modal.Secret")
 
         check_object_name(deployment_name, "Secret")
         if client is None:
@@ -253,7 +256,7 @@ class _Secret(_Object, type_prefix="st"):
             object_creation_type = api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS
         request = api_pb2.SecretGetOrCreateRequest(
             deployment_name=deployment_name,
-            namespace=namespace,
+            namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
             environment_name=_get_environment_name(environment_name),
             object_creation_type=object_creation_type,
             env_dict=env_dict,

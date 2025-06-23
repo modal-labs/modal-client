@@ -111,12 +111,12 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         ```
         """
         check_object_name(name, "NetworkFileSystem")
-        namespace = warn_if_passing_namespace(namespace, "modal.NetworkFileSystem")
+        warn_if_passing_namespace(namespace, "modal.NetworkFileSystem")
 
         async def _load(self: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SharedVolumeGetOrCreateRequest(
                 deployment_name=name,
-                namespace=namespace,
+                namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
             )
@@ -192,9 +192,12 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             " It can be replaced with `modal.NetworkFileSystem.from_name`."
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
-        namespace = warn_if_passing_namespace(namespace, "modal.NetworkFileSystem")
+        warn_if_passing_namespace(namespace, "modal.NetworkFileSystem")
         obj = _NetworkFileSystem.from_name(
-            name, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
+            name,
+            namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+            environment_name=environment_name,
+            create_if_missing=create_if_missing,
         )
         if client is None:
             client = await _Client.from_env()
@@ -211,12 +214,12 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     ) -> str:
         """mdmd:hidden"""
         check_object_name(deployment_name, "NetworkFileSystem")
-        namespace = warn_if_passing_namespace(namespace, "modal.NetworkFileSystem")
+        warn_if_passing_namespace(namespace, "modal.NetworkFileSystem")
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.SharedVolumeGetOrCreateRequest(
             deployment_name=deployment_name,
-            namespace=namespace,
+            namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
             environment_name=_get_environment_name(environment_name),
             object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
         )

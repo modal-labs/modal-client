@@ -1306,8 +1306,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 f"instance.{method_name}.remote(...)\n",
             )
 
-        namespace = warn_if_passing_namespace(namespace, "modal.Function")
-        return cls._from_name(app_name, name, namespace, environment_name)
+        warn_if_passing_namespace(namespace, "modal.Function")
+        return cls._from_name(app_name, name, api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name)
 
     @staticmethod
     async def lookup(
@@ -1335,8 +1335,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             " It can be replaced with `modal.Function.from_name`."
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
-        namespace = warn_if_passing_namespace(namespace, "modal.Function")
-        obj = _Function.from_name(app_name, name, namespace=namespace, environment_name=environment_name)
+        warn_if_passing_namespace(namespace, "modal.Function")
+        obj = _Function.from_name(
+            app_name, name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name=environment_name
+        )
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)

@@ -109,7 +109,7 @@ async def _init_local_app_from_name(
     # Look up any existing deployment
     app_req = api_pb2.AppGetByDeploymentNameRequest(
         name=name,
-        namespace=namespace,
+        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name=environment_name,
     )
     app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)
@@ -480,7 +480,7 @@ async def _deploy_app(
     if environment_name is None:
         environment_name = typing.cast(str, config.get("environment"))
 
-    namespace = warn_if_passing_namespace(namespace, "deploy_app")
+    warn_if_passing_namespace(namespace, "deploy_app")
 
     name = name or app.name or ""
     if not name:
@@ -511,7 +511,7 @@ async def _deploy_app(
     commit_info_task = asyncio.create_task(get_git_commit_info())
 
     running_app: RunningApp = await _init_local_app_from_name(
-        client, name, namespace, environment_name=environment_name
+        client, name, api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name=environment_name
     )
 
     async with TaskContext(0) as tc:
