@@ -13,7 +13,7 @@ class Cron(Schedule):
     """Cron jobs are a type of schedule, specified using the
     [Unix cron tab](https://crontab.guru/) syntax.
 
-    The alternative schedule type is the [`modal.Period`](/docs/reference/modal.Period).
+    The alternative schedule type is the [`modal.Period`](https://modal.com/docs/reference/modal.Period).
 
     **Usage**
 

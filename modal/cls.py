@@ -54,7 +54,7 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
         return inspect.signature(user_cls)
     else:
         constructor_parameters = []
-        for name, annotation_value in user_cls.__dict__.get("__annotations__", {}).items():
+        for name, annotation_value in typing.get_type_hints(user_cls).items():
             if hasattr(user_cls, name):
                 parameter_spec = getattr(user_cls, name)
                 if is_parameter(parameter_spec):
@@ -75,6 +75,7 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
 
 @dataclasses.dataclass()
 class _ServiceOptions:
+    # Note that default values should always be "untruthy" so we can detect when they are not set
     secrets: typing.Collection[_Secret] = ()
     validated_volumes: typing.Sequence[tuple[str, _Volume]] = ()
     resources: Optional[api_pb2.Resources] = None
@@ -87,6 +88,25 @@ class _ServiceOptions:
     target_concurrent_inputs: Optional[int] = None
     batch_max_size: Optional[int] = None
     batch_wait_ms: Optional[int] = None
+
+    def merge_options(self, new_options: "_ServiceOptions") -> "_ServiceOptions":
+        """Implement protobuf-like MergeFrom semantics for this dataclass.
+
+        This mostly exists to support "stacking" of `.with_options()` calls.
+        """
+        new_options_dict = dataclasses.asdict(new_options)
+
+        # Resources needs special merge handling because individual fields are parameters in the public API
+        merged_resources = api_pb2.Resources()
+        if self.resources:
+            merged_resources.MergeFrom(self.resources)
+        if new_resources := new_options_dict.pop("resources"):
+            merged_resources.MergeFrom(new_resources)
+        self.resources = merged_resources
+
+        for key, value in new_options_dict.items():
+            if value:  # Only overwrite data when the value was set in the new options
+                setattr(self, key, value)
 
 
 def _bind_instance_method(cls: "_Cls", service_function: _Function, method_name: str):
@@ -418,11 +438,11 @@ Obj = synchronize_api(_Obj)
 
 class _Cls(_Object, type_prefix="cs"):
     """
-    Cls adds method pooling and [lifecycle hook](/docs/guide/lifecycle-functions) behavior
-    to [modal.Function](/docs/reference/modal.Function).
+    Cls adds method pooling and [lifecycle hook](https://modal.com/docs/guide/lifecycle-functions) behavior
+    to [modal.Function](https://modal.com/docs/reference/modal.Function).
 
     Generally, you will not construct a Cls directly.
-    Instead, use the [`@app.cls()`](/docs/reference/modal.App#cls) decorator on the App object.
+    Instead, use the [`@app.cls()`](https://modal.com/docs/reference/modal.App#cls) decorator on the App object.
     """
 
     _class_service_function: Optional[_Function]  # The _Function (read "service") serving *all* methods of the class
@@ -664,15 +684,32 @@ More information on class parameterization can be found here: https://modal.com/
         container_idle_timeout: Optional[int] = None,  # Now called `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # See `.with_concurrency`
     ) -> "_Cls":
-        """Create an instance of the Cls with configuration options overridden with new values.
+        """Override the static Function configuration at runtime.
+
+        This method will return a new instance of the cls that will autoscale independently of the
+        original instance. Note that options cannot be "unset" with this method (i.e., if a GPU
+        is configured in the `@app.cls()` decorator, passing `gpu=None` here will not create a
+        CPU-only instance).
 
         **Usage:**
+
+        You can use this method after looking up the Cls from a deployed App or if you have a
+        direct reference to a Cls from another Function or local entrypoint on its App:
 
         ```python notest
         Model = modal.Cls.from_name("my_app", "Model")
         ModelUsingGPU = Model.with_options(gpu="A100")
-        ModelUsingGPU().generate.remote(42)  # will run with an A100 GPU
+        ModelUsingGPU().generate.remote(input_prompt)  # Run with an A100 GPU
         ```
+
+        The method can be called multiple times to "stack" updates:
+
+        ```python notest
+        Model.with_options(gpu="A100").with_options(scaledown_window=300)  # Use an A100 with slow scaledown
+        ```
+
+        Note that container arguments (i.e. `volumes` and `secrets`) passed in subsequent calls
+        will not be merged.
         """
         retry_policy = _parse_retries(retries, f"Class {self.__name__}" if self._user_cls else "")
         if gpu or cpu or memory:
@@ -705,21 +742,23 @@ More information on class parameterization can be found here: https://modal.com/
 
         cls = _Cls._from_loader(_load_from_base, rep=f"{self._name}.with_options(...)", is_another_app=True, deps=_deps)
         cls._initialize_from_other(self)
-        cls._options = dataclasses.replace(
-            cls._options,
+
+        new_options = _ServiceOptions(
             secrets=secrets,
+            validated_volumes=validate_volumes(volumes),
             resources=resources,
             retry_policy=retry_policy,
             max_containers=max_containers,
             buffer_containers=buffer_containers,
             scaledown_window=scaledown_window,
             timeout_secs=timeout,
-            validated_volumes=validate_volumes(volumes),
             # Note: set both for backwards / forwards compatibility
             # But going forward `.with_concurrency` is the preferred method with distinct parameterization
             max_concurrent_inputs=allow_concurrent_inputs,
             target_concurrent_inputs=allow_concurrent_inputs,
         )
+
+        cls._options.merge_options(new_options)
         return cls
 
     def with_concurrency(self: "_Cls", *, max_inputs: int, target_inputs: Optional[int] = None) -> "_Cls":
@@ -746,9 +785,9 @@ More information on class parameterization can be found here: https://modal.com/
             _load_from_base, rep=f"{self._name}.with_concurrency(...)", is_another_app=True, deps=_deps
         )
         cls._initialize_from_other(self)
-        cls._options = dataclasses.replace(
-            cls._options, max_concurrent_inputs=max_inputs, target_concurrent_inputs=target_inputs
-        )
+
+        concurrency_options = _ServiceOptions(max_concurrent_inputs=max_inputs, target_concurrent_inputs=target_inputs)
+        cls._options.merge_options(concurrency_options)
         return cls
 
     def with_batching(self: "_Cls", *, max_batch_size: int, wait_ms: int) -> "_Cls":
@@ -775,7 +814,9 @@ More information on class parameterization can be found here: https://modal.com/
             _load_from_base, rep=f"{self._name}.with_concurrency(...)", is_another_app=True, deps=_deps
         )
         cls._initialize_from_other(self)
-        cls._options = dataclasses.replace(cls._options, batch_max_size=max_batch_size, batch_wait_ms=wait_ms)
+
+        batching_options = _ServiceOptions(batch_max_size=max_batch_size, batch_wait_ms=wait_ms)
+        cls._options.merge_options(batching_options)
         return cls
 
     @staticmethod

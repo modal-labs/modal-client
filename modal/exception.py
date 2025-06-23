@@ -2,11 +2,15 @@
 import random
 import signal
 
+import synchronicity.exceptions
+
+UserCodeException = synchronicity.exceptions.UserCodeException  # Deprecated type used for return_exception wrapping
+
 
 class Error(Exception):
     """
-    Base class for all Modal errors. See [`modal.exception`](/docs/reference/modal.exception) for the specialized
-    error classes.
+    Base class for all Modal errors. See [`modal.exception`](https://modal.com/docs/reference/modal.exception)
+    for the specialized error classes.
 
     **Usage**
 

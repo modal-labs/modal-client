@@ -647,6 +647,11 @@ message BlobCreateResponse {
     string upload_url = 1;
     MultiPartUpload multipart = 3;
   }
+  repeated string blob_ids = 4;
+  oneof upload_types_oneof {
+    UploadUrlList upload_urls = 5;
+    MultiPartUploadList multiparts = 6;
+  }
 }
 
 message BlobGetRequest {
@@ -1237,6 +1242,22 @@ message FilesystemRuntimeOutputBatch {
   bool eof = 4;
 }
 
+message FlashContainerDeregisterRequest {
+  string service_name = 1;
+}
+
+message FlashContainerRegisterRequest {
+  string service_name = 1;
+  uint32 priority = 2;
+  uint32 weight = 3;
+  string host = 4;
+  uint32 port = 5;
+}
+
+message FlashContainerRegisterResponse {
+  string url = 1;
+}
+
 message Function {
   string module_name = 1;
   string function_name = 2;
@@ -1391,6 +1412,8 @@ message Function {
   // If set, client deps will be mounted into the container, and are
   // no longer expected to exist in the image itself.
   bool mount_client_dependencies = 82;
+
+  repeated string flash_service_urls = 83;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1543,6 +1566,8 @@ message FunctionData {
   FunctionSchema function_schema = 32;
 
   map<string, string> experimental_options = 33;
+
+  repeated string flash_service_urls = 34;
 }
 
 message FunctionExtended {
@@ -1678,6 +1703,7 @@ message FunctionHandleMetadata {
   map<string, FunctionHandleMetadata> method_handle_metadata = 44;
   FunctionSchema function_schema = 45;
   optional string input_plane_url = 46;
+  optional string input_plane_region = 47;
 }
 
 message FunctionInput {
@@ -2051,6 +2077,10 @@ message MultiPartUpload {
   int64 part_length = 1; // split upload based on this part length - all except the last part must have this length
   repeated string upload_urls = 2;
   string completion_url = 3;
+}
+
+message MultiPartUploadList {
+  repeated MultiPartUpload items = 1;
 }
 
 message NetworkAccess {
@@ -2440,6 +2470,9 @@ message Sandbox {
 
   // If set, overrides the runtime used by the function, either "runc" or "gvisor".
   optional string runtime = 28;
+
+  // If set, the sandbox will be created with verbose logging enabled.
+  bool verbose = 29;
 }
 
 message SandboxCreateRequest {
@@ -2500,6 +2533,7 @@ message SandboxInfo {
   double created_at = 3;
   TaskInfo task_info = 4;
   string app_id = 5;
+  repeated SandboxTag tags = 6; // TODO: Not yet exposed in client library.
 
   reserved 2; // modal.client.Sandbox definition
 }
@@ -2793,6 +2827,7 @@ message TaskInfo {
   modal.client.GenericResult result = 4;
   double enqueued_at = 5;
   string gpu_type = 6;
+  string sandbox_id = 7;
 }
 
 message TaskListRequest {
@@ -2909,6 +2944,10 @@ message TunnelStopRequest {
 
 message TunnelStopResponse {
   bool exists = 1;
+}
+
+message UploadUrlList {
+  repeated string items = 1;
 }
 
 message VolumeCommitRequest {
@@ -3249,6 +3288,10 @@ service ModalClient {
   rpc EnvironmentGetOrCreate(EnvironmentGetOrCreateRequest) returns (EnvironmentGetOrCreateResponse);
   rpc EnvironmentList(google.protobuf.Empty) returns (EnvironmentListResponse);
   rpc EnvironmentUpdate(EnvironmentUpdateRequest) returns (EnvironmentListItem);
+
+  // Modal Flash (experimental)
+  rpc FlashContainerDeregister(FlashContainerDeregisterRequest) returns (google.protobuf.Empty);
+  rpc FlashContainerRegister(FlashContainerRegisterRequest) returns (FlashContainerRegisterResponse);
 
   // Functions
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);
