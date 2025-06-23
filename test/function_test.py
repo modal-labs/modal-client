@@ -1429,7 +1429,10 @@ def test_restrict_modal_access(client, servicer):
 
 def test_function_namespace_deprecated(servicer, client):
     # Test from_name with namespace parameter warns
-    with pytest.warns(PendingDeprecationError, match="The `namespace` parameter for `modal.Function` is deprecated"):
+    with pytest.warns(
+        PendingDeprecationError,
+        match="The `namespace` parameter for `modal.Function.from_name` is deprecated",
+    ):
         Function.from_name("test-app", "test-function", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
 
     # Test that from_name without namespace parameter doesn't warn about namespace

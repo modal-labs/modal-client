@@ -543,7 +543,10 @@ def test_lock_is_py39_safe(set_env_client):
 
 def test_volume_namespace_deprecated(servicer, client):
     # Test from_name with namespace parameter warns
-    with pytest.warns(PendingDeprecationError, match="The `namespace` parameter for `modal.Volume` is deprecated"):
+    with pytest.warns(
+        PendingDeprecationError,
+        match="The `namespace` parameter for `modal.Volume.from_name` is deprecated",
+    ):
         modal.Volume.from_name("test-volume", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
 
     # Test that from_name without namespace parameter doesn't warn about namespace

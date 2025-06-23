@@ -1350,7 +1350,9 @@ def test_parameter_inheritance(client):
 
 def test_cls_namespace_deprecated(servicer, client):
     # Test from_name with namespace parameter warns
-    with pytest.warns(PendingDeprecationError, match="The `namespace` parameter for `modal.Cls` is deprecated"):
+    with pytest.warns(
+        PendingDeprecationError, match="The `namespace` parameter for `modal.Cls.from_name` is deprecated"
+    ):
         Cls.from_name("test-app", "test-cls", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
 
     # Test that from_name without namespace parameter doesn't warn about namespace

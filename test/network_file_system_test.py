@@ -167,7 +167,7 @@ def test_attempt_mount_volume(client, servicer):
 def test_network_file_system_namespace_deprecated(servicer, client):
     # Test from_name with namespace parameter warns
     with pytest.warns(
-        PendingDeprecationError, match="The `namespace` parameter for `modal.NetworkFileSystem` is deprecated"
+        PendingDeprecationError, match="The `namespace` parameter for `modal.NetworkFileSystem.from_name` is deprecated"
     ):
         modal.NetworkFileSystem.from_name("test-nfs", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
 

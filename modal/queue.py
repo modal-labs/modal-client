@@ -164,7 +164,7 @@ class _Queue(_Object, type_prefix="qu"):
         ```
         """
         check_object_name(name, "Queue")
-        warn_if_passing_namespace(namespace, "modal.Queue")
+        warn_if_passing_namespace(namespace, "modal.Queue.from_name")
 
         async def _load(self: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.QueueGetOrCreateRequest(
@@ -205,7 +205,7 @@ class _Queue(_Object, type_prefix="qu"):
             " It can be replaced with `modal.Queue.from_name`."
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
-        warn_if_passing_namespace(namespace, "modal.Queue")
+        warn_if_passing_namespace(namespace, "modal.Queue.lookup")
         obj = _Queue.from_name(
             name,
             namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,

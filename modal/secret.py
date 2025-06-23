@@ -185,7 +185,7 @@ class _Secret(_Object, type_prefix="st"):
            ...
         ```
         """
-        warn_if_passing_namespace(namespace, "modal.Secret")
+        warn_if_passing_namespace(namespace, "modal.Secret.from_name")
 
         async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SecretGetOrCreateRequest(
@@ -221,7 +221,7 @@ class _Secret(_Object, type_prefix="st"):
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
 
-        warn_if_passing_namespace(namespace, "modal.Secret")
+        warn_if_passing_namespace(namespace, "modal.Secret.lookup")
 
         obj = _Secret.from_name(
             name,
@@ -245,7 +245,7 @@ class _Secret(_Object, type_prefix="st"):
         overwrite: bool = False,
     ) -> str:
         """mdmd:hidden"""
-        warn_if_passing_namespace(namespace, "modal.Secret")
+        warn_if_passing_namespace(namespace, "modal.Secret.create_deployed")
 
         check_object_name(deployment_name, "Secret")
         if client is None:

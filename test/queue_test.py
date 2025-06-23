@@ -124,7 +124,10 @@ def test_invalid_name(name):
 
 def test_queue_namespace_deprecated(servicer, client):
     # Test from_name with namespace parameter warns
-    with pytest.warns(PendingDeprecationError, match="The `namespace` parameter for `modal.Queue` is deprecated"):
+    with pytest.warns(
+        PendingDeprecationError,
+        match="The `namespace` parameter for `modal.Queue.from_name` is deprecated",
+    ):
         Queue.from_name("test-queue", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
 
     # Test that from_name without namespace parameter doesn't warn about namespace

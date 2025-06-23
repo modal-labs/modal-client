@@ -205,7 +205,7 @@ class _Volume(_Object, type_prefix="vo"):
         ```
         """
         check_object_name(name, "Volume")
-        warn_if_passing_namespace(namespace, "modal.Volume")
+        warn_if_passing_namespace(namespace, "modal.Volume.from_name")
 
         async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.VolumeGetOrCreateRequest(
@@ -301,7 +301,7 @@ class _Volume(_Object, type_prefix="vo"):
             " It can be replaced with `modal.Volume.from_name`."
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
-        warn_if_passing_namespace(namespace, "modal.Volume")
+        warn_if_passing_namespace(namespace, "modal.Volume.lookup")
         obj = _Volume.from_name(
             name,
             namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -325,7 +325,7 @@ class _Volume(_Object, type_prefix="vo"):
     ) -> str:
         """mdmd:hidden"""
         check_object_name(deployment_name, "Volume")
-        warn_if_passing_namespace(namespace, "modal.Volume")
+        warn_if_passing_namespace(namespace, "modal.Volume.create_deployed")
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.VolumeGetOrCreateRequest(

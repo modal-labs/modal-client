@@ -90,10 +90,16 @@ def test_secret_from_name(servicer, client):
 
 
 def test_secret_namespace_deprecated(servicer, client):
-    with pytest.warns(PendingDeprecationError, match="The `namespace` parameter for `modal.Secret` is deprecated"):
+    with pytest.warns(
+        PendingDeprecationError,
+        match="The `namespace` parameter for `modal.Secret.from_name` is deprecated",
+    ):
         Secret.from_name("my-secret", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
 
-    with pytest.warns(PendingDeprecationError, match="The `namespace` parameter for `modal.Secret` is deprecated"):
+    with pytest.warns(
+        PendingDeprecationError,
+        match="The `namespace` parameter for `modal.Secret.create_deployed` is deprecated",
+    ):
         Secret.create_deployed(
             "my-secret", {"FOO": "123"}, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, client=client
         )

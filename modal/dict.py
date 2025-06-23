@@ -135,7 +135,7 @@ class _Dict(_Object, type_prefix="di"):
         ```
         """
         check_object_name(name, "Dict")
-        warn_if_passing_namespace(namespace, "modal.Dict")
+        warn_if_passing_namespace(namespace, "modal.Dict.from_name")
 
         if data:
             deprecation_warning(
@@ -186,7 +186,7 @@ class _Dict(_Object, type_prefix="di"):
             " It can be replaced with `modal.Dict.from_name`."
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
-        warn_if_passing_namespace(namespace, "modal.Dict")
+        warn_if_passing_namespace(namespace, "modal.Dict.lookup")
         obj = _Dict.from_name(
             name,
             data=data,

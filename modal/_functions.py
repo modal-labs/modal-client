@@ -1306,7 +1306,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 f"instance.{method_name}.remote(...)\n",
             )
 
-        warn_if_passing_namespace(namespace, "modal.Function")
+        warn_if_passing_namespace(namespace, "modal.Function.from_name")
         return cls._from_name(app_name, name, api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name)
 
     @staticmethod
@@ -1335,7 +1335,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             " It can be replaced with `modal.Function.from_name`."
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
-        warn_if_passing_namespace(namespace, "modal.Function")
+        warn_if_passing_namespace(namespace, "modal.Function.lookup")
         obj = _Function.from_name(
             app_name, name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name=environment_name
         )
