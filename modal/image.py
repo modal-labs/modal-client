@@ -1304,25 +1304,39 @@ class _Image(_Object, type_prefix="im"):
         uv_project_dir: str = "./",  # Path to local uv managed project
         *,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        group: Optional[str] = None,  # Dependency group to install using `uv sync --group`
-        extra: Optional[str] = None,  # Optional dependencies to install using `uv sync --extra`
+        group: Optional[list[str]] = None,  # Dependency group to install using `uv sync --group`
+        extra: Optional[list[str]] = None,  # Optional dependencies to install using `uv sync --extra`
         frozen: bool = True,  # If True, then we run `uv sync --frozen` when a uv.lock file is present
         extra_options: str = "",  # Extra options to pass to `uv sync`
         uv_version: Optional[str] = None,  # uv version to use
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
-        """Creates a virtual environment with the dependencies in `uv.lock` file using `uv sync`.
+        """Creates a virtual environment with the dependencies in a uv managed project with `uv sync`.
 
         **Examples**
         ```python
         image = modal.Image.debian_slim().uv_sync()
         ```
+
+        This method assumes that:
+        - Python is on the `$PATH` and the first Python on the `$PATH` is used to create the venv.
+        - `pyproject.toml` is compatible with the first Python version on the `$PATH`.
         """
 
-        def _check_pyproject_toml(
-            pyproject_toml: str, version: ImageBuilderVersion, group: Optional[str], extra: Optional[str]
-        ):
+        def _normalize_str_list(str_list: Optional[list[str]]) -> list[str]:
+            """Normalize group and extra."""
+            if isinstance(str_list, str):
+                return [str_list]
+            elif isinstance(str_list, list):
+                return str_list
+            else:
+                return []
+
+        groups = _normalize_str_list(group)
+        extras = _normalize_str_list(extra)
+
+        def _check_pyproject_toml(pyproject_toml: str, version: ImageBuilderVersion):
             if not os.path.exists(pyproject_toml):
                 raise InvalidError(f"Expected {pyproject_toml} to exist")
 
@@ -1345,20 +1359,20 @@ class _Image(_Object, type_prefix="im"):
 
             dependencies = pyproject_toml_content["project"]["dependencies"]
 
-            if (
-                group is not None
-                and "dependency-groups" in pyproject_toml_content
-                and group in pyproject_toml_content["dependency-groups"]
-            ):
-                dependencies += pyproject_toml_content["dependency-groups"][group]
+            for group in groups:
+                if (
+                    "dependency-groups" in pyproject_toml_content
+                    and group in pyproject_toml_content["dependency-groups"]
+                ):
+                    dependencies += pyproject_toml_content["dependency-groups"][group]
 
-            if (
-                extra is not None
-                and "project" in pyproject_toml_content
-                and "optional-dependencies" in pyproject_toml_content["project"]
-                and extra in pyproject_toml_content["project"]["optional-dependencies"]
-            ):
-                dependencies += pyproject_toml_content["project"]["optional-dependencies"][extra]
+            for extra in extras:
+                if (
+                    "project" in pyproject_toml_content
+                    and "optional-dependencies" in pyproject_toml_content["project"]
+                    and extra in pyproject_toml_content["project"]["optional-dependencies"]
+                ):
+                    dependencies += pyproject_toml_content["project"]["optional-dependencies"][extra]
 
             PACKAGE_REGEX = re.compile(r"^[\w-]+")
 
@@ -1382,9 +1396,10 @@ class _Image(_Object, type_prefix="im"):
                 "--no-managed-python",  # Use the system python interpreter to create venv
                 "--compile-bytecode",
             ]
-            if group is not None:
+
+            for group in groups:
                 uv_sync_args.append(f"--group={group}")
-            if extra is not None:
+            for extra in extras:
                 uv_sync_args.append(f"--extra={extra}")
             if extra_options:
                 uv_sync_args.append(extra_options)
@@ -1398,7 +1413,7 @@ class _Image(_Object, type_prefix="im"):
 
             context_files = {}
 
-            _check_pyproject_toml(pyproject_toml, version, group=group, extra=extra)
+            _check_pyproject_toml(pyproject_toml, version)
 
             context_files["/.pyproject.toml"] = pyproject_toml
             commands.append(f"COPY /.pyproject.toml {uv_root}/pyproject.toml")

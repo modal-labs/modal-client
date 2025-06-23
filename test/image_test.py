@@ -679,6 +679,8 @@ def test_poetry(builder_version, servicer, client):
         ("group1", None, False),
         (None, "extra1", True),
         ("group1", "extra1", True),
+        (["group1", "group2"], "extra1", True),
+        ("group1", ["extra1", "extra2"], True),
     ],
 )
 def test_uv_sync(builder_version, servicer, client, group, extra, frozen):
@@ -697,9 +699,17 @@ def test_uv_sync(builder_version, servicer, client, group, extra, frozen):
         if frozen:
             assert any("--frozen" in cmd for cmd in layers[0].dockerfile_commands)
         if group is not None:
-            assert any(f"--group={group}" in cmd for cmd in layers[0].dockerfile_commands)
+            if isinstance(group, list):
+                group_cmd = " ".join(f"--group={g}" for g in group)
+                assert any(group_cmd in cmd for cmd in layers[0].dockerfile_commands)
+            else:
+                assert any(f"--group={group}" in cmd for cmd in layers[0].dockerfile_commands)
         if extra is not None:
-            assert any(f"--extra={extra}" in cmd for cmd in layers[0].dockerfile_commands)
+            if isinstance(extra, list):
+                extra_cmd = " ".join(f"--extra={e}" for e in extra)
+                assert any(extra_cmd in cmd for cmd in layers[0].dockerfile_commands)
+            else:
+                assert any(f"--extra={extra}" in cmd for cmd in layers[0].dockerfile_commands)
 
         if builder_version <= "2024.10":
             assert context_files == {"/.uv.lock", "/.pyproject.toml", "/modal_requirements.txt"}
