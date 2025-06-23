@@ -133,15 +133,6 @@ class _Object:
                 f"{object_type} has not been hydrated with the metadata it needs to run on Modal{reason}."
             )
 
-    def clone(self) -> Self:
-        """mdmd:hidden Clone a given hydrated object."""
-
-        # Object to clone must already be hydrated, otherwise from_loader is more suitable.
-        self._validate_is_hydrated()
-        obj = type(self).__new__(type(self))
-        obj._initialize_from_other(self)
-        return obj
-
     @classmethod
     def _from_loader(
         cls,
