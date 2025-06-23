@@ -138,12 +138,17 @@ class suppress_tb_frames:
         pass
 
     def __exit__(self, exc_type: type[BaseException], exc: BaseException, traceback: TracebackType) -> bool:
-        if config.get("traceback"):
+        if config.get("traceback") or exc_type is None:
             return False
         # modify traceback on exception object
-        final_tb = traceback
-        for _ in range(self.n):
-            final_tb = final_tb.tb_next
+        try:
+            final_tb = traceback
+            for _ in range(self.n):
+                final_tb = final_tb.tb_next
+        except AttributeError:
+            print(f"Tried to remove {self.n} frames from")
+            print(traceback)
+            raise
 
         # for some reason, the traceback cleanup here can't be moved into a context manager :(
         traceback_suppression_note = (
