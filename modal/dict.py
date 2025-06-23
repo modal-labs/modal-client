@@ -73,9 +73,6 @@ class _Dict(_Object, type_prefix="di"):
 
     _name: Optional[str]
 
-    def _initialize_from_empty(self):
-        self._name = None
-
     @property
     def name(self) -> Optional[str]:
         """Name of Dict."""
@@ -165,15 +162,9 @@ class _Dict(_Object, type_prefix="di"):
             logger.debug(f"Created dict with id {response.dict_id}")
             self._hydrate(response.dict_id, resolver.client, None)
 
-        obj = _Dict._from_loader(_load, "Dict()", is_another_app=True, hydrate_lazily=True)
+        obj = _Dict._from_loader(_load, f"Dict.from_name('{name}')", is_another_app=True, hydrate_lazily=True)
         obj._name = name
         return obj
-
-    def __repr__(self):
-        if self.name is not None:
-            return f"Dict.from_name('{self.name}')"
-        else:
-            return "Dict()"
 
     @staticmethod
     async def lookup(
