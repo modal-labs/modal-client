@@ -1242,6 +1242,11 @@ class _Image(_Object, type_prefix="im"):
         ```python
         image = modal.Image.debian_slim().uv_pip_install("torch==2.7.1", "numpy")
         ```
+
+        This method assumes that:
+        - Python is on the `$PATH` and dependencies are installed with the first Python on the `$PATH`.
+        - Shell supports backticks for substitution
+        - `which` command is on the `$PATH`
         """
 
         pkgs = _flatten_str_args("uv_pip_install", "packages", packages)
@@ -1260,7 +1265,7 @@ class _Image(_Object, type_prefix="im"):
             else:
                 commands.append(f"COPY --from=ghcr.io/astral-sh/uv:{uv_version} /uv /.uv/uv")
 
-            # TODO: Using `which python` assumes:
+            # NOTE: Using `which python` assumes:
             # - python is on the PATH and uv is installing into the first python in the PATH
             # - the shell supports backticks for substitution
             # - `which` command is on the PATH
