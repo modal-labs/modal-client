@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path, PurePosixPath
 
 import modal
-from modal.file_pattern_matcher import FilePatternMatcher
+from modal.file_pattern_matcher import FilePatternMatcher, _AbstractPatternMatcher
 from modal.mount import Mount, _MountDir
 
 from . import helpers
@@ -151,6 +151,55 @@ def test_get_files_to_upload_ignore(mock_dir):
             (mock_path / "dir_b" / "dir_b_a" / "file_b_a").as_posix(),
         }
         assert included_files == expected_files
+
+
+@pytest.mark.parametrize(
+    "ignore_config, expected_can_prune, expected_included",
+    [
+        (
+            FilePatternMatcher("venv/**"),
+            True,
+            {"toplevel.py", "toplevel.pyc"},
+        ),
+        (
+            FilePatternMatcher("**", "!**/*.py"),
+            False,
+            {"toplevel.py", "lib.py"},
+        ),
+        (
+            ~FilePatternMatcher("**/*.py"),
+            False,
+            {"toplevel.py", "lib.py"},
+        ),
+    ],
+)
+def test_directory_pruning_behavior(mock_dir, ignore_config, expected_can_prune, expected_included):
+    """Test that directory pruning is conditionally applied based on can_prune_directories()"""
+    with mock_dir(
+        {
+            "toplevel.py": "",
+            "toplevel.pyc": "",
+            "venv": {
+                "lib.py": "",
+                "lib.pyc": "",
+            },
+        }
+    ) as mock_dir:
+        mock_path = Path(mock_dir).resolve()
+
+        mount_dir = _MountDir(
+            local_dir=mock_path,
+            remote_path=PurePosixPath("/root"),
+            ignore=ignore_config,
+            recursive=True,
+        )
+
+        assert isinstance(mount_dir.ignore, _AbstractPatternMatcher)
+        assert mount_dir.ignore.can_prune_directories() is expected_can_prune
+        files = list(mount_dir.get_files_to_upload())
+        file_paths = {f[0].name for f in files}
+
+        assert file_paths == expected_included
 
 
 def test_mount_dedupe_explicit(servicer, credentials, supports_dir, server_url_env):

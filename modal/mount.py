@@ -133,17 +133,24 @@ class _MountFile(_MountEntry):
 class _MountDir(_MountEntry):
     local_dir: Path
     remote_path: PurePosixPath
-    ignore: Callable[[Path], bool]
+    ignore: Union[Callable[[Path], bool], modal.file_pattern_matcher._AbstractPatternMatcher]
     recursive: bool
 
     def description(self):
         return str(self.local_dir.expanduser().absolute())
 
     def _walk_and_prune(self, top_dir: Path) -> Generator[str, None, None]:
+        """Walk directories and prune ignored directories early."""
         for root, dirs, files in os.walk(top_dir, topdown=True):
-            # with topdown=True, os.walk allows modifying the dirnames list in-place, and will only
+            # with topdown=True, os.walk allows modifying the dirs list in-place, and will only
             # recurse into dirs that are not ignored.
             dirs[:] = [d for d in dirs if not self.ignore(Path(os.path.join(root, d)).relative_to(top_dir))]
+            for file in files:
+                yield os.path.join(root, file)
+
+    def _walk_all(self, top_dir: Path) -> Generator[str, None, None]:
+        """Walk all directories without early pruning - safe for complex/inverted ignore patterns."""
+        for root, _, files in os.walk(top_dir):
             for file in files:
                 yield os.path.join(root, file)
 
@@ -161,7 +168,13 @@ class _MountDir(_MountEntry):
             raise NotADirectoryError(msg)
 
         if self.recursive:
-            gen = self._walk_and_prune(local_dir)
+            if (
+                isinstance(self.ignore, modal.file_pattern_matcher._AbstractPatternMatcher)
+                and self.ignore.can_prune_directories()
+            ):
+                gen = self._walk_and_prune(local_dir)
+            else:
+                gen = self._walk_all(local_dir)
         else:
             gen = (dir_entry.path for dir_entry in os.scandir(local_dir) if dir_entry.is_file())
 
