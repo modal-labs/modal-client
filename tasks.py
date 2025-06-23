@@ -15,7 +15,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 import requests
-from invoke import task
+from invoke import call, task
 from packaging.version import Version
 from rich.console import Console
 from rich.table import Table
@@ -285,6 +285,21 @@ def check_copyright(ctx, fix=False):
             print("Missing copyright:", fn)
 
         raise Exception(f"{len(invalid_files)} are missing copyright headers! Please run `inv check-copyright --fix`")
+
+
+@task(
+    pre=[
+        call(check_copyright, fix=True),
+        call(lint, fix=True),
+        lint_protos,
+        type_check,
+    ]
+)
+def pre_pr_checks(ctx):
+    """Run all pre-PR validation checks.
+
+    Auto-fixes anything that can be auto-fixed."""
+    ...
 
 
 def _check_prod(no_confirm: bool):
