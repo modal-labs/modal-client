@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.5.dev21 (2025-06-23)
+
+- Improves reliability of the CLI when connecting to Modal.
+
+
 #### 1.0.5.dev20 (2025-06-23)
 
 * When an `@app.cls()`-decorated class inherits from other classes and those classes have `modal.parameter()` definitions, the base class parameters will be included in the parameter set for the modal Cls.
