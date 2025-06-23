@@ -230,6 +230,16 @@ def type_check(ctx):
 
 @task(
     help={
+        "pytest_args": "Arguments to pass to pytest",
+    },
+)
+def test(ctx, pytest_args="-v"):
+    """Run all tests."""
+    ctx.run(f"pytest {pytest_args}", pty=sys.platform != "win32")  # win32 doesn't support the 'pty' module
+
+
+@task(
+    help={
         "fix": "Automatically add missing headers",
     },
 )
