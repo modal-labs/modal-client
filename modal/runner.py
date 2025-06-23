@@ -480,7 +480,7 @@ async def _deploy_app(
     if environment_name is None:
         environment_name = typing.cast(str, config.get("environment"))
 
-    warn_if_passing_namespace(namespace, "deploy_app")
+    warn_if_passing_namespace(namespace, "modal.runner.deploy_app")
 
     name = name or app.name or ""
     if not name:

@@ -124,7 +124,6 @@ def warn_on_renamed_autoscaler_settings(func: Callable[P, R]) -> Callable[P, R]:
     return wrapper
 
 
-# Utilities for deprecating the namespace parameter across Modal resources
 def warn_if_passing_namespace(
     namespace: Any,
     resource_name: str,

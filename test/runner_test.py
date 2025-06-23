@@ -149,7 +149,10 @@ def test_deploy_app_namespace_deprecated(servicer, client):
     # Test deploy_app with namespace parameter warns
     app = modal.App("test-app")
 
-    with pytest.warns(PendingDeprecationError, match="The `namespace` parameter for `deploy_app` is deprecated"):
+    with pytest.warns(
+        PendingDeprecationError,
+        match="The `namespace` parameter for `modal.runner.deploy_app` is deprecated",
+    ):
         deploy_app(app, name="test-deploy", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, client=client)
 
     # Test that deploy_app without namespace parameter doesn't warn about namespace

@@ -111,7 +111,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         ```
         """
         check_object_name(name, "NetworkFileSystem")
-        warn_if_passing_namespace(namespace, "modal.NetworkFileSystem")
+        warn_if_passing_namespace(namespace, "modal.NetworkFileSystem.from_name")
 
         async def _load(self: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SharedVolumeGetOrCreateRequest(
@@ -192,7 +192,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             " It can be replaced with `modal.NetworkFileSystem.from_name`."
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
-        warn_if_passing_namespace(namespace, "modal.NetworkFileSystem")
+        warn_if_passing_namespace(namespace, "modal.NetworkFileSystem.lookup")
         obj = _NetworkFileSystem.from_name(
             name,
             namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
@@ -214,7 +214,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     ) -> str:
         """mdmd:hidden"""
         check_object_name(deployment_name, "NetworkFileSystem")
-        warn_if_passing_namespace(namespace, "modal.NetworkFileSystem")
+        warn_if_passing_namespace(namespace, "modal.NetworkFileSystem.create_deployed")
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.SharedVolumeGetOrCreateRequest(
