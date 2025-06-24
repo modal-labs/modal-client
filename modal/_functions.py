@@ -1231,14 +1231,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             )
             try:
                 response = await retry_transient_errors(resolver.client.stub.FunctionGet, request)
-            except GRPCError as exc:
-                if exc.status == Status.NOT_FOUND:
-                    env_context = f" (in the '{environment_name}' environment)" if environment_name else ""
-                    raise NotFoundError(
-                        f"Lookup failed for Function '{name}' from the '{app_name}' app{env_context}: {exc.message}."
-                    )
-                else:
-                    raise
+            except NotFoundError as exc:
+                # refine the error message
+                env_context = f" (in the '{environment_name}' environment)" if environment_name else ""
+                raise NotFoundError(
+                    f"Lookup failed for Function '{name}' from the '{app_name}' app{env_context}: {exc}."
+                ) from None
 
             print_server_warnings(response.server_warnings)
 
