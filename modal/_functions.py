@@ -1273,9 +1273,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     ) -> "_Function":
         """Reference a Function from a deployed App by its name.
 
-        In contrast to `modal.Function.lookup`, this is a lazy method
-        that defers hydrating the local object with metadata from
-        Modal servers until the first time it is actually used.
+        This is a lazy method that defers hydrating the local
+        object with metadata from Modal servers until the first
+        time it is actually used.
 
         ```python
         f = modal.Function.from_name("other-app", "function")

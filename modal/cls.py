@@ -617,9 +617,9 @@ More information on class parameterization can be found here: https://modal.com/
     ) -> "_Cls":
         """Reference a Cls from a deployed App by its name.
 
-        In contrast to `modal.Cls.lookup`, this is a lazy method
-        that defers hydrating the local object with metadata from
-        Modal servers until the first time it is actually used.
+        This is a lazy method that defers hydrating the local
+        object with metadata from Modal servers until the first
+        time it is actually used.
 
         ```python
         Model = modal.Cls.from_name("other-app", "Model")
