@@ -8,13 +8,11 @@ from asyncio import Future
 from collections.abc import Hashable
 from typing import TYPE_CHECKING, Optional
 
-from grpclib import GRPCError, Status
-
+from modal._traceback import suppress_tb_frames
 from modal_proto import api_pb2
 
 from ._utils.async_utils import TaskContext
 from .client import _Client
-from .exception import NotFoundError
 
 if TYPE_CHECKING:
     from rich.tree import Tree
@@ -144,12 +142,8 @@ class Resolver:
                 # Load the object itself
                 if not obj._load:
                     raise Exception(f"Object {obj} has no loader function")
-                try:
-                    await obj._load(obj, self, existing_object_id)
-                except GRPCError as exc:
-                    if exc.status == Status.NOT_FOUND:
-                        raise NotFoundError(exc.message)
-                    raise
+
+                await obj._load(obj, self, existing_object_id)
 
                 # Check that the id of functions didn't change
                 # Persisted refs are ignored because their life cycle is managed independently.
@@ -169,9 +163,9 @@ class Resolver:
             self._local_uuid_to_future[obj.local_uuid] = cached_future
             if deduplication_key is not None:
                 self._deduplication_cache[deduplication_key] = cached_future
-
-        # TODO(elias): print original exception/trace rather than the Resolver-internal trace
-        return await cached_future
+        with suppress_tb_frames(2):
+            # skip current frame + `loader()` closure frame from above
+            return await cached_future
 
     def objects(self) -> list["modal._object._Object"]:
         unique_objects: dict[str, "modal._object._Object"] = {}
