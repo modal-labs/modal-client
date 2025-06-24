@@ -778,7 +778,7 @@ def test_uv_lock_workspaces_error(builder_version, client):
     app = App()
     app.function(image=image)(dummy)
 
-    with pytest.raises(InvalidError, match="uv workspaces are not support"):
+    with pytest.raises(InvalidError, match="uv workspaces are not supported"):
         with app.run(client=client):
             pass
 

@@ -1350,7 +1350,7 @@ class _Image(_Object, type_prefix="im"):
                 and "uv" in pyproject_toml_content["tool"]
                 and "workspace" in pyproject_toml_content["tool"]["uv"]
             ):
-                raise InvalidError("uv workspaces are not support")
+                raise InvalidError("uv workspaces are not supported")
 
             if version > "2024.10":
                 # For builder version > 2024.10, modal is mounted at runtime and is not
