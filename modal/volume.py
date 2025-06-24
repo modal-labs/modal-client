@@ -10,7 +10,6 @@ import re
 import time
 import typing
 from collections.abc import AsyncGenerator, AsyncIterator, Generator, Sequence
-from copy import deepcopy
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path, PurePosixPath
@@ -138,21 +137,35 @@ class _Volume(_Object, type_prefix="vo"):
     _metadata: "typing.Optional[api_pb2.VolumeMetadata]"
     _read_only: bool = False
 
-    @property
-    def read_only(self) -> bool:
-        return self._read_only
+    def read_only(self) -> "_Volume":
+        """Configure Volume to mount as read-only.
 
-    def with_options(
-        self,
-        *,
-        read_only: Optional[bool] = None,  # Configure Volume to be read-only.
-    ) -> "_Volume":
-        """Configure Volume to mount as read-only"""
-        if read_only is None:
-            return self
-        volume = deepcopy(self)
-        volume._read_only = read_only
-        return volume
+        **Example**
+
+        ```python
+        import modal
+
+        volume = modal.Volume.from_name("my-volume", create_if_missing=True)
+
+        @app.function(volumes={"/mnt/items": volume.read_only()})
+        def f():
+            with open("/mnt/items/my-file.txt") as f:
+                return f.read()
+        ```
+
+        The Volume is mounted as a read-only volume in a function. Any file system write operation into the
+        mounted volume will result in an error.
+
+        Volume methods such as `batch_upload`, `copy_files`, or `remove_file` will still work for
+        writing data into the volume.
+        """
+
+        async def _load(new_volume: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
+            new_volume._initialize_from_other(self)
+            new_volume._read_only = True
+
+        obj = _Volume._from_loader(_load, "Volume.read_only()", hydrate_lazily=True, deps=lambda: [self])
+        return obj
 
     async def _get_lock(self):
         # To (mostly*) prevent multiple concurrent operations on the same volume, which can cause problems under

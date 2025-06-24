@@ -529,7 +529,11 @@ def test_sandbox_list_sets_correct_returncode_for_stopped(client, servicer):
 @pytest.mark.parametrize("read_only", [True, False])
 @skip_non_subprocess
 def test_sandbox_volume(app, servicer, read_only):
-    volume = Volume.from_name("my-volume", create_if_missing=True).with_options(read_only=read_only)
+    volume = Volume.from_name("my-volume", create_if_missing=True)
+
+    if read_only:
+        volume = volume.read_only()
+
     with servicer.intercept() as ctx:
         Sandbox.create(
             "bash",
