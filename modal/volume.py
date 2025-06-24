@@ -304,7 +304,6 @@ class _Volume(_Object, type_prefix="vo"):
         warn_if_passing_namespace(namespace, "modal.Volume.lookup")
         obj = _Volume.from_name(
             name,
-            namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
             environment_name=environment_name,
             create_if_missing=create_if_missing,
             version=version,

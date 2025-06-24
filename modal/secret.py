@@ -225,7 +225,6 @@ class _Secret(_Object, type_prefix="st"):
 
         obj = _Secret.from_name(
             name,
-            namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
             environment_name=environment_name,
             required_keys=required_keys,
         )

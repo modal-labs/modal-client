@@ -1255,7 +1255,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
                 object_tag=name,
-                namespace=namespace,  # type: ignore
+                namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
                 environment_name=_get_environment_name(environment_name, resolver) or "",
             )
             try:
@@ -1307,7 +1307,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             )
 
         warn_if_passing_namespace(namespace, "modal.Function.from_name")
-        return cls._from_name(app_name, name, api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name)
+        return cls._from_name(app_name, name, environment_name=environment_name)
 
     @staticmethod
     async def lookup(
@@ -1336,9 +1336,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
         warn_if_passing_namespace(namespace, "modal.Function.lookup")
-        obj = _Function.from_name(
-            app_name, name, namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name=environment_name
-        )
+        obj = _Function.from_name(app_name, name, environment_name=environment_name)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
