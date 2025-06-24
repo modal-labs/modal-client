@@ -190,7 +190,6 @@ class _Dict(_Object, type_prefix="di"):
         obj = _Dict.from_name(
             name,
             data=data,
-            namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
             environment_name=environment_name,
             create_if_missing=create_if_missing,
         )

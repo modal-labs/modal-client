@@ -856,7 +856,6 @@ More information on class parameterization can be found here: https://modal.com/
         obj = _Cls.from_name(
             app_name,
             name,
-            namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
             environment_name=environment_name,
         )
         if client is None:

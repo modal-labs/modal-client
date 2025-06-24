@@ -103,7 +103,7 @@ async def _init_local_app_new(
 async def _init_local_app_from_name(
     client: _Client,
     name: str,
-    namespace: "api_pb2.DeploymentNamespace.ValueType",
+    namespace: Any = None,
     environment_name: str = "",
 ) -> RunningApp:
     # Look up any existing deployment
@@ -510,9 +510,7 @@ async def _deploy_app(
     # Get git information to track deployment history
     commit_info_task = asyncio.create_task(get_git_commit_info())
 
-    running_app: RunningApp = await _init_local_app_from_name(
-        client, name, api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, environment_name=environment_name
-    )
+    running_app: RunningApp = await _init_local_app_from_name(client, name, environment_name=environment_name)
 
     async with TaskContext(0) as tc:
         # Start heartbeats loop to keep the client alive

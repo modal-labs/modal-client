@@ -195,7 +195,6 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         warn_if_passing_namespace(namespace, "modal.NetworkFileSystem.lookup")
         obj = _NetworkFileSystem.from_name(
             name,
-            namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
             environment_name=environment_name,
             create_if_missing=create_if_missing,
         )

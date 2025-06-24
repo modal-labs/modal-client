@@ -208,7 +208,6 @@ class _Queue(_Object, type_prefix="qu"):
         warn_if_passing_namespace(namespace, "modal.Queue.lookup")
         obj = _Queue.from_name(
             name,
-            namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
             environment_name=environment_name,
             create_if_missing=create_if_missing,
         )
