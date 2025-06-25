@@ -46,7 +46,7 @@ MAX_ASYNC_OBJECT_SIZE_BYTES = 8 * 1024  # 8 KiB
 LARGE_FILE_LIMIT = 4 * 1024 * 1024  # 4 MiB
 
 # Max parallelism during map calls
-BLOB_MAX_PARALLELISM = 10
+BLOB_MAX_PARALLELISM = 20
 
 # read ~16MiB chunks by default
 DEFAULT_SEGMENT_CHUNK_SIZE = 2**24
