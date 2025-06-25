@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.5.dev26 (2025-06-25)
+
+- added `build_args` to `Image` in api.proto
+
+
 #### 1.0.5.dev21 (2025-06-23)
 
 - Improves reliability of the CLI when connecting to Modal.
