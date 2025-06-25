@@ -158,7 +158,7 @@ class _Dict(_Object, type_prefix="di"):
         if environment_name is None:
             obj_repr = f"Dict.from_name('{name}')"
         else:
-            obj_repr = f"Dict.fromt_name('{name}', environment_name='{environment_name}')"
+            obj_repr = f"Dict.from_name('{name}', environment_name='{environment_name}')"
 
         obj = _Dict._from_loader(_load, obj_repr, is_another_app=True, hydrate_lazily=True)
         return obj

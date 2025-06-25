@@ -21,7 +21,7 @@ def test_dict_app(servicer, client):
     assert str(d) == "Dict.from_name('my-amazing-dict')"
 
     d = Dict.from_name("my-other-dict", create_if_missing=True, environment_name="my-env").hydrate(client)
-    assert str(d) == "Dict.from_name('my-amazing-dict', environment_name='my-env')"
+    assert str(d) == "Dict.from_name('my-other-dict', environment_name='my-env')"
 
     d.clear()
     assert d.len() == 0
