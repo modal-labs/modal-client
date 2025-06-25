@@ -1920,6 +1920,9 @@ message Image {
   bool runtime_debug = 20;
 
   BuildFunction build_function = 21;
+
+  // Build arguments for the image (--build-arg) for ARG substitution in Dockerfile.
+  map<string, string> build_args = 22;
 }
 
 message ImageContextFile {
