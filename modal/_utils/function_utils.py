@@ -32,7 +32,7 @@ from ..exception import (
     RemoteError,
 )
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
-from .blob_utils import MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
+from .blob_utils import MAX_ASYNC_OBJECT_SIZE_BYTES, MAX_OBJECT_SIZE_BYTES, blob_download, blob_upload
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 
 
@@ -511,8 +511,27 @@ async def _process_result(result: api_pb2.GenericResult, data_format: int, stub,
         ) from deser_exc
 
 
+def should_upload(
+    num_bytes: int,
+    function_call_invocation_type: Optional["api_pb2.FunctionCallInvocationType.ValueType"],
+) -> bool:
+    """
+    Determine if the input should be uploaded to blob storage.
+    """
+    return num_bytes > MAX_OBJECT_SIZE_BYTES or (
+        function_call_invocation_type == api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
+        and num_bytes > MAX_ASYNC_OBJECT_SIZE_BYTES
+    )
+
+
 async def _create_input(
-    args, kwargs, stub: ModalClientModal, *, idx: Optional[int] = None, method_name: Optional[str] = None
+    args,
+    kwargs,
+    stub: ModalClientModal,
+    *,
+    idx: Optional[int] = None,
+    method_name: Optional[str] = None,
+    function_call_invocation_type: Optional["api_pb2.FunctionCallInvocationType.ValueType"] = None,
 ) -> api_pb2.FunctionPutInputsItem:
     """Serialize function arguments and create a FunctionInput protobuf,
     uploading to blob storage if needed.
@@ -524,9 +543,8 @@ async def _create_input(
 
     args_serialized = serialize((args, kwargs))
 
-    if len(args_serialized) > MAX_OBJECT_SIZE_BYTES:
+    if should_upload(len(args_serialized), function_call_invocation_type):
         args_blob_id = await blob_upload(args_serialized, stub)
-
         return api_pb2.FunctionPutInputsItem(
             input=api_pb2.FunctionInput(
                 args_blob_id=args_blob_id,
