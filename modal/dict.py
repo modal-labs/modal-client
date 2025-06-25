@@ -147,7 +147,6 @@ class _Dict(_Object, type_prefix="di"):
             serialized = _serialize_dict(data if data is not None else {})
             req = api_pb2.DictGetOrCreateRequest(
                 deployment_name=name,
-                namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
                 data=serialized,

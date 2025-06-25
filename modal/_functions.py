@@ -1255,7 +1255,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
                 object_tag=name,
-                namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
                 environment_name=_get_environment_name(environment_name, resolver) or "",
             )
             try:

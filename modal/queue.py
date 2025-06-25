@@ -169,7 +169,6 @@ class _Queue(_Object, type_prefix="qu"):
         async def _load(self: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.QueueGetOrCreateRequest(
                 deployment_name=name,
-                namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
             )

@@ -116,7 +116,6 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         async def _load(self: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SharedVolumeGetOrCreateRequest(
                 deployment_name=name,
-                namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
             )
@@ -218,7 +217,6 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             client = await _Client.from_env()
         request = api_pb2.SharedVolumeGetOrCreateRequest(
             deployment_name=deployment_name,
-            namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
             environment_name=_get_environment_name(environment_name),
             object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
         )

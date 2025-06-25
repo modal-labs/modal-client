@@ -109,7 +109,6 @@ async def _init_local_app_from_name(
     # Look up any existing deployment
     app_req = api_pb2.AppGetByDeploymentNameRequest(
         name=name,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         environment_name=environment_name,
     )
     app_resp = await retry_transient_errors(client.stub.AppGetByDeploymentName, app_req)

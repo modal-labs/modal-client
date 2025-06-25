@@ -190,7 +190,6 @@ class _Secret(_Object, type_prefix="st"):
         async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SecretGetOrCreateRequest(
                 deployment_name=name,
-                namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
                 environment_name=_get_environment_name(environment_name, resolver),
                 required_keys=required_keys,
             )
@@ -255,7 +254,6 @@ class _Secret(_Object, type_prefix="st"):
             object_creation_type = api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS
         request = api_pb2.SecretGetOrCreateRequest(
             deployment_name=deployment_name,
-            namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
             environment_name=_get_environment_name(environment_name),
             object_creation_type=object_creation_type,
             env_dict=env_dict,

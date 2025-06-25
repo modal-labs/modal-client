@@ -636,7 +636,6 @@ More information on class parameterization can be found here: https://modal.com/
             request = api_pb2.ClassGetRequest(
                 app_name=app_name,
                 object_tag=name,
-                namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
                 environment_name=_environment_name,
                 only_class_function=True,
             )
