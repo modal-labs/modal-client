@@ -155,7 +155,13 @@ class _Dict(_Object, type_prefix="di"):
             logger.debug(f"Created dict with id {response.dict_id}")
             self._hydrate(response.dict_id, resolver.client, None)
 
-        return _Dict._from_loader(_load, "Dict()", is_another_app=True, hydrate_lazily=True)
+        if environment_name is None:
+            obj_repr = f"Dict.from_name('{name}')"
+        else:
+            obj_repr = f"Dict.from_name('{name}', environment_name='{environment_name}')"
+
+        obj = _Dict._from_loader(_load, obj_repr, is_another_app=True, hydrate_lazily=True)
+        return obj
 
     @staticmethod
     async def lookup(
