@@ -71,13 +71,6 @@ class _Dict(_Object, type_prefix="di"):
             "`Dict(...)` constructor is not allowed. Please use `Dict.from_name` or `Dict.ephemeral` instead"
         )
 
-    _name: Optional[str]
-
-    @property
-    def name(self) -> Optional[str]:
-        """Name of Dict."""
-        return self._name
-
     @classmethod
     @asynccontextmanager
     async def ephemeral(
@@ -162,8 +155,12 @@ class _Dict(_Object, type_prefix="di"):
             logger.debug(f"Created dict with id {response.dict_id}")
             self._hydrate(response.dict_id, resolver.client, None)
 
-        obj = _Dict._from_loader(_load, f"Dict.from_name('{name}')", is_another_app=True, hydrate_lazily=True)
-        obj._name = name
+        if environment_name is None:
+            obj_repr = f"Dict.from_name('{name}')"
+        else:
+            obj_repr = f"Dict.fromt_name('{name}', environment_name='{environment_name}')"
+
+        obj = _Dict._from_loader(_load, obj_repr, is_another_app=True, hydrate_lazily=True)
         return obj
 
     @staticmethod
