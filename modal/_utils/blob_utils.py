@@ -188,7 +188,8 @@ def get_content_length(data: BinaryIO) -> int:
     return content_length - pos
 
 
-async def _blob_upload_with_fallback(items, blob_ids, callback):
+async def _blob_upload_with_fallback(items, blob_ids: list[str], callback) -> tuple[str, bool]:
+    r2_failed = False
     for idx, (item, blob_id) in enumerate(zip(items, blob_ids)):
         # We want to default to R2 95% of the time and S3 5% of the time.
         # To ensure the failure path is continuously exercised.
@@ -196,9 +197,11 @@ async def _blob_upload_with_fallback(items, blob_ids, callback):
             continue
         try:
             await callback(item)
-            return blob_id
+            return blob_id, r2_failed
         except Exception as _:
             # Ignore all errors except the last one, since we're out of fallback options.
+            if blob_id.endswith(":r2"):
+                r2_failed = True
             if idx == len(items) - 1:
                 raise
     raise ExecutionError("Failed to upload blob")
@@ -206,7 +209,7 @@ async def _blob_upload_with_fallback(items, blob_ids, callback):
 
 async def _blob_upload(
     upload_hashes: UploadHashes, data: Union[bytes, BinaryIO], stub, progress_report_cb: Optional[Callable] = None
-) -> str:
+) -> tuple[str, bool]:
     if isinstance(data, bytes):
         data = BytesIO(data)
 
@@ -232,7 +235,7 @@ async def _blob_upload(
                 progress_report_cb=progress_report_cb,
             )
 
-        blob_id = await _blob_upload_with_fallback(
+        blob_id, r2_failed = await _blob_upload_with_fallback(
             resp.multiparts.items,
             resp.blob_ids,
             upload_multipart_upload,
@@ -252,7 +255,7 @@ async def _blob_upload(
                 content_md5_b64=upload_hashes.md5_base64,
             )
 
-        blob_id = await _blob_upload_with_fallback(
+        blob_id, r2_failed = await _blob_upload_with_fallback(
             resp.upload_urls.items,
             resp.blob_ids,
             upload_to_s3_url,
@@ -261,10 +264,10 @@ async def _blob_upload(
     if progress_report_cb:
         progress_report_cb(complete=True)
 
-    return blob_id
+    return blob_id, r2_failed
 
 
-async def blob_upload(payload: bytes, stub: ModalClientModal) -> str:
+async def blob_upload_with_r2_failure_info(payload: bytes, stub: ModalClientModal) -> tuple[str, bool]:
     size_mib = len(payload) / 1024 / 1024
     logger.debug(f"Uploading large blob of size {size_mib:.2f} MiB")
     t0 = time.time()
@@ -272,10 +275,15 @@ async def blob_upload(payload: bytes, stub: ModalClientModal) -> str:
         logger.warning("Blob uploading string, not bytes - auto-encoding as utf8")
         payload = payload.encode("utf8")
     upload_hashes = get_upload_hashes(payload)
-    blob_id = await _blob_upload(upload_hashes, payload, stub)
+    blob_id, r2_failed = await _blob_upload(upload_hashes, payload, stub)
     dur_s = max(time.time() - t0, 0.001)  # avoid division by zero
     throughput_mib_s = (size_mib) / dur_s
     logger.debug(f"Uploaded large blob of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s). {blob_id}")
+    return blob_id, r2_failed
+
+
+async def blob_upload(payload: bytes, stub: ModalClientModal) -> str:
+    blob_id, _ = await blob_upload_with_r2_failure_info(payload, stub)
     return blob_id
 
 
@@ -287,7 +295,8 @@ async def blob_upload_file(
     md5_hex: Optional[str] = None,
 ) -> str:
     upload_hashes = get_upload_hashes(file_obj, sha256_hex=sha256_hex, md5_hex=md5_hex)
-    return await _blob_upload(upload_hashes, file_obj, stub, progress_report_cb)
+    blob_id, _ = await _blob_upload(upload_hashes, file_obj, stub, progress_report_cb)
+    return blob_id
 
 
 @retry(n_attempts=5, base_delay=0.1, timeout=None)

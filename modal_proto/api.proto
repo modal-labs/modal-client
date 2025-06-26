@@ -1776,6 +1776,7 @@ message FunctionPrecreateResponse {
 message FunctionPutInputsItem {
   int32 idx = 1;
   FunctionInput input = 2;
+  bool r2_failed = 3;
 }
 
 message FunctionPutInputsRequest {
