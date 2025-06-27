@@ -27,6 +27,7 @@ from modal._utils.async_utils import (
     warn_if_generator_is_not_consumed,
 )
 from modal._utils.blob_utils import BLOB_MAX_PARALLELISM
+from modal._utils.deprecation import deprecation_warning
 from modal._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
@@ -434,6 +435,16 @@ async def _map_helper(
     We could make this explicit as an improvement or even let users decide what they
     prefer: throughput (prioritize queueing inputs) or latency (prioritize yielding results)
     """
+    if return_exceptions and wrap_returned_exceptions:
+        deprecation_warning(
+            (2025, 6, 27),
+            (
+                ".map and .starmap with return_exceptions=True will change behavior in a future version of Modal. "
+                + "The returned exceptions will no longer be wrapped in a modal.exceptions.UserCodeException.\n"
+                + "To get the future behavior now and silence this warning, use the `wrap_returned_exceptions=False` "
+                + "argument.\nE.g. `func.map(..., return_exceptions=True, wrap_returned_exceptions=False)"
+            ),
+        )
 
     raw_input_queue: Any = SynchronizedQueue()  # type: ignore
     await raw_input_queue.init.aio()
@@ -509,7 +520,12 @@ async def _for_each_async(self, *input_iterators, kwargs={}, ignore_exceptions: 
     # rather than iterating over the result
     async_input_gen = async_zip(*[sync_or_async_iter(it) for it in input_iterators])
     async for _ in _map_helper(
-        self, async_input_gen, kwargs=kwargs, order_outputs=False, return_exceptions=ignore_exceptions
+        self,
+        async_input_gen,
+        kwargs=kwargs,
+        order_outputs=False,
+        return_exceptions=ignore_exceptions,
+        wrap_returned_exceptions=False,
     ):
         pass
 
