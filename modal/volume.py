@@ -220,8 +220,7 @@ class _Volume(_Object, type_prefix="vo"):
             response = await resolver.client.stub.VolumeGetOrCreate(req)
             self._hydrate(response.volume_id, resolver.client, response.metadata)
 
-        obj = _Volume._from_loader(_load, "Volume()", hydrate_lazily=True)
-        return obj
+        return _Volume._from_loader(_load, "Volume()", hydrate_lazily=True)
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         if metadata and isinstance(metadata, api_pb2.VolumeMetadata):
