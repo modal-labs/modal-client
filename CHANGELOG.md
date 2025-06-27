@@ -6,33 +6,32 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.0.5.dev31 (2025-06-27)
+### 1.0.5 (2025-06-27)
 
-- Add `read_only` to Volume, which makes the volume read only.
+- Added a [`modal.Volume.read_only`](/docs/reference/modal.Volume#read_only) method, which will configure a Volume instance to disallow writes:
 
-```python
-volume = modal.Volume.from_name("my-data-volume", read_only=True)
-```
+  ```python notest
+  vol = modal.Volume.from_name("models")
+  read_only_vol = vol.read_only()
 
-#### 1.0.5.dev28 (2025-06-27)
+  @app.function(volumes={"/models": read_only_vol})
+  def f():
+      with open("/models/weights.pt", "w") as fid:  # Raises an OSError
+          ...
 
-- Added more gracefull handling for upgrading class constructor based parameters to `modal.parameter()` annotation based parameters.
+  @app.local_entrypoint()
+  def main():
+      with read_only_vol.batch_upload() as batch:  # Raises a modal.exceptions.InvalidError
+          ...
 
-#### 1.0.5.dev26 (2025-06-25)
+    with vol.batch_upload() as batch:  # This instance is still writeable
+          ...
+  ```
 
-- added `build_args` to `Image` in api.proto
-
-#### 1.0.5.dev21 (2025-06-23)
-
-- Improves reliability of the CLI when connecting to Modal.
-
-#### 1.0.5.dev20 (2025-06-23)
-
-- When an `@app.cls()`-decorated class inherits from other classes and those classes have `modal.parameter()` definitions, the base class parameters will be included in the parameter set for the modal Cls.
-
-#### 1.0.5.dev2 (2025-06-16)
-
-- Added a `wrap_returned_exceptions: bool = True` argument to the `Function.map` family of functions. Setting this to False will instead return the original exception type, which will be the default behavior in a future version of Modal.
+- Introduced a gradual fix for a bug where `Function.map` and `Function.starmap` leak an internal exception wrapping type (`modal.exceptions.UserCodeException`) when `return_exceptions=True` is set. To avoid breaking any user code that depends on the specific types in the return list, these functions will continue returning the wrapper type by default, but they now issue a deprecation warning. To opt into the future behavior and silence the warning, you can set `wrap_returned_exceptions=False` in the call to `.map` or `.starmap`.
+- When an `@app.cls()`-decorated class inherits from a class (or classes) with `modal.parameter()` annotations, the parent parameters will now be inherited and included in the parameter set for the modal Cls.
+- Redeployments that migrate parameterized functions from an explicit constructor to `modal.parameter()` annotations will now handle requests from outdated clients more gracefully, avoiding a problem where new containers would crashloop on a deserialization error.
+- The Modal client will now retry its initial connection to the Modal server, improving stability on flaky networks.
 
 ### 1.0.4 (2025-06-13)
 
