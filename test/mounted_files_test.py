@@ -136,19 +136,19 @@ def test_get_files_to_upload_ignore(mock_dir):
         included_files = set(mount_dir._walk_and_prune(mock_path))
         assert len(included_files) == 3
         expected_files = {
-            (mock_path / "dir_a" / "dir_a_a" / "file_a_a").as_posix(),
-            (mock_path / "dir_b" / "dir_b_a" / "file_b_a").as_posix(),
-            (mock_path / "dir_c" / "venv").as_posix(),  # a file named venv, not ignored
+            str(mock_path / "dir_a" / "dir_a_a" / "file_a_a"),
+            str(mock_path / "dir_b" / "dir_b_a" / "file_b_a"),
+            str(mock_path / "dir_c" / "venv"),  # a file named venv, not ignored
         }
         assert included_files == expected_files
 
         # after get_files_to_upload, both files and directories should be pruned out
         files = list(mount_dir.get_files_to_upload())
         assert len(files) == 2
-        included_files = {file[0].as_posix() for file in files}
+        included_files = {str(file[0]) for file in files}
         expected_files = {
-            (mock_path / "dir_a" / "dir_a_a" / "file_a_a").as_posix(),
-            (mock_path / "dir_b" / "dir_b_a" / "file_b_a").as_posix(),
+            str(mock_path / "dir_a" / "dir_a_a" / "file_a_a"),
+            str(mock_path / "dir_b" / "dir_b_a" / "file_b_a"),
         }
         assert included_files == expected_files
 
