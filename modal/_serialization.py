@@ -472,7 +472,14 @@ def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function,
         api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE,
     ):
         # legacy serialization format - pickle of `(args, kwargs)` w/ support for modal object arguments
-        param_args, param_kwargs = deserialize(serialized_params, _client)
+        try:
+            param_args, param_kwargs = deserialize(serialized_params, _client)
+        except DeserializationError:
+            # Fallback in case of proto -> pickle downgrades, where a pickle function could end
+            # up getting bound to proto argument during the downgrade transition.
+            param_args = ()
+            param_kwargs = deserialize_proto_params(serialized_params)
+
     elif function_def.class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO:
         param_args = ()  # we use kwargs only for our implicit constructors
         try:
