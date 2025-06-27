@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.5.dev28 (2025-06-27)
+
+* Added more gracefull handling for upgrading class constructor based parameters to `modal.parameter()` annotation based parameters.
+
+
 #### 1.0.5.dev26 (2025-06-25)
 
 - added `build_args` to `Image` in api.proto
