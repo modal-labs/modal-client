@@ -58,6 +58,19 @@ def test_volume_bad_paths():
         app.function(volumes={"/tmp/": vol})(dummy)
 
 
+def test_volume_mount_read_only_error():
+    read_only_vol = modal.Volume.from_name("xyz", create_if_missing=True).as_read_only()
+
+    with pytest.raises(InvalidError):
+        read_only_vol.batch_upload()
+
+    with pytest.raises(InvalidError):
+        read_only_vol.copy_files(["file1.txt"], "bar2")
+
+    with pytest.raises(InvalidError):
+        read_only_vol.remove_file("file1.txt")
+
+
 def test_volume_duplicate_mount():
     app = modal.App()
     vol = modal.Volume.from_name("xyz")

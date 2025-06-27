@@ -526,6 +526,9 @@ class _Volume(_Object, type_prefix="vo"):
     @live_method
     async def remove_file(self, path: str, recursive: bool = False) -> None:
         """Remove a file or directory from a volume."""
+        if self._read_only:
+            raise InvalidError("Read-only Volume can not be written to")
+
         if self._is_v1:
             req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
             await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
@@ -558,6 +561,9 @@ class _Volume(_Object, type_prefix="vo"):
         like `os.rename()` and then `commit()` the volume. The `copy_files()` method is useful when you don't have
         the volume mounted as a filesystem, e.g. when running a script on your local computer.
         """
+        if self._read_only:
+            raise InvalidError("Read-only Volume can not be written to")
+
         if self._is_v1:
             if recursive:
                 raise ValueError("`recursive` is not supported for V1 volumes")
@@ -591,6 +597,9 @@ class _Volume(_Object, type_prefix="vo"):
             batch.put_file(io.BytesIO(b"some data"), "/foobar")
         ```
         """
+        if self._read_only:
+            raise InvalidError("Read-only Volume can not be written to")
+
         return _AbstractVolumeUploadContextManager.resolve(
             self._metadata.version, self.object_id, self._client, force=force
         )
