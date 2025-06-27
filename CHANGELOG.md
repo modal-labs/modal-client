@@ -6,6 +6,15 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.5.dev31 (2025-06-27)
+
+- Add `read_only` to Volume, which makes the volume read only.
+ 
+```python
+volume = modal.Volume.from_name("my-data-volume", read_only=True)
+```
+
+
 #### 1.0.5.dev28 (2025-06-27)
 
 * Added more gracefull handling for upgrading class constructor based parameters to `modal.parameter()` annotation based parameters.
