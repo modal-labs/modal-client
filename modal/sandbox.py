@@ -74,6 +74,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     """
 
     _result: Optional[api_pb2.GenericResult]
+    _tags: dict[str, str]
     _stdout: _StreamReader[str]
     _stderr: _StreamReader[str]
     _stdin: _StreamWriter
@@ -764,6 +765,15 @@ class _Sandbox(_Object, type_prefix="sb"):
             yield event
 
     @property
+    def tags(self) -> dict[str, str]:
+        """Tags (key-value pairs) associated with the Sandbox.
+
+        Tags can be used to filter results in `Sandbox.list`, and they are updated with the
+        `set_tags()` function.
+        """
+        return dict(self._tags)
+
+    @property
     def stdout(self) -> _StreamReader[str]:
         """
         [`StreamReader`](https://modal.com/docs/reference/modal.io_streams#modalio_streamsstreamreader) for
@@ -839,6 +849,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 sandbox_info: api_pb2.SandboxInfo
                 obj = _Sandbox._new_hydrated(sandbox_info.id, client, None)
                 obj._result = sandbox_info.task_info.result  # TODO: send SandboxInfo as metadata to _new_hydrated?
+                obj._tags = {tag.tag_name: tag.tag_value for tag in sandbox_info.tags}
                 yield obj
 
             # Fetch the next batch starting from the end of the current one.
