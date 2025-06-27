@@ -674,18 +674,18 @@ def test_poetry(builder_version, servicer, client):
 
 
 @pytest.mark.parametrize(
-    "group, extra, frozen",
+    "groups, extras, frozen",
     [
-        ("group1", None, False),
-        (None, "extra1", True),
+        (["group1"], None, False),
+        (None, ["extra1"], True),
         (["group1", "group2"], "extra1", True),
-        ("group1", ["extra1", "extra2"], True),
+        (["group1"], ["extra1", "extra2"], True),
     ],
 )
-def test_uv_sync(builder_version, servicer, client, group, extra, frozen):
+def test_uv_sync(builder_version, servicer, client, groups, extras, frozen):
     uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_project")
 
-    image = Image.debian_slim().uv_sync(uv_project_path, group=group, extra=extra, frozen=frozen)
+    image = Image.debian_slim().uv_sync(uv_project_path, groups=groups, extras=extras, frozen=frozen)
 
     app = App()
     app.function(image=image)(dummy)
@@ -697,18 +697,12 @@ def test_uv_sync(builder_version, servicer, client, group, extra, frozen):
         assert "COPY /.uv.lock /.uv/uv.lock" in layers[0].dockerfile_commands
         if frozen:
             assert any("--frozen" in cmd for cmd in layers[0].dockerfile_commands)
-        if group is not None:
-            if isinstance(group, list):
-                group_cmd = " ".join(f"--group={g}" for g in group)
-                assert any(group_cmd in cmd for cmd in layers[0].dockerfile_commands)
-            else:
-                assert any(f"--group={group}" in cmd for cmd in layers[0].dockerfile_commands)
-        if extra is not None:
-            if isinstance(extra, list):
-                extra_cmd = " ".join(f"--extra={e}" for e in extra)
-                assert any(extra_cmd in cmd for cmd in layers[0].dockerfile_commands)
-            else:
-                assert any(f"--extra={extra}" in cmd for cmd in layers[0].dockerfile_commands)
+        if groups is not None:
+            group_cmd = " ".join(f"--group={g}" for g in groups)
+            assert any(group_cmd in cmd for cmd in layers[0].dockerfile_commands)
+        if extras is not None:
+            extra_cmd = " ".join(f"--extra={e}" for e in extras)
+            assert any(extra_cmd in cmd for cmd in layers[0].dockerfile_commands)
 
         if builder_version <= "2024.10":
             assert context_files == {"/.uv.lock", "/.pyproject.toml", "/modal_requirements.txt"}
@@ -751,7 +745,7 @@ def test_uv_sync_no_modal(builder_version, client):
                 pass
 
 
-@pytest.mark.parametrize("kwargs", [{"group": "group1"}, {"extra": "extra1"}])
+@pytest.mark.parametrize("kwargs", [{"group": ["group1"]}, {"extra": ["extra1"]}])
 def test_uv_sync_modal_in_group_or_extra(builder_version, client, servicer, kwargs):
     uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_no_modal")
 

@@ -1304,8 +1304,8 @@ class _Image(_Object, type_prefix="im"):
         uv_project_dir: str = "./",  # Path to local uv managed project
         *,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
-        group: Optional[Union[list[str], str]] = None,  # Dependency group to install using `uv sync --group`
-        extra: Optional[Union[list[str], str]] = None,  # Optional dependencies to install using `uv sync --extra`
+        groups: Optional[list[str]] = None,  # Dependency group to install using `uv sync --group`
+        extras: Optional[list[str]] = None,  # Optional dependencies to install using `uv sync --extra`
         frozen: bool = True,  # If True, then we run `uv sync --frozen` when a uv.lock file is present
         extra_options: str = "",  # Extra options to pass to `uv sync`
         uv_version: Optional[str] = None,  # uv version to use
@@ -1324,17 +1324,8 @@ class _Image(_Object, type_prefix="im"):
         - `pyproject.toml` is compatible with the first Python version on the `$PATH`.
         """
 
-        def _normalize_str_list(str_list: Optional[Union[list[str], str]]) -> list[str]:
-            """Normalize group and extra."""
-            if isinstance(str_list, str):
-                return [str_list]
-            elif isinstance(str_list, list):
-                return str_list
-            else:
-                return []
-
-        groups = _normalize_str_list(group)
-        extras = _normalize_str_list(extra)
+        groups = [] if groups is None else groups
+        extras = [] if extras is None else extras
 
         def _check_pyproject_toml(pyproject_toml: str, version: ImageBuilderVersion):
             if not os.path.exists(pyproject_toml):
