@@ -155,9 +155,6 @@ class _Volume(_Object, type_prefix="vo"):
 
         The Volume is mounted as a read-only volume in a function. Any file system write operation into the
         mounted volume will result in an error.
-
-        Volume methods such as `batch_upload`, `copy_files`, or `remove_file` will still work for
-        writing data into the volume.
         """
 
         async def _load(new_volume: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
