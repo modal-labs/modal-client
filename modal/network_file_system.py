@@ -98,9 +98,9 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     ) -> "_NetworkFileSystem":
         """Reference a NetworkFileSystem by its name, creating if necessary.
 
-        In contrast to `modal.NetworkFileSystem.lookup`, this is a lazy method
-        that defers hydrating the local object with metadata from Modal servers
-        until the first time it is actually used.
+        This is a lazy method that defers hydrating the local object with
+        metadata from Modal servers until the first time it is actually
+        used.
 
         ```python notest
         nfs = NetworkFileSystem.from_name("my-nfs", create_if_missing=True)

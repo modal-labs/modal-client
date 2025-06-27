@@ -6,6 +6,21 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.5.dev26 (2025-06-25)
+
+- added `build_args` to `Image` in api.proto
+
+
+#### 1.0.5.dev21 (2025-06-23)
+
+- Improves reliability of the CLI when connecting to Modal.
+
+
+#### 1.0.5.dev20 (2025-06-23)
+
+* When an `@app.cls()`-decorated class inherits from other classes and those classes have `modal.parameter()` definitions, the base class parameters will be included in the parameter set for the modal Cls.
+
+
 #### 1.0.5.dev2 (2025-06-16)
 
 * Added a `wrap_returned_exceptions: bool = True` argument to the `Function.map` family of functions. Setting this to False will instead return the original exception type, which will be the default behavior in a future version of Modal.

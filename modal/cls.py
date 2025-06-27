@@ -54,7 +54,7 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
         return inspect.signature(user_cls)
     else:
         constructor_parameters = []
-        for name, annotation_value in user_cls.__dict__.get("__annotations__", {}).items():
+        for name, annotation_value in typing.get_type_hints(user_cls).items():
             if hasattr(user_cls, name):
                 parameter_spec = getattr(user_cls, name)
                 if is_parameter(parameter_spec):
@@ -617,9 +617,9 @@ More information on class parameterization can be found here: https://modal.com/
     ) -> "_Cls":
         """Reference a Cls from a deployed App by its name.
 
-        In contrast to `modal.Cls.lookup`, this is a lazy method
-        that defers hydrating the local object with metadata from
-        Modal servers until the first time it is actually used.
+        This is a lazy method that defers hydrating the local
+        object with metadata from Modal servers until the first
+        time it is actually used.
 
         ```python
         Model = modal.Cls.from_name("other-app", "Model")

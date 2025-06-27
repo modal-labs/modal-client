@@ -192,9 +192,9 @@ class _Volume(_Object, type_prefix="vo"):
     ) -> "_Volume":
         """Reference a Volume by name, creating if necessary.
 
-        In contrast to `modal.Volume.lookup`, this is a lazy method
-        that defers hydrating the local object with metadata from
-        Modal servers until the first time is is actually used.
+        This is a lazy method that defers hydrating the local
+        object with metadata from Modal servers until the first
+        time is is actually used.
 
         ```python
         vol = modal.Volume.from_name("my-volume", create_if_missing=True)
