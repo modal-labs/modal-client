@@ -137,7 +137,7 @@ class _Volume(_Object, type_prefix="vo"):
     _metadata: "typing.Optional[api_pb2.VolumeMetadata]"
     _read_only: bool = False
 
-    def as_read_only(self) -> "_Volume":
+    def read_only(self) -> "_Volume":
         """Configure Volume to mount as read-only.
 
         **Example**
