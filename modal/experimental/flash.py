@@ -318,7 +318,7 @@ class _FlashPrometheusAutoscaler:
 
         return metrics
 
-    async def _get_all_containers(self) -> list[api_pb2.FlashContainerListResponse.Container]:
+    async def _get_all_containers(self):
         req = api_pb2.FlashContainerListRequest(function_id=self.fn.object_id)
         resp = await retry_transient_errors(self.client.stub.FlashContainerList, req)
         return resp.containers
