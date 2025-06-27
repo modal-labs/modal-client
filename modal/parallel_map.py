@@ -465,10 +465,11 @@ def _maybe_warn_about_exceptions(func_name: str, return_exceptions: bool, wrap_r
         deprecation_warning(
             (2025, 6, 27),
             (
-                f"{func_name} with return_exceptions=True will change behavior in a future version of Modal. "
-                "The returned exceptions will no longer be wrapped in a modal.exceptions.UserCodeException.\n"
-                "To get the future behavior now and silence this warning, use the `wrap_returned_exceptions=False` "
-                "argument.\nE.g. `func.map(..., return_exceptions=True, wrap_returned_exceptions=False)"
+                f"Function.{func_name} currently leaks an internal exception wrapping type "
+                "(modal.exceptions.UserCodeException) when `return_exceptions=True` is set. "
+                "In the future, this will change, and the underlying exception will be returned directly.\n"
+                "To opt into the future behavior and silence this warning, add `wrap_returned_exceptions=False`:\n\n"
+                f"    f.{func_name}(..., return_exceptions=True, wrap_returned_exceptions=False)"
             ),
         )
 
