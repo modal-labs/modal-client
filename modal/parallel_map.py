@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2024
 import asyncio
 import enum
+import inspect
 import time
 import typing
 from asyncio import FIRST_COMPLETED
@@ -410,7 +411,7 @@ async def _map_invocation(
         async_merge(drain_input_generator(), pump_inputs(), poll_outputs(), retry_inputs())
     ) as streamer:
         async for response in streamer:
-            if response is not None:
+            if response is not None:  # type: ignore[unreachable]
                 yield response.value
     log_debug_stats_task.cancel()
     await log_debug_stats_task
@@ -474,6 +475,19 @@ def _maybe_warn_about_exceptions(func_name: str, return_exceptions: bool, wrap_r
         )
 
 
+def _invoked_from_sync_wrapper() -> bool:
+    """Check whether the calling function was called from a sync wrapper."""
+    # This is temporary: we only need it to avoind double-firing the wrap_returned_exceptions warning.
+    # (We don't want to push the warning lower in the stack beacuse then we can't attribute to the user's code.)
+    try:
+        frame = inspect.currentframe()
+        caller_function_name = frame.f_back.f_back.f_code.co_name
+        # Embeds some assumptions about how the current calling stack works, but this is just temporary.
+        return caller_function_name == "asend"
+    except Exception:
+        return False
+
+
 @warn_if_generator_is_not_consumed(function_name="Function.map.aio")
 async def _map_async(
     self: "modal.functions.Function",
@@ -484,9 +498,8 @@ async def _map_async(
     order_outputs: bool = True,  # return outputs in order
     return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
     wrap_returned_exceptions: bool = True,  # wrap returned exceptions in modal.exception.UserCodeException
-    invoked_async: bool = True,  # Hacky thing since we call the async version when handling a sync invocation
 ) -> typing.AsyncGenerator[Any, None]:
-    if invoked_async:
+    if not _invoked_from_sync_wrapper():
         _maybe_warn_about_exceptions("map.aio", return_exceptions, wrap_returned_exceptions)
     async_input_gen = async_zip(*[sync_or_async_iter(it) for it in input_iterators])
     async for output in _map_helper(
@@ -509,9 +522,8 @@ async def _starmap_async(
     order_outputs: bool = True,
     return_exceptions: bool = False,
     wrap_returned_exceptions: bool = True,
-    invoked_async: bool = True,  # Hacky thing since we call the async version when handling a sync invocation
 ) -> typing.AsyncIterable[Any]:
-    if invoked_async:
+    if not _invoked_from_sync_wrapper():
         _maybe_warn_about_exceptions("starmap.aio", return_exceptions, wrap_returned_exceptions)
     async for output in _map_helper(
         self,
@@ -594,7 +606,6 @@ def _map_sync(
             order_outputs=order_outputs,
             return_exceptions=return_exceptions,
             wrap_returned_exceptions=wrap_returned_exceptions,
-            invoked_async=False,
         ),
         nested_async_message=(
             "You can't iter(Function.map()) from an async function. Use async for ... in Function.map.aio() instead."
@@ -701,7 +712,6 @@ def _starmap_sync(
             order_outputs=order_outputs,
             return_exceptions=return_exceptions,
             wrap_returned_exceptions=wrap_returned_exceptions,
-            invoked_async=False,
         ),
         nested_async_message=(
             "You can't `iter(Function.starmap())` from an async function. "

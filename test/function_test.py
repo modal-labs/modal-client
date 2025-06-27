@@ -545,15 +545,31 @@ def test_map_exceptions(client, servicer):
             list(custom_function_modal.map(range(6)))
         assert "bad" in str(excinfo.value)
 
-        with pytest.warns(DeprecationError, match="wrap_returned_exceptions=False") as warnings:
+        with pytest.warns(DeprecationError) as warnings:
             res = list(custom_function_modal.map(range(6), return_exceptions=True))
             assert len(warnings) == 1
+            assert "f.map(..., return_exceptions=True, wrap_returned_exceptions=False)" in str(warnings[0].message)
         assert res[:4] == [0, 1, 4, 9] and res[5] == 25
         assert type(res[4]) is UserCodeException and "bad" in str(res[4])
 
         res = list(custom_function_modal.map(range(6), return_exceptions=True, wrap_returned_exceptions=False))
         assert res[:4] == [0, 1, 4, 9] and res[5] == 25
         assert type(res[4]) is CustomException and "bad" in str(res[4])
+
+
+@pytest.mark.asyncio
+async def test_async_map_wrapped_exception_warning(client, servicer):
+    app = App()
+
+    servicer.function_body(custom_exception_function)
+    custom_function_modal = app.function()(custom_exception_function)
+
+    with app.run(client=client):
+        with pytest.warns(DeprecationError) as warnings:
+            async for _ in custom_function_modal.map.aio(range(6), return_exceptions=True):
+                pass
+            assert len(warnings) == 1
+            assert "f.map.aio(..., return_exceptions=True, wrap_returned_exceptions=False)" in str(warnings[0].message)
 
 
 def import_failure():
