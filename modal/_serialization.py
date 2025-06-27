@@ -6,6 +6,8 @@ import typing
 from inspect import Parameter
 from typing import Any
 
+import google.protobuf.message
+
 from modal._utils.async_utils import synchronizer
 from modal_proto import api_pb2
 
@@ -473,7 +475,13 @@ def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function,
         param_args, param_kwargs = deserialize(serialized_params, _client)
     elif function_def.class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO:
         param_args = ()  # we use kwargs only for our implicit constructors
-        param_kwargs = deserialize_proto_params(serialized_params)
+        try:
+            param_kwargs = deserialize_proto_params(serialized_params)
+        except google.protobuf.message.DecodeError:
+            # Fallback in case of pickle -> proto upgrades, where a proto function could end
+            # up getting bound to pickle argument during the upgrade transition.
+            param_args, param_kwargs = deserialize(serialized_params, _client)
+
     else:
         raise ExecutionError(
             f"Unknown class parameter serialization format: {function_def.class_parameter_info.format}"
