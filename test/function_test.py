@@ -545,7 +545,9 @@ def test_map_exceptions(client, servicer):
             list(custom_function_modal.map(range(6)))
         assert "bad" in str(excinfo.value)
 
-        res = list(custom_function_modal.map(range(6), return_exceptions=True))
+        with pytest.warns(DeprecationError, match="wrap_returned_exceptions=False") as warnings:
+            res = list(custom_function_modal.map(range(6), return_exceptions=True))
+            assert len(warnings) == 1
         assert res[:4] == [0, 1, 4, 9] and res[5] == 25
         assert type(res[4]) is UserCodeException and "bad" in str(res[4])
 

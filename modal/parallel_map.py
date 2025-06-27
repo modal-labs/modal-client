@@ -435,18 +435,6 @@ async def _map_helper(
     We could make this explicit as an improvement or even let users decide what they
     prefer: throughput (prioritize queueing inputs) or latency (prioritize yielding results)
     """
-    if return_exceptions and wrap_returned_exceptions:
-        deprecation_warning(
-            (2025, 6, 27),
-            (
-                ".map and .starmap with return_exceptions=True will change behavior in a future version of Modal. "
-                + "The returned exceptions will no longer be wrapped in a modal.exceptions.UserCodeException.\n"
-                + "To get the future behavior now and silence this warning, use the `wrap_returned_exceptions=False` "
-                + "argument.\nE.g. `func.map(..., return_exceptions=True, wrap_returned_exceptions=False)"
-            ),
-            show_source=False,  # this is several frames down the stack so wouldn't help much
-        )
-
     raw_input_queue: Any = SynchronizedQueue()  # type: ignore
     await raw_input_queue.init.aio()
 
@@ -472,6 +460,19 @@ async def _map_helper(
             yield output
 
 
+def _maybe_warn_about_exceptions(func_name: str, return_exceptions: bool, wrap_returned_exceptions: bool):
+    if return_exceptions and wrap_returned_exceptions:
+        deprecation_warning(
+            (2025, 6, 27),
+            (
+                f"{func_name} with return_exceptions=True will change behavior in a future version of Modal. "
+                "The returned exceptions will no longer be wrapped in a modal.exceptions.UserCodeException.\n"
+                "To get the future behavior now and silence this warning, use the `wrap_returned_exceptions=False` "
+                "argument.\nE.g. `func.map(..., return_exceptions=True, wrap_returned_exceptions=False)"
+            ),
+        )
+
+
 @warn_if_generator_is_not_consumed(function_name="Function.map.aio")
 async def _map_async(
     self: "modal.functions.Function",
@@ -482,7 +483,10 @@ async def _map_async(
     order_outputs: bool = True,  # return outputs in order
     return_exceptions: bool = False,  # propagate exceptions (False) or aggregate them in the results list (True)
     wrap_returned_exceptions: bool = True,  # wrap returned exceptions in modal.exception.UserCodeException
+    invoked_async: bool = True,  # Hacky thing since we call the async version when handling a sync invocation
 ) -> typing.AsyncGenerator[Any, None]:
+    if invoked_async:
+        _maybe_warn_about_exceptions("map.aio", return_exceptions, wrap_returned_exceptions)
     async_input_gen = async_zip(*[sync_or_async_iter(it) for it in input_iterators])
     async for output in _map_helper(
         self,
@@ -504,7 +508,10 @@ async def _starmap_async(
     order_outputs: bool = True,
     return_exceptions: bool = False,
     wrap_returned_exceptions: bool = True,
+    invoked_async: bool = True,  # Hacky thing since we call the async version when handling a sync invocation
 ) -> typing.AsyncIterable[Any]:
+    if invoked_async:
+        _maybe_warn_about_exceptions("starmap.aio", return_exceptions, wrap_returned_exceptions)
     async for output in _map_helper(
         self,
         sync_or_async_iter(input_iterator),
@@ -576,6 +583,7 @@ def _map_sync(
         print(list(my_func.map(range(3), return_exceptions=True)))
     ```
     """
+    _maybe_warn_about_exceptions("map", return_exceptions, wrap_returned_exceptions)
 
     return AsyncOrSyncIterable(
         _map_async(
@@ -585,6 +593,7 @@ def _map_sync(
             order_outputs=order_outputs,
             return_exceptions=return_exceptions,
             wrap_returned_exceptions=wrap_returned_exceptions,
+            invoked_async=False,
         ),
         nested_async_message=(
             "You can't iter(Function.map()) from an async function. Use async for ... in Function.map.aio() instead."
@@ -682,6 +691,7 @@ def _starmap_sync(
         assert list(my_func.starmap([(1, 2), (3, 4)])) == [3, 7]
     ```
     """
+    _maybe_warn_about_exceptions("starmap", return_exceptions, wrap_returned_exceptions)
     return AsyncOrSyncIterable(
         _starmap_async(
             self,
@@ -690,6 +700,7 @@ def _starmap_sync(
             order_outputs=order_outputs,
             return_exceptions=return_exceptions,
             wrap_returned_exceptions=wrap_returned_exceptions,
+            invoked_async=False,
         ),
         nested_async_message=(
             "You can't `iter(Function.starmap())` from an async function. "
