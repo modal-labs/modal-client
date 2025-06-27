@@ -678,7 +678,7 @@ def test_poetry(builder_version, servicer, client):
     [
         (["group1"], None, False),
         (None, ["extra1"], True),
-        (["group1", "group2"], "extra1", True),
+        (["group1", "group2"], ["extra1"], True),
         (["group1"], ["extra1", "extra2"], True),
     ],
 )
