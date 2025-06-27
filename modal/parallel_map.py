@@ -444,6 +444,7 @@ async def _map_helper(
                 + "To get the future behavior now and silence this warning, use the `wrap_returned_exceptions=False` "
                 + "argument.\nE.g. `func.map(..., return_exceptions=True, wrap_returned_exceptions=False)"
             ),
+            show_source=False,  # this is several frames down the stack so wouldn't help much
         )
 
     raw_input_queue: Any = SynchronizedQueue()  # type: ignore
