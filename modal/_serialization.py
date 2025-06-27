@@ -474,20 +474,28 @@ def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function,
         # legacy serialization format - pickle of `(args, kwargs)` w/ support for modal object arguments
         try:
             param_args, param_kwargs = deserialize(serialized_params, _client)
-        except DeserializationError:
-            # Fallback in case of proto -> pickle downgrades, where a pickle function could end
-            # up getting bound to proto argument during the downgrade transition.
+        except DeserializationError as original_exc:
+            # Fallback in case of proto -> pickle downgrades of a parameter serialization format
+            # I.e. FunctionBindParams binding proto serialized params to a function defintion
+            # that now assumes pickled data according to class_parameter_info
             param_args = ()
-            param_kwargs = deserialize_proto_params(serialized_params)
+            try:
+                param_kwargs = deserialize_proto_params(serialized_params)
+            except Exception:
+                raise original_exc
 
     elif function_def.class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO:
         param_args = ()  # we use kwargs only for our implicit constructors
         try:
             param_kwargs = deserialize_proto_params(serialized_params)
-        except google.protobuf.message.DecodeError:
-            # Fallback in case of pickle -> proto upgrades, where a proto function could end
-            # up getting bound to pickle argument during the upgrade transition.
-            param_args, param_kwargs = deserialize(serialized_params, _client)
+        except google.protobuf.message.DecodeError as original_exc:
+            # Fallback in case of pickle -> proto upgrades of a parameter serialization format
+            # I.e. FunctionBindParams binding pickle serialized params to a function defintion
+            # that now assumes proto data according to class_parameter_info
+            try:
+                param_args, param_kwargs = deserialize(serialized_params, _client)
+            except Exception:
+                raise original_exc
 
     else:
         raise ExecutionError(
