@@ -137,7 +137,7 @@ class _Volume(_Object, type_prefix="vo"):
     _metadata: "typing.Optional[api_pb2.VolumeMetadata]"
     _read_only: bool = False
 
-    def read_only(self) -> "_Volume":
+    def as_read_only(self) -> "_Volume":
         """Configure Volume to mount as read-only.
 
         **Example**
@@ -147,7 +147,7 @@ class _Volume(_Object, type_prefix="vo"):
 
         volume = modal.Volume.from_name("my-volume", create_if_missing=True)
 
-        @app.function(volumes={"/mnt/items": volume.read_only()})
+        @app.function(volumes={"/mnt/items": volume.as_read_only()})
         def f():
             with open("/mnt/items/my-file.txt") as f:
                 return f.read()

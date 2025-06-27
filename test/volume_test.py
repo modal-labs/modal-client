@@ -34,7 +34,7 @@ def test_volume_mount(client, servicer, version, read_only):
 
     vol = modal.Volume.from_name("xyz", create_if_missing=True, version=version)
     if read_only:
-        vol = vol.read_only()
+        vol = vol.as_read_only()
 
     _ = app.function(volumes={"/root/foo": vol})(dummy)
 

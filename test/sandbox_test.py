@@ -532,7 +532,7 @@ def test_sandbox_volume(app, servicer, read_only):
     volume = Volume.from_name("my-volume", create_if_missing=True)
 
     if read_only:
-        volume = volume.read_only()
+        volume = volume.as_read_only()
 
     with servicer.intercept() as ctx:
         Sandbox.create(
