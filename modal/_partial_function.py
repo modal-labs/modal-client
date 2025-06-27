@@ -922,3 +922,174 @@ def _clustered(size: int, broadcast: bool = True, rdma: bool = False):
         return pf
 
     return wrapper
+
+
+# NOTE: torchrun is currently exposed through modal.experimental, not the top-level namespace
+def _torchrun(
+    _warn_parentheses_missing=None,
+    *,
+    nproc_per_node: int = 1,
+    master_port: int = 29500,
+) -> Callable[
+    [Union[_PartialFunction[P, ReturnType, ReturnType], Callable[P, ReturnType]]],
+    _PartialFunction[P, ReturnType, ReturnType],
+]:
+    """Decorator that enables torchrun orchestration for distributed training.
+
+    When used with @modal.experimental.clustered, this decorator automatically handles
+    the torchrun orchestration, allowing you to write your training logic directly
+    in the decorated function without needing a separate script file.
+
+    The function will be called in two modes:
+    - Orchestration mode: Sets up and launches torchrun
+    - Data mode: Executes the actual training logic (called by torchrun)
+
+    Parameters:
+    nproc_per_node: int = 1
+        Number of processes to launch per node
+    master_port: int = 29500
+        Port for inter-process communication
+
+    Example:
+    ```python
+    @app.function(gpu="H100:8")
+    @modal.experimental.clustered(4, rdma=True)
+    @modal.experimental.torchrun(nproc_per_node=8)
+    def train():
+        # This code runs in data mode
+        import torch.distributed as dist
+        dist.init_process_group(backend="nccl")
+
+        # Your training logic here
+        ...
+    ```
+    """
+    if _warn_parentheses_missing is not None:
+        raise InvalidError(
+            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.experimental.torchrun()`."
+        )
+
+    def wrapper(
+        obj: Union[_PartialFunction[P, ReturnType, ReturnType], Callable[P, ReturnType]],
+    ) -> _PartialFunction[P, ReturnType, ReturnType]:
+        import functools
+        import os
+
+        # Get the original function
+        if isinstance(obj, _PartialFunction):
+            if obj.raw_f is None:
+                raise InvalidError("Cannot apply @modal.experimental.torchrun to a class-level decorator")
+            original_func = obj.raw_f
+        else:
+            original_func = obj
+
+        @functools.wraps(original_func)
+        def torchrun_wrapper(*args, **kwargs):
+            # Check if we're in data mode (torchrun has set these env vars)
+            if all(var in os.environ for var in ["RANK", "LOCAL_RANK", "WORLD_SIZE"]):
+                # We're in data mode - run the original function
+                return original_func(*args, **kwargs)
+            else:
+                # We're in orchestration mode
+                import sys
+                import subprocess
+                import tempfile
+                import json
+                import modal
+
+                # Get cluster info
+                cluster_info = modal.experimental.get_cluster_info()
+                container_rank = cluster_info.rank
+                main_ip_addr = cluster_info.container_ips[0]
+                n_nodes = len(cluster_info.container_ips)
+
+                # Create a Python script that torchrun will execute
+                # This script needs to reconstruct the function call
+                script_template = """
+import sys
+import os
+import json
+
+# Set up the environment to find the user's code
+sys.path.insert(0, '{working_dir}')
+
+# Import the function
+from {module_name} import {func_name}
+
+# Load arguments if provided
+args_file = sys.argv[1] if len(sys.argv) > 1 else None
+if args_file and os.path.exists(args_file):
+    with open(args_file, 'r') as f:
+        call_info = json.load(f)
+        args = call_info.get('args', [])
+        kwargs = call_info.get('kwargs', {{}})
+else:
+    args = []
+    kwargs = {{}}
+
+# Call the function
+{func_name}.local(*args, **kwargs)
+"""
+
+                # Get function details
+                module_name = original_func.__module__
+                func_name = original_func.__name__
+                working_dir = os.getcwd()
+
+                # Format the script
+                script_content = script_template.format(
+                    working_dir=working_dir, module_name=module_name, func_name=func_name
+                )
+
+                # Write the script to a temporary file
+                with tempfile.NamedTemporaryFile(mode="w", suffix="_torchrun_wrapper.py", delete=False) as f:
+                    f.write(script_content)
+                    script_path = f.name
+
+                # Save arguments to a temporary file (if any)
+                args_file = None
+                if args or kwargs:
+                    # Convert args/kwargs to JSON-serializable format
+                    # Note: This is a simplification and may not work for all argument types
+                    with tempfile.NamedTemporaryFile(mode="w", suffix="_args.json", delete=False) as f:
+                        json.dump({"args": list(args), "kwargs": kwargs}, f)
+                        args_file = f.name
+
+                try:
+                    # Build the torchrun command
+                    cmd = [
+                        sys.executable,
+                        "-m",
+                        "torch.distributed.run",
+                        f"--nnodes={n_nodes}",
+                        f"--nproc-per-node={nproc_per_node}",
+                        f"--node-rank={container_rank}",
+                        f"--master-addr={main_ip_addr}",
+                        f"--master-port={master_port}",
+                        script_path,
+                    ]
+
+                    if args_file:
+                        cmd.append(args_file)
+
+                    print(f"Container rank {container_rank}: Executing torchrun")
+                    print(f"Command: {' '.join(cmd)}")
+
+                    # Run torchrun
+                    result = subprocess.run(cmd, check=True)
+
+                finally:
+                    # Clean up temporary files
+                    os.unlink(script_path)
+                    if args_file:
+                        os.unlink(args_file)
+
+        # Wrap the function
+        if isinstance(obj, _PartialFunction):
+            # Replace the raw function with our wrapper
+            obj.raw_f = torchrun_wrapper
+            return obj
+        else:
+            return _PartialFunction(torchrun_wrapper, _PartialFunctionFlags(0), _PartialFunctionParams())
+
+    return wrapper
