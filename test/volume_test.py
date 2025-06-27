@@ -34,7 +34,7 @@ def test_volume_mount(client, servicer, version, read_only):
 
     vol = modal.Volume.from_name("xyz", create_if_missing=True, version=version)
     if read_only:
-        vol = vol.as_read_only()
+        vol = vol.read_only()
 
     _ = app.function(volumes={"/root/foo": vol})(dummy)
 
@@ -60,7 +60,7 @@ def test_volume_bad_paths():
 
 def test_volume_mount_read_only_error(client, servicer):
     app = modal.App()
-    read_only_vol = modal.Volume.from_name("xyz", create_if_missing=True).as_read_only()
+    read_only_vol = modal.Volume.from_name("xyz", create_if_missing=True).read_only()
 
     def batch_upload():
         read_only_vol.batch_upload()
