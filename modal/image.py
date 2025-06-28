@@ -497,6 +497,7 @@ class _Image(_Object, type_prefix="im"):
         image_registry_config: Optional[_ImageRegistryConfig] = None,
         context_mount_function: Optional[Callable[[], Optional[_Mount]]] = None,
         force_build: bool = False,
+        build_args: dict[str, str] = {},
         # For internal use only.
         _namespace: "api_pb2.DeploymentNamespace.ValueType" = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         _do_assert_no_mount_layers: bool = True,
@@ -613,6 +614,7 @@ class _Image(_Object, type_prefix="im"):
                 runtime=config.get("function_runtime"),
                 runtime_debug=config.get("function_runtime_debug"),
                 build_function=_build_function,
+                build_args=build_args,
             )
 
             req = api_pb2.ImageGetOrCreateRequest(
@@ -1716,6 +1718,7 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
         add_python: Optional[str] = None,
+        build_args: dict[str, str] = {},
         ignore: Union[Sequence[str], Callable[[Path], bool]] = AUTO_DOCKERIGNORE,
     ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
@@ -1789,6 +1792,7 @@ class _Image(_Object, type_prefix="im"):
             ),
             gpu_config=gpu_config,
             secrets=secrets,
+            build_args=build_args,
         )
 
         # --- Now add in the modal dependencies, and, optionally a Python distribution
