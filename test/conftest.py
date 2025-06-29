@@ -2476,7 +2476,7 @@ def mock_dir_factory():
         cwd = os.getcwd()
         try:
             os.chdir(root_dir)
-            yield
+            yield root_dir
         finally:
             os.chdir(cwd)
             shutil.rmtree(root_dir, ignore_errors=True)

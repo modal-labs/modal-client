@@ -47,12 +47,33 @@ class _AbstractPatternMatcher:
         return super().__repr__()
 
     @abstractmethod
+    def can_prune_directories(self) -> bool:
+        """
+        Returns True if this pattern matcher allows safe early directory pruning.
+
+        Directory pruning is safe when matching directories can be skipped entirely
+        without missing any files that should be included.
+
+        An example where pruning is not safe is for inverted patterns, like "!**/*.py".
+        """
+        ...
+
+    @abstractmethod
     def __call__(self, path: Path) -> bool: ...
 
 
 class _CustomPatternMatcher(_AbstractPatternMatcher):
     def __init__(self, predicate: Callable[[Path], bool]):
         self._predicate = predicate
+
+    def can_prune_directories(self) -> bool:
+        """
+        Custom pattern matchers (like negated matchers) cannot safely prune directories.
+
+        Since these are arbitrary predicates, we cannot determine if a directory
+        can be safely skipped without evaluating all files within it.
+        """
+        return False
 
     def __call__(self, path: Path) -> bool:
         return self._predicate(path)
@@ -172,6 +193,16 @@ class FilePatternMatcher(_AbstractPatternMatcher):
                 matched = not pattern.exclusion
 
         return matched
+
+    def can_prune_directories(self) -> bool:
+        """
+        Returns True if this pattern matcher allows safe early directory pruning.
+
+        Directory pruning is safe when matching directories can be skipped entirely
+        without missing any files that should be included. This is only safe when
+        there are no exclusion patterns (patterns starting with '!').
+        """
+        return not any(pattern.exclusion for pattern in self.patterns)
 
     def __call__(self, file_path: Path) -> bool:
         if self._delayed_init:
