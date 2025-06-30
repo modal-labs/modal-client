@@ -8,7 +8,7 @@ from unittest import mock
 
 import modal
 from modal.client import Client
-from modal.exception import AuthError, PendingDeprecationError
+from modal.exception import AuthError, DeprecationError
 from modal.runner import deploy_app, run_app
 from modal_proto import api_pb2
 
@@ -150,7 +150,7 @@ def test_deploy_app_namespace_deprecated(servicer, client):
     app = modal.App("test-app")
 
     with pytest.warns(
-        PendingDeprecationError,
+        DeprecationError,
         match="The `namespace` parameter for `modal.runner.deploy_app` is deprecated",
     ):
         deploy_app(app, name="test-deploy", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, client=client)

@@ -140,5 +140,4 @@ def warn_if_passing_namespace(
             f"The `namespace` parameter for `{resource_name}` is deprecated and will be"
             " removed in a future release. It is no longer needed, so can be removed"
             " from your code.",
-            pending=True,
         )

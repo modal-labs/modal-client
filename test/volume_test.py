@@ -13,7 +13,7 @@ from unittest import mock
 
 import modal
 from modal._utils.blob_utils import BLOCK_SIZE
-from modal.exception import InvalidError, NotFoundError, PendingDeprecationError, VolumeUploadTimeoutError
+from modal.exception import DeprecationError, InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal.volume import _open_files_error_annotation
 from modal_proto import api_pb2
 
@@ -544,7 +544,7 @@ def test_lock_is_py39_safe(set_env_client):
 def test_volume_namespace_deprecated(servicer, client):
     # Test from_name with namespace parameter warns
     with pytest.warns(
-        PendingDeprecationError,
+        DeprecationError,
         match="The `namespace` parameter for `modal.Volume.from_name` is deprecated",
     ):
         modal.Volume.from_name("test-volume", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)

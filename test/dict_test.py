@@ -3,7 +3,7 @@ import pytest
 import time
 
 from modal import Dict
-from modal.exception import InvalidError, NotFoundError, PendingDeprecationError
+from modal.exception import DeprecationError, InvalidError, NotFoundError
 from modal_proto import api_pb2
 
 
@@ -76,7 +76,7 @@ def test_dict_put_skip_if_exists(client):
 def test_dict_namespace_deprecated(servicer, client):
     # Test from_name with namespace parameter warns
     with pytest.warns(
-        PendingDeprecationError,
+        DeprecationError,
         match="The `namespace` parameter for `modal.Dict.from_name` is deprecated",
     ):
         Dict.from_name("test-dict", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)

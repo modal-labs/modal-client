@@ -4,7 +4,7 @@ import queue
 import time
 
 from modal import Queue
-from modal.exception import InvalidError, NotFoundError, PendingDeprecationError
+from modal.exception import DeprecationError, InvalidError, NotFoundError
 from modal_proto import api_pb2
 
 from .supports.skip import skip_macos, skip_windows
@@ -125,7 +125,7 @@ def test_invalid_name(name):
 def test_queue_namespace_deprecated(servicer, client):
     # Test from_name with namespace parameter warns
     with pytest.warns(
-        PendingDeprecationError,
+        DeprecationError,
         match="The `namespace` parameter for `modal.Queue.from_name` is deprecated",
     ):
         Queue.from_name("test-queue", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
