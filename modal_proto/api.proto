@@ -1247,8 +1247,21 @@ message FlashContainerDeregisterRequest {
   string service_name = 1;
 }
 
+message FlashContainerListRequest {
+  string function_id = 1;
+}
+
+message FlashContainerListResponse {
+  message Container {
+    string task_id = 1;
+    string host = 2;
+    uint32 port = 3;
+  }
+  repeated Container containers = 1;
+}
+
 message FlashContainerRegisterRequest {
-  string service_name = 1;
+  string service_name = 1;  // not used?
   uint32 priority = 2;
   uint32 weight = 3;
   string host = 4;
@@ -3295,6 +3308,7 @@ service ModalClient {
 
   // Modal Flash (experimental)
   rpc FlashContainerDeregister(FlashContainerDeregisterRequest) returns (google.protobuf.Empty);
+  rpc FlashContainerList(FlashContainerListRequest) returns (FlashContainerListResponse);
   rpc FlashContainerRegister(FlashContainerRegisterRequest) returns (FlashContainerRegisterResponse);
 
   // Functions
