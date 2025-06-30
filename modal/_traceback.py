@@ -8,10 +8,12 @@ so that Rich is not a dependency of the container Client.
 import re
 import sys
 import traceback
+import typing
 import warnings
 from types import TracebackType
 from typing import Any, Iterable, Optional
 
+from modal._utils import logger
 from modal.config import config
 from modal_proto import api_pb2
 
@@ -130,6 +132,12 @@ def print_server_warnings(server_warnings: Iterable[api_pb2.Warning]):
         warnings.warn_explicit(warning.message, ServerWarning, "<modal-server>", 0)
 
 
+# for some reason, the traceback cleanup here can't be moved into a context manager :(
+traceback_suppression_note = (
+    "Internal Modal traceback frames are suppressed for readability. Use MODAL_TRACEBACK=1 to show a full traceback."
+)
+
+
 class suppress_tb_frames:
     def __init__(self, n: int):
         self.n = n
@@ -139,24 +147,22 @@ class suppress_tb_frames:
 
     def __exit__(
         self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType]
-    ) -> bool:
-        if config.get("traceback") or exc_type is None or not isinstance(exc, Exception):
+    ) -> typing.Literal[False]:
+        # *base* exceptions like CancelledError, SystemExit etc. can come from random places,
+        # so we don't suppress tracebacks for those
+        is_base_exception = not isinstance(exc, Exception)
+        if config.get("traceback") or exc_type is None or is_base_exception:
             return False
+
         # modify traceback on exception object
         try:
             final_tb = tb
             for _ in range(self.n):
                 final_tb = final_tb.tb_next
         except AttributeError:
-            print(f"Tried to remove {self.n} frames from {str(exc_type)} {str(exc)}")
-            traceback.print_tb(tb, file=sys.stdout)
+            logger.debug(f"Failed to suppress {self.n} traceback frames from {str(exc_type)} {str(exc)}")
             raise
 
-        # for some reason, the traceback cleanup here can't be moved into a context manager :(
-        traceback_suppression_note = (
-            "Internal Modal traceback frames are suppressed for readability. "
-            "Use MODAL_TRACEBACK=1 to show a full traceback."
-        )
         exc.with_traceback(final_tb)
         notes = getattr(exc, "__notes__", [])
         if traceback_suppression_note not in notes:
