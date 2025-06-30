@@ -141,7 +141,13 @@ class _Invocation:
         stub = client.stub
 
         function_id = function.object_id
-        item = await _create_input(args, kwargs, stub, method_name=function._use_method_name)
+        item = await _create_input(
+            args,
+            kwargs,
+            stub,
+            method_name=function._use_method_name,
+            function_call_invocation_type=function_call_invocation_type,
+        )
 
         request = api_pb2.FunctionMapRequest(
             function_id=function_id,
@@ -848,6 +854,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         mount_path=path,
                         volume_id=volume.object_id,
                         allow_background_commits=True,
+                        read_only=volume._read_only,
                     )
                     for path, volume in validated_volumes_no_cloud_buckets
                 ]
@@ -1101,6 +1108,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         mount_path=path,
                         volume_id=volume.object_id,
                         allow_background_commits=True,
+                        read_only=volume._read_only,
                     )
                     for path, volume in options.validated_volumes
                 ]
@@ -1273,9 +1281,9 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
     ) -> "_Function":
         """Reference a Function from a deployed App by its name.
 
-        In contrast to `modal.Function.lookup`, this is a lazy method
-        that defers hydrating the local object with metadata from
-        Modal servers until the first time it is actually used.
+        This is a lazy method that defers hydrating the local
+        object with metadata from Modal servers until the first
+        time it is actually used.
 
         ```python
         f = modal.Function.from_name("other-app", "function")

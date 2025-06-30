@@ -5,7 +5,7 @@ import pytest
 import time
 from pathlib import Path
 
-from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret
+from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret, Volume
 from modal.exception import InvalidError
 from modal.stream_type import StreamType
 from modal_proto import api_pb2
@@ -524,3 +524,24 @@ def test_sandbox_list_sets_correct_returncode_for_stopped(client, servicer):
         )  # list will loop for older sandboxes until no more arrive
         (list_result,) = list(Sandbox.list(client=client))
     assert list_result.returncode == 0
+
+
+@pytest.mark.parametrize("read_only", [True, False])
+@skip_non_subprocess
+def test_sandbox_volume(app, servicer, read_only):
+    volume = Volume.from_name("my-volume", create_if_missing=True)
+
+    if read_only:
+        volume = volume.read_only()
+
+    with servicer.intercept() as ctx:
+        Sandbox.create(
+            "bash",
+            "-c",
+            "echo bye >&2 && sleep 1 && echo hi && exit 42",
+            timeout=600,
+            app=app,
+            volumes={"/mnt": volume},
+        )
+        req = ctx.pop_request("SandboxCreate")
+        assert req.definition.volume_mounts[0].read_only == read_only

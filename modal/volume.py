@@ -135,6 +135,34 @@ class _Volume(_Object, type_prefix="vo"):
 
     _lock: Optional[asyncio.Lock] = None
     _metadata: "typing.Optional[api_pb2.VolumeMetadata]"
+    _read_only: bool = False
+
+    def read_only(self) -> "_Volume":
+        """Configure Volume to mount as read-only.
+
+        **Example**
+
+        ```python
+        import modal
+
+        volume = modal.Volume.from_name("my-volume", create_if_missing=True)
+
+        @app.function(volumes={"/mnt/items": volume.read_only()})
+        def f():
+            with open("/mnt/items/my-file.txt") as f:
+                return f.read()
+        ```
+
+        The Volume is mounted as a read-only volume in a function. Any file system write operation into the
+        mounted volume will result in an error.
+        """
+
+        async def _load(new_volume: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
+            new_volume._initialize_from_other(self)
+            new_volume._read_only = True
+
+        obj = _Volume._from_loader(_load, "Volume()", hydrate_lazily=True, deps=lambda: [self])
+        return obj
 
     async def _get_lock(self):
         # To (mostly*) prevent multiple concurrent operations on the same volume, which can cause problems under
@@ -161,9 +189,9 @@ class _Volume(_Object, type_prefix="vo"):
     ) -> "_Volume":
         """Reference a Volume by name, creating if necessary.
 
-        In contrast to `modal.Volume.lookup`, this is a lazy method
-        that defers hydrating the local object with metadata from
-        Modal servers until the first time is is actually used.
+        This is a lazy method that defers hydrating the local
+        object with metadata from Modal servers until the first
+        time is is actually used.
 
         ```python
         vol = modal.Volume.from_name("my-volume", create_if_missing=True)
@@ -495,6 +523,9 @@ class _Volume(_Object, type_prefix="vo"):
     @live_method
     async def remove_file(self, path: str, recursive: bool = False) -> None:
         """Remove a file or directory from a volume."""
+        if self._read_only:
+            raise InvalidError("Read-only Volume can not be written to")
+
         if self._is_v1:
             req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
             await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
@@ -527,6 +558,9 @@ class _Volume(_Object, type_prefix="vo"):
         like `os.rename()` and then `commit()` the volume. The `copy_files()` method is useful when you don't have
         the volume mounted as a filesystem, e.g. when running a script on your local computer.
         """
+        if self._read_only:
+            raise InvalidError("Read-only Volume can not be written to")
+
         if self._is_v1:
             if recursive:
                 raise ValueError("`recursive` is not supported for V1 volumes")
@@ -560,6 +594,9 @@ class _Volume(_Object, type_prefix="vo"):
             batch.put_file(io.BytesIO(b"some data"), "/foobar")
         ```
         """
+        if self._read_only:
+            raise InvalidError("Read-only Volume can not be written to")
+
         return _AbstractVolumeUploadContextManager.resolve(
             self._metadata.version, self.object_id, self._client, force=force
         )

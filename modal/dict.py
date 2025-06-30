@@ -125,9 +125,9 @@ class _Dict(_Object, type_prefix="di"):
     ) -> "_Dict":
         """Reference a named Dict, creating if necessary.
 
-        In contrast to `modal.Dict.lookup`, this is a lazy method
-        that defers hydrating the local object with metadata from
-        Modal servers until the first time it is actually used.
+        This is a lazy method that defers hydrating the local
+        object with metadata from Modal servers until the first
+        time it is actually used.
 
         ```python
         d = modal.Dict.from_name("my-dict", create_if_missing=True)

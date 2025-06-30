@@ -1,5 +1,4 @@
 # Copyright Modal Labs 2022
-# Copyright (c) Modal Labs 2022
 
 import ast
 import datetime
@@ -16,7 +15,7 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 import requests
-from invoke import task
+from invoke import call, task
 from packaging.version import Version
 from rich.console import Console
 from rich.table import Table
@@ -52,6 +51,9 @@ def python_file_as_executable(path: Path) -> Generator[Path, None, None]:
 
 @task
 def protoc(ctx):
+    """Compile protocol buffer files for gRPC and Modal-specific wrappers.
+
+    Generates Python stubs for api.proto and options.proto."""
     protoc_cmd = f"{sys.executable} -m grpc_tools.protoc"
     input_files = "modal_proto/api.proto modal_proto/options.proto"
     py_protoc = (
@@ -71,13 +73,22 @@ def protoc(ctx):
         )
 
 
-@task
+@task(
+    help={
+        "fix": "Auto-fix issues if possible",
+    },
+)
 def lint(ctx, fix=False):
+    """Run linter on all files."""
     ctx.run(f"ruff check . {'--fix' if fix else ''}", pty=True)
 
 
 @task
 def lint_protos(ctx):
+    """Lint protocol buffer files.
+
+    Ensures imports/enums/messages/services are ordered correctly and RPCs are alphabetized.
+    """
     proto_fname = "modal_proto/api.proto"
     with open(proto_fname) as f:
         proto_text = f.read()
@@ -124,7 +135,10 @@ def lint_protos(ctx):
 
 @task
 def type_stubs(ctx):
-    # We only generate type stubs for modules that contain synchronicity wrapped types
+    """Generate type stub files (.pyi) for synchronicity-wrapped Modal modules.
+
+    We only generate type stubs for modules that contain synchronicity wrapped types.
+    """
     from synchronicity.synchronizer import SYNCHRONIZER_ATTR
 
     stubs_to_remove = []
@@ -166,7 +180,11 @@ def type_stubs(ctx):
 
 @task(type_stubs)
 def type_check(ctx):
-    # mypy will not check the *implementation* (.py) for files that also have .pyi type stubs
+    """Run static type checking.
+
+    Uses mypy for most files, but since mypy will not check the *implementation* (.py) for files that also have .pyi
+    type stubs, we use pyright for checking the implementation of those files.
+    """
     mypy_exclude_list = [
         "playground",
         "venv312",
@@ -181,7 +199,6 @@ def type_check(ctx):
     excludes = " ".join(f"--exclude {path}" for path in mypy_exclude_list)
     ctx.run(f"mypy . {excludes}", pty=True)
 
-    # use pyright for checking implementation of those files
     pyright_allowlist = [
         "modal/_functions.py",
         "modal/_runtime/asgi.py",
@@ -211,8 +228,25 @@ def type_check(ctx):
     ctx.run(f"pyright {' '.join(pyright_allowlist)}", pty=True)
 
 
-@task
+@task(
+    help={
+        "pytest_args": "Arguments to pass to pytest",
+    },
+)
+def test(ctx, pytest_args="-v"):
+    """Run all tests."""
+    ctx.run(f"pytest {pytest_args}", pty=sys.platform != "win32")  # win32 doesn't support the 'pty' module
+
+
+@task(
+    help={
+        "fix": "Automatically add missing headers",
+    },
+)
 def check_copyright(ctx, fix=False):
+    """Verify all Python files have correct copyright headers.
+
+    Excludes generated, vendored, and third-party code."""
     invalid_files = []
     for root, dirs, files in os.walk("."):
         fns = [
@@ -253,6 +287,21 @@ def check_copyright(ctx, fix=False):
         raise Exception(f"{len(invalid_files)} are missing copyright headers! Please run `inv check-copyright --fix`")
 
 
+@task(
+    pre=[
+        call(check_copyright, fix=True),
+        call(lint, fix=True),
+        lint_protos,
+        type_check,
+    ]
+)
+def pre_pr_checks(ctx):
+    """Run all pre-PR validation checks.
+
+    Auto-fixes anything that can be auto-fixed."""
+    ...
+
+
 def _check_prod(no_confirm: bool):
     from urllib.parse import urlparse
 
@@ -274,7 +323,13 @@ def publish_base_mounts(ctx, no_confirm: bool = False):
         ctx.run(f"{sys.executable} modal_global_objects/mounts/{mount}.py", pty=True)
 
 
-@task
+@task(
+    help={
+        "name": "Image name (e.g. 'debian_slim')",
+        "builder_version": "Docker builder version",
+        "allow_global_deployment": "Required flag to confirm global deployment",
+    },
+)
 def publish_base_images(
     ctx,
     name: str,
@@ -286,8 +341,7 @@ def publish_base_images(
 
     These should be published as global deployments. However, publishing global
     deployments is *risky* because it would affect all workspaces. Pass the
-    `--allow-global-deployment` flag to confirm this behavior.
-    """
+    `--allow-global-deployment` flag to confirm this behavior."""
     if not allow_global_deployment:
         console = Console()
         console.print("This is a dry run. Rerun with `--allow-global-deployment` to publish.", style="yellow")
@@ -311,7 +365,11 @@ __version__ = "{}"
 '''
 
 
-@task
+@task(
+    help={
+        "force": "Bump even if version file was modified in last commit",
+    },
+)
 def bump_dev_version(ctx, dry_run: bool = False, force: bool = False):
     """Automatically increment the modal version, handling dev releases (but not other pre-releases).
 
@@ -321,7 +379,6 @@ def bump_dev_version(ctx, dry_run: bool = False, force: bool = False):
     The version will always be in development after this runs. In the context of the modal client
     release process, manually updating the version file to a non-development version will trigger
     a "real" release. Otherwise we'll push the development version to PyPI.
-
     """
     version_file = "modal_version/__init__.py"
     commit_files = ctx.run("git diff --name-only HEAD~1 HEAD", hide="out").stdout.splitlines()
@@ -362,9 +419,15 @@ def get_release_tag(ctx):
         print(f"v{v}")
 
 
-@task
+@task(
+    help={
+        "sha": "Commit SHA (defaults to the most recent commit)",
+    },
+)
 def update_changelog(ctx, sha: str = ""):
-    # Parse a commit message for a GitHub PR number, defaulting to most recent commit
+    """Update CHANGELOG.md from GitHub PR description.
+
+    Parse a commit message for a GitHub PR number. Requires GITHUB_TOKEN environment variable."""
     res = ctx.run(f"git log --pretty=format:%s -n 1 {sha}", hide="stdout", warn=True)
     if res.exited:
         print("Failed to extract changelog update!")
@@ -427,6 +490,9 @@ def update_changelog(ctx, sha: str = ""):
 
 @task
 def show_deprecations(ctx):
+    """Analyze Modal source code and display all deprecation warnings/errors.
+
+    Shows deprecation date, level, location, function, and message in a formatted table."""
     def get_modal_source_files() -> list[str]:
         source_files: list[str] = []
         for root, _, files in os.walk("modal"):

@@ -154,9 +154,9 @@ class _Queue(_Object, type_prefix="qu"):
     ) -> "_Queue":
         """Reference a named Queue, creating if necessary.
 
-        In contrast to `modal.Queue.lookup`, this is a lazy method
-        the defers hydrating the local object with metadata from
-        Modal servers until the first time it is actually used.
+        This is a lazy method the defers hydrating the local
+        object with metadata from Modal servers until the first
+        time it is actually used.
 
         ```python
         q = modal.Queue.from_name("my-queue", create_if_missing=True)
