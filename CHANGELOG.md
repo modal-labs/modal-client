@@ -6,6 +6,20 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.6.dev4 (2025-06-30)
+
+- allows setting build-time variables for images created from Dockerfiles
+- can pass in build_args map as an argument passed into `Image.from_dockerfile()`
+- ex: Having the image be built from `alpine:latest` base image, instead of the default of `alpine:3`
+```
+ARG IMAGE_VERSION=3
+FROM alpine:${IMAGE_VERSION}
+```
+```python
+dockerfile_image = Image.from_dockerfile(dockerfile_path, build_args={"IMAGE_VERSION": "latest"}
+```
+
+
 #### 1.0.6.dev2 (2025-06-30)
 
 - Added a `poetry_version` parameter to `modal.Image.poetry_install_from_file`, which supports installing a specific version of `poetry`. It's also possible to set `poetry_version=None` to skip the install step, i.e. when poetry is already available in the Image.
