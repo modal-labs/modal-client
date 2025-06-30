@@ -136,7 +136,7 @@ def warn_if_passing_namespace(
     """
     if namespace is not None:
         deprecation_warning(
-            (2025, 6, 17),
+            (2025, 6, 30),
             f"The `namespace` parameter for `{resource_name}` is deprecated and will be"
             " removed in a future release. It is no longer needed, so can be removed"
             " from your code.",
