@@ -73,6 +73,9 @@ from .mount import _get_client_mount, _Mount
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .output import _get_output_manager
 from .parallel_map import (
+    _experimental_spawn_map_async,
+    _experimental_spawn_map_invocation,
+    _experimental_spawn_map_sync,
     _for_each_async,
     _for_each_sync,
     _map_async,
@@ -1536,6 +1539,26 @@ Use the `Function.get_web_url()` method instead.
             async for item in stream:
                 yield item
 
+    @live_method
+    async def _experimental_spawn_map(self, input_queue: _SynchronizedQueue) -> None:
+        self._check_no_web_url("map")
+        if self._is_generator:
+            raise InvalidError("A generator function cannot be called with `.map(...)`.")
+
+        assert self._function_name
+        if output_mgr := _get_output_manager():
+            count_update_callback = output_mgr.function_progress_callback(self._function_name, total=None)
+        else:
+            count_update_callback = None
+
+        await _experimental_spawn_map_invocation(
+            self,
+            input_queue,
+            self.client,
+            count_update_callback,
+            api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
+        )
+
     async def _call_function(self, args, kwargs) -> ReturnType:
         invocation: Union[_Invocation, _InputPlaneInvocation]
         if self._input_plane_url:
@@ -1771,6 +1794,7 @@ Use the `Function.get_web_url()` method instead.
     starmap = MethodWithAio(_starmap_sync, _starmap_async, synchronizer)
     for_each = MethodWithAio(_for_each_sync, _for_each_async, synchronizer)
     spawn_map = MethodWithAio(_spawn_map_sync, _spawn_map_async, synchronizer)
+    experimental_spawn_map = MethodWithAio(_experimental_spawn_map_sync, _experimental_spawn_map_async, synchronizer)
 
 
 class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
