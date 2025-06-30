@@ -681,7 +681,7 @@ def test_poetry_files(builder_version, servicer, client):
             assert context_files == {"/.poetry.lock", "/.pyproject.toml"}
 
 
-@pytest.mark.parametrize("poetry_version", [None, "2.1.2"])
+@pytest.mark.parametrize("poetry_version", [None, "latest", "2.1.2"])
 def test_poetry_commands(builder_version, servicer, client, poetry_version):
     path = os.path.join(os.path.dirname(__file__), "supports/pyproject.toml")
     app = App()
@@ -696,11 +696,14 @@ def test_poetry_commands(builder_version, servicer, client, poetry_version):
     with app.run(client=client):
         layers = get_image_layers(image.object_id, servicer)
         dockerfile_commands = " ".join(layers[0].dockerfile_commands)
-        if builder_version <= "2024.10":
-            poetry_spec = "~=1.7" if poetry_version is None else f"=={poetry_version}"
+        if poetry_version is None:
+            assert not any("pip install" in cmd for cmd in dockerfile_commands)
         else:
-            poetry_spec = "" if poetry_version is None else f"=={poetry_version}"
-        assert f"python -m pip install poetry{poetry_spec}" in dockerfile_commands
+            if builder_version <= "2024.10":
+                poetry_spec = "~=1.7" if poetry_version == "latest" else f"=={poetry_version}"
+            else:
+                poetry_spec = "" if poetry_version == "latest" else f"=={poetry_version}"
+            assert f"python -m pip install poetry{poetry_spec}" in dockerfile_commands
         assert "poetry config virtualenvs.create false" in dockerfile_commands
         assert "poetry install --no-root --with foo,bar --without buz" in dockerfile_commands
 

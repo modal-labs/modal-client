@@ -1233,7 +1233,7 @@ class _Image(_Object, type_prefix="im"):
         # Selected optional dependency groups to exclude (See https://python-poetry.org/docs/cli/#install)
         without: list[str] = [],
         only: list[str] = [],  # Only install dependency groups specifed in this list.
-        poetry_version: Optional[str] = None,  # Version of poetry to install; default depends on image builder version
+        poetry_version: Optional[str] = "latest",  # Version of poetry to install, or None to skip installation
         # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
         old_installer: bool = False,
         secrets: Sequence[_Secret] = [],
@@ -1246,16 +1246,22 @@ class _Image(_Object, type_prefix="im"):
 
         Note that the root project of the poetry project is not installed, only the dependencies.
         For including local python source files see `add_local_python_source`
+
+        Poetry will be installed to the Image (using pip) unless `poetry_version` is set to None.
+        Note that the interpretation of `poetry_version="latest"` depends on the Modal Image Builder
+        version, with versions 2024.10 and earlier limiting poetry to 1.x.
         """
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             context_files = {"/.pyproject.toml": os.path.expanduser(poetry_pyproject_toml)}
 
-            if poetry_version is None:
-                poetry_spec = "~=1.7" if version <= "2024.10" else ""
-            else:
-                poetry_spec = f"=={poetry_version}"
-            commands = ["FROM base", f"RUN python -m pip install poetry{poetry_spec}"]
+            commands = ["FROM base"]
+            if poetry_version is not None:
+                if poetry_version == "latest":
+                    poetry_spec = "~=1.7" if version <= "2024.10" else ""
+                else:
+                    poetry_spec = f"=={poetry_version}"  # TODO: support other versions
+                commands += [f"RUN python -m pip install poetry{poetry_spec}"]
 
             if old_installer:
                 commands += ["RUN poetry config experimental.new-installer false"]
