@@ -103,7 +103,6 @@ async def _init_local_app_new(
 async def _init_local_app_from_name(
     client: _Client,
     name: str,
-    namespace: Any = None,
     environment_name: str = "",
 ) -> RunningApp:
     # Look up any existing deployment
