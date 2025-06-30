@@ -1473,6 +1473,17 @@ message FunctionCallCancelRequest {
   bool terminate_containers = 2;
 }
 
+message FunctionCallCancelInputPlaneRequest {
+  string function_id = 1;
+  string function_call_id = 2;
+}
+
+message FunctionCallCancelMaybeInputPlaneRequest {
+  string function_id = 1;
+  string function_call_id = 2;
+  bool terminate_containers = 3;
+}
+
 message FunctionCallGetDataRequest {
   string function_call_id = 1;
   uint64 last_index = 2;
@@ -3327,6 +3338,7 @@ service ModalClient {
   // Functions
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
+  rpc FunctionCallCancelMaybeInputPlane(FunctionCallCancelMaybeInputPlaneRequest) returns (google.protobuf.Empty);
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
   rpc FunctionCallGetDataIn(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallGetDataOut(FunctionCallGetDataRequest) returns (stream DataChunk);
