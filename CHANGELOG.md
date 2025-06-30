@@ -24,7 +24,7 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
       with read_only_vol.batch_upload() as batch:  # Raises a modal.exceptions.InvalidError
           ...
 
-    with vol.batch_upload() as batch:  # This instance is still writeable
+      with vol.batch_upload() as batch:  # This instance is still writeable
           ...
   ```
 
