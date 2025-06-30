@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.6.dev2 (2025-06-30)
+
+- Added a `poetry_version` parameter to `modal.Image.poetry_install_from_file`, which supports installing a specific version of `poetry`. It's also possible to set `poetry_version=None` to skip the install step, i.e. when poetry is already available in the Image.
+
+
 ### 1.0.5 (2025-06-27)
 
 - Added a [`modal.Volume.read_only`](/docs/reference/modal.Volume#read_only) method, which will configure a Volume instance to disallow writes:
