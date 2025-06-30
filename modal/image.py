@@ -1227,14 +1227,15 @@ class _Image(_Object, type_prefix="im"):
         poetry_lockfile: Optional[str] = None,  # Path to lockfile. If not provided, uses poetry.lock in same directory.
         *,
         ignore_lockfile: bool = False,  # If set to True, do not use poetry.lock, even when present
-        # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
-        old_installer: bool = False,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         # Selected optional dependency groups to install (See https://python-poetry.org/docs/cli/#install)
         with_: list[str] = [],
         # Selected optional dependency groups to exclude (See https://python-poetry.org/docs/cli/#install)
         without: list[str] = [],
         only: list[str] = [],  # Only install dependency groups specifed in this list.
+        poetry_version: Optional[str] = "latest",  # Version of poetry to install, or None to skip installation
+        # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
+        old_installer: bool = False,
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
@@ -1245,12 +1246,22 @@ class _Image(_Object, type_prefix="im"):
 
         Note that the root project of the poetry project is not installed, only the dependencies.
         For including local python source files see `add_local_python_source`
+
+        Poetry will be installed to the Image (using pip) unless `poetry_version` is set to None.
+        Note that the interpretation of `poetry_version="latest"` depends on the Modal Image Builder
+        version, with versions 2024.10 and earlier limiting poetry to 1.x.
         """
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             context_files = {"/.pyproject.toml": os.path.expanduser(poetry_pyproject_toml)}
 
-            commands = ["FROM base", "RUN python -m pip install poetry~=1.7"]
+            commands = ["FROM base"]
+            if poetry_version is not None:
+                if poetry_version == "latest":
+                    poetry_spec = "~=1.7" if version <= "2024.10" else ""
+                else:
+                    poetry_spec = f"=={poetry_version}"  # TODO: support other versions
+                commands += [f"RUN python -m pip install poetry{poetry_spec}"]
 
             if old_installer:
                 commands += ["RUN poetry config experimental.new-installer false"]
@@ -1281,7 +1292,8 @@ class _Image(_Object, type_prefix="im"):
 
             if only:
                 install_cmd += f" --only {','.join(only)}"
-            install_cmd += " --compile"  # no .pyc compilation slows down cold-start.
+
+            install_cmd += " --compile"  # Always compile .pyc during build; avoid recompiling on every cold start
 
             commands += [
                 "COPY /.pyproject.toml /tmp/poetry/pyproject.toml",
