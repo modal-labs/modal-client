@@ -10,6 +10,7 @@ from typing_extensions import Self
 
 from ._resolver import Resolver
 from ._utils.async_utils import aclosing
+from ._utils.deprecation import deprecation_warning
 from .client import _Client
 from .config import config, logger
 from .exception import ExecutionError, InvalidError
@@ -134,7 +135,15 @@ class _Object:
             )
 
     def clone(self) -> Self:
-        """mdmd:hidden Clone a given hydrated object."""
+        """mdmd:hidden Clone a given hydrated object.
+
+        Note: This is not intended to be public API and has no public use. It will be removed in a future release.
+        """
+        object_class = self.__class__.__name__.strip("_")
+        deprecation_warning(
+            (2025, 6, 30),
+            f"{object_class}.clone() is not intended to be public API and will be removed in a future release.",
+        )
 
         # Object to clone must already be hydrated, otherwise from_loader is more suitable.
         self._validate_is_hydrated()
