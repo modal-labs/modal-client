@@ -745,7 +745,7 @@ def test_uv_sync_no_modal(builder_version, client):
                 pass
 
 
-@pytest.mark.parametrize("kwargs", [{"group": ["group1"]}, {"extra": ["extra1"]}])
+@pytest.mark.parametrize("kwargs", [{"groups": ["group1"]}, {"extra": ["extra1"]}])
 def test_uv_sync_modal_in_group_or_extra(builder_version, client, servicer, kwargs):
     uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_no_modal")
 
@@ -756,8 +756,8 @@ def test_uv_sync_modal_in_group_or_extra(builder_version, client, servicer, kwar
 
     with app.run(client=client):
         layers = get_image_layers(image.object_id, servicer)
-        if "group" in kwargs:
-            group = kwargs["group"]
+        if "groups" in kwargs:
+            group = kwargs["groups"]
             assert any(f"--group={group}" in cmd for cmd in layers[0].dockerfile_commands)
         if "extra" in kwargs:
             extra = kwargs["extra"]
