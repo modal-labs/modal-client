@@ -8,7 +8,7 @@ from unittest import mock
 
 import modal
 from modal.client import Client
-from modal.exception import AuthError
+from modal.exception import AuthError, DeprecationError
 from modal.runner import deploy_app, run_app
 from modal_proto import api_pb2
 
@@ -143,3 +143,24 @@ async def test_mid_build_modifications(servicer, client, tmp_path, monkeypatch, 
     with handler_assertion:
         async with app.run.aio(client=client):
             ...
+
+
+def test_deploy_app_namespace_deprecated(servicer, client):
+    # Test deploy_app with namespace parameter warns
+    app = modal.App("test-app")
+
+    with pytest.warns(
+        DeprecationError,
+        match="The `namespace` parameter for `modal.runner.deploy_app` is deprecated",
+    ):
+        deploy_app(app, name="test-deploy", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, client=client)
+
+    # Test that deploy_app without namespace parameter doesn't warn about namespace
+    import warnings
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        deploy_app(app, name="test-deploy", client=client)
+    # Filter out any unrelated warnings
+    namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
+    assert len(namespace_warnings) == 0

@@ -122,3 +122,22 @@ def warn_on_renamed_autoscaler_settings(func: Callable[P, R]) -> Callable[P, R]:
         return func(*args, **kwargs)
 
     return wrapper
+
+
+def warn_if_passing_namespace(
+    namespace: Any,
+    resource_name: str,
+) -> None:
+    """Issue deprecation warning for namespace parameter if non-None value is passed.
+
+    Args:
+        namespace: The namespace parameter value (may be None or actual value)
+        resource_name: Name of the resource type for the warning message
+    """
+    if namespace is not None:
+        deprecation_warning(
+            (2025, 6, 30),
+            f"The `namespace` parameter for `{resource_name}` is deprecated and will be"
+            " removed in a future release. It is no longer needed, so can be removed"
+            " from your code.",
+        )

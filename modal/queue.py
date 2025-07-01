@@ -14,7 +14,7 @@ from ._object import EPHEMERAL_OBJECT_HEARTBEAT_SLEEP, _get_environment_name, _O
 from ._resolver import Resolver
 from ._serialization import deserialize, serialize
 from ._utils.async_utils import TaskContext, synchronize_api, warn_if_generator_is_not_consumed
-from ._utils.deprecation import deprecation_warning
+from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -148,7 +148,7 @@ class _Queue(_Object, type_prefix="qu"):
     def from_name(
         name: str,
         *,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_Queue":
@@ -164,11 +164,11 @@ class _Queue(_Object, type_prefix="qu"):
         ```
         """
         check_object_name(name, "Queue")
+        warn_if_passing_namespace(namespace, "modal.Queue.from_name")
 
         async def _load(self: _Queue, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.QueueGetOrCreateRequest(
                 deployment_name=name,
-                namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
             )
@@ -180,7 +180,7 @@ class _Queue(_Object, type_prefix="qu"):
     @staticmethod
     async def lookup(
         name: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=None,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -204,8 +204,11 @@ class _Queue(_Object, type_prefix="qu"):
             " It can be replaced with `modal.Queue.from_name`."
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
+        warn_if_passing_namespace(namespace, "modal.Queue.lookup")
         obj = _Queue.from_name(
-            name, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
+            name,
+            environment_name=environment_name,
+            create_if_missing=create_if_missing,
         )
         if client is None:
             client = await _Client.from_env()

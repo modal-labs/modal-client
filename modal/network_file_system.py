@@ -22,7 +22,7 @@ from ._object import (
 from ._resolver import Resolver
 from ._utils.async_utils import TaskContext, aclosing, async_map, sync_or_async_iter, synchronize_api
 from ._utils.blob_utils import LARGE_FILE_LIMIT, blob_iter, blob_upload_file
-from ._utils.deprecation import deprecation_warning
+from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.hash_utils import get_sha256_hex
 from ._utils.name_utils import check_object_name
@@ -92,7 +92,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     def from_name(
         name: str,
         *,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
     ) -> "_NetworkFileSystem":
@@ -111,11 +111,11 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         ```
         """
         check_object_name(name, "NetworkFileSystem")
+        warn_if_passing_namespace(namespace, "modal.NetworkFileSystem.from_name")
 
         async def _load(self: _NetworkFileSystem, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SharedVolumeGetOrCreateRequest(
                 deployment_name=name,
-                namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
             )
@@ -167,7 +167,7 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     @staticmethod
     async def lookup(
         name: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=None,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -191,8 +191,11 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             " It can be replaced with `modal.NetworkFileSystem.from_name`."
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
+        warn_if_passing_namespace(namespace, "modal.NetworkFileSystem.lookup")
         obj = _NetworkFileSystem.from_name(
-            name, namespace=namespace, environment_name=environment_name, create_if_missing=create_if_missing
+            name,
+            environment_name=environment_name,
+            create_if_missing=create_if_missing,
         )
         if client is None:
             client = await _Client.from_env()
@@ -203,17 +206,17 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     @staticmethod
     async def create_deployed(
         deployment_name: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=None,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> str:
         """mdmd:hidden"""
         check_object_name(deployment_name, "NetworkFileSystem")
+        warn_if_passing_namespace(namespace, "modal.NetworkFileSystem.create_deployed")
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.SharedVolumeGetOrCreateRequest(
             deployment_name=deployment_name,
-            namespace=namespace,
             environment_name=_get_environment_name(environment_name),
             object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
         )
