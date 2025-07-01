@@ -1425,3 +1425,22 @@ def test_restrict_modal_access(client, servicer):
             pass
 
     assert ctx.get_requests("FunctionCreate")[0].function.untrusted == False
+
+
+def test_function_namespace_deprecated(servicer, client):
+    # Test from_name with namespace parameter warns
+    with pytest.warns(
+        DeprecationError,
+        match="The `namespace` parameter for `modal.Function.from_name` is deprecated",
+    ):
+        Function.from_name("test-app", "test-function", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
+
+    # Test that from_name without namespace parameter doesn't warn about namespace
+    import warnings
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        Function.from_name("test-app", "test-function")
+    # Filter out any unrelated warnings
+    namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
+    assert len(namespace_warnings) == 0
