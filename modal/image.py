@@ -1293,18 +1293,19 @@ class _Image(_Object, type_prefix="im"):
 
             if requirements:
 
-                def _generate_paths(req: str) -> dict:
-                    basename = os.path.basename(req)
+                def _generate_paths(idx: int, req: str) -> dict:
                     local_path = os.path.expanduser(req)
+                    basename = os.path.basename(req)
+
+                    # `idx` is prefixed to each basename so that each file is uniquely identified.
 
                     return {
-                        "basename": basename,
                         "local_path": local_path,
-                        "context_path": f"./{basename}",
-                        "dest_path": f"{UV_ROOT}/{basename}",
+                        "context_path": f"/.{idx}{basename}",
+                        "dest_path": f"{UV_ROOT}/{idx}/{basename}",
                     }
 
-                requirement_paths = [_generate_paths(req) for req in requirements]
+                requirement_paths = [_generate_paths(idx, req) for idx, req in enumerate(requirements)]
                 requirements_cli = " ".join(f"--requirements {req['dest_path']}" for req in requirement_paths)
                 uv_pip_args.append(requirements_cli)
 

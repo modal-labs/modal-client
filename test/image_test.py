@@ -239,9 +239,12 @@ def test_image_uv_python_packages(builder_version, servicer, client, test_dir):
             for cmd in layers[1].dockerfile_commands
         )
         assert any(
-            "/.uv/uv pip install --python `which python` --compile-bytecode --requirements /.uv/test-requirements.txt"
+            "/.uv/uv pip install --python `which python` --compile-bytecode --requirements /.uv/0/test-requirements.txt"
             in cmd
             for cmd in layers[0].dockerfile_commands
+        )
+        assert any(
+            "COPY /.0test-requirements.txt /.uv/0/test-requirements.txt" in cmd for cmd in layers[0].dockerfile_commands
         )
 
 
