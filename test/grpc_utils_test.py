@@ -2,11 +2,17 @@
 import pytest
 import time
 
+import jwt
 from grpclib import GRPCError, Status
 
 from modal import __version__
 from modal._utils.async_utils import synchronize_api
-from modal._utils.grpc_utils import connect_channel, create_channel, retry_transient_errors
+from modal._utils.grpc_utils import (
+    _decode_jwt,
+    connect_channel,
+    create_channel,
+    retry_transient_errors,
+)
 from modal_proto import api_grpc, api_pb2
 
 from .supports.skip import skip_windows_unix_socket
@@ -122,3 +128,9 @@ async def test_retry_transient_errors(servicer, client):
     assert servicer.blob_create_metadata.get("x-idempotency-key")
     assert servicer.blob_create_metadata.get("x-retry-attempt") == "3"
     assert servicer.blob_create_metadata.get("x-modal-input-plane-region") == "us-east"
+
+
+def test_decode_jwt(servicer, client):
+    payload = {"exp": 1719851532, "something": "else"}
+    token = jwt.encode(payload, "my-secret-key", algorithm="HS256")
+    assert _decode_jwt(token) == payload
