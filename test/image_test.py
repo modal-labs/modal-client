@@ -776,11 +776,11 @@ def test_uv_sync_modal_in_group_or_extra(builder_version, client, servicer, kwar
         layers = get_image_layers(image.object_id, servicer)
         if "groups" in kwargs:
             groups = kwargs["groups"]
-            groups_cli = " ".join(f"--group=={group}" for group in groups)
+            groups_cli = " ".join(f"--group={group}" for group in groups)
             assert any(groups_cli in cmd for cmd in layers[0].dockerfile_commands)
         if "extras" in kwargs:
             extras = kwargs["extras"]
-            extras_cli = " ".join(f"--extra=={extra}" for extra in extras)
+            extras_cli = " ".join(f"--extra={extra}" for extra in extras)
             assert any(extras_cli in cmd for cmd in layers[0].dockerfile_commands)
 
 
