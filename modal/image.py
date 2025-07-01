@@ -1314,7 +1314,7 @@ class _Image(_Object, type_prefix="im"):
                 uv_pip_args.append(requirements_cli)
 
                 commands.extend([f"COPY {req['context_path']} {req['dest_path']}" for req in requirement_paths])
-                context_files.update({req["local_path"]: req["context_path"] for req in requirement_paths})
+                context_files.update({req["context_path"]: req["local_path"] for req in requirement_paths})
 
             uv_pip_args.extend(shlex.quote(p) for p in sorted(pkgs))
             uv_pip_args_joined = " ".join(uv_pip_args)

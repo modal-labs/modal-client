@@ -207,7 +207,8 @@ def test_image_python_packages(builder_version, servicer, client):
             pass
 
 
-def test_image_uv_python_packages(builder_version, servicer, client):
+def test_image_uv_python_packages(builder_version, servicer, client, test_dir):
+    requirements = test_dir / "supports" / "test-requirements.txt"
     app = App()
     image = (
         Image.debian_slim()
@@ -215,26 +216,36 @@ def test_image_uv_python_packages(builder_version, servicer, client):
         .uv_pip_install("numpy", "scipy", extra_index_url="https://xyz", find_links="https://abc?q=123", pre=True)
         .uv_pip_install("flash-attn", extra_options="--no-build-isolation")
         .uv_pip_install("pandas", pre=True)
+        .uv_pip_install(requirements=[requirements])
     )
     app.function(image=image)(dummy)
     with app.run(client=client):
         layers = get_image_layers(image.object_id, servicer)
         assert any(
-            "/.uv/uv pip install --python `which python` 'sklearn[xyz]'" in cmd for cmd in layers[3].dockerfile_commands
+            "/.uv/uv pip install --python `which python` 'sklearn[xyz]'" in cmd for cmd in layers[4].dockerfile_commands
         )
         assert any(
             "/.uv/uv pip install --python `which python` "
             "--find-links 'https://abc?q=123' --extra-index-url https://xyz --prerelease allow numpy scipy" in cmd
-            for cmd in layers[2].dockerfile_commands
+            for cmd in layers[3].dockerfile_commands
         )
         assert any(
             "/.uv/uv pip install --python `which python` --no-build-isolation flash-attn" in cmd
-            for cmd in layers[1].dockerfile_commands
+            for cmd in layers[2].dockerfile_commands
         )
         assert any(
             "/.uv/uv pip install --python `which python` --prerelease allow pandas" in cmd
+            for cmd in layers[1].dockerfile_commands
+        )
+        assert any(
+            "/.uv/uv pip install --python `which python` --requirements /.uv/test-requirements.txt" in cmd
             for cmd in layers[0].dockerfile_commands
         )
+
+
+def test_image_uv_python_requirements_error():
+    with pytest.raises(InvalidError, match="requirements must be None or a list of strings"):
+        Image.debian_slim().uv_pip_install(requirements="requirements.txt")  # type: ignore
 
 
 def test_run_commands_secrets_type_validation(builder_version, servicer, client):
@@ -1536,6 +1547,9 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
     img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
     assert get_hash(img) == "96db07228af97052da00d2f5c1d7f530a6ccc58a6e3b1ecb829dc0de0d7a55b5"
 
+    img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
+    assert get_hash(img) == "dd1123a138d012575cbbadf164aef4b77321e1d250c592b809e2a93b385523ee"
+
 
 @pytest.fixture
 def force_2024_04(modal_config):
@@ -1607,6 +1621,9 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
     img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
     assert get_hash(img) == "0efb6bbfe5740bc68736a2b031673d45e37cafcdb1e9a5bdc884f97e0dcb7e7a"
 
+    img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
+    assert get_hash(img) == "6cfbe36a116ad891bdec08bcf2f1cefbc7168afdc4183c17e7cf283fab9ebebb"
+
 
 @pytest.fixture
 def force_2024_10(modal_config):
@@ -1677,6 +1694,9 @@ def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
 
     img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
     assert get_hash(img) == "84e6ac376505853b4585b6bea7357749bfc48bfd309c02375d47c38937c4b601"
+
+    img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
+    assert get_hash(img) == "abae353bea20a15c7ea9fa8dbbd8450b18b2377899593d0c9c1c6220d86ba520"
 
 
 parallel_app = App()
