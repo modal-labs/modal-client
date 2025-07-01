@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.6.dev5 (2025-07-01)
+
+- Deprecated the `namespace` parameter on `Secret`, `Function`, `Cls`, `Dict`, `Queue`, `Volume`, `NetworkFileSystem`, and `deploy_app`.
+
+
 #### 1.0.6.dev4 (2025-06-30)
 
 - allows setting build-time variables for images created from Dockerfiles
