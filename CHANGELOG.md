@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.6.dev6 (2025-07-01)
+
+- Optimized handling of the `ignore` parameter to `Image.add_local_dir` and similar functions. If you e.g. `image.add_local_dir("dir", ignore=["**/venv"])`, we now prune out any `venv` directories early when evaluating which files to include, avoiding traversing through all files within.
+
+
 #### 1.0.6.dev5 (2025-07-01)
 
 - Deprecated the `namespace` parameter on `Secret`, `Function`, `Cls`, `Dict`, `Queue`, `Volume`, `NetworkFileSystem`, and `deploy_app`.
