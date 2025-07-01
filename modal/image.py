@@ -1336,8 +1336,16 @@ class _Image(_Object, type_prefix="im"):
         - `pyproject.toml` is compatible with the first Python version on the `$PATH`.
         """
 
-        groups = [] if groups is None else groups
-        extras = [] if extras is None else extras
+        def _normalize_items(items, name) -> list[str]:
+            if items is None:
+                return []
+            elif isinstance(items, list):
+                return items
+            else:
+                raise InvalidError(f"{name} must be None or a list of strings")
+
+        groups = _normalize_items(groups, "groups")
+        extras = _normalize_items(extras, "extras")
 
         def _check_pyproject_toml(pyproject_toml: str, version: ImageBuilderVersion):
             if not os.path.exists(pyproject_toml):
