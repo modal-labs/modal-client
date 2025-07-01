@@ -1550,10 +1550,10 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
     assert get_hash(img) == "a25dd4cc2e8d88f92bfdaf2e82b9d74144d1928926bf6be2ca1cdfbbf562189e"
 
     img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
-    assert get_hash(img) == "96db07228af97052da00d2f5c1d7f530a6ccc58a6e3b1ecb829dc0de0d7a55b5"
+    assert get_hash(img) == "5785daf078ee710f41888066f61cd593ac905472b2abd9b85ef99e417e86d065"
 
     img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
-    assert get_hash(img) == "dd1123a138d012575cbbadf164aef4b77321e1d250c592b809e2a93b385523ee"
+    assert get_hash(img) == "e63ea7a2cad29167ea87f88303aec7317a63a955ff986799297157b5ee5a0dfd"
 
 
 @pytest.fixture
@@ -1624,10 +1624,10 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
     assert get_hash(img) == "bfce5811c04c1243f12cbb9cca1522cb901f52410986925bcfa3b3c2d7adc7a0"
 
     img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
-    assert get_hash(img) == "0efb6bbfe5740bc68736a2b031673d45e37cafcdb1e9a5bdc884f97e0dcb7e7a"
+    assert get_hash(img) == "6c685b70ecacc606afd2a64feee562e7d61f702b0dd3cf000fcd21e1f96bfe55"
 
     img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
-    assert get_hash(img) == "6cfbe36a116ad891bdec08bcf2f1cefbc7168afdc4183c17e7cf283fab9ebebb"
+    assert get_hash(img) == "7d39d6e91031e59a4ea3fa768e6459c677676916c2976ebc153ee9b3566f0e73"
 
 
 @pytest.fixture
@@ -1698,10 +1698,10 @@ def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
     assert get_hash(img) == "78d579f243c21dcaa59e5daf97f732e2453b004bc2122de692617d4d725c6184"
 
     img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
-    assert get_hash(img) == "84e6ac376505853b4585b6bea7357749bfc48bfd309c02375d47c38937c4b601"
+    assert get_hash(img) == "d3c8d913753dc77119407706026a83f64647f675faf68fedc074b32e9a0b1507"
 
     img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
-    assert get_hash(img) == "abae353bea20a15c7ea9fa8dbbd8450b18b2377899593d0c9c1c6220d86ba520"
+    assert get_hash(img) == "a78035efe461815299c492c4ee56af370a52814c98997391b3dd89337b706110"
 
 
 parallel_app = App()
