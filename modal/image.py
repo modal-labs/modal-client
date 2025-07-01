@@ -1225,7 +1225,7 @@ class _Image(_Object, type_prefix="im"):
     def uv_pip_install(
         self,
         *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
-        requirements: Optional[list[str]] = None,  # Requirements file -r (--requirements) to uv pip install
+        requirements: Optional[list[str]] = None,  # Passes -r (--requirements) to uv pip install
         find_links: Optional[str] = None,  # Passes -f (--find-links) to uv pip install
         index_url: Optional[str] = None,  # Passes -i (--index-url) to uv pip install
         extra_index_url: Optional[str] = None,  # Passes --extra-index-url to uv pip install
