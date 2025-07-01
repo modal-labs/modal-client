@@ -26,6 +26,7 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
+import modal.exception
 import modal_proto.api_pb2
 from modal.exception import InvalidError, VolumeUploadTimeoutError
 from modal_proto import api_pb2
@@ -421,8 +422,8 @@ class _Volume(_Object, type_prefix="vo"):
 
         try:
             response = await retry_transient_errors(self._client.stub.VolumeGetFile2, req)
-        except GRPCError as exc:
-            raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
+        except modal.exception.NotFoundError as exc:
+            raise FileNotFoundError(exc.args[0])
 
         async def read_block(block_url: str) -> bytes:
             async with ClientSessionRegistry.get_session().get(block_url) as get_response:
@@ -455,8 +456,8 @@ class _Volume(_Object, type_prefix="vo"):
 
         try:
             response = await retry_transient_errors(self._client.stub.VolumeGetFile2, req)
-        except GRPCError as exc:
-            raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
+        except modal.exception.NotFoundError as exc:
+            raise FileNotFoundError(exc.args[0])
 
         # TODO(dflemstr): Sane default limit? Make configurable?
         download_semaphore = asyncio.Semaphore(multiprocessing.cpu_count())

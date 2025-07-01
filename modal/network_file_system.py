@@ -6,7 +6,6 @@ from collections.abc import AsyncIterator
 from pathlib import Path, PurePosixPath
 from typing import Any, BinaryIO, Callable, Optional, Union
 
-from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
 import modal
@@ -122,8 +121,8 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
             try:
                 response = await resolver.client.stub.SharedVolumeGetOrCreate(req)
                 self._hydrate(response.shared_volume_id, resolver.client, None)
-            except GRPCError as exc:
-                if exc.status == Status.NOT_FOUND and exc.message == "App has wrong entity vo":
+            except modal.exception.NotFoundError as exc:
+                if exc.args[0] == "App has wrong entity vo":
                     raise InvalidError(
                         f"Attempted to mount: `{name}` as a NetworkFileSystem " + "which already exists as a Volume"
                     )
@@ -278,8 +277,9 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
         req = api_pb2.SharedVolumeGetFileRequest(shared_volume_id=self.object_id, path=path)
         try:
             response = await retry_transient_errors(self._client.stub.SharedVolumeGetFile, req)
-        except GRPCError as exc:
-            raise FileNotFoundError(exc.message) if exc.status == Status.NOT_FOUND else exc
+        except modal.exception.NotFoundError as exc:
+            raise FileNotFoundError(exc.args[0])
+
         if response.WhichOneof("data_oneof") == "data":
             yield response.data
         else:
