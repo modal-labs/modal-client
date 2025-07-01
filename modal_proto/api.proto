@@ -1508,6 +1508,11 @@ message FunctionCallCancelMaybeInputPlaneRequest {
   bool terminate_containers = 3;
 }
 
+message FunctionCallCancelRequest {
+  string function_call_id = 1;
+  bool terminate_containers = 2;
+}
+
 message FunctionCallGetDataRequest {
   string function_call_id = 1;
   uint64 last_index = 2;
