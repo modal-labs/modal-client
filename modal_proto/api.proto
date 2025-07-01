@@ -1468,11 +1468,6 @@ message FunctionCallCallGraphInfo {
   string module_name = 4;
 }
 
-message FunctionCallCancelRequest {
-  string function_call_id = 1;
-  bool terminate_containers = 2;
-}
-
 message FunctionCallCancelInputPlaneRequest {
   string function_id = 1;
   string function_call_id = 2;
@@ -1482,6 +1477,11 @@ message FunctionCallCancelMaybeInputPlaneRequest {
   string function_id = 1;
   string function_call_id = 2;
   bool terminate_containers = 3;
+}
+
+message FunctionCallCancelRequest {
+  string function_call_id = 1;
+  bool terminate_containers = 2;
 }
 
 message FunctionCallGetDataRequest {
