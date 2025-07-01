@@ -1250,17 +1250,12 @@ class _Image(_Object, type_prefix="im"):
         - Shell supports backticks for substitution
         - `which` command is on the `$PATH`
         """
-
-        def _normalize_items(items, name) -> list[str]:
-            if items is None:
-                return []
-            elif isinstance(items, list):
-                return items
-            else:
-                raise InvalidError(f"{name} must be None or a list of strings")
-
         pkgs = _flatten_str_args("uv_pip_install", "packages", packages)
-        requirements = _normalize_items(requirements, "requirements")
+
+        if requirements is None or isinstance(requirements, list):
+            requirements = requirements or []
+        else:
+            raise InvalidError("requirements must be None or a list of strings")
 
         if not pkgs and not requirements:
             return self
@@ -1282,7 +1277,7 @@ class _Image(_Object, type_prefix="im"):
             # - python is on the PATH and uv is installing into the first python in the PATH
             # - the shell supports backticks for substitution
             # - `which` command is on the PATH
-            uv_pip_args = ["--python `which python`"]
+            uv_pip_args = ["--python `which python`", "--compile-bytecode"]
             context_files = {}
 
             if find_links:

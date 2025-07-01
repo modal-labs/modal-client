@@ -222,23 +222,25 @@ def test_image_uv_python_packages(builder_version, servicer, client, test_dir):
     with app.run(client=client):
         layers = get_image_layers(image.object_id, servicer)
         assert any(
-            "/.uv/uv pip install --python `which python` 'sklearn[xyz]'" in cmd for cmd in layers[4].dockerfile_commands
+            "/.uv/uv pip install --python `which python` --compile-bytecode 'sklearn[xyz]'" in cmd
+            for cmd in layers[4].dockerfile_commands
         )
         assert any(
-            "/.uv/uv pip install --python `which python` "
+            "/.uv/uv pip install --python `which python` --compile-bytecode "
             "--find-links 'https://abc?q=123' --extra-index-url https://xyz --prerelease allow numpy scipy" in cmd
             for cmd in layers[3].dockerfile_commands
         )
         assert any(
-            "/.uv/uv pip install --python `which python` --no-build-isolation flash-attn" in cmd
+            "/.uv/uv pip install --python `which python` --compile-bytecode --no-build-isolation flash-attn" in cmd
             for cmd in layers[2].dockerfile_commands
         )
         assert any(
-            "/.uv/uv pip install --python `which python` --prerelease allow pandas" in cmd
+            "/.uv/uv pip install --python `which python` --compile-bytecode --prerelease allow pandas" in cmd
             for cmd in layers[1].dockerfile_commands
         )
         assert any(
-            "/.uv/uv pip install --python `which python` --requirements /.uv/test-requirements.txt" in cmd
+            "/.uv/uv pip install --python `which python` --compile-bytecode --requirements /.uv/test-requirements.txt"
+            in cmd
             for cmd in layers[0].dockerfile_commands
         )
 
