@@ -199,8 +199,8 @@ class FilePatternMatcher(_AbstractPatternMatcher):
         Returns True if this pattern matcher allows safe early directory pruning.
 
         Directory pruning is safe when matching directories can be skipped entirely
-        without missing any files that should be included. This is only safe when
-        there are no exclusion patterns (patterns starting with '!').
+        without missing any files that should be included. This is for example not
+        safe when we have inverted/negated ignore patterns (e.g. "!**/*.py").
         """
         return not any(pattern.exclusion for pattern in self.patterns)
 
