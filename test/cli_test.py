@@ -1052,7 +1052,7 @@ def test_dict_create_list_delete(servicer, server_url_env, set_env_client):
 
 def test_dict_show_get_clear(servicer, server_url_env, set_env_client):
     # Kind of hacky to be modifying the attributes on the servicer like this
-    key = ("baz-dict", api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, os.environ.get("MODAL_ENVIRONMENT", "main"))
+    key = ("baz-dict", os.environ.get("MODAL_ENVIRONMENT", "main"))
     dict_id = "di-abc123"
     servicer.deployed_dicts[key] = dict_id
     servicer.dicts[dict_id] = {dumps("a"): dumps(123), dumps("b"): dumps("blah")}
@@ -1098,7 +1098,7 @@ def test_queue_create_list_delete(servicer, server_url_env, set_env_client):
 def test_queue_peek_len_clear(servicer, server_url_env, set_env_client):
     # Kind of hacky to be modifying the attributes on the servicer like this
     name = "queue-who"
-    key = (name, api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, os.environ.get("MODAL_ENVIRONMENT", "main"))
+    key = (name, os.environ.get("MODAL_ENVIRONMENT", "main"))
     queue_id = "qu-abc123"
     servicer.deployed_queues[key] = queue_id
     servicer.queue = {b"": [dumps("a"), dumps("b"), dumps("c")], b"alt": [dumps("x"), dumps("y")]}

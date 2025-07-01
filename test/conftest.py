@@ -846,7 +846,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def DictGetOrCreate(self, stream):
         request: api_pb2.DictGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.namespace, request.environment_name)
+        k = (request.deployment_name, request.environment_name)
         if k in self.deployed_dicts:
             dict_id = self.deployed_dicts[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
@@ -888,7 +888,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def DictList(self, stream):
         dicts = [
             api_pb2.DictListResponse.DictInfo(name=name, created_at=1)
-            for name, _, _ in self.deployed_dicts
+            for name, _ in self.deployed_dicts
             if name in self.deployed_apps
         ]
         await stream.send_message(api_pb2.DictListResponse(dicts=dicts))
@@ -1492,7 +1492,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def QueueGetOrCreate(self, stream):
         request: api_pb2.QueueGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.namespace, request.environment_name)
+        k = (request.deployment_name, request.environment_name)
         if k in self.deployed_queues:
             queue_id = self.deployed_queues[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
@@ -1549,7 +1549,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # So there is a mismatch and I am not implementing a mock for the num_partitions / total_size
         queues = [
             api_pb2.QueueListResponse.QueueInfo(name=name, created_at=1)
-            for name, _, _ in self.deployed_queues
+            for name, _ in self.deployed_queues
             if name in self.deployed_apps
         ]
         await stream.send_message(api_pb2.QueueListResponse(queues=queues))
@@ -1710,7 +1710,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SecretGetOrCreate(self, stream):
         request: api_pb2.SecretGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.namespace, request.environment_name)
+        k = (request.deployment_name, request.environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
             secret_id = "st-" + str(len(self.secrets))
             self.secrets[secret_id] = request.env_dict
@@ -1740,7 +1740,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SecretList(self, stream):
         await stream.recv_message()
         # Note: being lazy and not implementing the env filtering
-        items = [api_pb2.SecretListItem(label=name) for name, _, env in self.deployed_secrets]
+        items = [api_pb2.SecretListItem(label=name) for name, env in self.deployed_secrets]
         await stream.send_message(api_pb2.SecretListResponse(items=items))
 
     ### Snapshot
@@ -1759,7 +1759,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SharedVolumeGetOrCreate(self, stream):
         request: api_pb2.SharedVolumeGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.namespace, request.environment_name)
+        k = (request.deployment_name, request.environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_nfss:
                 if k in self.deployed_volumes:
@@ -1794,7 +1794,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SharedVolumeList(self, stream):
         req = await stream.recv_message()
         items = []
-        for (name, _, env_name), volume_id in self.deployed_nfss.items():
+        for (name, env_name), volume_id in self.deployed_nfss.items():
             if env_name != req.environment_name:
                 continue
             items.append(api_pb2.SharedVolumeListItem(label=name, shared_volume_id=volume_id, created_at=1))
@@ -1870,7 +1870,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def VolumeGetOrCreate(self, stream):
         request: api_pb2.VolumeGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.namespace, request.environment_name)
+        k = (request.deployment_name, request.environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_volumes:
                 raise GRPCError(Status.NOT_FOUND, f"Volume {k} not found")
@@ -1900,7 +1900,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def VolumeList(self, stream):
         req = await stream.recv_message()
         items = []
-        for (name, _, env_name), volume_id in self.deployed_volumes.items():
+        for (name, env_name), volume_id in self.deployed_volumes.items():
             if env_name != req.environment_name:
                 continue
             items.append(api_pb2.VolumeListItem(label=name, volume_id=volume_id, created_at=1))

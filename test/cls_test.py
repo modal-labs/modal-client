@@ -1346,3 +1346,19 @@ def test_parameter_inheritance(client):
         with pytest.raises(TypeError):
             ChangingParameterDefinitions(a=10).update_autoscaler()  # type: ignore
         ChangingParameterDefinitions(a="10").update_autoscaler()  # type: ignore
+
+
+def test_cls_namespace_deprecated(servicer, client):
+    # Test from_name with namespace parameter warns
+    with pytest.warns(DeprecationError, match="The `namespace` parameter for `modal.Cls.from_name` is deprecated"):
+        Cls.from_name("test-app", "test-cls", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
+
+    # Test that from_name without namespace parameter doesn't warn about namespace
+    import warnings
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        Cls.from_name("test-app", "test-cls")
+    # Filter out any unrelated warnings
+    namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
+    assert len(namespace_warnings) == 0
