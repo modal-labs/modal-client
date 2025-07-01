@@ -722,10 +722,10 @@ def test_uv_sync_error_invalid_kwargs(servicer, client):
     uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_project")
 
     with pytest.raises(InvalidError, match="groups must be None or a list of strings"):
-        Image.debian_slim().uv_sync(uv_project_path, groups="xyz")
+        Image.debian_slim().uv_sync(uv_project_path, groups="xyz")  # type: ignore
 
     with pytest.raises(InvalidError, match="extras must be None or a list of strings"):
-        Image.debian_slim().uv_sync(uv_project_path, extras="xyz")
+        Image.debian_slim().uv_sync(uv_project_path, extras="xyz")  # type: ignore
 
 
 def test_uv_sync_just_pyproject(builder_version, servicer, client):
