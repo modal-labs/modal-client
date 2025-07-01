@@ -38,12 +38,15 @@ if TYPE_CHECKING:
 # Max size for function inputs and outputs.
 MAX_OBJECT_SIZE_BYTES = 2 * 1024 * 1024  # 2 MiB
 
+# Max size for async function inputs and outputs.
+MAX_ASYNC_OBJECT_SIZE_BYTES = 8 * 1024  # 8 KiB
+
 #  If a file is LARGE_FILE_LIMIT bytes or larger, it's uploaded to blob store (s3) instead of going through grpc
 #  It will also make sure to chunk the hash calculation to avoid reading the entire file into memory
 LARGE_FILE_LIMIT = 4 * 1024 * 1024  # 4 MiB
 
 # Max parallelism during map calls
-BLOB_MAX_PARALLELISM = 10
+BLOB_MAX_PARALLELISM = 20
 
 # read ~16MiB chunks by default
 DEFAULT_SEGMENT_CHUNK_SIZE = 2**24
@@ -272,7 +275,9 @@ async def blob_upload(payload: bytes, stub: ModalClientModal) -> str:
     blob_id = await _blob_upload(upload_hashes, payload, stub)
     dur_s = max(time.time() - t0, 0.001)  # avoid division by zero
     throughput_mib_s = (size_mib) / dur_s
-    logger.debug(f"Uploaded large blob of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s). {blob_id}")
+    logger.debug(
+        f"Uploaded large blob of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s, total {dur_s:.2f}s). {blob_id}"
+    )
     return blob_id
 
 
@@ -311,7 +316,9 @@ async def blob_download(blob_id: str, stub: ModalClientModal) -> bytes:
     size_mib = len(data) / 1024 / 1024
     dur_s = max(time.time() - t0, 0.001)  # avoid division by zero
     throughput_mib_s = size_mib / dur_s
-    logger.debug(f"Downloaded large blob {blob_id} of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s)")
+    logger.debug(
+        f"Downloaded large blob {blob_id} of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s, total {dur_s:.2f}s)"
+    )
     return data
 
 

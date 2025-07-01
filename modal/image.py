@@ -416,7 +416,6 @@ class _Image(_Object, type_prefix="im"):
         self.force_build = False
 
     def _initialize_from_other(self, other: "_Image"):
-        # used by .clone()
         self.inside_exceptions = other.inside_exceptions
         self.force_build = other.force_build
         self._serve_mounts = other._serve_mounts
@@ -497,6 +496,7 @@ class _Image(_Object, type_prefix="im"):
         image_registry_config: Optional[_ImageRegistryConfig] = None,
         context_mount_function: Optional[Callable[[], Optional[_Mount]]] = None,
         force_build: bool = False,
+        build_args: dict[str, str] = {},
         # For internal use only.
         _namespace: "api_pb2.DeploymentNamespace.ValueType" = api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
         _do_assert_no_mount_layers: bool = True,
@@ -613,6 +613,7 @@ class _Image(_Object, type_prefix="im"):
                 runtime=config.get("function_runtime"),
                 runtime_debug=config.get("function_runtime_debug"),
                 build_function=_build_function,
+                build_args=build_args,
             )
 
             req = api_pb2.ImageGetOrCreateRequest(
@@ -1305,14 +1306,15 @@ class _Image(_Object, type_prefix="im"):
         poetry_lockfile: Optional[str] = None,  # Path to lockfile. If not provided, uses poetry.lock in same directory.
         *,
         ignore_lockfile: bool = False,  # If set to True, do not use poetry.lock, even when present
-        # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
-        old_installer: bool = False,
         force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         # Selected optional dependency groups to install (See https://python-poetry.org/docs/cli/#install)
         with_: list[str] = [],
         # Selected optional dependency groups to exclude (See https://python-poetry.org/docs/cli/#install)
         without: list[str] = [],
         only: list[str] = [],  # Only install dependency groups specifed in this list.
+        poetry_version: Optional[str] = "latest",  # Version of poetry to install, or None to skip installation
+        # If set to True, use old installer. See https://github.com/python-poetry/poetry/issues/3336
+        old_installer: bool = False,
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
     ) -> "_Image":
@@ -1323,12 +1325,22 @@ class _Image(_Object, type_prefix="im"):
 
         Note that the root project of the poetry project is not installed, only the dependencies.
         For including local python source files see `add_local_python_source`
+
+        Poetry will be installed to the Image (using pip) unless `poetry_version` is set to None.
+        Note that the interpretation of `poetry_version="latest"` depends on the Modal Image Builder
+        version, with versions 2024.10 and earlier limiting poetry to 1.x.
         """
 
         def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
             context_files = {"/.pyproject.toml": os.path.expanduser(poetry_pyproject_toml)}
 
-            commands = ["FROM base", "RUN python -m pip install poetry~=1.7"]
+            commands = ["FROM base"]
+            if poetry_version is not None:
+                if poetry_version == "latest":
+                    poetry_spec = "~=1.7" if version <= "2024.10" else ""
+                else:
+                    poetry_spec = f"=={poetry_version}"  # TODO: support other versions
+                commands += [f"RUN python -m pip install poetry{poetry_spec}"]
 
             if old_installer:
                 commands += ["RUN poetry config experimental.new-installer false"]
@@ -1359,7 +1371,8 @@ class _Image(_Object, type_prefix="im"):
 
             if only:
                 install_cmd += f" --only {','.join(only)}"
-            install_cmd += " --compile"  # no .pyc compilation slows down cold-start.
+
+            install_cmd += " --compile"  # Always compile .pyc during build; avoid recompiling on every cold start
 
             commands += [
                 "COPY /.pyproject.toml /tmp/poetry/pyproject.toml",
@@ -1794,6 +1807,7 @@ class _Image(_Object, type_prefix="im"):
         secrets: Sequence[_Secret] = [],
         gpu: GPU_T = None,
         add_python: Optional[str] = None,
+        build_args: dict[str, str] = {},
         ignore: Union[Sequence[str], Callable[[Path], bool]] = AUTO_DOCKERIGNORE,
     ) -> "_Image":
         """Build a Modal image from a local Dockerfile.
@@ -1867,6 +1881,7 @@ class _Image(_Object, type_prefix="im"):
             ),
             gpu_config=gpu_config,
             secrets=secrets,
+            build_args=build_args,
         )
 
         # --- Now add in the modal dependencies, and, optionally a Python distribution

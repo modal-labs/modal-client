@@ -301,7 +301,7 @@ message AppCreateResponse {
 
 message AppDeployRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
+  reserved 2; // namespace
   string name = 3;
   string object_entity = 4;
   AppDeployVisibility visibility = 5;
@@ -334,7 +334,7 @@ message AppDeploymentHistoryResponse {
 }
 
 message AppGetByDeploymentNameRequest {
-  DeploymentNamespace namespace = 1;
+  reserved 1; // removed namespace
   string name = 2;
   string environment_name = 4;
 }
@@ -360,6 +360,7 @@ message AppGetLogsRequest {
   string task_id = 7;
   string function_call_id = 9;
   FileDescriptor file_descriptor = 8;
+  string sandbox_id = 10;
 }
 
 message AppGetObjectsItem {
@@ -701,7 +702,7 @@ message ClassCreateResponse {
 message ClassGetRequest {
   string app_name = 1;
   string object_tag = 2;
-  DeploymentNamespace namespace = 3;
+  reserved 3; // removed namespace
   string environment_name = 4;
 
   reserved 8; // lookup_published
@@ -1075,7 +1076,7 @@ message DictEntry {
 
 message DictGetOrCreateRequest {
   string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
+  reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
   repeated DictEntry data = 5;
@@ -1246,8 +1247,21 @@ message FlashContainerDeregisterRequest {
   string service_name = 1;
 }
 
+message FlashContainerListRequest {
+  string function_id = 1;
+}
+
+message FlashContainerListResponse {
+  message Container {
+    string task_id = 1;
+    string host = 2;
+    uint32 port = 3;
+  }
+  repeated Container containers = 1;
+}
+
 message FlashContainerRegisterRequest {
-  string service_name = 1;
+  string service_name = 1;  // not used?
   uint32 priority = 2;
   uint32 weight = 3;
   string host = 4;
@@ -1666,7 +1680,7 @@ message FunctionGetOutputsResponse {
 message FunctionGetRequest {
   string app_name = 1;
   string object_tag = 2;
-  DeploymentNamespace namespace = 3;
+  reserved 3; // removed namespace
   string environment_name = 4;
 }
 
@@ -1920,6 +1934,9 @@ message Image {
   bool runtime_debug = 20;
 
   BuildFunction build_function = 21;
+
+  // Build arguments for the image (--build-arg) for ARG substitution in Dockerfile.
+  map<string, string> build_args = 22;
 }
 
 message ImageContextFile {
@@ -2236,7 +2253,7 @@ message ProxyDeleteRequest {
 
 message ProxyGetOrCreateRequest {
   string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
+  reserved 2; // namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;  // must be UNSPECIFIED
 }
@@ -2289,7 +2306,7 @@ message QueueDeleteRequest {
 
 message QueueGetOrCreateRequest {
   string deployment_name = 1;
-  DeploymentNamespace namespace = 2;
+  reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
 }
@@ -2685,7 +2702,7 @@ message SecretDeleteRequest {
 
 message SecretGetOrCreateRequest {
   string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
+  reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;  // Not used atm
   map<string, string> env_dict = 5;
@@ -2732,7 +2749,7 @@ message SharedVolumeGetFileResponse {
 
 message SharedVolumeGetOrCreateRequest {
   string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
+  reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
   string app_id = 5;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
@@ -3012,7 +3029,7 @@ message VolumeGetFileResponse {
 
 message VolumeGetOrCreateRequest {
   string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
+  reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
   string app_id = 5;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
@@ -3291,6 +3308,7 @@ service ModalClient {
 
   // Modal Flash (experimental)
   rpc FlashContainerDeregister(FlashContainerDeregisterRequest) returns (google.protobuf.Empty);
+  rpc FlashContainerList(FlashContainerListRequest) returns (FlashContainerListResponse);
   rpc FlashContainerRegister(FlashContainerRegisterRequest) returns (FlashContainerRegisterResponse);
 
   // Functions

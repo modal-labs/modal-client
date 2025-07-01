@@ -10,7 +10,7 @@ from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._runtime.execution_context import is_local
 from ._utils.async_utils import synchronize_api
-from ._utils.deprecation import deprecation_warning
+from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
@@ -165,7 +165,7 @@ class _Secret(_Object, type_prefix="st"):
     def from_name(
         name: str,
         *,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
         required_keys: list[
             str
@@ -185,11 +185,11 @@ class _Secret(_Object, type_prefix="st"):
            ...
         ```
         """
+        warn_if_passing_namespace(namespace, "modal.Secret.from_name")
 
         async def _load(self: _Secret, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.SecretGetOrCreateRequest(
                 deployment_name=name,
-                namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
                 required_keys=required_keys,
             )
@@ -207,7 +207,7 @@ class _Secret(_Object, type_prefix="st"):
     @staticmethod
     async def lookup(
         name: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=None,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         required_keys: list[str] = [],
@@ -219,8 +219,13 @@ class _Secret(_Object, type_prefix="st"):
             " It can be replaced with `modal.Secret.from_name`."
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
+
+        warn_if_passing_namespace(namespace, "modal.Secret.lookup")
+
         obj = _Secret.from_name(
-            name, namespace=namespace, environment_name=environment_name, required_keys=required_keys
+            name,
+            environment_name=environment_name,
+            required_keys=required_keys,
         )
         if client is None:
             client = await _Client.from_env()
@@ -232,12 +237,14 @@ class _Secret(_Object, type_prefix="st"):
     async def create_deployed(
         deployment_name: str,
         env_dict: dict[str, str],
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=None,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         overwrite: bool = False,
     ) -> str:
         """mdmd:hidden"""
+        warn_if_passing_namespace(namespace, "modal.Secret.create_deployed")
+
         check_object_name(deployment_name, "Secret")
         if client is None:
             client = await _Client.from_env()
@@ -247,7 +254,6 @@ class _Secret(_Object, type_prefix="st"):
             object_creation_type = api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS
         request = api_pb2.SecretGetOrCreateRequest(
             deployment_name=deployment_name,
-            namespace=namespace,
             environment_name=_get_environment_name(environment_name),
             object_creation_type=object_creation_type,
             env_dict=env_dict,

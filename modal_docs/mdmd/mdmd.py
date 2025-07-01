@@ -5,18 +5,20 @@ import inspect
 import warnings
 from enum import Enum, EnumMeta
 from types import ModuleType
-from typing import Callable
+from typing import Callable, Optional
 
 import synchronicity.synchronizer
 
 from .signatures import get_signature
 
 
-def format_docstring(docstring: str):
+def format_docstring(docstring: Optional[str]) -> str:
     if docstring is None:
         docstring = ""
     else:
         docstring = inspect.cleandoc(docstring)
+
+    docstring = "\n".join(l for l in docstring.split("\n") if "mdmd:line-hidden" not in l)
 
     if docstring and not docstring.endswith("\n"):
         docstring += "\n"
@@ -24,8 +26,9 @@ def format_docstring(docstring: str):
     return docstring
 
 
-def function_str(name: str, func):
+def function_str(name: str, func) -> str:
     signature = get_signature(name, func)
+    signature = "\n".join(l for l in signature.split("\n") if "mdmd:line-hidden" not in l)
     decl = f"""```python
 {signature}
 ```\n\n"""

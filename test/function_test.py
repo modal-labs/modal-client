@@ -545,13 +545,31 @@ def test_map_exceptions(client, servicer):
             list(custom_function_modal.map(range(6)))
         assert "bad" in str(excinfo.value)
 
-        res = list(custom_function_modal.map(range(6), return_exceptions=True))
+        with pytest.warns(DeprecationError) as warnings:
+            res = list(custom_function_modal.map(range(6), return_exceptions=True))
+            assert len(warnings) == 1
+            assert "f.map(..., return_exceptions=True, wrap_returned_exceptions=False)" in str(warnings[0].message)
         assert res[:4] == [0, 1, 4, 9] and res[5] == 25
         assert type(res[4]) is UserCodeException and "bad" in str(res[4])
 
         res = list(custom_function_modal.map(range(6), return_exceptions=True, wrap_returned_exceptions=False))
         assert res[:4] == [0, 1, 4, 9] and res[5] == 25
         assert type(res[4]) is CustomException and "bad" in str(res[4])
+
+
+@pytest.mark.asyncio
+async def test_async_map_wrapped_exception_warning(client, servicer):
+    app = App()
+
+    servicer.function_body(custom_exception_function)
+    custom_function_modal = app.function()(custom_exception_function)
+
+    with app.run(client=client):
+        with pytest.warns(DeprecationError) as warnings:
+            async for _ in custom_function_modal.map.aio(range(6), return_exceptions=True):
+                pass
+            assert len(warnings) == 1
+            assert "f.map.aio(..., return_exceptions=True, wrap_returned_exceptions=False)" in str(warnings[0].message)
 
 
 def import_failure():
@@ -1407,3 +1425,22 @@ def test_restrict_modal_access(client, servicer):
             pass
 
     assert ctx.get_requests("FunctionCreate")[0].function.untrusted == False
+
+
+def test_function_namespace_deprecated(servicer, client):
+    # Test from_name with namespace parameter warns
+    with pytest.warns(
+        DeprecationError,
+        match="The `namespace` parameter for `modal.Function.from_name` is deprecated",
+    ):
+        Function.from_name("test-app", "test-function", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
+
+    # Test that from_name without namespace parameter doesn't warn about namespace
+    import warnings
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        Function.from_name("test-app", "test-function")
+    # Filter out any unrelated warnings
+    namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
+    assert len(namespace_warnings) == 0

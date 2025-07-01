@@ -123,7 +123,7 @@ jobs:
         run: pip install -e .
 
       - name: Run client tests
-        run: pytest -v
+        run: inv test
 
       - name: Run docstring tests
         if: github.event.pull_request.head.repo.fork == false

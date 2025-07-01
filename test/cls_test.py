@@ -178,7 +178,12 @@ def test_class_multiple_dynamic_parameterization_methods(client, servicer):
     assert res == 4
 
 
-def test_class_multiple_with_options_calls(client, servicer):
+@pytest.mark.parametrize("read_only", [True, False])
+def test_class_multiple_with_options_calls(client, servicer, read_only):
+    weights_volume = Volume.from_name("weights", create_if_missing=True)
+
+    if read_only:
+        weights_volume = weights_volume.read_only()
     foo = (
         Foo.with_options(  # type: ignore
             gpu="A10:4",
@@ -191,7 +196,7 @@ def test_class_multiple_with_options_calls(client, servicer):
             gpu="A100",
             memory=2048,
             max_containers=10,
-            volumes={"/weights": Volume.from_name("weights", create_if_missing=True)},
+            volumes={"/weights": weights_volume},
         )()  # type: ignore
     )
 
@@ -208,6 +213,7 @@ def test_class_multiple_with_options_calls(client, servicer):
             assert function_bind_params.function_options.concurrency_limit == 10
             assert len(function_bind_params.function_options.volume_mounts) == 1
             assert function_bind_params.function_options.volume_mounts[0].mount_path == "/weights"
+            assert function_bind_params.function_options.volume_mounts[0].read_only == read_only
 
 
 def test_with_options_from_name(servicer):
@@ -1340,3 +1346,19 @@ def test_parameter_inheritance(client):
         with pytest.raises(TypeError):
             ChangingParameterDefinitions(a=10).update_autoscaler()  # type: ignore
         ChangingParameterDefinitions(a="10").update_autoscaler()  # type: ignore
+
+
+def test_cls_namespace_deprecated(servicer, client):
+    # Test from_name with namespace parameter warns
+    with pytest.warns(DeprecationError, match="The `namespace` parameter for `modal.Cls.from_name` is deprecated"):
+        Cls.from_name("test-app", "test-cls", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
+
+    # Test that from_name without namespace parameter doesn't warn about namespace
+    import warnings
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        Cls.from_name("test-app", "test-cls")
+    # Filter out any unrelated warnings
+    namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
+    assert len(namespace_warnings) == 0

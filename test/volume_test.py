@@ -13,7 +13,7 @@ from unittest import mock
 
 import modal
 from modal._utils.blob_utils import BLOCK_SIZE
-from modal.exception import InvalidError, NotFoundError, VolumeUploadTimeoutError
+from modal.exception import DeprecationError, InvalidError, NotFoundError, VolumeUploadTimeoutError
 from modal.volume import _open_files_error_annotation
 from modal_proto import api_pb2
 
@@ -22,18 +22,26 @@ VERSIONS = [
     api_pb2.VOLUME_FS_VERSION_V2,
 ]
 
+
 def dummy():
     pass
 
+
+@pytest.mark.parametrize("read_only", [True, False])
 @pytest.mark.parametrize("version", VERSIONS)
-def test_volume_mount(client, servicer, version):
+def test_volume_mount(client, servicer, version, read_only):
     app = modal.App()
+
     vol = modal.Volume.from_name("xyz", create_if_missing=True, version=version)
+    if read_only:
+        vol = vol.read_only()
 
     _ = app.function(volumes={"/root/foo": vol})(dummy)
 
-    with app.run(client=client):
-        pass
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            req = ctx.pop_request("FunctionCreate")
+            assert req.function.volume_mounts[0].read_only == read_only
 
 
 def test_volume_bad_paths():
@@ -48,6 +56,20 @@ def test_volume_bad_paths():
 
     with pytest.raises(InvalidError):
         app.function(volumes={"/tmp/": vol})(dummy)
+
+
+def test_volume_mount_read_only_error(client):
+    read_only_vol = modal.Volume.from_name("xyz", create_if_missing=True).read_only()
+    read_only_vol_hydrated = read_only_vol.hydrate(client)
+
+    with pytest.raises(InvalidError):
+        read_only_vol_hydrated.batch_upload()
+
+    with pytest.raises(InvalidError):
+        read_only_vol_hydrated.remove_file("file1.txt")
+
+    with pytest.raises(InvalidError):
+        read_only_vol_hydrated.copy_files(["file1.txt"], "bar2")
 
 
 def test_volume_duplicate_mount():
@@ -517,3 +539,22 @@ def unset_main_thread_event_loop():
 def test_lock_is_py39_safe(set_env_client):
     vol = modal.Volume.from_name("my_vol", create_if_missing=True)
     vol.reload()
+
+
+def test_volume_namespace_deprecated(servicer, client):
+    # Test from_name with namespace parameter warns
+    with pytest.warns(
+        DeprecationError,
+        match="The `namespace` parameter for `modal.Volume.from_name` is deprecated",
+    ):
+        modal.Volume.from_name("test-volume", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
+
+    # Test that from_name without namespace parameter doesn't warn about namespace
+    import warnings
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        modal.Volume.from_name("test-volume")
+    # Filter out any unrelated warnings
+    namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
+    assert len(namespace_warnings) == 0
