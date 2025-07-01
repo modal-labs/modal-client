@@ -753,7 +753,7 @@ def test_uv_sync_no_modal(builder_version, client):
                 pass
 
 
-@pytest.mark.parametrize("kwargs", [{"groups": ["group1"]}, {"extra": ["extra1"]}])
+@pytest.mark.parametrize("kwargs", [{"groups": ["group1"]}, {"extras": ["extra1"]}])
 def test_uv_sync_modal_in_group_or_extra(builder_version, client, servicer, kwargs):
     uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_no_modal")
 
@@ -767,9 +767,9 @@ def test_uv_sync_modal_in_group_or_extra(builder_version, client, servicer, kwar
         if "groups" in kwargs:
             group = kwargs["groups"]
             assert any(f"--group={group}" in cmd for cmd in layers[0].dockerfile_commands)
-        if "extra" in kwargs:
-            extra = kwargs["extra"]
-            assert any(f"--extra={extra}" in cmd for cmd in layers[0].dockerfile_commands)
+        if "extras" in kwargs:
+            extras = kwargs["extras"]
+            assert any(f"--extra={extras}" in cmd for cmd in layers[0].dockerfile_commands)
 
 
 def test_uv_lock_workspaces_error(builder_version, client):
