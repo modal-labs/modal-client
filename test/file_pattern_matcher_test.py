@@ -352,3 +352,22 @@ def test_from_file(as_type):
     lff = FilePatternMatcher.from_file(as_type(ignore_file))
     assert lff(Path("top/data.txt"))
     assert not lff(Path("top/data.py"))
+
+
+@pytest.mark.parametrize(
+    "patterns,expected",
+    [
+        (("*.tmp", "node_modules", "dist/**"), True),
+        (("**", "!*.py"), False),
+        (("node_modules", "!node_modules/keep.txt"), False),
+        ((), True),
+    ],
+)
+def test_can_prune_directories(patterns, expected):
+    matcher = FilePatternMatcher(*patterns)
+    assert matcher.can_prune_directories() is expected
+
+
+def test_can_prune_directories_negated():
+    matcher_negated = ~FilePatternMatcher("*.py")
+    assert matcher_negated.can_prune_directories() is False
