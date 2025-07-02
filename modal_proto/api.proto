@@ -1017,9 +1017,7 @@ message ContainerReloadVolumesRequest {
   string task_id = 1;
 }
 
-message ContainerReloadVolumesResponse {
-  GenericResult result = 1;
-}
+message ContainerReloadVolumesResponse { }
 
 message ContainerStopRequest {
   string task_id = 1 [ (modal.options.audit_target_attr) = true ];
