@@ -359,19 +359,23 @@ class grpc_error_converter:
 
     def __exit__(self, exc_type, exc, traceback) -> bool:
         # skip all internal frames from grpclib
+        use_full_traceback = config.get("traceback")
         with suppress_tb_frames(1):
             if isinstance(exc, GRPCError):
                 if exc.status == Status.NOT_FOUND:
-                    raise NotFoundError(exc.message) from None
+                    if use_full_traceback:
+                        raise NotFoundError(exc.message)
+                    else:
+                        raise NotFoundError(exc.message) from None  # from None to skip the grpc-internal cause
 
-                if not config.get("traceback"):
+                if not use_full_traceback:
                     # just include the frame in grpclib that actually raises the GRPCError
                     tb = exc.__traceback__
                     while tb.tb_next:
                         tb = tb.tb_next
                     exc.with_traceback(tb)
-
-                raise exc from None
+                    raise exc from None  # from None to skip the grpc-internal cause
+                raise exc
 
         return False
 
@@ -447,6 +451,5 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
             logger.debug(f"refreshing client after snapshot for {self.name.rsplit('/', 1)[1]}")
             self.client = await _Client.from_env()
         self.wrapped_method.channel = await self.client._get_channel(self.server_url)
-        with suppress_tb_frames(1), grpc_error_converter():
-            async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
-                yield response
+        async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
+            yield response
