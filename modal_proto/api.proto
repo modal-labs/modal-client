@@ -1790,6 +1790,8 @@ message FunctionPrecreateResponse {
 message FunctionPutInputsItem {
   int32 idx = 1;
   FunctionInput input = 2;
+  bool r2_failed = 3;
+  uint64 r2_latency_ms = 4;
 }
 
 message FunctionPutInputsRequest {
