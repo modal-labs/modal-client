@@ -1013,6 +1013,12 @@ message ContainerLogRequest {
   repeated TaskLogs logs = 3;
 }
 
+message ContainerReloadVolumesRequest {
+  string task_id = 1;
+}
+
+message ContainerReloadVolumesResponse { }
+
 message ContainerStopRequest {
   string task_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
@@ -3281,6 +3287,7 @@ service ModalClient {
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (ContainerHeartbeatResponse);
   rpc ContainerHello(google.protobuf.Empty) returns (google.protobuf.Empty);
   rpc ContainerLog(ContainerLogRequest) returns (google.protobuf.Empty);
+  rpc ContainerReloadVolumes(ContainerReloadVolumesRequest) returns (ContainerReloadVolumesResponse);
   rpc ContainerStop(ContainerStopRequest) returns (ContainerStopResponse);
 
   // Dicts
