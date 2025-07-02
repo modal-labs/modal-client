@@ -731,7 +731,7 @@ class _App:
                         dedent(
                             """
                             The `@app.function` decorator must apply to functions in global scope,
-                            unless `serialize=True` is set.
+                            unless `serialized=True` is set.
                             If trying to apply additional decorators, they may need to use `functools.wraps`.
                             """
                         )

@@ -50,7 +50,7 @@ from ._utils.blob_utils import (
     get_file_upload_spec_from_fileobj,
     get_file_upload_spec_from_path,
 )
-from ._utils.deprecation import deprecation_warning
+from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.http_utils import ClientSessionRegistry
 from ._utils.name_utils import check_object_name
@@ -136,6 +136,34 @@ class _Volume(_Object, type_prefix="vo"):
 
     _lock: Optional[asyncio.Lock] = None
     _metadata: "typing.Optional[api_pb2.VolumeMetadata]"
+    _read_only: bool = False
+
+    def read_only(self) -> "_Volume":
+        """Configure Volume to mount as read-only.
+
+        **Example**
+
+        ```python
+        import modal
+
+        volume = modal.Volume.from_name("my-volume", create_if_missing=True)
+
+        @app.function(volumes={"/mnt/items": volume.read_only()})
+        def f():
+            with open("/mnt/items/my-file.txt") as f:
+                return f.read()
+        ```
+
+        The Volume is mounted as a read-only volume in a function. Any file system write operation into the
+        mounted volume will result in an error.
+        """
+
+        async def _load(new_volume: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
+            new_volume._initialize_from_other(self)
+            new_volume._read_only = True
+
+        obj = _Volume._from_loader(_load, "Volume()", hydrate_lazily=True, deps=lambda: [self])
+        return obj
 
     async def _get_lock(self):
         # To (mostly*) prevent multiple concurrent operations on the same volume, which can cause problems under
@@ -155,16 +183,16 @@ class _Volume(_Object, type_prefix="vo"):
     def from_name(
         name: str,
         *,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> "_Volume":
         """Reference a Volume by name, creating if necessary.
 
-        In contrast to `modal.Volume.lookup`, this is a lazy method
-        that defers hydrating the local object with metadata from
-        Modal servers until the first time is is actually used.
+        This is a lazy method that defers hydrating the local
+        object with metadata from Modal servers until the first
+        time is is actually used.
 
         ```python
         vol = modal.Volume.from_name("my-volume", create_if_missing=True)
@@ -178,11 +206,11 @@ class _Volume(_Object, type_prefix="vo"):
         ```
         """
         check_object_name(name, "Volume")
+        warn_if_passing_namespace(namespace, "modal.Volume.from_name")
 
         async def _load(self: _Volume, resolver: Resolver, existing_object_id: Optional[str]):
             req = api_pb2.VolumeGetOrCreateRequest(
                 deployment_name=name,
-                namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver),
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
                 version=version,
@@ -248,7 +276,7 @@ class _Volume(_Object, type_prefix="vo"):
     @staticmethod
     async def lookup(
         name: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=None,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         create_if_missing: bool = False,
@@ -273,9 +301,9 @@ class _Volume(_Object, type_prefix="vo"):
             " It can be replaced with `modal.Volume.from_name`."
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
+        warn_if_passing_namespace(namespace, "modal.Volume.lookup")
         obj = _Volume.from_name(
             name,
-            namespace=namespace,
             environment_name=environment_name,
             create_if_missing=create_if_missing,
             version=version,
@@ -289,18 +317,18 @@ class _Volume(_Object, type_prefix="vo"):
     @staticmethod
     async def create_deployed(
         deployment_name: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=None,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
         version: "typing.Optional[modal_proto.api_pb2.VolumeFsVersion.ValueType]" = None,
     ) -> str:
         """mdmd:hidden"""
         check_object_name(deployment_name, "Volume")
+        warn_if_passing_namespace(namespace, "modal.Volume.create_deployed")
         if client is None:
             client = await _Client.from_env()
         request = api_pb2.VolumeGetOrCreateRequest(
             deployment_name=deployment_name,
-            namespace=namespace,
             environment_name=_get_environment_name(environment_name),
             object_creation_type=api_pb2.OBJECT_CREATION_TYPE_CREATE_FAIL_IF_EXISTS,
             version=version,
@@ -496,6 +524,9 @@ class _Volume(_Object, type_prefix="vo"):
     @live_method
     async def remove_file(self, path: str, recursive: bool = False) -> None:
         """Remove a file or directory from a volume."""
+        if self._read_only:
+            raise InvalidError("Read-only Volume can not be written to")
+
         if self._is_v1:
             req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
             await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
@@ -528,6 +559,9 @@ class _Volume(_Object, type_prefix="vo"):
         like `os.rename()` and then `commit()` the volume. The `copy_files()` method is useful when you don't have
         the volume mounted as a filesystem, e.g. when running a script on your local computer.
         """
+        if self._read_only:
+            raise InvalidError("Read-only Volume can not be written to")
+
         if self._is_v1:
             if recursive:
                 raise ValueError("`recursive` is not supported for V1 volumes")
@@ -561,6 +595,9 @@ class _Volume(_Object, type_prefix="vo"):
             batch.put_file(io.BytesIO(b"some data"), "/foobar")
         ```
         """
+        if self._read_only:
+            raise InvalidError("Read-only Volume can not be written to")
+
         return _AbstractVolumeUploadContextManager.resolve(
             self._metadata.version, self.object_id, self._client, force=force
         )

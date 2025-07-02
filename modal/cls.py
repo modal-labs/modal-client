@@ -25,7 +25,11 @@ from ._serialization import check_valid_cls_constructor_arg
 from ._traceback import print_server_warnings
 from ._type_manager import parameter_serde_registry
 from ._utils.async_utils import synchronize_api, synchronizer
-from ._utils.deprecation import deprecation_warning, warn_on_renamed_autoscaler_settings
+from ._utils.deprecation import (
+    deprecation_warning,
+    warn_if_passing_namespace,
+    warn_on_renamed_autoscaler_settings,
+)
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_volumes
 from .client import _Client
@@ -54,7 +58,7 @@ def _get_class_constructor_signature(user_cls: type) -> inspect.Signature:
         return inspect.signature(user_cls)
     else:
         constructor_parameters = []
-        for name, annotation_value in user_cls.__dict__.get("__annotations__", {}).items():
+        for name, annotation_value in typing.get_type_hints(user_cls).items():
             if hasattr(user_cls, name):
                 parameter_spec = getattr(user_cls, name)
                 if is_parameter(parameter_spec):
@@ -612,26 +616,26 @@ More information on class parameterization can be found here: https://modal.com/
         app_name: str,
         name: str,
         *,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace: Any = None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
     ) -> "_Cls":
         """Reference a Cls from a deployed App by its name.
 
-        In contrast to `modal.Cls.lookup`, this is a lazy method
-        that defers hydrating the local object with metadata from
-        Modal servers until the first time it is actually used.
+        This is a lazy method that defers hydrating the local
+        object with metadata from Modal servers until the first
+        time it is actually used.
 
         ```python
         Model = modal.Cls.from_name("other-app", "Model")
         ```
         """
+        warn_if_passing_namespace(namespace, "modal.Cls.from_name")
         _environment_name = environment_name or config.get("environment")
 
         async def _load_remote(self: _Cls, resolver: Resolver, existing_object_id: Optional[str]):
             request = api_pb2.ClassGetRequest(
                 app_name=app_name,
                 object_tag=name,
-                namespace=namespace,
                 environment_name=_environment_name,
                 only_class_function=True,
             )
@@ -823,7 +827,7 @@ More information on class parameterization can be found here: https://modal.com/
     async def lookup(
         app_name: str,
         name: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=None,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> "_Cls":
@@ -847,10 +851,10 @@ More information on class parameterization can be found here: https://modal.com/
             " It can be replaced with `modal.Cls.from_name`."
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
+        warn_if_passing_namespace(namespace, "modal.Cls.lookup")
         obj = _Cls.from_name(
             app_name,
             name,
-            namespace=namespace,
             environment_name=environment_name,
         )
         if client is None:

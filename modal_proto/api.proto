@@ -301,7 +301,7 @@ message AppCreateResponse {
 
 message AppDeployRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
+  reserved 2; // namespace
   string name = 3;
   string object_entity = 4;
   AppDeployVisibility visibility = 5;
@@ -334,7 +334,7 @@ message AppDeploymentHistoryResponse {
 }
 
 message AppGetByDeploymentNameRequest {
-  DeploymentNamespace namespace = 1;
+  reserved 1; // removed namespace
   string name = 2;
   string environment_name = 4;
 }
@@ -360,6 +360,7 @@ message AppGetLogsRequest {
   string task_id = 7;
   string function_call_id = 9;
   FileDescriptor file_descriptor = 8;
+  string sandbox_id = 10;
 }
 
 message AppGetObjectsItem {
@@ -647,6 +648,11 @@ message BlobCreateResponse {
     string upload_url = 1;
     MultiPartUpload multipart = 3;
   }
+  repeated string blob_ids = 4;
+  oneof upload_types_oneof {
+    UploadUrlList upload_urls = 5;
+    MultiPartUploadList multiparts = 6;
+  }
 }
 
 message BlobGetRequest {
@@ -696,7 +702,7 @@ message ClassCreateResponse {
 message ClassGetRequest {
   string app_name = 1;
   string object_tag = 2;
-  DeploymentNamespace namespace = 3;
+  reserved 3; // removed namespace
   string environment_name = 4;
 
   reserved 8; // lookup_published
@@ -1070,7 +1076,7 @@ message DictEntry {
 
 message DictGetOrCreateRequest {
   string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
+  reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
   repeated DictEntry data = 5;
@@ -1237,6 +1243,35 @@ message FilesystemRuntimeOutputBatch {
   bool eof = 4;
 }
 
+message FlashContainerDeregisterRequest {
+  string service_name = 1;
+}
+
+message FlashContainerListRequest {
+  string function_id = 1;
+}
+
+message FlashContainerListResponse {
+  message Container {
+    string task_id = 1;
+    string host = 2;
+    uint32 port = 3;
+  }
+  repeated Container containers = 1;
+}
+
+message FlashContainerRegisterRequest {
+  string service_name = 1;  // not used?
+  uint32 priority = 2;
+  uint32 weight = 3;
+  string host = 4;
+  uint32 port = 5;
+}
+
+message FlashContainerRegisterResponse {
+  string url = 1;
+}
+
 message Function {
   string module_name = 1;
   string function_name = 2;
@@ -1391,6 +1426,8 @@ message Function {
   // If set, client deps will be mounted into the container, and are
   // no longer expected to exist in the image itself.
   bool mount_client_dependencies = 82;
+
+  repeated string flash_service_urls = 83;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1543,6 +1580,8 @@ message FunctionData {
   FunctionSchema function_schema = 32;
 
   map<string, string> experimental_options = 33;
+
+  repeated string flash_service_urls = 34;
 }
 
 message FunctionExtended {
@@ -1641,7 +1680,7 @@ message FunctionGetOutputsResponse {
 message FunctionGetRequest {
   string app_name = 1;
   string object_tag = 2;
-  DeploymentNamespace namespace = 3;
+  reserved 3; // removed namespace
   string environment_name = 4;
 }
 
@@ -1678,6 +1717,7 @@ message FunctionHandleMetadata {
   map<string, FunctionHandleMetadata> method_handle_metadata = 44;
   FunctionSchema function_schema = 45;
   optional string input_plane_url = 46;
+  optional string input_plane_region = 47;
 }
 
 message FunctionInput {
@@ -1894,6 +1934,9 @@ message Image {
   bool runtime_debug = 20;
 
   BuildFunction build_function = 21;
+
+  // Build arguments for the image (--build-arg) for ARG substitution in Dockerfile.
+  map<string, string> build_args = 22;
 }
 
 message ImageContextFile {
@@ -2053,6 +2096,10 @@ message MultiPartUpload {
   string completion_url = 3;
 }
 
+message MultiPartUploadList {
+  repeated MultiPartUpload items = 1;
+}
+
 message NetworkAccess {
   enum NetworkAccessType {
     UNSPECIFIED = 0;
@@ -2206,7 +2253,7 @@ message ProxyDeleteRequest {
 
 message ProxyGetOrCreateRequest {
   string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
+  reserved 2; // namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;  // must be UNSPECIFIED
 }
@@ -2259,7 +2306,7 @@ message QueueDeleteRequest {
 
 message QueueGetOrCreateRequest {
   string deployment_name = 1;
-  DeploymentNamespace namespace = 2;
+  reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
 }
@@ -2655,7 +2702,7 @@ message SecretDeleteRequest {
 
 message SecretGetOrCreateRequest {
   string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
+  reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;  // Not used atm
   map<string, string> env_dict = 5;
@@ -2702,7 +2749,7 @@ message SharedVolumeGetFileResponse {
 
 message SharedVolumeGetOrCreateRequest {
   string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
+  reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
   string app_id = 5;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
@@ -2916,6 +2963,10 @@ message TunnelStopResponse {
   bool exists = 1;
 }
 
+message UploadUrlList {
+  repeated string items = 1;
+}
+
 message VolumeCommitRequest {
   // NOTE(staffan): Mounting a volume in multiple locations is not supported, so volume_id alone uniquely identifies
   // a volume mount.
@@ -2978,7 +3029,7 @@ message VolumeGetFileResponse {
 
 message VolumeGetOrCreateRequest {
   string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
+  reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
   string app_id = 5;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
@@ -3254,6 +3305,11 @@ service ModalClient {
   rpc EnvironmentGetOrCreate(EnvironmentGetOrCreateRequest) returns (EnvironmentGetOrCreateResponse);
   rpc EnvironmentList(google.protobuf.Empty) returns (EnvironmentListResponse);
   rpc EnvironmentUpdate(EnvironmentUpdateRequest) returns (EnvironmentListItem);
+
+  // Modal Flash (experimental)
+  rpc FlashContainerDeregister(FlashContainerDeregisterRequest) returns (google.protobuf.Empty);
+  rpc FlashContainerList(FlashContainerListRequest) returns (FlashContainerListResponse);
+  rpc FlashContainerRegister(FlashContainerRegisterRequest) returns (FlashContainerRegisterResponse);
 
   // Functions
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);

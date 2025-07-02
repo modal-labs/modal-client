@@ -4,6 +4,7 @@ import dataclasses
 import hashlib
 import os
 import platform
+import random
 import time
 from collections.abc import AsyncIterator
 from contextlib import AbstractContextManager, contextmanager
@@ -37,12 +38,15 @@ if TYPE_CHECKING:
 # Max size for function inputs and outputs.
 MAX_OBJECT_SIZE_BYTES = 2 * 1024 * 1024  # 2 MiB
 
+# Max size for async function inputs and outputs.
+MAX_ASYNC_OBJECT_SIZE_BYTES = 8 * 1024  # 8 KiB
+
 #  If a file is LARGE_FILE_LIMIT bytes or larger, it's uploaded to blob store (s3) instead of going through grpc
 #  It will also make sure to chunk the hash calculation to avoid reading the entire file into memory
 LARGE_FILE_LIMIT = 4 * 1024 * 1024  # 4 MiB
 
 # Max parallelism during map calls
-BLOB_MAX_PARALLELISM = 10
+BLOB_MAX_PARALLELISM = 20
 
 # read ~16MiB chunks by default
 DEFAULT_SEGMENT_CHUNK_SIZE = 2**24
@@ -54,6 +58,8 @@ MULTIPART_UPLOAD_THRESHOLD = 1024**3
 
 # For block based storage like volumefs2: the size of a block
 BLOCK_SIZE: int = 8 * 1024 * 1024
+
+HEALTHY_R2_UPLOAD_PERCENTAGE = 0.95
 
 
 @retry(n_attempts=5, base_delay=0.5, timeout=None)
@@ -182,6 +188,22 @@ def get_content_length(data: BinaryIO) -> int:
     return content_length - pos
 
 
+async def _blob_upload_with_fallback(items, blob_ids, callback):
+    for idx, (item, blob_id) in enumerate(zip(items, blob_ids)):
+        # We want to default to R2 95% of the time and S3 5% of the time.
+        # To ensure the failure path is continuously exercised.
+        if idx == 0 and len(items) > 1 and random.random() > HEALTHY_R2_UPLOAD_PERCENTAGE:
+            continue
+        try:
+            await callback(item)
+            return blob_id
+        except Exception as _:
+            # Ignore all errors except the last one, since we're out of fallback options.
+            if idx == len(items) - 1:
+                raise
+    raise ExecutionError("Failed to upload blob")
+
+
 async def _blob_upload(
     upload_hashes: UploadHashes, data: Union[bytes, BinaryIO], stub, progress_report_cb: Optional[Callable] = None
 ) -> str:
@@ -197,17 +219,23 @@ async def _blob_upload(
     )
     resp = await retry_transient_errors(stub.BlobCreate, req)
 
-    blob_id = resp.blob_id
+    if resp.WhichOneof("upload_types_oneof") == "multiparts":
 
-    if resp.WhichOneof("upload_type_oneof") == "multipart":
-        await perform_multipart_upload(
-            data,
-            content_length=content_length,
-            max_part_size=resp.multipart.part_length,
-            part_urls=resp.multipart.upload_urls,
-            completion_url=resp.multipart.completion_url,
-            upload_chunk_size=DEFAULT_SEGMENT_CHUNK_SIZE,
-            progress_report_cb=progress_report_cb,
+        async def upload_multipart_upload(part):
+            return await perform_multipart_upload(
+                data,
+                content_length=content_length,
+                max_part_size=part.part_length,
+                part_urls=part.upload_urls,
+                completion_url=part.completion_url,
+                upload_chunk_size=DEFAULT_SEGMENT_CHUNK_SIZE,
+                progress_report_cb=progress_report_cb,
+            )
+
+        blob_id = await _blob_upload_with_fallback(
+            resp.multiparts.items,
+            resp.blob_ids,
+            upload_multipart_upload,
         )
     else:
         from .bytes_io_segment_payload import BytesIOSegmentPayload
@@ -215,11 +243,19 @@ async def _blob_upload(
         payload = BytesIOSegmentPayload(
             data, segment_start=0, segment_length=content_length, progress_report_cb=progress_report_cb
         )
-        await _upload_to_s3_url(
-            resp.upload_url,
-            payload,
-            # for single part uploads, we use server side md5 checksums
-            content_md5_b64=upload_hashes.md5_base64,
+
+        async def upload_to_s3_url(url):
+            return await _upload_to_s3_url(
+                url,
+                payload,
+                # for single part uploads, we use server side md5 checksums
+                content_md5_b64=upload_hashes.md5_base64,
+            )
+
+        blob_id = await _blob_upload_with_fallback(
+            resp.upload_urls.items,
+            resp.blob_ids,
+            upload_to_s3_url,
         )
 
     if progress_report_cb:
@@ -239,7 +275,9 @@ async def blob_upload(payload: bytes, stub: ModalClientModal) -> str:
     blob_id = await _blob_upload(upload_hashes, payload, stub)
     dur_s = max(time.time() - t0, 0.001)  # avoid division by zero
     throughput_mib_s = (size_mib) / dur_s
-    logger.debug(f"Uploaded large blob of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s). {blob_id}")
+    logger.debug(
+        f"Uploaded large blob of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s, total {dur_s:.2f}s). {blob_id}"
+    )
     return blob_id
 
 
@@ -278,7 +316,9 @@ async def blob_download(blob_id: str, stub: ModalClientModal) -> bytes:
     size_mib = len(data) / 1024 / 1024
     dur_s = max(time.time() - t0, 0.001)  # avoid division by zero
     throughput_mib_s = size_mib / dur_s
-    logger.debug(f"Downloaded large blob {blob_id} of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s)")
+    logger.debug(
+        f"Downloaded large blob {blob_id} of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s, total {dur_s:.2f}s)"
+    )
     return data
 
 
@@ -380,7 +420,9 @@ def get_file_upload_spec_from_fileobj(fp: BinaryIO, mount_filename: PurePosixPat
         mode,
     )
 
+
 _FileUploadSource2 = Callable[[], ContextManager[BinaryIO]]
+
 
 @dataclasses.dataclass
 class FileUploadSpec2:
@@ -392,7 +434,6 @@ class FileUploadSpec2:
     blocks_sha256: list[bytes]
     mode: int  # file permission bits (last 12 bits of st_mode)
     size: int
-
 
     @staticmethod
     async def from_path(
@@ -416,7 +457,6 @@ class FileUploadSpec2:
             hash_semaphore,
         )
 
-
     @staticmethod
     async def from_fileobj(
         source_fp: Union[BinaryIO, BytesIO],
@@ -426,6 +466,7 @@ class FileUploadSpec2:
     ) -> "FileUploadSpec2":
         try:
             fileno = source_fp.fileno()
+
             def source():
                 new_fd = os.dup(fileno)
                 fp = os.fdopen(new_fd, "rb")
@@ -436,6 +477,7 @@ class FileUploadSpec2:
             # `.fileno()` not available; assume BytesIO-like type
             source_fp = cast(BytesIO, source_fp)
             buffer = source_fp.getbuffer()
+
             def source():
                 return BytesIO(buffer)
 
@@ -446,7 +488,6 @@ class FileUploadSpec2:
             mode,
             hash_semaphore,
         )
-
 
     @staticmethod
     async def _create(

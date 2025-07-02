@@ -405,6 +405,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         input_plane_region = definition.experimental_options.get("input_plane_region")
         return f"http://127.0.0.1:{self.port}" if input_plane_region else None
 
+    def _get_input_plane_region(self, definition: Union[api_pb2.Function, api_pb2.FunctionData]) -> Optional[str]:
+        input_plane_region = definition.experimental_options.get("input_plane_region")
+        return input_plane_region
+
     def get_function_metadata(self, object_id: str) -> api_pb2.FunctionHandleMetadata:
         definition: api_pb2.Function = self.app_functions[object_id]
         return api_pb2.FunctionHandleMetadata(
@@ -428,6 +432,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             },
             function_schema=definition.function_schema,
             input_plane_url=self._get_input_plane_url(definition),
+            input_plane_region=self._get_input_plane_region(definition),
         )
 
     def get_object_metadata(self, object_id) -> api_pb2.Object:
@@ -691,20 +696,26 @@ class MockClientServicer(api_grpc.ModalClientBase):
                 upload_url = f"{self.blob_host}/upload?blob_id={blob_id}&part_number={part_number}"
                 upload_urls.append(upload_url)
 
+            multipart = api_pb2.MultiPartUpload(
+                part_length=self.blob_multipart_threshold,
+                upload_urls=upload_urls,
+                completion_url=f"{self.blob_host}/complete_multipart?blob_id={blob_id}",
+            )
             await stream.send_message(
                 api_pb2.BlobCreateResponse(
-                    blob_id=blob_id,
-                    multipart=api_pb2.MultiPartUpload(
-                        part_length=self.blob_multipart_threshold,
-                        upload_urls=upload_urls,
-                        completion_url=f"{self.blob_host}/complete_multipart?blob_id={blob_id}",
-                    ),
+                    blob_ids=[blob_id, blob_id],
+                    multiparts=api_pb2.MultiPartUploadList(items=[multipart, multipart]),
                 )
             )
         else:
             blob_id = await self.next_blob_id()
             upload_url = f"{self.blob_host}/upload?blob_id={blob_id}"
-            await stream.send_message(api_pb2.BlobCreateResponse(blob_id=blob_id, upload_url=upload_url))
+            await stream.send_message(
+                api_pb2.BlobCreateResponse(
+                    blob_ids=[blob_id, blob_id],
+                    upload_urls=api_pb2.UploadUrlList(items=[upload_url, upload_url]),
+                )
+            )
 
     async def next_blob_id(self):
         self.n_blobs += 1
@@ -835,7 +846,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def DictGetOrCreate(self, stream):
         request: api_pb2.DictGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.namespace, request.environment_name)
+        k = (request.deployment_name, request.environment_name)
         if k in self.deployed_dicts:
             dict_id = self.deployed_dicts[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
@@ -877,7 +888,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def DictList(self, stream):
         dicts = [
             api_pb2.DictListResponse.DictInfo(name=name, created_at=1)
-            for name, _, _ in self.deployed_dicts
+            for name, _ in self.deployed_dicts
             if name in self.deployed_apps
         ]
         await stream.send_message(api_pb2.DictListResponse(dicts=dicts))
@@ -1106,6 +1117,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     class_parameter_info=function_defn.class_parameter_info,
                     function_schema=function_defn.function_schema,
                     input_plane_url=self._get_input_plane_url(function_defn),
+                    input_plane_region=self._get_input_plane_region(function_defn),
                 ),
                 server_warnings=warnings,
             )
@@ -1480,7 +1492,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def QueueGetOrCreate(self, stream):
         request: api_pb2.QueueGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.namespace, request.environment_name)
+        k = (request.deployment_name, request.environment_name)
         if k in self.deployed_queues:
             queue_id = self.deployed_queues[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
@@ -1537,7 +1549,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # So there is a mismatch and I am not implementing a mock for the num_partitions / total_size
         queues = [
             api_pb2.QueueListResponse.QueueInfo(name=name, created_at=1)
-            for name, _, _ in self.deployed_queues
+            for name, _ in self.deployed_queues
             if name in self.deployed_apps
         ]
         await stream.send_message(api_pb2.QueueListResponse(queues=queues))
@@ -1698,7 +1710,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SecretGetOrCreate(self, stream):
         request: api_pb2.SecretGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.namespace, request.environment_name)
+        k = (request.deployment_name, request.environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
             secret_id = "st-" + str(len(self.secrets))
             self.secrets[secret_id] = request.env_dict
@@ -1728,7 +1740,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SecretList(self, stream):
         await stream.recv_message()
         # Note: being lazy and not implementing the env filtering
-        items = [api_pb2.SecretListItem(label=name) for name, _, env in self.deployed_secrets]
+        items = [api_pb2.SecretListItem(label=name) for name, env in self.deployed_secrets]
         await stream.send_message(api_pb2.SecretListResponse(items=items))
 
     ### Snapshot
@@ -1747,7 +1759,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SharedVolumeGetOrCreate(self, stream):
         request: api_pb2.SharedVolumeGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.namespace, request.environment_name)
+        k = (request.deployment_name, request.environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_nfss:
                 if k in self.deployed_volumes:
@@ -1782,7 +1794,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SharedVolumeList(self, stream):
         req = await stream.recv_message()
         items = []
-        for (name, _, env_name), volume_id in self.deployed_nfss.items():
+        for (name, env_name), volume_id in self.deployed_nfss.items():
             if env_name != req.environment_name:
                 continue
             items.append(api_pb2.SharedVolumeListItem(label=name, shared_volume_id=volume_id, created_at=1))
@@ -1858,7 +1870,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def VolumeGetOrCreate(self, stream):
         request: api_pb2.VolumeGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.namespace, request.environment_name)
+        k = (request.deployment_name, request.environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_volumes:
                 raise GRPCError(Status.NOT_FOUND, f"Volume {k} not found")
@@ -1888,7 +1900,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def VolumeList(self, stream):
         req = await stream.recv_message()
         items = []
-        for (name, _, env_name), volume_id in self.deployed_volumes.items():
+        for (name, env_name), volume_id in self.deployed_volumes.items():
             if env_name != req.environment_name:
                 continue
             items.append(api_pb2.VolumeListItem(label=name, volume_id=volume_id, created_at=1))
@@ -1976,7 +1988,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             for idx in range(block_start, block_end):
                 start, end = slice_block(idx)
                 length = end - start
-                get_urls.append(f"{self.blob_host}/block/test-get-request:v1:{vol_file.data_sha256_hex}:{idx}:{start}:{length}")
+                get_urls.append(
+                    f"{self.blob_host}/block/test-get-request:v1:{vol_file.data_sha256_hex}:{idx}:{start}:{length}"
+                )
         else:
             block_start = min(total_start // BLOCK_SIZE, len(vol_file.block_hashes))
             block_end = min(ceildiv(total_end, BLOCK_SIZE), len(vol_file.block_hashes))
@@ -2270,7 +2284,7 @@ def blob_server():
             file_data = files_sha2data[file_sha256_hex]
             blob_id = file_data["data_blob_id"]
             if blob_id:
-                body = blobs[blob_id][start:start + length]
+                body = blobs[blob_id][start : start + length]
             else:
                 body = file_data["data"][start : start + length]
         elif version == "v2":
@@ -2462,7 +2476,7 @@ def mock_dir_factory():
         cwd = os.getcwd()
         try:
             os.chdir(root_dir)
-            yield
+            yield root_dir
         finally:
             os.chdir(cwd)
             shutil.rmtree(root_dir, ignore_errors=True)

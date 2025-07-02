@@ -178,7 +178,12 @@ def test_class_multiple_dynamic_parameterization_methods(client, servicer):
     assert res == 4
 
 
-def test_class_multiple_with_options_calls(client, servicer):
+@pytest.mark.parametrize("read_only", [True, False])
+def test_class_multiple_with_options_calls(client, servicer, read_only):
+    weights_volume = Volume.from_name("weights", create_if_missing=True)
+
+    if read_only:
+        weights_volume = weights_volume.read_only()
     foo = (
         Foo.with_options(  # type: ignore
             gpu="A10:4",
@@ -191,7 +196,7 @@ def test_class_multiple_with_options_calls(client, servicer):
             gpu="A100",
             memory=2048,
             max_containers=10,
-            volumes={"/weights": Volume.from_name("weights", create_if_missing=True)},
+            volumes={"/weights": weights_volume},
         )()  # type: ignore
     )
 
@@ -208,6 +213,7 @@ def test_class_multiple_with_options_calls(client, servicer):
             assert function_bind_params.function_options.concurrency_limit == 10
             assert len(function_bind_params.function_options.volume_mounts) == 1
             assert function_bind_params.function_options.volume_mounts[0].mount_path == "/weights"
+            assert function_bind_params.function_options.volume_mounts[0].read_only == read_only
 
 
 def test_with_options_from_name(servicer):
@@ -1307,3 +1313,52 @@ def test_concurrent_decorator_stacked_with_method_decorator():
             @modal.concurrent(max_inputs=10)
             def method(self):
                 pass
+
+
+def test_parameter_inheritance(client):
+    app = modal.App("inherit-params")
+
+    class Base:
+        a: int = modal.parameter()  # parameter in base class
+
+    @app.cls(serialized=True)
+    class ConcatenatingParams(Base):
+        b: str = modal.parameter()  # add additional parameter
+
+    @app.cls(serialized=True)
+    class RepeatingParams(Base):
+        # In versions prior to ~1.0.5, base class parameters were not
+        # included, so subclasses would always have to repeat parameters
+        # from the base class.
+        # We allow this as long as the definitions are the same
+        a: int = modal.parameter()  # redefine base class parameter
+        b: str = modal.parameter()
+
+    @app.cls(serialized=True)
+    class ChangingParameterDefinitions(Base):
+        # change type of base class parameter, allowed but frowned upon
+        a: str = modal.parameter()  # type: ignore  # this isn't allowed by type checkers
+
+    with app.run(client=client):
+        # use .update_autoscaler()
+        ConcatenatingParams(a=10, b="hello").update_autoscaler()  # type: ignore
+        RepeatingParams(a=10, b="hello").update_autoscaler()  # type: ignore
+        with pytest.raises(TypeError):
+            ChangingParameterDefinitions(a=10).update_autoscaler()  # type: ignore
+        ChangingParameterDefinitions(a="10").update_autoscaler()  # type: ignore
+
+
+def test_cls_namespace_deprecated(servicer, client):
+    # Test from_name with namespace parameter warns
+    with pytest.warns(DeprecationError, match="The `namespace` parameter for `modal.Cls.from_name` is deprecated"):
+        Cls.from_name("test-app", "test-cls", namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE)
+
+    # Test that from_name without namespace parameter doesn't warn about namespace
+    import warnings
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        Cls.from_name("test-app", "test-cls")
+    # Filter out any unrelated warnings
+    namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
+    assert len(namespace_warnings) == 0

@@ -17,7 +17,7 @@ from modal import App, Dict, Image, Secret, build, environments, method
 from modal._serialization import serialize
 from modal._utils.async_utils import synchronizer
 from modal.client import Client
-from modal.exception import DeprecationError, InvalidError, ModuleNotMountable, VersionError
+from modal.exception import DeprecationError, InvalidError, ModuleNotMountable, NotFoundError, VersionError
 from modal.experimental import raw_dockerfile_image, raw_registry_image
 from modal.file_pattern_matcher import FilePatternMatcher
 from modal.image import (
@@ -646,22 +646,30 @@ def test_image_run_function_with_cloud_selection(servicer, client):
     assert func_def.cloud_provider_str == "oci"
 
 
-def test_poetry(builder_version, servicer, client):
+def test_poetry_files(builder_version, servicer, client):
     path = os.path.join(os.path.dirname(__file__), "supports/pyproject.toml")
 
     # No lockfile provided and there's no lockfile found
-    # TODO we deferred the exception until _load runs, not sure how to test that here
-    # with pytest.raises(NotFoundError):
-    #     Image.debian_slim().poetry_install_from_file(path)
+    image = Image.debian_slim().poetry_install_from_file(path)
+    app = App()
+    app.function(image=image)(dummy)
+    with pytest.raises(NotFoundError):
+        with app.run(client=client):
+            pass
 
     # Explicitly ignore lockfile - this should work
-    Image.debian_slim().poetry_install_from_file(path, ignore_lockfile=True)
+    image = Image.debian_slim().poetry_install_from_file(path, ignore_lockfile=True)
+    app = App()
+    app.function(image=image)(dummy)
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        context_files = {f.filename for layer in layers for f in layer.context_files}
+        assert "/.pyproject.toml" in context_files
+        assert "/.poetry.lock" not in context_files
 
     # Provide lockfile explicitly - this should also work
     lockfile_path = os.path.join(os.path.dirname(__file__), "supports/special_poetry.lock")
     image = Image.debian_slim().poetry_install_from_file(path, lockfile_path)
-
-    # Build iamge
     app = App()
     app.function(image=image)(dummy)
     with app.run(client=client):
@@ -671,6 +679,33 @@ def test_poetry(builder_version, servicer, client):
             assert context_files == {"/.poetry.lock", "/.pyproject.toml", "/modal_requirements.txt"}
         else:
             assert context_files == {"/.poetry.lock", "/.pyproject.toml"}
+
+
+@pytest.mark.parametrize("poetry_version", [None, "latest", "2.1.2"])
+def test_poetry_commands(builder_version, servicer, client, poetry_version):
+    path = os.path.join(os.path.dirname(__file__), "supports/pyproject.toml")
+    app = App()
+    image = Image.debian_slim().poetry_install_from_file(
+        path,
+        ignore_lockfile=True,
+        with_=["foo", "bar"],
+        without=["buz"],
+        poetry_version=poetry_version,
+    )
+    app.function(image=image)(dummy)
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        dockerfile_commands = " ".join(layers[0].dockerfile_commands)
+        if poetry_version is None:
+            assert not any("pip install" in cmd for cmd in dockerfile_commands)
+        else:
+            if builder_version <= "2024.10":
+                poetry_spec = "~=1.7" if poetry_version == "latest" else f"=={poetry_version}"
+            else:
+                poetry_spec = "" if poetry_version == "latest" else f"=={poetry_version}"
+            assert f"python -m pip install poetry{poetry_spec}" in dockerfile_commands
+        assert "poetry config virtualenvs.create false" in dockerfile_commands
+        assert "poetry install --no-root --with foo,bar --without buz" in dockerfile_commands
 
 
 def test_image_add_local_file_error(tmp_path, client):

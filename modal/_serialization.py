@@ -6,6 +6,8 @@ import typing
 from inspect import Parameter
 from typing import Any
 
+import google.protobuf.message
+
 from modal._utils.async_utils import synchronizer
 from modal_proto import api_pb2
 
@@ -470,10 +472,31 @@ def deserialize_params(serialized_params: bytes, function_def: api_pb2.Function,
         api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PICKLE,
     ):
         # legacy serialization format - pickle of `(args, kwargs)` w/ support for modal object arguments
-        param_args, param_kwargs = deserialize(serialized_params, _client)
+        try:
+            param_args, param_kwargs = deserialize(serialized_params, _client)
+        except DeserializationError as original_exc:
+            # Fallback in case of proto -> pickle downgrades of a parameter serialization format
+            # I.e. FunctionBindParams binding proto serialized params to a function defintion
+            # that now assumes pickled data according to class_parameter_info
+            param_args = ()
+            try:
+                param_kwargs = deserialize_proto_params(serialized_params)
+            except Exception:
+                raise original_exc
+
     elif function_def.class_parameter_info.format == api_pb2.ClassParameterInfo.PARAM_SERIALIZATION_FORMAT_PROTO:
         param_args = ()  # we use kwargs only for our implicit constructors
-        param_kwargs = deserialize_proto_params(serialized_params)
+        try:
+            param_kwargs = deserialize_proto_params(serialized_params)
+        except google.protobuf.message.DecodeError as original_exc:
+            # Fallback in case of pickle -> proto upgrades of a parameter serialization format
+            # I.e. FunctionBindParams binding pickle serialized params to a function defintion
+            # that now assumes proto data according to class_parameter_info
+            try:
+                param_args, param_kwargs = deserialize(serialized_params, _client)
+            except Exception:
+                raise original_exc
+
     else:
         raise ExecutionError(
             f"Unknown class parameter serialization format: {function_def.class_parameter_info.format}"
