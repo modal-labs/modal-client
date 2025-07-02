@@ -13,8 +13,7 @@ import warnings
 from types import TracebackType
 from typing import Any, Iterable, Optional
 
-from modal._utils import logger
-from modal.config import config
+from modal.config import config, logger
 from modal_proto import api_pb2
 
 from ._vendor.tblib import Traceback as TBLibTraceback
