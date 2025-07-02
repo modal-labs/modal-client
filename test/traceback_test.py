@@ -181,7 +181,7 @@ def to_path(mof: ModuleOrFilename) -> Path:
 
 
 def assert_expected_traceback(traceback, expected_module_frames: list[tuple[ModuleOrFilename, str]]):
-    failure = False
+    failure = ""
     for i, frame in enumerate(traceback):
         if i >= len(expected_module_frames):
             failure = "(past end of expected traceback)"
