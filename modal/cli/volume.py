@@ -109,15 +109,20 @@ async def get(
     rich_help_panel="Management",
 )
 @synchronizer.create_blocking
-async def list_(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
+async def list_(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False, show_id: Optional[bool] = False):
     env = ensure_env(env)
     client = await _Client.from_env()
     response = await retry_transient_errors(client.stub.VolumeList, api_pb2.VolumeListRequest(environment_name=env))
     env_part = f" in environment '{env}'" if env else ""
     column_names = ["Name", "Created at"]
+    if show_id:
+        column_names.append("Id")
     rows = []
     for item in response.items:
-        rows.append([item.label, timestamp_to_local(item.created_at, json)])
+        row = [item.label, timestamp_to_local(item.created_at, json)]
+        if show_id:
+            row.append(item.volume_id)
+        rows.append(row)
     display_table(column_names, rows, json, title=f"Volumes{env_part}")
 
 
