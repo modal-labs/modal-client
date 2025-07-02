@@ -2643,6 +2643,14 @@ message SandboxTerminateResponse {
   GenericResult existing_result = 1;
 }
 
+message ContainerReloadVolumesRequest {
+  string task_id = 1;
+}
+
+message ContainerReloadVolumesResponse {
+  GenericResult result = 1;
+}
+
 message SandboxWaitRequest {
   string sandbox_id = 1;
   float timeout = 2;
@@ -3281,6 +3289,7 @@ service ModalClient {
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (ContainerHeartbeatResponse);
   rpc ContainerHello(google.protobuf.Empty) returns (google.protobuf.Empty);
   rpc ContainerLog(ContainerLogRequest) returns (google.protobuf.Empty);
+  rpc ContainerReloadVolumes(ContainerReloadVolumesRequest) returns (ContainerReloadVolumesResponse);
   rpc ContainerStop(ContainerStopRequest) returns (ContainerStopResponse);
 
   // Dicts
