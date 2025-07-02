@@ -147,6 +147,7 @@ class _Invocation:
             stub,
             method_name=function._use_method_name,
             function_call_invocation_type=function_call_invocation_type,
+            max_object_size_bytes=function._max_object_size_bytes,
         )
 
         request = api_pb2.FunctionMapRequest(
@@ -386,7 +387,13 @@ class _InputPlaneInvocation:
         function_id = function.object_id
         control_plane_stub = client.stub
         # Note: Blob upload is done on the control plane stub, not the input plane stub!
-        input_item = await _create_input(args, kwargs, control_plane_stub, method_name=function._use_method_name)
+        input_item = await _create_input(
+            args,
+            kwargs,
+            control_plane_stub,
+            method_name=function._use_method_name,
+            max_object_size_bytes=function._max_object_size_bytes,
+        )
 
         request = api_pb2.AttemptStartRequest(
             function_id=function_id,
@@ -1414,6 +1421,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._definition_id = metadata.definition_id
         self._input_plane_url = metadata.input_plane_url
         self._input_plane_region = metadata.input_plane_region
+        self._max_object_size_bytes = metadata.max_object_size_bytes
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
@@ -1430,6 +1438,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             function_schema=self._metadata.function_schema if self._metadata else None,
             input_plane_url=self._input_plane_url,
             input_plane_region=self._input_plane_region,
+            max_object_size_bytes=self._max_object_size_bytes,
         )
 
     def _check_no_web_url(self, fn_name: str):

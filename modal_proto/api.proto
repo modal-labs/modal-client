@@ -1718,6 +1718,8 @@ message FunctionHandleMetadata {
   FunctionSchema function_schema = 45;
   optional string input_plane_url = 46;
   optional string input_plane_region = 47;
+  // Use optional to ensure unset values default to None instead of 0
+  optional uint64 max_object_size_bytes = 48;
 }
 
 message FunctionInput {
