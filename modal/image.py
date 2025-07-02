@@ -1450,8 +1450,7 @@ class _Image(_Object, type_prefix="im"):
                 python_version = "3.9"  # Backcompat for old hardcoded default param
             validated_python_version = _validate_python_version(python_version, version)
             micromamba_version = _base_image_config("micromamba", version)
-            debian_codename = _base_image_config("debian", version)
-            tag = f"mambaorg/micromamba:{micromamba_version}-{debian_codename}-slim"
+            tag = f"mambaorg/micromamba:{micromamba_version}"
             setup_commands = [
                 'SHELL ["/usr/local/bin/_dockerfile_shell.sh"]',
                 "ENV MAMBA_DOCKERFILE_ACTIVATE=1",
