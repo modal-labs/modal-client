@@ -417,9 +417,8 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         #
         # [1]: https://github.com/vmagamedov/grpclib/blob/62f968a4c84e3f64e6966097574ff0a59969ea9b/grpclib/client.py#L844
         self.wrapped_method.channel = await self.client._get_channel(self.server_url)
-        with suppress_tb_frames(1):
-            with grpc_error_converter():
-                return await self.client._call_unary(self.wrapped_method, req, timeout=timeout, metadata=metadata)
+        with suppress_tb_frames(1), grpc_error_converter():
+            return await self.client._call_unary(self.wrapped_method, req, timeout=timeout, metadata=metadata)
 
 
 class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
@@ -448,7 +447,6 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
             logger.debug(f"refreshing client after snapshot for {self.name.rsplit('/', 1)[1]}")
             self.client = await _Client.from_env()
         self.wrapped_method.channel = await self.client._get_channel(self.server_url)
-        with suppress_tb_frames(1):
-            with grpc_error_converter():
-                async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
-                    yield response
+        with suppress_tb_frames(1), grpc_error_converter():
+            async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
+                yield response
