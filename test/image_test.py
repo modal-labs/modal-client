@@ -1633,7 +1633,7 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
     assert get_hash(img) == "a25dd4cc2e8d88f92bfdaf2e82b9d74144d1928926bf6be2ca1cdfbbf562189e"
 
     img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
-    assert get_hash(img) == "6a57f969b610c61fe5dbc924f035934d31adce423f3159fa4ac488a3bbfb907b"
+    assert get_hash(img) == "6c9f3debe511508a99ec70212ff79dcfc01ec95be9400c63edfb36c9035be9de"
 
 
 @pytest.fixture
@@ -1704,7 +1704,7 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
     assert get_hash(img) == "bfce5811c04c1243f12cbb9cca1522cb901f52410986925bcfa3b3c2d7adc7a0"
 
     img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
-    assert get_hash(img) == "5ce3b4b4937b201112f54dad0eee8d709268e76831507a7fd9d283bf616ac0f4"
+    assert get_hash(img) == "925054c1aed3a194de979389eeacb5a842695316f7a9f889e314de5c51a62760"
 
 
 @pytest.fixture
@@ -1775,7 +1775,7 @@ def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
     assert get_hash(img) == "78d579f243c21dcaa59e5daf97f732e2453b004bc2122de692617d4d725c6184"
 
     img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
-    assert get_hash(img) == "56c9c69b8e39bceb5f50246124089b9b1804ef33c044d2709f69f6af7b457ffa"
+    assert get_hash(img) == "2b6cd5b524ac796cafdabe8b95bf626a765f28c909d23f6051fc4329d6edbc0b"
 
 
 parallel_app = App()
