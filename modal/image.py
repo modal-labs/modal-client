@@ -1300,11 +1300,11 @@ class _Image(_Object, type_prefix="im"):
                     # The requirement files can have the same name but in different directories:
                     # requirements=["test/requirements.txt", "a/b/c/requirements.txt"]
                     # To uniquely identify these files, we add a `idx` prefix to every file's basename
-                    # - `test/requirements.txt` -> `/tmp/0/requirements.txt` in ctx -> `/.uv/0/requirements.txt` to uv
-                    # - `a/b/c/requirements.txt` -> `/tmp/1/requirements.txt` in ctx -> `/.uv/1/requirements.txt` to uv
+                    # - `test/requirements.txt` -> `/.0requirements.txt` in context -> `/.uv/0/requirements.txt` to uv
+                    # - `a/b/c/requirements.txt` -> `/.1requirements.txt` in context -> `/.uv/1/requirements.txt` to uv
                     return {
                         "local_path": local_path,
-                        "context_path": f"/tmp/{idx}/{basename}",
+                        "context_path": f"/.{idx}{basename}",
                         "dest_path": f"{UV_ROOT}/{idx}/{basename}",
                     }
 
