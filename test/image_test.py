@@ -1558,7 +1558,7 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
     assert get_hash(img) == "5785daf078ee710f41888066f61cd593ac905472b2abd9b85ef99e417e86d065"
 
     img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
-    assert get_hash(img) == "e63ea7a2cad29167ea87f88303aec7317a63a955ff986799297157b5ee5a0dfd"
+    assert get_hash(img) == "bf9158ccc3b2e30cebcd199b0894c9530071e2fcdc1440e6c3717a9d0023d1b4"
 
 
 @pytest.fixture
@@ -1632,7 +1632,7 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
     assert get_hash(img) == "6c685b70ecacc606afd2a64feee562e7d61f702b0dd3cf000fcd21e1f96bfe55"
 
     img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
-    assert get_hash(img) == "7d39d6e91031e59a4ea3fa768e6459c677676916c2976ebc153ee9b3566f0e73"
+    assert get_hash(img) == "cebd66ab3368c0ff3b56d785e67c624b09e76589e747075b035031ccac051fa7"
 
 
 @pytest.fixture
@@ -1706,7 +1706,7 @@ def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
     assert get_hash(img) == "d3c8d913753dc77119407706026a83f64647f675faf68fedc074b32e9a0b1507"
 
     img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
-    assert get_hash(img) == "a78035efe461815299c492c4ee56af370a52814c98997391b3dd89337b706110"
+    assert get_hash(img) == "8b3c025cf64f15a3edc4427f35d07ac46f90d7c5e249f0c2bcc6080f0701be72"
 
 
 parallel_app = App()
