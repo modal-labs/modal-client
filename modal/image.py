@@ -1420,6 +1420,149 @@ class _Image(_Object, type_prefix="im"):
             gpu_config=parse_gpu_config(gpu),
         )
 
+    def uv_sync(
+        self,
+        uv_project_dir: str = "./",  # Path to local uv managed project
+        *,
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
+        groups: Optional[list[str]] = None,  # Dependency group to install using `uv sync --group`
+        extras: Optional[list[str]] = None,  # Optional dependencies to install using `uv sync --extra`
+        frozen: bool = True,  # If True, then we run `uv sync --frozen` when a uv.lock file is present
+        extra_options: str = "",  # Extra options to pass to `uv sync`
+        uv_version: Optional[str] = None,  # uv version to use
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
+    ) -> "_Image":
+        """Creates a virtual environment with the dependencies in a uv managed project with `uv sync`.
+
+        **Examples**
+        ```python
+        image = modal.Image.debian_slim().uv_sync()
+        ```
+        """
+
+        def _normalize_items(items, name) -> list[str]:
+            if items is None:
+                return []
+            elif isinstance(items, list):
+                return items
+            else:
+                raise InvalidError(f"{name} must be None or a list of strings")
+
+        groups = _normalize_items(groups, "groups")
+        extras = _normalize_items(extras, "extras")
+
+        def _check_pyproject_toml(pyproject_toml: str, version: ImageBuilderVersion):
+            if not os.path.exists(pyproject_toml):
+                raise InvalidError(f"Expected {pyproject_toml} to exist")
+
+            import toml
+
+            with open(pyproject_toml) as f:
+                pyproject_toml_content = toml.load(f)
+
+            if (
+                "tool" in pyproject_toml_content
+                and "uv" in pyproject_toml_content["tool"]
+                and "workspace" in pyproject_toml_content["tool"]["uv"]
+            ):
+                raise InvalidError("uv workspaces are not supported")
+
+            if version > "2024.10":
+                # For builder version > 2024.10, modal is mounted at runtime and is not
+                # a requirement in `uv.lock`
+                return
+
+            dependencies = pyproject_toml_content["project"]["dependencies"]
+
+            for group in groups:
+                if (
+                    "dependency-groups" in pyproject_toml_content
+                    and group in pyproject_toml_content["dependency-groups"]
+                ):
+                    dependencies += pyproject_toml_content["dependency-groups"][group]
+
+            for extra in extras:
+                if (
+                    "project" in pyproject_toml_content
+                    and "optional-dependencies" in pyproject_toml_content["project"]
+                    and extra in pyproject_toml_content["project"]["optional-dependencies"]
+                ):
+                    dependencies += pyproject_toml_content["project"]["optional-dependencies"][extra]
+
+            PACKAGE_REGEX = re.compile(r"^[\w-]+")
+
+            def _extract_package(package) -> str:
+                m = PACKAGE_REGEX.match(package)
+                return m.group(0) if m else ""
+
+            if not any(_extract_package(dependency) == "modal" for dependency in dependencies):
+                raise InvalidError(
+                    "Image builder version <= 2024.10 requires modal to be specified in your pyproject.toml file"
+                )
+
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+            uv_project_dir_ = os.path.expanduser(uv_project_dir)
+            pyproject_toml = os.path.join(uv_project_dir_, "pyproject.toml")
+
+            UV_ROOT = "/.uv"
+            uv_sync_args = [
+                f"--project={UV_ROOT}",
+                "--no-install-workspace",  # Do not install the root project or any "uv workspace"
+                "--compile-bytecode",
+            ]
+
+            for group in groups:
+                uv_sync_args.append(f"--group={group}")
+            for extra in extras:
+                uv_sync_args.append(f"--extra={extra}")
+            if extra_options:
+                uv_sync_args.append(extra_options)
+
+            commands = ["FROM base"]
+
+            if uv_version is None:
+                commands.append(f"COPY --from=ghcr.io/astral-sh/uv:latest /uv {UV_ROOT}/uv")
+            else:
+                commands.append(f"COPY --from=ghcr.io/astral-sh/uv:{uv_version} /uv {UV_ROOT}/uv")
+
+            context_files = {}
+
+            _check_pyproject_toml(pyproject_toml, version)
+
+            context_files["/.pyproject.toml"] = pyproject_toml
+            commands.append(f"COPY /.pyproject.toml {UV_ROOT}/pyproject.toml")
+
+            uv_lock = os.path.join(uv_project_dir_, "uv.lock")
+            if os.path.exists(uv_lock):
+                context_files["/.uv.lock"] = uv_lock
+                commands.append(f"COPY /.uv.lock {UV_ROOT}/uv.lock")
+
+                if frozen:
+                    # Do not update `uv.lock` when we have one when `frozen=True`. This it ehd efault because this
+                    # ensures that the runtime environment matches the local `uv.lock`.
+                    #
+                    # If `frozen=False`, then `uv sync` will update the the dependencies in the `uv.lock` file
+                    # during build time.
+                    uv_sync_args.append("--frozen")
+
+            uv_sync_args_joined = " ".join(uv_sync_args).strip()
+
+            commands += [
+                f"RUN {UV_ROOT}/uv sync {uv_sync_args_joined}",
+                f"ENV PATH={UV_ROOT}/.venv/bin:$PATH",
+            ]
+
+            return DockerfileSpec(commands=commands, context_files=context_files)
+
+        return _Image._from_args(
+            base_images={"base": self},
+            dockerfile_function=build_dockerfile,
+            force_build=self.force_build or force_build,
+            secrets=secrets,
+            gpu_config=parse_gpu_config(gpu),
+        )
+
     def dockerfile_commands(
         self,
         *dockerfile_commands: Union[str, list[str]],

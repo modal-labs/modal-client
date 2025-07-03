@@ -1,0 +1,19 @@
+[project]
+name = "uv-lock-project"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "scipy",
+]
+
+[project.optional-dependencies]
+extra1 = [
+    "modal>=1.0.3",
+]
+
+[dependency-groups]
+group1 = [
+    "modal>=1.0.3",
+]
