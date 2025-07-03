@@ -732,6 +732,135 @@ def test_poetry_files(builder_version, servicer, client):
             assert context_files == {"/.poetry.lock", "/.pyproject.toml"}
 
 
+@pytest.mark.parametrize(
+    "groups, extras, frozen",
+    [
+        (["group1"], None, False),
+        (None, ["extra1"], True),
+        (["group1", "group2"], ["extra1"], True),
+        (["group1"], ["extra1", "extra2"], True),
+    ],
+)
+def test_uv_sync(builder_version, servicer, client, groups, extras, frozen):
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_project")
+
+    image = Image.debian_slim().uv_sync(uv_project_path, groups=groups, extras=extras, frozen=frozen)
+
+    app = App()
+    app.function(image=image)(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        context_files = {f.filename for layer in layers for f in layer.context_files}
+        assert "COPY /.pyproject.toml /.uv/pyproject.toml" in layers[0].dockerfile_commands
+        assert "COPY /.uv.lock /.uv/uv.lock" in layers[0].dockerfile_commands
+        if frozen:
+            assert any("--frozen" in cmd for cmd in layers[0].dockerfile_commands)
+        if groups is not None:
+            group_cmd = " ".join(f"--group={g}" for g in groups)
+            assert any(group_cmd in cmd for cmd in layers[0].dockerfile_commands)
+        if extras is not None:
+            extra_cmd = " ".join(f"--extra={e}" for e in extras)
+            assert any(extra_cmd in cmd for cmd in layers[0].dockerfile_commands)
+
+        if builder_version <= "2024.10":
+            assert context_files == {"/.uv.lock", "/.pyproject.toml", "/modal_requirements.txt"}
+        else:
+            assert context_files == {"/.uv.lock", "/.pyproject.toml"}
+
+
+def test_uv_sync_error_invalid_kwargs(servicer, client):
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_project")
+
+    with pytest.raises(InvalidError, match="groups must be None or a list of strings"):
+        Image.debian_slim().uv_sync(uv_project_path, groups="xyz")  # type: ignore
+
+    with pytest.raises(InvalidError, match="extras must be None or a list of strings"):
+        Image.debian_slim().uv_sync(uv_project_path, extras="xyz")  # type: ignore
+
+
+def test_uv_sync_just_pyproject(builder_version, servicer, client):
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_sync_just_pyproject")
+
+    image = Image.debian_slim().uv_sync(uv_project_path)
+
+    app = App()
+    app.function(image=image)(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        assert "COPY /.pyproject.toml /.uv/pyproject.toml" in layers[0].dockerfile_commands
+        assert "COPY /.uv.lock /.uv/uv.lock" not in layers[0].dockerfile_commands
+        assert not any("--frozen" in cmd for cmd in layers[0].dockerfile_commands)
+
+        context_files = {f.filename for layer in layers for f in layer.context_files}
+        if builder_version <= "2024.10":
+            assert context_files == {"/.pyproject.toml", "/modal_requirements.txt"}
+        else:
+            assert context_files == {"/.pyproject.toml"}
+
+
+def test_uv_sync_no_modal(builder_version, client):
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_no_modal")
+
+    image = Image.debian_slim().uv_sync(uv_project_path)
+
+    app = App()
+    app.function(image=image)(dummy)
+
+    if builder_version <= "2024.10":
+        with pytest.raises(InvalidError, match="requires modal to be specified"):
+            with app.run(client=client):
+                pass
+
+
+@pytest.mark.parametrize("kwargs", [{"groups": ["group1", "group2"]}, {"extras": ["extra1"]}])
+def test_uv_sync_modal_in_group_or_extra(builder_version, client, servicer, kwargs):
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_no_modal")
+
+    image = Image.debian_slim().uv_sync(uv_project_path, **kwargs)
+
+    app = App()
+    app.function(image=image)(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        if "groups" in kwargs:
+            groups = kwargs["groups"]
+            groups_cli = " ".join(f"--group={group}" for group in groups)
+            assert any(groups_cli in cmd for cmd in layers[0].dockerfile_commands)
+        if "extras" in kwargs:
+            extras = kwargs["extras"]
+            extras_cli = " ".join(f"--extra={extra}" for extra in extras)
+            assert any(extras_cli in cmd for cmd in layers[0].dockerfile_commands)
+
+
+def test_uv_lock_workspaces_error(builder_version, client):
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_workspace")
+
+    image = Image.debian_slim().uv_sync(uv_project_path)
+
+    app = App()
+    app.function(image=image)(dummy)
+
+    with pytest.raises(InvalidError, match="uv workspaces are not supported"):
+        with app.run(client=client):
+            pass
+
+
+def test_uv_sync_error(client, tmp_path):
+    image = Image.debian_slim().uv_sync(tmp_path)
+
+    app = App()
+    app.function(image=image)(dummy)
+
+    expected_pyproject_file = os.path.join(tmp_path, "pyproject.toml")
+    msg = re.escape(f"Expected {expected_pyproject_file} to exist")
+    with pytest.raises(InvalidError, match=msg):
+        with app.run(client=client):
+            pass
+
+
 @pytest.mark.parametrize("poetry_version", [None, "latest", "2.1.2"])
 def test_poetry_commands(builder_version, servicer, client, poetry_version):
     path = os.path.join(os.path.dirname(__file__), "supports/pyproject.toml")
@@ -1560,6 +1689,9 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
     img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
     assert get_hash(img) == "bf9158ccc3b2e30cebcd199b0894c9530071e2fcdc1440e6c3717a9d0023d1b4"
 
+    img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
+    assert get_hash(img) == "6c9f3debe511508a99ec70212ff79dcfc01ec95be9400c63edfb36c9035be9de"
+
 
 @pytest.fixture
 def force_2024_04(modal_config):
@@ -1634,6 +1766,9 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
     img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
     assert get_hash(img) == "cebd66ab3368c0ff3b56d785e67c624b09e76589e747075b035031ccac051fa7"
 
+    img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
+    assert get_hash(img) == "925054c1aed3a194de979389eeacb5a842695316f7a9f889e314de5c51a62760"
+
 
 @pytest.fixture
 def force_2024_10(modal_config):
@@ -1707,6 +1842,9 @@ def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
 
     img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
     assert get_hash(img) == "8b3c025cf64f15a3edc4427f35d07ac46f90d7c5e249f0c2bcc6080f0701be72"
+
+    img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
+    assert get_hash(img) == "2b6cd5b524ac796cafdabe8b95bf626a765f28c909d23f6051fc4329d6edbc0b"
 
 
 parallel_app = App()
