@@ -34,7 +34,6 @@ from ..exception import (
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
 from .blob_utils import (
     MAX_ASYNC_OBJECT_SIZE_BYTES,
-    MAX_OBJECT_SIZE_BYTES,
     blob_download,
     blob_upload_with_r2_failure_info,
 )
