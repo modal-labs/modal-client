@@ -40,6 +40,7 @@ from ._utils.async_utils import (
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
+from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
@@ -1421,9 +1422,15 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._definition_id = metadata.definition_id
         self._input_plane_url = metadata.input_plane_url
         self._input_plane_region = metadata.input_plane_region
-        # The server may pass back a larger max object size for some input plane users.
-        # Anyone using the control plane will get the standard limit.
-        self._max_object_size_bytes = metadata.max_object_size_bytes
+        # The server may pass back a larger max object size for some input plane users. This applies to input plane
+        # users only - anyone using the control plane will get the standard limit.
+        # There are some cases like FunctionPrecreate where this value is not set at all. We expect that this field
+        # will eventually be hydrated with the correct value, but just to be defensive, if the field is not set we use
+        # MAX_OBJECT_SIZE_BYTES, otherwise it would get set to 0. Accidentally using 0 would cause us to blob upload
+        # everything, so let's avoid that.
+        self._max_object_size_bytes = (
+            metadata.max_object_size_bytes if metadata.HasField("max_object_size_bytes") else MAX_OBJECT_SIZE_BYTES
+        )
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method

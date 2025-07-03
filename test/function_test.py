@@ -1444,3 +1444,31 @@ def test_function_namespace_deprecated(servicer, client):
     # Filter out any unrelated warnings
     namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
     assert len(namespace_warnings) == 0
+
+def test_input_above_limit_does_blob_upload(client, servicer, blob_server):
+    # Setting max_object_size_bytes to 1 should cause input to be blob uploaded
+    servicer.max_object_size_bytes = 1
+    _, blobs, _, _ = blob_server
+    with app.run(client=client):
+        assert foo.remote(2, 4) == 20
+        assert len(servicer.cleared_function_calls) == 1
+    assert len(blobs) == 1
+
+def test_input_above_limit_does_not_blob_upload(client, servicer, blob_server):
+    # Setting max_object_size_bytes to 1000 should cause input to not be blob uploaded
+    servicer.max_object_size_bytes = 1000
+    _, blobs, _, _ = blob_server
+    with app.run(client=client):
+        assert foo.remote(2, 4) == 20
+        assert len(servicer.cleared_function_calls) == 1
+    assert len(blobs) == 0
+
+def test_unset_input_limit_does_not_blob_upload(client, servicer, blob_server):
+    # This forces the max_object_size_bytes to not be set at all in the proto message. The client should detect this,
+    # use the default MAX_OBJECT_SIZE_BYTES value, and not therefore not blob upload our small input.
+    servicer.max_object_size_bytes = None
+    _, blobs, _, _ = blob_server
+    with app.run(client=client):
+        assert foo.remote(2, 4) == 20
+        assert len(servicer.cleared_function_calls) == 1
+    assert len(blobs) == 0
