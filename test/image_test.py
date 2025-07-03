@@ -216,7 +216,7 @@ def test_image_uv_python_packages(builder_version, servicer, client, test_dir):
         .uv_pip_install("numpy", "scipy", extra_index_url="https://xyz", find_links="https://abc?q=123", pre=True)
         .uv_pip_install("flash-attn", extra_options="--no-build-isolation")
         .uv_pip_install("pandas", pre=True)
-        .uv_pip_install(requirements=[requirements])
+        .uv_pip_install(requirements=[requirements, requirements])
     )
     app.function(image=image)(dummy)
     with app.run(client=client):
@@ -244,7 +244,12 @@ def test_image_uv_python_packages(builder_version, servicer, client, test_dir):
             for cmd in layers[0].dockerfile_commands
         )
         assert any(
-            "COPY /.0test-requirements.txt /.uv/0/test-requirements.txt" in cmd for cmd in layers[0].dockerfile_commands
+            "COPY /.0_test-requirements.txt /.uv/0/test-requirements.txt" in cmd
+            for cmd in layers[0].dockerfile_commands
+        )
+        assert any(
+            "COPY /.1_test-requirements.txt /.uv/1/test-requirements.txt" in cmd
+            for cmd in layers[0].dockerfile_commands
         )
 
 
