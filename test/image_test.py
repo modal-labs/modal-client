@@ -207,6 +207,57 @@ def test_image_python_packages(builder_version, servicer, client):
             pass
 
 
+def test_image_uv_python_packages(builder_version, servicer, client, test_dir):
+    requirements = test_dir / "supports" / "test-requirements.txt"
+    app = App()
+    image = (
+        Image.debian_slim()
+        .uv_pip_install("sklearn[xyz]")
+        .uv_pip_install("numpy", "scipy", extra_index_url="https://xyz", find_links="https://abc?q=123", pre=True)
+        .uv_pip_install("flash-attn", extra_options="--no-build-isolation")
+        .uv_pip_install("pandas", pre=True)
+        .uv_pip_install(requirements=[requirements, requirements])
+    )
+    app.function(image=image)(dummy)
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        assert any(
+            "/.uv/uv pip install --python `which python` --compile-bytecode 'sklearn[xyz]'" in cmd
+            for cmd in layers[4].dockerfile_commands
+        )
+        assert any(
+            "/.uv/uv pip install --python `which python` --compile-bytecode "
+            "--find-links 'https://abc?q=123' --extra-index-url https://xyz --prerelease allow numpy scipy" in cmd
+            for cmd in layers[3].dockerfile_commands
+        )
+        assert any(
+            "/.uv/uv pip install --python `which python` --compile-bytecode --no-build-isolation flash-attn" in cmd
+            for cmd in layers[2].dockerfile_commands
+        )
+        assert any(
+            "/.uv/uv pip install --python `which python` --compile-bytecode --prerelease allow pandas" in cmd
+            for cmd in layers[1].dockerfile_commands
+        )
+        assert any(
+            "/.uv/uv pip install --python `which python` --compile-bytecode --requirements /.uv/0/test-requirements.txt"
+            in cmd
+            for cmd in layers[0].dockerfile_commands
+        )
+        assert any(
+            "COPY /.0_test-requirements.txt /.uv/0/test-requirements.txt" in cmd
+            for cmd in layers[0].dockerfile_commands
+        )
+        assert any(
+            "COPY /.1_test-requirements.txt /.uv/1/test-requirements.txt" in cmd
+            for cmd in layers[0].dockerfile_commands
+        )
+
+
+def test_image_uv_python_requirements_error():
+    with pytest.raises(InvalidError, match="requirements must be None or a list of strings"):
+        Image.debian_slim().uv_pip_install(requirements="requirements.txt")  # type: ignore
+
+
 def test_run_commands_secrets_type_validation(builder_version, servicer, client):
     app = App()
     image = Image.debian_slim().run_commands(
@@ -1632,6 +1683,12 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
     )
     assert get_hash(img) == "a25dd4cc2e8d88f92bfdaf2e82b9d74144d1928926bf6be2ca1cdfbbf562189e"
 
+    img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
+    assert get_hash(img) == "5785daf078ee710f41888066f61cd593ac905472b2abd9b85ef99e417e86d065"
+
+    img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
+    assert get_hash(img) == "bf9158ccc3b2e30cebcd199b0894c9530071e2fcdc1440e6c3717a9d0023d1b4"
+
     img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
     assert get_hash(img) == "6c9f3debe511508a99ec70212ff79dcfc01ec95be9400c63edfb36c9035be9de"
 
@@ -1703,6 +1760,12 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
     )
     assert get_hash(img) == "bfce5811c04c1243f12cbb9cca1522cb901f52410986925bcfa3b3c2d7adc7a0"
 
+    img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
+    assert get_hash(img) == "6c685b70ecacc606afd2a64feee562e7d61f702b0dd3cf000fcd21e1f96bfe55"
+
+    img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
+    assert get_hash(img) == "cebd66ab3368c0ff3b56d785e67c624b09e76589e747075b035031ccac051fa7"
+
     img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
     assert get_hash(img) == "925054c1aed3a194de979389eeacb5a842695316f7a9f889e314de5c51a62760"
 
@@ -1773,6 +1836,12 @@ def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
         poetry_lockfile=test_dir / "supports" / "special_poetry.lock",
     )
     assert get_hash(img) == "78d579f243c21dcaa59e5daf97f732e2453b004bc2122de692617d4d725c6184"
+
+    img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
+    assert get_hash(img) == "d3c8d913753dc77119407706026a83f64647f675faf68fedc074b32e9a0b1507"
+
+    img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
+    assert get_hash(img) == "8b3c025cf64f15a3edc4427f35d07ac46f90d7c5e249f0c2bcc6080f0701be72"
 
     img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
     assert get_hash(img) == "2b6cd5b524ac796cafdabe8b95bf626a765f28c909d23f6051fc4329d6edbc0b"

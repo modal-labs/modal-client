@@ -1013,6 +1013,12 @@ message ContainerLogRequest {
   repeated TaskLogs logs = 3;
 }
 
+message ContainerReloadVolumesRequest {
+  string task_id = 1;
+}
+
+message ContainerReloadVolumesResponse { }
+
 message ContainerStopRequest {
   string task_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
@@ -1718,6 +1724,8 @@ message FunctionHandleMetadata {
   FunctionSchema function_schema = 45;
   optional string input_plane_url = 46;
   optional string input_plane_region = 47;
+  // Use optional to ensure unset values default to None instead of 0
+  optional uint64 max_object_size_bytes = 48;
 }
 
 message FunctionInput {
@@ -1790,6 +1798,8 @@ message FunctionPrecreateResponse {
 message FunctionPutInputsItem {
   int32 idx = 1;
   FunctionInput input = 2;
+  bool r2_failed = 3;
+  uint64 r2_latency_ms = 4;
 }
 
 message FunctionPutInputsRequest {
@@ -3279,6 +3289,7 @@ service ModalClient {
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (ContainerHeartbeatResponse);
   rpc ContainerHello(google.protobuf.Empty) returns (google.protobuf.Empty);
   rpc ContainerLog(ContainerLogRequest) returns (google.protobuf.Empty);
+  rpc ContainerReloadVolumes(ContainerReloadVolumesRequest) returns (ContainerReloadVolumesResponse);
   rpc ContainerStop(ContainerStopRequest) returns (ContainerStopResponse);
 
   // Dicts

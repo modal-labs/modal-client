@@ -39,7 +39,7 @@ from modal._functions import _Function
 from modal._runtime.container_io_manager import _ContainerIOManager
 from modal._serialization import deserialize, deserialize_params, serialize_data_format
 from modal._utils.async_utils import asyncify, synchronize_api
-from modal._utils.blob_utils import BLOCK_SIZE
+from modal._utils.blob_utils import BLOCK_SIZE, MAX_OBJECT_SIZE_BYTES
 from modal._utils.grpc_testing import patch_mock_servicer
 from modal._utils.grpc_utils import find_free_port
 from modal._utils.http_utils import run_temporary_http_server
@@ -202,6 +202,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         ]
         self.app_objects = {}
         self.app_unindexed_objects = {}
+        self.max_object_size_bytes = MAX_OBJECT_SIZE_BYTES
         self.n_inputs = 0
         self.n_entry_ids = 0
         self.n_queues = 0
@@ -433,6 +434,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             function_schema=definition.function_schema,
             input_plane_url=self._get_input_plane_url(definition),
             input_plane_region=self._get_input_plane_region(definition),
+            max_object_size_bytes=self.max_object_size_bytes,
         )
 
     def get_object_metadata(self, object_id) -> api_pb2.Object:
@@ -1118,6 +1120,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     function_schema=function_defn.function_schema,
                     input_plane_url=self._get_input_plane_url(function_defn),
                     input_plane_region=self._get_input_plane_region(function_defn),
+                    max_object_size_bytes=self.max_object_size_bytes,
                 ),
                 server_warnings=warnings,
             )

@@ -29,6 +29,7 @@ def test_should_upload():
     for case in test_cases:
         used_blob = should_upload(
             case.size,
+            max_object_size_bytes=MAX_OBJECT_SIZE_BYTES,
             function_call_invocation_type=(
                 api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC
                 if case.is_async
@@ -37,3 +38,24 @@ def test_should_upload():
         )
 
         assert used_blob == case.should_use_blob
+
+
+def test_should_upload_with_max_object_size_bytes():
+    # below threshold should not upload
+    assert not should_upload(
+        999,
+        max_object_size_bytes=1000,
+        function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
+    )
+    # equal to threshold should not upload
+    assert not should_upload(
+        1000,
+        max_object_size_bytes=1000,
+        function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
+    )
+    # above threshold should upload
+    assert should_upload(
+        1001,
+        max_object_size_bytes=1000,
+        function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
+    )
