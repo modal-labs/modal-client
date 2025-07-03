@@ -6,6 +6,17 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.6.dev13 (2025-07-03)
+
+- Add `uv_sync` to image builder to build images with a `uv.lock` file. This feature is in beta as we improve it based on feedback. During the beta period, updating modal may cause image rebuilds.
+
+```python
+import modal
+
+image = modal.Image.debian_slim().uv_sync()
+```
+
+
 #### 1.0.6.dev12 (2025-07-03)
 
 - Adds `uv_pip_install` to install packages with `uv`, which can improve build times by 50% compared to `pip_install`. This feature is in beta as we improve it based on feedback. During the beta period, updating `modal` may cause image rebuilds.
