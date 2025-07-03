@@ -1331,10 +1331,6 @@ class _Image(_Object, type_prefix="im"):
         ```python
         image = modal.Image.debian_slim().uv_sync()
         ```
-
-        This method assumes that:
-        - Python is on the `$PATH` and the first Python on the `$PATH` is used to create the venv.
-        - `pyproject.toml` is compatible with the first Python version on the `$PATH`.
         """
 
         def _normalize_items(items, name) -> list[str]:
@@ -1401,11 +1397,10 @@ class _Image(_Object, type_prefix="im"):
             uv_project_dir_ = os.path.expanduser(uv_project_dir)
             pyproject_toml = os.path.join(uv_project_dir_, "pyproject.toml")
 
-            uv_root = "/.uv"
+            UV_ROOT = "/.uv"
             uv_sync_args = [
-                f"--project={uv_root}",
+                f"--project={UV_ROOT}",
                 "--no-install-workspace",  # Do not install the root project or any "uv workspace"
-                "--no-managed-python",  # Use the system python interpreter to create venv
                 "--compile-bytecode",
             ]
 
@@ -1419,21 +1414,21 @@ class _Image(_Object, type_prefix="im"):
             commands = ["FROM base"]
 
             if uv_version is None:
-                commands.append("COPY --from=ghcr.io/astral-sh/uv:latest /uv /.uv/uv")
+                commands.append(f"COPY --from=ghcr.io/astral-sh/uv:latest /uv {UV_ROOT}/uv")
             else:
-                commands.append(f"COPY --from=ghcr.io/astral-sh/uv:{uv_version} /uv /.uv/uv")
+                commands.append(f"COPY --from=ghcr.io/astral-sh/uv:{uv_version} /uv {UV_ROOT}/uv")
 
             context_files = {}
 
             _check_pyproject_toml(pyproject_toml, version)
 
             context_files["/.pyproject.toml"] = pyproject_toml
-            commands.append(f"COPY /.pyproject.toml {uv_root}/pyproject.toml")
+            commands.append(f"COPY /.pyproject.toml {UV_ROOT}/pyproject.toml")
 
             uv_lock = os.path.join(uv_project_dir_, "uv.lock")
             if os.path.exists(uv_lock):
                 context_files["/.uv.lock"] = uv_lock
-                commands.append(f"COPY /.uv.lock {uv_root}/uv.lock")
+                commands.append(f"COPY /.uv.lock {UV_ROOT}/uv.lock")
 
                 if frozen:
                     # Do not update `uv.lock` when we have one when `frozen=True`. This it ehd efault because this
@@ -1446,8 +1441,8 @@ class _Image(_Object, type_prefix="im"):
             uv_sync_args_joined = " ".join(uv_sync_args).strip()
 
             commands += [
-                f"RUN /.uv/uv sync {uv_sync_args_joined}",
-                f"ENV PATH={uv_root}/.venv/bin:$PATH",
+                f"RUN {UV_ROOT}/uv sync {uv_sync_args_joined}",
+                f"ENV PATH={UV_ROOT}/.venv/bin:$PATH",
             ]
 
             return DockerfileSpec(commands=commands, context_files=context_files)
