@@ -1422,13 +1422,13 @@ class _Image(_Object, type_prefix="im"):
 
             _check_pyproject_toml(pyproject_toml, version)
 
-            context_files["/.pyproject.toml"] = pyproject_toml
-            commands.append(f"COPY /.pyproject.toml {UV_ROOT}/pyproject.toml")
+            context_files["/tmp/pyproject.toml"] = pyproject_toml
+            commands.append(f"COPY /tmp/pyproject.toml {UV_ROOT}/pyproject.toml")
 
             uv_lock = os.path.join(uv_project_dir_, "uv.lock")
             if os.path.exists(uv_lock):
-                context_files["/.uv.lock"] = uv_lock
-                commands.append(f"COPY /.uv.lock {UV_ROOT}/uv.lock")
+                context_files["/tmp/uv.lock"] = uv_lock
+                commands.append(f"COPY /tmp/uv.lock {UV_ROOT}/uv.lock")
 
                 if frozen:
                     # Do not update `uv.lock` when we have one when `frozen=True`. This it ehd efault because this
