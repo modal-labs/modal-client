@@ -701,8 +701,8 @@ def test_uv_sync(builder_version, servicer, client, groups, extras, frozen):
     with app.run(client=client):
         layers = get_image_layers(image.object_id, servicer)
         context_files = {f.filename for layer in layers for f in layer.context_files}
-        assert "COPY /tmp/pyproject.toml /.uv/pyproject.toml" in layers[0].dockerfile_commands
-        assert "COPY /tmp/uv.lock /.uv/uv.lock" in layers[0].dockerfile_commands
+        assert "COPY /.pyproject.toml /.uv/pyproject.toml" in layers[0].dockerfile_commands
+        assert "COPY /.uv.lock /.uv/uv.lock" in layers[0].dockerfile_commands
         if frozen:
             assert any("--frozen" in cmd for cmd in layers[0].dockerfile_commands)
         if groups is not None:
@@ -713,9 +713,9 @@ def test_uv_sync(builder_version, servicer, client, groups, extras, frozen):
             assert any(extra_cmd in cmd for cmd in layers[0].dockerfile_commands)
 
         if builder_version <= "2024.10":
-            assert context_files == {"/tmp/uv.lock", "/tmp/pyproject.toml", "/modal_requirements.txt"}
+            assert context_files == {"/.uv.lock", "/.pyproject.toml", "/modal_requirements.txt"}
         else:
-            assert context_files == {"/tmp/uv.lock", "/tmp/pyproject.toml"}
+            assert context_files == {"/.uv.lock", "/.pyproject.toml"}
 
 
 def test_uv_sync_error_invalid_kwargs(servicer, client):
@@ -738,15 +738,15 @@ def test_uv_sync_just_pyproject(builder_version, servicer, client):
 
     with app.run(client=client):
         layers = get_image_layers(image.object_id, servicer)
-        assert "COPY /tmp/pyproject.toml /.uv/pyproject.toml" in layers[0].dockerfile_commands
-        assert "COPY /tmp/uv.lock /.uv/uv.lock" not in layers[0].dockerfile_commands
+        assert "COPY /.pyproject.toml /.uv/pyproject.toml" in layers[0].dockerfile_commands
+        assert "COPY /.uv.lock /.uv/uv.lock" not in layers[0].dockerfile_commands
         assert not any("--frozen" in cmd for cmd in layers[0].dockerfile_commands)
 
         context_files = {f.filename for layer in layers for f in layer.context_files}
         if builder_version <= "2024.10":
-            assert context_files == {"/tmp/pyproject.toml", "/modal_requirements.txt"}
+            assert context_files == {"/.pyproject.toml", "/modal_requirements.txt"}
         else:
-            assert context_files == {"/tmp/pyproject.toml"}
+            assert context_files == {"/.pyproject.toml"}
 
 
 def test_uv_sync_no_modal(builder_version, client):
