@@ -1222,6 +1222,114 @@ class _Image(_Object, type_prefix="im"):
             gpu_config=parse_gpu_config(gpu),
         )
 
+    def uv_pip_install(
+        self,
+        *packages: Union[str, list[str]],  # A list of Python packages, eg. ["numpy", "matplotlib>=3.5.0"]
+        requirements: Optional[list[str]] = None,  # Passes -r (--requirements) to uv pip install
+        find_links: Optional[str] = None,  # Passes -f (--find-links) to uv pip install
+        index_url: Optional[str] = None,  # Passes -i (--index-url) to uv pip install
+        extra_index_url: Optional[str] = None,  # Passes --extra-index-url to uv pip install
+        pre: bool = False,  # Allow pre-releases using uv pip install --prerelease allow
+        extra_options: str = "",  # Additional options to pass to pip install, e.g. "--no-build-isolation"
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
+        uv_version: Optional[str] = None,  # uv version to use
+        secrets: Sequence[_Secret] = [],
+        gpu: GPU_T = None,
+    ) -> "_Image":
+        """Install a list of Python packages using uv pip install.
+
+        **Examples**
+
+        Simple installation:
+        ```python
+        image = modal.Image.debian_slim().uv_pip_install("torch==2.7.1", "numpy")
+        ```
+
+        This method assumes that:
+        - Python is on the `$PATH` and dependencies are installed with the first Python on the `$PATH`.
+        - Shell supports backticks for substitution
+        - `which` command is on the `$PATH`
+        """
+        pkgs = _flatten_str_args("uv_pip_install", "packages", packages)
+
+        if requirements is None or isinstance(requirements, list):
+            requirements = requirements or []
+        else:
+            raise InvalidError("requirements must be None or a list of strings")
+
+        if not pkgs and not requirements:
+            return self
+        elif not _validate_packages(pkgs):
+            raise InvalidError(
+                "Package list for `Image.uv_pip_install` cannot contain other arguments;"
+                " try the `extra_options` parameter instead."
+            )
+
+        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
+            commands = ["FROM base"]
+            UV_ROOT = "/.uv"
+            if uv_version is None:
+                commands.append(f"COPY --from=ghcr.io/astral-sh/uv:latest /uv {UV_ROOT}/uv")
+            else:
+                commands.append(f"COPY --from=ghcr.io/astral-sh/uv:{uv_version} /uv {UV_ROOT}/uv")
+
+            # NOTE: Using `which python` assumes:
+            # - python is on the PATH and uv is installing into the first python in the PATH
+            # - the shell supports backticks for substitution
+            # - `which` command is on the PATH
+            uv_pip_args = ["--python `which python`", "--compile-bytecode"]
+            context_files = {}
+
+            if find_links:
+                uv_pip_args.append(f"--find-links {shlex.quote(find_links)}")
+            if index_url:
+                uv_pip_args.append(f"--index-url {shlex.quote(index_url)}")
+            if extra_index_url:
+                uv_pip_args.append(f"--extra-index-url {shlex.quote(extra_index_url)}")
+            if pre:
+                uv_pip_args.append("--prerelease allow")
+            if extra_options:
+                uv_pip_args.append(extra_options)
+
+            if requirements:
+
+                def _generate_paths(idx: int, req: str) -> dict:
+                    local_path = os.path.expanduser(req)
+                    basename = os.path.basename(req)
+
+                    # The requirement files can have the same name but in different directories:
+                    # requirements=["test/requirements.txt", "a/b/c/requirements.txt"]
+                    # To uniquely identify these files, we add a `idx` prefix to every file's basename
+                    # - `test/requirements.txt` -> `/.0_requirements.txt` in context -> `/.uv/0/requirements.txt` to uv
+                    # - `a/b/c/requirements.txt` -> `/.1_requirements.txt` in context -> `/.uv/1/requirements.txt` to uv
+                    return {
+                        "local_path": local_path,
+                        "context_path": f"/.{idx}_{basename}",
+                        "dest_path": f"{UV_ROOT}/{idx}/{basename}",
+                    }
+
+                requirement_paths = [_generate_paths(idx, req) for idx, req in enumerate(requirements)]
+                requirements_cli = " ".join(f"--requirements {req['dest_path']}" for req in requirement_paths)
+                uv_pip_args.append(requirements_cli)
+
+                commands.extend([f"COPY {req['context_path']} {req['dest_path']}" for req in requirement_paths])
+                context_files.update({req["context_path"]: req["local_path"] for req in requirement_paths})
+
+            uv_pip_args.extend(shlex.quote(p) for p in sorted(pkgs))
+            uv_pip_args_joined = " ".join(uv_pip_args)
+
+            commands.append(f"RUN {UV_ROOT}/uv pip install {uv_pip_args_joined}")
+
+            return DockerfileSpec(commands=commands, context_files=context_files)
+
+        return _Image._from_args(
+            base_images={"base": self},
+            dockerfile_function=build_dockerfile,
+            force_build=self.force_build or force_build,
+            gpu_config=parse_gpu_config(gpu),
+            secrets=secrets,
+        )
+
     def poetry_install_from_file(
         self,
         poetry_pyproject_toml: str,
