@@ -1318,7 +1318,7 @@ class _Image(_Object, type_prefix="im"):
             uv_pip_args.extend(shlex.quote(p) for p in sorted(pkgs))
             uv_pip_args_joined = " ".join(uv_pip_args)
 
-            commands.append(f"RUN /.uv/uv pip install {uv_pip_args_joined}")
+            commands.append(f"RUN {UV_ROOT}/uv pip install {uv_pip_args_joined}")
 
             return DockerfileSpec(commands=commands, context_files=context_files)
 
