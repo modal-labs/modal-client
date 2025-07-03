@@ -145,9 +145,9 @@ class _Invocation:
             args,
             kwargs,
             stub,
+            max_object_size_bytes=function._max_object_size_bytes,
             method_name=function._use_method_name,
             function_call_invocation_type=function_call_invocation_type,
-            max_object_size_bytes=function._max_object_size_bytes,
         )
 
         request = api_pb2.FunctionMapRequest(
@@ -391,8 +391,8 @@ class _InputPlaneInvocation:
             args,
             kwargs,
             control_plane_stub,
-            method_name=function._use_method_name,
             max_object_size_bytes=function._max_object_size_bytes,
+            method_name=function._use_method_name,
         )
 
         request = api_pb2.AttemptStartRequest(
@@ -1421,6 +1421,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._definition_id = metadata.definition_id
         self._input_plane_url = metadata.input_plane_url
         self._input_plane_region = metadata.input_plane_region
+        # The server may pass back a larger max object size for some input plane users.
+        # Anyone using the control plane will get the standard limit.
         self._max_object_size_bytes = metadata.max_object_size_bytes
 
     def _get_metadata(self):

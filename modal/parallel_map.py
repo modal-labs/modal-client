@@ -143,9 +143,9 @@ async def _map_invocation(
             args,
             kwargs,
             client.stub,
+            max_object_size_bytes=function._max_object_size_bytes,
             idx=idx,
             method_name=function._use_method_name,
-            max_object_size_bytes=function._max_object_size_bytes,
         )
 
     async def input_iter():

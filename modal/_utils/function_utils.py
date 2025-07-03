@@ -535,10 +535,10 @@ async def _create_input(
     kwargs,
     stub: ModalClientModal,
     *,
+    max_object_size_bytes: int,
     idx: Optional[int] = None,
     method_name: Optional[str] = None,
     function_call_invocation_type: Optional["api_pb2.FunctionCallInvocationType.ValueType"] = None,
-    max_object_size_bytes: Optional[int] = MAX_OBJECT_SIZE_BYTES,
 ) -> api_pb2.FunctionPutInputsItem:
     """Serialize function arguments and create a FunctionInput protobuf,
     uploading to blob storage if needed.
