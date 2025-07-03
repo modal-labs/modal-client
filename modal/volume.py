@@ -527,12 +527,15 @@ class _Volume(_Object, type_prefix="vo"):
         if self._read_only:
             raise InvalidError("Read-only Volume can not be written to")
 
-        if self._is_v1:
-            req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
-            await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
-        else:
-            req = api_pb2.VolumeRemoveFile2Request(volume_id=self.object_id, path=path, recursive=recursive)
-            await retry_transient_errors(self._client.stub.VolumeRemoveFile2, req)
+        try:
+            if self._is_v1:
+                req = api_pb2.VolumeRemoveFileRequest(volume_id=self.object_id, path=path, recursive=recursive)
+                await retry_transient_errors(self._client.stub.VolumeRemoveFile, req)
+            else:
+                req = api_pb2.VolumeRemoveFile2Request(volume_id=self.object_id, path=path, recursive=recursive)
+                await retry_transient_errors(self._client.stub.VolumeRemoveFile2, req)
+        except modal.exception.NotFoundError as exc:
+            raise FileNotFoundError(exc.args[0])
 
     @live_method
     async def copy_files(self, src_paths: Sequence[str], dst_path: str, recursive: bool = False) -> None:

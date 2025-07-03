@@ -363,7 +363,10 @@ class _NetworkFileSystem(_Object, type_prefix="sv"):
     async def remove_file(self, path: str, recursive=False):
         """Remove a file in a network file system."""
         req = api_pb2.SharedVolumeRemoveFileRequest(shared_volume_id=self.object_id, path=path, recursive=recursive)
-        await retry_transient_errors(self._client.stub.SharedVolumeRemoveFile, req)
+        try:
+            await retry_transient_errors(self._client.stub.SharedVolumeRemoveFile, req)
+        except modal.exception.NotFoundError as exc:
+            raise FileNotFoundError(exc.args[0])
 
 
 NetworkFileSystem = synchronize_api(_NetworkFileSystem)
