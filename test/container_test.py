@@ -521,8 +521,9 @@ def test_generator_failure_async_cleanup(servicer, tmp_path, client):
         assert exc.args == ("bad",)
         # There shouldn't be additional garbage in the container output due to resource leaks, e.g.
         # "Task was destroyed but it is pending!"
+        assert 'raise Exception("bad")' in container_stderr
+        assert container_stderr.endswith("Exception: bad\n")
         assert "Task was destroyed but it is pending" not in container_stderr
-        assert container_stderr.endswith('raise Exception("bad")')
 
 
 @skip_github_non_linux
