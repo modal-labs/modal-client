@@ -9,7 +9,7 @@ import sys
 import time
 import traceback
 from collections.abc import AsyncGenerator, AsyncIterator
-from contextlib import AsyncExitStack, asynccontextmanager
+from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import (
     TYPE_CHECKING,
@@ -22,6 +22,7 @@ from typing import (
 
 from google.protobuf.empty_pb2 import Empty
 from grpclib import Status
+from synchronicity.async_wrap import asynccontextmanager
 
 import modal_proto.api_pb2
 from modal._runtime import gpu_memory_snapshot
@@ -507,7 +508,9 @@ class _ContainerIOManager:
         await retry_transient_errors(self._client.stub.FunctionCallPutDataOut, req)
 
     @asynccontextmanager
-    async def generator_output_sender(self, function_call_id: str, data_format: int, message_rx: asyncio.Queue):
+    async def generator_output_sender(
+        self, function_call_id: str, data_format: int, message_rx: asyncio.Queue
+    ) -> AsyncGenerator[None, None]:
         """Runs background task that feeds generator outputs into a function call's `data_out` stream."""
         GENERATOR_STOP_SENTINEL = Sentinel()
 
