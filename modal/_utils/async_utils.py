@@ -4,6 +4,7 @@ import concurrent.futures
 import functools
 import inspect
 import itertools
+import sys
 import time
 import typing
 from collections.abc import AsyncGenerator, AsyncIterable, Awaitable, Iterable, Iterator
@@ -30,6 +31,10 @@ from .logger import logger
 T = TypeVar("T")
 P = ParamSpec("P")
 V = TypeVar("V")
+
+if sys.platform == "win32":
+    # quick workaround for deadlocks on shutdown - need to investigate further
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 synchronizer = synchronicity.Synchronizer()
 
