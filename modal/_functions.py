@@ -451,8 +451,10 @@ class _InputPlaneInvocation:
                         self.attempt_token = retry_response.attempt_token
                         continue
 
+                control_plane_stub = self.client.stub
+                # Note: Blob download is done on the control plane stub, not the input plane stub!
                 return await _process_result(
-                    await_response.output.result, await_response.output.data_format, self.stub, self.client
+                    await_response.output.result, await_response.output.data_format, control_plane_stub, self.client
                 )
 
 
