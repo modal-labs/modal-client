@@ -320,6 +320,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
 
+    def get_data_chunks(self, function_call_id) -> list[api_pb2.DataChunk]:
+        # ugly - get data chunks associated with the first input to this servicer
+        data_chunks: list[api_pb2.DataChunk] = []
+        if function_call_id in self.fc_data_out:
+            try:
+                while True:
+                    chunk = self.fc_data_out[function_call_id].get_nowait()
+                    data_chunks.append(chunk)
+            except asyncio.QueueEmpty:
+                pass
+        return data_chunks
+
     def set_resp_jitter(self, secs: float) -> None:
         # TODO: It'd be great to make this easy to apply to all gRPC method handlers.
         # Some way to decorate `stream.send_message`.

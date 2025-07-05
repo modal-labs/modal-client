@@ -97,6 +97,14 @@ def gen_n_fail_on_m(n, m):
         yield i**2
 
 
+@app.function()
+async def async_gen_n_fail_on_m(n, m):
+    for i in range(n):
+        if i == m:
+            raise Exception("bad")
+        yield i**2
+
+
 def deprecated_function(x):
     deprecation_warning((2000, 1, 1), "This function is deprecated")
     return x**2
