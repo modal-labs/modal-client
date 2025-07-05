@@ -135,6 +135,7 @@ def _get_multi_inputs(args: list[tuple[str, tuple, dict]] = []) -> list[api_pb2.
         resp = api_pb2.FunctionGetInputsResponse(
             inputs=[
                 api_pb2.FunctionGetInputsItem(
+                    function_call_id="fc-123",
                     input_id=f"in-{input_n:03}",
                     input=api_pb2.FunctionInput(args=serialize((input_args, input_kwargs)), method_name=method_name),
                 )
@@ -330,7 +331,7 @@ def _run_container(
             servicer.container_inputs = _get_inputs()
         else:
             servicer.container_inputs = inputs
-        function_call_id = servicer.container_inputs[0].inputs[0].function_call_id
+        first_function_call_id = servicer.container_inputs[0].inputs[0].function_call_id
         servicer.fail_get_inputs = fail_get_inputs
 
         if module_name in sys.modules:
@@ -371,15 +372,7 @@ def _run_container(
         # Flatten outputs
         items = _flatten_outputs(servicer.container_outputs)
 
-        # Get data chunks
-        data_chunks: list[api_pb2.DataChunk] = []
-        if function_call_id in servicer.fc_data_out:
-            try:
-                while True:
-                    chunk = servicer.fc_data_out[function_call_id].get_nowait()
-                    data_chunks.append(chunk)
-            except asyncio.QueueEmpty:
-                pass
+        data_chunks = servicer.get_data_chunks(first_function_call_id)
 
         return ContainerResult(client, items, data_chunks, servicer.task_result)
 
@@ -498,6 +491,39 @@ def test_generator_failure(servicer, capsys):
     assert isinstance(exc, Exception)
     assert exc.args == ("bad",)
     assert 'raise Exception("bad")' in capsys.readouterr().err
+
+
+@skip_github_non_linux
+@pytest.mark.usefixtures("server_url_env")
+def test_generator_failure_async_cleanup(servicer, tmp_path, client):
+    with _run_container_process(
+        servicer,
+        tmp_path,
+        "test.supports.functions",
+        "async_gen_n_fail_on_m",
+        function_type=api_pb2.Function.FUNCTION_TYPE_GENERATOR,
+        inputs=[("", (10, 5), {})],
+    ) as p:
+        stdout, stderr = p.communicate()
+        chunks = servicer.get_data_chunks("fc-123")  # hard coded ugly function call id...
+        assert len(chunks) == 5
+        container_stderr = stderr.decode("utf8")
+        print(container_stderr)
+        results = ContainerResult(
+            client,
+            items=_flatten_outputs(servicer.container_outputs),
+            data_chunks=chunks,
+            task_result=servicer.task_result,
+        )
+        items, exc = _unwrap_generator(results)
+        assert items == [i**2 for i in range(5)]
+        assert isinstance(exc, Exception)
+        assert exc.args == ("bad",)
+        # There shouldn't be additional garbage in the container output due to resource leaks, e.g.
+        # "Task was destroyed but it is pending!"
+        assert 'raise Exception("bad")' in container_stderr
+        assert container_stderr.strip().endswith("Exception: bad")
+        assert "Task was destroyed but it is pending" not in container_stderr
 
 
 @skip_github_non_linux
@@ -1839,6 +1865,7 @@ def _run_container_process(
     _print=False,  # for debugging - print directly to stdout/stderr instead of pipeing
     env={},
     is_class=False,
+    function_type: "api_pb2.Function.FunctionType.ValueType" = api_pb2.Function.FUNCTION_TYPE_FUNCTION,
 ) -> subprocess.Popen:
     container_args = _container_args(
         module_name,
@@ -1847,6 +1874,7 @@ def _run_container_process(
         target_concurrent_inputs=target_concurrent_inputs,
         serialized_params=serialize(cls_params),
         is_class=is_class,
+        function_type=function_type,
     )
 
     # These env vars are always present in containers
@@ -1859,6 +1887,7 @@ def _run_container_process(
     env["MODAL_CONTAINER_ARGUMENTS_PATH"] = str(container_args_path)
 
     servicer.container_inputs = _get_multi_inputs(inputs)
+
     return subprocess.Popen(
         [sys.executable, "-m", "modal._container_entrypoint"],
         env={**os.environ, **env},
