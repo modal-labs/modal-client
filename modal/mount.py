@@ -313,6 +313,7 @@ class _Mount(_Object, type_prefix="mo"):
     _environment_name: Optional[str] = None
     _allow_overwrite: bool = False
     _content_checksum_sha256_hex: Optional[str] = None
+    _included_files: Optional[frozenset[tuple[Path, PurePosixPath]]] = None  # only set post creation _load
 
     @staticmethod
     def _new(entries: list[_MountEntry] = []) -> "_Mount":
@@ -320,10 +321,11 @@ class _Mount(_Object, type_prefix="mo"):
 
         async def mount_content_deduplication_key():
             try:
-                included_files = await asyncio.get_event_loop().run_in_executor(None, _select_files, entries)
+                included_files = frozenset(await asyncio.get_event_loop().run_in_executor(None, _select_files, entries))
             except NonLocalMountError:
                 return None
-            return (_Mount._type_prefix, "local", frozenset(included_files))
+            obj._included_files = included_files
+            return (_Mount._type_prefix, "local", included_files)
 
         obj = _Mount._from_loader(_Mount._load_mount, rep, deduplication_key=mount_content_deduplication_key)
         obj._entries = entries

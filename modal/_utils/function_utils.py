@@ -3,6 +3,7 @@ import asyncio
 import enum
 import inspect
 import os
+import typing
 from collections.abc import AsyncGenerator
 from enum import Enum
 from pathlib import Path, PurePosixPath
@@ -37,6 +38,7 @@ from .blob_utils import (
     blob_download,
     blob_upload_with_r2_failure_info,
 )
+from .deprecation import deprecation_warning
 from .grpc_utils import RETRYABLE_GRPC_STATUS_CODES
 
 
@@ -49,6 +51,10 @@ class FunctionInfoType(Enum):
 
 class LocalFunctionError(InvalidError):
     """Raised if a function declared in a non-global scope is used in an impermissible way"""
+
+
+if typing.TYPE_CHECKING:
+    from modal._resolver import Resolver
 
 
 def entrypoint_only_package_mount_condition(entrypoint_file):
@@ -325,11 +331,31 @@ class FunctionInfo:
         # make sure the function's own entrypoint is included:
         if self._type == FunctionInfoType.PACKAGE:
             top_level_package = self.module_name.split(".")[0]
-            # TODO: add deprecation warning if the following entrypoint mount
-            #  includes non-.py files, since we'll want to migrate to .py-only
-            #  soon to get it consistent with the `add_local_python_source()`
-            #  defaults.
-            return {top_level_package: _Mount._from_local_python_packages(top_level_package)}
+            package_mount = _Mount._from_local_python_packages(top_level_package)
+
+            async def _warning_loader(new_mount: _Mount, resolver: "Resolver", existing_object_id=None):
+                local_files: frozenset[Path] = frozenset(here for here, there in package_mount._included_files)
+                non_python_files = [p for p in local_files if p.suffix != ".py"]
+                if non_python_files:
+                    file_list = "\n".join({str(p) for p in list(non_python_files)[:3]})
+                    num_files = len(non_python_files)
+                    if num_files > 3:
+                        file_list += f"\n...(and {num_files - 3} others)"
+                    deprecation_warning(
+                        (2025, 6, 7),
+                        f"There are non-python files in function package mount for `{self.function_name}`.\n"
+                        "Starting in Modal 1.2, these will no longer be included by default and will need to be "
+                        "included through Image.add_local_file or similar:\n"
+                        f"{file_list}\n\n",
+                        show_source=False,
+                    )
+                new_mount._hydrate_from_other(package_mount)
+
+            def deps():
+                return [package_mount]
+
+            package_mount_warning_wrapper = _Mount._from_loader(_warning_loader, rep="Mount for package", deps=deps)
+            return {top_level_package: package_mount_warning_wrapper}
         elif self._type == FunctionInfoType.FILE:
             # TODO: inspect if this file is already included as part of
             #  a package mount, and skip it + reference that package
