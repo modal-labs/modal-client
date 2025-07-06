@@ -343,7 +343,7 @@ class FunctionInfo:
                         file_list += f"\n...(and {num_files - 3} others)"
                     deprecation_warning(
                         (2025, 6, 7),
-                        f"There are non-python files in function package mount for `{self.function_name}`.\n"
+                        f"There are non-python files in Function package for `{self.function_name}`.\n"
                         "Starting in Modal 1.2, these will no longer be included by default and will need to be "
                         "included through Image.add_local_file or similar:\n"
                         f"{file_list}\n\n",
