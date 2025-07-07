@@ -2011,6 +2011,9 @@ message ImageMetadata {
 
   // The builder version for/with which the image was created.
   optional string image_builder_version = 5;
+
+  // Error encountered during image metadata collection.
+  string collection_error = 6;
 }
 
 
