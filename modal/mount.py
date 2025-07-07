@@ -950,7 +950,7 @@ async def _create_client_dependency_mounts(
         ("musllinux_1_2", f"{arch}-unknown-linux-musl"),  # musl >= 1.2
     ]
     coros = []
-    for builder_version in ["PREVIEW"]:
+    for builder_version in ["2025.06", "PREVIEW"]:
         for python_version in python_versions:
             for platform, uv_python_platform in platform_tags:
                 coros.append(
