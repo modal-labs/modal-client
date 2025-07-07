@@ -188,6 +188,14 @@ def get_content_length(data: BinaryIO) -> int:
     return content_length - pos
 
 
+async def _measure_endpoint_latency(item: str) -> int:
+    latency_ms = 0
+    t0 = time.monotonic_ns()
+    async with ClientSessionRegistry.get_session().head(item) as _:
+        latency_ms = (time.monotonic_ns() - t0) // 1_000_000
+    return latency_ms
+
+
 async def _blob_upload_with_fallback(items, blob_ids: list[str], callback) -> tuple[str, bool, int]:
     r2_latency_ms = 0
     r2_failed = False
@@ -197,10 +205,14 @@ async def _blob_upload_with_fallback(items, blob_ids: list[str], callback) -> tu
         if idx == 0 and len(items) > 1 and random.random() > HEALTHY_R2_UPLOAD_PERCENTAGE:
             continue
         try:
-            init_time = time.monotonic_ns()
-            await callback(item)
             if blob_id.endswith(":r2"):
-                r2_latency_ms = (time.monotonic_ns() - init_time) // 1_000_000
+                # measure the time it takes to contact the bucket endpoint
+                r2_latency_ms, _ = await asyncio.gather(
+                    _measure_endpoint_latency(item),
+                    callback(item),
+                )
+            else:
+                await callback(item)
             return blob_id, r2_failed, r2_latency_ms
         except Exception as _:
             if blob_id.endswith(":r2"):
