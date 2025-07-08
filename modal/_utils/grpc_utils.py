@@ -1,8 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
-import base64
 import contextlib
-import json
 import platform
 import socket
 import time
@@ -73,9 +71,6 @@ RETRYABLE_GRPC_STATUS_CODES = [
     Status.UNKNOWN,
 ]
 
-# A unix timestamp representing the time when the auth token should be refreshed.
-auth_token_refresh_timestamp = 0
-
 
 @dataclass
 class RetryWarningMessage:
@@ -101,7 +96,7 @@ class ConnectionManager:
 
     async def get_or_create_channel(self, server_url: str) -> grpclib.client.Channel:
         if server_url not in self._channels:
-            self._channels[server_url] = create_channel(server_url, self._metadata)
+            self._channels[server_url] = create_channel(server_url, self._client.auth_token_manager, self._metadata)
             try:
                 await connect_channel(self._channels[server_url])
             except OSError as exc:
@@ -114,16 +109,9 @@ class ConnectionManager:
         self._channels.clear()
 
 
-def _decode_jwt(token: str) -> dict[str, Any]:
-    """Decodes a JWT into a dict without verifying signature."""
-    payload = token.split(".")[1]
-    padding = "=" * (-len(payload) % 4)
-    decoded_bytes = base64.urlsafe_b64decode(payload + padding)
-    return json.loads(decoded_bytes)
-
-
 def create_channel(
     server_url: str,
+    auth_token_manager: "modal.client.AuthTokenManager",
     metadata: dict[str, str] = {},
 ) -> grpclib.client.Channel:
     """Creates a grpclib.Channel to be used by a GRPC stub.
@@ -158,48 +146,27 @@ def create_channel(
     # Inject metadata for the client.
     async def send_request(event: grpclib.events.SendRequest) -> None:
         for k, v in metadata.items():
-            # Don't add x-modal-auth-token to request if we have passed the refresh time. Omitting it will cause the
-            # server to generate a new token, and return it to us in the response
-            if (
-                k == "x-modal-auth-token"
-                and event.method_name.endswith("AppHeartbeat")
-                and int(time.time()) >= auth_token_refresh_timestamp
-            ):
-                continue
             event.metadata[k] = v
 
         logger.debug(f"Sending request to {event.method_name}")
 
-    async def recv_initial_metadata(initial_metadata: grpclib.events.RecvInitialMetadata) -> None:
-        _handle_grpc_event_metadata(initial_metadata)
-
-    async def recv_trailing_metadata(trailing_metadata: grpclib.events.RecvTrailingMetadata) -> None:
-        _handle_grpc_event_metadata(trailing_metadata)
-
-    def _handle_grpc_event_metadata(
-        recv_metadata: typing.Union[
+    async def recv_metadata(
+        md: typing.Union[
             grpclib.events.RecvTrailingMetadata, grpclib.events.RecvInitialMetadata
         ],
     ):
-        global auth_token_refresh_timestamp
         # If we receive an auth token from the server, include it in all future requests.
         # TODO(nathan): This isn't perfect because the metadata isn't propagated when the
         # process is forked and a new channel is created. This is OK for now since this
         # token is only used by the experimental input plane
-        if token := recv_metadata.metadata.get("x-modal-auth-token"):
+        if token := md.metadata.get("x-modal-auth-token"):
             token_str = str(token)
-            exp = _decode_jwt(token_str).get("exp")
-            if exp:
-                metadata["x-modal-auth-token"] = token_str
-                # Refresh the auth token 5 minutes before it expires.
-                auth_token_refresh_timestamp = int(exp) - (5 * 60)
-            else:
-                # This should never happen
-                logger.warning("x-modal-auth-token does not contain exp field")
+            auth_token_manager.update_token(token_str)
+            metadata["x-modal-auth-token"] = token_str
 
     grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
-    grpclib.events.listen(channel, grpclib.events.RecvInitialMetadata, recv_initial_metadata)
-    grpclib.events.listen(channel, grpclib.events.RecvTrailingMetadata, recv_trailing_metadata)
+    grpclib.events.listen(channel, grpclib.events.RecvInitialMetadata, recv_metadata)
+    grpclib.events.listen(channel, grpclib.events.RecvTrailingMetadata, recv_metadata)
 
     return channel
 

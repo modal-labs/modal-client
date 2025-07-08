@@ -1,8 +1,11 @@
 # Copyright Modal Labs 2022
 import asyncio
+import base64
+import json
 import os
 import platform
 import sys
+import time
 import urllib.parse
 import warnings
 from collections.abc import AsyncGenerator, AsyncIterator, Collection, Mapping
@@ -79,6 +82,7 @@ class _Client:
     _cancellation_context_event_loop: asyncio.AbstractEventLoop = None
     _stub: Optional[api_grpc.ModalClientStub]
     _snapshotted: bool
+    auth_token_manager: "AuthTokenManager" = None
 
     def __init__(
         self,
@@ -92,6 +96,7 @@ class _Client:
         """
         self.server_url = server_url
         self.client_type = client_type
+        self.auth_token_manager: Optional[AuthTokenManager] = None
         self._credentials = credentials
         self.version = version
         self._closed = False
@@ -133,7 +138,7 @@ class _Client:
         self._cancellation_context = TaskContext(grace=0.5)  # allow running rpcs to finish in 0.5s when closing client
         self._cancellation_context_event_loop = asyncio.get_running_loop()
         await self._cancellation_context.__aenter__()
-
+        self.auth_token_manager = AuthTokenManager(self)
         self._connection_manager = ConnectionManager(client=self, metadata=metadata)
         self._stub = await self.get_stub(self.server_url)
         self._owner_pid = os.getpid()
@@ -424,3 +429,41 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
         self.wrapped_method.channel = await self.client._get_channel(self.server_url)
         async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
             yield response
+
+class AuthTokenManager:
+    _client: _Client
+    # A unix timestamp representing the time when the auth token should be refreshed.
+    _auth_token_refresh_timestamp: int
+    _token_refresh_in_progress: bool
+
+    def __init__(self, client: _Client):
+        self._client = client
+        self._auth_token_refresh_timestamp = 0
+        self._token_refresh_in_progress = False
+
+    async def maybe_refresh_token(self):
+        if self._token_refresh_in_progress or int(time.time()) < self._auth_token_refresh_timestamp:
+            return
+        self._token_refresh_in_progress = True
+        try:
+            await self._client.hello()
+        except Exception:
+            logger.exception("Failed to refresh auth token")
+        finally:
+            self._token_refresh_in_progress = False
+
+
+    def _decode_jwt(self, token: str) -> dict[str, Any]:
+        """Decodes a JWT into a dict without verifying signature."""
+        payload = token.split(".")[1]
+        padding = "=" * (-len(payload) % 4)
+        decoded_bytes = base64.urlsafe_b64decode(payload + padding)
+        return json.loads(decoded_bytes)
+
+    def update_token(self, token:str):
+        if exp := self._decode_jwt(token).get("exp"):
+            # Refresh the auth token 5 minutes before it expires.
+            self._auth_token_refresh_timestamp = int(exp) - (5 * 60)
+        else:
+            # This should never happen
+            logger.warning("x-modal-auth-token does not contain exp field")

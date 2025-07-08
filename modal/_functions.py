@@ -387,6 +387,7 @@ class _InputPlaneInvocation:
 
         function_id = function.object_id
         control_plane_stub = client.stub
+        await client.auth_token_manager.maybe_refresh_token()
         # Note: Blob upload is done on the control plane stub, not the input plane stub!
         input_item = await _create_input(
             args,
@@ -414,6 +415,7 @@ class _InputPlaneInvocation:
         # TODO(ryan): add logic to retry for user defined retry policy
         internal_failure_count = 0
         while True:
+            await self.client.auth_token_manager.maybe_refresh_token()
             await_request = api_pb2.AttemptAwaitRequest(
                 attempt_token=self.attempt_token,
                 timeout_secs=OUTPUTS_TIMEOUT,

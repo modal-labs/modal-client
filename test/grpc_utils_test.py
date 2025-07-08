@@ -2,13 +2,11 @@
 import pytest
 import time
 
-import jwt
 from grpclib import GRPCError, Status
 
 from modal import __version__
 from modal._utils.async_utils import synchronize_api
 from modal._utils.grpc_utils import (
-    _decode_jwt,
     connect_channel,
     create_channel,
     retry_transient_errors,
@@ -19,7 +17,7 @@ from .supports.skip import skip_windows_unix_socket
 
 
 @pytest.mark.asyncio
-async def test_http_channel(servicer, credentials):
+async def test_http_channel(servicer, credentials, auth_token_manager):
     token_id, token_secret = credentials
     metadata = {
         "x-modal-client-type": str(api_pb2.CLIENT_TYPE_CLIENT),
@@ -29,7 +27,7 @@ async def test_http_channel(servicer, credentials):
         "x-modal-token-secret": token_secret,
     }
     assert servicer.client_addr.startswith("http://")
-    channel = create_channel(servicer.client_addr)
+    channel = create_channel(servicer.client_addr, auth_token_manager)
     client_stub = api_grpc.ModalClientStub(channel)
 
     req = api_pb2.BlobCreateRequest()
@@ -41,14 +39,14 @@ async def test_http_channel(servicer, credentials):
 
 @skip_windows_unix_socket
 @pytest.mark.asyncio
-async def test_unix_channel(servicer):
+async def test_unix_channel(servicer, auth_token_manager):
     metadata = {
         "x-modal-client-type": str(api_pb2.CLIENT_TYPE_CONTAINER),
         "x-modal-python-version": "3.12.1",
         "x-modal-client-version": __version__,
     }
     assert servicer.container_addr.startswith("unix://")
-    channel = create_channel(servicer.container_addr)
+    channel = create_channel(servicer.container_addr, auth_token_manager)
     client_stub = api_grpc.ModalClientStub(channel)
 
     req = api_pb2.BlobCreateRequest()
@@ -59,8 +57,8 @@ async def test_unix_channel(servicer):
 
 
 @pytest.mark.asyncio
-async def test_http_broken_channel():
-    ch = create_channel("https://xyz.invalid")
+async def test_http_broken_channel(auth_token_manager):
+    ch = create_channel("https://xyz.invalid", auth_token_manager)
     with pytest.raises(OSError):
         await connect_channel(ch)
 
@@ -128,9 +126,3 @@ async def test_retry_transient_errors(servicer, client):
     assert servicer.blob_create_metadata.get("x-idempotency-key")
     assert servicer.blob_create_metadata.get("x-retry-attempt") == "3"
     assert servicer.blob_create_metadata.get("x-modal-input-plane-region") == "us-east"
-
-
-def test_decode_jwt(servicer, client):
-    payload = {"exp": 1719851532, "something": "else"}
-    token = jwt.encode(payload, "my-secret-key", algorithm="HS256")
-    assert _decode_jwt(token) == payload

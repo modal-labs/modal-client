@@ -3,14 +3,18 @@ import platform
 import pytest
 import subprocess
 import sys
+import time
 import urllib.parse
+from unittest.mock import AsyncMock
 
+import jwt
 from google.protobuf.empty_pb2 import Empty
 from grpclib import GRPCError, Status
 
 import modal._runtime
 import modal._utils.grpc_utils
 from modal import Client
+from modal.client import AuthTokenManager
 from modal.exception import AuthError, ConnectionError, InvalidError, ServerWarning
 from modal_proto import api_pb2
 
@@ -266,3 +270,58 @@ def test_client_verify(servicer, client):
 
     with pytest.raises(ConnectionError):
         client.verify("https://localhost:443", ("foo", "bar"))
+
+def test_decode_jwt(auth_token_manager):
+    payload = {"exp": 1719851532, "something": "else"}
+    token = jwt.encode(payload, "my-secret-key", algorithm="HS256")
+    decoded = auth_token_manager._decode_jwt(token)
+    assert decoded["exp"] == 1719851532
+
+def test_update_token(auth_token_manager):
+    payload = {"exp": 1719851532, "something": "else"}
+    token = jwt.encode(payload, "my-secret-key", algorithm="HS256")
+    auth_token_manager.update_token(token)
+    assert auth_token_manager.auth_token_refresh_timestamp == 1719851532 - (5 * 60)
+
+def test_update_token_missing_exp(auth_token_manager, caplog):
+    payload = {"something": "else"}
+    token = jwt.encode(payload, "my-secret-key", algorithm="HS256")
+    auth_token_manager.update_token(token)
+    assert "x-modal-auth-token does not contain exp field" in caplog.text
+
+@pytest.mark.asyncio
+async def test_maybe_refresh_token_no_refresh_needed(client, monkeypatch):
+    hello = AsyncMock(wraps=client.hello)
+    monkeypatch.setattr(client, "hello", hello)
+    auth_token_manager = AuthTokenManager(client)
+    auth_token_manager._auth_token_refresh_timestamp = int(time.time()) + 1000
+    await auth_token_manager.maybe_refresh_token()
+    hello.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_maybe_refresh_token_refresh_needed(client, monkeypatch):
+    hello = AsyncMock(wraps=client.hello)
+    monkeypatch.setattr(client, "hello", hello)
+    auth_token_manager = AuthTokenManager(client)
+    auth_token_manager._auth_token_refresh_timestamp = int(time.time()) - 1000
+    await auth_token_manager.maybe_refresh_token()
+    hello.assert_called_once()
+
+@pytest.mark.asyncio
+async def test_maybe_refresh_token_refresh_in_progress(client, monkeypatch):
+    hello = AsyncMock(wraps=client.hello)
+    monkeypatch.setattr(client, "hello", hello)
+    auth_token_manager = AuthTokenManager(client)
+    auth_token_manager._token_refresh_in_progress = True
+    await auth_token_manager.maybe_refresh_token()
+    hello.assert_not_called()
+
+@pytest.mark.asyncio
+async def test_maybe_refresh_token_refresh_failure(client, monkeypatch, caplog):
+    hello = AsyncMock(wraps=client.hello)
+    monkeypatch.setattr(client, "hello", hello)
+    auth_token_manager = AuthTokenManager(client)
+    auth_token_manager._auth_token_refresh_timestamp = int(time.time()) - 1000
+    hello.side_effect = Exception("Refresh failed")
+    await auth_token_manager.maybe_refresh_token()
+    assert "Failed to refresh auth token" in caplog.text

@@ -46,7 +46,7 @@ from modal._utils.http_utils import run_temporary_http_server
 from modal._utils.jwt_utils import DecodedJwt
 from modal._vendor import cloudpickle
 from modal.app import _App
-from modal.client import Client
+from modal.client import AuthTokenManager, Client
 from modal.cls import _Cls
 from modal.image import ImageBuilderVersion
 from modal.mount import PYTHON_STANDALONE_VERSIONS, client_mount_name, python_standalone_mount_name
@@ -2430,6 +2430,11 @@ async def servicer(blob_server, temporary_sock_path, credentials):
 async def client(servicer, credentials):
     with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
         yield client
+
+
+@pytest_asyncio.fixture(scope="function")
+async def auth_token_manager(client):
+    return AuthTokenManager(client)
 
 
 @pytest_asyncio.fixture(scope="function")
