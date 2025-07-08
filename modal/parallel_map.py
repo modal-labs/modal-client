@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2024
 import asyncio
+import contextlib
 import enum
 import inspect
 import time
@@ -199,6 +200,7 @@ async def _map_invocation(
                 inputs=items,
                 function_call_id=function_call_id,
             )
+            print(f"Pushing {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}.")
             logger.debug(
                 f"Pushing {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}."
             )
@@ -393,7 +395,7 @@ async def _map_invocation(
 
     async def log_debug_stats():
         def log_stats():
-            logger.debug(
+            print(
                 f"Map stats: sync_client_retries_enabled={sync_client_retries_enabled} "
                 f"have_all_inputs={have_all_inputs} inputs_created={inputs_created} input_sent={inputs_sent} "
                 f"inputs_retried={inputs_retried} outputs_received={outputs_received} "
@@ -422,6 +424,329 @@ async def _map_invocation(
                 yield response.value
     log_debug_stats_task.cancel()
     await log_debug_stats_task
+
+
+async def _map_invocation_inputplane(
+    function: "modal.functions._Function",
+    raw_input_queue: _SynchronizedQueue,
+    client: "modal.client._Client",
+    order_outputs: bool,
+    return_exceptions: bool,
+    wrap_returned_exceptions: bool,
+    count_update_callback: Optional[Callable[[int, int], None]],
+    function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
+) -> typing.AsyncGenerator[Any, None]:
+    """Input-plane implementation of a function map invocation.
+
+    This is analogous to `_map_invocation`, but instead of the control-plane
+    `FunctionMap` / `FunctionPutInputs` / `FunctionGetOutputs` RPCs it speaks
+    the input-plane protocol consisting of `MapStartOrContinue` and `MapAwait`.
+
+    The implementation purposefully ignores retry handling for now – a stub is
+    left in place so that a future change can add support for the retry path
+    without re-structuring the surrounding code.
+    """
+
+    assert function._input_plane_url, "_map_invocation_inputplane should only be used for input-plane backed functions"
+    assert client.stub, "Client must be hydrated with a stub"
+
+    input_plane_stub = await client.get_stub(function._input_plane_url)
+    input_id_to_idx = {}
+
+    # ------------------------------------------------------------
+    # Helper structures
+    # ------------------------------------------------------------
+
+    @dataclass
+    class _QueueItem:
+        """Wrapper for items that should be sent in the next MapStartOrContinue.
+
+        If `attempt_token` is `None` this is a *new* input, otherwise it
+        represents a retry of a previous attempt.
+        """
+
+        put_inputs_item: api_pb2.FunctionPutInputsItem
+        # idx: int
+        attempt_token: Optional[str] = None  # populated for retries
+
+        def to_start_or_continue_item(self) -> api_pb2.MapStartOrContinueItem:
+            if self.attempt_token is None:
+                # fresh input
+                return api_pb2.MapStartOrContinueItem(input=self.put_inputs_item)
+            else:
+                retry_item = api_pb2.MapContinueRetryItem(
+                    input=self.put_inputs_item,
+                    attempt_token=self.attempt_token,
+                )
+                return api_pb2.MapStartOrContinueItem(retry_item=retry_item)
+
+    # ------------------------------------------------------------
+    # Invocation-wide state
+    # ------------------------------------------------------------
+
+    have_all_inputs = False
+    map_done_event = asyncio.Event()
+
+    inputs_created = 0
+    outputs_completed = 0
+
+    # The input-plane server returns this after the first request.
+    function_call_id: Optional[str] = None
+
+    # Map of idx -> attempt_token returned by the server.  This will be needed
+    # for a future client-side retry implementation.
+    attempt_tokens: dict[int, str] = {}
+
+    # Single priority queue that holds *both* fresh inputs (timestamp == now)
+    # and future retries (timestamp > now).
+    queue: TimestampPriorityQueue[_QueueItem] = TimestampPriorityQueue()
+
+    # Maximum number of inputs that may be in-flight (the server sends this in
+    # the first response – fall back to the default if we never receive it for
+    # any reason).
+    max_inputs_outstanding = MAX_INPUTS_OUTSTANDING_DEFAULT
+
+    # ------------------------------------------------------------
+    # Helper functions
+    # ------------------------------------------------------------
+
+    def update_counters(created_delta: int = 0, completed_delta: int = 0, set_have_all_inputs: bool | None = None):
+        nonlocal inputs_created, outputs_completed, have_all_inputs
+
+        if created_delta:
+            inputs_created += created_delta
+        if completed_delta:
+            outputs_completed += completed_delta
+        if set_have_all_inputs is not None:
+            have_all_inputs = set_have_all_inputs
+
+        if count_update_callback is not None:
+            count_update_callback(outputs_completed, inputs_created)
+
+        if have_all_inputs and outputs_completed >= inputs_created:
+            map_done_event.set()
+
+    async def create_input(argskwargs):
+        idx = inputs_created
+        update_counters(created_delta=1)
+        print(f"idx: {idx}")
+        (args, kwargs) = argskwargs
+        put_item: api_pb2.FunctionPutInputsItem = await _create_input(
+            args,
+            kwargs,
+            input_plane_stub,
+            max_object_size_bytes=function._max_object_size_bytes,
+            idx=idx,
+            method_name=function._use_method_name,
+        )
+        return _QueueItem(put_inputs_item=put_item)
+
+    # ------------------------------------------------------------
+    # Coroutine: drain user input iterator, upload blobs, enqueue for sending
+    # ------------------------------------------------------------
+
+    async def input_iter():
+        while True:
+            raw = await raw_input_queue.get()
+            if raw is None:
+                break
+            yield raw
+
+    async def drain_input_generator():
+        async with aclosing(
+            async_map_ordered(input_iter(), create_input, concurrency=BLOB_MAX_PARALLELISM)
+        ) as streamer:
+            async for q_item in streamer:
+                # await inputs_in_flight_sema.acquire()
+                await queue.put(time.time(), q_item)
+                # update_counters(created_delta=1)
+
+        # All inputs have been read.
+        update_counters(set_have_all_inputs=True)
+        await queue.close()
+        if False:
+            # generator stub so exceptions propagate
+            yield
+
+    # ------------------------------------------------------------
+    # Coroutine: send queued items to the input-plane server
+    # ------------------------------------------------------------
+
+    async def pump_inputs():
+        nonlocal function_call_id, max_inputs_outstanding
+
+        async for batch in queue_batch_iterator(queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
+            # Convert the queued items into the proto format expected by the RPC.
+            # input_id -> idx
+            request_items: list[api_pb2.MapStartOrContinueItem] = [qi.to_start_or_continue_item() for qi in batch]
+
+            # Build request
+            request = api_pb2.MapStartOrContinueRequest(
+                function_id=function.object_id,
+                function_call_id=function_call_id if function_call_id else None,
+                parent_input_id=current_input_id() or "",
+                items=request_items,
+            )
+
+            response: api_pb2.MapStartOrContinueResponse = await retry_transient_errors(
+                input_plane_stub.MapStartOrContinue, request
+            )
+
+            # TODO(ben-okeefe): Understand if an input could be lost at this step and not registered
+
+            if function_call_id is None:
+                function_call_id = response.function_call_id
+                max_inputs_outstanding = response.max_inputs_outstanding or MAX_INPUTS_OUTSTANDING_DEFAULT
+
+            # Record attempt tokens for future retries; also release semaphore slots now that the
+            # inputs are officially registered on the server.
+            for item in response.items:
+                input_id_to_idx[item.input_id] = item.idx
+                attempt_tokens[item.idx] = item.attempt_token
+                # inputs_in_flight_sema.release()
+
+        yield
+
+    # ------------------------------------------------------------
+    # Coroutine: **stub** – retry handling will be added in the future
+    # ------------------------------------------------------------
+
+    async def retry_inputs():
+        """Placeholder for future client-side retry logic (MapContinue)."""
+        if False:
+            yield  # make this an async generator so that it can be merged later
+
+    # ------------------------------------------------------------
+    # Coroutine: stream outputs via MapAwait
+    # ------------------------------------------------------------
+
+    async def get_all_outputs():
+        """Continuously fetch outputs until the map is complete."""
+
+        assert client.stub
+        last_entry_id = "0-0"
+        while not map_done_event.is_set():
+            if function_call_id is None:
+                # We haven't received the first MapStartOrContinueResponse yet.
+                await asyncio.sleep(0.05)
+                continue
+
+            request = api_pb2.MapAwaitRequest(
+                function_call_id=function_call_id,
+                last_entry_id=last_entry_id,
+                requested_at=time.time(),
+                timeout=OUTPUTS_TIMEOUT,
+            )
+            try:
+                response: api_pb2.MapAwaitResponse = await retry_transient_errors(
+                    input_plane_stub.MapAwait,
+                    request,
+                    max_retries=20,
+                    attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
+                )
+                # print(f"MapAwaitResponse: {response}")
+            except Exception:
+                # If the RPC failed we retry in next loop iteration.
+                continue
+
+            last_entry_id = response.last_entry_id
+            for output_item in response.outputs:
+                yield output_item
+
+                update_counters(completed_delta=1)
+
+            # The loop condition will exit when map_done_event is set from update_counters.
+
+    async def get_all_outputs_and_clean_up():
+        try:
+            async with aclosing(get_all_outputs()) as stream:
+                async for item in stream:
+                    yield item
+        finally:
+            # Signal server we are done with outputs so it can clean up.
+            if function_call_id:
+                # request = api_pb2.MapAwaitRequest(
+                #     function_call_id=function_call_id,
+                #     last_entry_id="0-0",
+                #     requested_at=time.time(),
+                #     timeout=0,
+                # )
+                # try:
+                #     await retry_transient_errors(input_plane_stub.MapAwait, request)
+                # except Exception:
+                #     pass
+                pass
+
+    # ------------------------------------------------------------
+    # Coroutine: convert FunctionGetOutputsItem → actual result value
+    # ------------------------------------------------------------
+
+    async def fetch_output(item: api_pb2.FunctionGetOutputsItem) -> tuple[int, Any]:
+        try:
+            output_val = await _process_result(item.result, item.data_format, input_plane_stub, client)
+        except Exception as exc:
+            if return_exceptions:
+                if wrap_returned_exceptions:
+                    output_val = modal.exception.UserCodeException(exc)
+                else:
+                    output_val = exc
+            else:
+                raise exc
+        print(f"item.input_id: {item.input_id}")
+        print(f"input_id_to_idx[item.input_id]: {input_id_to_idx[item.input_id]}")
+        return (input_id_to_idx[item.input_id], output_val)
+
+    async def poll_outputs():
+        received: dict[int, Any] = {}
+        next_idx = 0
+        async with aclosing(
+            async_map_ordered(get_all_outputs_and_clean_up(), fetch_output, concurrency=BLOB_MAX_PARALLELISM)
+        ) as stream:
+            async for idx, value in stream:
+                if not order_outputs:
+                    yield _OutputValue(value)
+                else:
+                    received[idx] = value
+                    while next_idx in received:
+                        v = received.pop(next_idx)
+                        yield _OutputValue(v)
+                        next_idx += 1
+
+        print(f"Received: {received}")
+        assert len(received) == 0, "All buffered outputs should have been yielded"
+
+    # ------------------------------------------------------------
+    # Debug-logging helper
+    # ------------------------------------------------------------
+
+    async def log_debug_stats():
+        while True:
+            logger.debug(
+                "Map-IP stats: have_all_inputs=%s inputs_created=%d outputs_completed=%d queue_size=%d",
+                have_all_inputs,
+                inputs_created,
+                outputs_completed,
+                queue.qsize(),
+            )
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                break
+
+    # ------------------------------------------------------------
+    # Run the four coroutines concurrently and yield results as they arrive
+    # ------------------------------------------------------------
+
+    log_task = asyncio.create_task(log_debug_stats())
+
+    async with aclosing(async_merge(drain_input_generator(), pump_inputs(), poll_outputs())) as merged:
+        async for maybe_output in merged:
+            if maybe_output is not None:  # ignore None sentinels
+                yield maybe_output.value
+
+    log_task.cancel()
+    with contextlib.suppress(Exception):
+        await log_task
 
 
 async def _map_helper(

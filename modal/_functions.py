@@ -75,6 +75,7 @@ from .parallel_map import (
     _for_each_sync,
     _map_async,
     _map_invocation,
+    _map_invocation_inputplane,
     _map_sync,
     _spawn_map_async,
     _spawn_map_sync,
@@ -1514,20 +1515,39 @@ Use the `Function.get_web_url()` method instead.
         else:
             count_update_callback = None
 
-        async with aclosing(
-            _map_invocation(
-                self,
-                input_queue,
-                self.client,
-                order_outputs,
-                return_exceptions,
-                wrap_returned_exceptions,
-                count_update_callback,
-                api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
-            )
-        ) as stream:
-            async for item in stream:
-                yield item
+        if self._input_plane_url:
+            # order_outputs = False
+            print(f"order_outputs: {order_outputs}")
+            async with aclosing(
+                _map_invocation_inputplane(
+                    self,
+                    input_queue,
+                    self.client,
+                    order_outputs,
+                    return_exceptions,
+                    wrap_returned_exceptions,
+                    count_update_callback,
+                    api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
+                )
+            ) as stream:
+                async for item in stream:
+                    yield item
+        else:
+            print(f"order_outputs: {order_outputs}")
+            async with aclosing(
+                _map_invocation(
+                    self,
+                    input_queue,
+                    self.client,
+                    order_outputs,
+                    return_exceptions,
+                    wrap_returned_exceptions,
+                    count_update_callback,
+                    api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
+                )
+            ) as stream:
+                async for item in stream:
+                    yield item
 
     async def _call_function(self, args, kwargs) -> ReturnType:
         invocation: Union[_Invocation, _InputPlaneInvocation]
