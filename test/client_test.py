@@ -281,7 +281,7 @@ def test_update_token(auth_token_manager):
     payload = {"exp": 1719851532, "something": "else"}
     token = jwt.encode(payload, "my-secret-key", algorithm="HS256")
     auth_token_manager.update_token(token)
-    assert auth_token_manager.auth_token_refresh_timestamp == 1719851532 - (5 * 60)
+    assert auth_token_manager._auth_token_refresh_timestamp == 1719851532 - (5 * 60)
 
 def test_update_token_missing_exp(auth_token_manager, caplog):
     payload = {"something": "else"}
