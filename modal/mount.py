@@ -961,8 +961,9 @@ async def _create_client_dependency_mounts(
                         arch,
                         platform,
                         uv_python_platform,
-                        check_if_exists=builder_version != "PREVIEW",
-                        allow_overwrite=builder_version == "PREVIEW",
+                        # Re-enable mount overwriting for PREVIEW version while under development
+                        # check_if_exists=builder_version != "PREVIEW",
+                        # allow_overwrite=builder_version == "PREVIEW",
                     )
                 )
     await TaskContext.gather(*coros)
