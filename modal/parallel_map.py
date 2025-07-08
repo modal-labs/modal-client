@@ -529,7 +529,6 @@ async def _map_invocation_inputplane(
     async def create_input(argskwargs):
         idx = inputs_created
         update_counters(created_delta=1)
-        print(f"idx: {idx}")
         (args, kwargs) = argskwargs
         put_item: api_pb2.FunctionPutInputsItem = await _create_input(
             args,
@@ -612,9 +611,17 @@ async def _map_invocation_inputplane(
     # ------------------------------------------------------------
 
     async def retry_inputs():
-        """Placeholder for future client-side retry logic (MapContinue)."""
-        if False:
-            yield  # make this an async generator so that it can be merged later
+        """Simple ticker that prints 'hello' every second while the map is running."""
+
+        try:
+            while not map_done_event.is_set():
+                print("hello")
+                await asyncio.sleep(1)
+                # Keep generator semantics for async_merge; value is ignored.
+                yield
+        except asyncio.CancelledError:
+            # Expected when the task is cancelled during shutdown.
+            pass
 
     # ------------------------------------------------------------
     # Coroutine: stream outputs via MapAwait
@@ -692,8 +699,6 @@ async def _map_invocation_inputplane(
                     output_val = exc
             else:
                 raise exc
-        print(f"item.input_id: {item.input_id}")
-        print(f"input_id_to_idx[item.input_id]: {input_id_to_idx[item.input_id]}")
         return (input_id_to_idx[item.input_id], output_val)
 
     async def poll_outputs():
@@ -712,7 +717,6 @@ async def _map_invocation_inputplane(
                         yield _OutputValue(v)
                         next_idx += 1
 
-        print(f"Received: {received}")
         assert len(received) == 0, "All buffered outputs should have been yielded"
 
     # ------------------------------------------------------------
@@ -739,7 +743,7 @@ async def _map_invocation_inputplane(
 
     log_task = asyncio.create_task(log_debug_stats())
 
-    async with aclosing(async_merge(drain_input_generator(), pump_inputs(), poll_outputs())) as merged:
+    async with aclosing(async_merge(drain_input_generator(), pump_inputs(), poll_outputs(), retry_inputs())) as merged:
         async for maybe_output in merged:
             if maybe_output is not None:  # ignore None sentinels
                 yield maybe_output.value
