@@ -634,12 +634,13 @@ message MapStartOrContinueRequest {
   repeated MapStartOrContinueItem items = 4;
 }
 
-message MapStartOrContinueResponse {
-  message MapStartOrContinueResponseItem {
+message MapStartOrContinueResponseItem {
     int32 idx = 1;
     string input_id = 2;
     string attempt_token = 3;
   }
+
+message MapStartOrContinueResponse {
   string function_id = 1;
   string function_call_id = 2;
   uint32 max_inputs_outstanding = 3;
@@ -655,11 +656,7 @@ message MapAwaitRequest {
 }
 
 message MapAwaitResponse {
-  message MapAwaitResponseItem {
-    int32 idx = 1;
-    FunctionGetOutputsItem output = 2;
-  }
-  repeated MapAwaitResponseItem items = 1;
+  repeated FunctionGetOutputsItem outputs = 1;
   string last_entry_id = 2;
 }
 
@@ -3379,6 +3376,11 @@ service ModalClient {
   rpc AttemptAwait(AttemptAwaitRequest) returns (AttemptAwaitResponse);
   rpc AttemptRetry(AttemptRetryRequest) returns (AttemptRetryResponse);
   rpc AttemptStart(AttemptStartRequest) returns (AttemptStartResponse);
+
+  // Map
+  rpc MapStartOrContinue(MapStartOrContinueRequest) returns (MapStartOrContinueResponse);
+  rpc MapAwait(MapAwaitRequest) returns (MapAwaitResponse);
+  rpc MapCheckInputs(MapCheckInputsRequest) returns (MapCheckInputsResponse);
 
   // Auth Token
   rpc AuthTokenGet(AuthTokenGetRequest) returns (AuthTokenGetResponse);
