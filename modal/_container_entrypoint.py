@@ -15,7 +15,6 @@ if telemetry_socket:
     instrument_imports(telemetry_socket)
 
 import asyncio
-import concurrent.futures
 import inspect
 import queue
 import signal
@@ -49,7 +48,6 @@ from ._runtime.container_io_manager import (
     ContainerIOManager,
     IOContext,
     UserException,
-    _ContainerIOManager,
 )
 
 if TYPE_CHECKING:
@@ -198,21 +196,16 @@ def call_function(
 
                 # Send up to this many outputs at a time.
                 generator_queue: asyncio.Queue[Any] = await container_io_manager._queue_create.aio(1024)
-                generator_output_task = asyncio.create_task(
-                    container_io_manager.generator_output_task.aio(
-                        function_call_ids[0],
-                        io_context.finalized_function.data_format,
-                        generator_queue,
-                    )
-                )
+                async with container_io_manager.generator_output_sender(
+                    function_call_ids[0],
+                    io_context.finalized_function.data_format,
+                    generator_queue,
+                ):
+                    item_count = 0
+                    async for value in res:
+                        await container_io_manager._queue_put.aio(generator_queue, value)
+                        item_count += 1
 
-                item_count = 0
-                async for value in res:
-                    await container_io_manager._queue_put.aio(generator_queue, value)
-                    item_count += 1
-
-                await container_io_manager._queue_put.aio(generator_queue, _ContainerIOManager._GENERATOR_STOP_SENTINEL)
-                await generator_output_task  # Wait to finish sending generator outputs.
                 message = api_pb2.GeneratorDone(items_total=item_count)
                 await container_io_manager.push_outputs.aio(
                     io_context,
@@ -249,20 +242,17 @@ def call_function(
 
                 # Send up to this many outputs at a time.
                 generator_queue: asyncio.Queue[Any] = container_io_manager._queue_create(1024)
-                generator_output_task: concurrent.futures.Future = container_io_manager.generator_output_task(  # type: ignore
+
+                with container_io_manager.generator_output_sender(
                     function_call_ids[0],
                     io_context.finalized_function.data_format,
                     generator_queue,
-                    _future=True,  # type: ignore  # Synchronicity magic to return a future.
-                )
+                ):
+                    item_count = 0
+                    for value in res:
+                        container_io_manager._queue_put(generator_queue, value)
+                        item_count += 1
 
-                item_count = 0
-                for value in res:
-                    container_io_manager._queue_put(generator_queue, value)
-                    item_count += 1
-
-                container_io_manager._queue_put(generator_queue, _ContainerIOManager._GENERATOR_STOP_SENTINEL)
-                generator_output_task.result()  # Wait to finish sending generator outputs.
                 message = api_pb2.GeneratorDone(items_total=item_count)
                 container_io_manager.push_outputs(io_context, started_at, message, api_pb2.DATA_FORMAT_GENERATOR_DONE)
             else:

@@ -1,0 +1,13 @@
+[project]
+name = "mod1"
+version = "0.1.0"
+description = "An example of uv workspace"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["scipy"]
+
+# [project.optional-dependencies]
+# extra1 = ["scipy>=1.15.3"]
+
+# [dependency-groups]
+# group1 = ["pydantic>=2.11.5"]

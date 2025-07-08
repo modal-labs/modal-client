@@ -48,9 +48,7 @@ async def get_app_id_from_name(name: str, env: Optional[str], client: Optional[_
     if client is None:
         client = await _Client.from_env()
     env_name = ensure_env(env)
-    request = api_pb2.AppGetByDeploymentNameRequest(
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE, name=name, environment_name=env_name
-    )
+    request = api_pb2.AppGetByDeploymentNameRequest(name=name, environment_name=env_name)
     try:
         resp = await client.stub.AppGetByDeploymentName(request)
     except GRPCError as exc:

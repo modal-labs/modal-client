@@ -2,10 +2,11 @@
 import os
 import pytest
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import modal
-from modal.mount import Mount
+from modal.file_pattern_matcher import FilePatternMatcher, _AbstractPatternMatcher
+from modal.mount import Mount, _MountDir
 
 from . import helpers
 
@@ -111,6 +112,94 @@ def test_image_mounts_are_not_traversed_on_declaration(supports_dir, monkeypatch
             files.add(fn)
     # sanity check - this test file should be included since we mounted the test dir
     assert Path(__file__) in files  # this test file should have been included
+
+
+def test_get_files_to_upload_ignore(mock_dir):
+    with mock_dir(
+        {
+            "venv": {"file_venv": ""},
+            "dir_a": {"dir_a_a": {"file_a_a": ""}, "venv": {"file_a_a_venv": ""}},
+            "dir_b": {"dir_b_a": {"file_b_a": ""}, "venv": {"file_b_a_venv": ""}},
+            "dir_c": {"venv": ""},  # a file named venv
+        }
+    ) as mock_dir:
+        mock_path = Path(mock_dir).resolve()
+
+        mount_dir = _MountDir(
+            local_dir=mock_path,
+            remote_path=PurePosixPath("/root"),
+            ignore=FilePatternMatcher("**/venv/"),
+            recursive=True,
+        )
+
+        # _walk_and_prune should prune out all ignored directories, but not yet files
+        included_files = set(mount_dir._walk_and_prune(mock_path))
+        assert len(included_files) == 3
+        expected_files = {
+            str(mock_path / "dir_a" / "dir_a_a" / "file_a_a"),
+            str(mock_path / "dir_b" / "dir_b_a" / "file_b_a"),
+            str(mock_path / "dir_c" / "venv"),  # a file named venv, not ignored
+        }
+        assert included_files == expected_files
+
+        # after get_files_to_upload, both files and directories should be pruned out
+        files = list(mount_dir.get_files_to_upload())
+        assert len(files) == 2
+        included_files = {str(file[0]) for file in files}
+        expected_files = {
+            str(mock_path / "dir_a" / "dir_a_a" / "file_a_a"),
+            str(mock_path / "dir_b" / "dir_b_a" / "file_b_a"),
+        }
+        assert included_files == expected_files
+
+
+@pytest.mark.parametrize(
+    "ignore_config, expected_can_prune, expected_included",
+    [
+        (
+            FilePatternMatcher("venv/**"),
+            True,
+            {"toplevel.py", "toplevel.pyc"},
+        ),
+        (
+            FilePatternMatcher("**", "!**/*.py"),
+            False,
+            {"toplevel.py", "lib.py"},
+        ),
+        (
+            ~FilePatternMatcher("**/*.py"),
+            False,
+            {"toplevel.py", "lib.py"},
+        ),
+    ],
+)
+def test_directory_pruning_behavior(mock_dir, ignore_config, expected_can_prune, expected_included):
+    """Test that directory pruning is conditionally applied based on can_prune_directories()"""
+    with mock_dir(
+        {
+            "toplevel.py": "",
+            "toplevel.pyc": "",
+            "venv": {
+                "lib.py": "",
+                "lib.pyc": "",
+            },
+        }
+    ) as mock_dir:
+        mock_path = Path(mock_dir).resolve()
+
+        mount_dir = _MountDir(
+            local_dir=mock_path,
+            remote_path=PurePosixPath("/root"),
+            ignore=ignore_config,
+            recursive=True,
+        )
+
+        assert isinstance(mount_dir.ignore, _AbstractPatternMatcher)
+        assert mount_dir.ignore.can_prune_directories() is expected_can_prune
+        files = list(mount_dir.get_files_to_upload())
+        file_paths = {f[0].name for f in files}
+
+        assert file_paths == expected_included
 
 
 def test_mount_dedupe_explicit(servicer, credentials, supports_dir, server_url_env):

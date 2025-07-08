@@ -39,7 +39,7 @@ from modal._functions import _Function
 from modal._runtime.container_io_manager import _ContainerIOManager
 from modal._serialization import deserialize, deserialize_params, serialize_data_format
 from modal._utils.async_utils import asyncify, synchronize_api
-from modal._utils.blob_utils import BLOCK_SIZE
+from modal._utils.blob_utils import BLOCK_SIZE, MAX_OBJECT_SIZE_BYTES
 from modal._utils.grpc_testing import patch_mock_servicer
 from modal._utils.grpc_utils import find_free_port
 from modal._utils.http_utils import run_temporary_http_server
@@ -202,6 +202,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         ]
         self.app_objects = {}
         self.app_unindexed_objects = {}
+        self.max_object_size_bytes = MAX_OBJECT_SIZE_BYTES
         self.n_inputs = 0
         self.n_entry_ids = 0
         self.n_queues = 0
@@ -319,6 +320,18 @@ class MockClientServicer(api_grpc.ModalClientBase):
         def default_function_body(*args, **kwargs):
             return sum(arg**2 for arg in args) + sum(value**2 for key, value in kwargs.items())
 
+    def get_data_chunks(self, function_call_id) -> list[api_pb2.DataChunk]:
+        # ugly - get data chunks associated with the first input to this servicer
+        data_chunks: list[api_pb2.DataChunk] = []
+        if function_call_id in self.fc_data_out:
+            try:
+                while True:
+                    chunk = self.fc_data_out[function_call_id].get_nowait()
+                    data_chunks.append(chunk)
+            except asyncio.QueueEmpty:
+                pass
+        return data_chunks
+
     def set_resp_jitter(self, secs: float) -> None:
         # TODO: It'd be great to make this easy to apply to all gRPC method handlers.
         # Some way to decorate `stream.send_message`.
@@ -433,6 +446,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             function_schema=definition.function_schema,
             input_plane_url=self._get_input_plane_url(definition),
             input_plane_region=self._get_input_plane_region(definition),
+            max_object_size_bytes=self.max_object_size_bytes,
         )
 
     def get_object_metadata(self, object_id) -> api_pb2.Object:
@@ -846,7 +860,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def DictGetOrCreate(self, stream):
         request: api_pb2.DictGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.namespace, request.environment_name)
+        k = (request.deployment_name, request.environment_name)
         if k in self.deployed_dicts:
             dict_id = self.deployed_dicts[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
@@ -888,7 +902,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def DictList(self, stream):
         dicts = [
             api_pb2.DictListResponse.DictInfo(name=name, created_at=1)
-            for name, _, _ in self.deployed_dicts
+            for name, _ in self.deployed_dicts
             if name in self.deployed_apps
         ]
         await stream.send_message(api_pb2.DictListResponse(dicts=dicts))
@@ -1118,6 +1132,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
                     function_schema=function_defn.function_schema,
                     input_plane_url=self._get_input_plane_url(function_defn),
                     input_plane_region=self._get_input_plane_region(function_defn),
+                    max_object_size_bytes=self.max_object_size_bytes,
                 ),
                 server_warnings=warnings,
             )
@@ -1492,7 +1507,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def QueueGetOrCreate(self, stream):
         request: api_pb2.QueueGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.namespace, request.environment_name)
+        k = (request.deployment_name, request.environment_name)
         if k in self.deployed_queues:
             queue_id = self.deployed_queues[k]
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
@@ -1549,7 +1564,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # So there is a mismatch and I am not implementing a mock for the num_partitions / total_size
         queues = [
             api_pb2.QueueListResponse.QueueInfo(name=name, created_at=1)
-            for name, _, _ in self.deployed_queues
+            for name, _ in self.deployed_queues
             if name in self.deployed_apps
         ]
         await stream.send_message(api_pb2.QueueListResponse(queues=queues))
@@ -1710,7 +1725,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SecretGetOrCreate(self, stream):
         request: api_pb2.SecretGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.namespace, request.environment_name)
+        k = (request.deployment_name, request.environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP:
             secret_id = "st-" + str(len(self.secrets))
             self.secrets[secret_id] = request.env_dict
@@ -1740,7 +1755,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SecretList(self, stream):
         await stream.recv_message()
         # Note: being lazy and not implementing the env filtering
-        items = [api_pb2.SecretListItem(label=name) for name, _, env in self.deployed_secrets]
+        items = [api_pb2.SecretListItem(label=name) for name, env in self.deployed_secrets]
         await stream.send_message(api_pb2.SecretListResponse(items=items))
 
     ### Snapshot
@@ -1759,7 +1774,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def SharedVolumeGetOrCreate(self, stream):
         request: api_pb2.SharedVolumeGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.namespace, request.environment_name)
+        k = (request.deployment_name, request.environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_nfss:
                 if k in self.deployed_volumes:
@@ -1794,7 +1809,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def SharedVolumeList(self, stream):
         req = await stream.recv_message()
         items = []
-        for (name, _, env_name), volume_id in self.deployed_nfss.items():
+        for (name, env_name), volume_id in self.deployed_nfss.items():
             if env_name != req.environment_name:
                 continue
             items.append(api_pb2.SharedVolumeListItem(label=name, shared_volume_id=volume_id, created_at=1))
@@ -1870,7 +1885,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def VolumeGetOrCreate(self, stream):
         request: api_pb2.VolumeGetOrCreateRequest = await stream.recv_message()
-        k = (request.deployment_name, request.namespace, request.environment_name)
+        k = (request.deployment_name, request.environment_name)
         if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_UNSPECIFIED:
             if k not in self.deployed_volumes:
                 raise GRPCError(Status.NOT_FOUND, f"Volume {k} not found")
@@ -1900,7 +1915,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def VolumeList(self, stream):
         req = await stream.recv_message()
         items = []
-        for (name, _, env_name), volume_id in self.deployed_volumes.items():
+        for (name, env_name), volume_id in self.deployed_volumes.items():
             if env_name != req.environment_name:
                 continue
             items.append(api_pb2.VolumeListItem(label=name, volume_id=volume_id, created_at=1))
@@ -2476,7 +2491,7 @@ def mock_dir_factory():
         cwd = os.getcwd()
         try:
             os.chdir(root_dir)
-            yield
+            yield root_dir
         finally:
             os.chdir(cwd)
             shutil.rmtree(root_dir, ignore_errors=True)

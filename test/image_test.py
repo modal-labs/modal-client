@@ -207,6 +207,57 @@ def test_image_python_packages(builder_version, servicer, client):
             pass
 
 
+def test_image_uv_python_packages(builder_version, servicer, client, test_dir):
+    requirements = test_dir / "supports" / "test-requirements.txt"
+    app = App()
+    image = (
+        Image.debian_slim()
+        .uv_pip_install("sklearn[xyz]")
+        .uv_pip_install("numpy", "scipy", extra_index_url="https://xyz", find_links="https://abc?q=123", pre=True)
+        .uv_pip_install("flash-attn", extra_options="--no-build-isolation")
+        .uv_pip_install("pandas", pre=True)
+        .uv_pip_install(requirements=[requirements, requirements])
+    )
+    app.function(image=image)(dummy)
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        assert any(
+            "/.uv/uv pip install --python `which python` --compile-bytecode 'sklearn[xyz]'" in cmd
+            for cmd in layers[4].dockerfile_commands
+        )
+        assert any(
+            "/.uv/uv pip install --python `which python` --compile-bytecode "
+            "--find-links 'https://abc?q=123' --extra-index-url https://xyz --prerelease allow numpy scipy" in cmd
+            for cmd in layers[3].dockerfile_commands
+        )
+        assert any(
+            "/.uv/uv pip install --python `which python` --compile-bytecode --no-build-isolation flash-attn" in cmd
+            for cmd in layers[2].dockerfile_commands
+        )
+        assert any(
+            "/.uv/uv pip install --python `which python` --compile-bytecode --prerelease allow pandas" in cmd
+            for cmd in layers[1].dockerfile_commands
+        )
+        assert any(
+            "/.uv/uv pip install --python `which python` --compile-bytecode --requirements /.uv/0/test-requirements.txt"
+            in cmd
+            for cmd in layers[0].dockerfile_commands
+        )
+        assert any(
+            "COPY /.0_test-requirements.txt /.uv/0/test-requirements.txt" in cmd
+            for cmd in layers[0].dockerfile_commands
+        )
+        assert any(
+            "COPY /.1_test-requirements.txt /.uv/1/test-requirements.txt" in cmd
+            for cmd in layers[0].dockerfile_commands
+        )
+
+
+def test_image_uv_python_requirements_error():
+    with pytest.raises(InvalidError, match="requirements must be None or a list of strings"):
+        Image.debian_slim().uv_pip_install(requirements="requirements.txt")  # type: ignore
+
+
 def test_run_commands_secrets_type_validation(builder_version, servicer, client):
     app = App()
     image = Image.debian_slim().run_commands(
@@ -679,6 +730,135 @@ def test_poetry_files(builder_version, servicer, client):
             assert context_files == {"/.poetry.lock", "/.pyproject.toml", "/modal_requirements.txt"}
         else:
             assert context_files == {"/.poetry.lock", "/.pyproject.toml"}
+
+
+@pytest.mark.parametrize(
+    "groups, extras, frozen",
+    [
+        (["group1"], None, False),
+        (None, ["extra1"], True),
+        (["group1", "group2"], ["extra1"], True),
+        (["group1"], ["extra1", "extra2"], True),
+    ],
+)
+def test_uv_sync(builder_version, servicer, client, groups, extras, frozen):
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_project")
+
+    image = Image.debian_slim().uv_sync(uv_project_path, groups=groups, extras=extras, frozen=frozen)
+
+    app = App()
+    app.function(image=image)(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        context_files = {f.filename for layer in layers for f in layer.context_files}
+        assert "COPY /.pyproject.toml /.uv/pyproject.toml" in layers[0].dockerfile_commands
+        assert "COPY /.uv.lock /.uv/uv.lock" in layers[0].dockerfile_commands
+        if frozen:
+            assert any("--frozen" in cmd for cmd in layers[0].dockerfile_commands)
+        if groups is not None:
+            group_cmd = " ".join(f"--group={g}" for g in groups)
+            assert any(group_cmd in cmd for cmd in layers[0].dockerfile_commands)
+        if extras is not None:
+            extra_cmd = " ".join(f"--extra={e}" for e in extras)
+            assert any(extra_cmd in cmd for cmd in layers[0].dockerfile_commands)
+
+        if builder_version <= "2024.10":
+            assert context_files == {"/.uv.lock", "/.pyproject.toml", "/modal_requirements.txt"}
+        else:
+            assert context_files == {"/.uv.lock", "/.pyproject.toml"}
+
+
+def test_uv_sync_error_invalid_kwargs(servicer, client):
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_project")
+
+    with pytest.raises(InvalidError, match="groups must be None or a list of strings"):
+        Image.debian_slim().uv_sync(uv_project_path, groups="xyz")  # type: ignore
+
+    with pytest.raises(InvalidError, match="extras must be None or a list of strings"):
+        Image.debian_slim().uv_sync(uv_project_path, extras="xyz")  # type: ignore
+
+
+def test_uv_sync_just_pyproject(builder_version, servicer, client):
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_sync_just_pyproject")
+
+    image = Image.debian_slim().uv_sync(uv_project_path)
+
+    app = App()
+    app.function(image=image)(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        assert "COPY /.pyproject.toml /.uv/pyproject.toml" in layers[0].dockerfile_commands
+        assert "COPY /.uv.lock /.uv/uv.lock" not in layers[0].dockerfile_commands
+        assert not any("--frozen" in cmd for cmd in layers[0].dockerfile_commands)
+
+        context_files = {f.filename for layer in layers for f in layer.context_files}
+        if builder_version <= "2024.10":
+            assert context_files == {"/.pyproject.toml", "/modal_requirements.txt"}
+        else:
+            assert context_files == {"/.pyproject.toml"}
+
+
+def test_uv_sync_no_modal(builder_version, client):
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_no_modal")
+
+    image = Image.debian_slim().uv_sync(uv_project_path)
+
+    app = App()
+    app.function(image=image)(dummy)
+
+    if builder_version <= "2024.10":
+        with pytest.raises(InvalidError, match="requires modal to be specified"):
+            with app.run(client=client):
+                pass
+
+
+@pytest.mark.parametrize("kwargs", [{"groups": ["group1", "group2"]}, {"extras": ["extra1"]}])
+def test_uv_sync_modal_in_group_or_extra(builder_version, client, servicer, kwargs):
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_no_modal")
+
+    image = Image.debian_slim().uv_sync(uv_project_path, **kwargs)
+
+    app = App()
+    app.function(image=image)(dummy)
+
+    with app.run(client=client):
+        layers = get_image_layers(image.object_id, servicer)
+        if "groups" in kwargs:
+            groups = kwargs["groups"]
+            groups_cli = " ".join(f"--group={group}" for group in groups)
+            assert any(groups_cli in cmd for cmd in layers[0].dockerfile_commands)
+        if "extras" in kwargs:
+            extras = kwargs["extras"]
+            extras_cli = " ".join(f"--extra={extra}" for extra in extras)
+            assert any(extras_cli in cmd for cmd in layers[0].dockerfile_commands)
+
+
+def test_uv_lock_workspaces_error(builder_version, client):
+    uv_project_path = os.path.join(os.path.dirname(__file__), "supports", "uv_lock_workspace")
+
+    image = Image.debian_slim().uv_sync(uv_project_path)
+
+    app = App()
+    app.function(image=image)(dummy)
+
+    with pytest.raises(InvalidError, match="uv workspaces are not supported"):
+        with app.run(client=client):
+            pass
+
+
+def test_uv_sync_error(client, tmp_path):
+    image = Image.debian_slim().uv_sync(tmp_path)
+
+    app = App()
+    app.function(image=image)(dummy)
+
+    expected_pyproject_file = os.path.join(tmp_path, "pyproject.toml")
+    msg = re.escape(f"Expected {expected_pyproject_file} to exist")
+    with pytest.raises(InvalidError, match=msg):
+        with app.run(client=client):
+            pass
 
 
 @pytest.mark.parametrize("poetry_version", [None, "latest", "2.1.2"])
@@ -1503,6 +1683,15 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
     )
     assert get_hash(img) == "a25dd4cc2e8d88f92bfdaf2e82b9d74144d1928926bf6be2ca1cdfbbf562189e"
 
+    img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
+    assert get_hash(img) == "5785daf078ee710f41888066f61cd593ac905472b2abd9b85ef99e417e86d065"
+
+    img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
+    assert get_hash(img) == "bf9158ccc3b2e30cebcd199b0894c9530071e2fcdc1440e6c3717a9d0023d1b4"
+
+    img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
+    assert get_hash(img) == "6c9f3debe511508a99ec70212ff79dcfc01ec95be9400c63edfb36c9035be9de"
+
 
 @pytest.fixture
 def force_2024_04(modal_config):
@@ -1571,6 +1760,15 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
     )
     assert get_hash(img) == "bfce5811c04c1243f12cbb9cca1522cb901f52410986925bcfa3b3c2d7adc7a0"
 
+    img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
+    assert get_hash(img) == "6c685b70ecacc606afd2a64feee562e7d61f702b0dd3cf000fcd21e1f96bfe55"
+
+    img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
+    assert get_hash(img) == "cebd66ab3368c0ff3b56d785e67c624b09e76589e747075b035031ccac051fa7"
+
+    img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
+    assert get_hash(img) == "925054c1aed3a194de979389eeacb5a842695316f7a9f889e314de5c51a62760"
+
 
 @pytest.fixture
 def force_2024_10(modal_config):
@@ -1638,6 +1836,15 @@ def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
         poetry_lockfile=test_dir / "supports" / "special_poetry.lock",
     )
     assert get_hash(img) == "78d579f243c21dcaa59e5daf97f732e2453b004bc2122de692617d4d725c6184"
+
+    img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
+    assert get_hash(img) == "d3c8d913753dc77119407706026a83f64647f675faf68fedc074b32e9a0b1507"
+
+    img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
+    assert get_hash(img) == "8b3c025cf64f15a3edc4427f35d07ac46f90d7c5e249f0c2bcc6080f0701be72"
+
+    img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
+    assert get_hash(img) == "2b6cd5b524ac796cafdabe8b95bf626a765f28c909d23f6051fc4329d6edbc0b"
 
 
 parallel_app = App()

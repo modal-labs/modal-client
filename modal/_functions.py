@@ -40,7 +40,8 @@ from ._utils.async_utils import (
     synchronizer,
     warn_if_generator_is_not_consumed,
 )
-from ._utils.deprecation import deprecation_warning
+from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
+from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.function_utils import (
     ATTEMPT_TIMEOUT_GRACE_PERIOD,
     OUTPUTS_TIMEOUT,
@@ -145,6 +146,7 @@ class _Invocation:
             args,
             kwargs,
             stub,
+            max_object_size_bytes=function._max_object_size_bytes,
             method_name=function._use_method_name,
             function_call_invocation_type=function_call_invocation_type,
         )
@@ -386,7 +388,13 @@ class _InputPlaneInvocation:
         function_id = function.object_id
         control_plane_stub = client.stub
         # Note: Blob upload is done on the control plane stub, not the input plane stub!
-        input_item = await _create_input(args, kwargs, control_plane_stub, method_name=function._use_method_name)
+        input_item = await _create_input(
+            args,
+            kwargs,
+            control_plane_stub,
+            max_object_size_bytes=function._max_object_size_bytes,
+            method_name=function._use_method_name,
+        )
 
         request = api_pb2.AttemptStartRequest(
             function_id=function_id,
@@ -443,8 +451,10 @@ class _InputPlaneInvocation:
                         self.attempt_token = retry_response.attempt_token
                         continue
 
+                control_plane_stub = self.client.stub
+                # Note: Blob download is done on the control plane stub, not the input plane stub!
                 return await _process_result(
-                    await_response.output.result, await_response.output.data_format, self.stub, self.client
+                    await_response.output.result, await_response.output.data_format, control_plane_stub, self.client
                 )
 
 
@@ -1241,7 +1251,13 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         await self.update_autoscaler(min_containers=warm_pool_size)
 
     @classmethod
-    def _from_name(cls, app_name: str, name: str, namespace, environment_name: Optional[str]):
+    def _from_name(
+        cls,
+        app_name: str,
+        name: str,
+        namespace=None,  # mdmd:line-hidden
+        environment_name: Optional[str] = None,
+    ):
         # internal function lookup implementation that allows lookup of class "service functions"
         # in addition to non-class functions
         async def _load_remote(self: _Function, resolver: Resolver, existing_object_id: Optional[str]):
@@ -1249,7 +1265,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             request = api_pb2.FunctionGetRequest(
                 app_name=app_name,
                 object_tag=name,
-                namespace=namespace,
                 environment_name=_get_environment_name(environment_name, resolver) or "",
             )
             try:
@@ -1276,7 +1291,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         app_name: str,
         name: str,
         *,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=None,  # mdmd:line-hidden
         environment_name: Optional[str] = None,
     ) -> "_Function":
         """Reference a Function from a deployed App by its name.
@@ -1300,13 +1315,14 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                 f"instance.{method_name}.remote(...)\n",
             )
 
-        return cls._from_name(app_name, name, namespace, environment_name)
+        warn_if_passing_namespace(namespace, "modal.Function.from_name")
+        return cls._from_name(app_name, name, environment_name=environment_name)
 
     @staticmethod
     async def lookup(
         app_name: str,
         name: str,
-        namespace=api_pb2.DEPLOYMENT_NAMESPACE_WORKSPACE,
+        namespace=None,  # mdmd:line-hidden
         client: Optional[_Client] = None,
         environment_name: Optional[str] = None,
     ) -> "_Function":
@@ -1328,7 +1344,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             " It can be replaced with `modal.Function.from_name`."
             "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
         )
-        obj = _Function.from_name(app_name, name, namespace=namespace, environment_name=environment_name)
+        warn_if_passing_namespace(namespace, "modal.Function.lookup")
+        obj = _Function.from_name(app_name, name, environment_name=environment_name)
         if client is None:
             client = await _Client.from_env()
         resolver = Resolver(client=client)
@@ -1407,6 +1424,15 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         self._definition_id = metadata.definition_id
         self._input_plane_url = metadata.input_plane_url
         self._input_plane_region = metadata.input_plane_region
+        # The server may pass back a larger max object size for some input plane users. This applies to input plane
+        # users only - anyone using the control plane will get the standard limit.
+        # There are some cases like FunctionPrecreate where this value is not set at all. We expect that this field
+        # will eventually be hydrated with the correct value, but just to be defensive, if the field is not set we use
+        # MAX_OBJECT_SIZE_BYTES, otherwise it would get set to 0. Accidentally using 0 would cause us to blob upload
+        # everything, so let's avoid that.
+        self._max_object_size_bytes = (
+            metadata.max_object_size_bytes if metadata.HasField("max_object_size_bytes") else MAX_OBJECT_SIZE_BYTES
+        )
 
     def _get_metadata(self):
         # Overridden concrete implementation of base class method
@@ -1423,6 +1449,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             function_schema=self._metadata.function_schema if self._metadata else None,
             input_plane_url=self._input_plane_url,
             input_plane_region=self._input_plane_region,
+            max_object_size_bytes=self._max_object_size_bytes,
         )
 
     def _check_no_web_url(self, fn_name: str):

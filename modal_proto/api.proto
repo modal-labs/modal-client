@@ -301,7 +301,7 @@ message AppCreateResponse {
 
 message AppDeployRequest {
   string app_id = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
+  reserved 2; // namespace
   string name = 3;
   string object_entity = 4;
   AppDeployVisibility visibility = 5;
@@ -334,7 +334,7 @@ message AppDeploymentHistoryResponse {
 }
 
 message AppGetByDeploymentNameRequest {
-  DeploymentNamespace namespace = 1;
+  reserved 1; // removed namespace
   string name = 2;
   string environment_name = 4;
 }
@@ -702,7 +702,7 @@ message ClassCreateResponse {
 message ClassGetRequest {
   string app_name = 1;
   string object_tag = 2;
-  DeploymentNamespace namespace = 3;
+  reserved 3; // removed namespace
   string environment_name = 4;
 
   reserved 8; // lookup_published
@@ -1013,6 +1013,12 @@ message ContainerLogRequest {
   repeated TaskLogs logs = 3;
 }
 
+message ContainerReloadVolumesRequest {
+  string task_id = 1;
+}
+
+message ContainerReloadVolumesResponse { }
+
 message ContainerStopRequest {
   string task_id = 1 [ (modal.options.audit_target_attr) = true ];
 }
@@ -1076,7 +1082,7 @@ message DictEntry {
 
 message DictGetOrCreateRequest {
   string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
+  reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
   repeated DictEntry data = 5;
@@ -1680,7 +1686,7 @@ message FunctionGetOutputsResponse {
 message FunctionGetRequest {
   string app_name = 1;
   string object_tag = 2;
-  DeploymentNamespace namespace = 3;
+  reserved 3; // removed namespace
   string environment_name = 4;
 }
 
@@ -1718,6 +1724,8 @@ message FunctionHandleMetadata {
   FunctionSchema function_schema = 45;
   optional string input_plane_url = 46;
   optional string input_plane_region = 47;
+  // Use optional to ensure unset values default to None instead of 0
+  optional uint64 max_object_size_bytes = 48;
 }
 
 message FunctionInput {
@@ -1790,6 +1798,8 @@ message FunctionPrecreateResponse {
 message FunctionPutInputsItem {
   int32 idx = 1;
   FunctionInput input = 2;
+  bool r2_failed = 3;
+  uint64 r2_latency_ms = 4;
 }
 
 message FunctionPutInputsRequest {
@@ -2253,7 +2263,7 @@ message ProxyDeleteRequest {
 
 message ProxyGetOrCreateRequest {
   string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
+  reserved 2; // namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;  // must be UNSPECIFIED
 }
@@ -2306,7 +2316,7 @@ message QueueDeleteRequest {
 
 message QueueGetOrCreateRequest {
   string deployment_name = 1;
-  DeploymentNamespace namespace = 2;
+  reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
 }
@@ -2702,7 +2712,7 @@ message SecretDeleteRequest {
 
 message SecretGetOrCreateRequest {
   string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
+  reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;  // Not used atm
   map<string, string> env_dict = 5;
@@ -2749,7 +2759,7 @@ message SharedVolumeGetFileResponse {
 
 message SharedVolumeGetOrCreateRequest {
   string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
+  reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
   string app_id = 5;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
@@ -3029,7 +3039,7 @@ message VolumeGetFileResponse {
 
 message VolumeGetOrCreateRequest {
   string deployment_name = 1 [ (modal.options.audit_target_attr) = true ];
-  DeploymentNamespace namespace = 2;
+  reserved 2; // removed namespace
   string environment_name = 3;
   ObjectCreationType object_creation_type = 4;
   string app_id = 5;  // only used with OBJECT_CREATION_TYPE_ANONYMOUS_OWNED_BY_APP
@@ -3279,6 +3289,7 @@ service ModalClient {
   rpc ContainerHeartbeat(ContainerHeartbeatRequest) returns (ContainerHeartbeatResponse);
   rpc ContainerHello(google.protobuf.Empty) returns (google.protobuf.Empty);
   rpc ContainerLog(ContainerLogRequest) returns (google.protobuf.Empty);
+  rpc ContainerReloadVolumes(ContainerReloadVolumesRequest) returns (ContainerReloadVolumesResponse);
   rpc ContainerStop(ContainerStopRequest) returns (ContainerStopResponse);
 
   // Dicts
