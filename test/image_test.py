@@ -115,9 +115,13 @@ def test_python_version_validation(builder_version):
 def test_dockerhub_python_version(builder_version):
     assert _dockerhub_python_version(builder_version, "3.9.1") == "3.9.1"
 
-    expected_39_full = {"2023.12": "3.9.15", "2024.04": "3.9.19", "2024.10": "3.9.20", "PREVIEW": "3.9.22"}[
-        builder_version
-    ]
+    expected_39_full = {
+        "2023.12": "3.9.15",
+        "2024.04": "3.9.19",
+        "2024.10": "3.9.20",
+        "2025.06": "3.9.22",
+        "PREVIEW": "3.9.22",
+    }[builder_version]
     assert _dockerhub_python_version(builder_version, "3.9") == expected_39_full
 
     v = _dockerhub_python_version(builder_version, None).split(".")
