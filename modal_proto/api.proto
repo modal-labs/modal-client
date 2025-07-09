@@ -1468,20 +1468,10 @@ message FunctionCallCallGraphInfo {
   string module_name = 4;
 }
 
-message FunctionCallCancelInputPlaneRequest {
-  string function_id = 1;
-  string function_call_id = 2;
-}
-
-message FunctionCallCancelMaybeInputPlaneRequest {
-  string function_id = 1;
-  string function_call_id = 2;
-  bool terminate_containers = 3;
-}
-
 message FunctionCallCancelRequest {
   string function_call_id = 1;
   bool terminate_containers = 2;
+  optional string function_id = 3;
 }
 
 message FunctionCallGetDataRequest {
@@ -3339,7 +3329,7 @@ service ModalClient {
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
-  rpc FunctionCallCancelMaybeInputPlane(FunctionCallCancelMaybeInputPlaneRequest) returns (google.protobuf.Empty);
+  rpc FunctionCallCancelMaybeInputPlane(FunctionCallCancelRequest) returns (google.protobuf.Empty);
   rpc FunctionCallGetDataIn(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallGetDataOut(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallList(FunctionCallListRequest) returns (FunctionCallListResponse);
