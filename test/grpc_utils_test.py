@@ -17,7 +17,7 @@ from .supports.skip import skip_windows_unix_socket
 
 
 @pytest.mark.asyncio
-async def test_http_channel(servicer, credentials, auth_token_manager):
+async def test_http_channel(servicer, credentials):
     token_id, token_secret = credentials
     metadata = {
         "x-modal-client-type": str(api_pb2.CLIENT_TYPE_CLIENT),
@@ -27,7 +27,7 @@ async def test_http_channel(servicer, credentials, auth_token_manager):
         "x-modal-token-secret": token_secret,
     }
     assert servicer.client_addr.startswith("http://")
-    channel = create_channel(servicer.client_addr, auth_token_manager)
+    channel = create_channel(servicer.client_addr)
     client_stub = api_grpc.ModalClientStub(channel)
 
     req = api_pb2.BlobCreateRequest()
@@ -39,14 +39,14 @@ async def test_http_channel(servicer, credentials, auth_token_manager):
 
 @skip_windows_unix_socket
 @pytest.mark.asyncio
-async def test_unix_channel(servicer, auth_token_manager):
+async def test_unix_channel(servicer):
     metadata = {
         "x-modal-client-type": str(api_pb2.CLIENT_TYPE_CONTAINER),
         "x-modal-python-version": "3.12.1",
         "x-modal-client-version": __version__,
     }
     assert servicer.container_addr.startswith("unix://")
-    channel = create_channel(servicer.container_addr, auth_token_manager)
+    channel = create_channel(servicer.container_addr)
     client_stub = api_grpc.ModalClientStub(channel)
 
     req = api_pb2.BlobCreateRequest()
@@ -57,8 +57,8 @@ async def test_unix_channel(servicer, auth_token_manager):
 
 
 @pytest.mark.asyncio
-async def test_http_broken_channel(auth_token_manager):
-    ch = create_channel("https://xyz.invalid", auth_token_manager)
+async def test_http_broken_channel():
+    ch = create_channel("https://xyz.invalid")
     with pytest.raises(OSError):
         await connect_channel(ch)
 

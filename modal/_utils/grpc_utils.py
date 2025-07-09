@@ -96,7 +96,7 @@ class ConnectionManager:
 
     async def get_or_create_channel(self, server_url: str) -> grpclib.client.Channel:
         if server_url not in self._channels:
-            self._channels[server_url] = create_channel(server_url, self._client.auth_token_manager, self._metadata)
+            self._channels[server_url] = create_channel(server_url, self._metadata)
             try:
                 await connect_channel(self._channels[server_url])
             except OSError as exc:
@@ -111,7 +111,6 @@ class ConnectionManager:
 
 def create_channel(
     server_url: str,
-    auth_token_manager: "modal.client.AuthTokenManager",
     metadata: dict[str, str] = {},
 ) -> grpclib.client.Channel:
     """Creates a grpclib.Channel to be used by a GRPC stub.
@@ -150,23 +149,7 @@ def create_channel(
 
         logger.debug(f"Sending request to {event.method_name}")
 
-    async def recv_metadata(
-        md: typing.Union[
-            grpclib.events.RecvTrailingMetadata, grpclib.events.RecvInitialMetadata
-        ],
-    ):
-        # If we receive an auth token from the server, include it in all future requests.
-        # TODO(nathan): This isn't perfect because the metadata isn't propagated when the
-        # process is forked and a new channel is created. This is OK for now since this
-        # token is only used by the experimental input plane
-        if token := md.metadata.get("x-modal-auth-token"):
-            token_str = str(token)
-            auth_token_manager.update_token(token_str)
-            metadata["x-modal-auth-token"] = token_str
-
     grpclib.events.listen(channel, grpclib.events.SendRequest, send_request)
-    grpclib.events.listen(channel, grpclib.events.RecvInitialMetadata, recv_metadata)
-    grpclib.events.listen(channel, grpclib.events.RecvTrailingMetadata, recv_metadata)
 
     return channel
 

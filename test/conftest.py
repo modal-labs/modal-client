@@ -46,7 +46,7 @@ from modal._utils.http_utils import run_temporary_http_server
 from modal._utils.jwt_utils import DecodedJwt
 from modal._vendor import cloudpickle
 from modal.app import _App
-from modal.client import AuthTokenManager, Client
+from modal.client import Client
 from modal.cls import _Cls
 from modal.image import ImageBuilderVersion
 from modal.mount import PYTHON_STANDALONE_VERSIONS, client_mount_name, python_standalone_mount_name
@@ -314,6 +314,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.port = port
         # AttemptAwait will return a failure until this is 0. It is decremented by 1 each time AttemptAwait is called.
         self.attempt_await_failures_remaining = 0
+        # Value returned by AuthTokenGet
+        self.auth_token = None
+        self.auth_tokens_generated = 0
 
         @self.function_body
         def default_function_body(*args, **kwargs):
@@ -689,6 +692,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.AppStopRequest = await stream.recv_message()
         self.deployed_apps = {k: v for k, v in self.deployed_apps.items() if v != request.app_id}
         await stream.send_message(Empty())
+
+    async def AuthTokenGet(self, stream):
+        response = api_pb2.AuthTokenGetResponse(token=self.auth_token)
+        self.auth_tokens_generated += 1
+        await stream.send_message(response)
 
     ### Checkpoint
 
@@ -2430,12 +2438,6 @@ async def servicer(blob_server, temporary_sock_path, credentials):
 async def client(servicer, credentials):
     with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
         yield client
-
-
-@pytest_asyncio.fixture(scope="function")
-async def auth_token_manager(client):
-    return AuthTokenManager(client)
-
 
 @pytest_asyncio.fixture(scope="function")
 async def container_client(servicer):
