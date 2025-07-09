@@ -3329,7 +3329,6 @@ service ModalClient {
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
-  rpc FunctionCallCancelMaybeInputPlane(FunctionCallCancelRequest) returns (google.protobuf.Empty);
   rpc FunctionCallGetDataIn(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallGetDataOut(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallList(FunctionCallListRequest) returns (FunctionCallListResponse);
