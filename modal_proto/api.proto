@@ -85,7 +85,9 @@ enum ClientType {
   CLIENT_TYPE_CONTAINER = 3; // modal-client from inside containers
   CLIENT_TYPE_WEB_SERVER = 5; // modal-web
   CLIENT_TYPE_NOTEBOOK_KERNEL = 6; // kernelshim.py from notebooks
-  CLIENT_TYPE_LIBMODAL = 7; // libmodal: experimental client library
+  CLIENT_TYPE_LIBMODAL = 7; // libmodal: experimental JS&Go client library, before version modal-js/v0.3.15, modal-go/v0.0.15
+  CLIENT_TYPE_LIBMODAL_JS = 8; // libmodal/modal-js: JavaScript client library, since version modal-js/v0.3.15
+  CLIENT_TYPE_LIBMODAL_GO = 9; // libmodal/modal-go: Go client library, since version modal-go/v0.0.15
 }
 
 enum CloudProvider {
