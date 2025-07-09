@@ -16,6 +16,8 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
 
+from modal._utils.function_utils import ATTEMPT_TIMEOUT_GRACE_PERIOD, OUTPUTS_TIMEOUT, _process_result
+from modal._utils.grpc_utils import retry_transient_errors
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
@@ -43,19 +45,16 @@ from ._utils.async_utils import (
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.function_utils import (
-    ATTEMPT_TIMEOUT_GRACE_PERIOD,
-    OUTPUTS_TIMEOUT,
     FunctionCreationStatus,
     FunctionInfo,
     IncludeSourceMode,
     _create_input,
-    _process_result,
     _stream_function_call_data,
     get_function_type,
     get_include_source_mode,
     is_async,
 )
-from ._utils.grpc_utils import RetryWarningMessage, retry_transient_errors
+from ._utils.grpc_utils import RetryWarningMessage
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
@@ -1556,7 +1555,7 @@ Use the `Function.get_web_url()` method instead.
             input_queue,
             self.client,
             count_update_callback,
-            api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
+            api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC,
         )
 
     async def _call_function(self, args, kwargs) -> ReturnType:
@@ -1904,6 +1903,111 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
         except Exception as exc:
             # TODO: kill all running function calls
             raise exc
+
+
+class _BatchFunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
+    """A reference to an executed batch function call.
+
+    Constructed using `.spawn_map(...)` on a Modal function with the same
+    arguments that a function normally takes. Acts as a reference to
+    an ongoing batch function call that can be passed around and used to
+    poll or fetch batch function results at some later time.
+    """
+
+    _is_generator: bool = False
+
+    @staticmethod
+    async def from_id(function_call_id: str, client: Optional[_Client] = None) -> "_BatchFunctionCall[Any]":
+        """Instantiate a BatchFunctionCall object from an existing ID.
+
+        Examples:
+
+        ```python
+        bfc = my_func.spawn_map([...])
+        bfc_id = bfc.object_id
+
+        # Later, use the ID to re-instantiate the BatchFunctionCall object
+        bfc = _BatchFunctionCall.from_id(bfc_id)
+        ```
+        """
+
+        if client is None:
+            client = await _Client.from_env()
+
+        bfc: _BatchFunctionCall[Any] = _BatchFunctionCall._new_hydrated(function_call_id, client, None)
+        return bfc
+
+    async def get(self, i, timeout: Optional[float] = None):
+        """Get the result of the ith input of the batch function call.
+
+        This function waits indefinitely by default. It takes an optional
+        `timeout` argument that specifies the maximum number of seconds to wait,
+        which can be set to `0` to poll for an output immediately.
+
+        The returned coroutine is not cancellation-safe.
+        """
+        assert self._client and self._client.stub
+        # Reuse the timeout and polling logic from _Invocation.pop_function_call_outputs
+        t0 = time.time()
+        if timeout is None:
+            backend_timeout = OUTPUTS_TIMEOUT
+        else:
+            backend_timeout = min(OUTPUTS_TIMEOUT, timeout)
+        while True:
+            # Request the specific output by index using last_entry_id
+            request = api_pb2.FunctionGetOutputsRequest(
+                function_call_id=self.object_id,
+                timeout=backend_timeout,
+                last_entry_id="0-0",
+                start_idx=i,  # Get outputs starting from index i
+                max_values=1,  # Only get one output
+                clear_on_success=False,  # Don't clear outputs (other .get() calls might need them)
+                requested_at=time.time(),
+            )
+            response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
+                self._client.stub.FunctionGetOutputs,
+                request,
+                attempt_timeout=backend_timeout + ATTEMPT_TIMEOUT_GRACE_PERIOD,
+            )
+            print(f"response: {response}")
+            # Find the output for index i
+            for item in response.outputs:
+                if item.idx == i:
+                    # Reuse the exact same output processing logic as map and single function calls
+                    return await _process_result(item.result, item.data_format, self._client.stub, self._client)
+
+            # Handle timeout logic (reused from _Invocation.pop_function_call_outputs)
+            await asyncio.sleep(1.0)
+            if timeout is not None:
+                backend_timeout = min(OUTPUTS_TIMEOUT, t0 + timeout - time.time())
+                if backend_timeout < 0:
+                    if response.num_unfinished_inputs == 0:
+                        raise OutputExpiredError()
+                    else:
+                        raise TimeoutError()
+
+    async def iter(self):
+        """Iterates over results in index order (output[0], output[1], ...)
+        Blocks until the next result is available
+
+        Examples:
+        ```python
+
+        handle = f.spawn_map([0, 1, 2])
+        for item in handle.iter():
+            print(item)
+            # prints f(0), f(1), ...
+
+        ```
+        """
+
+    async def cancel(self, terminate_containers: bool = False):
+        """Cancels the batch function call, which will stop its execution
+        and mark its inputs as [`TERMINATED`](https://modal.com/docs/reference/modal.call_graph#modalcall_graphinputstatus).
+
+        If `terminate_containers=True` - the containers running the cancelled inputs are all terminated
+        causing any non-cancelled inputs on those containers to be rescheduled in new containers.
+        """
 
 
 async def _gather(*function_calls: _FunctionCall[T]) -> typing.Sequence[T]:

@@ -1676,6 +1676,9 @@ message FunctionGetOutputsRequest {
   double requested_at = 8; // Used for waypoints.
   // The jwts the client expects the server to be processing. This is optional and used for sync inputs only.
   repeated string input_jwts = 9;
+  // These encompass the range of outputs to fetch.
+  int32 start_idx = 10;
+  int32 end_idx = 11;
 }
 
 message FunctionGetOutputsResponse {
