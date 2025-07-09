@@ -615,7 +615,7 @@ async def _map_invocation_inputplane(
 
         try:
             while not map_done_event.is_set():
-                print("hello")
+                # print("hello")
                 await asyncio.sleep(1)
                 # Keep generator semantics for async_merge; value is ignored.
                 yield
