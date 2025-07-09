@@ -38,7 +38,7 @@ jobs:
       - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744 # v3
         with:
           token: ${{ steps.generate_token.outputs.token }}
-          fetch-depth: 2  # Needed so that we can check whether the version file was modified
+          fetch-depth: 2 # Needed so that we can check whether the version file was modified
 
       - uses: ./.github/actions/setup-cached-python
         with:
@@ -148,9 +148,9 @@ jobs:
             python-version: "3.9"
           - image-builder-version: "2024.10"
             python-version: "3.13"
-          - image-builder-version: "PREVIEW"
+          - image-builder-version: "2025.06"
             python-version: "3.9"
-          - image-builder-version: "PREVIEW"
+          - image-builder-version: "2025.06"
             python-version: "3.13"
 
     steps:
@@ -289,7 +289,6 @@ jobs:
       - name: Publish mounts
         run: python -m modal_global_objects.mounts.modal_client_dependencies
 
-
   publish-base-images:
     name: |
       Publish base images for ${{ matrix.image-name }} ${{ matrix.image-builder-version }}
@@ -303,7 +302,7 @@ jobs:
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
     strategy:
       matrix:
-        image-builder-version: ["2023.12", "2024.04", "2024.10"]
+        image-builder-version: ["2023.12", "2024.04", "2024.10", "2025.06"]
         image-name: ["debian_slim", "micromamba"]
 
     steps:
