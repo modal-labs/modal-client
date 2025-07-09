@@ -538,13 +538,17 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         return self._tunnels
 
-    async def reload_volumes(self) -> None:
-        """Reload all Volumes mounted in the Sandbox."""
+    async def reload_volumes(self, volume_ids: list[str] | None = None) -> None:
+        """Reloads volumes mounted in the Sandbox.
+
+        If `volume_ids` is provided, only reloads the specified volumes, otherwise reloads all volumes.
+        """
         task_id = await self._get_task_id()
         await retry_transient_errors(
             self._client.stub.ContainerReloadVolumes,
             api_pb2.ContainerReloadVolumesRequest(
                 task_id=task_id,
+                volume_ids=volume_ids,
             ),
         )
 

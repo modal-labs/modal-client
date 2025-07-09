@@ -1017,6 +1017,7 @@ message ContainerLogRequest {
 
 message ContainerReloadVolumesRequest {
   string task_id = 1;
+  repeated string volume_ids = 2;
 }
 
 message ContainerReloadVolumesResponse { }
