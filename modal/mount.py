@@ -912,7 +912,7 @@ async def _create_single_client_dependency_mount(
             stdout, stderr = await proc.communicate()
             print(stdout.decode("utf-8"))
             print(stderr.decode("utf-8"))
-            raise RuntimeError(f"Subprocess failed with {proc.returncode}", proc.args)
+            raise RuntimeError(f"Subprocess failed with {proc.returncode}")
 
         print(f"🌐 Downloaded and unpacked {mount_name} packages to {tmpd}.")
 
