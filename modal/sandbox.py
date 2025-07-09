@@ -2,6 +2,7 @@
 import asyncio
 import os
 from collections.abc import AsyncGenerator, Sequence
+from datetime import datetime
 from typing import TYPE_CHECKING, AsyncIterator, Literal, Optional, Union, overload
 
 if TYPE_CHECKING:
@@ -655,7 +656,16 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
         resp = await retry_transient_errors(self._client.stub.ContainerExec, req)
         by_line = bufsize == 1
-        return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr, text=text, by_line=by_line)
+        return _ContainerProcess(
+            resp.exec_id,
+            self._client,
+            stdout=stdout,
+            stderr=stderr,
+            text=text,
+            timeout_secs=timeout,
+            exec_start=datetime.now(),
+            by_line=by_line,
+        )
 
     async def _experimental_snapshot(self) -> _SandboxSnapshot:
         await self._get_task_id()
