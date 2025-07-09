@@ -39,7 +39,7 @@ class _ContainerProcess(Generic[T]):
     ) -> None:
         self._process_id = process_id
         self._client = client
-        self._exec_deadline = self._exec_deadline
+        self._exec_deadline = exec_deadline
         self._text = text
         self._by_line = by_line
         self._stdout = _StreamReader[T](
@@ -96,7 +96,8 @@ class _ContainerProcess(Generic[T]):
         """
         if self._returncode is not None:
             return self._returncode
-        if self._exec_deadline >= time.monotonic():
+        if self._exec_deadline and time.monotonic() >= self._exec_deadline:
+            # TODO(matt): In the future, it would be nice to raise a ContainerExecTimeoutError
             self._returncode = -1
             return self._returncode
 
@@ -104,7 +105,6 @@ class _ContainerProcess(Generic[T]):
         resp: api_pb2.ContainerExecWaitResponse = await retry_transient_errors(self._client.stub.ContainerExecWait, req)
 
         if resp.completed:
-            # TODO(matt): In the future, it would be nice to raise a ContainerExecTimeoutError
             self._returncode = resp.exit_code
             return self._returncode
 

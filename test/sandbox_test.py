@@ -310,6 +310,25 @@ def test_sandbox_exec_wait(app, servicer):
 
 
 @skip_non_subprocess
+def test_sandbox_exec_wait_timeout(app, servicer):
+    sb = Sandbox.create("sleep", "infinity", app=app)
+
+    cp = sb.exec("sleep", "20", timeout=3)
+    t0 = time.monotonic()
+    assert cp.wait() == -1
+    assert 3 <= time.monotonic() - t0 <= 3 + 0.2
+
+
+@skip_non_subprocess
+def test_sandbox_exec_poll_timeout(app, servicer):
+    sb = Sandbox.create("sleep", "infinity", app=app)
+
+    cp = sb.exec("sleep", "10", timeout=3)
+    time.sleep(5)
+    assert cp.poll() == -1
+
+
+@skip_non_subprocess
 def test_sandbox_create_and_exec_with_bad_args(app, servicer):
     too_big = 130_000
     single_arg_size = too_big // 10
