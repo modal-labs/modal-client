@@ -12,7 +12,7 @@ from .grpc_utils import retry_transient_errors
 from .logger import logger
 
 
-class AuthTokenManager:
+class _AuthTokenManager:
     """ Handles fetching and refreshing of the input plane auth token. """
 
     # Start refreshing this many seconds before the token expires

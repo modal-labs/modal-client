@@ -6,14 +6,14 @@ import time
 import jwt
 
 from modal._utils.async_utils import synchronize_api
-from modal._utils.auth_token_manager import AuthTokenManager
+from modal._utils.auth_token_manager import _AuthTokenManager
 from modal.exception import RemoteError
 
 
 @pytest.fixture
 def auth_token_manager(client):
     """Create an AuthTokenManager instance for testing."""
-    return AuthTokenManager(client.stub)
+    return _AuthTokenManager(client.stub)
 
 
 @pytest.fixture
@@ -216,7 +216,7 @@ async def test_concurrent_refresh(auth_token_manager, token_near_expiry, valid_j
 
 def test_decode_jwt_valid(valid_jwt_token):
     """Test JWT decoding with valid token."""
-    decoded = AuthTokenManager._decode_jwt(valid_jwt_token)
+    decoded = _AuthTokenManager._decode_jwt(valid_jwt_token)
     assert "exp" in decoded
     assert "type" in decoded
     assert decoded["type"] == "valid"
@@ -224,7 +224,7 @@ def test_decode_jwt_valid(valid_jwt_token):
 
 def test_decode_jwt_without_exp(token_without_exp):
     """Test JWT decoding with token that has no exp claim."""
-    decoded = AuthTokenManager._decode_jwt(token_without_exp)
+    decoded = _AuthTokenManager._decode_jwt(token_without_exp)
     assert "exp" not in decoded
     assert "type" in decoded
     assert decoded["type"] == "without_exp"
@@ -233,7 +233,7 @@ def test_decode_jwt_without_exp(token_without_exp):
 def test_decode_jwt_invalid_format():
     """Test JWT decoding with invalid token format."""
     with pytest.raises(ValueError):
-        AuthTokenManager._decode_jwt("invalid.token")
+        _AuthTokenManager._decode_jwt("invalid.token")
 
 
 def test_needs_refresh_true(auth_token_manager):
