@@ -1801,7 +1801,8 @@ message FunctionPutInputsItem {
   int32 idx = 1;
   FunctionInput input = 2;
   bool r2_failed = 3;
-  uint64 r2_latency_ms = 4;
+  reserved 4; // r2_latency_ms
+  uint64 r2_throughput_bytes_s = 5;
 }
 
 message FunctionPutInputsRequest {
