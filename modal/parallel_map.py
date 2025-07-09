@@ -105,7 +105,7 @@ class _SpawnMapInvocationState:
     sync_client_retries_enabled: bool
     max_inputs_outstanding: int
     retry_queue: TimestampPriorityQueue
-    input_queue: "asyncio.Queue[api_pb2.FunctionPutInputsItem | None]"
+    input_queue: Any  # type: ignore
     map_items_manager: "modal.parallel_map._MapItemsManager"
     function_call_id: str
 
@@ -170,6 +170,7 @@ async def _experimental_spawn_map_invocation(
                 args,
                 kwargs,
                 client.stub,
+                max_object_size_bytes=state.function._max_object_size_bytes,
                 idx=idx,
                 method_name=state.function._use_method_name,
             )
@@ -763,7 +764,7 @@ async def _map_async(
 
 async def _experimental_spawn_map_async(self, *input_iterators, kwargs={}) -> None:
     async_input_gen = async_zip(*[sync_or_async_iter(it) for it in input_iterators])
-    await _experimental_spawn_map_helper(self, async_input_gen, kwargs)
+    return await _experimental_spawn_map_helper(self, async_input_gen, kwargs)
 
 
 async def _experimental_spawn_map_helper(self: "modal.functions.Function", async_input_gen, kwargs={}) -> None:
