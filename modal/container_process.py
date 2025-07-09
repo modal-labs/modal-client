@@ -96,15 +96,15 @@ class _ContainerProcess(Generic[T]):
         """
         if self._returncode is not None:
             return self._returncode
-
         if self._exec_deadline >= time.monotonic():
             self._returncode = -1
-            raise TimeoutError("container timed out while running exec")
+            return self._returncode
 
         req = api_pb2.ContainerExecWaitRequest(exec_id=self._process_id, timeout=0)
         resp: api_pb2.ContainerExecWaitResponse = await retry_transient_errors(self._client.stub.ContainerExecWait, req)
 
         if resp.completed:
+            # TODO(matt): In the future, it would be nice to raise a ContainerExecTimeoutError
             self._returncode = resp.exit_code
             return self._returncode
 
@@ -136,9 +136,9 @@ class _ContainerProcess(Generic[T]):
 
             return self._returncode
 
-        except asyncio.TimeoutError:
+        except asyncio.TimeoutError | TimeoutError:
             self._returncode = -1
-            raise TimeoutError("container timed out while running exec")
+            return self._returncode
 
     async def attach(self):
         """mdmd:hidden"""
