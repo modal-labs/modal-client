@@ -207,7 +207,7 @@ def _make_click_function(app, signature: CliRunnableSignature, inner: Callable[[
     return f
 
 
-def _get_click_command_for_function(app: App, function: Function):
+def _get_click_command_for_function(app: App, function: Function, ctx: click.Context):
     if function.is_generator:
         raise InvalidError("`modal run` is not supported for generator functions")
 
@@ -216,7 +216,10 @@ def _get_click_command_for_function(app: App, function: Function):
     signature: CliRunnableSignature = _get_cli_runnable_signature(sig, type_hints)
 
     def _inner(args, click_kwargs):
-        return function.remote(*args, **click_kwargs)
+        if ctx.obj["detach"]:
+            return function.spawn(*args, **click_kwargs).get()
+        else:
+            return function.remote(*args, **click_kwargs)
 
     f = _make_click_function(app, signature, _inner)
 
@@ -230,7 +233,7 @@ def _get_click_command_for_function(app: App, function: Function):
         return click.command(with_click_options)
 
 
-def _get_click_command_for_cls(app: App, method_ref: MethodReference):
+def _get_click_command_for_cls(app: App, method_ref: MethodReference, ctx: click.Context):
     parameters: dict[str, ParameterMetadata]
     cls = method_ref.cls
     method_name = method_ref.method_name
@@ -271,7 +274,10 @@ def _get_click_command_for_cls(app: App, method_ref: MethodReference):
 
         instance = cls(**cls_kwargs)
         method: Function = getattr(instance, method_name)
-        return method.remote(*args, **fun_kwargs)
+        if ctx.obj["detach"]:
+            return method.spawn(*args, **fun_kwargs).get()
+        else:
+            return method.remote(*args, **fun_kwargs)
 
     f = _make_click_function(app, fun_signature, _inner)
     with_click_options = _add_click_options(f, parameters)
@@ -376,9 +382,9 @@ class RunGroup(click.Group):
         if isinstance(runnable, LocalEntrypoint):
             click_command = _get_click_command_for_local_entrypoint(app, runnable)
         elif isinstance(runnable, Function):
-            click_command = _get_click_command_for_function(app, runnable)
+            click_command = _get_click_command_for_function(app, runnable, ctx)
         elif isinstance(runnable, MethodReference):
-            click_command = _get_click_command_for_cls(app, runnable)
+            click_command = _get_click_command_for_cls(app, runnable, ctx)
         else:
             # This should be unreachable...
             raise ValueError(f"{runnable} is neither function, local entrypoint or class/method")
