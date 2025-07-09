@@ -115,9 +115,13 @@ def test_python_version_validation(builder_version):
 def test_dockerhub_python_version(builder_version):
     assert _dockerhub_python_version(builder_version, "3.9.1") == "3.9.1"
 
-    expected_39_full = {"2023.12": "3.9.15", "2024.04": "3.9.19", "2024.10": "3.9.20", "PREVIEW": "3.9.22"}[
-        builder_version
-    ]
+    expected_39_full = {
+        "2023.12": "3.9.15",
+        "2024.04": "3.9.19",
+        "2024.10": "3.9.20",
+        "2025.06": "3.9.22",
+        "PREVIEW": "3.9.22",
+    }[builder_version]
     assert _dockerhub_python_version(builder_version, "3.9") == expected_39_full
 
     v = _dockerhub_python_version(builder_version, None).split(".")
@@ -1845,6 +1849,83 @@ def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
 
     img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
     assert get_hash(img) == "2b6cd5b524ac796cafdabe8b95bf626a765f28c909d23f6051fc4329d6edbc0b"
+
+
+@pytest.fixture
+def force_2025_06(modal_config):
+    with mock.patch("test.conftest.ImageBuilderVersion", Literal["2025.06"]):
+        with modal_config():
+            yield
+
+
+@skip_windows("Different hash values for context file paths")
+def test_image_stability_on_2025_06(force_2025_06, servicer, client, test_dir):
+    def get_hash(img: Image) -> str:
+        app = App(image=img)
+        app.function()(dummy)
+        with app.run(client=client):
+            layers = get_image_layers(app.image.object_id, servicer)
+            commands = [layer.dockerfile_commands for layer in layers]
+            context_files = [[(f.filename, f.data) for f in layer.context_files] for layer in layers]
+        return sha256(repr(list(zip(commands, context_files))).encode()).hexdigest()
+
+    if sys.version_info[:2] == (3, 11):
+        # Matches my development environment — default is to match Python version from local system
+        img = Image.debian_slim()
+        assert get_hash(img) == "691f48fbf5211d4d7670962d47da3029c056868df50bb66e01f577badd9dcdfb"
+
+    img = Image.debian_slim(python_version="3.12")
+    assert get_hash(img) == "8f5fe3378cd1c4311f9d092776ace022b57745a924843b7b3b394326f6d742ae"
+
+    img = Image.from_registry("ubuntu:22.04")
+    assert get_hash(img) == "d13118a015a55282d62b7c93bb20611ea79f8320735c72df57966b5c298b1c3e"
+
+    img = Image.from_dockerfile(test_dir / "supports" / "test-dockerfile")
+    assert get_hash(img) == "2cc97f48ac2699c80d7c21363a99e23b4c60e2c3a876d53742b60cb3957fc650"
+
+    img = Image.micromamba()
+    if sys.version_info[:2] == (3, 11):
+        assert get_hash(img) == "7257e8b6593c75a80301bb899f9c88da157a28ba3f5265b92b144960bd1819e1"
+    elif sys.version_info[:2] == (3, 10):
+        # Assert that we follow the local Python, which is a new behavior in 2024.04
+        assert get_hash(img) == "6522a2426f2f5929eeac50a43141fa1b5fe510b6b66238ad8c0e8c41c9fae4fd"
+
+    img = Image.micromamba(python_version="3.12")
+    assert get_hash(img) == "c368b09c8dea84c5a26f97fc0028a52c46ca3a97caf070ceade36d44471547ad"
+
+    base = Image.debian_slim(python_version="3.12")
+
+    img = base.run_commands("echo 'Hello Modal'", "rm /usr/local/bin/kubectl")
+    assert get_hash(img) == "9403a725e8b7693b2aec476683e4a4fd75e82e9ca37323948e5d2ffbe7551b3b"
+
+    img = base.pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
+    assert get_hash(img) == "ad6696a7ad6e67a48c5cc613f5682bc20e36803e2e22bb9c9e65f93e8af02e14"
+
+    img = base.pip_install_from_requirements(test_dir / "supports" / "test-requirements.txt")
+    assert get_hash(img) == "c99a54ef791846d761a93c06f65d2f2a25e088f0790aecaa12e8e702422935a5"
+
+    img = base.micromamba_install(
+        "torch=2.2",
+        "transformers<4.23.0",
+        spec_file=test_dir / "supports" / "test-conda-environment.yml",
+        channels=["conda-forge", "my-channel"],
+    )
+    assert get_hash(img) == "30b1a4375ccd85314366b51cbec09691cbd7222979cefe1d3d6dc01413c54b9a"
+
+    img = base.poetry_install_from_file(
+        test_dir / "supports" / "test-pyproject.toml",
+        poetry_lockfile=test_dir / "supports" / "special_poetry.lock",
+    )
+    assert get_hash(img) == "0b1dabc063d6525a0cf21abe5c72f3ac4bffd6d49067ba6e0e7172537963c02b"
+
+    img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
+    assert get_hash(img) == "e7726eb7bf86145fc5a9e7683bb6eb9ac0c8a18385d7ef3336a57ed3d4723475"
+
+    img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
+    assert get_hash(img) == "49cd8f10466a43ad09358e57e6642d069edef7fcc13a7b2b59698d9eab7ea1a6"
+
+    img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
+    assert get_hash(img) == "60304d4a13826e0a450248cb37bc0192020b83dd20bcb2dbea058e0149d54532"
 
 
 parallel_app = App()
