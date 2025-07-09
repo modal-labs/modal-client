@@ -148,9 +148,9 @@ jobs:
             python-version: "3.9"
           - image-builder-version: "2024.10"
             python-version: "3.13"
-          - image-builder-version: "PREVIEW"
+          - image-builder-version: "2025.06"
             python-version: "3.9"
-          - image-builder-version: "PREVIEW"
+          - image-builder-version: "2025.06"
             python-version: "3.13"
 
     steps:
