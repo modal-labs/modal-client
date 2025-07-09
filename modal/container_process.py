@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2024
 import asyncio
 import platform
-from datetime import datetime, timedelta
+import time
 from typing import Generic, Optional, TypeVar
 
 from modal_proto import api_pb2
@@ -22,8 +22,7 @@ class _ContainerProcess(Generic[T]):
     _stdout: _StreamReader[T]
     _stderr: _StreamReader[T]
     _stdin: _StreamWriter
-    _timeout: Optional[timedelta] = None
-    _exec_start: Optional[datetime] = None
+    _exec_deadline: Optional[float] = None
     _text: bool
     _by_line: bool
     _returncode: Optional[int] = None
@@ -34,13 +33,13 @@ class _ContainerProcess(Generic[T]):
         client: _Client,
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
-        timeout_secs: Optional[int] = None,
-        exec_start: Optional[datetime] = None,
+        exec_deadline: Optional[float] = None,
         text: bool = True,
         by_line: bool = False,
     ) -> None:
         self._process_id = process_id
         self._client = client
+        self._exec_deadline = self._exec_deadline
         self._text = text
         self._by_line = by_line
         self._stdout = _StreamReader[T](
@@ -62,9 +61,6 @@ class _ContainerProcess(Generic[T]):
             by_line=by_line,
         )
         self._stdin = _StreamWriter(process_id, "container_process", self._client)
-        if timeout_secs:
-            self._timeout = timedelta(seconds=timeout_secs)
-        self._exec_start = exec_start
 
     def __repr__(self) -> str:
         return f"ContainerProcess(process_id={self._process_id!r})"
@@ -101,7 +97,7 @@ class _ContainerProcess(Generic[T]):
         if self._returncode is not None:
             return self._returncode
 
-        if self._timeout and datetime.now() >= self._exec_start + self._timeout:
+        if self._exec_deadline >= time.monotonic():
             self._returncode = -1
             raise TimeoutError("container timed out while running exec")
 
@@ -130,9 +126,8 @@ class _ContainerProcess(Generic[T]):
             return self._returncode
 
         try:
-            if self._timeout:
-                elapsed = datetime.now() - self._exec_start
-                remaining = (self._timeout - elapsed).total_seconds()
+            if self._exec_deadline:
+                remaining = self._exec_deadline - time.monotonic()
                 if remaining <= 0:
                     raise TimeoutError()
                 self._returncode = await asyncio.wait_for(self._wait_for_completion(), timeout=remaining)
@@ -146,6 +141,7 @@ class _ContainerProcess(Generic[T]):
             raise TimeoutError("container timed out while running exec")
 
     async def attach(self):
+        """mdmd:hidden"""
         if platform.system() == "Windows":
             print("interactive exec is not currently supported on Windows.")
             return

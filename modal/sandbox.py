@@ -1,8 +1,8 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
+import time
 from collections.abc import AsyncGenerator, Sequence
-from datetime import datetime
 from typing import TYPE_CHECKING, AsyncIterator, Literal, Optional, Union, overload
 
 if TYPE_CHECKING:
@@ -656,14 +656,14 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
         resp = await retry_transient_errors(self._client.stub.ContainerExec, req)
         by_line = bufsize == 1
+        exec_deadline = time.monotonic() + timeout if timeout else None
         return _ContainerProcess(
             resp.exec_id,
             self._client,
             stdout=stdout,
             stderr=stderr,
             text=text,
-            timeout_secs=timeout,
-            exec_start=datetime.now(),
+            exec_deadline=exec_deadline,
             by_line=by_line,
         )
 
