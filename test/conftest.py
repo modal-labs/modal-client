@@ -17,6 +17,7 @@ import sys
 import tempfile
 import textwrap
 import threading
+import time
 import traceback
 import uuid
 from collections import defaultdict
@@ -28,6 +29,7 @@ from typing import Any, Callable, Optional, Union, get_args
 import aiohttp.web
 import aiohttp.web_runner
 import grpclib.server
+import jwt
 import pkg_resources
 import pytest_asyncio
 from google.protobuf.empty_pb2 import Empty
@@ -315,7 +317,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # AttemptAwait will return a failure until this is 0. It is decremented by 1 each time AttemptAwait is called.
         self.attempt_await_failures_remaining = 0
         # Value returned by AuthTokenGet
-        self.auth_token = None
+        self.auth_token = jwt.encode({"exp": int(time.time()) + 3600}, "my-secret-key", algorithm="HS256")
         self.auth_tokens_generated = 0
 
         @self.function_body

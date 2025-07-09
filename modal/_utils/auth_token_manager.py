@@ -28,9 +28,15 @@ class AuthTokenManager:
 
     async def get_token(self):
         """
-        If we do not have a token, or if the current one is expired, fetch a new token and cache it.
-        If the cached token will expire in the next 5 minutes, fetch a new one. If called concurrently, only one
-        coroutine will fetch a new token, and the others will continue to use the old token without blocking.
+        When called, the AuthTokenManager can be in one of three states:
+        1. Has a valid cached token. It is returned to the caller.
+        2. Has no cached token, or the token is expired. We fetch a new one and cache it. If `get_token` is called
+        concurrently by multiple coroutines, all requests will block until the token has been fetched. But only one
+        coroutine will actually make a request to the control plane to fetch the new token. This ensures we do not hit
+        the control plane with more requests than needed.
+        3. Has a valid cached token, but it is going to expire in the next 5 minutes. In this case we fetch a new token
+        and cache it. If `get_token` is called concurrently, only one request will fetch the new token, and the others
+        will be given the old (but still valid) token - i.e. they will not block.
         """
         if self._token is None or self._is_expired():
             # We either have no token or it is expired - block everyone until we get a new token
