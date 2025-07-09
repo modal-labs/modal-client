@@ -550,7 +550,7 @@ async def _create_input(
     args_serialized = serialize((args, kwargs))
 
     if should_upload(len(args_serialized), max_object_size_bytes, function_call_invocation_type):
-        args_blob_id, r2_failed, r2_latency_ms = await blob_upload_with_r2_failure_info(args_serialized, stub)
+        args_blob_id, r2_failed, r2_throughput_bytes_s = await blob_upload_with_r2_failure_info(args_serialized, stub)
         return api_pb2.FunctionPutInputsItem(
             input=api_pb2.FunctionInput(
                 args_blob_id=args_blob_id,
@@ -559,7 +559,7 @@ async def _create_input(
             ),
             idx=idx,
             r2_failed=r2_failed,
-            r2_latency_ms=r2_latency_ms,
+            r2_throughput_bytes_s=r2_throughput_bytes_s,
         )
     else:
         return api_pb2.FunctionPutInputsItem(

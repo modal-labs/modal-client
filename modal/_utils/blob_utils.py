@@ -188,16 +188,10 @@ def get_content_length(data: BinaryIO) -> int:
     return content_length - pos
 
 
-async def _measure_endpoint_latency(item: str) -> int:
-    latency_ms = 0
-    t0 = time.monotonic_ns()
-    async with ClientSessionRegistry.get_session().head(item) as _:
-        latency_ms = (time.monotonic_ns() - t0) // 1_000_000
-    return latency_ms
-
-
-async def _blob_upload_with_fallback(items, blob_ids: list[str], callback) -> tuple[str, bool, int]:
-    r2_latency_ms = 0
+async def _blob_upload_with_fallback(
+    items, blob_ids: list[str], callback, content_length: int
+) -> tuple[str, bool, int]:
+    r2_throughput_bytes_s = 0
     r2_failed = False
     for idx, (item, blob_id) in enumerate(zip(items, blob_ids)):
         # We want to default to R2 95% of the time and S3 5% of the time.
@@ -206,14 +200,13 @@ async def _blob_upload_with_fallback(items, blob_ids: list[str], callback) -> tu
             continue
         try:
             if blob_id.endswith(":r2"):
-                # measure the time it takes to contact the bucket endpoint
-                r2_latency_ms, _ = await asyncio.gather(
-                    _measure_endpoint_latency(item),
-                    callback(item),
-                )
+                t0 = time.monotonic_ns()
+                await callback(item)
+                dt_ns = time.monotonic_ns() - t0
+                r2_throughput_bytes_s = (content_length * 1_000_000_000) // max(dt_ns, 1)
             else:
                 await callback(item)
-            return blob_id, r2_failed, r2_latency_ms
+            return blob_id, r2_failed, r2_throughput_bytes_s
         except Exception as _:
             if blob_id.endswith(":r2"):
                 r2_failed = True
@@ -251,10 +244,11 @@ async def _blob_upload(
                 progress_report_cb=progress_report_cb,
             )
 
-        blob_id, r2_failed, r2_latency_ms = await _blob_upload_with_fallback(
+        blob_id, r2_failed, r2_throughput_bytes_s = await _blob_upload_with_fallback(
             resp.multiparts.items,
             resp.blob_ids,
             upload_multipart_upload,
+            content_length=content_length,
         )
     else:
         from .bytes_io_segment_payload import BytesIOSegmentPayload
@@ -271,16 +265,17 @@ async def _blob_upload(
                 content_md5_b64=upload_hashes.md5_base64,
             )
 
-        blob_id, r2_failed, r2_latency_ms = await _blob_upload_with_fallback(
+        blob_id, r2_failed, r2_throughput_bytes_s = await _blob_upload_with_fallback(
             resp.upload_urls.items,
             resp.blob_ids,
             upload_to_s3_url,
+            content_length=content_length,
         )
 
     if progress_report_cb:
         progress_report_cb(complete=True)
 
-    return blob_id, r2_failed, r2_latency_ms
+    return blob_id, r2_failed, r2_throughput_bytes_s
 
 
 async def blob_upload_with_r2_failure_info(payload: bytes, stub: ModalClientModal) -> tuple[str, bool, int]:
@@ -291,13 +286,13 @@ async def blob_upload_with_r2_failure_info(payload: bytes, stub: ModalClientModa
         logger.warning("Blob uploading string, not bytes - auto-encoding as utf8")
         payload = payload.encode("utf8")
     upload_hashes = get_upload_hashes(payload)
-    blob_id, r2_failed, r2_latency_ms = await _blob_upload(upload_hashes, payload, stub)
+    blob_id, r2_failed, r2_throughput_bytes_s = await _blob_upload(upload_hashes, payload, stub)
     dur_s = max(time.time() - t0, 0.001)  # avoid division by zero
     throughput_mib_s = (size_mib) / dur_s
     logger.debug(
         f"Uploaded large blob of size {size_mib:.2f} MiB ({throughput_mib_s:.2f} MiB/s, total {dur_s:.2f}s). {blob_id}"
     )
-    return blob_id, r2_failed, r2_latency_ms
+    return blob_id, r2_failed, r2_throughput_bytes_s
 
 
 async def blob_upload(payload: bytes, stub: ModalClientModal) -> str:
