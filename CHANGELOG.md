@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.6.dev19 (2025-07-09)
+
+- TK Changelog note introducing the 2025.06 Image Builder Version
+
+
 #### 1.0.6.dev17 (2025-07-07)
 
 * Added a [`modal.Sandbox.reload_volumes`](https://modal.com/docs/reference/modal.Sandbox#reload_volumes) method, which triggers a reload of all volumes currently mounted inside a Sandbox, allowing sandboxes to sync any concurrent updates to Volumes they have mounted.
