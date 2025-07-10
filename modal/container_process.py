@@ -112,7 +112,6 @@ class _ContainerProcess(Generic[T]):
         return None
 
     async def _wait_for_completion(self) -> int:
-        """Wait for the container process to finish running."""
         while True:
             req = api_pb2.ContainerExecWaitRequest(exec_id=self._process_id, timeout=10)
             resp: api_pb2.ContainerExecWaitResponse = await retry_transient_errors(
@@ -126,18 +125,15 @@ class _ContainerProcess(Generic[T]):
         if self._returncode is not None:
             return self._returncode
 
-        if self._exec_deadline:
-            try:
-                remaining = self._exec_deadline - time.monotonic()
-                if remaining <= 0:
+        try:
+            timeout = None
+            if self._exec_deadline:
+                timeout = self._exec_deadline - time.monotonic()
+                if timeout <= 0:
                     raise TimeoutError()
-                self._returncode = await asyncio.wait_for(self._wait_for_completion(), timeout=remaining)
-            except (asyncio.TimeoutError, TimeoutError):
-                self._returncode = -1
-                return self._returncode
-        else:
-            self._returncode = await self._wait_for_completion()
-
+                self._returncode = await asyncio.wait_for(self._wait_for_completion(), timeout=timeout)
+        except (asyncio.TimeoutError, TimeoutError):
+            self._returncode = -1
         return self._returncode
 
     async def attach(self):

@@ -660,7 +660,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
         resp = await retry_transient_errors(self._client.stub.ContainerExec, req)
         by_line = bufsize == 1
-        exec_deadline = time.monotonic() + timeout + CONTAINER_EXEC_TIMEOUT_BUFFER if timeout else None
+        exec_deadline = time.monotonic() + int(timeout) + CONTAINER_EXEC_TIMEOUT_BUFFER if timeout else None
         return _ContainerProcess(
             resp.exec_id,
             self._client,
