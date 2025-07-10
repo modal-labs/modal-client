@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.6.dev29 (2025-07-10)
+
+* Fixes a bug where the specified timeout for a `Sandbox.exec` is not respected by `wait()` or `poll()`.
+
+
 #### 1.0.6.dev19 (2025-07-09)
 
 - TK Changelog note introducing the 2025.06 Image Builder Version
