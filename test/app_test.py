@@ -91,14 +91,16 @@ def test_create_object_invalid_exception(servicer, client):
 def test_deploy_falls_back_to_app_name(servicer, client):
     named_app = App(name="foo_app")
     named_app.deploy(client=client)
-    assert "foo_app" in servicer.deployed_apps
+    app_names = {app_name for (_, app_name) in servicer.deployed_apps}
+    assert "foo_app" in app_names
 
 
 def test_deploy_uses_deployment_name_if_specified(servicer, client):
     named_app = App(name="foo_app")
     named_app.deploy(name="bar_app", client=client)
-    assert "bar_app" in servicer.deployed_apps
-    assert "foo_app" not in servicer.deployed_apps
+    app_names = {app_name for (_, app_name) in servicer.deployed_apps}
+    assert "bar_app" in app_names
+    assert "foo_app" not in app_names
 
 
 def test_run_function_without_app_error():
