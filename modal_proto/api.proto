@@ -1471,7 +1471,7 @@ message FunctionCallCallGraphInfo {
 message FunctionCallCancelRequest {
   string function_call_id = 1;
   bool terminate_containers = 2;
-  optional string function_id = 3; // Only used for sync cancellation on the input plane. Async cancellation does not require this.
+  optional string function_id = 3; // Only provided for sync input cancellation on the input plane. Async input cancellation does not provide this field this.
 }
 
 message FunctionCallGetDataRequest {
