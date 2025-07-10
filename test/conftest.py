@@ -186,9 +186,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.fc_data_in = defaultdict(lambda: asyncio.Queue())  # unbounded
         self.fc_data_out = defaultdict(lambda: asyncio.Queue())  # unbounded
         self.queue: dict[bytes, list[bytes]] = {b"": []}
-        self.deployed_apps = {
-            client_mount_name(): "ap-x",
-        }
+        self.deployed_apps: dict[tuple[str, str], str] = {}
+        self.app_environments: dict[str, str] = {}
         self.app_deployment_history: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
         self.app_deployment_history["ap-x"] = [
             {
@@ -474,6 +473,11 @@ class MockClientServicer(api_grpc.ModalClientBase):
         res.object_id = object_id
         return res
 
+    def get_environment(self, environment_name: Optional[str] = None) -> str:
+        if environment_name is None:
+            return next(iter(self.environments))  # Use first environment as default
+        return environment_name
+
     def mounts_excluding_published_client(self):
         return {
             mount_id: content
@@ -513,6 +517,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.n_apps += 1
         app_id = f"ap-{self.n_apps}"
         self.app_state_history[app_id].append(api_pb2.APP_STATE_INITIALIZING)
+        self.app_environments[app_id] = self.get_environment(request.environment_name)
         await stream.send_message(
             api_pb2.AppCreateResponse(app_id=app_id, app_page_url="https://modaltest.com/apps/ap-123")
         )
@@ -582,13 +587,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.app_state_history[request.app_id].append(api_pb2.APP_STATE_DEPLOYED)
         await stream.send_message(Empty())
 
-    async def AppDeploy(self, stream):
-        request: api_pb2.AppDeployRequest = await stream.recv_message()
-        self.deployed_apps[request.name] = request.app_id
-        self.app_state_history[request.app_id].append(api_pb2.APP_STATE_DEPLOYED)
-
-        await stream.send_message(api_pb2.AppDeployResponse(url="http://test.modal.com/foo/bar"))
-
     async def AppPublish(self, stream):
         request: api_pb2.AppPublishRequest = await stream.recv_message()
         for key, val in request.definition_ids.items():
@@ -599,7 +597,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.app_objects[request.app_id] = {**request.function_ids, **request.class_ids}
         self.app_state_history[request.app_id].append(request.app_state)
         if request.app_state == api_pb2.AppState.APP_STATE_DEPLOYED:
-            self.deployed_apps[request.name] = request.app_id
+            app_key = (self.app_environments[request.app_id], request.name)
+            self.deployed_apps[app_key] = request.app_id
             await stream.send_message(api_pb2.AppPublishResponse(url="http://test.modal.com/foo/bar"))
         else:
             await stream.send_message(api_pb2.AppPublishResponse())
@@ -623,7 +622,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def AppGetByDeploymentName(self, stream):
         request: api_pb2.AppGetByDeploymentNameRequest = await stream.recv_message()
-        await stream.send_message(api_pb2.AppGetByDeploymentNameResponse(app_id=self.deployed_apps.get(request.name)))
+        app_key = (self.get_environment(request.environment_name), request.name)
+        app_id = self.deployed_apps.get(app_key)
+        await stream.send_message(api_pb2.AppGetByDeploymentNameResponse(app_id=app_id))
 
     async def AppHeartbeat(self, stream):
         request: api_pb2.AppHeartbeatRequest = await stream.recv_message()
@@ -656,9 +657,12 @@ class MockClientServicer(api_grpc.ModalClientBase):
         )
 
     async def AppList(self, stream):
-        await stream.recv_message()
+        req = await stream.recv_message()
         apps = []
-        for app_name, app_id in self.deployed_apps.items():
+        requested_environment = self.get_environment(req.environment_name)
+        for (environment_name, app_name), app_id in self.deployed_apps.items():
+            if environment_name != requested_environment:
+                continue
             apps.append(
                 api_pb2.AppListResponse.AppListItem(
                     name=app_name,
@@ -757,7 +761,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def ClassGet(self, stream):
         request: api_pb2.ClassGetRequest = await stream.recv_message()
-        if not (app_id := self.deployed_apps.get(request.app_name)):
+        app_key = (self.get_environment(request.environment_name), request.app_name)
+        if not (app_id := self.deployed_apps.get(app_key)):
             raise GRPCError(Status.NOT_FOUND, f"can't find app {request.app_name}")
         app_objects = self.app_objects[app_id]
         object_id = app_objects.get(request.object_tag)
@@ -867,7 +872,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
             dict_id = f"di-{len(self.dicts)}"
             self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
             self.deployed_dicts[k] = dict_id
-            self.deployed_apps[request.deployment_name] = f"ap-{dict_id}"
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
             dict_id = f"di-{len(self.dicts)}"
             self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
@@ -900,11 +904,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.DictLenResponse(len=len(self.dicts[request.dict_id])))
 
     async def DictList(self, stream):
-        dicts = [
-            api_pb2.DictListResponse.DictInfo(name=name, created_at=1)
-            for name, _ in self.deployed_dicts
-            if name in self.deployed_apps
-        ]
+        dicts = [api_pb2.DictListResponse.DictInfo(name=name, created_at=1) for name, _ in self.deployed_dicts]
         await stream.send_message(api_pb2.DictListResponse(dicts=dicts))
 
     async def DictUpdate(self, stream):
@@ -1140,7 +1140,8 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def FunctionGet(self, stream):
         request: api_pb2.FunctionGetRequest = await stream.recv_message()
-        if not (app_id := self.deployed_apps.get(request.app_name)):
+        app_key = (self.get_environment(request.environment_name), request.app_name)
+        if not (app_id := self.deployed_apps.get(app_key)):
             raise GRPCError(Status.NOT_FOUND, f"can't find app {request.app_name}")
 
         app_objects = self.app_objects[app_id]
@@ -1514,7 +1515,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.n_queues += 1
             queue_id = f"qu-{self.n_queues}"
             self.deployed_queues[k] = queue_id
-            self.deployed_apps[request.deployment_name] = f"ap-{queue_id}"
         elif request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_EPHEMERAL:
             self.n_queues += 1
             queue_id = f"qu-{self.n_queues}"
@@ -1562,11 +1562,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
     async def QueueList(self, stream):
         # TODO Note that the actual self.queue holding the data assumes we have a single queue
         # So there is a mismatch and I am not implementing a mock for the num_partitions / total_size
-        queues = [
-            api_pb2.QueueListResponse.QueueInfo(name=name, created_at=1)
-            for name, _ in self.deployed_queues
-            if name in self.deployed_apps
-        ]
+        queues = [api_pb2.QueueListResponse.QueueInfo(name=name, created_at=1) for name, _ in self.deployed_queues]
         await stream.send_message(api_pb2.QueueListResponse(queues=queues))
 
     async def QueueNextItems(self, stream):
