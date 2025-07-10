@@ -28,13 +28,7 @@ verify_option = typer.Option(
 )
 
 
-@token_cli.command(
-    name="set",
-    help=(
-        "Set account credentials for connecting to Modal. "
-        "If not provided with the command, you will be prompted to enter your credentials."
-    ),
-)
+@token_cli.command(name="set")
 @synchronizer.create_blocking
 async def set(
     token_id: Optional[str] = typer.Option(None, help="Account token ID."),
@@ -43,6 +37,10 @@ async def set(
     activate: bool = activate_option,
     verify: bool = verify_option,
 ):
+    """Set account credentials for connecting to Modal.
+
+    If the credentials are not provided on the command line, you will be prompted to enter them.
+    """
     if token_id is None:
         token_id = getpass.getpass("Token ID:")
     if token_secret is None:
@@ -50,7 +48,7 @@ async def set(
     await _set_token(token_id, token_secret, profile=profile, activate=activate, verify=verify)
 
 
-@token_cli.command(name="new", help="Create a new token by using an authenticated web session.")
+@token_cli.command(name="new")
 @synchronizer.create_blocking
 async def new(
     profile: Optional[str] = profile_option,
@@ -58,4 +56,5 @@ async def new(
     verify: bool = verify_option,
     source: Optional[str] = None,
 ):
+    """Create a new token by using an authenticated web session."""
     await _new_token(profile=profile, activate=activate, verify=verify, source=source)
