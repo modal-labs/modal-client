@@ -526,7 +526,19 @@ class MockClientServicer(api_grpc.ModalClientBase):
         request: api_pb2.AppGetOrCreateRequest = await stream.recv_message()
         self.requests.append(request)
 
-        await stream.send_message(api_pb2.AppGetOrCreateResponse(app_id="ap-123"))
+        environment_name = self.get_environment(request.environment_name)
+        try:
+            app_id = self.deployed_apps[(environment_name, request.app_name)]
+        except KeyError:
+            if request.object_creation_type == api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING:
+                app_id = f"ap-{self.n_apps}"
+                self.deployed_apps[(environment_name, request.app_name)] = app_id
+                self.app_state_history[app_id].append(api_pb2.APP_STATE_DEPLOYED)
+                self.app_environments[app_id] = environment_name
+            else:
+                raise GRPCError(Status.NOT_FOUND, f"App '{request.app_name}' not found")
+
+        await stream.send_message(api_pb2.AppGetOrCreateResponse(app_id=app_id))
 
     async def AppClientDisconnect(self, stream):
         request: api_pb2.AppClientDisconnectRequest = await stream.recv_message()
