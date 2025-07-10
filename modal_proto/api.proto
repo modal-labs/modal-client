@@ -614,6 +614,13 @@ message AttemptStartResponse {
   FunctionRetryPolicy retry_policy = 2;
 }
 
+message AuthTokenGetRequest {
+}
+
+message AuthTokenGetResponse {
+  string token = 1;
+}
+
 message AutoscalerSettings {
   // A collection of user-configurable settings for Function autoscaling
   // These are used for static configuration and for dynamic autoscaler updates
@@ -3267,6 +3274,9 @@ service ModalClient {
   rpc AttemptAwait(AttemptAwaitRequest) returns (AttemptAwaitResponse);
   rpc AttemptRetry(AttemptRetryRequest) returns (AttemptRetryResponse);
   rpc AttemptStart(AttemptStartRequest) returns (AttemptStartResponse);
+
+  // Auth Token
+  rpc AuthTokenGet(AuthTokenGetRequest) returns (AuthTokenGetResponse);
 
   // Blobs
   rpc BlobCreate(BlobCreateRequest) returns (BlobCreateResponse);
