@@ -125,7 +125,7 @@ class _FileIO(Generic[T]):
     may be limited in size to 100 MiB, and the throughput of requests is
     restricted in the current implementation. For our recommendations on large file transfers
     see the Sandbox [filesystem access guide](https://modal.com/docs/guide/sandbox-files).
-    
+
     **Usage**
 
     ```python
