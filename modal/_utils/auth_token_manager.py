@@ -3,6 +3,7 @@ import asyncio
 import base64
 import json
 import time
+import typing
 from typing import Any
 
 from modal.exception import RemoteError
@@ -24,7 +25,7 @@ class _AuthTokenManager:
         self._stub = stub
         self._token = ""
         self._expiry = 0.0
-        self._lock = asyncio.Lock()
+        self._lock: typing.Union[asyncio.Lock, None] = None
 
     async def get_token(self):
         """
@@ -43,7 +44,8 @@ class _AuthTokenManager:
             await self._refresh_token()
         elif self._needs_refresh():
             # The token hasn't expired yet, but will soon, so it needs a refresh.
-            if self._lock.locked():
+            lock = await self._get_lock()
+            if lock.locked():
                 # The lock is taken, so someone else is refreshing. Continue to use the old token.
                 return self._token
             else:
@@ -57,7 +59,8 @@ class _AuthTokenManager:
         Fetch a new token from the control plane. If called concurrently, only one coroutine will make a request for a
         new token. The others will block on a lock, until the first coroutine has fetched the new token.
         """
-        async with self._lock:
+        lock = await self._get_lock()
+        async with lock:
             # Double check inside lock: maybe another coroutine refreshed already
             if self._token and not self._needs_refresh():
                 return
@@ -76,6 +79,15 @@ class _AuthTokenManager:
                 logger.warning("x-modal-auth-token does not contain exp field")
                 # We'll use the token, and set the expiry to 20 min from now.
                 self._expiry = time.time() + self.DEFAULT_EXPIRY
+
+    async def _get_lock(self) -> asyncio.Lock:
+        # Note: this function runs no async code but is marked as async to ensure it's
+        # being run inside the synchronicity event loop and binds the lock to the
+        # correct event loop on Python 3.9 which eagerly assigns event loops on
+        # constructions of locks
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     @staticmethod
     def _decode_jwt(token: str) -> dict[str, Any]:
