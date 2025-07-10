@@ -4,6 +4,7 @@ import hashlib
 import pytest
 import time
 from pathlib import Path
+from unittest import mock
 
 from modal import App, Image, NetworkFileSystem, Proxy, Sandbox, SandboxSnapshot, Secret, Volume
 from modal.exception import InvalidError
@@ -309,6 +310,7 @@ def test_sandbox_exec_wait(app, servicer):
     assert cp.poll() == 42
 
 
+@mock.patch("modal.sandbox.CONTAINER_EXEC_TIMEOUT_BUFFER", 0)
 @skip_non_subprocess
 def test_sandbox_exec_wait_timeout(app, servicer):
     sb = Sandbox.create("sleep", "infinity", app=app)
@@ -319,6 +321,7 @@ def test_sandbox_exec_wait_timeout(app, servicer):
     assert 1 < time.monotonic() - t0 <= 1.2
 
 
+@mock.patch("modal.sandbox.CONTAINER_EXEC_TIMEOUT_BUFFER", 0)
 @skip_non_subprocess
 def test_sandbox_exec_poll_timeout(app, servicer):
     sb = Sandbox.create("sleep", "infinity", app=app)
