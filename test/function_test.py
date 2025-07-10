@@ -1046,6 +1046,17 @@ def test_spawn_map_sync(client, servicer):
         assert deserialize(function_map.pipelined_inputs[0].input.args, client) == ((1,), {})
 
 
+def test_experimental_spawn_map_sync(client, servicer):
+    dummy_function = app.function()(dummy)
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            dummy_function.experimental_spawn_map([1, 2, 3])
+
+        # Verify the correct invocation type was used
+        function_put_inputs = ctx.pop_request("FunctionPutInputs")
+        assert function_put_inputs is not None
+
+
 def test_warn_on_local_volume_mount(client, servicer):
     vol = modal.Volume.from_name("my-vol")
     dummy_function = app.function(volumes={"/foo": vol})(dummy)
@@ -1445,6 +1456,7 @@ def test_function_namespace_deprecated(servicer, client):
     namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
     assert len(namespace_warnings) == 0
 
+
 # These test and the two below it pass on their own but fail with this error when all the tests are run:
 # `modal.exception.NotFoundError: Volume ('my-vol', 'main') not found`
 # So there's some interaction happening that needs to be fixed.
@@ -1458,6 +1470,7 @@ def test_input_above_limit_does_blob_upload(client, servicer, blob_server):
         assert len(servicer.cleared_function_calls) == 1
     assert len(blobs) == 1
 
+
 @pytest.mark.skip()
 def test_input_above_limit_does_not_blob_upload(client, servicer, blob_server):
     # Setting max_object_size_bytes to 1000 should cause input to not be blob uploaded
@@ -1467,6 +1480,7 @@ def test_input_above_limit_does_not_blob_upload(client, servicer, blob_server):
         assert foo.remote(2, 4) == 20
         assert len(servicer.cleared_function_calls) == 1
     assert len(blobs) == 0
+
 
 @pytest.mark.skip()
 def test_unset_input_limit_does_not_blob_upload(client, servicer, blob_server):
