@@ -76,14 +76,16 @@ def test_app_deploy_success(servicer, mock_dir, set_env_client):
         # Deploy as a script with an absolute path
         _run(["deploy", os.path.abspath("myapp.py")])
 
-    assert "my_app" in servicer.deployed_apps
+    app_names = {app_name for (_, app_name) in servicer.deployed_apps}
+    assert "my_app" in app_names
 
 
 def test_app_deploy_with_name(servicer, mock_dir, set_env_client):
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
         _run(["deploy", "myapp.py", "--name", "my_app_foo"])
 
-    assert "my_app_foo" in servicer.deployed_apps
+    app_names = {app_name for (_, app_name) in servicer.deployed_apps}
+    assert "my_app_foo" in app_names
 
 
 def test_secret_create_list_delete(servicer, set_env_client):
@@ -987,7 +989,7 @@ def test_app_history(servicer, mock_dir, set_env_client):
     with mock_dir({"myapp.py": dummy_app_file, "other_module.py": dummy_other_module_file}):
         _run(["deploy", "myapp.py", "--name", "my_app_foo"])
 
-    app_id = servicer.deployed_apps.get("my_app_foo")
+    app_id = servicer.deployed_apps.get(("main", "my_app_foo"))
 
     servicer.app_deployment_history[app_id][-1]["commit_info"] = api_pb2.CommitInfo(
         vcs="git", branch="main", commit_hash="abc123"
@@ -1027,11 +1029,11 @@ def test_app_rollback(servicer, mock_dir, set_env_client):
         for _ in range(4):
             _run(["deploy", "myapp.py", "--name", "my_app"])
     _run(["app", "rollback", "my_app"])
-    app_id = servicer.deployed_apps.get("my_app")
+    app_id = servicer.deployed_apps.get(("main", "my_app"))
     assert servicer.app_deployment_history[app_id][-1]["rollback_version"] == 3
 
     _run(["app", "rollback", "my_app", "v2"])
-    app_id = servicer.deployed_apps.get("my_app")
+    app_id = servicer.deployed_apps.get(("main", "my_app"))
     assert servicer.app_deployment_history[app_id][-1]["rollback_version"] == 2
 
     _run(["app", "rollback", "my_app", "2"], expected_exit_code=2)
