@@ -1436,6 +1436,7 @@ message Function {
   bool mount_client_dependencies = 82;
 
   repeated string flash_service_urls = 83;
+  string flash_service_label = 84;
 }
 
 message FunctionAsyncInvokeRequest {
@@ -1590,6 +1591,7 @@ message FunctionData {
   map<string, string> experimental_options = 33;
 
   repeated string flash_service_urls = 34;
+  string flash_service_label = 35;
 }
 
 message FunctionExtended {
