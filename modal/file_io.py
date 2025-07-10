@@ -117,9 +117,14 @@ class FileWatchEvent:
 # The FileIO class is designed to mimic Python's io.FileIO
 # See https://github.com/python/cpython/blob/main/Lib/_pyio.py#L1459
 class _FileIO(Generic[T]):
-    """FileIO handle, used in the Sandbox filesystem API.
+    """[Alpha] FileIO handle, used in the Sandbox filesystem API.
 
     The API is designed to mimic Python's io.FileIO.
+
+    Currently this API is in Alpha and is subject to change. File I/O operations
+    may be limited in size to 100 MiB, and the throughput of requests is
+    restricted in the current implementation. We recommend using
+    [Tunnels](https://modal.com/docs/guide/tunnels) for large file transfers.
 
     **Usage**
 
@@ -144,7 +149,7 @@ class _FileIO(Generic[T]):
     _task_id: str = ""
     _file_descriptor: str = ""
     _client: _Client
-    _watch_output_buffer: list[Union[Optional[bytes],Exception]] = []
+    _watch_output_buffer: list[Union[Optional[bytes], Exception]] = []
 
     def __init__(self, client: _Client, task_id: str) -> None:
         self._client = client
