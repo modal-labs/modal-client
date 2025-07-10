@@ -463,12 +463,6 @@ message AppStopRequest {
   AppStopSource source = 2;
 }
 
-message AuthTokenGetRequest {
-}
-
-message AuthTokenGetResponse {
-  string token = 1;
-}
 // A web endpoint connection-related message.
 //
 // Modal's internal web endpoint runtime effectively acts as a global web server
@@ -618,6 +612,13 @@ message AttemptStartRequest {
 message AttemptStartResponse {
   string attempt_token = 1;
   FunctionRetryPolicy retry_policy = 2;
+}
+
+message AuthTokenGetRequest {
+}
+
+message AuthTokenGetResponse {
+  string token = 1;
 }
 
 message AutoscalerSettings {
