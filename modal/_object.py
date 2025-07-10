@@ -8,6 +8,8 @@ from typing import Callable, ClassVar, Optional
 from google.protobuf.message import Message
 from typing_extensions import Self
 
+from modal._traceback import suppress_tb_frames
+
 from ._resolver import Resolver
 from ._utils.async_utils import aclosing
 from ._utils.deprecation import deprecation_warning
@@ -271,7 +273,8 @@ class _Object:
         else:
             c = client if client is not None else await _Client.from_env()
             resolver = Resolver(c)
-            await resolver.load(self)
+            with suppress_tb_frames(1):  # skip this frame by default
+                await resolver.load(self)
         return self
 
 

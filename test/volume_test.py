@@ -558,3 +558,9 @@ def test_volume_namespace_deprecated(servicer, client):
     # Filter out any unrelated warnings
     namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
     assert len(namespace_warnings) == 0
+
+
+def test_remove_file_not_found(set_env_client):
+    vol = modal.Volume.from_name("my_vol", create_if_missing=True)
+    with pytest.raises(FileNotFoundError):
+        vol.remove_file("a")

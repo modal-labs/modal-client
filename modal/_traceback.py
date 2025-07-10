@@ -8,10 +8,12 @@ so that Rich is not a dependency of the container Client.
 import re
 import sys
 import traceback
+import typing
 import warnings
 from types import TracebackType
 from typing import Any, Iterable, Optional
 
+from modal.config import config, logger
 from modal_proto import api_pb2
 
 from ._vendor.tblib import Traceback as TBLibTraceback
@@ -115,7 +117,7 @@ def traceback_contains_remote_call(tb: Optional[TracebackType]) -> bool:
 def print_exception(exc: Optional[type[BaseException]], value: Optional[BaseException], tb: Optional[TracebackType]):
     """Add backwards compatibility for printing exceptions with "notes" for Python<3.11."""
     traceback.print_exception(exc, value, tb)
-    if sys.version_info < (3, 11) and value is not None:
+    if sys.version_info < (3, 11) and value is not None:  # type: ignore
         notes = getattr(value, "__notes__", [])
         print(*notes, sep="\n", file=sys.stderr)
 
@@ -127,3 +129,42 @@ def print_server_warnings(server_warnings: Iterable[api_pb2.Warning]):
     """
     for warning in server_warnings:
         warnings.warn_explicit(warning.message, ServerWarning, "<modal-server>", 0)
+
+
+# for some reason, the traceback cleanup here can't be moved into a context manager :(
+traceback_suppression_note = (
+    "Internal Modal traceback frames are suppressed for readability. Use MODAL_TRACEBACK=1 to show a full traceback."
+)
+
+
+class suppress_tb_frames:
+    def __init__(self, n: int):
+        self.n = n
+
+    def __enter__(self):
+        pass
+
+    def __exit__(
+        self, exc_type: Optional[type[BaseException]], exc: Optional[BaseException], tb: Optional[TracebackType]
+    ) -> typing.Literal[False]:
+        # *base* exceptions like CancelledError, SystemExit etc. can come from random places,
+        # so we don't suppress tracebacks for those
+        is_base_exception = not isinstance(exc, Exception)
+        if config.get("traceback") or exc_type is None or is_base_exception:
+            return False
+
+        # modify traceback on exception object
+        try:
+            final_tb = tb
+            for _ in range(self.n):
+                final_tb = final_tb.tb_next
+        except AttributeError:
+            logger.debug(f"Failed to suppress {self.n} traceback frames from {str(exc_type)} {str(exc)}")
+            raise
+
+        exc.with_traceback(final_tb)
+        notes = getattr(exc, "__notes__", [])
+        if traceback_suppression_note not in notes:
+            # .add_note was added in Python 3.11
+            notes.append(traceback_suppression_note)
+        return False

@@ -3,6 +3,7 @@ import asyncio
 import logging
 import pytest
 import re
+import sys
 import time
 
 from grpclib import GRPCError, Status
@@ -417,7 +418,8 @@ def test_app_create_bad_environment_name_error(client):
         ):  # TODO: why isn't environment_name an argument to app.run?
             pass
 
-    assert len(asyncio.all_tasks(synchronizer._loop)) == 1  # no trailing tasks, except the `loop_inner` ever-task
+    if sys.platform != "win32":  # proactor event loop has long lived helper tasks
+        assert len(asyncio.all_tasks(synchronizer._loop)) == 1  # no trailing tasks, except the `loop_inner` ever-task
 
 
 def test_overriding_function_warning(caplog):
