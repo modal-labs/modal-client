@@ -131,7 +131,7 @@ class _ContainerProcess(Generic[T]):
                 timeout = self._exec_deadline - time.monotonic()
                 if timeout <= 0:
                     raise TimeoutError()
-                self._returncode = await asyncio.wait_for(self._wait_for_completion(), timeout=timeout)
+            self._returncode = await asyncio.wait_for(self._wait_for_completion(), timeout=timeout)
         except (asyncio.TimeoutError, TimeoutError):
             self._returncode = -1
         return self._returncode
