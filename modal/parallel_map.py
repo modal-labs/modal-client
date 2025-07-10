@@ -528,6 +528,7 @@ async def _map_invocation_inputplane(
 
     async def create_input(argskwargs):
         idx = inputs_created
+        print(f"creating input {idx}")
         update_counters(created_delta=1)
         (args, kwargs) = argskwargs
         put_item: api_pb2.FunctionPutInputsItem = await _create_input(
@@ -578,7 +579,7 @@ async def _map_invocation_inputplane(
             # Convert the queued items into the proto format expected by the RPC.
             # input_id -> idx
             request_items: list[api_pb2.MapStartOrContinueItem] = [qi.to_start_or_continue_item() for qi in batch]
-
+            print(f"sending indices: {[qi.put_inputs_item.idx for qi in batch]}")
             # Build request
             request = api_pb2.MapStartOrContinueRequest(
                 function_id=function.object_id,
@@ -600,7 +601,11 @@ async def _map_invocation_inputplane(
             # Record attempt tokens for future retries; also release semaphore slots now that the
             # inputs are officially registered on the server.
             for item in response.items:
-                input_id_to_idx[item.input_id] = item.idx
+                # TODO(ben-okeefe): This is designed expecting a +1 offset to the map index
+                # This could use the index for the corresponding index in the request
+                # but if we used non deterministic ordering to populate the response that could fail (eg. goroutines)
+                input_id_to_idx[item.input_id] = item.idx - 1
+                print(f"received input idx {item.idx - 1} with input_id {item.input_id}")
                 attempt_tokens[item.idx] = item.attempt_token
                 # inputs_in_flight_sema.release()
 
@@ -699,6 +704,7 @@ async def _map_invocation_inputplane(
                     output_val = exc
             else:
                 raise exc
+        print(f"fetching output for {item.input_id} with idx {input_id_to_idx[item.input_id]}")
         return (input_id_to_idx[item.input_id], output_val)
 
     async def poll_outputs():
@@ -712,11 +718,17 @@ async def _map_invocation_inputplane(
                     yield _OutputValue(value)
                 else:
                     received[idx] = value
-                    while next_idx in received:
-                        v = received.pop(next_idx)
-                        yield _OutputValue(v)
-                        next_idx += 1
+                    while True:
+                        if next_idx not in received:
+                            # we haven't received the output for the current index yet.
+                            # stop returning outputs to the caller and instead wait for
+                            # the next output to arrive from the server.
+                            break
 
+                        output = received.pop(next_idx)
+                        yield _OutputValue(output)
+                        next_idx += 1
+        print(f"received: {received}")
         assert len(received) == 0, "All buffered outputs should have been yielded"
 
     # ------------------------------------------------------------
