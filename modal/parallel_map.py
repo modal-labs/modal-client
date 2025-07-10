@@ -200,7 +200,6 @@ async def _map_invocation(
                 inputs=items,
                 function_call_id=function_call_id,
             )
-            print(f"Pushing {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}.")
             logger.debug(
                 f"Pushing {len(items)} inputs to server. Num queued inputs awaiting push is {input_queue.qsize()}."
             )
@@ -395,7 +394,7 @@ async def _map_invocation(
 
     async def log_debug_stats():
         def log_stats():
-            print(
+            logger.debug(
                 f"Map stats: sync_client_retries_enabled={sync_client_retries_enabled} "
                 f"have_all_inputs={have_all_inputs} inputs_created={inputs_created} input_sent={inputs_sent} "
                 f"inputs_retried={inputs_retried} outputs_received={outputs_received} "
@@ -528,7 +527,6 @@ async def _map_invocation_inputplane(
 
     async def create_input(argskwargs):
         idx = inputs_created
-        print(f"creating input {idx}")
         update_counters(created_delta=1)
         (args, kwargs) = argskwargs
         put_item: api_pb2.FunctionPutInputsItem = await _create_input(
