@@ -1516,8 +1516,6 @@ Use the `Function.get_web_url()` method instead.
             count_update_callback = None
 
         if self._input_plane_url:
-            # order_outputs = False
-            print(f"order_outputs: {order_outputs}")
             async with aclosing(
                 _map_invocation_inputplane(
                     self,
@@ -1533,7 +1531,6 @@ Use the `Function.get_web_url()` method instead.
                 async for item in stream:
                     yield item
         else:
-            print(f"order_outputs: {order_outputs}")
             async with aclosing(
                 _map_invocation(
                     self,
