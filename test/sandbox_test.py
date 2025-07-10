@@ -315,7 +315,7 @@ def test_sandbox_exec_wait(app, servicer):
 def test_sandbox_exec_wait_timeout(app, servicer):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
-    cp = sb.exec("sleep", "inf", timeout=1)
+    cp = sb.exec("sleep", "999", timeout=1)
     t0 = time.monotonic()
     assert cp.wait() == -1
     assert 1 < time.monotonic() - t0 <= 1.2
@@ -326,7 +326,7 @@ def test_sandbox_exec_wait_timeout(app, servicer):
 def test_sandbox_exec_poll_timeout(app, servicer):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
-    cp = sb.exec("sleep", "inf", timeout=1)
+    cp = sb.exec("sleep", "999", timeout=1)
     assert not cp.poll()
     time.sleep(1.2)
     assert cp.poll() == -1
