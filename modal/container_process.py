@@ -97,7 +97,8 @@ class _ContainerProcess(Generic[T]):
         if self._returncode is not None:
             return self._returncode
         if self._exec_deadline and time.monotonic() >= self._exec_deadline:
-            # TODO(matt): In the future, it would be nice to raise a ContainerExecTimeoutError
+            # TODO(matt): In the future, it would be nice to raise a ContainerExecTimeoutError to make it
+            # clear to the user that their sandbox terminated due to a timeout
             self._returncode = -1
             return self._returncode
 
@@ -125,20 +126,19 @@ class _ContainerProcess(Generic[T]):
         if self._returncode is not None:
             return self._returncode
 
-        try:
-            if self._exec_deadline:
+        if self._exec_deadline:
+            try:
                 remaining = self._exec_deadline - time.monotonic()
                 if remaining <= 0:
                     raise TimeoutError()
                 self._returncode = await asyncio.wait_for(self._wait_for_completion(), timeout=remaining)
-            else:
-                self._returncode = await self._wait_for_completion()
+            except (asyncio.TimeoutError, TimeoutError):
+                self._returncode = -1
+                return self._returncode
+        else:
+            self._returncode = await self._wait_for_completion()
 
-            return self._returncode
-
-        except asyncio.TimeoutError | TimeoutError:
-            self._returncode = -1
-            return self._returncode
+        return self._returncode
 
     async def attach(self):
         """mdmd:hidden"""

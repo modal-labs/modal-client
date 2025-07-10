@@ -50,6 +50,12 @@ _default_image: _Image = _Image.debian_slim()
 # e.g. 'runsc exec ...'. So we use 2**16 as the limit.
 ARG_MAX_BYTES = 2**16
 
+
+# A user-supplied timeout of n seconds on a ContainerExec will be extended by this buffer.
+# This is introduced to minimize the effects of a race condition between the Sandbox.exec timeout
+# handler on the client side and the receiving of server RPCs carrying status codes or IO data.
+CONTAINER_EXEC_TIMEOUT_BUFFER = 5
+
 if TYPE_CHECKING:
     import modal.app
 
@@ -656,7 +662,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
         resp = await retry_transient_errors(self._client.stub.ContainerExec, req)
         by_line = bufsize == 1
-        exec_deadline = time.monotonic() + timeout if timeout else None
+        exec_deadline = time.monotonic() + timeout + CONTAINER_EXEC_TIMEOUT_BUFFER if timeout else None
         return _ContainerProcess(
             resp.exec_id,
             self._client,
