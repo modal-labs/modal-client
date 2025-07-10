@@ -1444,6 +1444,8 @@ message Function {
 
   repeated string flash_service_urls = 83;
   string flash_service_label = 84;
+
+  bool enable_gpu_snapshot = 84; // GPU memory snapshotting (alpha)
 }
 
 message FunctionAsyncInvokeRequest {
