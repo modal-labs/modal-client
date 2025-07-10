@@ -51,11 +51,9 @@ _default_image: _Image = _Image.debian_slim()
 ARG_MAX_BYTES = 2**16
 
 
-# A user-supplied timeout of n seconds on a ContainerExec will be extended by this buffer.
-# This is introduced to minimize the effects of a race condition between the Sandbox.exec timeout
-# handler on the client side and the receiving of server RPCs carrying status codes or IO data.
+# This buffer extends the user-supplied timeout on ContainerExec-related RPCs. This was introduced to
+# (hopefully) allow any in-flight status codes/IO data to reach the client before the stream is closed.
 CONTAINER_EXEC_TIMEOUT_BUFFER = 5
-
 if TYPE_CHECKING:
     import modal.app
 
