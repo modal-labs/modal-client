@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2024
 import asyncio
 import platform
+import time
 from typing import Generic, Optional, TypeVar
 
 from modal_proto import api_pb2
@@ -21,6 +22,7 @@ class _ContainerProcess(Generic[T]):
     _stdout: _StreamReader[T]
     _stderr: _StreamReader[T]
     _stdin: _StreamWriter
+    _exec_deadline: Optional[float] = None
     _text: bool
     _by_line: bool
     _returncode: Optional[int] = None
@@ -31,11 +33,13 @@ class _ContainerProcess(Generic[T]):
         client: _Client,
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
+        exec_deadline: Optional[float] = None,
         text: bool = True,
         by_line: bool = False,
     ) -> None:
         self._process_id = process_id
         self._client = client
+        self._exec_deadline = exec_deadline
         self._text = text
         self._by_line = by_line
         self._stdout = _StreamReader[T](
@@ -92,6 +96,11 @@ class _ContainerProcess(Generic[T]):
         """
         if self._returncode is not None:
             return self._returncode
+        if self._exec_deadline and time.monotonic() >= self._exec_deadline:
+            # TODO(matt): In the future, it would be nice to raise a ContainerExecTimeoutError to make it
+            # clear to the user that their sandbox terminated due to a timeout
+            self._returncode = -1
+            return self._returncode
 
         req = api_pb2.ContainerExecWaitRequest(exec_id=self._process_id, timeout=0)
         resp: api_pb2.ContainerExecWaitResponse = await retry_transient_errors(self._client.stub.ContainerExecWait, req)
@@ -102,22 +111,33 @@ class _ContainerProcess(Generic[T]):
 
         return None
 
-    async def wait(self) -> int:
-        """Wait for the container process to finish running. Returns the exit code."""
-
-        if self._returncode is not None:
-            return self._returncode
-
+    async def _wait_for_completion(self) -> int:
         while True:
             req = api_pb2.ContainerExecWaitRequest(exec_id=self._process_id, timeout=10)
             resp: api_pb2.ContainerExecWaitResponse = await retry_transient_errors(
                 self._client.stub.ContainerExecWait, req
             )
             if resp.completed:
-                self._returncode = resp.exit_code
-                return self._returncode
+                return resp.exit_code
+
+    async def wait(self) -> int:
+        """Wait for the container process to finish running. Returns the exit code."""
+        if self._returncode is not None:
+            return self._returncode
+
+        try:
+            timeout = None
+            if self._exec_deadline:
+                timeout = self._exec_deadline - time.monotonic()
+                if timeout <= 0:
+                    raise TimeoutError()
+            self._returncode = await asyncio.wait_for(self._wait_for_completion(), timeout=timeout)
+        except (asyncio.TimeoutError, TimeoutError):
+            self._returncode = -1
+        return self._returncode
 
     async def attach(self):
+        """mdmd:hidden"""
         if platform.system() == "Windows":
             print("interactive exec is not currently supported on Windows.")
             return

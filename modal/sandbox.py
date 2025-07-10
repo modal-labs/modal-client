@@ -1,6 +1,7 @@
 # Copyright Modal Labs 2022
 import asyncio
 import os
+import time
 from collections.abc import AsyncGenerator, Sequence
 from typing import TYPE_CHECKING, AsyncIterator, Literal, Optional, Union, overload
 
@@ -49,6 +50,10 @@ _default_image: _Image = _Image.debian_slim()
 # e.g. 'runsc exec ...'. So we use 2**16 as the limit.
 ARG_MAX_BYTES = 2**16
 
+
+# This buffer extends the user-supplied timeout on ContainerExec-related RPCs. This was introduced to
+# give any in-flight status codes/IO data more time to reach the client before the stream is closed.
+CONTAINER_EXEC_TIMEOUT_BUFFER = 5
 if TYPE_CHECKING:
     import modal.app
 
@@ -665,7 +670,16 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
         resp = await retry_transient_errors(self._client.stub.ContainerExec, req)
         by_line = bufsize == 1
-        return _ContainerProcess(resp.exec_id, self._client, stdout=stdout, stderr=stderr, text=text, by_line=by_line)
+        exec_deadline = time.monotonic() + int(timeout) + CONTAINER_EXEC_TIMEOUT_BUFFER if timeout else None
+        return _ContainerProcess(
+            resp.exec_id,
+            self._client,
+            stdout=stdout,
+            stderr=stderr,
+            text=text,
+            exec_deadline=exec_deadline,
+            by_line=by_line,
+        )
 
     async def _experimental_snapshot(self) -> _SandboxSnapshot:
         await self._get_task_id()
