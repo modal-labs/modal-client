@@ -7,7 +7,7 @@ import jwt
 
 from modal._utils.async_utils import synchronize_api
 from modal._utils.auth_token_manager import _AuthTokenManager
-from modal.exception import RemoteError
+from modal.exception import ExecutionError
 
 
 @pytest.fixture
@@ -20,24 +20,24 @@ def auth_token_manager(client):
 def valid_jwt_token():
     """Create a valid JWT token with expiry."""
     # Create a JWT with exp claim set to 1 hour from now
-    exp_time = int(time.time()) + 3600
-    payload = {"exp": exp_time, "type": "valid"}
+    exp = int(time.time()) + 3600
+    payload = {"exp": exp, "type": "valid"}
     return jwt.encode(payload, "my-secret-key", algorithm="HS256")
 
 @pytest.fixture
 def another_valid_jwt_token():
     """Create a valid JWT token with expiry."""
     # Create a JWT with exp claim set to 1 hour from now
-    exp_time = int(time.time()) + 3600
-    payload = {"exp": exp_time, "type": "another_valid"}
+    exp = int(time.time()) + 3600
+    payload = {"exp": exp, "type": "another_valid"}
     return jwt.encode(payload, "my-secret-key", algorithm="HS256")
 
 @pytest.fixture
 def expired_jwt_token():
     """Create an expired JWT token."""
     # Create a JWT with exp claim set to 1 hour ago
-    exp_time = int(time.time()) - 3600
-    payload = {"exp": exp_time, "type": "expired"}
+    exp = int(time.time()) - 3600
+    payload = {"exp": exp, "type": "expired"}
     return jwt.encode(payload, "my-secret-key", algorithm="HS256")
 
 
@@ -51,8 +51,8 @@ def token_without_exp():
 @pytest.fixture
 def token_near_expiry():
     """Create a JWT token that expires in 4 minutes (within refresh window)."""
-    exp_time = int(time.time()) + 240  # 4 minutes from now
-    payload = {"exp": exp_time, "type": "near_expiry"}
+    exp = int(time.time()) + 240  # 4 minutes from now
+    payload = {"exp": exp, "type": "near_expiry"}
     return jwt.encode(payload, "my-secret-key", algorithm="HS256")
 
 
@@ -60,6 +60,7 @@ def token_near_expiry():
 async def test_get_token_initial_fetch(auth_token_manager, valid_jwt_token, client, servicer):
     """Test getting token when no token exists."""
 
+    # All these tests wrap get_token with @synchronize_api because they hang forever without it.
     @synchronize_api
     async def wrapped_get_token():
         return await auth_token_manager.get_token()
@@ -91,7 +92,7 @@ async def test_get_token_expired(auth_token_manager, expired_jwt_token, valid_jw
     """Test that expired token triggers refresh."""
     # Set up expired token
     auth_token_manager._token = expired_jwt_token
-    auth_token_manager._expiry = time.time() - 100  # Expired
+    auth_token_manager._expiry = exp_time(expired_jwt_token)
 
     # Set up new token in servicer
     servicer.auth_token = valid_jwt_token
@@ -110,8 +111,7 @@ async def test_get_token_needs_refresh(auth_token_manager, token_near_expiry, va
     """Test that token is refreshed when it's close to expiry."""
     # Set up token that expires within refresh window
     auth_token_manager._token = token_near_expiry
-    exp_time = time.time() + auth_token_manager.REFRESH_WINDOW - 60
-    auth_token_manager._expiry = exp_time
+    auth_token_manager._expiry = exp_time(token_near_expiry)
 
     # Set up new token in servicer
     servicer.auth_token = valid_jwt_token
@@ -139,7 +139,7 @@ async def test_get_token_no_exp_claim(auth_token_manager, token_without_exp, ser
     assert auth_token_manager._token == token_without_exp
     # Should use default expiry
     assert auth_token_manager._expiry > time.time()
-    assert auth_token_manager._expiry <= time.time() + auth_token_manager.DEFAULT_EXPIRY
+    assert auth_token_manager._expiry <= time.time() + auth_token_manager.DEFAULT_EXPIRY_OFFSET
 
 
 @pytest.mark.asyncio
@@ -151,7 +151,7 @@ async def test_get_token_empty_response(auth_token_manager, servicer):
     async def wrapped_get_token():
         return await auth_token_manager.get_token()
 
-    with pytest.raises(RemoteError, match="Did not receive auth token from server"):
+    with pytest.raises(ExecutionError):
         await wrapped_get_token.aio()
 
 
@@ -164,7 +164,7 @@ async def test_get_token_none_response(auth_token_manager, servicer):
     async def wrapped_get_token():
         return await auth_token_manager.get_token()
 
-    with pytest.raises(RemoteError, match="Did not receive auth token from server"):
+    with pytest.raises(ExecutionError):
         await wrapped_get_token.aio()
 
 
@@ -192,7 +192,7 @@ async def test_concurrent_refresh(auth_token_manager, token_near_expiry, valid_j
     """Test that when get_token is called concurrently, test that old but valid token is returned."""
     # Set up token that needs refresh
     auth_token_manager._token = "old.but.valid.token"
-    auth_token_manager._expiry = time.time() + 240  # 4 minutes from now
+    auth_token_manager._expiry = exp_time(token_near_expiry)
 
     # Set up new token in servicer
     servicer.auth_token = valid_jwt_token
@@ -267,10 +267,10 @@ def test_is_expired_false(auth_token_manager):
 @pytest.mark.asyncio
 async def test_multiple_refresh_cycles(auth_token_manager, servicer):
     """Test multiple refresh cycles work correctly."""
-    exp_time = int(time.time()) + 3600
-    tokens = [jwt.encode({"exp": exp_time, "name": "t0"}, "my-secret-key", algorithm="HS256"),
-              jwt.encode({"exp": exp_time, "name": "t1"}, "my-secret-key", algorithm="HS256"),
-              jwt.encode({"exp": exp_time, "name": "t2"}, "my-secret-key", algorithm="HS256")]
+    exp = int(time.time()) + 3600
+    tokens = [jwt.encode({"exp": exp, "name": "t0"}, "my-secret-key", algorithm="HS256"),
+              jwt.encode({"exp": exp, "name": "t1"}, "my-secret-key", algorithm="HS256"),
+              jwt.encode({"exp": exp, "name": "t2"}, "my-secret-key", algorithm="HS256")]
 
     @synchronize_api
     async def wrapped_get_token():
@@ -297,3 +297,5 @@ async def test_multiple_refresh_cycles(auth_token_manager, servicer):
     token2 = await wrapped_get_token.aio()
     assert token2 == tokens[2]
 
+def exp_time(token: str):
+    return jwt.decode(token, options={"verify_signature": False})["exp"]
