@@ -863,6 +863,7 @@ class _App:
         # Limits the number of inputs a container handles before shutting down.
         # Use `max_inputs = 1` for single-use containers.
         max_inputs: Optional[int] = None,
+        i6pn: Optional[bool] = None,  # Whether to enable IPv6 container networking within the region.
         include_source: Optional[bool] = None,  # When `False`, don't automatically add the App source to the container.
         experimental_options: Optional[dict[str, Any]] = None,
         # Parameters below here are experimental. Use with caution!
@@ -977,6 +978,7 @@ class _App:
                 restrict_modal_access=restrict_modal_access,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
+                i6pn_enabled=i6pn or False,
                 include_source=include_source if include_source is not None else self._include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
