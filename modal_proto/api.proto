@@ -2514,6 +2514,9 @@ message Sandbox {
 
   // If set, the sandbox will be created with verbose logging enabled.
   bool verbose = 29;
+
+  // If set, the sandbox will be created with a name.
+  optional string name = 30;
 }
 
 message SandboxCreateRequest {
@@ -2523,6 +2526,15 @@ message SandboxCreateRequest {
 }
 
 message SandboxCreateResponse {
+  string sandbox_id = 1;
+}
+
+message SandboxGetFromNameRequest {
+  string sandbox_name = 1;
+  string environment_name = 2;
+}
+
+message SandboxGetFromNameResponse {
   string sandbox_id = 1;
 }
 
@@ -2575,6 +2587,7 @@ message SandboxInfo {
   TaskInfo task_info = 4;
   string app_id = 5;
   repeated SandboxTag tags = 6; // TODO: Not yet exposed in client library.
+  string name = 7;
 
   reserved 2; // modal.client.Sandbox definition
 }
@@ -3397,6 +3410,7 @@ service ModalClient {
 
   // Sandboxes
   rpc SandboxCreate(SandboxCreateRequest) returns (SandboxCreateResponse);
+  rpc SandboxGetFromName(SandboxGetFromNameRequest) returns (SandboxGetFromNameResponse);
   rpc SandboxGetLogs(SandboxGetLogsRequest) returns (stream TaskLogsBatch);
   rpc SandboxGetResourceUsage(SandboxGetResourceUsageRequest) returns (SandboxGetResourceUsageResponse);
   rpc SandboxGetTaskId(SandboxGetTaskIdRequest) returns (SandboxGetTaskIdResponse); // needed for modal container exec

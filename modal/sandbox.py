@@ -26,6 +26,7 @@ from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
+from .environments import ensure_env
 from .exception import ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
 from .file_io import FileWatchEvent, FileWatchEventType, _FileIO
 from .gpu import GPU_T
@@ -91,6 +92,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         entrypoint_args: Sequence[str],
         image: _Image,
         secrets: Sequence[_Secret],
+        name: Optional[str] = None,
         timeout: Optional[int] = None,
         workdir: Optional[str] = None,
         gpu: GPU_T = None,
@@ -213,6 +215,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 proxy_id=(proxy.object_id if proxy else None),
                 enable_snapshot=enable_snapshot,
                 verbose=verbose,
+                name=name,
             )
 
             # Note - `resolver.app_id` will be `None` for app-less sandboxes
@@ -230,6 +233,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def create(
         *entrypoint_args: str,
         app: Optional["modal.app._App"] = None,  # Optionally associate the sandbox with an app
+        name: Optional[str] = None,  # Optionally give the sandbox a name
         environment_name: Optional[str] = None,  # Optionally override the default environment
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
@@ -286,6 +290,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         return await _Sandbox._create(
             *entrypoint_args,
             app=app,
+            name=name,
             environment_name=environment_name,
             image=image,
             secrets=secrets,
@@ -315,6 +320,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def _create(
         *entrypoint_args: str,
         app: Optional["modal.app._App"] = None,  # Optionally associate the sandbox with an app
+        name: Optional[str] = None,  # Optionally give the sandbox a name
         environment_name: Optional[str] = None,  # Optionally override the default environment
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
@@ -369,6 +375,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             entrypoint_args,
             image=image or _default_image,
             secrets=secrets,
+            name=name,
             timeout=timeout,
             workdir=workdir,
             gpu=gpu,
@@ -434,6 +441,28 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
         self._stdin = StreamWriter(self.object_id, "sandbox", self._client)
         self._result = None
+
+    @staticmethod
+    async def from_name(
+        sandbox_name: str,
+        *,
+        environment_name: Optional[str] = None,
+        client: Optional[_Client] = None,
+    ) -> Optional["_Sandbox"]:
+        """Return the running Sandbox with the given name if one exists. Otherwise, return None.
+
+        A Sandbox's name is the `name` argument passed to `Sandbox.create`.
+        """
+        if client is None:
+            client = await _Client.from_env()
+        env_name = ensure_env(environment_name)
+
+        req = api_pb2.SandboxGetFromNameRequest(sandbox_name=sandbox_name, environment_name=env_name)
+        resp = await retry_transient_errors(client.stub.SandboxGetFromName, req)
+
+        if resp.sandbox_id:
+            return _Sandbox._new_hydrated(resp.sandbox_id, client, None)
+        return None
 
     @staticmethod
     async def from_id(sandbox_id: str, client: Optional[_Client] = None) -> "_Sandbox":
