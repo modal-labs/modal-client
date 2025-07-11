@@ -50,6 +50,7 @@ class _ContainerProcess(Generic[T]):
             stream_type=stdout,
             text=text,
             by_line=by_line,
+            deadline=exec_deadline,
         )
         self._stderr = _StreamReader[T](
             api_pb2.FILE_DESCRIPTOR_STDERR,
@@ -59,6 +60,7 @@ class _ContainerProcess(Generic[T]):
             stream_type=stderr,
             text=text,
             by_line=by_line,
+            deadline=exec_deadline,
         )
         self._stdin = _StreamWriter(process_id, "container_process", self._client)
 
