@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2024
 import asyncio
-import contextlib
 import enum
 import inspect
 import time
@@ -450,7 +449,7 @@ async def _map_invocation_inputplane(
     assert client.stub, "Client must be hydrated with a stub"
 
     input_plane_stub = await client.get_stub(function._input_plane_url)
-    input_id_to_idx = {}
+    input_id_to_idx: dict[str, int] = {}
 
     # ------------------------------------------------------------
     # Helper structures
@@ -466,7 +465,7 @@ async def _map_invocation_inputplane(
 
         put_inputs_item: api_pb2.FunctionPutInputsItem
         # idx: int
-        attempt_token: Optional[str] = None  # populated for retries
+        attempt_token: str | None = None  # populated for retries
 
         def to_start_or_continue_item(self) -> api_pb2.MapStartOrContinueItem:
             if self.attempt_token is None:
@@ -490,7 +489,7 @@ async def _map_invocation_inputplane(
     outputs_completed = 0
 
     # The input-plane server returns this after the first request.
-    function_call_id: Optional[str] = None
+    function_call_id: str | None = None
 
     # Map of idx -> attempt_token returned by the server.  This will be needed
     # for a future client-side retry implementation.
@@ -526,7 +525,7 @@ async def _map_invocation_inputplane(
             map_done_event.set()
 
     async def create_input(argskwargs):
-        idx = inputs_created
+        idx = inputs_created + 1  # 1-indexed map call idx
         update_counters(created_delta=1)
         (args, kwargs) = argskwargs
         put_item: api_pb2.FunctionPutInputsItem = await _create_input(
@@ -555,16 +554,12 @@ async def _map_invocation_inputplane(
             async_map_ordered(input_iter(), create_input, concurrency=BLOB_MAX_PARALLELISM)
         ) as streamer:
             async for q_item in streamer:
-                # await inputs_in_flight_sema.acquire()
                 await queue.put(time.time(), q_item)
-                # update_counters(created_delta=1)
 
         # All inputs have been read.
-        update_counters(set_have_all_inputs=True)
         await queue.close()
-        if False:
-            # generator stub so exceptions propagate
-            yield
+        update_counters(set_have_all_inputs=True)
+        yield
 
     # ------------------------------------------------------------
     # Coroutine: send queued items to the input-plane server
@@ -577,7 +572,6 @@ async def _map_invocation_inputplane(
             # Convert the queued items into the proto format expected by the RPC.
             # input_id -> idx
             request_items: list[api_pb2.MapStartOrContinueItem] = [qi.to_start_or_continue_item() for qi in batch]
-            print(f"sending indices: {[qi.put_inputs_item.idx for qi in batch]}")
             # Build request
             request = api_pb2.MapStartOrContinueRequest(
                 function_id=function.object_id,
@@ -602,10 +596,8 @@ async def _map_invocation_inputplane(
                 # TODO(ben-okeefe): This is designed expecting a +1 offset to the map index
                 # This could use the index for the corresponding index in the request
                 # but if we used non deterministic ordering to populate the response that could fail (eg. goroutines)
-                input_id_to_idx[item.input_id] = item.idx - 1
-                print(f"received input idx {item.idx - 1} with input_id {item.input_id}")
+                input_id_to_idx[item.input_id] = item.idx
                 attempt_tokens[item.idx] = item.attempt_token
-                # inputs_in_flight_sema.release()
 
         yield
 
@@ -673,19 +665,8 @@ async def _map_invocation_inputplane(
                 async for item in stream:
                     yield item
         finally:
-            # Signal server we are done with outputs so it can clean up.
-            if function_call_id:
-                # request = api_pb2.MapAwaitRequest(
-                #     function_call_id=function_call_id,
-                #     last_entry_id="0-0",
-                #     requested_at=time.time(),
-                #     timeout=0,
-                # )
-                # try:
-                #     await retry_transient_errors(input_plane_stub.MapAwait, request)
-                # except Exception:
-                #     pass
-                pass
+            # We could signal server we are done with outputs so it can clean up.
+            pass
 
     # ------------------------------------------------------------
     # Coroutine: convert FunctionGetOutputsItem → actual result value
@@ -702,12 +683,12 @@ async def _map_invocation_inputplane(
                     output_val = exc
             else:
                 raise exc
-        print(f"fetching output for {item.input_id} with idx {input_id_to_idx[item.input_id]}")
-        return (input_id_to_idx[item.input_id], output_val)
+
+        return (item.idx, output_val)
 
     async def poll_outputs():
         received: dict[int, Any] = {}
-        next_idx = 0
+        next_idx = 1  # 1-indexed map call idx
         async with aclosing(
             async_map_ordered(get_all_outputs_and_clean_up(), fetch_output, concurrency=BLOB_MAX_PARALLELISM)
         ) as stream:
@@ -726,15 +707,13 @@ async def _map_invocation_inputplane(
                         output = received.pop(next_idx)
                         yield _OutputValue(output)
                         next_idx += 1
-        print(f"received: {received}")
-        assert len(received) == 0, "All buffered outputs should have been yielded"
+        assert len(received) == 0
 
     # ------------------------------------------------------------
     # Debug-logging helper
     # ------------------------------------------------------------
-
     async def log_debug_stats():
-        while True:
+        def log_stats():
             logger.debug(
                 "Map-IP stats: have_all_inputs=%s inputs_created=%d outputs_completed=%d queue_size=%d",
                 have_all_inputs,
@@ -742,9 +721,14 @@ async def _map_invocation_inputplane(
                 outputs_completed,
                 queue.qsize(),
             )
+
+        while True:
+            log_stats()
             try:
                 await asyncio.sleep(10)
             except asyncio.CancelledError:
+                # Log final stats before exiting
+                log_stats()
                 break
 
     # ------------------------------------------------------------
@@ -759,8 +743,6 @@ async def _map_invocation_inputplane(
                 yield maybe_output.value
 
     log_task.cancel()
-    with contextlib.suppress(Exception):
-        await log_task
 
 
 async def _map_helper(
