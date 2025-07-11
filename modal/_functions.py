@@ -401,9 +401,7 @@ class _InputPlaneInvocation:
             parent_input_id=current_input_id() or "",
             input=input_item,
         )
-        metadata: list[tuple[str, str]] = []
-        if input_plane_region and input_plane_region != "":
-            metadata.append(("x-modal-input-plane-region", input_plane_region))
+        metadata = await _InputPlaneInvocation._get_metadata(input_plane_region, client)
         response = await retry_transient_errors(stub.AttemptStart, request, metadata=metadata)
         attempt_token = response.attempt_token
 
@@ -419,9 +417,7 @@ class _InputPlaneInvocation:
                 timeout_secs=OUTPUTS_TIMEOUT,
                 requested_at=time.time(),
             )
-            metadata: list[tuple[str, str]] = []
-            if self.input_plane_region and self.input_plane_region != "":
-                metadata.append(("x-modal-input-plane-region", self.input_plane_region))
+            metadata = await self._get_metadata(self.input_plane_region, self.client)
             await_response: api_pb2.AttemptAwaitResponse = await retry_transient_errors(
                 self.stub.AttemptAwait,
                 await_request,
@@ -457,6 +453,12 @@ class _InputPlaneInvocation:
                     await_response.output.result, await_response.output.data_format, control_plane_stub, self.client
                 )
 
+    @staticmethod
+    async def _get_metadata(input_plane_region: str, client: _Client) -> list[tuple[str, str]]:
+        if not input_plane_region:
+            return []
+        token = await client._auth_token_manager.get_token()
+        return [("x-modal-input-plane-region", input_plane_region), ("x-modal-auth-token", token)]
 
 # Wrapper type for api_pb2.FunctionStats
 @dataclass(frozen=True)

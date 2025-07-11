@@ -6,7 +6,11 @@ from grpclib import GRPCError, Status
 
 from modal import __version__
 from modal._utils.async_utils import synchronize_api
-from modal._utils.grpc_utils import connect_channel, create_channel, retry_transient_errors
+from modal._utils.grpc_utils import (
+    connect_channel,
+    create_channel,
+    retry_transient_errors,
+)
 from modal_proto import api_grpc, api_pb2
 
 from .supports.skip import skip_windows_unix_socket
