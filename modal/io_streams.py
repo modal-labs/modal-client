@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import (
     TYPE_CHECKING,
@@ -50,20 +51,90 @@ async def _container_process_logs_iterator(
     file_descriptor: "api_pb2.FileDescriptor.ValueType",
     client: _Client,
     last_index: int,
+    deadline: Optional[float] = None,
 ) -> AsyncGenerator[tuple[Optional[bytes], int], None]:
+    # Respect the overall deadline by limiting each RPC to the remaining time.
+    # If the deadline has already passed, exit immediately without issuing a new RPC.
+
+    # Compute the remaining time before the overall deadline expires.
+    remaining: Optional[float] = None
+    if deadline is not None:
+        remaining = deadline - time.monotonic()
+        print(f"[debug] _container_process_logs_iterator: remaining time before RPC = {remaining:.2f} s")
+        if remaining <= 0:
+            # Deadline reached – signal EOF to caller.
+            yield None, -1
+            return
+
+    # We cap each individual RPC call to 55 s (historical default) or the remaining
+    # time to the overall deadline – whichever is smaller. This makes sure that the
+    # TOTAL wall-clock time spent in ContainerExecGetOutput RPCs never exceeds
+    # `deadline`.
+    rpc_timeout = 55 if remaining is None else max(min(55, remaining), 0.1)
+    print(f"[debug] _container_process_logs_iterator: rpc_timeout set to {rpc_timeout:.2f} s (deadline={deadline})")
+
     req = api_pb2.ContainerExecGetOutputRequest(
         exec_id=process_id,
-        timeout=55,
+        timeout=int(rpc_timeout),
         file_descriptor=file_descriptor,
         get_raw_bytes=True,
         last_batch_index=last_index,
     )
-    async for batch in client.stub.ContainerExecGetOutput.unary_stream(req):
+
+    # Create the unary stream once and then pull batches manually so we can wrap
+    # each receive in `asyncio.wait_for`, guaranteeing we honour the overall
+    # deadline even when the server stays silent.
+
+    stream = client.stub.ContainerExecGetOutput.unary_stream(req)
+
+    while True:
+        # Check deadline before attempting to receive the next batch.
+        if deadline is not None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                print("[debug] _container_process_logs_iterator: overall deadline reached before recv")
+                yield None, -1
+                break
+        else:
+            remaining = None  # type: ignore[assignment]
+
+        try:
+            batch = await asyncio.wait_for(stream.__anext__(), timeout=remaining)
+        except asyncio.TimeoutError:
+            # No batch received within the remaining deadline.
+            print("[debug] _container_process_logs_iterator: wait_for timeout reached, aborting")
+            yield None, -1
+            break
+        except StopAsyncIteration:
+            print("[debug] _container_process_logs_iterator: stream ended (StopAsyncIteration)")
+            break
+
+        now = time.monotonic()
+        print("[debug] _container_process_logs_iterator: received batch, checking deadline")
+
+        if deadline and deadline - now <= 0:
+            print(
+                "[debug] _container_process_logs_iterator: overall deadline reached inside \
+            loop after batch"
+            )
+            yield None, -1
+            break
+
         if batch.HasField("exit_code"):
+            print(
+                "[debug] _container_process_logs_iterator: exit_code field present, \
+            ending iterator"
+            )
             yield None, batch.batch_index
             break
+
         for item in batch.items:
             yield item.message_bytes, batch.batch_index
+
+        print(
+            f"[debug] _container_process_logs_iterator: yielded {len(batch.items)} items, \
+            batch_index={batch.batch_index}"
+        )
 
 
 T = TypeVar("T", str, bytes)
@@ -102,6 +173,7 @@ class _StreamReader(Generic[T]):
         stream_type: StreamType = StreamType.PIPE,
         text: bool = True,
         by_line: bool = False,
+        deadline: Optional[float] = None,
     ) -> None:
         """mdmd:hidden"""
         self._file_descriptor = file_descriptor
@@ -111,6 +183,7 @@ class _StreamReader(Generic[T]):
         self._stream = None
         self._last_entry_id: str = ""
         self._line_buffer = b""
+        self._deadline = deadline
 
         # Sandbox logs are streamed to the client as strings, so StreamReaders reading
         # them must have text mode enabled.
@@ -187,18 +260,26 @@ class _StreamReader(Generic[T]):
         retries_remaining = 10
         last_index = 0
         while not completed:
+            # Abort early if the overall deadline has passed.
+            if self._deadline and time.monotonic() >= self._deadline:
+                print("[debug] _consume_container_process_stream: deadline passed, aborting loop")
+                break
+
+            print("OUTER loop")
             try:
                 iterator = _container_process_logs_iterator(
-                    self._object_id, self._file_descriptor, self._client, last_index
+                    self._object_id, self._file_descriptor, self._client, last_index, self._deadline
                 )
 
                 async for message, batch_index in iterator:
+                    print(f"[debug] _consume_container_process_stream: received message with batch_index={batch_index}")
                     if self._stream_type == StreamType.STDOUT and message:
                         print(message.decode("utf-8"), end="")
                     elif self._stream_type == StreamType.PIPE:
                         self._container_process_buffer.append(message)
 
                     if message is None:
+                        print("[debug] _consume_container_process_stream: message None detected, marking completed")
                         completed = True
                         break
                     else:
