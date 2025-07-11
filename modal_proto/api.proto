@@ -611,7 +611,65 @@ message AttemptStartRequest {
 
 message AttemptStartResponse {
   string attempt_token = 1;
-  FunctionRetryPolicy retry_policy = 2;
+  FunctionRetryPolicy retry_policy = 2; // TODO(ben-okeefe) TODO(nathan): Not currently used
+}
+
+message MapContinueRetryItem {
+  FunctionPutInputsItem input = 1;
+  string attempt_token = 2;
+}
+
+message MapStartOrContinueItem {
+  oneof input_oneof {
+    FunctionPutInputsItem input = 1;
+    MapContinueRetryItem retry_item = 2;
+  }
+}
+
+message MapStartOrContinueRequest {
+  string function_id = 1;
+  string parent_input_id = 2;
+  optional string function_call_id = 3;
+  repeated MapStartOrContinueItem items = 4;
+}
+
+message MapStartOrContinueResponseItem {
+    int32 idx = 1;
+    string input_id = 2;
+    string attempt_token = 3;
+  }
+
+message MapStartOrContinueResponse {
+  string function_id = 1;
+  string function_call_id = 2;
+  uint32 max_inputs_outstanding = 3;
+  repeated MapStartOrContinueResponseItem items = 4;
+  FunctionRetryPolicy retry_policy = 5; // TODO(ben-okeefe): Not currently used
+}
+
+message MapAwaitRequest {
+  string function_call_id = 1;
+  string last_entry_id = 2;
+  double requested_at = 3; // Used for waypoints.
+  float timeout = 4;
+}
+
+message MapAwaitResponse {
+  repeated FunctionGetOutputsItem outputs = 1;
+  string last_entry_id = 2;
+}
+
+message MapCheckInputsRequest {
+  string function_id = 1;
+  message MapCheckInputsRequestItem {
+    string input_id = 1;
+    string attempt_token = 2;
+  }
+  repeated MapCheckInputsRequestItem items = 2;
+}
+
+message MapCheckInputsResponse {
+  repeated string lost_attempt_tokens = 1;
 }
 
 message AuthTokenGetRequest {
@@ -1484,6 +1542,17 @@ message FunctionCallCancelRequest {
   optional string function_id = 3; // Only provided for sync input cancellation on the input plane. Async input cancellation does not provide this field this.
 }
 
+message FunctionCallCancelInputPlaneRequest {
+  string function_id = 1;
+  string function_call_id = 2;
+}
+
+message FunctionCallCancelMaybeInputPlaneRequest {
+  string function_id = 1;
+  string function_call_id = 2;
+  bool terminate_containers = 3;
+}
+
 message FunctionCallGetDataRequest {
   string function_call_id = 1;
   uint64 last_index = 2;
@@ -1649,6 +1718,7 @@ message FunctionGetInputsItem {
   string function_call_id = 5;
   FunctionCallInvocationType function_call_invocation_type = 6;
   uint32 retry_count = 7;
+  optional int32 map_call_idx = 8;
 }
 
 message FunctionGetInputsRequest {
@@ -1839,6 +1909,8 @@ message FunctionPutOutputsItem {
   double output_created_at = 4;
   DataFormat data_format = 7; // for result.data_oneof
   uint32 retry_count = 8;
+  string function_call_id = 9; // injected by the worker 
+  optional int32 map_call_idx = 10;
 }
 
 message FunctionPutOutputsRequest {
@@ -3277,6 +3349,11 @@ service ModalClient {
   rpc AttemptRetry(AttemptRetryRequest) returns (AttemptRetryResponse);
   rpc AttemptStart(AttemptStartRequest) returns (AttemptStartResponse);
 
+  // Map
+  rpc MapStartOrContinue(MapStartOrContinueRequest) returns (MapStartOrContinueResponse);
+  rpc MapAwait(MapAwaitRequest) returns (MapAwaitResponse);
+  rpc MapCheckInputs(MapCheckInputsRequest) returns (MapCheckInputsResponse);
+
   // Auth Token
   rpc AuthTokenGet(AuthTokenGetRequest) returns (AuthTokenGetResponse);
 
@@ -3343,6 +3420,7 @@ service ModalClient {
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
+  rpc FunctionCallCancelMaybeInputPlane(FunctionCallCancelMaybeInputPlaneRequest) returns (google.protobuf.Empty);
   rpc FunctionCallGetDataIn(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallGetDataOut(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallList(FunctionCallListRequest) returns (FunctionCallListResponse);
