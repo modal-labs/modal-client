@@ -332,6 +332,19 @@ def test_sandbox_exec_poll_timeout(app, servicer):
     assert cp.poll() == -1
 
 
+@mock.patch("modal.sandbox.CONTAINER_EXEC_TIMEOUT_BUFFER", 1)
+@skip_non_subprocess
+def test_sandbox_exec_output_timeout(app, servicer):
+    sb = Sandbox.create("sleep", "infinity", app=app)
+
+    # echo to stdout and stderr
+    cp = sb.exec("sh", "-c", "c=0; while true; do echo $c; sleep 1; c=$((c+1)); done", timeout=1)
+    t1 = time.monotonic()
+    assert cp.stdout.read() == "0\n1\n"
+    assert 2 < time.monotonic() - t1 < 2.1
+    assert cp.wait() == -1
+
+
 @skip_non_subprocess
 def test_sandbox_create_and_exec_with_bad_args(app, servicer):
     too_big = 130_000
