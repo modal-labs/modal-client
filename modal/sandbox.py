@@ -745,7 +745,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         path: str,
         mode: Union["_typeshed.OpenTextMode", "_typeshed.OpenBinaryMode"] = "r",
     ):
-        """Open a file in the Sandbox and return a FileIO handle.
+        """[Alpha] Open a file in the Sandbox and return a FileIO handle.
 
         See the [`FileIO`](https://modal.com/docs/reference/modal.file_io#modalfile_iofileio) docs for more information.
 
@@ -762,17 +762,17 @@ class _Sandbox(_Object, type_prefix="sb"):
         return await _FileIO.create(path, mode, self._client, task_id)
 
     async def ls(self, path: str) -> list[str]:
-        """List the contents of a directory in the Sandbox."""
+        """[Alpha] List the contents of a directory in the Sandbox."""
         task_id = await self._get_task_id()
         return await _FileIO.ls(path, self._client, task_id)
 
     async def mkdir(self, path: str, parents: bool = False) -> None:
-        """Create a new directory in the Sandbox."""
+        """[Alpha] Create a new directory in the Sandbox."""
         task_id = await self._get_task_id()
         return await _FileIO.mkdir(path, self._client, task_id, parents)
 
     async def rm(self, path: str, recursive: bool = False) -> None:
-        """Remove a file or directory in the Sandbox."""
+        """[Alpha] Remove a file or directory in the Sandbox."""
         task_id = await self._get_task_id()
         return await _FileIO.rm(path, self._client, task_id, recursive)
 
@@ -783,7 +783,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         recursive: Optional[bool] = None,
         timeout: Optional[int] = None,
     ) -> AsyncIterator[FileWatchEvent]:
-        """Watch a file or directory in the Sandbox for changes."""
+        """[Alpha] Watch a file or directory in the Sandbox for changes."""
         task_id = await self._get_task_id()
         async for event in _FileIO.watch(path, self._client, task_id, filter, recursive, timeout):
             yield event
