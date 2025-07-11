@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.6.dev30 (2025-07-11)
+
+- Allows i6pn configuration for Modal Classes
+
+
 #### 1.0.6.dev29 (2025-07-10)
 
 * Fixes a bug where the specified timeout for a `Sandbox.exec` is not respected by `wait()` or `poll()`.
