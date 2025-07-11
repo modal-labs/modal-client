@@ -508,22 +508,38 @@ class _App:
 
     @property
     def registered_functions(self) -> dict[str, _Function]:
-        """All modal.Function objects registered on the app."""
+        """All modal.Function objects registered on the app.
+
+        Note: this property is populated only during the build phase, and it is not
+        expected to work when a deplyoed App has been retrieved via `modal.App.lookup`.
+        """
         return self._functions
 
     @property
     def registered_classes(self) -> dict[str, _Cls]:
-        """All modal.Cls objects registered on the app."""
+        """All modal.Cls objects registered on the app.
+
+        Note: this property is populated only during the build phase, and it is not
+        expected to work when a deplyoed App has been retrieved via `modal.App.lookup`.
+        """
         return self._classes
 
     @property
     def registered_entrypoints(self) -> dict[str, _LocalEntrypoint]:
-        """All local CLI entrypoints registered on the app."""
+        """All local CLI entrypoints registered on the app.
+
+        Note: this property is populated only during the build phase, and it is not
+        expected to work when a deplyoed App has been retrieved via `modal.App.lookup`.
+        """
         return self._local_entrypoints
 
     @property
     def registered_web_endpoints(self) -> list[str]:
-        """Names of web endpoint (ie. webhook) functions registered on the app."""
+        """Names of web endpoint (ie. webhook) functions registered on the app.
+
+        Note: this property is populated only during the build phase, and it is not
+        expected to work when a deplyoed App has been retrieved via `modal.App.lookup`.
+        """
         return self._web_endpoints
 
     def local_entrypoint(
