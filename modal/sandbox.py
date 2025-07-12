@@ -578,7 +578,9 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     async def _get_task_id(self) -> str:
         while not self._task_id:
-            resp = await self._client.stub.SandboxGetTaskId(api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id))
+            resp = await retry_transient_errors(
+                self._client.stub.SandboxGetTaskId, api_pb2.SandboxGetTaskIdRequest(sandbox_id=self.object_id)
+            )
             self._task_id = resp.task_id
             if not self._task_id:
                 await asyncio.sleep(0.5)
