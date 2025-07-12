@@ -14,7 +14,7 @@ from .logger import logger
 
 
 class _AuthTokenManager:
-    """ Handles fetching and refreshing of the input plane auth token. """
+    """Handles fetching and refreshing of the input plane auth token."""
 
     # Start refreshing this many seconds before the token expires
     REFRESH_WINDOW = 5 * 60
@@ -39,7 +39,7 @@ class _AuthTokenManager:
         and cache it. If `get_token` is called concurrently, only one request will fetch the new token, and the others
         will be given the old (but still valid) token - i.e. they will not block.
         """
-        if self._token is None or self._is_expired():
+        if not self._token or self._is_expired():
             # We either have no token or it is expired - block everyone until we get a new token
             await self._refresh_token()
         elif self._needs_refresh():
