@@ -92,10 +92,38 @@ def test_run_class(client, servicer):
         "bar": api_pb2.MethodDefinition(
             function_name="Foo.bar",
             function_type=api_pb2.Function.FunctionType.FUNCTION_TYPE_FUNCTION,
+            function_schema=api_pb2.FunctionSchema(
+                schema_type=api_pb2.FunctionSchema.FunctionSchemaType.FUNCTION_SCHEMA_V1,
+                arguments=[
+                    api_pb2.ClassParameterSpec(
+                        name="x",
+                        full_type=api_pb2.GenericPayloadType(
+                            base_type=api_pb2.ParameterType.PARAM_TYPE_INT,
+                        ),
+                    )
+                ],
+                return_type=api_pb2.GenericPayloadType(
+                    base_type=api_pb2.ParameterType.PARAM_TYPE_UNKNOWN,
+                ),
+            ),
         ),
         "baz": api_pb2.MethodDefinition(
             function_name="Foo.baz",
             function_type=api_pb2.Function.FunctionType.FUNCTION_TYPE_FUNCTION,
+            function_schema=api_pb2.FunctionSchema(
+                schema_type=api_pb2.FunctionSchema.FunctionSchemaType.FUNCTION_SCHEMA_V1,
+                arguments=[
+                    api_pb2.ClassParameterSpec(
+                        name="y",
+                        full_type=api_pb2.GenericPayloadType(
+                            base_type=api_pb2.ParameterType.PARAM_TYPE_INT,
+                        ),
+                    )
+                ],
+                return_type=api_pb2.GenericPayloadType(
+                    base_type=api_pb2.ParameterType.PARAM_TYPE_UNKNOWN,
+                ),
+            ),
         ),
     }
 
