@@ -1487,6 +1487,7 @@ message FunctionCallCancelRequest {
 message FunctionCallGetDataRequest {
   string function_call_id = 1;
   uint64 last_index = 2;
+  string attempt_token = 3;
 }
 
 message FunctionCallInfo {
