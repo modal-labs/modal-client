@@ -799,28 +799,6 @@ class _Image(_Object, type_prefix="im"):
         mount = _Mount._add_local_dir(Path(local_path), PurePosixPath(remote_path), ignore=_ignore_fn(ignore))
         return self._add_mount_layer_or_copy(mount, copy=copy)
 
-    def copy_local_file(self, local_path: Union[str, Path], remote_path: Union[str, Path] = "./") -> "_Image":
-        """mdmd:hidden
-        Copy a file into the image as a part of building it.
-
-        This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
-        works in a `Dockerfile`.
-        """
-        deprecation_warning(
-            (2025, 1, 13),
-            COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_file"),
-        )
-        basename = str(Path(local_path).name)
-
-        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            return DockerfileSpec(commands=["FROM base", f"COPY {basename} {remote_path}"], context_files={})
-
-        return _Image._from_args(
-            base_images={"base": self},
-            dockerfile_function=build_dockerfile,
-            context_mount_function=lambda: _Mount._from_local_file(local_path, remote_path=f"/{basename}"),
-        )
-
     def add_local_python_source(
         self, *modules: str, copy: bool = False, ignore: Union[Sequence[str], Callable[[Path], bool]] = NON_PYTHON_FILES
     ) -> "_Image":
@@ -864,78 +842,6 @@ class _Image(_Object, type_prefix="im"):
         img = self._add_mount_layer_or_copy(mount, copy=copy)
         img._added_python_source_set |= set(modules)
         return img
-
-    def copy_local_dir(
-        self,
-        local_path: Union[str, Path],
-        remote_path: Union[str, Path] = ".",
-        # Predicate filter function for file exclusion, which should accept a filepath and return `True` for exclusion.
-        # Defaults to excluding no files. If a Sequence is provided, it will be converted to a FilePatternMatcher.
-        # Which follows dockerignore syntax.
-        ignore: Union[Sequence[str], Callable[[Path], bool]] = [],
-    ) -> "_Image":
-        """mdmd:hidden
-        **Deprecated**: Use image.add_local_dir instead
-
-        Copy a directory into the image as a part of building the image.
-
-        This works in a similar way to [`COPY`](https://docs.docker.com/engine/reference/builder/#copy)
-        works in a `Dockerfile`.
-
-        **Usage:**
-
-        ```python notest
-        from pathlib import Path
-        from modal import FilePatternMatcher
-
-        image = modal.Image.debian_slim().copy_local_dir(
-            "~/assets",
-            remote_path="/assets",
-            ignore=["**/*.venv"],
-        )
-
-        image = modal.Image.debian_slim().copy_local_dir(
-            "~/assets",
-            remote_path="/assets",
-            ignore=lambda p: p.is_relative_to(".venv"),
-        )
-
-        image = modal.Image.debian_slim().copy_local_dir(
-            "~/assets",
-            remote_path="/assets",
-            ignore=FilePatternMatcher("**/*.txt"),
-        )
-
-        # When including files is simpler than excluding them, you can use the `~` operator to invert the matcher.
-        image = modal.Image.debian_slim().copy_local_dir(
-            "~/assets",
-            remote_path="/assets",
-            ignore=~FilePatternMatcher("**/*.py"),
-        )
-
-        # You can also read ignore patterns from a file.
-        image = modal.Image.debian_slim().copy_local_dir(
-            "~/assets",
-            remote_path="/assets",
-            ignore=FilePatternMatcher.from_file("/path/to/ignorefile"),
-        )
-        ```
-        """
-        deprecation_warning(
-            (2025, 1, 13),
-            COPY_DEPRECATION_MESSAGE_PATTERN.format(replacement="image.add_local_dir"),
-        )
-
-        def build_dockerfile(version: ImageBuilderVersion) -> DockerfileSpec:
-            return DockerfileSpec(commands=["FROM base", f"COPY . {remote_path}"], context_files={})
-
-        return _Image._from_args(
-            base_images={"base": self},
-            dockerfile_function=build_dockerfile,
-            context_mount_function=lambda: _Mount._add_local_dir(
-                Path(local_path), PurePosixPath("/"), ignore=_ignore_fn(ignore)
-            ),
-        )
 
     @staticmethod
     async def from_id(image_id: str, client: Optional[_Client] = None) -> "_Image":

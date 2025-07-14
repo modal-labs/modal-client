@@ -1778,39 +1778,6 @@ def test_volume_commit_on_exit_doesnt_fail_container(servicer):
 
 
 @skip_github_non_linux
-def test_build_decorator_cls(servicer):
-    ret = _run_container(
-        servicer,
-        "test.supports.functions",
-        # note: builder functions are still run as standalone functions from their class service function
-        "BuildCls.build1",
-        inputs=_get_inputs(((), {})),
-        is_builder_function=True,
-        is_auto_snapshot=True,
-    )
-    assert _unwrap_scalar(ret) == 101
-    # TODO: this is GENERIC_STATUS_FAILURE when `@exit` fails,
-    # but why is it not set when `@exit` is successful?
-    # assert ret.task_result.status == api_pb2.GenericResult.GENERIC_STATUS_SUCCESS
-    assert ret.task_result is None
-
-
-@skip_github_non_linux
-def test_multiple_build_decorator_cls(servicer):
-    ret = _run_container(
-        servicer,
-        "test.supports.functions",
-        # note: builder functions are still run as standalone functions from their class service function
-        "BuildCls.build2",
-        inputs=_get_inputs(((), {})),
-        is_builder_function=True,
-        is_auto_snapshot=True,
-    )
-    assert _unwrap_scalar(ret) == 1001
-    assert ret.task_result is None
-
-
-@skip_github_non_linux
 @pytest.mark.timeout(10.0)
 def test_function_io_doesnt_inspect_args_or_return_values(monkeypatch, servicer):
     synchronizer = async_utils.synchronizer

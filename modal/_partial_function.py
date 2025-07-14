@@ -31,7 +31,6 @@ if typing.TYPE_CHECKING:
 
 class _PartialFunctionFlags(enum.IntFlag):
     # Lifecycle method flags
-    BUILD = 1  # Deprecated, will be removed
     ENTER_PRE_SNAPSHOT = 2
     ENTER_POST_SNAPSHOT = 4
     EXIT = 8
@@ -55,8 +54,7 @@ class _PartialFunctionFlags(enum.IntFlag):
     @staticmethod
     def lifecycle_flags() -> int:
         return (
-            _PartialFunctionFlags.BUILD  # Deprecated, will be removed
-            | _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
+            _PartialFunctionFlags.ENTER_PRE_SNAPSHOT
             | _PartialFunctionFlags.ENTER_POST_SNAPSHOT
             | _PartialFunctionFlags.EXIT
         )
@@ -641,59 +639,6 @@ def _web_server(
         else:
             pf = _PartialFunction(obj, flags, params)
         pf.validate_obj_compatibility("web_server", require_sync=True, require_nullary=True)
-        return pf
-
-    return wrapper
-
-
-def _build(
-    _warn_parentheses_missing=None, *, force: bool = False, timeout: int = 86400
-) -> Callable[[Union[_PartialFunction, NullaryMethod]], _PartialFunction]:
-    """mdmd:hidden
-    Decorator for methods that execute at _build time_ to create a new Image layer.
-
-    **Deprecated**: This function is deprecated. We recommend using `modal.Volume`
-    to store large assets (such as model weights) instead of writing them to the
-    Image during the build process. For other use cases, you can replace this
-    decorator with the `Image.run_function` method.
-
-    **Usage**
-
-    ```python notest
-    @app.cls(gpu="A10G")
-    class AlpacaLoRAModel:
-        @build()
-        def download_models(self):
-            model = LlamaForCausalLM.from_pretrained(
-                base_model,
-            )
-            PeftModel.from_pretrained(model, lora_weights)
-            LlamaTokenizer.from_pretrained(base_model)
-    ```
-    """
-    if _warn_parentheses_missing is not None:
-        raise InvalidError(
-            "Positional arguments are not allowed. Did you forget parentheses? Suggestion: `@modal.build()`."
-        )
-
-    deprecation_warning(
-        (2025, 1, 15),
-        "The `@modal.build` decorator is deprecated and will be removed in a future release."
-        "\n\nWe now recommend storing large assets (such as model weights) using a `modal.Volume`"
-        " instead of writing them directly into the `modal.Image` filesystem."
-        " For other use cases we recommend using `Image.run_function` instead."
-        "\n\nSee https://modal.com/docs/guide/modal-1-0-migration for more information.",
-    )
-
-    flags = _PartialFunctionFlags.BUILD
-    params = _PartialFunctionParams(force_build=force, build_timeout=timeout)
-
-    def wrapper(obj: Union[_PartialFunction, NullaryMethod]) -> _PartialFunction:
-        if isinstance(obj, _PartialFunction):
-            pf = obj.stack(flags, params)
-        else:
-            pf = _PartialFunction(obj, flags, params)
-        pf.validate_obj_compatibility("build")
         return pf
 
     return wrapper
