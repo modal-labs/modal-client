@@ -3,7 +3,6 @@
 from ._partial_function import (
     _asgi_app,
     _batched,
-    _build,
     _concurrent,
     _enter,
     _exit,
@@ -25,7 +24,6 @@ fastapi_endpoint = synchronize_api(_fastapi_endpoint, target_module=__name__)
 asgi_app = synchronize_api(_asgi_app, target_module=__name__)
 wsgi_app = synchronize_api(_wsgi_app, target_module=__name__)
 web_server = synchronize_api(_web_server, target_module=__name__)
-build = synchronize_api(_build, target_module=__name__)
 enter = synchronize_api(_enter, target_module=__name__)
 exit = synchronize_api(_exit, target_module=__name__)
 batched = synchronize_api(_batched, target_module=__name__)

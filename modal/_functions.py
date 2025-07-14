@@ -460,6 +460,7 @@ class _InputPlaneInvocation:
         token = await client._auth_token_manager.get_token()
         return [("x-modal-input-plane-region", input_plane_region), ("x-modal-auth-token", token)]
 
+
 # Wrapper type for api_pb2.FunctionStats
 @dataclass(frozen=True)
 class FunctionStats:
@@ -659,34 +660,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             proxy=proxy,
         )
 
-        if info.user_cls and not is_auto_snapshot:
-            build_functions = _find_partial_methods_for_user_cls(info.user_cls, _PartialFunctionFlags.BUILD).items()
-            for k, pf in build_functions:
-                build_function = pf.raw_f
-                snapshot_info = FunctionInfo(build_function, user_cls=info.user_cls)
-                snapshot_function = _Function.from_local(
-                    snapshot_info,
-                    app=None,
-                    image=image,
-                    secrets=secrets,
-                    gpu=gpu,
-                    network_file_systems=network_file_systems,
-                    volumes=volumes,
-                    memory=memory,
-                    timeout=pf.params.build_timeout,
-                    cpu=cpu,
-                    ephemeral_disk=ephemeral_disk,
-                    is_builder_function=True,
-                    is_auto_snapshot=True,
-                    scheduler_placement=scheduler_placement,
-                    include_source=include_source,
-                )
-                image = _Image._from_args(
-                    base_images={"base": image},
-                    build_function=snapshot_function,
-                    force_build=image.force_build or bool(pf.params.force_build),
-                )
-
         # Note that we also do these checks in FunctionCreate; could drop them here
         if min_containers is not None and not isinstance(min_containers, int):
             raise InvalidError(f"`min_containers` must be an int, not {type(min_containers).__name__}")
@@ -746,7 +719,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         validated_network_file_systems = validate_network_file_systems(network_file_systems)
 
         # Validate image
-        if image is not None and not isinstance(image, _Image):
+        if image is not None and not isinstance(image, _Image):  # type: ignore[unreachable]
             raise InvalidError(f"Expected modal.Image object. Got {type(image)}.")
 
         method_definitions: Optional[dict[str, api_pb2.MethodDefinition]] = None

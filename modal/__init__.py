@@ -25,7 +25,6 @@ try:
     from .partial_function import (
         asgi_app,
         batched,
-        build,
         concurrent,
         enter,
         exit,
@@ -80,7 +79,6 @@ __all__ = [
     "Volume",
     "asgi_app",
     "batched",
-    "build",
     "concurrent",
     "current_function_call_id",
     "current_input_id",
