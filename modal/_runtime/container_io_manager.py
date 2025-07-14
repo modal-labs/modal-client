@@ -267,6 +267,7 @@ class _ContainerIOManager:
     app_id: str
     function_def: api_pb2.Function
     checkpoint_id: Optional[str]
+    input_plane_server_url: Optional[str]
 
     calls_completed: int
     total_user_time: float
@@ -299,6 +300,14 @@ class _ContainerIOManager:
         self.function_def = container_args.function_def
         self.checkpoint_id = container_args.checkpoint_id or None
 
+        url_map = {}
+        for obj in container_args.app_layout.objects:
+            if obj.WhichOneof("handle_metadata_oneof") == "function_handle_metadata":
+                url_map[obj.object_id] = obj.function_handle_metadata.input_plane_url
+
+        # We could also have the worker pass this explicitly
+        # But since we already have the app layout, we can just look it up here.
+        self.input_plane_server_url = url_map.get(self.function_id, None)
         self.calls_completed = 0
         self.total_user_time = 0.0
         self.current_input_id = None
@@ -505,7 +514,12 @@ class _ContainerIOManager:
             data_chunks.append(chunk)
 
         req = api_pb2.FunctionCallPutDataRequest(function_call_id=function_call_id, data_chunks=data_chunks)
-        await retry_transient_errors(self._client.stub.FunctionCallPutDataOut, req)
+
+        if self.input_plane_server_url:
+            stub = await self._client.get_stub(self.input_plane_server_url)
+            await retry_transient_errors(stub.FunctionCallPutDataOut, req)
+        else:
+            await retry_transient_errors(self._client.stub.FunctionCallPutDataOut, req)
 
     @asynccontextmanager
     async def generator_output_sender(
