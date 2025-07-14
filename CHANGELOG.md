@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.6.dev38 (2025-07-14)
+
+- Fixed a bug where `Cls.with_options` would fail when provided with a Secret object that was already hydrated.
+
+
 #### 1.0.6.dev37 (2025-07-14)
 
 - Enforced deprecations on `modal.build`, `Image.copy_local_file`, and `Image.copy_local_dir`.
