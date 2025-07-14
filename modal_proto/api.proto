@@ -1690,6 +1690,13 @@ message FunctionGetOutputsRequest {
   repeated string input_jwts = 9;
 }
 
+message FunctionClearInputQueueRequest {
+  // DO_NOT_SUBMIT: do we want the attr???
+  string function_id = 1 [ (modal.options.audit_target_attr) = true ];
+  // DO_NOT_SUBMIT: Do we want a source??
+  // AppStopSource source = 2;
+}
+
 message FunctionGetOutputsResponse {
   repeated int32 idxs = 3;
   repeated FunctionGetOutputsItem outputs = 4;
@@ -3269,6 +3276,8 @@ service ModalClient {
   rpc AppRollback(AppRollbackRequest) returns (google.protobuf.Empty);
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
+  // DO_NOT_SUBMIT: IMPORTANT! There's already something called FunctionClearQueue in the input plane API...  check that everything coheres.
+  rpc FunctionClearInputQueue(FunctionClearInputQueueRequest) returns (google.protobuf.Empty);
 
   // Input Plane
   // These RPCs are experimental, not deployed to production, and can be changed / removed
