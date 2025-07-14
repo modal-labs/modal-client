@@ -23,6 +23,11 @@ from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_erro
 from .client import _Client
 from .stream_type import StreamType
 
+# This buffer extends the user-supplied timeout on ContainerExec-related RPCs. This was introduced to
+# give any in-flight status codes/IO data more time to reach the client before the stream is closed.
+CONTAINER_EXEC_TIMEOUT_BUFFER = 5
+
+
 if TYPE_CHECKING:
     pass
 
@@ -63,6 +68,7 @@ async def _container_process_logs_iterator(
     # Create the stream once and then pull batches manually so we can wrap
     # each receive in `asyncio.wait_for`, guaranteeing the deadline.
     stream = client.stub.ContainerExecGetOutput.unary_stream(req)
+    original_deadline = deadline - CONTAINER_EXEC_TIMEOUT_BUFFER
     while True:
         # Check deadline before attempting to receive the next batch
         try:
@@ -78,6 +84,9 @@ async def _container_process_logs_iterator(
             yield None, batch.batch_index
             break
         for item in batch.items:
+            if deadline and original_deadline < time.monotonic() < deadline:
+                deadline += CONTAINER_EXEC_TIMEOUT_BUFFER
+                print("new deadline:", deadline)
             yield item.message_bytes, batch.batch_index
 
 

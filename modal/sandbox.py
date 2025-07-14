@@ -30,7 +30,7 @@ from .exception import ExecutionError, InvalidError, SandboxTerminatedError, San
 from .file_io import FileWatchEvent, FileWatchEventType, _FileIO
 from .gpu import GPU_T
 from .image import _Image
-from .io_streams import StreamReader, StreamWriter, _StreamReader, _StreamWriter
+from .io_streams import CONTAINER_EXEC_TIMEOUT_BUFFER, StreamReader, StreamWriter, _StreamReader, _StreamWriter
 from .network_file_system import _NetworkFileSystem, network_file_system_mount_protos
 from .proxy import _Proxy
 from .scheduler_placement import SchedulerPlacement
@@ -49,11 +49,6 @@ _default_image: _Image = _Image.debian_slim()
 # We need some bytes of overhead for the rest of the command line besides the args,
 # e.g. 'runsc exec ...'. So we use 2**16 as the limit.
 ARG_MAX_BYTES = 2**16
-
-
-# This buffer extends the user-supplied timeout on ContainerExec-related RPCs. This was introduced to
-# give any in-flight status codes/IO data more time to reach the client before the stream is closed.
-CONTAINER_EXEC_TIMEOUT_BUFFER = 5
 
 
 if TYPE_CHECKING:

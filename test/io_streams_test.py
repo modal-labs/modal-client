@@ -1,5 +1,8 @@
 # Copyright Modal Labs 2024
+import asyncio
 import pytest
+import time
+from unittest import mock
 
 from grpclib import Status
 from grpclib.exceptions import GRPCError
@@ -282,3 +285,65 @@ async def test_stream_reader_container_process_retry(servicer, client):
                 output.append(line)
 
             assert output == [f"msg{i}\n" for i in range(6)]
+
+
+@pytest.mark.asyncio
+@mock.patch("modal.io_streams.CONTAINER_EXEC_TIMEOUT_BUFFER", 1)
+async def test_stream_reader_container_process_timeout(servicer, client):
+    time_sent_last = 0
+    time_start_sending = time.monotonic()
+
+    async def container_exec_get_output(servicer, stream):
+        nonlocal time_sent_last
+        nonlocal time_start_sending
+        await stream.recv_message()
+        time_start_sending = time.monotonic()
+
+        # Send three messages according to the following schedule
+        # msg | time  | note
+        #   0 | 0s    |
+        #   x | 1.0s  | timeout expires
+        #   1 | 1.5s  | simulates a delayed send. triggers extension of buffer to 3s
+        #   x | 2     | original buffer expires
+        #   2 | 2.5s  | send 2 (super delayed). triggers extension to 4
+        #   x | 3s    | first extension expires
+        #   x | 4s    | second extension expires since no new msgs in new window
+        for i in range(2):
+            if i != 0:
+                await asyncio.sleep(0.5)  # 0.5s jitter for 1 and 2
+            await stream.send_message(
+                api_pb2.RuntimeOutputBatch(
+                    batch_index=i,
+                    items=[api_pb2.RuntimeOutputMessage(message_bytes=f"msg{i}\n".encode())],
+                )
+            )
+            time_sent_last = time.monotonic()
+            await asyncio.sleep(1)
+
+        await stream.send_message(api_pb2.RuntimeOutputBatch(exit_code=0))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerExecGetOutput", container_exec_get_output)
+
+        timeout = 2  # One second timeout, one second of buffer (mocked)
+        deadline = time.monotonic() + timeout
+
+        with enable_output():
+            stdout: StreamReader[str] = StreamReader(
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                object_id="tp-123",
+                object_type="container_process",
+                client=client,
+                by_line=True,
+                deadline=deadline,
+            )
+
+            output = []
+            async for line in stdout:
+                print("msg:", line, time.monotonic() - time_start_sending)
+                output.append(line)
+
+            t = time.monotonic()
+            print(time_sent_last, t - time_sent_last)
+
+            assert output == [f"msg{i}\n" for i in range(3)]
