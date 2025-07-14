@@ -2,7 +2,6 @@
 import asyncio
 import pytest
 import time
-from unittest import mock
 
 from grpclib import Status
 from grpclib.exceptions import GRPCError
@@ -288,45 +287,28 @@ async def test_stream_reader_container_process_retry(servicer, client):
 
 
 @pytest.mark.asyncio
-@mock.patch("modal.io_streams.CONTAINER_EXEC_TIMEOUT_BUFFER", 1)
-async def test_stream_reader_container_process_timeout(servicer, client):
-    time_sent_last = 0
-    time_start_sending = time.monotonic()
+async def test_stream_reader_timeout(servicer, client):
+    """Test that StreamReader stops reading messages after the given deadline, and that
+    messages are received within the deadline"""
+    time_first_send = 0.0
 
     async def container_exec_get_output(servicer, stream):
-        nonlocal time_sent_last
-        nonlocal time_start_sending
+        nonlocal time_first_send
         await stream.recv_message()
-        time_start_sending = time.monotonic()
-
-        # Send three messages according to the following schedule
-        # msg | time  | note
-        #   0 | 0s    |
-        #   x | 1.0s  | timeout expires
-        #   1 | 1.5s  | simulates a delayed send. triggers extension of buffer to 3s
-        #   x | 2     | original buffer expires
-        #   2 | 2.5s  | send 2 (super delayed). triggers extension to 4
-        #   x | 3s    | first extension expires
-        #   x | 4s    | second extension expires since no new msgs in new window
-        for i in range(2):
-            if i != 0:
-                await asyncio.sleep(0.5)  # 0.5s jitter for 1 and 2
+        time_first_send = time.monotonic()
+        # Send three messages, third one heavily delayed
+        for i in range(3):
             await stream.send_message(
                 api_pb2.RuntimeOutputBatch(
                     batch_index=i,
                     items=[api_pb2.RuntimeOutputMessage(message_bytes=f"msg{i}\n".encode())],
                 )
             )
-            time_sent_last = time.monotonic()
-            await asyncio.sleep(1)
-
+            await asyncio.sleep(1 if i <= 1 else 2)
         await stream.send_message(api_pb2.RuntimeOutputBatch(exit_code=0))
 
     with servicer.intercept() as ctx:
         ctx.set_responder("ContainerExecGetOutput", container_exec_get_output)
-
-        timeout = 2  # One second timeout, one second of buffer (mocked)
-        deadline = time.monotonic() + timeout
 
         with enable_output():
             stdout: StreamReader[str] = StreamReader(
@@ -335,15 +317,20 @@ async def test_stream_reader_container_process_timeout(servicer, client):
                 object_type="container_process",
                 client=client,
                 by_line=True,
-                deadline=deadline,
+                deadline=time.monotonic() + 2,  # use a 2-second timeout
             )
 
-            output = []
+            output: list[str] = []
+            expected_times = [
+                (0, 1.5),  # message 0: between 0 and 1.5s
+                (1, 2.0),  # message 1: between 1 and 2
+            ]
             async for line in stdout:
-                print("msg:", line, time.monotonic() - time_start_sending)
+                elapsed = time.monotonic() - time_first_send
+                min_time, max_time = expected_times[len(output)]
+                assert min_time < elapsed < max_time
                 output.append(line)
 
-            t = time.monotonic()
-            print(time_sent_last, t - time_sent_last)
-
-            assert output == [f"msg{i}\n" for i in range(3)]
+            # message 3 should not be received, due to the timeout
+            assert output == [f"msg{i}\n" for i in range(2)]
+            assert time.monotonic() - time_first_send <= 3

@@ -332,17 +332,15 @@ def test_sandbox_exec_poll_timeout(app, servicer):
     assert cp.poll() == -1
 
 
-@mock.patch("modal.sandbox.CONTAINER_EXEC_TIMEOUT_BUFFER", 1)
+@mock.patch("modal.sandbox.CONTAINER_EXEC_TIMEOUT_BUFFER", 0)
 @skip_non_subprocess
 def test_sandbox_exec_output_timeout(app, servicer):
     sb = Sandbox.create("sleep", "infinity", app=app)
 
-    cp = sb.exec("sh", "-c", "c=1; while true; do echo $c; sleep 1; c=$((c+1)); done", timeout=1)
+    cp = sb.exec("sh", "-c", "echo hi; sleep 999", timeout=1)
     t1 = time.monotonic()
-    # Assert that 2 is received, despite the message being sent at/after the 1s timeout
-    assert cp.stdout.read() == "1\n2\n"
-    # Assert that it is received within the buffer window
-    assert 2 < time.monotonic() - t1 < 2.1
+    assert cp.stdout.read() == "hi\n"
+    assert 1 < time.monotonic() - t1 < 2.0
     assert cp.wait() == -1
 
 
