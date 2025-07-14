@@ -4,7 +4,6 @@ from typing import Union, cast
 
 import modal
 import modal.experimental
-import modal.runner
 from modal.exception import DeprecationError
 
 app = modal.App(include_source=False)
@@ -53,7 +52,7 @@ def test_update_autoscaler(client, servicer, which):
 
 @pytest.mark.parametrize("which", ["function", "cls"])
 def test_update_autoscaler_after_lookup(client, servicer, which):
-    modal.runner.deploy_app(app, name="test", client=client)
+    app.deploy(name="test", client=client)
 
     overrides = {
         "min_containers": 1,
@@ -81,3 +80,11 @@ def test_update_autoscaler_after_lookup(client, servicer, which):
     assert settings.max_containers == overrides["max_containers"]
     assert settings.buffer_containers == overrides["buffer_containers"]
     assert settings.scaledown_window == overrides["scaledown_window"]
+
+
+def test_app_get_objects(client, servicer):
+    app.deploy(name="test", environment_name="dev", client=client)
+    res = modal.experimental.get_app_objects("test", environment_name="dev", client=client)
+    assert res.keys() == {"C", "f"}
+    assert isinstance(res["C"], modal.Cls)
+    assert isinstance(res["f"], modal.Function)

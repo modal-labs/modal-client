@@ -17,8 +17,9 @@ from .._tunnel import _forward as _forward_tunnel
 from .._utils.async_utils import synchronize_api, synchronizer
 from .._utils.deprecation import deprecation_warning
 from .._utils.grpc_utils import retry_transient_errors
+from ..app import _App
 from ..client import _Client
-from ..cls import _Obj
+from ..cls import _Cls, _Obj
 from ..config import logger
 from ..exception import InvalidError
 from ..image import DockerfileSpec, ImageBuilderVersion, _Image, _ImageRegistryConfig
@@ -86,6 +87,51 @@ async def list_deployed_apps(environment_name: str = "", client: Optional[_Clien
                 )
             )
     return app_infos
+
+
+@synchronizer.create_blocking
+async def get_app_objects(
+    app_name: str, *, environment_name: Optional[str] = None, client: Optional[_Client] = None
+) -> dict[str, Union[_Function, _Cls]]:
+    """Experimental interface for retrieving a dictionary of the Functions / Clses in an App.
+
+    The return value is a dictionary mapping names to unhydrated Function or Cls objects.
+
+    We plan to support this functionality through a stable API in the future. It's likely that
+    the stable API will look different (it will probably be a method on the App object itself).
+
+    """
+    # This is implemented through a somewhat odd mixture of internal RPCs and public APIs.
+    # While AppGetLayout provides the object ID and metadata for each object in the App, it's
+    # currently somewhere between very awkward and impossible to hydrate a modal.Cls with just
+    # that information, since the "class service function" needs to be loaded first
+    # (and it's not always possible to do that without knowledge of the parameterization).
+    # So instead we just use AppGetLayout to retrieve the names of the Functions / Clsices on
+    # the App and then use the public .from_name constructors to return unhydrated handles.
+
+    # Additionally, since we need to know the environment name to use `.from_name`, and the App's
+    # environment name isn't stored anywhere on the App (and cannot be retrieved via an RPC), the
+    # experimental function is parameterized by an App name while the stable API would instead
+    # be a method on the App itself.
+
+    if client is None:
+        client = await _Client.from_env()
+
+    app = await _App.lookup(app_name, environment_name=environment_name, client=client)
+    req = api_pb2.AppGetLayoutRequest(app_id=app.app_id)
+    app_layout_resp = await retry_transient_errors(client.stub.AppGetLayout, req)
+
+    app_objects: dict[str, Union[_Function, _Cls]] = {}
+
+    for cls_name in app_layout_resp.app_layout.class_ids:
+        app_objects[cls_name] = _Cls.from_name(app_name, cls_name, environment_name=environment_name)
+
+    for func_name in app_layout_resp.app_layout.function_ids:
+        if func_name.endswith(".*"):
+            continue  # TODO explain
+        app_objects[func_name] = _Function.from_name(app_name, func_name, environment_name=environment_name)
+
+    return app_objects
 
 
 @synchronizer.create_blocking
