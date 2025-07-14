@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.6.dev37 (2025-07-14)
+
+- Enforced deprecations on `modal.build`, `Image.copy_local_file`, and `Image.copy_local_dir`.
+
+
 #### 1.0.6.dev30 (2025-07-11)
 
 - Allows i6pn configuration for Modal Classes
