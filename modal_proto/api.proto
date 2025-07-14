@@ -1720,7 +1720,7 @@ message FunctionGetInputsItem {
   string function_call_id = 5;
   FunctionCallInvocationType function_call_invocation_type = 6;
   uint32 retry_count = 7;
-  optional int32 map_call_idx = 8;
+  optional int32 function_map_idx = 8;
 }
 
 message FunctionGetInputsRequest {
@@ -1913,7 +1913,7 @@ message FunctionPutOutputsItem {
   DataFormat data_format = 7; // for result.data_oneof
   uint32 retry_count = 8;
   string function_call_id = 9; // injected by the worker 
-  optional int32 map_call_idx = 10;
+  optional int32 function_map_idx = 10;
 }
 
 message FunctionPutOutputsRequest {
