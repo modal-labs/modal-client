@@ -31,6 +31,7 @@ from ..exception import (
     InvalidError,
     RemoteError,
 )
+from ..file_pattern_matcher import NON_PYTHON_FILES
 from ..mount import ROOT_DIR, _is_modal_path, _Mount
 from .blob_utils import (
     MAX_ASYNC_OBJECT_SIZE_BYTES,
@@ -314,8 +315,6 @@ class FunctionInfo:
         Does not include:
         * Client mount
         * Explicit mounts added to the stub or function declaration
-        * "Auto mounted" mounts, i.e. all mounts in sys.modules that are *not* installed in site-packages.
-            These are typically local modules which are imported but not part of the running package
 
         """
         if self.is_serialized():
@@ -325,11 +324,7 @@ class FunctionInfo:
         # make sure the function's own entrypoint is included:
         if self._type == FunctionInfoType.PACKAGE:
             top_level_package = self.module_name.split(".")[0]
-            # TODO: add deprecation warning if the following entrypoint mount
-            #  includes non-.py files, since we'll want to migrate to .py-only
-            #  soon to get it consistent with the `add_local_python_source()`
-            #  defaults.
-            return {top_level_package: _Mount._from_local_python_packages(top_level_package)}
+            return {top_level_package: _Mount._from_local_python_packages(top_level_package, ignore=NON_PYTHON_FILES)}
         elif self._type == FunctionInfoType.FILE:
             # TODO: inspect if this file is already included as part of
             #  a package mount, and skip it + reference that package
