@@ -3277,7 +3277,7 @@ service ModalClient {
   rpc AppSetObjects(AppSetObjectsRequest) returns (google.protobuf.Empty);
   rpc AppStop(AppStopRequest) returns (google.protobuf.Empty);
   // DO_NOT_SUBMIT: IMPORTANT! There's already something called FunctionClearQueue in the input plane API...  check that everything coheres.
-  rpc FunctionClearInputQueue(FunctionClearInputQueueRequest) returns (google.protobuf.Empty);
+  // rpc FunctionClearInputQueue(FunctionClearInputQueueRequest) returns (google.protobuf.Empty);
 
   // Input Plane
   // These RPCs are experimental, not deployed to production, and can be changed / removed
