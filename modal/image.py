@@ -2300,9 +2300,11 @@ class _Image(_Object, type_prefix="im"):
         """mdmd:hidden"""
         # Image inherits hydrate() from Object but can't be hydrated on demand
         # Overriding the method lets us hide it from the docs and raise a better error message
-        raise ExecutionError(
-            "Images cannot currently be hydrated on demand; build or retreive the Image by running an App that uses it."
-        )
+        if not self.is_hydrated:
+            raise ExecutionError(
+                "Images cannot currently be hydrated on demand; you can build an Image by running an App that uses it."
+            )
+        return self
 
 
 Image = synchronize_api(_Image)
