@@ -256,6 +256,18 @@ def test_with_options_from_name(servicer):
     assert function_map.function_id == "fu-124"  # the bound function
 
 
+def test_with_options_prehydrated_payload(client, servicer):
+    with servicer.intercept() as ctx, app.run(client=client):
+        secret = modal.Secret.from_dict({"foo": "bar"}).hydrate(client=client)
+        secret_id = secret.object_id
+        foo = Foo.with_options(secrets=[secret])()  # type: ignore  # cls type shadowing :(
+        foo.bar.remote(2)
+
+    function_bind_params: api_pb2.FunctionBindParamsRequest
+    (function_bind_params,) = ctx.get_requests("FunctionBindParams")
+    assert function_bind_params.function_options.secret_ids == [secret_id]
+
+
 def test_service_options_defaults_untruthiness():
     # For `.with_options()` stacking (method-chaining) to work, the default values of the
     # internal _ServiceOptions dataclass should be be untruthy. This test just asserts that.

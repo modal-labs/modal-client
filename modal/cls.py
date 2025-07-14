@@ -98,7 +98,8 @@ class _ServiceOptions:
 
         This mostly exists to support "stacking" of `.with_options()` calls.
         """
-        new_options_dict = dataclasses.asdict(new_options)
+        # Don't use dataclasses.asdict() because it does a deepcopy(), which chokes on a hydrated object
+        new_options_dict = {k.name: getattr(new_options, k.name) for k in dataclasses.fields(new_options)}
 
         # Resources needs special merge handling because individual fields are parameters in the public API
         merged_resources = api_pb2.Resources()
