@@ -27,7 +27,6 @@ from modal_version import __version__
 from ._traceback import print_server_warnings
 from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
-from ._utils.auth_token_manager import _AuthTokenManager
 from ._utils.grpc_utils import ConnectionManager, retry_transient_errors
 from .config import _check_config, _is_remote, config, logger
 from .exception import AuthError, ClientClosed
@@ -79,7 +78,6 @@ class _Client:
     _cancellation_context: TaskContext
     _cancellation_context_event_loop: asyncio.AbstractEventLoop = None
     _stub: Optional[api_grpc.ModalClientStub]
-    _auth_token_manager: _AuthTokenManager = None
     _snapshotted: bool
 
     def __init__(
@@ -98,7 +96,6 @@ class _Client:
         self.version = version
         self._closed = False
         self._stub: Optional[modal_api_grpc.ModalClientModal] = None
-        self._auth_token_manager: Optional[_AuthTokenManager] = None
         self._snapshotted = False
         self._owner_pid = None
 
@@ -136,9 +133,9 @@ class _Client:
         self._cancellation_context = TaskContext(grace=0.5)  # allow running rpcs to finish in 0.5s when closing client
         self._cancellation_context_event_loop = asyncio.get_running_loop()
         await self._cancellation_context.__aenter__()
+
         self._connection_manager = ConnectionManager(client=self, metadata=metadata)
         self._stub = await self.get_stub(self.server_url)
-        self._auth_token_manager = _AuthTokenManager(self.stub)
         self._owner_pid = os.getpid()
 
     async def _close(self, prep_for_restore: bool = False):
@@ -427,4 +424,3 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
         self.wrapped_method.channel = await self.client._get_channel(self.server_url)
         async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
             yield response
-
