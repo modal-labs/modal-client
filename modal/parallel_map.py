@@ -580,8 +580,11 @@ async def _map_invocation_inputplane(
                 items=request_items,
             )
 
+            token = await client._auth_token_manager.get_token()
+            metadata = [("x-modal-input-plane-region", function._input_plane_region), ("x-modal-auth-token", token)]
+
             response: api_pb2.MapStartOrContinueResponse = await retry_transient_errors(
-                input_plane_stub.MapStartOrContinue, request
+                input_plane_stub.MapStartOrContinue, request, metadata=metadata
             )
 
             # TODO(ben-okeefe): Understand if an input could be lost at this step and not registered
@@ -640,11 +643,14 @@ async def _map_invocation_inputplane(
                 timeout=OUTPUTS_TIMEOUT,
             )
             try:
+                token = await client._auth_token_manager.get_token()
+                metadata = [("x-modal-input-plane-region", function._input_plane_region), ("x-modal-auth-token", token)]
                 response: api_pb2.MapAwaitResponse = await retry_transient_errors(
                     input_plane_stub.MapAwait,
                     request,
                     max_retries=20,
                     attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
+                    metadata=metadata,
                 )
                 # print(f"MapAwaitResponse: {response}")
             except Exception:
