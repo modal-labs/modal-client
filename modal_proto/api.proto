@@ -1431,7 +1431,7 @@ message Function {
   bool _experimental_enable_gpu_snapshot = 78; // Experimental support for GPU snapshotting
 
   AutoscalerSettings autoscaler_settings = 79;  // Bundle of parameters related to autoscaling
-  FunctionSchema function_schema = 80;
+  FunctionSchema function_schema = 80; // Function schema, may be missing: client doesn't block deployment if it fails to get it
 
   // For server-side experimental functionality. Prefer using this over individual _experimental_* fields.
   // Note the value type as string. Internally we'll coerce all values to string with str().

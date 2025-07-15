@@ -559,7 +559,12 @@ def get_callable_schema(
         # we don't support schemas on web endpoints for now
         return None
 
-    sig = inspect.signature(callable)
+    try:
+        sig = inspect.signature(callable)
+    except Exception as e:
+        logger.debug(f"Error getting signature for function {callable}", exc_info=e)
+        return None
+
     # TODO: treat no return value annotation as None return?
     return_type_proto = schema_registry.get_proto_generic_type(sig.return_annotation)
     arguments = []
