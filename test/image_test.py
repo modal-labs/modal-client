@@ -17,7 +17,7 @@ from modal import App, Dict, Image, Secret, environments
 from modal._serialization import serialize
 from modal._utils.async_utils import synchronizer
 from modal.client import Client
-from modal.exception import InvalidError, ModuleNotMountable, NotFoundError, VersionError
+from modal.exception import ExecutionError, InvalidError, ModuleNotMountable, NotFoundError, VersionError
 from modal.experimental import raw_dockerfile_image, raw_registry_image
 from modal.file_pattern_matcher import FilePatternMatcher
 from modal.image import (
@@ -2261,3 +2261,8 @@ def test_raw_registry_image(servicer, client):
 
     with pytest.raises(InvalidError, match="whatever"):
         raw_registry_image(tag, registry_secret=registry_secret, credential_type="whatever")  # type: ignore
+
+
+def test_hydration_refusal():
+    with pytest.raises(ExecutionError, match="Images cannot currently be hydrated on demand"):
+        Image.debian_slim().hydrate()

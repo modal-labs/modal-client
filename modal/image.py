@@ -23,6 +23,7 @@ from typing import (
 
 from google.protobuf.message import Message
 from grpclib.exceptions import GRPCError, StreamTerminatedError
+from typing_extensions import Self
 
 from modal_proto import api_pb2
 
@@ -42,7 +43,7 @@ from .client import _Client
 from .cloud_bucket_mount import _CloudBucketMount
 from .config import config, logger, user_config_path
 from .environments import _get_environment_cached
-from .exception import InvalidError, NotFoundError, RemoteError, VersionError
+from .exception import ExecutionError, InvalidError, NotFoundError, RemoteError, VersionError
 from .file_pattern_matcher import NON_PYTHON_FILES, FilePatternMatcher, _ignore_fn
 from .gpu import GPU_T, parse_gpu_config
 from .mount import _Mount, python_standalone_mount_name
@@ -2294,6 +2295,16 @@ class _Image(_Object, type_prefix="im"):
             for task_log in response.task_logs:
                 if task_log.data:
                     yield task_log.data
+
+    async def hydrate(self, client: Optional[_Client] = None) -> Self:
+        """mdmd:hidden"""
+        # Image inherits hydrate() from Object but can't be hydrated on demand
+        # Overriding the method lets us hide it from the docs and raise a better error message
+        if not self.is_hydrated:
+            raise ExecutionError(
+                "Images cannot currently be hydrated on demand; you can build an Image by running an App that uses it."
+            )
+        return self
 
 
 Image = synchronize_api(_Image)
