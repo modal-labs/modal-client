@@ -144,7 +144,7 @@ class CudaCheckpointSession:
         self.cuda_processes = self._get_cuda_pids()
         if self.cuda_processes:
             logger.debug(
-                f"Found {len(self.cuda_processes)} PIDs with CUDA sessions: {[c.pid for c in self.cuda_processes]}"
+                f"Found {len(self.cuda_processes)} PID(s) with CUDA sessions: {[c.pid for c in self.cuda_processes]}"
             )
         else:
             logger.debug("No CUDA sessions found.")
