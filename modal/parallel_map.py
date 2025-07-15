@@ -459,6 +459,13 @@ async def _map_invocation_inputplane(
 
     inputs_created = 0
     outputs_completed = 0
+    successful_completions = 0
+    failed_completions = 0
+    no_context_duplicates = 0
+    stale_retry_duplicates = 0
+    already_complete_duplicates = 0
+    retried_outputs = 0
+    input_queue_size = 0
 
     # The input-plane server returns this after the first request.
     function_call_id: str | None = None
@@ -476,6 +483,20 @@ async def _map_invocation_inputplane(
     # the first response – fall back to the default if we never receive it for
     # any reason).
     max_inputs_outstanding = MAX_INPUTS_OUTSTANDING_DEFAULT
+
+    retry_policy = api_pb2.FunctionRetryPolicy(
+        retries=15,
+        initial_delay_ms=1000,
+        max_delay_ms=1000,
+        backoff_coefficient=1.0,
+    )
+    map_items_manager = _MapItemsManager(
+        retry_policy=retry_policy,
+        function_call_invocation_type=function_call_invocation_type,
+        retry_queue=TimestampPriorityQueue(),
+        sync_client_retries_enabled=True,
+        max_inputs_outstanding=MAX_INPUTS_OUTSTANDING_DEFAULT,
+    )
 
     # ------------------------------------------------------------
     # Helper functions
@@ -546,6 +567,7 @@ async def _map_invocation_inputplane(
             request_items: list[api_pb2.MapStartOrContinueItem] = [
                 api_pb2.MapStartOrContinueItem(input=qi.input, attempt_token=qi.attempt_token) for qi in batch
             ]
+            await map_items_manager.add_items(request_items)
             # Build request
             request = api_pb2.MapStartOrContinueRequest(
                 function_id=function.object_id,
@@ -560,7 +582,7 @@ async def _map_invocation_inputplane(
                 input_plane_stub.MapStartOrContinue, request, metadata=metadata
             )
 
-            # TODO(ben-okeefe): Understand if an input could be lost at this step and not registered
+            map_items_manager.handle_put_inputs_response(response.items)
 
             if function_call_id is None:
                 function_call_id = response.function_call_id
@@ -596,6 +618,14 @@ async def _map_invocation_inputplane(
 
     async def get_all_outputs():
         """Continuously fetch outputs until the map is complete."""
+        nonlocal \
+            successful_completions, \
+            failed_completions, \
+            no_context_duplicates, \
+            stale_retry_duplicates, \
+            already_complete_duplicates, \
+            retried_outputs
+
         last_entry_id = ""
         while not map_done_event.is_set():
             if function_call_id is None:
@@ -619,9 +649,25 @@ async def _map_invocation_inputplane(
             last_entry_id = response.last_entry_id
 
             for output_item in response.outputs:
-                yield output_item
+                output_type = await map_items_manager.handle_get_outputs_response(output_item, int(time.time()))
+                if output_type == _OutputType.SUCCESSFUL_COMPLETION:
+                    successful_completions += 1
+                elif output_type == _OutputType.FAILED_COMPLETION:
+                    failed_completions += 1
+                elif output_type == _OutputType.RETRYING:
+                    retried_outputs += 1
+                elif output_type == _OutputType.NO_CONTEXT_DUPLICATE:
+                    no_context_duplicates += 1
+                elif output_type == _OutputType.STALE_RETRY_DUPLICATE:
+                    stale_retry_duplicates += 1
+                elif output_type == _OutputType.ALREADY_COMPLETE_DUPLICATE:
+                    already_complete_duplicates += 1
+                else:
+                    raise Exception(f"Unknown output type: {output_type}")
 
-                update_counters(completed_delta=1)
+                if output_type == _OutputType.SUCCESSFUL_COMPLETION:
+                    update_counters(completed_delta=1)
+                    yield output_item
 
             # The loop condition will exit when map_done_event is set from update_counters.
 
@@ -683,11 +729,13 @@ async def _map_invocation_inputplane(
     async def log_debug_stats():
         def log_stats():
             logger.debug(
-                "Map-IP stats: have_all_inputs=%s inputs_created=%d outputs_completed=%d queue_size=%d",
-                have_all_inputs,
-                inputs_created,
-                outputs_completed,
-                queue.qsize(),
+                f"Map stats: successful_completions={successful_completions} failed_completions={failed_completions} "
+                f"no_context_duplicates={no_context_duplicates} stale_retry_duplicates={stale_retry_duplicates} "
+                f"already_complete_duplicates={already_complete_duplicates} retried_outputs={retried_outputs}"
+                f"function_call_id={function_call_id}"
+                f"max_inputs_outstanding={max_inputs_outstanding}"
+                f"map_items_manager_size={len(map_items_manager)}"
+                f"input_queue_size={input_queue_size}"
             )
 
         while True:
@@ -1063,9 +1111,18 @@ class _MapItemContext:
         self.input_jwt = self._event_loop.create_future()
         self.input_id = self._event_loop.create_future()
 
-    def handle_put_inputs_response(self, item: api_pb2.FunctionPutInputsResponseItem):
-        self.input_jwt.set_result(item.input_jwt)
-        self.input_id.set_result(item.input_id)
+    def handle_put_inputs_response(
+        self, item: api_pb2.FunctionPutInputsResponseItem | api_pb2.MapStartOrContinueResponseItem
+    ):
+        if isinstance(item, api_pb2.FunctionPutInputsResponseItem):
+            input_jwt = item.input_jwt
+            input_id = item.input_id
+        else:
+            input_jwt = item.attempt_token
+            input_id = item.input_id
+
+        self.input_jwt.set_result(input_jwt)
+        self.input_id.set_result(input_id)
         # Set state to WAITING_FOR_OUTPUT only if current state is SENDING. If state is
         # RETRYING, WAITING_TO_RETRY, or COMPLETE, then we already got the output.
         if self.state == _MapItemState.SENDING:
@@ -1175,13 +1232,27 @@ class _MapItemsManager:
         self._item_context: dict[int, _MapItemContext] = {}
         self._sync_client_retries_enabled = sync_client_retries_enabled
 
-    async def add_items(self, items: list[api_pb2.FunctionPutInputsItem]):
+    async def add_items(self, items: list[api_pb2.FunctionPutInputsItem] | list[api_pb2.MapStartOrContinueItem]):
         for item in items:
             # acquire semaphore to limit the number of inputs in progress
             # (either queued to be sent, waiting for completion, or retrying)
             await self._inputs_outstanding.acquire()
-            self._item_context[item.idx] = _MapItemContext(
-                input=item.input,
+
+            if isinstance(item, api_pb2.MapStartOrContinueItem):
+                if item.HasField("retry_item"):
+                    input = item.retry_item.input
+                    idx = input.idx
+                    input_data = input.input
+                else:
+                    input = item.input
+                    idx = input.idx
+                    input_data = input.input
+            else:
+                idx = item.idx
+                input_data = item.input
+
+            self._item_context[idx] = _MapItemContext(
+                input=input_data,
                 retry_manager=RetryManager(self._retry_policy),
                 sync_client_retries_enabled=self._sync_client_retries_enabled,
             )
@@ -1207,7 +1278,9 @@ class _MapItemsManager:
     def get_item_context(self, item_idx: int) -> _MapItemContext:
         return self._item_context.get(item_idx)
 
-    def handle_put_inputs_response(self, items: list[api_pb2.FunctionPutInputsResponseItem]):
+    def handle_put_inputs_response(
+        self, items: list[api_pb2.FunctionPutInputsResponseItem] | list[api_pb2.MapStartOrContinueResponseItem]
+    ):
         for item in items:
             ctx = self._item_context.get(item.idx, None)
             # If the context is None, then get_all_outputs() has already received a successful
