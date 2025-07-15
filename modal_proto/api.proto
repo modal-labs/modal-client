@@ -2534,6 +2534,7 @@ message SandboxCreateResponse {
 message SandboxGetFromNameRequest {
   string sandbox_name = 1;
   string environment_name = 2;
+  string app_name = 3;
 }
 
 message SandboxGetFromNameResponse {
@@ -2608,6 +2609,7 @@ message SandboxListResponse {
 
 message SandboxRestoreRequest {
   string snapshot_id = 1;
+  string sandbox_name = 2;
 }
 
 message SandboxRestoreResponse {
