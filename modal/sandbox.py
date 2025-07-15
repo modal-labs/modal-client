@@ -21,6 +21,7 @@ from ._object import _get_environment_name, _Object
 from ._resolver import Resolver
 from ._resources import convert_fn_config_to_resources_config
 from ._utils.async_utils import TaskContext, synchronize_api
+from ._utils.deprecation import deprecation_warning
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
@@ -230,7 +231,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def create(
         *entrypoint_args: str,
         app: Optional["modal.app._App"] = None,  # Optionally associate the sandbox with an app
-        environment_name: Optional[str] = None,  # Optionally override the default environment
+        environment_name: Optional[str] = None,  # *DEPRECATED* Optionally override the default environment
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
@@ -315,7 +316,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def _create(
         *entrypoint_args: str,
         app: Optional["modal.app._App"] = None,  # Optionally associate the sandbox with an app
-        environment_name: Optional[str] = None,  # Optionally override the default environment
+        environment_name: Optional[str] = None,  # *DEPRECATED* Optionally override the default environment
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
         mounts: Sequence[_Mount] = (),
@@ -359,6 +360,13 @@ class _Sandbox(_Object, type_prefix="sb"):
         # `mounts` is currently only used by modal shell (cli) to provide a function's mounts to the
         # sandbox that runs the shell session
         from .app import _App
+
+        if environment_name is not None:
+            deprecation_warning(
+                (2025, 7, 16),
+                "Passing `environment_name` to `Sandbox.create` is deprecated and will be removed in a future release.",
+                "A sandbox's environment is now determined by the app it is associated with.",
+            )
 
         environment_name = _get_environment_name(environment_name)
 
