@@ -620,6 +620,18 @@ message AttemptStartResponse {
   string attempt_token = 1;
   FunctionRetryPolicy retry_policy = 2; // TODO(ben-okeefe) TODO(nathan): Not currently used
 }
+message MapCheckInputsRequestItem {
+    int32 idx = 1;
+    string attempt_token = 2;
+}
+
+message MapCheckInputsRequest {
+  string function_id = 1;
+  string function_call_id = 2;
+  string last_entry_id = 3;
+  float timeout = 4;
+  repeated MapCheckInputsRequestItem items = 5;  
+}
 
 message AuthTokenGetRequest {
 }

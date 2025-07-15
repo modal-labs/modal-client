@@ -466,6 +466,7 @@ async def _map_invocation_inputplane(
     already_complete_duplicates = 0
     retried_outputs = 0
     input_queue_size = 0
+    last_entry_id = ""
 
     # The input-plane server returns this after the first request.
     function_call_id: str | None = None
@@ -597,18 +598,41 @@ async def _map_invocation_inputplane(
 
         yield
 
+    async def create_check_inputs() -> list[api_pb2.MapCheckInputsRequestItem]:
+        inputs = map_items_manager.get_input_idxs_waiting_for_output()
+        results = [
+            api_pb2.MapCheckInputsRequestItem(idx=idx, attempt_token=attempt_token) for idx, attempt_token in inputs
+        ]
+        return results
+
     # ------------------------------------------------------------
     # Coroutine: **stub** – retry handling will be added in the future
     # ------------------------------------------------------------
 
     async def retry_inputs():
+        nonlocal last_entry_id
         """Temporary stub for retrying inputs. Retry handling will be added in the future."""
-
         try:
             while not map_done_event.is_set():
                 await asyncio.sleep(1)
-                if False:
-                    yield
+                check_inputs = await create_check_inputs()
+                if function_call_id is None:
+                    continue
+                request = api_pb2.MapCheckInputsRequest(
+                    function_id=function.object_id,
+                    function_call_id=function_call_id,
+                    last_entry_id=last_entry_id,
+                    timeout=OUTPUTS_TIMEOUT,
+                    items=check_inputs,
+                )
+                token = await client._auth_token_manager.get_token()
+                metadata = [("x-modal-input-plane-region", function._input_plane_region), ("x-modal-auth-token", token)]
+                response: api_pb2.MapCheckInputsResponse = await retry_transient_errors(
+                    input_plane_stub.MapCheckInputs, request, metadata=metadata
+                )
+                map_items_manager.handle_check_inputs_response(response)
+                # Keep generator semantics for async_merge; value is ignored.
+                yield
         except asyncio.CancelledError:
             pass
 
@@ -624,9 +648,9 @@ async def _map_invocation_inputplane(
             no_context_duplicates, \
             stale_retry_duplicates, \
             already_complete_duplicates, \
-            retried_outputs
+            retried_outputs, \
+            last_entry_id
 
-        last_entry_id = ""
         while not map_done_event.is_set():
             if function_call_id is None:
                 await function_call_id_received.wait()
@@ -1271,6 +1295,17 @@ class _MapItemsManager:
             if ctx.state == _MapItemState.WAITING_FOR_OUTPUT and ctx.input_jwt.done()
         ]
 
+    def get_input_idxs_waiting_for_output(self) -> list[tuple[int, str]]:
+        """
+        Returns a list of input_idxs for inputs that are waiting for output.
+        """
+        # Doesn't need future because idx is set by client and not server.
+        return [
+            (idx, ctx.input_jwt.result())
+            for idx, ctx in self._item_context.items()
+            if ctx.state == _MapItemState.WAITING_FOR_OUTPUT and ctx.input_jwt.done()
+        ]
+
     def _remove_item(self, item_idx: int):
         del self._item_context[item_idx]
         self._inputs_outstanding.release()
@@ -1298,6 +1333,13 @@ class _MapItemsManager:
             # before FunctionRetryInputsResponse is received.
             if ctx is not None:
                 ctx.handle_retry_response(input_jwt)
+
+    def handle_check_inputs_response(self, response: api_pb2.MapCheckInputsResponse):
+        for lost_idx in response.lost_idx:
+            ctx = self._item_context.get(lost_idx, None)
+            if ctx is not None:
+                ctx.state = _MapItemState.WAITING_TO_RETRY
+                self._retry_queue.put(int(time.time()), lost_idx)
 
     async def handle_get_outputs_response(self, item: api_pb2.FunctionGetOutputsItem, now_seconds: int) -> _OutputType:
         ctx = self._item_context.get(item.idx, None)
