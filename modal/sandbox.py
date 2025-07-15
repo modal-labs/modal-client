@@ -217,9 +217,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
 
             # Note - `resolver.app_id` will be `None` for app-less sandboxes
-            create_req = api_pb2.SandboxCreateRequest(
-                app_id=resolver.app_id, definition=definition, environment_name=resolver.environment_name
-            )
+            create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
             create_resp = await retry_transient_errors(resolver.client.stub.SandboxCreate, create_req)
 
             sandbox_id = create_resp.sandbox_id
@@ -284,10 +282,16 @@ class _Sandbox(_Object, type_prefix="sb"):
         sandbox.wait()
         ```
         """
+        if environment_name is not None:
+            deprecation_warning(
+                (2025, 7, 16),
+                "Passing `environment_name` to `Sandbox.create` is deprecated and will be removed in a future release.",
+                "A sandbox's environment is determined by the app it is associated with.",
+            )
+
         return await _Sandbox._create(
             *entrypoint_args,
             app=app,
-            environment_name=environment_name,
             image=image,
             secrets=secrets,
             network_file_systems=network_file_systems,
@@ -316,7 +320,6 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def _create(
         *entrypoint_args: str,
         app: Optional["modal.app._App"] = None,  # Optionally associate the sandbox with an app
-        environment_name: Optional[str] = None,  # *DEPRECATED* Optionally override the default environment
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
         mounts: Sequence[_Mount] = (),
@@ -360,15 +363,6 @@ class _Sandbox(_Object, type_prefix="sb"):
         # `mounts` is currently only used by modal shell (cli) to provide a function's mounts to the
         # sandbox that runs the shell session
         from .app import _App
-
-        if environment_name is not None:
-            deprecation_warning(
-                (2025, 7, 16),
-                "Passing `environment_name` to `Sandbox.create` is deprecated and will be removed in a future release.",
-                "A sandbox's environment will then be determined by the app it is associated with.",
-            )
-
-        environment_name = _get_environment_name(environment_name)
 
         _validate_exec_args(entrypoint_args)
 
@@ -429,7 +423,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         client = client or app_client or await _Client.from_env()
 
-        resolver = Resolver(client, environment_name=environment_name, app_id=app_id)
+        resolver = Resolver(client, app_id=app_id)
         await resolver.load(obj)
         return obj
 
