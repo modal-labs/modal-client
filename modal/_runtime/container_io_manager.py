@@ -267,6 +267,7 @@ class _ContainerIOManager:
     app_id: str
     function_def: api_pb2.Function
     checkpoint_id: Optional[str]
+    input_plane_server_url: Optional[str]
 
     calls_completed: int
     total_user_time: float
@@ -298,6 +299,12 @@ class _ContainerIOManager:
         self.app_id = container_args.app_id
         self.function_def = container_args.function_def
         self.checkpoint_id = container_args.checkpoint_id or None
+
+        # We could also have the worker pass this in explicitly.
+        self.input_plane_server_url = None
+        for obj in container_args.app_layout.objects:
+            if obj.object_id == self.function_id:
+                self.input_plane_server_url = obj.function_handle_metadata.input_plane_url
 
         self.calls_completed = 0
         self.total_user_time = 0.0
@@ -504,8 +511,18 @@ class _ContainerIOManager:
                 chunk.data = message_bytes
             data_chunks.append(chunk)
 
-        req = api_pb2.FunctionCallPutDataRequest(function_call_id=function_call_id, data_chunks=data_chunks)
-        await retry_transient_errors(self._client.stub.FunctionCallPutDataOut, req)
+        attempt_token = await self._client._auth_token_manager.get_token()
+        req = api_pb2.FunctionCallPutDataRequest(
+            function_call_id=function_call_id,
+            data_chunks=data_chunks,
+            attempt_token=attempt_token,
+        )
+
+        if self.input_plane_server_url:
+            stub = await self._client.get_stub(self.input_plane_server_url)
+            await retry_transient_errors(stub.FunctionCallPutDataOut, req)
+        else:
+            await retry_transient_errors(self._client.stub.FunctionCallPutDataOut, req)
 
     @asynccontextmanager
     async def generator_output_sender(
