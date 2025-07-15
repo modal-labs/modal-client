@@ -1270,7 +1270,7 @@ def test_concurrency_config_migration(client, servicer):
             raise RuntimeError(f"Unexpected function name: {request.function.function_name}")
 
 
-@pytest.mark.usefixtures("record_function_schemas", "set_env_client")
+@pytest.mark.usefixtures("set_env_client")
 def test_function_schema_recording(client, servicer):
     app = App("app")
 
@@ -1302,7 +1302,7 @@ def test_function_schema_recording(client, servicer):
     assert Function.from_name("app", "f")._get_schema() == expected_schema
 
 
-@pytest.mark.usefixtures("record_function_schemas", "set_env_client")
+@pytest.mark.usefixtures("set_env_client")
 def test_function_schema_excludes_web_endpoints(client, servicer):
     # for now we exclude web endpoints since they don't use straight-forward arguments
     # in the same way as regular modal functions
@@ -1317,7 +1317,7 @@ def test_function_schema_excludes_web_endpoints(client, servicer):
     assert schema.schema_type == api_pb2.FunctionSchema.FUNCTION_SCHEMA_UNSPECIFIED
 
 
-@pytest.mark.usefixtures("record_function_schemas", "set_env_client")
+@pytest.mark.usefixtures("set_env_client")
 def test_class_schema_recording(client, servicer):
     app = App("app")
 
@@ -1445,6 +1445,7 @@ def test_function_namespace_deprecated(servicer, client):
     namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
     assert len(namespace_warnings) == 0
 
+
 # These test and the two below it pass on their own but fail with this error when all the tests are run:
 # `modal.exception.NotFoundError: Volume ('my-vol', 'main') not found`
 # So there's some interaction happening that needs to be fixed.
@@ -1458,6 +1459,7 @@ def test_input_above_limit_does_blob_upload(client, servicer, blob_server):
         assert len(servicer.cleared_function_calls) == 1
     assert len(blobs) == 1
 
+
 @pytest.mark.skip()
 def test_input_above_limit_does_not_blob_upload(client, servicer, blob_server):
     # Setting max_object_size_bytes to 1000 should cause input to not be blob uploaded
@@ -1467,6 +1469,7 @@ def test_input_above_limit_does_not_blob_upload(client, servicer, blob_server):
         assert foo.remote(2, 4) == 20
         assert len(servicer.cleared_function_calls) == 1
     assert len(blobs) == 0
+
 
 @pytest.mark.skip()
 def test_unset_input_limit_does_not_blob_upload(client, servicer, blob_server):

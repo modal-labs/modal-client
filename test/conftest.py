@@ -2441,6 +2441,7 @@ async def client(servicer, credentials):
     with Client(servicer.client_addr, api_pb2.CLIENT_TYPE_CLIENT, credentials) as client:
         yield client
 
+
 @pytest_asyncio.fixture(scope="function")
 async def container_client(servicer):
     async with Client(servicer.container_addr, api_pb2.CLIENT_TYPE_CONTAINER, None) as client:
@@ -2657,8 +2658,3 @@ def tmp_cwd(tmp_path, monkeypatch):
     with monkeypatch.context() as m:
         m.chdir(tmp_path)
         yield
-
-
-@pytest.fixture()
-def record_function_schemas(monkeypatch):
-    monkeypatch.setenv("MODAL_FUNCTION_SCHEMAS", "1")

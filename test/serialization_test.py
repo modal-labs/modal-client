@@ -125,7 +125,7 @@ def test_non_implemented_proto_type():
         parameter_serde_registry.decode(api_pb2.ClassParameterValue(type=1000))  # type: ignore
 
 
-def test_schema_extraction_unknown(record_function_schemas):
+def test_schema_extraction_unknown():
     def with_empty(a): ...
 
     def with_any(a: typing.Any): ...
@@ -198,7 +198,6 @@ def test_schema_extraction_bytes():
     )
 
 
-@pytest.mark.usefixtures("record_function_schemas")
 def test_schema_extraction_list():
     def new_f(simple_list: list[int]): ...
     def old_f(simple_list: typing.List[int]): ...
@@ -215,7 +214,6 @@ def test_schema_extraction_list():
         )
 
 
-@pytest.mark.usefixtures("record_function_schemas")
 def test_schema_extraction_nested_list():
     def f(nested_list: list[list[bytes]]): ...
 
@@ -235,7 +233,6 @@ def test_schema_extraction_nested_list():
     )
 
 
-@pytest.mark.usefixtures("record_function_schemas")
 def test_schema_extraction_nested_dict():
     def f(nested_dict: dict[str, dict[str, bytes]] = {}): ...
 
@@ -261,7 +258,6 @@ def test_schema_extraction_nested_dict():
     )
 
 
-@pytest.mark.usefixtures("record_function_schemas")
 def test_schema_extraction_dict_with_non_str_key_is_unknown():
     def f(dct: dict): ...
 
