@@ -1487,7 +1487,7 @@ message FunctionCallCancelRequest {
 message FunctionCallGetDataRequest {
   string function_call_id = 1;
   uint64 last_index = 2;
-  string attempt_token = 3;
+  reserved 3; // attempt_token
 }
 
 message FunctionCallInfo {
@@ -1516,7 +1516,7 @@ message FunctionCallListResponse {
 message FunctionCallPutDataRequest {
   string function_call_id = 1;
   repeated DataChunk data_chunks = 2;
-  optional string attempt_token = 3;
+  reserved 3; // attempt_token
 }
 
 message FunctionCreateRequest {
