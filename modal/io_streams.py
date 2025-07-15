@@ -1,7 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
 import time
-from asyncio import timeout as asyncio_timeout
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import (
     TYPE_CHECKING,
@@ -62,17 +61,22 @@ async def _container_process_logs_iterator(
         last_batch_index=last_index,
     )
 
-    timeout = max(deadline - time.monotonic(), 0.0) if deadline else None
-    try:
-        async with asyncio_timeout(timeout):
-            async for batch in client.stub.ContainerExecGetOutput.unary_stream(req):
-                if batch.HasField("exit_code"):
-                    yield None, batch.batch_index
-                    return
-                for item in batch.items:
-                    yield item.message_bytes, batch.batch_index
-    except asyncio.TimeoutError:
-        yield None, -1
+    stream = client.stub.ContainerExecGetOutput.unary_stream(req)
+    while True:
+        # Check deadline before attempting to receive the next batch
+        try:
+            remaining = (deadline - time.monotonic()) if deadline else None
+            batch = await asyncio.wait_for(stream.__anext__(), timeout=remaining)
+        except asyncio.TimeoutError:
+            yield None, -1
+            break
+        except StopAsyncIteration:
+            break
+        if batch.HasField("exit_code"):
+            yield None, batch.batch_index
+            break
+        for item in batch.items:
+            yield item.message_bytes, batch.batch_index
 
 
 T = TypeVar("T", str, bytes)
