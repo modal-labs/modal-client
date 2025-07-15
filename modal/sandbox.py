@@ -228,7 +228,6 @@ class _Sandbox(_Object, type_prefix="sb"):
     async def create(
         *entrypoint_args: str,
         app: Optional["modal.app._App"] = None,  # Optionally associate the sandbox with an app
-        environment_name: Optional[str] = None,  # *DEPRECATED* Optionally override the default environment
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
@@ -267,6 +266,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             SchedulerPlacement
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         client: Optional[_Client] = None,
+        environment_name: Optional[str] = None,  # *DEPRECATED* Optionally override the default environment
     ) -> "_Sandbox":
         """
         Create a new Sandbox to run untrusted, arbitrary code. The Sandbox's corresponding container
