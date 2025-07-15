@@ -365,7 +365,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             deprecation_warning(
                 (2025, 7, 16),
                 "Passing `environment_name` to `Sandbox.create` is deprecated and will be removed in a future release.",
-                "A sandbox's environment is now determined by the app it is associated with.",
+                "A sandbox's environment will then be determined by the app it is associated with.",
             )
 
         environment_name = _get_environment_name(environment_name)
