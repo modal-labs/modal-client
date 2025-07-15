@@ -650,6 +650,23 @@ message MapAwaitResponse {
   string last_entry_id = 2;
 }
 
+message MapCheckInputsRequest {
+  string function_id = 1;
+  string function_call_id = 2;
+  string last_entry_id = 3;
+  float timeout = 4;
+  message MapCheckInputsRequestItem {
+    int32 idx = 1;
+    string attempt_token = 2;
+  }
+  repeated MapCheckInputsRequestItem items = 5;
+  
+}
+
+message MapCheckInputsResponse {
+  repeated int32 lost_idx = 1;
+}
+
 message AuthTokenGetRequest {
 }
 
