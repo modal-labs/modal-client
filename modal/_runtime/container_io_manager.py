@@ -511,7 +511,12 @@ class _ContainerIOManager:
                 chunk.data = message_bytes
             data_chunks.append(chunk)
 
-        req = api_pb2.FunctionCallPutDataRequest(function_call_id=function_call_id, data_chunks=data_chunks)
+        attempt_token = await self._client._auth_token_manager.get_token()
+        req = api_pb2.FunctionCallPutDataRequest(
+            function_call_id=function_call_id,
+            data_chunks=data_chunks,
+            attempt_token=attempt_token,
+        )
 
         if self.input_plane_server_url:
             stub = await self._client.get_stub(self.input_plane_server_url)
