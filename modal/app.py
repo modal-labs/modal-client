@@ -664,7 +664,7 @@ class _App:
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
-        _experimental_enable_gpu_snapshot: bool = False,  # Experimentally enable GPU memory snapshots.
+        enable_gpu_snapshot: bool = False,  # Enable GPU memory snapshots (alpha).
         # Parameters below here are deprecated. Please update your code as suggested
         keep_warm: Optional[int] = None,  # Replaced with `min_containers`
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
@@ -824,12 +824,12 @@ class _App:
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
                 i6pn_enabled=i6pn_enabled,
+                enable_gpu_snapshot=enable_gpu_snapshot,
                 cluster_size=cluster_size,  # Experimental: Clustered functions
                 rdma=rdma,
                 include_source=include_source if include_source is not None else self._include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
-                _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
             )
 
             self._add_function(function, webhook_config is not None)
@@ -874,6 +874,7 @@ class _App:
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         enable_memory_snapshot: bool = False,  # Enable memory checkpointing for faster cold starts.
+        enable_gpu_snapshot: bool = False,  # Enable GPU memory snapshots (alpha).
         block_network: bool = False,  # Whether to block network access
         restrict_modal_access: bool = False,  # Whether to allow this class access to other Modal resources
         # Limits the number of inputs a container handles before shutting down.
@@ -888,7 +889,6 @@ class _App:
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
-        _experimental_enable_gpu_snapshot: bool = False,  # Experimentally enable GPU memory snapshots.
         # Parameters below here are deprecated. Please update your code as suggested
         keep_warm: Optional[int] = None,  # Replaced with `min_containers`
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
@@ -990,6 +990,7 @@ class _App:
                 timeout=timeout,
                 cloud=cloud,
                 enable_memory_snapshot=enable_memory_snapshot,
+                enable_gpu_snapshot=enable_gpu_snapshot,
                 block_network=block_network,
                 restrict_modal_access=restrict_modal_access,
                 max_inputs=max_inputs,
@@ -999,7 +1000,6 @@ class _App:
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
-                _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
             )
 
             self._add_function(cls_func, is_web_endpoint=False)

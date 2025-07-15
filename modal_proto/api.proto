@@ -1428,7 +1428,7 @@ message Function {
 
   string cloud_provider_str = 77;  // Supersedes cloud_provider
 
-  bool _experimental_enable_gpu_snapshot = 78; // Experimental support for GPU snapshotting
+  bool _experimental_enable_gpu_snapshot = 78 [deprecated=true];
 
   AutoscalerSettings autoscaler_settings = 79;  // Bundle of parameters related to autoscaling
   FunctionSchema function_schema = 80;
@@ -1555,13 +1555,16 @@ message FunctionData {
   uint32 warm_pool_size = 4;
   uint32 concurrency_limit = 5;
   uint32 task_idle_timeout_secs = 6;
+
   // When the function is a "grouped" one, this records the # of tasks we want
   // to schedule in tandem.
   uint32 _experimental_group_size = 19;
   uint32 _experimental_buffer_containers = 22;
   bool _experimental_custom_scaling = 23;
-  bool _experimental_enable_gpu_snapshot = 30;
+  bool _experimental_enable_gpu_snapshot = 30 [deprecated=true];
   string worker_id = 7; // for internal debugging use only
+
+  bool enable_gpu_snapshot = 36;
 
   uint32 timeout_secs = 8;
 

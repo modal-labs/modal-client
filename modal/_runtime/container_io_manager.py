@@ -910,7 +910,7 @@ class _ContainerIOManager:
                 config.override_locally(key, value)
 
         # Restore GPU memory.
-        if self.function_def._experimental_enable_gpu_snapshot and self.function_def.resources.gpu_config.gpu_type:
+        if self.function_def.enable_gpu_snapshot and self.function_def.resources.gpu_config.gpu_type:
             logger.debug("GPU memory snapshot enabled. Attempting to restore GPU memory.")
 
             assert self._cuda_checkpoint_session, (
@@ -934,7 +934,7 @@ class _ContainerIOManager:
         # Pause heartbeats since they keep the client connection open which causes the snapshotter to crash
         async with self.heartbeat_condition:
             # Snapshot GPU memory.
-            if self.function_def._experimental_enable_gpu_snapshot and self.function_def.resources.gpu_config.gpu_type:
+            if self.function_def.enable_gpu_snapshot and self.function_def.resources.gpu_config.gpu_type:
                 logger.debug("GPU memory snapshot enabled. Attempting to snapshot GPU memory.")
 
                 self._cuda_checkpoint_session = gpu_memory_snapshot.CudaCheckpointSession()
