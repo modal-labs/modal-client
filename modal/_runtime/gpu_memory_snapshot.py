@@ -288,7 +288,7 @@ class CudaCheckpointSession:
                 )
 
         elapsed = time.perf_counter() - start
-        logger.debug(f"Restoring {len(self.cuda_processes)} CUDA sessions took => {elapsed:.3f}s")
+        logger.debug(f"Restoring {len(self.cuda_processes)} CUDA session(s) took => {elapsed:.3f}s")
 
     def get_process_count(self) -> int:
         """Get the number of CUDA processes managed by this session."""
