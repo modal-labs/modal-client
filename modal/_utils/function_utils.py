@@ -386,9 +386,12 @@ def callable_has_non_self_non_default_params(f: Callable[..., Any]) -> bool:
 
 
 async def _stream_function_call_data(
-    client, function_call_id: str, variant: Literal["data_in", "data_out"]
+    client, stub, function_call_id: str, variant: Literal["data_in", "data_out"]
 ) -> AsyncGenerator[Any, None]:
     """Read from the `data_in` or `data_out` stream of a function call."""
+    if stub is None:
+        stub = client.stub
+
     last_index = 0
 
     # TODO(gongy): generalize this logic as util for unary streams
@@ -396,9 +399,9 @@ async def _stream_function_call_data(
     delay_ms = 1
 
     if variant == "data_in":
-        stub_fn = client.stub.FunctionCallGetDataIn
+        stub_fn = stub.FunctionCallGetDataIn
     elif variant == "data_out":
-        stub_fn = client.stub.FunctionCallGetDataOut
+        stub_fn = stub.FunctionCallGetDataOut
     else:
         raise ValueError(f"Invalid variant {variant}")
 

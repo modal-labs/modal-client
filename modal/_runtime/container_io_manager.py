@@ -486,7 +486,11 @@ class _ContainerIOManager:
 
     async def get_data_in(self, function_call_id: str) -> AsyncIterator[Any]:
         """Read from the `data_in` stream of a function call."""
-        async for data in _stream_function_call_data(self._client, function_call_id, "data_in"):
+        stub = self._client.stub
+        if self.input_plane_server_url:
+            stub = await self._client.get_stub(self.input_plane_server_url)
+
+        async for data in _stream_function_call_data(self._client, stub, function_call_id, "data_in"):
             yield data
 
     async def put_data_out(
