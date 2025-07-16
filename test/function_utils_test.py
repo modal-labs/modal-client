@@ -126,7 +126,7 @@ async def test_stream_function_call_data(servicer, client):
     await client.stub.FunctionCallPutDataOut(req)
 
     t0 = time.time()
-    gen = _stream_function_call_data(client, "fc-bar", "data_out")
+    gen = _stream_function_call_data(client, None, "fc-bar", "data_out")
     servicer.fail_get_data_out = [Status.INTERNAL] * 3
     assert await gen.__anext__() == "hello"
     elapsed = time.time() - t0

@@ -334,7 +334,7 @@ class _Invocation:
         items_total: Union[int, None] = None
         async with aclosing(
             async_merge(
-                _stream_function_call_data(self.client, self.function_call_id, variant="data_out"),
+                _stream_function_call_data(self.client, None, self.function_call_id, variant="data_out"),
                 callable_to_agen(self.run_function),
             )
         ) as streamer:
