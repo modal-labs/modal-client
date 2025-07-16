@@ -232,7 +232,8 @@ class _Sandbox(_Object, type_prefix="sb"):
     @staticmethod
     async def create(
         *entrypoint_args: str,
-        app: Optional["modal.app._App"] = None,  # Optionally associate the sandbox with an app
+        # Associate the sandbox with an app. Required unless creating from a container.
+        app: Optional["modal.app._App"] = None,
         name: Optional[str] = None,  # Optionally give the sandbox a name. Unique within an app.
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
@@ -327,7 +328,8 @@ class _Sandbox(_Object, type_prefix="sb"):
     @staticmethod
     async def _create(
         *entrypoint_args: str,
-        app: Optional["modal.app._App"] = None,  # Optionally associate the sandbox with an app
+        # Associate the sandbox with an app. Required unless creating from a container.
+        app: Optional["modal.app._App"] = None,
         name: Optional[str] = None,  # Optionally give the sandbox a name. Unique within an app.
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
