@@ -6,6 +6,10 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.6.dev52 (2025-07-16)
+
+- Deprecated the `environment_name` parameter for `Sandbox.create()`.
+
 #### 1.0.6.dev49 (2025-07-15)
 
 - Fixed handling of retries when using `modal run --detach` directly against a remote Function.
