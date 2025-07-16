@@ -449,7 +449,6 @@ async def _map_invocation_inputplane(
     assert client.stub, "Client must be hydrated with a stub"
 
     input_plane_stub = await client.get_stub(function._input_plane_url)
-    input_id_to_idx: dict[str, int] = {}
 
     # ------------------------------------------------------------
     # Helper structures
@@ -599,7 +598,6 @@ async def _map_invocation_inputplane(
                 # TODO(ben-okeefe): This is designed expecting a +1 offset to the map index
                 # This could use the index for the corresponding index in the request
                 # but if we used non deterministic ordering to populate the response that could fail (eg. goroutines)
-                input_id_to_idx[item.input_id] = item.idx
                 attempt_tokens[item.idx] = item.attempt_token
 
         yield
