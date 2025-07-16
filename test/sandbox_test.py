@@ -345,6 +345,16 @@ def test_sandbox_exec_output_timeout(app, servicer):
 
 
 @skip_non_subprocess
+def test_sandbox_exec_output_double_read(app, servicer):
+    sb = Sandbox.create("sleep", "infinity", app=app)
+
+    cp = sb.exec("sh", "-c", "echo hi")
+    assert cp.stdout.read() == "hi\n"
+    assert cp.stdout.read() == ""
+    assert cp.wait() == 0
+
+
+@skip_non_subprocess
 def test_sandbox_create_and_exec_with_bad_args(app, servicer):
     too_big = 130_000
     single_arg_size = too_big // 10
