@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.0.6.dev56 (2025-07-16)
+
+- Adds `modal.experimental.clustered` support to `modal.Cls`
+
+
 #### 1.0.6.dev52 (2025-07-16)
 
 - Deprecated the `environment_name` parameter for `Sandbox.create()`.
