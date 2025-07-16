@@ -836,7 +836,12 @@ def _concurrent(
 
 
 # NOTE: clustered is currently exposed through modal.experimental, not the top-level namespace
-def _clustered(size: int, broadcast: bool = True, rdma: bool = False):
+def _clustered(
+    size: int, broadcast: bool = True, rdma: bool = False
+) -> Callable[
+    [Union[Callable[P, ReturnType], _PartialFunction[P, ReturnType, ReturnType]]],
+    _PartialFunction[P, ReturnType, ReturnType],
+]:
     """Provision clusters of colocated and networked containers for the Function.
 
     Parameters:
