@@ -287,10 +287,10 @@ class _StreamReader(Generic[T]):
                     if skip_empty_messages and message == b"":
                         continue
 
-                    yield message
                     if message is None:
                         completed = True
                         self.eof = True
+                    yield message
 
             except (GRPCError, StreamTerminatedError) as exc:
                 if retries_remaining > 0:
