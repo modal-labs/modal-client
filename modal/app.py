@@ -930,12 +930,23 @@ class _App:
                 else:
                     max_concurrent_inputs = allow_concurrent_inputs
                     target_concurrent_inputs = None
+
+                if wrapped_cls.flags & _PartialFunctionFlags.CLUSTERED:
+                    cluster_size = wrapped_cls.params.cluster_size
+                else:
+                    cluster_size = None
             else:
                 user_cls = wrapped_cls
                 max_concurrent_inputs = allow_concurrent_inputs
                 target_concurrent_inputs = None
+                cluster_size = None
             if not inspect.isclass(user_cls):
                 raise TypeError("The @app.cls decorator must be used on a class.")
+
+            interface_methods = _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.interface_flags())
+            if cluster_size:
+                if len(interface_methods) > 1:
+                    raise InvalidError(f"Modal class {user_cls.__name__} cannot have multiple methods when clustered.")
 
             batch_functions = _find_partial_methods_for_user_cls(user_cls, _PartialFunctionFlags.BATCHED)
             if batch_functions:
@@ -966,6 +977,8 @@ class _App:
 
             info = FunctionInfo(None, serialized=serialized, user_cls=user_cls)
 
+            i6pn_enabled = i6pn or cluster_size is not None
+
             cls_func = _Function.from_local(
                 info,
                 app=self,
@@ -994,7 +1007,8 @@ class _App:
                 restrict_modal_access=restrict_modal_access,
                 max_inputs=max_inputs,
                 scheduler_placement=scheduler_placement,
-                i6pn_enabled=i6pn or False,
+                i6pn_enabled=i6pn_enabled,
+                cluster_size=cluster_size,
                 include_source=include_source if include_source is not None else self._include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
