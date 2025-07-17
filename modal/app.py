@@ -174,7 +174,7 @@ class _App:
         image: Optional[_Image] = None,  # Default Image for the App (otherwise default to `modal.Image.debian_slim()`)
         secrets: Sequence[_Secret] = [],  # Secrets to add for all Functions in the App
         volumes: dict[Union[str, PurePosixPath], _Volume] = {},  # Volume mounts to use for all Functions
-        include_source: Optional[bool] = None,  # default for auto-adding Function source file(s) to the container
+        include_source: bool = True,  # Default configuration for adding Function source file(s) to the Modal container
     ) -> None:
         """Construct a new app, optionally with default image, mounts, secrets, or volumes.
 
