@@ -542,6 +542,7 @@ def should_upload(
     )
 
 
+# This must be called against the client stub, not the input-plane stub.
 async def _create_input(
     args,
     kwargs,

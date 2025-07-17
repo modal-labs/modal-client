@@ -1497,17 +1497,6 @@ message FunctionCallCancelRequest {
   optional string function_id = 3; // Only provided for sync input cancellation on the input plane. Async input cancellation does not provide this field this.
 }
 
-message FunctionCallCancelInputPlaneRequest {
-  string function_id = 1;
-  string function_call_id = 2;
-}
-
-message FunctionCallCancelMaybeInputPlaneRequest {
-  string function_id = 1;
-  string function_call_id = 2;
-  bool terminate_containers = 3;
-}
-
 message FunctionCallGetDataRequest {
   string function_call_id = 1;
   uint64 last_index = 2;
@@ -3453,7 +3442,6 @@ service ModalClient {
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
-  rpc FunctionCallCancelMaybeInputPlane(FunctionCallCancelMaybeInputPlaneRequest) returns (google.protobuf.Empty);
   rpc FunctionCallGetDataIn(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallGetDataOut(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallList(FunctionCallListRequest) returns (FunctionCallListResponse);

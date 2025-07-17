@@ -401,8 +401,7 @@ class _InputPlaneInvocation:
             input=input_item,
         )
 
-        token = await client._auth_token_manager.get_token()
-        metadata = [("x-modal-input-plane-region", input_plane_region), ("x-modal-auth-token", token)]
+        metadata = await client.get_input_plane_metadata(input_plane_region)
         response = await retry_transient_errors(stub.AttemptStart, request, metadata=metadata)
         attempt_token = response.attempt_token
 
@@ -418,8 +417,7 @@ class _InputPlaneInvocation:
                 timeout_secs=OUTPUTS_TIMEOUT,
                 requested_at=time.time(),
             )
-            token = await self.client._auth_token_manager.get_token()
-            metadata = [("x-modal-input-plane-region", self.input_plane_region), ("x-modal-auth-token", token)]
+            metadata = await self.client.get_input_plane_metadata(self.input_plane_region)
             await_response: api_pb2.AttemptAwaitResponse = await retry_transient_errors(
                 self.stub.AttemptAwait,
                 await_request,
