@@ -47,12 +47,10 @@ from ._utils.function_utils import (
     OUTPUTS_TIMEOUT,
     FunctionCreationStatus,
     FunctionInfo,
-    IncludeSourceMode,
     _create_input,
     _process_result,
     _stream_function_call_data,
     get_function_type,
-    get_include_source_mode,
     is_async,
 )
 from ._utils.grpc_utils import RetryWarningMessage, retry_transient_errors
@@ -598,8 +596,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         rdma: Optional[bool] = None,
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
-        # current default: first-party, future default: main-package
-        include_source: Optional[bool] = None,
+        include_source: bool = True,
         experimental_options: Optional[dict[str, str]] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
@@ -624,15 +621,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             assert not webhook_config
             assert not schedule
 
-        include_source_mode = get_include_source_mode(include_source)
-        if include_source_mode != IncludeSourceMode.INCLUDE_NOTHING:
-            entrypoint_mounts = info.get_entrypoint_mount()
-        else:
-            entrypoint_mounts = {}
-
+        entrypoint_mount = info.get_entrypoint_mount() if include_source else {}
         all_mounts = [
             _get_client_mount(),
-            *entrypoint_mounts.values(),
+            *entrypoint_mount.values(),
         ]
 
         retry_policy = _parse_retries(
