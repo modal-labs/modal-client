@@ -2095,23 +2095,24 @@ class _Image(_Object, type_prefix="im"):
         raw_f: Callable[..., Any],
         *,
         secrets: Sequence[_Secret] = (),  # Optional Modal Secret objects with environment variables for the container
-        gpu: Union[GPU_T, list[GPU_T]] = None,  # Requested GPU or or list of acceptable GPUs( e.g. ["A10", "A100"])
         volumes: dict[Union[str, PurePosixPath], Union[_Volume, _CloudBucketMount]] = {},  # Volume mount paths
         network_file_systems: dict[Union[str, PurePosixPath], _NetworkFileSystem] = {},  # NFS mount paths
+        gpu: Union[GPU_T, list[GPU_T]] = None,  # Requested GPU or or list of acceptable GPUs( e.g. ["A10", "A100"])
         cpu: Optional[float] = None,  # How many CPU cores to request. This is a soft limit.
         memory: Optional[int] = None,  # How much memory to request, in MiB. This is a soft limit.
         timeout: Optional[int] = 60 * 60,  # Maximum execution time of the function in seconds.
-        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         cloud: Optional[str] = None,  # Cloud provider to run the function on. Possible values are aws, gcp, oci, auto.
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
+        force_build: bool = False,  # Ignore cached builds, similar to 'docker build --no-cache'
         args: Sequence[Any] = (),  # Positional arguments to the function.
         kwargs: dict[str, Any] = {},  # Keyword arguments to the function.
-        include_source: Optional[bool] = None,  # Whether the container should have the Function's source added
+        include_source: bool = True,  # Whether the builder container should have the Function's source added
     ) -> "_Image":
-        """Run user-defined function `raw_f` as an image build step. The function runs just like an ordinary Modal
-        function, and any kwargs accepted by `@app.function` (such as `Mount`s, `NetworkFileSystem`s,
-        and resource requests) can be supplied to it.
-        After it finishes execution, a snapshot of the resulting container file system is saved as an image.
+        """Run user-defined function `raw_f` as an image build step.
+
+        The function runs like an ordinary Modal Function, accepting a resource configuration and integrating
+        with Modal features like Secrets and Volumes. Unlike ordinary Modal Functions, any changes to the
+        filesystem state will be captured on container exit and saved as a new Image.
 
         **Note**
 
