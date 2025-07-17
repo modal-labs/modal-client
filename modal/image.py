@@ -1157,6 +1157,8 @@ class _Image(_Object, type_prefix="im"):
         - Python is on the `$PATH` and dependencies are installed with the first Python on the `$PATH`.
         - Shell supports backticks for substitution
         - `which` command is on the `$PATH`
+
+        Added in v1.1.0.
         """
         pkgs = _flatten_str_args("uv_pip_install", "packages", packages)
 
@@ -1347,6 +1349,8 @@ class _Image(_Object, type_prefix="im"):
         ```python
         image = modal.Image.debian_slim().uv_sync()
         ```
+
+        Added in v1.1.0.
         """
 
         def _normalize_items(items, name) -> list[str]:
