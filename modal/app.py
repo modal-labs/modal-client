@@ -171,10 +171,10 @@ class _App:
         self,
         name: Optional[str] = None,
         *,
-        image: Optional[_Image] = None,  # default image for all functions (default is `modal.Image.debian_slim()`)
-        secrets: Sequence[_Secret] = [],  # default secrets for all functions
-        volumes: dict[Union[str, PurePosixPath], _Volume] = {},  # default volumes for all functions
-        include_source: Optional[bool] = None,
+        image: Optional[_Image] = None,  # Default Image for the App (otherwise default to `modal.Image.debian_slim()`)
+        secrets: Sequence[_Secret] = [],  # Secrets to add for all Functions in the App
+        volumes: dict[Union[str, PurePosixPath], _Volume] = {},  # Volume mounts to use for all Functions
+        include_source: Optional[bool] = None,  # default for auto-adding Function source file(s) to the container
     ) -> None:
         """Construct a new app, optionally with default image, mounts, secrets, or volumes.
 
@@ -655,8 +655,9 @@ class _App:
         # With `max_inputs = 1`, containers will be single-use.
         max_inputs: Optional[int] = None,
         i6pn: Optional[bool] = None,  # Whether to enable IPv6 container networking within the region.
-        # Whether the function's home package should be included in the image - defaults to True
-        include_source: Optional[bool] = None,  # When `False`, don't automatically add the App source to the container.
+        # Whether the file or directory containing the Function's source should automatically be included
+        # in the container. When unset, falls back to the App-level configuration, or is otherwise True by default.
+        include_source: Optional[bool] = None,
         experimental_options: Optional[dict[str, Any]] = None,
         # Parameters below here are experimental. Use with caution!
         _experimental_scheduler_placement: Optional[
@@ -670,8 +671,8 @@ class _App:
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
         container_idle_timeout: Optional[int] = None,  # Replaced with `scaledown_window`
         allow_concurrent_inputs: Optional[int] = None,  # Replaced with the `@modal.concurrent` decorator
-        _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
         allow_cross_region_volumes: Optional[bool] = None,  # Always True on the Modal backend now
+        _experimental_buffer_containers: Optional[int] = None,  # Now stable API with `buffer_containers`
     ) -> _FunctionDecoratorType:
         """Decorator to register a new Modal Function with this App."""
         if isinstance(_warn_parentheses_missing, _Image):
