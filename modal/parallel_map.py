@@ -456,6 +456,7 @@ async def _map_invocation_inputplane(
 
     have_all_inputs = False
     map_done_event = asyncio.Event()
+    retry_event = asyncio.Event()
 
     inputs_created = 0
     outputs_completed = 0
@@ -549,6 +550,7 @@ async def _map_invocation_inputplane(
             async_map_ordered(input_iter(), create_input, concurrency=BLOB_MAX_PARALLELISM)
         ) as streamer:
             async for q_item in streamer:
+                # TODO(ben-okeefe): Handle retrying inputs.
                 await queue.put(time.time(), q_item)
 
         # All inputs have been read.
@@ -622,7 +624,7 @@ async def _map_invocation_inputplane(
                     function_id=function.object_id,
                     function_call_id=function_call_id,
                     last_entry_id=last_entry_id,
-                    timeout=OUTPUTS_TIMEOUT,
+                    timeout=0,  # Non-blocking read
                     items=check_inputs,
                 )
                 token = await client._auth_token_manager.get_token()
@@ -1217,6 +1219,7 @@ class _MapItemContext:
 
         self.state = _MapItemState.WAITING_TO_RETRY
 
+        # TODO(ben-okeefe): Handle retrying inputs.
         await retry_queue.put(now_seconds + (delay_ms / 1000), item.idx)
 
         return _OutputType.RETRYING
