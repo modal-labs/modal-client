@@ -2051,7 +2051,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     def _volume_remove_file(self, req: Union[api_pb2.VolumeRemoveFileRequest, api_pb2.VolumeRemoveFile2Request]):
         if req.path not in self.volumes[req.volume_id].files:
-            raise GRPCError(Status.INVALID_ARGUMENT, "File not found")
+            raise GRPCError(Status.NOT_FOUND, "File not found")
         del self.volumes[req.volume_id].files[req.path]
 
     async def VolumeRename(self, stream):
