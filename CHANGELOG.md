@@ -29,36 +29,29 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 - Fixed a bug where `Cls.with_options` would fail when provided with a Secret object that was already hydrated.
 
-
 #### 1.0.6.dev37 (2025-07-14)
 
 - Enforced deprecations on `modal.build`, `Image.copy_local_file`, and `Image.copy_local_dir`.
-
 
 #### 1.0.6.dev30 (2025-07-11)
 
 - Allows i6pn configuration for Modal Classes
 
-
 #### 1.0.6.dev29 (2025-07-10)
 
-* Fixes a bug where the specified timeout for a `Sandbox.exec` is not respected by `wait()` or `poll()`.
-
+- Fixes a bug where the specified timeout for a `Sandbox.exec` is not respected by `wait()` or `poll()`.
 
 #### 1.0.6.dev19 (2025-07-09)
 
 - TK Changelog note introducing the 2025.06 Image Builder Version
 
-
 #### 1.0.6.dev17 (2025-07-07)
 
-* Added a [`modal.Sandbox.reload_volumes`](https://modal.com/docs/reference/modal.Sandbox#reload_volumes) method, which triggers a reload of all volumes currently mounted inside a Sandbox, allowing sandboxes to sync any concurrent updates to Volumes they have mounted.
-
+- Added a [`modal.Sandbox.reload_volumes`](https://modal.com/docs/reference/modal.Sandbox#reload_volumes) method, which triggers a reload of all volumes currently mounted inside a Sandbox, allowing sandboxes to sync any concurrent updates to Volumes they have mounted.
 
 #### 1.0.6.dev15 (2025-07-05)
 
-* Fixed containers printing "Task was destroyed but it is pending" on exit after exceptions in generators or web endpoints
-
+- Fixed containers printing "Task was destroyed but it is pending" on exit after exceptions in generators or web endpoints
 
 #### 1.0.6.dev13 (2025-07-03)
 
@@ -70,7 +63,6 @@ import modal
 image = modal.Image.debian_slim().uv_sync()
 ```
 
-
 #### 1.0.6.dev12 (2025-07-03)
 
 - Adds `uv_pip_install` to install packages with `uv`, which can improve build times by 50% compared to `pip_install`. This feature is in beta as we improve it based on feedback. During the beta period, updating `modal` may cause image rebuilds.
@@ -79,35 +71,32 @@ image = modal.Image.debian_slim().uv_sync()
 image = modal.Image.debian_slim().uv_pip_install("torch==2.7.1", "numpy")
 ```
 
-
 #### 1.0.6.dev6 (2025-07-01)
 
 - Optimized handling of the `ignore` parameter to `Image.add_local_dir` and similar functions. If you e.g. `image.add_local_dir("dir", ignore=["**/venv"])`, we now prune out any `venv` directories early when evaluating which files to include, avoiding traversing through all files within.
 
-
 #### 1.0.6.dev5 (2025-07-01)
 
 - Deprecated the `namespace` parameter on `Secret`, `Function`, `Cls`, `Dict`, `Queue`, `Volume`, `NetworkFileSystem`, and `deploy_app`.
-
 
 #### 1.0.6.dev4 (2025-06-30)
 
 - allows setting build-time variables for images created from Dockerfiles
 - can pass in build_args map as an argument passed into `Image.from_dockerfile()`
 - ex: Having the image be built from `alpine:latest` base image, instead of the default of `alpine:3`
+
 ```
 ARG IMAGE_VERSION=3
 FROM alpine:${IMAGE_VERSION}
 ```
+
 ```python
 dockerfile_image = Image.from_dockerfile(dockerfile_path, build_args={"IMAGE_VERSION": "latest"}
 ```
 
-
 #### 1.0.6.dev2 (2025-06-30)
 
 - Added a `poetry_version` parameter to `modal.Image.poetry_install_from_file`, which supports installing a specific version of `poetry`. It's also possible to set `poetry_version=None` to skip the install step, i.e. when poetry is already available in the Image.
-
 
 ### 1.0.5 (2025-06-27)
 
@@ -191,7 +180,7 @@ With this release, we're beginning to enforce the deprecations discussed in the 
 
 - Previously, Modal containers would automatically include the source for local Python packages that were imported by your Modal App. Going forward, it will be necessary to explicitly include such packages in the Image (i.e., with `modal.Image.add_local_python_source`).
 - Support for the `automount` configuration (`MODAL_AUTOMOUNT`) has been removed; this environment variable will no longer have any effect.
-- Modal will continue to automatically include the Python module or package where the Function is defined. This is narrower in scope than the old automounting behavior: it's limited to at most a single package, and it includes only `.py` files. The limited automounting can also be disabled in cases where your Image definition already includes the package defining the App: set `include_source=False` in the `modal.App` constructor or `@app.function` decorator.
+- Modal will continue to automatically include the Python module or package where the Function is defined. If the Function is defined within a package, the entire directory tree containing the package will be mounted. This limited automounting can also be disabled in cases where your Image definition already includes the package defining the Function: set `include_source=False` in the `modal.App` constructor or `@app.function` decorator.
 
 Additionally, we have enforced a number of previously-introduced deprecations:
 
