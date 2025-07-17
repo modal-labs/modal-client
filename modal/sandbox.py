@@ -73,6 +73,20 @@ def _validate_exec_args(entrypoint_args: Sequence[str]) -> None:
         )
 
 
+"""
+This is a singleton class that represents the default sandbox name override.
+It is used to indicate that the sandbox name should not be overridden.
+"""
+
+
+class DefaultSandboxNameOverride:
+    def __repr__(self) -> str:
+        return "DefaultSandboxNameOverride"
+
+
+_DEFAULT_SANDBOX_NAME_OVERRIDE = DefaultSandboxNameOverride()
+
+
 class _Sandbox(_Object, type_prefix="sb"):
     """A `Sandbox` object lets you interact with a running sandbox. This API is similar to Python's
     [asyncio.subprocess.Process](https://docs.python.org/3/library/asyncio-subprocess.html#asyncio.subprocess.Process).
@@ -749,11 +763,30 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @staticmethod
     async def _experimental_from_snapshot(
-        snapshot: _SandboxSnapshot, client: Optional[_Client] = None, sandbox_name: Optional[str] = None
+        snapshot: _SandboxSnapshot,
+        client: Optional[_Client] = None,
+        *,
+        sandbox_name: Optional[Union[str, type[DefaultSandboxNameOverride]]] = _DEFAULT_SANDBOX_NAME_OVERRIDE,
     ):
         client = client or await _Client.from_env()
 
-        restore_req = api_pb2.SandboxRestoreRequest(snapshot_id=snapshot.object_id, sandbox_name=sandbox_name)
+        if sandbox_name is _DEFAULT_SANDBOX_NAME_OVERRIDE:
+            restore_req = api_pb2.SandboxRestoreRequest(
+                snapshot_id=snapshot.object_id,
+                sandbox_name_override_type=api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_UNSPECIFIED,
+            )
+        elif sandbox_name is None:
+            restore_req = api_pb2.SandboxRestoreRequest(
+                snapshot_id=snapshot.object_id,
+                sandbox_name_override_type=api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_NONE,
+            )
+        else:
+            restore_req = api_pb2.SandboxRestoreRequest(
+                snapshot_id=snapshot.object_id,
+                sandbox_name_override=sandbox_name,
+                sandbox_name_override_type=api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_STRING,
+            )
+
         restore_resp: api_pb2.SandboxRestoreResponse = await retry_transient_errors(
             client.stub.SandboxRestore, restore_req
         )
