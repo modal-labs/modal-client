@@ -2609,8 +2609,15 @@ message SandboxListResponse {
 }
 
 message SandboxRestoreRequest {
+  enum SandboxNameOverrideType {
+    SANDBOX_NAME_OVERRIDE_TYPE_UNSPECIFIED = 0;
+    SANDBOX_NAME_OVERRIDE_TYPE_NONE = 1;
+    SANDBOX_NAME_OVERRIDE_TYPE_STRING = 2;
+  }
+
   string snapshot_id = 1;
-  string sandbox_name = 2;
+  string sandbox_name_override = 2;
+  SandboxNameOverrideType sandbox_name_override_type = 3;
 }
 
 message SandboxRestoreResponse {
