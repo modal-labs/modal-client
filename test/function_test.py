@@ -1125,10 +1125,12 @@ def test_from_name_web_url(servicer, set_env_client):
 @pytest.mark.parametrize(
     ["app_constructor_value", "function_decorator_value", "expected_mounts"],
     [
-        (None, None, 1),
+        ("True", None, 1),
         ("False", None, 0),
+        ("False", "False", 0),
         ("False", "True", 1),
         ("True", "False", 0),
+        ("True", "True", 1),
     ],
 )
 def test_include_source_mode(

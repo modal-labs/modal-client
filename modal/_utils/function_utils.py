@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import asyncio
-import enum
 import inspect
 import os
 from collections.abc import AsyncGenerator
@@ -660,30 +659,3 @@ class FunctionCreationStatus:
                                 f"Custom domain for {method_definition.function_name} => [magenta underline]"
                                 f"{custom_domain.url}[/magenta underline]"
                             )
-
-
-class IncludeSourceMode(enum.Enum):
-    INCLUDE_NOTHING = False  # can only be set in source, can't be set in config
-    INCLUDE_MAIN_PACKAGE = True  # Default behavior
-
-
-def get_include_source_mode(function_or_app_specific) -> IncludeSourceMode:
-    """Which "automount" behavior should a function use
-
-    function_or_app_specific: explicit value given in the @function or @cls decorator, in an App constructor, or None
-
-    If function_or_app_specific is specified, validate and return the IncludeSourceMode
-    If function_or_app_specific is None, infer it from config
-    """
-    if function_or_app_specific is not None:
-        if not isinstance(function_or_app_specific, bool):
-            raise ValueError(
-                f"Invalid `include_source` value: {function_or_app_specific}. Use one of:\n"
-                f"True - include function's package source\n"
-                f"False - include no Python source (module expected to be present in Image)\n"
-            )
-
-        # explicitly set in app/function
-        return IncludeSourceMode(function_or_app_specific)
-
-    return IncludeSourceMode.INCLUDE_MAIN_PACKAGE
