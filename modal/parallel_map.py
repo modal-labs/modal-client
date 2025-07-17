@@ -637,28 +637,18 @@ async def _map_invocation_inputplane(
         return (item.idx, output_val)
 
     async def poll_outputs():
-        # Key: idx, Value: output value
-        received: dict[int, Any] = {}
-        next_idx = 1  # 1-indexed map call idx
-        async with aclosing(
-            async_map_ordered(get_all_outputs_and_clean_up(), fetch_output, concurrency=BLOB_MAX_PARALLELISM)
-        ) as stream:
-            async for idx, value in stream:
-                if not order_outputs:
-                    yield _OutputValue(value)
-                else:
-                    received[idx] = value
-                    while True:
-                        if next_idx not in received:
-                            # we haven't received the output for the current index yet.
-                            # stop returning outputs to the caller and instead wait for
-                            # the next output to arrive from the server.
-                            break
-
-                        output = received.pop(next_idx)
-                        yield _OutputValue(output)
-                        next_idx += 1
-        assert len(received) == 0
+        if order_outputs:
+            async with aclosing(
+                async_map_ordered(get_all_outputs_and_clean_up(), fetch_output, concurrency=BLOB_MAX_PARALLELISM)
+            ) as streamer:
+                async for _, output in streamer:
+                    yield _OutputValue(output)
+        else:
+            async with aclosing(
+                async_map(get_all_outputs_and_clean_up(), fetch_output, concurrency=BLOB_MAX_PARALLELISM)
+            ) as streamer:
+                async for _, output in streamer:
+                    yield _OutputValue(output)
 
     # ------------------------------------------------------------
     # Debug-logging helper
