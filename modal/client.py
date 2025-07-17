@@ -268,6 +268,14 @@ class _Client:
         # Just used from tests.
         cls._client_from_env = client
 
+    async def get_input_plane_metadata(self, input_plane_region: str) -> list[tuple[str, str]]:
+        assert self._auth_token_manager, "Client must have an instance of auth token manager."
+        token = await self._auth_token_manager.get_token()
+        return [
+            ("x-modal-input-plane-region", input_plane_region),
+            ("x-modal-auth-token", token),
+        ]
+
     async def _call_safely(self, coro, readable_method: str):
         """Runs coroutine wrapped in a task that's part of the client's task context
 
@@ -456,4 +464,3 @@ class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
         self.wrapped_method.channel = await self.client._get_channel(self.server_url)
         async for response in self.client._call_stream(self.wrapped_method, request, metadata=metadata):
             yield response
-

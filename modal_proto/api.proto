@@ -620,10 +620,8 @@ message MapContinueRetryItem {
 }
 
 message MapStartOrContinueItem {
-  oneof input_oneof {
-    FunctionPutInputsItem input = 1;
-    MapContinueRetryItem retry_item = 2;
-  }
+  FunctionPutInputsItem input = 1;
+  optional string attempt_token = 2; // None if this is a fresh input, otherwise it is the attempt token for a retry.
 }
 
 message MapStartOrContinueRequest {
@@ -655,19 +653,6 @@ message MapAwaitRequest {
 message MapAwaitResponse {
   repeated FunctionGetOutputsItem outputs = 1;
   string last_entry_id = 2;
-}
-
-message MapCheckInputsRequest {
-  string function_id = 1;
-  message MapCheckInputsRequestItem {
-    string input_id = 1;
-    string attempt_token = 2;
-  }
-  repeated MapCheckInputsRequestItem items = 2;
-}
-
-message MapCheckInputsResponse {
-  repeated string lost_attempt_tokens = 1;
 }
 
 message AuthTokenGetRequest {
@@ -1540,17 +1525,6 @@ message FunctionCallCancelRequest {
   optional string function_id = 3; // Only provided for sync input cancellation on the input plane. Async input cancellation does not provide this field this.
 }
 
-message FunctionCallCancelInputPlaneRequest {
-  string function_id = 1;
-  string function_call_id = 2;
-}
-
-message FunctionCallCancelMaybeInputPlaneRequest {
-  string function_id = 1;
-  string function_call_id = 2;
-  bool terminate_containers = 3;
-}
-
 message FunctionCallGetDataRequest {
   string function_call_id = 1;
   uint64 last_index = 2;
@@ -1718,7 +1692,7 @@ message FunctionGetInputsItem {
   string function_call_id = 5;
   FunctionCallInvocationType function_call_invocation_type = 6;
   uint32 retry_count = 7;
-  optional int32 function_map_idx = 8;
+  optional int32 function_map_idx = 8; // intercepted and only used by the worker.
 }
 
 message FunctionGetInputsRequest {
@@ -1911,7 +1885,7 @@ message FunctionPutOutputsItem {
   DataFormat data_format = 7; // for result.data_oneof
   uint32 retry_count = 8;
   string function_call_id = 9; // injected by the worker 
-  optional int32 function_map_idx = 10;
+  optional int32 function_map_idx = 10; // injected by the worker 
 }
 
 message FunctionPutOutputsRequest {
@@ -3443,7 +3417,6 @@ service ModalClient {
   rpc FunctionAsyncInvoke(FunctionAsyncInvokeRequest) returns (FunctionAsyncInvokeResponse);
   rpc FunctionBindParams(FunctionBindParamsRequest) returns (FunctionBindParamsResponse);
   rpc FunctionCallCancel(FunctionCallCancelRequest) returns (google.protobuf.Empty);
-  rpc FunctionCallCancelMaybeInputPlane(FunctionCallCancelMaybeInputPlaneRequest) returns (google.protobuf.Empty);
   rpc FunctionCallGetDataIn(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallGetDataOut(FunctionCallGetDataRequest) returns (stream DataChunk);
   rpc FunctionCallList(FunctionCallListRequest) returns (FunctionCallListResponse);

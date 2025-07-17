@@ -27,7 +27,7 @@ class _AuthTokenManager:
         self._expiry = 0.0
         self._lock: typing.Union[asyncio.Lock, None] = None
 
-    async def get_token(self):
+    async def get_token(self) -> str:
         """
         When called, the AuthTokenManager can be in one of three states:
         1. Has a valid cached token. It is returned to the caller.

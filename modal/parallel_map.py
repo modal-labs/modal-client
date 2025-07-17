@@ -364,33 +364,18 @@ async def _map_invocation(
         return (item.idx, output)
 
     async def poll_outputs():
-        # map to store out-of-order outputs received
-        received_outputs = {}
-        output_idx = 0
-
-        async with aclosing(
-            async_map_ordered(get_all_outputs_and_clean_up(), fetch_output, concurrency=BLOB_MAX_PARALLELISM)
-        ) as streamer:
-            async for idx, output in streamer:
-                yield _OutputValue(output)
-                # if not order_outputs:
-                #     yield _OutputValue(output)
-                # else:
-                #     # hold on to outputs for function maps, so we can reorder them correctly.
-                #     received_outputs[idx] = output
-
-                #     while True:
-                #         if output_idx not in received_outputs:
-                #             # we haven't received the output for the current index yet.
-                #             # stop returning outputs to the caller and instead wait for
-                #             # the next output to arrive from the server.
-                #             break
-
-                #         output = received_outputs.pop(output_idx)
-                #         yield _OutputValue(output)
-                #         output_idx += 1
-
-        assert len(received_outputs) == 0
+        if order_outputs:
+            async with aclosing(
+                async_map_ordered(get_all_outputs_and_clean_up(), fetch_output, concurrency=BLOB_MAX_PARALLELISM)
+            ) as streamer:
+                async for _, output in streamer:
+                    yield _OutputValue(output)
+        else:
+            async with aclosing(
+                async_map(get_all_outputs_and_clean_up(), fetch_output, concurrency=BLOB_MAX_PARALLELISM)
+            ) as streamer:
+                async for _, output in streamer:
+                    yield _OutputValue(output)
 
     async def log_debug_stats():
         def log_stats():
@@ -450,31 +435,7 @@ async def _map_invocation_inputplane(
     input_plane_stub = await client.get_stub(function._input_plane_url)
 
     assert input_plane_stub, "Client must be hydrated with an input-plane stub"
-    # ------------------------------------------------------------
-    # Helper structures
-    # ------------------------------------------------------------
-
-    @dataclass
-    class _QueueItem:
-        """Wrapper for items that should be sent in the next MapStartOrContinue.
-
-        If `attempt_token` is `None` this is a *new* input, otherwise it
-        represents a retry of a previous attempt.
-        """
-
-        put_inputs_item: api_pb2.FunctionPutInputsItem
-        attempt_token: str | None = None  # populated for retries
-
-        def to_proto(self) -> api_pb2.MapStartOrContinueItem:
-            if self.attempt_token is None:
-                # fresh input
-                return api_pb2.MapStartOrContinueItem(input=self.put_inputs_item)
-            else:
-                retry_item = api_pb2.MapContinueRetryItem(
-                    input=self.put_inputs_item,
-                    attempt_token=self.attempt_token,
-                )
-                return api_pb2.MapStartOrContinueItem(retry_item=retry_item)
+    assert client.stub, "Client must be hydrated with a stub for _map_invocation_inputplane"
 
     # ------------------------------------------------------------
     # Invocation-wide state
@@ -488,6 +449,7 @@ async def _map_invocation_inputplane(
 
     # The input-plane server returns this after the first request.
     function_call_id: str | None = None
+    function_call_id_received = asyncio.Event()
 
     # Map of idx -> attempt_token returned by the server.  This will be needed
     # for a future client-side retry implementation.
@@ -495,7 +457,7 @@ async def _map_invocation_inputplane(
 
     # Single priority queue that holds *both* fresh inputs (timestamp == now)
     # and future retries (timestamp > now).
-    queue: TimestampPriorityQueue[_QueueItem] = TimestampPriorityQueue()
+    queue: TimestampPriorityQueue[api_pb2.MapStartOrContinueItem] = TimestampPriorityQueue()
 
     # Maximum number of inputs that may be in-flight (the server sends this in
     # the first response – fall back to the default if we never receive it for
@@ -529,12 +491,12 @@ async def _map_invocation_inputplane(
         put_item: api_pb2.FunctionPutInputsItem = await _create_input(
             args,
             kwargs,
-            input_plane_stub,
+            client.stub,
             max_object_size_bytes=function._max_object_size_bytes,
             idx=idx,
             method_name=function._use_method_name,
         )
-        return _QueueItem(put_inputs_item=put_item)
+        return api_pb2.MapStartOrContinueItem(input=put_item)
 
     # ------------------------------------------------------------
     # Coroutine: drain user input iterator, upload blobs, enqueue for sending
@@ -542,10 +504,10 @@ async def _map_invocation_inputplane(
 
     async def input_iter():
         while True:
-            raw = await raw_input_queue.get()
-            if raw is None:
+            raw_input = await raw_input_queue.get()
+            if raw_input is None:  # end of input sentinel
                 break
-            yield raw
+            yield raw_input  # args, kwargs
 
     async def drain_input_generator():
         async with aclosing(
@@ -568,18 +530,18 @@ async def _map_invocation_inputplane(
 
         async for batch in queue_batch_iterator(queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
             # Convert the queued items into the proto format expected by the RPC.
-            # input_id -> idx
-            request_items: list[api_pb2.MapStartOrContinueItem] = [qi.to_proto() for qi in batch]
+            request_items: list[api_pb2.MapStartOrContinueItem] = [
+                api_pb2.MapStartOrContinueItem(input=qi.input, attempt_token=qi.attempt_token) for qi in batch
+            ]
             # Build request
             request = api_pb2.MapStartOrContinueRequest(
                 function_id=function.object_id,
-                function_call_id=function_call_id if function_call_id else None,
+                function_call_id=function_call_id,
                 parent_input_id=current_input_id() or "",
                 items=request_items,
             )
 
-            token = await client._auth_token_manager.get_token()
-            metadata = [("x-modal-input-plane-region", function._input_plane_region), ("x-modal-auth-token", token)]
+            metadata = await client.get_input_plane_metadata(function._input_plane_region)
 
             response: api_pb2.MapStartOrContinueResponse = await retry_transient_errors(
                 input_plane_stub.MapStartOrContinue, request, metadata=metadata
@@ -589,16 +551,14 @@ async def _map_invocation_inputplane(
 
             if function_call_id is None:
                 function_call_id = response.function_call_id
+                function_call_id_received.set()
                 max_inputs_outstanding = response.max_inputs_outstanding or MAX_INPUTS_OUTSTANDING_DEFAULT
 
             # Record attempt tokens for future retries; also release semaphore slots now that the
             # inputs are officially registered on the server.
             for idx, item in enumerate(response.items):
                 # Client expects the server to return the attempt tokens in the same order as the inputs we sent.
-                if request_items[idx].WhichOneof("input_oneof") == "input":
-                    attempt_tokens[request_items[idx].input.idx] = item.attempt_token
-                else:
-                    attempt_tokens[request_items[idx].retry_item.input.idx] = item.attempt_token
+                attempt_tokens[request_items[idx].input.idx] = item.attempt_token
 
         yield
 
@@ -607,16 +567,14 @@ async def _map_invocation_inputplane(
     # ------------------------------------------------------------
 
     async def retry_inputs():
-        """Simple ticker that prints 'hello' every second while the map is running."""
+        """Temporary stub for retrying inputs. Retry handling will be added in the future."""
 
         try:
             while not map_done_event.is_set():
-                # print("hello")
                 await asyncio.sleep(1)
-                # Keep generator semantics for async_merge; value is ignored.
-                yield
+                if False:
+                    yield
         except asyncio.CancelledError:
-            # Expected when the task is cancelled during shutdown.
             pass
 
     # ------------------------------------------------------------
@@ -625,13 +583,10 @@ async def _map_invocation_inputplane(
 
     async def get_all_outputs():
         """Continuously fetch outputs until the map is complete."""
-
-        assert client.stub
         last_entry_id = "0-0"
         while not map_done_event.is_set():
             if function_call_id is None:
-                # We haven't received the first MapStartOrContinueResponse yet.
-                await asyncio.sleep(0.05)
+                await function_call_id_received.wait()
                 continue
 
             request = api_pb2.MapAwaitRequest(
@@ -640,22 +595,16 @@ async def _map_invocation_inputplane(
                 requested_at=time.time(),
                 timeout=OUTPUTS_TIMEOUT,
             )
-            try:
-                token = await client._auth_token_manager.get_token()
-                metadata = [("x-modal-input-plane-region", function._input_plane_region), ("x-modal-auth-token", token)]
-                response: api_pb2.MapAwaitResponse = await retry_transient_errors(
-                    input_plane_stub.MapAwait,
-                    request,
-                    max_retries=20,
-                    attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
-                    metadata=metadata,
-                )
-                # print(f"MapAwaitResponse: {response}")
-            except Exception:
-                # If the RPC failed we retry in next loop iteration.
-                continue
-
+            metadata = await client.get_input_plane_metadata(function._input_plane_region)
+            response: api_pb2.MapAwaitResponse = await retry_transient_errors(
+                input_plane_stub.MapAwait,
+                request,
+                max_retries=20,
+                attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
+                metadata=metadata,
+            )
             last_entry_id = response.last_entry_id
+
             for output_item in response.outputs:
                 yield output_item
 
@@ -681,10 +630,7 @@ async def _map_invocation_inputplane(
             output_val = await _process_result(item.result, item.data_format, input_plane_stub, client)
         except Exception as exc:
             if return_exceptions:
-                if wrap_returned_exceptions:
-                    output_val = modal.exception.UserCodeException(exc)
-                else:
-                    output_val = exc
+                output_val = exc
             else:
                 raise exc
 
