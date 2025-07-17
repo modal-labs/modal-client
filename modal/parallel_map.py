@@ -372,22 +372,23 @@ async def _map_invocation(
             async_map_ordered(get_all_outputs_and_clean_up(), fetch_output, concurrency=BLOB_MAX_PARALLELISM)
         ) as streamer:
             async for idx, output in streamer:
-                if not order_outputs:
-                    yield _OutputValue(output)
-                else:
-                    # hold on to outputs for function maps, so we can reorder them correctly.
-                    received_outputs[idx] = output
+                yield _OutputValue(output)
+                # if not order_outputs:
+                #     yield _OutputValue(output)
+                # else:
+                #     # hold on to outputs for function maps, so we can reorder them correctly.
+                #     received_outputs[idx] = output
 
-                    while True:
-                        if output_idx not in received_outputs:
-                            # we haven't received the output for the current index yet.
-                            # stop returning outputs to the caller and instead wait for
-                            # the next output to arrive from the server.
-                            break
+                #     while True:
+                #         if output_idx not in received_outputs:
+                #             # we haven't received the output for the current index yet.
+                #             # stop returning outputs to the caller and instead wait for
+                #             # the next output to arrive from the server.
+                #             break
 
-                        output = received_outputs.pop(output_idx)
-                        yield _OutputValue(output)
-                        output_idx += 1
+                #         output = received_outputs.pop(output_idx)
+                #         yield _OutputValue(output)
+                #         output_idx += 1
 
         assert len(received_outputs) == 0
 
@@ -432,7 +433,6 @@ async def _map_invocation_inputplane(
     return_exceptions: bool,
     wrap_returned_exceptions: bool,
     count_update_callback: Optional[Callable[[int, int], None]],
-    function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
 ) -> typing.AsyncGenerator[Any, None]:
     """Input-plane implementation of a function map invocation.
 
@@ -440,16 +440,16 @@ async def _map_invocation_inputplane(
     `FunctionMap` / `FunctionPutInputs` / `FunctionGetOutputs` RPCs it speaks
     the input-plane protocol consisting of `MapStartOrContinue` and `MapAwait`.
 
-    The implementation purposefully ignores retry handling for now – a stub is
+    The implementation purposefully ignores retry handling for now - a stub is
     left in place so that a future change can add support for the retry path
     without re-structuring the surrounding code.
     """
 
     assert function._input_plane_url, "_map_invocation_inputplane should only be used for input-plane backed functions"
-    assert client.stub, "Client must be hydrated with a stub"
 
     input_plane_stub = await client.get_stub(function._input_plane_url)
 
+    assert input_plane_stub, "Client must be hydrated with an input-plane stub"
     # ------------------------------------------------------------
     # Helper structures
     # ------------------------------------------------------------
@@ -463,10 +463,9 @@ async def _map_invocation_inputplane(
         """
 
         put_inputs_item: api_pb2.FunctionPutInputsItem
-        # idx: int
         attempt_token: str | None = None  # populated for retries
 
-        def to_start_or_continue_item(self) -> api_pb2.MapStartOrContinueItem:
+        def to_proto(self) -> api_pb2.MapStartOrContinueItem:
             if self.attempt_token is None:
                 # fresh input
                 return api_pb2.MapStartOrContinueItem(input=self.put_inputs_item)
@@ -570,7 +569,7 @@ async def _map_invocation_inputplane(
         async for batch in queue_batch_iterator(queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
             # Convert the queued items into the proto format expected by the RPC.
             # input_id -> idx
-            request_items: list[api_pb2.MapStartOrContinueItem] = [qi.to_start_or_continue_item() for qi in batch]
+            request_items: list[api_pb2.MapStartOrContinueItem] = [qi.to_proto() for qi in batch]
             # Build request
             request = api_pb2.MapStartOrContinueRequest(
                 function_id=function.object_id,
@@ -594,11 +593,12 @@ async def _map_invocation_inputplane(
 
             # Record attempt tokens for future retries; also release semaphore slots now that the
             # inputs are officially registered on the server.
-            for item in response.items:
-                # TODO(ben-okeefe): This is designed expecting a +1 offset to the map index
-                # This could use the index for the corresponding index in the request
-                # but if we used non deterministic ordering to populate the response that could fail (eg. goroutines)
-                attempt_tokens[item.idx] = item.attempt_token
+            for idx, item in enumerate(response.items):
+                # Client expects the server to return the attempt tokens in the same order as the inputs we sent.
+                if request_items[idx].WhichOneof("input_oneof") == "input":
+                    attempt_tokens[request_items[idx].input.idx] = item.attempt_token
+                else:
+                    attempt_tokens[request_items[idx].retry_item.input.idx] = item.attempt_token
 
         yield
 
@@ -691,6 +691,7 @@ async def _map_invocation_inputplane(
         return (item.idx, output_val)
 
     async def poll_outputs():
+        # Key: idx, Value: output value
         received: dict[int, Any] = {}
         next_idx = 1  # 1-indexed map call idx
         async with aclosing(

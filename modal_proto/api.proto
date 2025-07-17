@@ -634,10 +634,8 @@ message MapStartOrContinueRequest {
 }
 
 message MapStartOrContinueResponseItem {
-    int32 idx = 1;
-    string input_id = 2;
-    string attempt_token = 3;
-  }
+  string attempt_token = 1;
+}
 
 message MapStartOrContinueResponse {
   string function_id = 1;
