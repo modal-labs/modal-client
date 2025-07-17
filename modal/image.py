@@ -2106,7 +2106,7 @@ class _Image(_Object, type_prefix="im"):
         region: Optional[Union[str, Sequence[str]]] = None,  # Region or regions to run the function on.
         args: Sequence[Any] = (),  # Positional arguments to the function.
         kwargs: dict[str, Any] = {},  # Keyword arguments to the function.
-        include_source: Optional[bool] = None,
+        include_source: Optional[bool] = None,  # Whether the container should have the Function's source added
     ) -> "_Image":
         """Run user-defined function `raw_f` as an image build step. The function runs just like an ordinary Modal
         function, and any kwargs accepted by `@app.function` (such as `Mount`s, `NetworkFileSystem`s,
