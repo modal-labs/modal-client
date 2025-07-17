@@ -18,19 +18,20 @@ from typing import (
 import grpclib.client
 from google.protobuf import empty_pb2
 from google.protobuf.message import Message
+from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal._utils.async_utils import synchronizer
 from modal_proto import api_grpc, api_pb2, modal_api_grpc
 from modal_version import __version__
 
-from ._traceback import print_server_warnings
+from ._traceback import print_server_warnings, suppress_tb_frames
 from ._utils import async_utils
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.auth_token_manager import _AuthTokenManager
 from ._utils.grpc_utils import ConnectionManager, retry_transient_errors
 from .config import _check_config, _is_remote, config, logger
-from .exception import AuthError, ClientClosed
+from .exception import AuthError, ClientClosed, NotFoundError
 
 HEARTBEAT_INTERVAL: float = config.get("heartbeat_interval")
 HEARTBEAT_TIMEOUT: float = HEARTBEAT_INTERVAL + 0.1
@@ -355,6 +356,33 @@ class _Client:
 Client = synchronize_api(_Client)
 
 
+class grpc_error_converter:
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc, traceback) -> bool:
+        # skip all internal frames from grpclib
+        use_full_traceback = config.get("traceback")
+        with suppress_tb_frames(1):
+            if isinstance(exc, GRPCError):
+                if exc.status == Status.NOT_FOUND:
+                    if use_full_traceback:
+                        raise NotFoundError(exc.message)
+                    else:
+                        raise NotFoundError(exc.message) from None  # from None to skip the grpc-internal cause
+
+                if not use_full_traceback:
+                    # just include the frame in grpclib that actually raises the GRPCError
+                    tb = exc.__traceback__
+                    while tb.tb_next:
+                        tb = tb.tb_next
+                    exc.with_traceback(tb)
+                    raise exc from None  # from None to skip the grpc-internal cause
+                raise exc
+
+        return False
+
+
 class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
     # Calls a grpclib.UnaryUnaryMethod using a specific Client instance, respecting
     # if that client is closed etc. and possibly introducing Modal-specific retry logic
@@ -396,7 +424,8 @@ class UnaryUnaryWrapper(Generic[RequestType, ResponseType]):
         #
         # [1]: https://github.com/vmagamedov/grpclib/blob/62f968a4c84e3f64e6966097574ff0a59969ea9b/grpclib/client.py#L844
         self.wrapped_method.channel = await self.client._get_channel(self.server_url)
-        return await self.client._call_unary(self.wrapped_method, req, timeout=timeout, metadata=metadata)
+        with suppress_tb_frames(1), grpc_error_converter():
+            return await self.client._call_unary(self.wrapped_method, req, timeout=timeout, metadata=metadata)
 
 
 class UnaryStreamWrapper(Generic[RequestType, ResponseType]):
