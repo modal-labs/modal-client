@@ -10,11 +10,9 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 - We now raise `modal.exception.NotFoundError` in all cases where Modal object lookups fail; previously some methods could leak an internal `GRPCError` with a `NOT_FOUND` status.
 
-
 #### 1.0.6.dev56 (2025-07-16)
 
 - Adds `modal.experimental.clustered` support to `modal.Cls`
-
 
 #### 1.0.6.dev52 (2025-07-16)
 
@@ -23,7 +21,6 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 #### 1.0.6.dev49 (2025-07-15)
 
 - Fixed handling of retries when using `modal run --detach` directly against a remote Function.
-
 
 #### 1.0.6.dev38 (2025-07-14)
 
@@ -159,7 +156,7 @@ dockerfile_image = Image.from_dockerfile(dockerfile_path, build_args={"IMAGE_VER
 - `Sandbox.terminate` no longer waits for container shutdown to complete before returning. It still ensures that a terminated container will shutdown imminently. To restore the previous behavior (i.e., to wait until the Sandbox is actually terminated), call `sb.wait(raise_on_termination=False)` after calling `sb.terminate()`.
 - Improved performance and stability for `modal volume get`.
 - Fixed a rare race condition that could sometimes make `Function.map` and similar calls deadlock.
-- Fixed an issue where `Function.map()` and similar methods would stall for 55 seconds when passed an empty iterator as input instead of completing immediately.
+- Fixed an issue where `Function.map` and similar methods would stall for 55 seconds when passed an empty iterator as input instead of completing immediately.
 - We now raise an error during App setup when using interactive mode without the `modal.enable_output` context manager. Previously, this would run the App but raise when `modal.interact()` was called.
 
 ### 1.0.2 (2025-05-26)

@@ -546,7 +546,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         return self._tunnels
 
     async def reload_volumes(self) -> None:
-        """Reload all Volumes mounted in the Sandbox."""
+        """Reload all Volumes mounted in the Sandbox.
+
+        Added in v1.1.0.
+        """
         task_id = await self._get_task_id()
         await retry_transient_errors(
             self._client.stub.ContainerReloadVolumes,
