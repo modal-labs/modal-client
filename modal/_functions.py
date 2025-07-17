@@ -1528,7 +1528,6 @@ Use the `Function.get_web_url()` method instead.
                     return_exceptions,
                     wrap_returned_exceptions,
                     count_update_callback,
-                    api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
                 )
             ) as stream:
                 async for item in stream:
