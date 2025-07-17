@@ -129,7 +129,7 @@ async def _map_invocation(
     no_context_duplicates = 0
 
     retry_queue = TimestampPriorityQueue()
-    completed_outputs: set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
+    # completed_outputs: set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
     input_queue: asyncio.Queue[api_pb2.FunctionPutInputsItem | None] = asyncio.Queue()
     map_items_manager = _MapItemsManager(
         retry_policy, function_call_invocation_type, retry_queue, sync_client_retries_enabled, max_inputs_outstanding
@@ -205,7 +205,7 @@ async def _map_invocation(
 
             resp = await send_inputs(client.stub.FunctionPutInputs, request)
             inputs_sent += len(items)
-            # Change item state to WAITING_FOR_OUTPUT, and set the input_id and input_jwt which are in the response.
+            # Change item state to WAITING_FOR_OUTPUT, and set the input_jwt which is in the response.
             map_items_manager.handle_put_inputs_response(resp.inputs)
             logger.debug(
                 f"Successfully pushed {len(items)} inputs to server. "
@@ -325,7 +325,6 @@ async def _map_invocation(
                     retried_outputs += 1
 
                 if output_type == _OutputType.SUCCESSFUL_COMPLETION or output_type == _OutputType.FAILED_COMPLETION:
-                    completed_outputs.add(item.input_id)
                     update_state(set_outputs_completed=outputs_completed + 1)
                     yield item
 
@@ -494,7 +493,7 @@ async def _map_invocation_inputplane(
     )
     map_items_manager = _MapItemsManager(
         retry_policy=retry_policy,
-        function_call_invocation_type=function_call_invocation_type,
+        function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
         retry_queue=TimestampPriorityQueue(),
         sync_client_retries_enabled=True,
         max_inputs_outstanding=MAX_INPUTS_OUTSTANDING_DEFAULT,
@@ -585,7 +584,7 @@ async def _map_invocation_inputplane(
                 input_plane_stub.MapStartOrContinue, request, metadata=metadata
             )
 
-            map_items_manager.handle_put_inputs_response(response.items)
+            map_items_manager.handle_put_continue_response(enumerate(response.items))
 
             if function_call_id is None:
                 function_call_id = response.function_call_id
@@ -632,7 +631,7 @@ async def _map_invocation_inputplane(
                 response: api_pb2.MapCheckInputsResponse = await retry_transient_errors(
                     input_plane_stub.MapCheckInputs, request, metadata=metadata
                 )
-                map_items_manager.handle_check_inputs_response(response)
+                await map_items_manager.handle_check_inputs_response(response)
                 # Keep generator semantics for async_merge; value is ignored.
                 yield
         except asyncio.CancelledError:
@@ -1119,7 +1118,6 @@ class _MapItemContext:
     sync_client_retries_enabled: bool
     # Both these futures are strings. Omitting generic type because
     # it causes an error when running `inv protoc type-stubs`.
-    input_id: asyncio.Future
     input_jwt: asyncio.Future
     previous_input_jwt: Optional[str]
     _event_loop: asyncio.AbstractEventLoop
@@ -1135,20 +1133,16 @@ class _MapItemContext:
         # a race condition where we could receive outputs before we have
         # recorded the input ID and JWT in `pending_outputs`.
         self.input_jwt = self._event_loop.create_future()
-        self.input_id = self._event_loop.create_future()
 
     def handle_put_inputs_response(
         self, item: api_pb2.FunctionPutInputsResponseItem | api_pb2.MapStartOrContinueResponseItem
     ):
         if isinstance(item, api_pb2.FunctionPutInputsResponseItem):
             input_jwt = item.input_jwt
-            input_id = item.input_id
         else:
             input_jwt = item.attempt_token
-            input_id = item.input_id
 
         self.input_jwt.set_result(input_jwt)
-        self.input_id.set_result(input_id)
         # Set state to WAITING_FOR_OUTPUT only if current state is SENDING. If state is
         # RETRYING, WAITING_TO_RETRY, or COMPLETE, then we already got the output.
         if self.state == _MapItemState.SENDING:
@@ -1171,14 +1165,14 @@ class _MapItemContext:
         if self.state == _MapItemState.COMPLETE:
             logger.debug(
                 f"Received output for input marked as complete. Must be duplicate, so ignoring. "
-                f"idx={item.idx} input_id={item.input_id}, retry_count={item.retry_count}"
+                f"idx={item.idx}, retry_count={item.retry_count}"
             )
             return _OutputType.ALREADY_COMPLETE_DUPLICATE
         # If the item's retry count doesn't match our retry count, this is probably a duplicate of an old output.
         if item.retry_count != self.retry_manager.retry_count:
             logger.debug(
                 f"Received output with stale retry_count, so ignoring. "
-                f"idx={item.idx} input_id={item.input_id} retry_count={item.retry_count} "
+                f"idx={item.idx}, retry_count={item.retry_count} "
                 f"expected_retry_count={self.retry_manager.retry_count}"
             )
             return _OutputType.STALE_RETRY_DUPLICATE
@@ -1266,14 +1260,9 @@ class _MapItemsManager:
             await self._inputs_outstanding.acquire()
 
             if isinstance(item, api_pb2.MapStartOrContinueItem):
-                if item.HasField("retry_item"):
-                    input = item.retry_item.input
-                    idx = input.idx
-                    input_data = input.input
-                else:
-                    input = item.input
-                    idx = input.idx
-                    input_data = input.input
+                input = item.input
+                idx = input.idx
+                input_data = input.input
             else:
                 idx = item.idx
                 input_data = item.input
@@ -1316,8 +1305,21 @@ class _MapItemsManager:
     def get_item_context(self, item_idx: int) -> _MapItemContext:
         return self._item_context.get(item_idx)
 
+    def handle_put_continue_response(
+        self,
+        items: list[tuple[int, api_pb2.MapStartOrContinueResponseItem]],
+    ):
+        for index, item in items:
+            ctx = self._item_context.get(index, None)
+            # If the context is None, then get_all_outputs() has already received a successful
+            # output, and deleted the context. This happens if FunctionGetOutputs completes
+            # before FunctionPutContinueResponse is received.
+            if ctx is not None:
+                ctx.handle_put_inputs_response(item)
+
     def handle_put_inputs_response(
-        self, items: list[api_pb2.FunctionPutInputsResponseItem] | list[api_pb2.MapStartOrContinueResponseItem]
+        self,
+        items: list[api_pb2.FunctionPutInputsResponseItem],
     ):
         for item in items:
             ctx = self._item_context.get(item.idx, None)
@@ -1337,12 +1339,12 @@ class _MapItemsManager:
             if ctx is not None:
                 ctx.handle_retry_response(input_jwt)
 
-    def handle_check_inputs_response(self, response: api_pb2.MapCheckInputsResponse):
+    async def handle_check_inputs_response(self, response: api_pb2.MapCheckInputsResponse):
         for lost_idx in response.lost_idx:
             ctx = self._item_context.get(lost_idx, None)
             if ctx is not None:
                 ctx.state = _MapItemState.WAITING_TO_RETRY
-                self._retry_queue.put(int(time.time()), lost_idx)
+                await self._retry_queue.put(int(time.time()), lost_idx)
 
     async def handle_get_outputs_response(self, item: api_pb2.FunctionGetOutputsItem, now_seconds: int) -> _OutputType:
         ctx = self._item_context.get(item.idx, None)
@@ -1351,7 +1353,7 @@ class _MapItemsManager:
             # This can happen because the worker can sometimes send duplicate outputs.
             logger.debug(
                 f"Received output that does not have entry in item_context map, so ignoring. "
-                f"idx={item.idx} input_id={item.input_id} retry_count={item.retry_count} "
+                f"idx={item.idx} retry_count={item.retry_count} "
             )
             return _OutputType.NO_CONTEXT_DUPLICATE
         output_type = await ctx.handle_get_outputs_response(
