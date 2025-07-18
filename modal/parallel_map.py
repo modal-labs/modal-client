@@ -116,7 +116,7 @@ async def _experimental_spawn_map_invocation(
     client: "modal.client._Client",
     count_update_callback: Optional[Callable[[int, int], None]],
     function_call_invocation_type: "api_pb2.FunctionCallInvocationType.ValueType",
-) -> None:
+) -> str:
     assert client.stub
     request = api_pb2.FunctionMapRequest(
         function_id=function.object_id,
@@ -281,6 +281,7 @@ async def _experimental_spawn_map_invocation(
     await asyncio.gather(drain_input_generator(state), pump_inputs(state))
     log_debug_stats_task.cancel()
     await log_debug_stats_task
+    return state.function_call_id
 
 
 async def _map_invocation(
@@ -717,12 +718,20 @@ async def _map_async(
         yield output
 
 
-async def _experimental_spawn_map_async(self, *input_iterators, kwargs={}) -> None:
+async def _experimental_spawn_map_async(self, *input_iterators, kwargs={}) -> "modal.functions.FunctionCall":
     async_input_gen = async_zip(*[sync_or_async_iter(it) for it in input_iterators])
-    await _experimental_spawn_map_helper(self, async_input_gen, kwargs)
+    function_call_id = await _experimental_spawn_map_helper(self, async_input_gen, kwargs)
+
+    # Import here to avoid circular import
+    from modal.functions import FunctionCall
+
+    fc = FunctionCall._new_hydrated(function_call_id, self.client, None)
+    return fc
 
 
-async def _experimental_spawn_map_helper(self: "modal.functions.Function", async_input_gen, kwargs={}) -> None:
+async def _experimental_spawn_map_helper(
+    self: "modal.functions.Function", async_input_gen, kwargs={}
+) -> "modal.functions.FunctionCall":
     raw_input_queue: Any = SynchronizedQueue()  # type: ignore
     await raw_input_queue.init.aio()
 
@@ -732,8 +741,9 @@ async def _experimental_spawn_map_helper(self: "modal.functions.Function", async
                 await raw_input_queue.put.aio((args, kwargs))
         await raw_input_queue.put.aio(None)  # end-of-input sentinel
 
-    fc, _ = await asyncio.gather(self._experimental_spawn_map.aio(raw_input_queue), feed_queue())
-    return fc
+    async with asyncio.TaskGroup() as tg:
+        tg.create_task(self._experimental_spawn_map.aio(raw_input_queue))
+        tg.create_task(feed_queue())
 
 
 @warn_if_generator_is_not_consumed(function_name="Function.starmap.aio")
@@ -858,7 +868,7 @@ async def _spawn_map_async(self, *input_iterators, kwargs={}) -> None:
         pass
 
 
-def _experimental_spawn_map_sync(self, *input_iterators, kwargs={}) -> None:
+def _experimental_spawn_map_sync(self, *input_iterators, kwargs={}) -> "modal.functions.FunctionCall":
     """Spawn parallel execution over a set of inputs, exiting as soon as the inputs are created (without waiting
     for the map to complete).
 
@@ -873,15 +883,16 @@ def _experimental_spawn_map_sync(self, *input_iterators, kwargs={}) -> None:
 
     @app.local_entrypoint()
     def main():
-        my_func.experimental_spawn_map([1, 2, 3, 4])
+        fc = my_func.experimental_spawn_map([1, 2, 3, 4])
     ```
 
-    Programmatic retrieval of results will be supported in a future update.
+    Returns a FunctionCall object that can be used to retrieve results.
     """
 
     return run_coroutine_in_temporary_event_loop(
         _experimental_spawn_map_async(self, *input_iterators, kwargs=kwargs),
-        "You can't run Function.spawn_map() from an async function. Use Function.spawn_map.aio() instead.",
+        "You can't run Function.experimental_spawn_map() from an async function. "
+        "Use Function.experimental_spawn_map.aio() instead.",
     )
 
 
