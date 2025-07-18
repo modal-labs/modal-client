@@ -263,6 +263,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         proxy: Optional[_Proxy] = None,
         # Enable verbose logging for sandbox operations.
         verbose: bool = False,
+        experimental_options: Optional[dict[str, Any]] = None,
         # Enable memory snapshots.
         _experimental_enable_snapshot: bool = False,
         _experimental_scheduler_placement: Optional[
@@ -312,6 +313,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             h2_ports=h2_ports,
             unencrypted_ports=unencrypted_ports,
             proxy=proxy,
+            experimental_options=experimental_options,
             _experimental_enable_snapshot=_experimental_enable_snapshot,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
             client=client,
