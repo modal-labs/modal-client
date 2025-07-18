@@ -429,7 +429,6 @@ async def _map_invocation_inputplane(
     client: "modal.client._Client",
     order_outputs: bool,
     return_exceptions: bool,
-    wrap_returned_exceptions: bool,
     count_update_callback: Optional[Callable[[int, int], None]],
 ) -> typing.AsyncGenerator[Any, None]:
     """Input-plane implementation of a function map invocation.
