@@ -73,6 +73,20 @@ def _validate_exec_args(entrypoint_args: Sequence[str]) -> None:
         )
 
 
+class DefaultSandboxNameOverride(str):
+    """A singleton class that represents the default sandbox name override.
+
+    It is used to indicate that the sandbox name should not be overridden.
+    """
+
+    def __repr__(self) -> str:
+        # NOTE: this must match the instance var name below in order for type stubs to work 😬
+        return "_DEFAULT_SANDBOX_NAME_OVERRIDE"
+
+
+_DEFAULT_SANDBOX_NAME_OVERRIDE = DefaultSandboxNameOverride()
+
+
 class _Sandbox(_Object, type_prefix="sb"):
     """A `Sandbox` object lets you interact with a running sandbox. This API is similar to Python's
     [asyncio.subprocess.Process](https://docs.python.org/3/library/asyncio-subprocess.html#asyncio.subprocess.Process).
@@ -93,6 +107,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         entrypoint_args: Sequence[str],
         image: _Image,
         secrets: Sequence[_Secret],
+        name: Optional[str] = None,
         timeout: Optional[int] = None,
         workdir: Optional[str] = None,
         gpu: GPU_T = None,
@@ -216,6 +231,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 proxy_id=(proxy.object_id if proxy else None),
                 enable_snapshot=enable_snapshot,
                 verbose=verbose,
+                name=name,
                 experimental_options=experimental_options,
             )
 
@@ -230,7 +246,9 @@ class _Sandbox(_Object, type_prefix="sb"):
     @staticmethod
     async def create(
         *entrypoint_args: str,
-        app: Optional["modal.app._App"] = None,  # Optionally associate the sandbox with an app
+        # Associate the sandbox with an app. Required unless creating from a container.
+        app: Optional["modal.app._App"] = None,
+        name: Optional[str] = None,  # Optionally give the sandbox a name. Unique within an app.
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
         network_file_systems: dict[Union[str, os.PathLike], _NetworkFileSystem] = {},
@@ -295,6 +313,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         return await _Sandbox._create(
             *entrypoint_args,
             app=app,
+            name=name,
             image=image,
             secrets=secrets,
             network_file_systems=network_file_systems,
@@ -323,7 +342,9 @@ class _Sandbox(_Object, type_prefix="sb"):
     @staticmethod
     async def _create(
         *entrypoint_args: str,
-        app: Optional["modal.app._App"] = None,  # Optionally associate the sandbox with an app
+        # Associate the sandbox with an app. Required unless creating from a container.
+        app: Optional["modal.app._App"] = None,
+        name: Optional[str] = None,  # Optionally give the sandbox a name. Unique within an app.
         image: Optional[_Image] = None,  # The image to run as the container for the sandbox.
         secrets: Sequence[_Secret] = (),  # Environment variables to inject into the sandbox.
         mounts: Sequence[_Mount] = (),
@@ -376,6 +397,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             entrypoint_args,
             image=image or _default_image,
             secrets=secrets,
+            name=name,
             timeout=timeout,
             workdir=workdir,
             gpu=gpu,
@@ -442,6 +464,27 @@ class _Sandbox(_Object, type_prefix="sb"):
         )
         self._stdin = StreamWriter(self.object_id, "sandbox", self._client)
         self._result = None
+
+    @staticmethod
+    async def from_name(
+        app_name: str,
+        name: str,
+        *,
+        environment_name: Optional[str] = None,
+        client: Optional[_Client] = None,
+    ) -> "_Sandbox":
+        """Get a running Sandbox by name from the given app.
+
+        Raises an error if no running sandbox is found with the given name. A Sandbox's name
+        is the `name` argument passed to `Sandbox.create`.
+        """
+        if client is None:
+            client = await _Client.from_env()
+        env_name = _get_environment_name(environment_name)
+
+        req = api_pb2.SandboxGetFromNameRequest(sandbox_name=name, app_name=app_name, environment_name=env_name)
+        resp = await retry_transient_errors(client.stub.SandboxGetFromName, req)
+        return _Sandbox._new_hydrated(resp.sandbox_id, client, None)
 
     @staticmethod
     async def from_id(sandbox_id: str, client: Optional[_Client] = None) -> "_Sandbox":
@@ -719,10 +762,31 @@ class _Sandbox(_Object, type_prefix="sb"):
         return obj
 
     @staticmethod
-    async def _experimental_from_snapshot(snapshot: _SandboxSnapshot, client: Optional[_Client] = None):
+    async def _experimental_from_snapshot(
+        snapshot: _SandboxSnapshot,
+        client: Optional[_Client] = None,
+        *,
+        name: Optional[str] = _DEFAULT_SANDBOX_NAME_OVERRIDE,
+    ):
         client = client or await _Client.from_env()
 
-        restore_req = api_pb2.SandboxRestoreRequest(snapshot_id=snapshot.object_id)
+        if name is _DEFAULT_SANDBOX_NAME_OVERRIDE:
+            restore_req = api_pb2.SandboxRestoreRequest(
+                snapshot_id=snapshot.object_id,
+                sandbox_name_override_type=api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_UNSPECIFIED,
+            )
+        elif name is None:
+            restore_req = api_pb2.SandboxRestoreRequest(
+                snapshot_id=snapshot.object_id,
+                sandbox_name_override_type=api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_NONE,
+            )
+        else:
+            restore_req = api_pb2.SandboxRestoreRequest(
+                snapshot_id=snapshot.object_id,
+                sandbox_name_override=name,
+                sandbox_name_override_type=api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_STRING,
+            )
+
         restore_resp: api_pb2.SandboxRestoreResponse = await retry_transient_errors(
             client.stub.SandboxRestore, restore_req
         )
