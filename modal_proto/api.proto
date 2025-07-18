@@ -614,11 +614,6 @@ message AttemptStartResponse {
   FunctionRetryPolicy retry_policy = 2; // TODO(ben-okeefe) TODO(nathan): Not currently used
 }
 
-message MapContinueRetryItem {
-  FunctionPutInputsItem input = 1;
-  string attempt_token = 2;
-}
-
 message MapStartOrContinueItem {
   FunctionPutInputsItem input = 1;
   optional string attempt_token = 2; // None if this is a fresh input, otherwise it is the attempt token for a retry.
@@ -627,7 +622,7 @@ message MapStartOrContinueItem {
 message MapStartOrContinueRequest {
   string function_id = 1;
   string parent_input_id = 2;
-  optional string function_call_id = 3;
+  optional string function_call_id = 3; // This is given iff this is a map continue request.
   repeated MapStartOrContinueItem items = 4;
 }
 
@@ -3346,7 +3341,7 @@ service ModalClient {
   rpc AttemptRetry(AttemptRetryRequest) returns (AttemptRetryResponse);
   rpc AttemptStart(AttemptStartRequest) returns (AttemptStartResponse);
 
-  // Map
+  // Input Plane Map
   rpc MapStartOrContinue(MapStartOrContinueRequest) returns (MapStartOrContinueResponse);
   rpc MapAwait(MapAwaitRequest) returns (MapAwaitResponse);
 
