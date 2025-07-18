@@ -3,7 +3,7 @@ import asyncio
 import os
 import time
 from collections.abc import AsyncGenerator, Sequence
-from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, Optional, Union, overload
+from typing import TYPE_CHECKING, AsyncIterator, Literal, Optional, Union, overload
 
 if TYPE_CHECKING:
     import _typeshed
@@ -110,7 +110,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         h2_ports: Sequence[int] = [],
         unencrypted_ports: Sequence[int] = [],
         proxy: Optional[_Proxy] = None,
-        experimental_options: Optional[dict[str, Any]] = None,
+        experimental_options: Optional[dict[str, bool]] = None,
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
         enable_snapshot: bool = False,
         verbose: bool = False,
@@ -263,7 +263,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         proxy: Optional[_Proxy] = None,
         # Enable verbose logging for sandbox operations.
         verbose: bool = False,
-        experimental_options: Optional[dict[str, Any]] = None,
+        experimental_options: Optional[dict[str, bool]] = None,
         # Enable memory snapshots.
         _experimental_enable_snapshot: bool = False,
         _experimental_scheduler_placement: Optional[
@@ -355,7 +355,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         unencrypted_ports: Sequence[int] = [],
         # Reference to a Modal Proxy to use in front of this Sandbox.
         proxy: Optional[_Proxy] = None,
-        experimental_options: Optional[dict[str, Any]] = None,
+        experimental_options: Optional[dict[str, bool]] = None,
         # Enable memory snapshots.
         _experimental_enable_snapshot: bool = False,
         _experimental_scheduler_placement: Optional[
