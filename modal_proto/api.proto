@@ -650,6 +650,23 @@ message MapAwaitResponse {
   string last_entry_id = 2;
 }
 
+message MapCheckInputsRequestItem {
+    int32 idx = 1;
+    string attempt_token = 2;
+}
+
+message MapCheckInputsRequest {
+  string function_id = 1;
+  string function_call_id = 2;
+  string last_entry_id = 3;
+  float timeout = 4;
+  repeated MapCheckInputsRequestItem items = 5;  
+}
+
+message MapCheckInputsResponse {
+  repeated int32 lost_idx = 1;
+}
+
 message AuthTokenGetRequest {
 }
 
@@ -3344,6 +3361,7 @@ service ModalClient {
   // Input Plane Map
   rpc MapStartOrContinue(MapStartOrContinueRequest) returns (MapStartOrContinueResponse);
   rpc MapAwait(MapAwaitRequest) returns (MapAwaitResponse);
+  rpc MapCheckInputs(MapCheckInputsRequest) returns (MapCheckInputsResponse);
 
   // Auth Token
   rpc AuthTokenGet(AuthTokenGetRequest) returns (AuthTokenGetResponse);
