@@ -264,7 +264,7 @@ async def _map_invocation(
             stale_retry_duplicates, \
             retried_outputs
 
-        last_entry_id = "0-0"
+        last_entry_id = ""
 
         while not map_done_event.is_set():
             logger.debug(f"Requesting outputs. Have {outputs_completed} outputs, {inputs_created} inputs.")
@@ -364,18 +364,32 @@ async def _map_invocation(
         return (item.idx, output)
 
     async def poll_outputs():
-        if order_outputs:
-            async with aclosing(
-                async_map_ordered(get_all_outputs_and_clean_up(), fetch_output, concurrency=BLOB_MAX_PARALLELISM)
-            ) as streamer:
-                async for _, output in streamer:
+        # map to store out-of-order outputs received
+        received_outputs = {}
+        output_idx = 0
+
+        async with aclosing(
+            async_map_ordered(get_all_outputs_and_clean_up(), fetch_output, concurrency=BLOB_MAX_PARALLELISM)
+        ) as streamer:
+            async for idx, output in streamer:
+                if not order_outputs:
                     yield _OutputValue(output)
-        else:
-            async with aclosing(
-                async_map(get_all_outputs_and_clean_up(), fetch_output, concurrency=BLOB_MAX_PARALLELISM)
-            ) as streamer:
-                async for _, output in streamer:
-                    yield _OutputValue(output)
+                else:
+                    # hold on to outputs for function maps, so we can reorder them correctly.
+                    received_outputs[idx] = output
+
+                    while True:
+                        if output_idx not in received_outputs:
+                            # we haven't received the output for the current index yet.
+                            # stop returning outputs to the caller and instead wait for
+                            # the next output to arrive from the server.
+                            break
+
+                        output = received_outputs.pop(output_idx)
+                        yield _OutputValue(output)
+                        output_idx += 1
+
+        assert len(received_outputs) == 0
 
     async def log_debug_stats():
         def log_stats():
@@ -434,7 +448,6 @@ async def _map_invocation_inputplane(
 
     input_plane_stub = await client.get_stub(function._input_plane_url)
 
-    assert input_plane_stub, "Client must be hydrated with an input-plane stub"
     assert client.stub, "Client must be hydrated with a stub for _map_invocation_inputplane"
 
     # ------------------------------------------------------------
