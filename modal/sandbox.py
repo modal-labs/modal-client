@@ -110,6 +110,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         h2_ports: Sequence[int] = [],
         unencrypted_ports: Sequence[int] = [],
         proxy: Optional[_Proxy] = None,
+        experimental_options: Optional[dict[str, bool]] = None,
         _experimental_scheduler_placement: Optional[SchedulerPlacement] = None,
         enable_snapshot: bool = False,
         verbose: bool = False,
@@ -215,6 +216,7 @@ class _Sandbox(_Object, type_prefix="sb"):
                 proxy_id=(proxy.object_id if proxy else None),
                 enable_snapshot=enable_snapshot,
                 verbose=verbose,
+                experimental_options=experimental_options,
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
@@ -261,6 +263,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         proxy: Optional[_Proxy] = None,
         # Enable verbose logging for sandbox operations.
         verbose: bool = False,
+        experimental_options: Optional[dict[str, bool]] = None,
         # Enable memory snapshots.
         _experimental_enable_snapshot: bool = False,
         _experimental_scheduler_placement: Optional[
@@ -310,6 +313,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             h2_ports=h2_ports,
             unencrypted_ports=unencrypted_ports,
             proxy=proxy,
+            experimental_options=experimental_options,
             _experimental_enable_snapshot=_experimental_enable_snapshot,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
             client=client,
@@ -351,6 +355,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         unencrypted_ports: Sequence[int] = [],
         # Reference to a Modal Proxy to use in front of this Sandbox.
         proxy: Optional[_Proxy] = None,
+        experimental_options: Optional[dict[str, bool]] = None,
         # Enable memory snapshots.
         _experimental_enable_snapshot: bool = False,
         _experimental_scheduler_placement: Optional[
@@ -388,6 +393,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             h2_ports=h2_ports,
             unencrypted_ports=unencrypted_ports,
             proxy=proxy,
+            experimental_options=experimental_options,
             _experimental_scheduler_placement=_experimental_scheduler_placement,
             enable_snapshot=_experimental_enable_snapshot,
             verbose=verbose,
