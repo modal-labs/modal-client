@@ -765,16 +765,16 @@ class _Sandbox(_Object, type_prefix="sb"):
         snapshot: _SandboxSnapshot,
         client: Optional[_Client] = None,
         *,
-        sandbox_name: Optional[Union[str, type[DefaultSandboxNameOverride]]] = _DEFAULT_SANDBOX_NAME_OVERRIDE,
+        name: Optional[Union[str, type[DefaultSandboxNameOverride]]] = _DEFAULT_SANDBOX_NAME_OVERRIDE,
     ):
         client = client or await _Client.from_env()
 
-        if sandbox_name is _DEFAULT_SANDBOX_NAME_OVERRIDE:
+        if name is _DEFAULT_SANDBOX_NAME_OVERRIDE:
             restore_req = api_pb2.SandboxRestoreRequest(
                 snapshot_id=snapshot.object_id,
                 sandbox_name_override_type=api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_UNSPECIFIED,
             )
-        elif sandbox_name is None:
+        elif name is None:
             restore_req = api_pb2.SandboxRestoreRequest(
                 snapshot_id=snapshot.object_id,
                 sandbox_name_override_type=api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_NONE,
@@ -782,7 +782,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         else:
             restore_req = api_pb2.SandboxRestoreRequest(
                 snapshot_id=snapshot.object_id,
-                sandbox_name_override=sandbox_name,
+                sandbox_name_override=name,
                 sandbox_name_override_type=api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_STRING,
             )
 
