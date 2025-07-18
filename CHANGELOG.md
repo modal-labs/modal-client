@@ -6,6 +6,13 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.1.dev4 (2025-07-18)
+
+- Added a `name` parameter to `Sandbox.create()`
+- Added a `Sandbox.from_name()` static method.
+- Added a `name` parameter to `Sandbox._experimental_from_snapshot()`
+
+
 #### 1.1.1.dev3 (2025-07-18)
 
 Sandboxes now support `experimental_options`, which can be used to test out experimental functionality that depends only on server-side configuration.
