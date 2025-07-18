@@ -385,9 +385,16 @@ def callable_has_non_self_non_default_params(f: Callable[..., Any]) -> bool:
 
 
 async def _stream_function_call_data(
-    client, stub, function_call_id: str, variant: Literal["data_in", "data_out"]
+    client,
+    stub,
+    function_call_id: Optional[str],
+    variant: Literal["data_in", "data_out"],
+    attempt_token: Optional[str] = None,
 ) -> AsyncGenerator[Any, None]:
     """Read from the `data_in` or `data_out` stream of a function call."""
+    if function_call_id is None and attempt_token is None:
+        raise ValueError("function_call_id or attempt_token is required for data_out stream")
+
     if stub is None:
         stub = client.stub
 
@@ -405,7 +412,11 @@ async def _stream_function_call_data(
         raise ValueError(f"Invalid variant {variant}")
 
     while True:
-        req = api_pb2.FunctionCallGetDataRequest(function_call_id=function_call_id, last_index=last_index)
+        req = api_pb2.FunctionCallGetDataRequest(
+            function_call_id=function_call_id,
+            last_index=last_index,
+            attempt_token=attempt_token,
+        )
         try:
             async for chunk in stub_fn.unary_stream(req):
                 if chunk.index <= last_index:
