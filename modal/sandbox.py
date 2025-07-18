@@ -73,13 +73,12 @@ def _validate_exec_args(entrypoint_args: Sequence[str]) -> None:
         )
 
 
-"""
-This is a singleton class that represents the default sandbox name override.
-It is used to indicate that the sandbox name should not be overridden.
-"""
-
-
 class DefaultSandboxNameOverride:
+    """
+    This is a singleton class that represents the default sandbox name override.
+    It is used to indicate that the sandbox name should not be overridden.
+    """
+
     def __repr__(self) -> str:
         return "DefaultSandboxNameOverride"
 
