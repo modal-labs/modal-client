@@ -451,6 +451,33 @@ class _InputPlaneInvocation:
                     await_response.output.result, await_response.output.data_format, control_plane_stub, self.client
                 )
 
+    async def run_generator(self):
+        items_received = 0
+        # populated when self.run_function() completes
+        items_total: Union[int, None] = None
+        async with aclosing(
+            async_merge(
+                _stream_function_call_data(
+                    self.client,
+                    self.stub,
+                    "",
+                    variant="data_out",
+                    attempt_token=self.attempt_token,
+                ),
+                callable_to_agen(self.run_function),
+            )
+        ) as streamer:
+            async for item in streamer:
+                if isinstance(item, api_pb2.GeneratorDone):
+                    items_total = item.items_total
+                else:
+                    yield item
+                    items_received += 1
+                # The comparison avoids infinite loops if a non-deterministic generator is retried
+                # and produces less data in the second run than what was already sent.
+                if items_total is not None and items_received >= items_total:
+                    break
+
     @staticmethod
     async def _get_metadata(input_plane_region: str, client: _Client) -> list[tuple[str, str]]:
         if not input_plane_region:
@@ -1544,13 +1571,24 @@ Use the `Function.get_web_url()` method instead.
     @live_method_gen
     @synchronizer.no_input_translation
     async def _call_generator(self, args, kwargs):
-        invocation = await _Invocation.create(
-            self,
-            args,
-            kwargs,
-            client=self.client,
-            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY,
-        )
+        invocation: Union[_Invocation, _InputPlaneInvocation]
+        if self._input_plane_url:
+            invocation = await _InputPlaneInvocation.create(
+                self,
+                args,
+                kwargs,
+                client=self.client,
+                input_plane_url=self._input_plane_url,
+                input_plane_region=self._input_plane_region,
+            )
+        else:
+            invocation = await _Invocation.create(
+                self,
+                args,
+                kwargs,
+                client=self.client,
+                function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY,
+            )
         async for res in invocation.run_generator():
             yield res
 
