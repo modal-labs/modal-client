@@ -16,6 +16,8 @@ from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.combined_types import MethodWithAio
 
+from modal._utils.function_utils import ATTEMPT_TIMEOUT_GRACE_PERIOD, OUTPUTS_TIMEOUT, _process_result
+from modal._utils.grpc_utils import retry_transient_errors
 from modal_proto import api_pb2
 from modal_proto.modal_api_grpc import ModalClientModal
 
@@ -43,17 +45,14 @@ from ._utils.async_utils import (
 from ._utils.blob_utils import MAX_OBJECT_SIZE_BYTES
 from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.function_utils import (
-    ATTEMPT_TIMEOUT_GRACE_PERIOD,
-    OUTPUTS_TIMEOUT,
     FunctionCreationStatus,
     FunctionInfo,
     _create_input,
-    _process_result,
     _stream_function_call_data,
     get_function_type,
     is_async,
 )
-from ._utils.grpc_utils import RetryWarningMessage, retry_transient_errors
+from ._utils.grpc_utils import RetryWarningMessage
 from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .call_graph import InputInfo, _reconstruct_call_graph
 from .client import _Client
@@ -216,7 +215,11 @@ class _Invocation:
         return _Invocation(stub, function_call_id, client, retry_context)
 
     async def pop_function_call_outputs(
-        self, timeout: Optional[float], clear_on_success: bool, input_jwts: Optional[list[str]] = None
+        self,
+        index: int = 0,
+        timeout: Optional[float] = None,
+        clear_on_success: bool = False,
+        input_jwts: Optional[list[str]] = None,
     ) -> api_pb2.FunctionGetOutputsResponse:
         t0 = time.time()
         if timeout is None:
@@ -234,6 +237,7 @@ class _Invocation:
                 clear_on_success=clear_on_success,
                 requested_at=time.time(),
                 input_jwts=input_jwts,
+                start_idx=index,
             )
             response: api_pb2.FunctionGetOutputsResponse = await retry_transient_errors(
                 self.stub.FunctionGetOutputs,
@@ -267,6 +271,7 @@ class _Invocation:
         # waits indefinitely for a single result for the function, and clear the outputs buffer after
         item: api_pb2.FunctionGetOutputsItem = (
             await self.pop_function_call_outputs(
+                index=0,
                 timeout=None,
                 clear_on_success=True,
                 input_jwts=[expected_jwt] if expected_jwt else None,
@@ -310,14 +315,16 @@ class _Invocation:
 
             await self._retry_input()
 
-    async def poll_function(self, timeout: Optional[float] = None):
+    async def poll_function(self, index: int = 0, timeout: Optional[float] = None):
         """Waits up to timeout for a result from a function.
 
         If timeout is `None`, waits indefinitely. This function is not
         cancellation-safe.
         """
         response: api_pb2.FunctionGetOutputsResponse = await self.pop_function_call_outputs(
-            timeout=timeout, clear_on_success=False
+            index=index,
+            timeout=timeout,
+            clear_on_success=False,
         )
         if len(response.outputs) == 0 and response.num_unfinished_inputs == 0:
             # if no unfinished inputs and no outputs, then function expired
@@ -1506,7 +1513,7 @@ Use the `Function.get_web_url()` method instead.
                 yield item
 
     @live_method
-    async def _experimental_spawn_map(self, input_queue: _SynchronizedQueue) -> None:
+    async def _experimental_spawn_map(self, input_queue: _SynchronizedQueue) -> str:
         self._check_no_web_url("map")
         if self._is_generator:
             raise InvalidError("A generator function cannot be called with `.map(...)`.")
@@ -1517,12 +1524,12 @@ Use the `Function.get_web_url()` method instead.
         else:
             count_update_callback = None
 
-        await _experimental_spawn_map_invocation(
+        return await _experimental_spawn_map_invocation(
             self,
             input_queue,
             self.client,
             count_update_callback,
-            api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
+            api_pb2.FUNCTION_CALL_INVOCATION_TYPE_ASYNC,
         )
 
     async def _call_function(self, args, kwargs) -> ReturnType:
@@ -1779,8 +1786,11 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
     def _invocation(self):
         return _Invocation(self.client.stub, self.object_id, self.client)
 
-    async def get(self, timeout: Optional[float] = None) -> ReturnType:
+    async def get(self, timeout: Optional[float] = None, index: int = 0) -> ReturnType:
         """Get the result of the function call.
+
+        Calling `get` without an `index` will return the first output of the function call.
+        Calling `get` with an `index` will return the index-th output of the function call.
 
         This function waits indefinitely by default. It takes an optional
         `timeout` argument that specifies the maximum number of seconds to wait,
@@ -1788,7 +1798,7 @@ class _FunctionCall(typing.Generic[ReturnType], _Object, type_prefix="fc"):
 
         The returned coroutine is not cancellation-safe.
         """
-        return await self._invocation().poll_function(timeout=timeout)
+        return await self._invocation().poll_function(index=index, timeout=timeout)
 
     async def get_call_graph(self) -> list[InputInfo]:
         """Returns a structure representing the call graph from a given root
