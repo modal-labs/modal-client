@@ -264,7 +264,7 @@ async def _map_invocation(
             stale_retry_duplicates, \
             retried_outputs
 
-        last_entry_id = ""
+        last_entry_id = "0-0"
 
         while not map_done_event.is_set():
             logger.debug(f"Requesting outputs. Have {outputs_completed} outputs, {inputs_created} inputs.")
@@ -596,7 +596,7 @@ async def _map_invocation_inputplane(
 
     async def get_all_outputs():
         """Continuously fetch outputs until the map is complete."""
-        last_entry_id = "0-0"
+        last_entry_id = ""
         while not map_done_event.is_set():
             if function_call_id is None:
                 await function_call_id_received.wait()
