@@ -2522,7 +2522,7 @@ message Sandbox {
   optional string name = 30;
 
   // Experimental options
-  map<string, string> experimental_options = 31;
+  map<string, bool> experimental_options = 31;
 }
 
 message SandboxCreateRequest {
