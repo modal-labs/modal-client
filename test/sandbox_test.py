@@ -399,6 +399,7 @@ def test_sandbox_list_app(client, servicer):
         sb = Sandbox.create("bash", "-c", "sleep 10000", image=image, secrets=[secret], app=app)
         assert len(list(Sandbox.list(app_id=app.app_id, client=client))) == 1
         sb.terminate()
+        sb.wait(raise_on_termination=False)
         assert not list(Sandbox.list(app_id=app.app_id, client=client))
 
 
@@ -409,6 +410,7 @@ def test_sandbox_list_tags(app, client, servicer):
     assert len(list(Sandbox.list(tags={"foo": "bar"}, client=client))) == 1
     assert not list(Sandbox.list(tags={"foo": "notbar"}, client=client))
     sb.terminate()
+    sb.wait(raise_on_termination=False)
     assert not list(Sandbox.list(tags={"baz": "qux"}, client=client))
 
 
