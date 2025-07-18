@@ -73,14 +73,15 @@ def _validate_exec_args(entrypoint_args: Sequence[str]) -> None:
         )
 
 
-class DefaultSandboxNameOverride:
+class DefaultSandboxNameOverride(str):
     """A singleton class that represents the default sandbox name override.
 
     It is used to indicate that the sandbox name should not be overridden.
     """
 
     def __repr__(self) -> str:
-        return "DefaultSandboxNameOverride"
+        # NOTE: this must match the instance var name below in order for type stubs to work 😬
+        return "_DEFAULT_SANDBOX_NAME_OVERRIDE"
 
 
 _DEFAULT_SANDBOX_NAME_OVERRIDE = DefaultSandboxNameOverride()
@@ -765,7 +766,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         snapshot: _SandboxSnapshot,
         client: Optional[_Client] = None,
         *,
-        name: Optional[Union[str, type[DefaultSandboxNameOverride]]] = _DEFAULT_SANDBOX_NAME_OVERRIDE,
+        name: Optional[str] = _DEFAULT_SANDBOX_NAME_OVERRIDE,
     ):
         client = client or await _Client.from_env()
 
