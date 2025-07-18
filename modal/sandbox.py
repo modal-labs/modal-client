@@ -74,8 +74,8 @@ def _validate_exec_args(entrypoint_args: Sequence[str]) -> None:
 
 
 class DefaultSandboxNameOverride:
-    """
-    This is a singleton class that represents the default sandbox name override.
+    """A singleton class that represents the default sandbox name override.
+
     It is used to indicate that the sandbox name should not be overridden.
     """
 
@@ -472,10 +472,10 @@ class _Sandbox(_Object, type_prefix="sb"):
         environment_name: Optional[str] = None,
         client: Optional[_Client] = None,
     ) -> "_Sandbox":
-        """Return the running Sandbox in the given app with the given name. Raises an error if no running
-        sandbox is found with the given name.
+        """Get a running Sandbox by name from the given app.
 
-        A Sandbox's name is the `name` argument passed to `Sandbox.create`.
+        Raises an error if no running sandbox is found with the given name. A Sandbox's name
+        is the `name` argument passed to `Sandbox.create`.
         """
         if client is None:
             client = await _Client.from_env()
