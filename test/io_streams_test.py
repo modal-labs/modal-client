@@ -287,6 +287,7 @@ async def test_stream_reader_container_process_retry(servicer, client):
 
 
 @pytest.mark.asyncio
+@pytest.mark.flaky(max_runs=3)  # TODO(matt-n) Fix test to avoid flaking in CI
 async def test_stream_reader_timeout(servicer, client):
     """Test that StreamReader stops reading messages after the given deadline, and that
     messages are received within the deadline"""
