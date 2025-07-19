@@ -615,6 +615,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         is_builder_function: bool = False,
         is_auto_snapshot: bool = False,
         enable_memory_snapshot: bool = False,
+        enable_gpu_snapshot: bool = False,
         block_network: bool = False,
         restrict_modal_access: bool = False,
         i6pn_enabled: bool = False,
@@ -627,7 +628,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         experimental_options: Optional[dict[str, str]] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
-        _experimental_enable_gpu_snapshot: bool = False,
     ) -> "_Function":
         """mdmd:hidden"""
         # Needed to avoid circular imports
@@ -910,6 +910,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     is_auto_snapshot=is_auto_snapshot,
                     is_method=bool(info.user_cls) and not info.is_service_class(),
                     checkpointing_enabled=enable_memory_snapshot,
+                    enable_gpu_snapshot=enable_gpu_snapshot,
                     object_dependencies=object_dependencies,
                     block_network=block_network,
                     untrusted=restrict_modal_access,
@@ -928,7 +929,6 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                     _experimental_concurrent_cancellations=True,
                     _experimental_proxy_ip=_experimental_proxy_ip,
                     _experimental_custom_scaling=_experimental_custom_scaling_factor is not None,
-                    _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
                     # --- These are deprecated in favor of autoscaler_settings
                     warm_pool_size=min_containers or 0,
                     concurrency_limit=max_containers or 0,
@@ -965,8 +965,8 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
                         _experimental_group_size=function_definition._experimental_group_size,
                         _experimental_buffer_containers=function_definition._experimental_buffer_containers,
                         _experimental_custom_scaling=function_definition._experimental_custom_scaling,
-                        _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
                         _experimental_proxy_ip=function_definition._experimental_proxy_ip,
+                        enable_gpu_snapshot=enable_gpu_snapshot,
                         snapshot_debug=function_definition.snapshot_debug,
                         runtime_perf_record=function_definition.runtime_perf_record,
                         function_schema=function_schema,
