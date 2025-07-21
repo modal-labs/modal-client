@@ -569,9 +569,9 @@ async def _map_invocation_inputplane(
 
             # Record attempt tokens for future retries; also release semaphore slots now that the
             # inputs are officially registered on the server.
-            for idx, item in enumerate(response.items):
+            for idx, attempt_token in enumerate(response.attempt_tokens):
                 # Client expects the server to return the attempt tokens in the same order as the inputs we sent.
-                attempt_tokens[request_items[idx].input.idx] = item.attempt_token
+                attempt_tokens[request_items[idx].input.idx] = attempt_token
 
         yield
 
