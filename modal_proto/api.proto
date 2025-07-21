@@ -633,6 +633,10 @@ message MapCheckInputsRequest {
   repeated MapCheckInputsRequestItem items = 5;  
 }
 
+message MapCheckInputsResponse {
+  repeated bool lost_idx = 1;
+}
+
 message AuthTokenGetRequest {
 }
 
