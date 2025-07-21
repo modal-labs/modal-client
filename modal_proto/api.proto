@@ -634,7 +634,7 @@ message MapCheckInputsRequest {
 }
 
 message MapCheckInputsResponse {
-  repeated bool lost_idx = 1;
+  repeated bool lost = 1;
 }
 
 message AuthTokenGetRequest {

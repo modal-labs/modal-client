@@ -618,8 +618,7 @@ async def _map_invocation_inputplane(
                     input_plane_stub.MapCheckInputs, request, metadata=metadata
                 )
                 check_inputs_response = [
-                    (check_inputs[resp_idx].idx, response.lost_idx[resp_idx])
-                    for resp_idx, _ in enumerate(response.lost_idx)
+                    (check_inputs[resp_idx].idx, response.lost[resp_idx]) for resp_idx, _ in enumerate(response.lost)
                 ]
                 await map_items_manager.handle_check_inputs_response(check_inputs_response)
             yield
