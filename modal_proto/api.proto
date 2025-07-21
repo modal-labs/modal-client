@@ -240,6 +240,15 @@ enum SystemErrorCode {
   SYSTEM_ERROR_CODE_NOSPC = 28;         // ENOSPC: No space left on device
 }
 
+enum TaskStartupBehavior {
+  STARTUP_BEHAVIOR_UNKNOWN = 0;
+  STARTUP_BEHAVIOR_NONE = 1;
+  STARTUP_BEHAVIOR_RESTORED_FROM_SNAPSHOT = 2;
+  STARTUP_BEHAVIOR_CREATED_SNAPSHOT = 3;
+  STARTUP_BEHAVIOR_RESTORE_FALLBACK = 4;
+  STARTUP_BEHAVIOR_SANDBOX_SNAPSHOT_FAILURE = 5;
+}
+
 enum TaskState {
   TASK_STATE_UNSPECIFIED = 0;
   TASK_STATE_CREATED = 6;
@@ -2934,6 +2943,7 @@ message TaskInfo {
   double enqueued_at = 5;
   string gpu_type = 6;
   string sandbox_id = 7;
+  TaskStartupBehavior startup_behavior = 8;
 }
 
 message TaskListRequest {
