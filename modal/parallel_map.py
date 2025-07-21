@@ -205,7 +205,7 @@ async def _map_invocation(
 
             resp = await send_inputs(client.stub.FunctionPutInputs, request)
             inputs_sent += len(items)
-            # Change item state to WAITING_FOR_OUTPUT, and set the input_jwt which is in the response.
+            # Change item state to WAITING_FOR_OUTPUT, and set the input_id and input_jwt which are in the response.
             map_items_manager.handle_put_inputs_response(resp.inputs)
             logger.debug(
                 f"Successfully pushed {len(items)} inputs to server. "
