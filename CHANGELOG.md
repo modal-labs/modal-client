@@ -18,7 +18,7 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 Sandboxes now support `experimental_options`, which can be used to test out experimental functionality that depends only on server-side configuration.
 
 
-#### 1.1.0 (2025-07-17)
+### 1.1.0 (2025-07-17)
 
 This release introduces support for the `2025.06` [Image Builder Version](https://modal.com/docs/guide/images#image-builder-updates), which is in a "preview" state. The new image builder includes several major changes to how the Modal client dependencies are included in Modal Images. These improvements should greatly reduce the risk of conflicts with user code dependencies. They also allow Modal Sandboxes to easily be used with existing Images or Dockerfiles that are not themselves compatible with the Modal client library. You can see more details and update your Workspace on its [Image Config](https://modal.com/settings/image-config) page. Please share any issues that you encounter as we work to make the version stable.
 
