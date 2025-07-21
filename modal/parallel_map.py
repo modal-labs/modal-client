@@ -639,7 +639,11 @@ async def _map_invocation_inputplane(
                 response: api_pb2.MapCheckInputsResponse = await retry_transient_errors(
                     input_plane_stub.MapCheckInputs, request, metadata=metadata
                 )
-                await map_items_manager.handle_check_inputs_response(response)
+                check_inputs_response = [
+                    (check_inputs[resp_idx].idx, response.lost_idx[resp_idx])
+                    for resp_idx, _ in enumerate(response.lost_idx)
+                ]
+                await map_items_manager.handle_check_inputs_response(check_inputs_response)
                 # Keep generator semantics for async_merge; value is ignored.
             # print("retry_inputs DONE")
             yield
@@ -1389,16 +1393,13 @@ class _MapItemsManager:
             if ctx is not None:
                 ctx.handle_retry_response(input_jwt)
 
-    async def handle_check_inputs_response(self, response: api_pb2.MapCheckInputsResponse):
-        for lost_idx in response.lost_idx:
-            ctx = self._item_context.get(lost_idx, None)
+    async def handle_check_inputs_response(self, response: list[tuple[int, bool]]):
+        for idx, lost in response:
+            ctx = self._item_context.get(idx, None)
             if ctx is not None:
                 ctx.state = _MapItemState.WAITING_TO_RETRY
-                if self._input_plane_instance:
-                    pass
-                    # await self._retry_queue.put(int(time.time()), lost_idx)
-                else:
-                    await self._retry_queue.put(int(time.time()), lost_idx)
+                if lost:
+                    await self._retry_queue.put(int(time.time()), idx)
 
     async def handle_get_outputs_response(self, item: api_pb2.FunctionGetOutputsItem, now_seconds: int) -> _OutputType:
         ctx = self._item_context.get(item.idx, None)
