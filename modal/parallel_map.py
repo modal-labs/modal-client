@@ -129,7 +129,7 @@ async def _map_invocation(
     no_context_duplicates = 0
 
     retry_queue = TimestampPriorityQueue()
-    # completed_outputs: set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
+    completed_outputs: set[str] = set()  # Set of input_ids whose outputs are complete (expecting no more values)
     input_queue: asyncio.Queue[api_pb2.FunctionPutInputsItem | None] = asyncio.Queue()
     map_items_manager = _MapItemsManager(
         retry_policy, function_call_invocation_type, retry_queue, sync_client_retries_enabled, max_inputs_outstanding
@@ -325,6 +325,7 @@ async def _map_invocation(
                     retried_outputs += 1
 
                 if output_type == _OutputType.SUCCESSFUL_COMPLETION or output_type == _OutputType.FAILED_COMPLETION:
+                    completed_outputs.add(item.input_id)
                     update_state(set_outputs_completed=outputs_completed + 1)
                     yield item
 
