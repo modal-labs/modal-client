@@ -600,17 +600,15 @@ async def _map_invocation_inputplane(
 
                 await asyncio.sleep(1)
 
-                inputs = map_items_manager.get_input_idxs_waiting_for_output()
-                check_inputs = [
-                    api_pb2.MapCheckInputsRequestItem(idx=idx, attempt_token=attempt_token)
-                    for idx, attempt_token in inputs
-                ]
+                # check_inputs (idx, attempt_token)
+                check_inputs = map_items_manager.get_input_idxs_waiting_for_output()
+                attempt_tokens = [attempt_token for _, attempt_token in check_inputs]
                 request = api_pb2.MapCheckInputsRequest(
                     function_id=function.object_id,
                     function_call_id=function_call_id,
                     last_entry_id=last_entry_id,
                     timeout=0,  # Non-blocking read
-                    items=check_inputs,
+                    attempt_tokens=attempt_tokens,
                 )
 
                 metadata = await client.get_input_plane_metadata(function._input_plane_region)
@@ -618,7 +616,7 @@ async def _map_invocation_inputplane(
                     input_plane_stub.MapCheckInputs, request, metadata=metadata
                 )
                 check_inputs_response = [
-                    (check_inputs[resp_idx].idx, response.lost[resp_idx]) for resp_idx, _ in enumerate(response.lost)
+                    (check_inputs[resp_idx][0], response.lost[resp_idx]) for resp_idx, _ in enumerate(response.lost)
                 ]
                 await map_items_manager.handle_check_inputs_response(check_inputs_response)
             yield
