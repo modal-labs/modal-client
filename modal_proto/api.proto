@@ -614,38 +614,6 @@ message AttemptStartResponse {
   FunctionRetryPolicy retry_policy = 2; // TODO(ben-okeefe) TODO(nathan): Not currently used
 }
 
-message MapStartOrContinueItem {
-  FunctionPutInputsItem input = 1;
-  optional string attempt_token = 2; // None if this is a fresh input, otherwise it is the attempt token for a retry.
-}
-
-message MapStartOrContinueRequest {
-  string function_id = 1;
-  string parent_input_id = 2;
-  optional string function_call_id = 3; // This is given iff this is a map continue request.
-  repeated MapStartOrContinueItem items = 4;
-}
-
-message MapStartOrContinueResponse {
-  string function_id = 1;
-  string function_call_id = 2;
-  uint32 max_inputs_outstanding = 3;
-  repeated string attempt_tokens = 4;
-  FunctionRetryPolicy retry_policy = 5; // TODO(ben-okeefe): Not currently used
-}
-
-message MapAwaitRequest {
-  string function_call_id = 1;
-  string last_entry_id = 2;
-  double requested_at = 3; // Used for waypoints.
-  float timeout = 4;
-}
-
-message MapAwaitResponse {
-  repeated FunctionGetOutputsItem outputs = 1;
-  string last_entry_id = 2;
-}
-
 message AuthTokenGetRequest {
 }
 
@@ -2105,6 +2073,38 @@ message InputInfo {
   bool task_first_input = 7;
 }
 
+message MapAwaitRequest {
+  string function_call_id = 1;
+  string last_entry_id = 2;
+  double requested_at = 3; // Used for waypoints.
+  float timeout = 4;
+}
+
+message MapAwaitResponse {
+  repeated FunctionGetOutputsItem outputs = 1;
+  string last_entry_id = 2;
+}
+
+message MapStartOrContinueItem {
+  FunctionPutInputsItem input = 1;
+  optional string attempt_token = 2; // None if this is a fresh input, otherwise it is the attempt token for a retry.
+}
+
+message MapStartOrContinueRequest {
+  string function_id = 1;
+  string parent_input_id = 2;
+  optional string function_call_id = 3; // This is given iff this is a map continue request.
+  repeated MapStartOrContinueItem items = 4;
+}
+
+message MapStartOrContinueResponse {
+  string function_id = 1;
+  string function_call_id = 2;
+  uint32 max_inputs_outstanding = 3;
+  repeated string attempt_tokens = 4;
+  FunctionRetryPolicy retry_policy = 5; // TODO(ben-okeefe): Not currently used
+}
+
 message MethodDefinition {
   string function_name = 1;
   Function.FunctionType function_type = 2;
@@ -3341,10 +3341,6 @@ service ModalClient {
   rpc AttemptRetry(AttemptRetryRequest) returns (AttemptRetryResponse);
   rpc AttemptStart(AttemptStartRequest) returns (AttemptStartResponse);
 
-  // Input Plane Map
-  rpc MapStartOrContinue(MapStartOrContinueRequest) returns (MapStartOrContinueResponse);
-  rpc MapAwait(MapAwaitRequest) returns (MapAwaitResponse);
-
   // Auth Token
   rpc AuthTokenGet(AuthTokenGetRequest) returns (AuthTokenGetResponse);
 
@@ -3435,6 +3431,10 @@ service ModalClient {
   rpc ImageFromId(ImageFromIdRequest) returns (ImageFromIdResponse);
   rpc ImageGetOrCreate(ImageGetOrCreateRequest) returns (ImageGetOrCreateResponse);
   rpc ImageJoinStreaming(ImageJoinStreamingRequest) returns (stream ImageJoinStreamingResponse);
+
+  // Input Plane Map
+  rpc MapAwait(MapAwaitRequest) returns (MapAwaitResponse);
+  rpc MapStartOrContinue(MapStartOrContinueRequest) returns (MapStartOrContinueResponse);
 
   // Mounts
   rpc MountGetOrCreate(MountGetOrCreateRequest) returns (MountGetOrCreateResponse);
