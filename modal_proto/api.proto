@@ -630,7 +630,7 @@ message MapCheckInputsRequest {
   string function_call_id = 2;
   string last_entry_id = 3;
   float timeout = 4;
-  repeated MapCheckInputsRequestItem items = 5;  
+  repeated string attempt_tokens = 5;  
 }
 
 message MapCheckInputsResponse {
