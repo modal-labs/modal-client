@@ -436,10 +436,6 @@ async def _map_invocation_inputplane(
     This is analogous to `_map_invocation`, but instead of the control-plane
     `FunctionMap` / `FunctionPutInputs` / `FunctionGetOutputs` RPCs it speaks
     the input-plane protocol consisting of `MapStartOrContinue` and `MapAwait`.
-
-    The implementation purposefully ignores retry handling for now - a stub is
-    left in place so that a future change can add support for the retry path
-    without re-structuring the surrounding code.
     """
 
     assert function._input_plane_url, "_map_invocation_inputplane should only be used for input-plane backed functions"
@@ -469,10 +465,6 @@ async def _map_invocation_inputplane(
     # The input-plane server returns this after the first request.
     function_call_id: str | None = None
     function_call_id_received = asyncio.Event()
-
-    # Map of idx -> attempt_token returned by the server.  This will be needed
-    # for a future client-side retry implementation.
-    attempt_tokens: dict[int, str] = {}
 
     # Single priority queue that holds *both* fresh inputs (timestamp == now)
     # and future retries (timestamp > now).
@@ -599,12 +591,8 @@ async def _map_invocation_inputplane(
                 function_call_id_received.set()
                 max_inputs_outstanding = response.max_inputs_outstanding or MAX_INPUTS_OUTSTANDING_DEFAULT
 
-            # Record attempt tokens for future retries; also release semaphore slots now that the
-            # inputs are officially registered on the server.
-            for idx, attempt_token in enumerate(response.attempt_tokens):
-                # Client expects the server to return the attempt tokens in the same order as the inputs we sent.
-                attempt_tokens[request_items[idx].input.idx] = attempt_token
-
+            if map_done_event.is_set():
+                break
         yield
 
     async def create_check_inputs() -> list[api_pb2.MapCheckInputsRequestItem]:
