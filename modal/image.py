@@ -1350,6 +1350,17 @@ class _Image(_Object, type_prefix="im"):
         image = modal.Image.debian_slim().uv_sync()
         ```
 
+        The `pyproject.toml` and `uv.lock` in `uv_project_dir` are automatically added to the build context. For
+        sources files that are frequently changed, it's best to mount them to reduce image rebuilds:
+
+        ```python
+        image = (
+            modal.Image.debian_slim()
+            .uv_sync()
+            .add_local_dir("src", remote_path="/root/src")
+        )
+        ```
+
         Added in v1.1.0.
         """
 
