@@ -6,6 +6,11 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.1.dev13 (2025-07-22)
+
+- Surface task result exceptions during image build termination events to prevent ambiguous termination conditions.
+
+
 #### 1.1.1.dev4 (2025-07-18)
 
 - Added a `name` parameter to `Sandbox.create()`
