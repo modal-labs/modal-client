@@ -173,7 +173,7 @@ class _Queue(_Object, type_prefix="qu"):
                 object_creation_type=(api_pb2.OBJECT_CREATION_TYPE_CREATE_IF_MISSING if create_if_missing else None),
             )
             response = await resolver.client.stub.QueueGetOrCreate(req)
-            self._hydrate(response.queue_id, resolver.client, None)
+            self._hydrate(response.queue_id, resolver.client, response.metadata)
 
         return _Queue._from_loader(_load, "Queue()", is_another_app=True, hydrate_lazily=True)
 
