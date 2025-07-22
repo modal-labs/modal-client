@@ -2917,8 +2917,9 @@ message TaskClusterHelloRequest {
 message TaskClusterHelloResponse {
   string cluster_id = 1;
   uint32 cluster_rank = 2;
-  // All IP addresses in cluster, ordered by cluster rank
+  // All IPv6 addresses in cluster, ordered by cluster rank
   repeated string container_ips = 3;
+  repeated string container_ipv4_ips = 4;
 }
 
 message TaskCurrentInputsResponse {
