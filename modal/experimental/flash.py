@@ -225,7 +225,6 @@ class _FlashPrometheusAutoscaler:
 
                 await self.cls.update_autoscaler(
                     min_containers=actual_target_containers,
-                    max_containers=actual_target_containers,
                 )
 
                 if time.time() - autoscaling_time < self.autoscaling_interval_seconds:
@@ -447,3 +446,20 @@ async def flash_prometheus_autoscaler(
     )
     await autoscaler.start()
     return autoscaler
+
+
+@synchronizer.create_blocking
+async def flash_get_containers(app_name: str, cls_name: str) -> list[dict[str, Any]]:
+    """
+    Return a list of flash containers for a deployed Flash service.
+
+    This is a highly experimental method that can break or be removed at any time without warning.
+    Do not use this method unless explicitly instructed to do so by Modal support.
+    """
+    client = await _Client.from_env()
+    fn = _Cls.from_name(app_name, cls_name)._class_service_function
+    assert fn is not None
+    await fn.hydrate(client=client)
+    req = api_pb2.FlashContainerListRequest(function_id=fn.object_id)
+    resp = await retry_transient_errors(client.stub.FlashContainerList, req)
+    return resp.containers

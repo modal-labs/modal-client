@@ -26,6 +26,10 @@ class Error(Exception):
     """
 
 
+class AlreadyExistsError(Error):
+    """Raised when a resource creation conflicts with an existing resource."""
+
+
 class RemoteError(Error):
     """Raised when an error occurs on the Modal server."""
 
