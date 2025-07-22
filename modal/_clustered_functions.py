@@ -16,6 +16,7 @@ class ClusterInfo:
     rank: int
     container_ips: list[str]
     container_ipv4_ips: list[str]
+    error: Optional[str] = None
 
 
 cluster_info: Optional[ClusterInfo] = None
@@ -38,7 +39,17 @@ async def _initialize_clustered_function(client: _Client, task_id: str, world_si
         return socket.getaddrinfo("i6pn.modal.local", None, socket.AF_INET6)[0][4][0]
 
     hostname = socket.gethostname()
-    container_ip = get_i6pn()
+    
+    try:
+        container_ip = get_i6pn()
+    except Exception:
+        cluster_info = ClusterInfo(
+            rank=0,
+            container_ips=[],
+            container_ipv4_ips=[],
+            error="Failed to initialize cluster networking"
+        )
+        return
 
     # nccl's default host ID is $(hostname)$(cat /proc/sys/kernel/random/boot_id).
     # on runc, if two i6pn-linked containers get scheduled on the same worker,
@@ -60,18 +71,26 @@ async def _initialize_clustered_function(client: _Client, task_id: str, world_si
         os.environ["NCCL_NSOCKS_PERTHREAD"] = "1"
 
     if world_size > 1:
-        resp: api_pb2.TaskClusterHelloResponse = await retry_transient_errors(
-            client.stub.TaskClusterHello,
-            api_pb2.TaskClusterHelloRequest(
-                task_id=task_id,
-                container_ip=container_ip,
-            ),
-        )
-        cluster_info = ClusterInfo(
-            rank=resp.cluster_rank,
-            container_ips=resp.container_ips,
-            container_ipv4_ips=resp.container_ipv4_ips,
-        )
+        try:
+            resp: api_pb2.TaskClusterHelloResponse = await retry_transient_errors(
+                client.stub.TaskClusterHello,
+                api_pb2.TaskClusterHelloRequest(
+                    task_id=task_id,
+                    container_ip=container_ip,
+                ),
+            )
+            cluster_info = ClusterInfo(
+                rank=resp.cluster_rank,
+                container_ips=resp.container_ips,
+                container_ipv4_ips=resp.container_ipv4_ips,
+            )
+        except Exception:
+            cluster_info = ClusterInfo(
+                rank=0,
+                container_ips=[container_ip],
+                container_ipv4_ips=[],
+                error="Failed to initialize cluster networking"
+            )
     else:
         cluster_info = ClusterInfo(
             rank=0,
