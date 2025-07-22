@@ -3371,10 +3371,6 @@ service ModalClient {
   rpc AttemptRetry(AttemptRetryRequest) returns (AttemptRetryResponse);
   rpc AttemptStart(AttemptStartRequest) returns (AttemptStartResponse);
 
-  // Input Plane Map
-  rpc MapStartOrContinue(MapStartOrContinueRequest) returns (MapStartOrContinueResponse);
-  rpc MapAwait(MapAwaitRequest) returns (MapAwaitResponse);
-
   // Auth Token
   rpc AuthTokenGet(AuthTokenGetRequest) returns (AuthTokenGetResponse);
 
