@@ -384,6 +384,7 @@ def test_sandbox_list_env(app, client, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
     assert len(list(Sandbox.list(client=client))) == 1
     sb.terminate()
+    sb.wait(raise_on_termination=False)
     assert not list(Sandbox.list(client=client))
 
 

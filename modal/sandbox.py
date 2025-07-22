@@ -27,7 +27,7 @@ from ._utils.mount_utils import validate_network_file_systems, validate_volumes
 from .client import _Client
 from .config import config
 from .container_process import _ContainerProcess
-from .exception import ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
+from .exception import AlreadyExistsError, ExecutionError, InvalidError, SandboxTerminatedError, SandboxTimeoutError
 from .file_io import FileWatchEvent, FileWatchEventType, _FileIO
 from .gpu import GPU_T
 from .image import _Image
@@ -236,7 +236,12 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
 
             create_req = api_pb2.SandboxCreateRequest(app_id=resolver.app_id, definition=definition)
-            create_resp = await retry_transient_errors(resolver.client.stub.SandboxCreate, create_req)
+            try:
+                create_resp = await retry_transient_errors(resolver.client.stub.SandboxCreate, create_req)
+            except GRPCError as exc:
+                if exc.status == Status.ALREADY_EXISTS:
+                    raise AlreadyExistsError(exc.message)
+                raise exc
 
             sandbox_id = create_resp.sandbox_id
             self._hydrate(sandbox_id, resolver.client, None)
@@ -475,8 +480,8 @@ class _Sandbox(_Object, type_prefix="sb"):
     ) -> "_Sandbox":
         """Get a running Sandbox by name from the given app.
 
-        Raises an error if no running sandbox is found with the given name. A Sandbox's name
-        is the `name` argument passed to `Sandbox.create`.
+        Raises a modal.exception.NotFoundError if no running sandbox is found with the given name.
+        A Sandbox's name is the `name` argument passed to `Sandbox.create`.
         """
         if client is None:
             client = await _Client.from_env()
@@ -786,10 +791,15 @@ class _Sandbox(_Object, type_prefix="sb"):
                 sandbox_name_override=name,
                 sandbox_name_override_type=api_pb2.SandboxRestoreRequest.SANDBOX_NAME_OVERRIDE_TYPE_STRING,
             )
+        try:
+            restore_resp: api_pb2.SandboxRestoreResponse = await retry_transient_errors(
+                client.stub.SandboxRestore, restore_req
+            )
+        except GRPCError as exc:
+            if exc.status == Status.ALREADY_EXISTS:
+                raise AlreadyExistsError(exc.message)
+            raise exc
 
-        restore_resp: api_pb2.SandboxRestoreResponse = await retry_transient_errors(
-            client.stub.SandboxRestore, restore_req
-        )
         sandbox = await _Sandbox.from_id(restore_resp.sandbox_id, client)
 
         task_id_req = api_pb2.SandboxGetTaskIdRequest(

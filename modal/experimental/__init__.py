@@ -20,7 +20,7 @@ from ..cls import _Cls, _Obj
 from ..exception import InvalidError
 from ..image import DockerfileSpec, ImageBuilderVersion, _Image, _ImageRegistryConfig
 from ..secret import _Secret
-from .flash import flash_forward, flash_prometheus_autoscaler  # noqa: F401
+from .flash import flash_forward, flash_get_containers, flash_prometheus_autoscaler  # noqa: F401
 
 
 def stop_fetching_inputs():
