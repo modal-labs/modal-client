@@ -225,7 +225,6 @@ class _FlashPrometheusAutoscaler:
 
                 await self.cls.update_autoscaler(
                     min_containers=actual_target_containers,
-                    max_containers=actual_target_containers,
                 )
 
                 if time.time() - autoscaling_time < self.autoscaling_interval_seconds:
