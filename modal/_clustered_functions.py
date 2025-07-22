@@ -15,6 +15,7 @@ from modal_proto import api_pb2
 class ClusterInfo:
     rank: int
     container_ips: list[str]
+    container_ipv4_ips: list[str]
 
 
 cluster_info: Optional[ClusterInfo] = None
@@ -35,6 +36,25 @@ async def _initialize_clustered_function(client: _Client, task_id: str, world_si
     def get_i6pn():
         """Returns the ipv6 address assigned to this container."""
         return socket.getaddrinfo("i6pn.modal.local", None, socket.AF_INET6)[0][4][0]
+
+    def get_container_ipv4():
+        """Returns the ipv4 address assigned to this container."""
+        try:
+            # Try to get IPv4 address through hostname resolution
+            hostname = socket.gethostname()
+            return socket.gethostbyname(hostname)
+        except (socket.gaierror, OSError):
+            # Fall back to getting the default route interface address
+            try:
+                # Create a socket to determine which interface would be used for external connections
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(("8.8.8.8", 80))  # Connect to a public DNS server
+                ipv4_address = s.getsockname()[0]
+                s.close()
+                return ipv4_address
+            except Exception:
+                # If all else fails, return localhost
+                return "127.0.0.1"
 
     hostname = socket.gethostname()
     container_ip = get_i6pn()
@@ -69,11 +89,14 @@ async def _initialize_clustered_function(client: _Client, task_id: str, world_si
         cluster_info = ClusterInfo(
             rank=resp.cluster_rank,
             container_ips=resp.container_ips,
+            container_ipv4_ips=resp.container_ipv4_ips,
         )
     else:
+        container_ipv4 = get_container_ipv4()
         cluster_info = ClusterInfo(
             rank=0,
             container_ips=[container_ip],
+            container_ipv4_ips=[container_ipv4],
         )
 
 
