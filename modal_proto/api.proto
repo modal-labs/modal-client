@@ -1145,7 +1145,8 @@ message DictListResponse {
 }
 
 message DictMetadata {
-  CreationInfo creation_info = 1;
+  string name = 1;
+  CreationInfo creation_info = 2;
 }
 
 message DictPopRequest {
@@ -2439,7 +2440,8 @@ message QueueListResponse {
 }
 
 message QueueMetadata {
-   CreationInfo creation_info = 1;
+  string name = 1;
+  CreationInfo creation_info = 2;
 }
 
 message QueueNextItemsRequest {
@@ -2838,7 +2840,8 @@ message SecretListResponse {
 }
 
 message SecretMetadata {
-  CreationInfo creation_info = 1;
+  string name = 1;
+  CreationInfo creation_info = 2;
 }
 
 // SharedVolume in the backend corresponds to NetworkFileSystem in the current API
@@ -3198,7 +3201,8 @@ message VolumeListResponse {
 
 message VolumeMetadata {
   VolumeFsVersion version = 1;
-  CreationInfo creation_info = 2;
+  string name = 2;
+  CreationInfo creation_info = 3;
 }
 
 message VolumeMount {
