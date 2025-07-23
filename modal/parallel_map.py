@@ -1100,6 +1100,8 @@ class _MapItemContext:
     sync_client_retries_enabled: bool
     # Both these futures are strings. Omitting generic type because
     # it causes an error when running `inv protoc type-stubs`.
+    # Unused. But important, input_id is not set for inputplane invocations.
+    input_id: asyncio.Future
     input_jwt: asyncio.Future
     previous_input_jwt: Optional[str]
     _event_loop: asyncio.AbstractEventLoop
@@ -1163,14 +1165,14 @@ class _MapItemContext:
         if self.state == _MapItemState.COMPLETE:
             logger.debug(
                 f"Received output for input marked as complete. Must be duplicate, so ignoring. "
-                f"idx={item.idx}, input_id={item.input_id}, retry_count={item.retry_count}"
+                f"idx={item.idx} input_id={item.input_id} retry_count={item.retry_count}"
             )
             return _OutputType.ALREADY_COMPLETE_DUPLICATE
         # If the item's retry count doesn't match our retry count, this is probably a duplicate of an old output.
         if item.retry_count != self.retry_manager.retry_count:
             logger.debug(
                 f"Received output with stale retry_count, so ignoring. "
-                f"idx={item.idx}, input_id={item.input_id}, retry_count={item.retry_count} "
+                f"idx={item.idx} input_id={item.input_id} retry_count={item.retry_count} "
                 f"expected_retry_count={self.retry_manager.retry_count}"
             )
             return _OutputType.STALE_RETRY_DUPLICATE
