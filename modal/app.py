@@ -665,7 +665,6 @@ class _App:
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
-        _experimental_enable_gpu_snapshot: bool = False,  # Experimentally enable GPU memory snapshots.
         # Parameters below here are deprecated. Please update your code as suggested
         keep_warm: Optional[int] = None,  # Replaced with `min_containers`
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
@@ -830,7 +829,6 @@ class _App:
                 include_source=include_source if include_source is not None else self._include_source_default,
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
-                _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
             )
 
             self._add_function(function, webhook_config is not None)
@@ -889,7 +887,6 @@ class _App:
         ] = None,  # Experimental controls over fine-grained scheduling (alpha).
         _experimental_proxy_ip: Optional[str] = None,  # IP address of proxy
         _experimental_custom_scaling_factor: Optional[float] = None,  # Custom scaling factor
-        _experimental_enable_gpu_snapshot: bool = False,  # Experimentally enable GPU memory snapshots.
         # Parameters below here are deprecated. Please update your code as suggested
         keep_warm: Optional[int] = None,  # Replaced with `min_containers`
         concurrency_limit: Optional[int] = None,  # Replaced with `max_containers`
@@ -1014,7 +1011,6 @@ class _App:
                 experimental_options={k: str(v) for k, v in (experimental_options or {}).items()},
                 _experimental_proxy_ip=_experimental_proxy_ip,
                 _experimental_custom_scaling_factor=_experimental_custom_scaling_factor,
-                _experimental_enable_gpu_snapshot=_experimental_enable_gpu_snapshot,
             )
 
             self._add_function(cls_func, is_web_endpoint=False)
