@@ -153,7 +153,7 @@ class _Dict(_Object, type_prefix="di"):
             )
             response = await resolver.client.stub.DictGetOrCreate(req)
             logger.debug(f"Created dict with id {response.dict_id}")
-            self._hydrate(response.dict_id, resolver.client, None)
+            self._hydrate(response.dict_id, resolver.client, response.metadata)
 
         return _Dict._from_loader(_load, "Dict()", is_another_app=True, hydrate_lazily=True)
 

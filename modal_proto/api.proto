@@ -1035,6 +1035,13 @@ message ContainerStopRequest {
 message ContainerStopResponse {
 }
 
+
+message CreationInfo {
+  // This message is used in metadata for resource objects like Dict, Queue, Volume, etc.
+  double created_at = 1;  // Timestamp of resource creation
+  string created_by = 2;  // User name or service name
+}
+
 message CustomDomainConfig {
   string name = 1;
 }
@@ -1099,6 +1106,7 @@ message DictGetOrCreateRequest {
 
 message DictGetOrCreateResponse {
   string dict_id = 1;
+  DictMetadata metadata = 2;
 }
 
 message DictGetRequest {
@@ -1134,6 +1142,11 @@ message DictListResponse {
   }
 
   repeated DictInfo dicts = 1;
+}
+
+message DictMetadata {
+  string name = 1;
+  CreationInfo creation_info = 2;
 }
 
 message DictPopRequest {
@@ -2376,6 +2389,7 @@ message QueueGetOrCreateRequest {
 
 message QueueGetOrCreateResponse {
   string queue_id = 1;
+  QueueMetadata metadata = 2;
 }
 
 message QueueGetRequest {
@@ -2423,6 +2437,11 @@ message QueueListResponse {
   }
 
   repeated QueueInfo queues = 1;
+}
+
+message QueueMetadata {
+  string name = 1;
+  CreationInfo creation_info = 2;
 }
 
 message QueueNextItemsRequest {
@@ -2800,6 +2819,7 @@ message SecretGetOrCreateRequest {
 
 message SecretGetOrCreateResponse {
   string secret_id = 1;
+  SecretMetadata metadata = 2;
 }
 
 message SecretListItem {
@@ -2818,6 +2838,13 @@ message SecretListResponse {
   repeated SecretListItem items = 1;
   string environment_name = 2; // the environment that was listed (useful when relying on "default" logic)
 }
+
+message SecretMetadata {
+  string name = 1;
+  CreationInfo creation_info = 2;
+}
+
+// SharedVolume in the backend corresponds to NetworkFileSystem in the current API
 
 message SharedVolumeDeleteRequest {
   string shared_volume_id = 1;
@@ -3127,7 +3154,7 @@ message VolumeGetOrCreateRequest {
 
 message VolumeGetOrCreateResponse {
   string volume_id = 1;
-  VolumeFsVersion version = 2;
+  VolumeFsVersion version = 2;  // Not used directly; version is part of the metadata
   VolumeMetadata metadata = 3;
 }
 
@@ -3174,6 +3201,8 @@ message VolumeListResponse {
 
 message VolumeMetadata {
   VolumeFsVersion version = 1;
+  string name = 2;
+  CreationInfo creation_info = 3;
 }
 
 message VolumeMount {
