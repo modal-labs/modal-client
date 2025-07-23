@@ -332,6 +332,28 @@ def test_sandbox_exec_poll_timeout(app, servicer):
     assert cp.poll() == -1
 
 
+@mock.patch("modal.sandbox.CONTAINER_EXEC_TIMEOUT_BUFFER", 0)
+@skip_non_subprocess
+def test_sandbox_exec_output_timeout(app, servicer):
+    sb = Sandbox.create("sleep", "infinity", app=app)
+
+    cp = sb.exec("sh", "-c", "echo hi; sleep 999", timeout=1)
+    t1 = time.monotonic()
+    assert cp.stdout.read() == "hi\n"
+    assert 1 < time.monotonic() - t1 < 2.0
+    assert cp.wait() == -1
+
+
+@skip_non_subprocess
+def test_sandbox_exec_output_double_read(app, servicer):
+    sb = Sandbox.create("sleep", "infinity", app=app)
+
+    cp = sb.exec("sh", "-c", "echo hi")
+    assert cp.stdout.read() == "hi\n"
+    assert cp.stdout.read() == ""
+    assert cp.wait() == 0
+
+
 @skip_non_subprocess
 def test_sandbox_create_and_exec_with_bad_args(app, servicer):
     too_big = 130_000
@@ -362,6 +384,7 @@ def test_sandbox_list_env(app, client, servicer):
     sb = Sandbox.create("bash", "-c", "sleep 10000", app=app)
     assert len(list(Sandbox.list(client=client))) == 1
     sb.terminate()
+    sb.wait(raise_on_termination=False)
     assert not list(Sandbox.list(client=client))
 
 
@@ -377,6 +400,7 @@ def test_sandbox_list_app(client, servicer):
         sb = Sandbox.create("bash", "-c", "sleep 10000", image=image, secrets=[secret], app=app)
         assert len(list(Sandbox.list(app_id=app.app_id, client=client))) == 1
         sb.terminate()
+        sb.wait(raise_on_termination=False)
         assert not list(Sandbox.list(app_id=app.app_id, client=client))
 
 
@@ -387,6 +411,7 @@ def test_sandbox_list_tags(app, client, servicer):
     assert len(list(Sandbox.list(tags={"foo": "bar"}, client=client))) == 1
     assert not list(Sandbox.list(tags={"foo": "notbar"}, client=client))
     sb.terminate()
+    sb.wait(raise_on_termination=False)
     assert not list(Sandbox.list(tags={"baz": "qux"}, client=client))
 
 

@@ -6,89 +6,59 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
-#### 1.0.6.dev38 (2025-07-14)
+#### 1.1.1.dev13 (2025-07-22)
 
-- Fixed a bug where `Cls.with_options` would fail when provided with a Secret object that was already hydrated.
-
-
-#### 1.0.6.dev37 (2025-07-14)
-
-- Enforced deprecations on `modal.build`, `Image.copy_local_file`, and `Image.copy_local_dir`.
+- Surface task result exceptions during image build termination events to prevent ambiguous termination conditions.
 
 
-#### 1.0.6.dev30 (2025-07-11)
+#### 1.1.1.dev4 (2025-07-18)
 
-- Allows i6pn configuration for Modal Classes
-
-
-#### 1.0.6.dev29 (2025-07-10)
-
-* Fixes a bug where the specified timeout for a `Sandbox.exec` is not respected by `wait()` or `poll()`.
+- Added a `name` parameter to `Sandbox.create()`
+- Added a `Sandbox.from_name()` static method.
+- Added a `name` parameter to `Sandbox._experimental_from_snapshot()`
 
 
-#### 1.0.6.dev19 (2025-07-09)
+#### 1.1.1.dev3 (2025-07-18)
 
-- TK Changelog note introducing the 2025.06 Image Builder Version
-
-
-#### 1.0.6.dev17 (2025-07-07)
-
-* Added a [`modal.Sandbox.reload_volumes`](https://modal.com/docs/reference/modal.Sandbox#reload_volumes) method, which triggers a reload of all volumes currently mounted inside a Sandbox, allowing sandboxes to sync any concurrent updates to Volumes they have mounted.
+Sandboxes now support `experimental_options`, which can be used to test out experimental functionality that depends only on server-side configuration.
 
 
-#### 1.0.6.dev15 (2025-07-05)
+### 1.1.0 (2025-07-17)
 
-* Fixed containers printing "Task was destroyed but it is pending" on exit after exceptions in generators or web endpoints
+This release introduces support for the `2025.06` [Image Builder Version](https://modal.com/docs/guide/images#image-builder-updates), which is in a "preview" state. The new image builder includes several major changes to how the Modal client dependencies are included in Modal Images. These improvements should greatly reduce the risk of conflicts with user code dependencies. They also allow Modal Sandboxes to easily be used with existing Images or Dockerfiles that are not themselves compatible with the Modal client library. You can see more details and update your Workspace on its [Image Config](https://modal.com/settings/image-config) page. Please share any issues that you encounter as we work to make the version stable.
 
-
-#### 1.0.6.dev13 (2025-07-03)
-
-- Add `uv_sync` to image builder to build images with a `uv.lock` file. This feature is in beta as we improve it based on feedback. During the beta period, updating modal may cause image rebuilds.
+We're also introducing first-class support for building Modal Images with the [uv package manager](https://docs.astral.sh/uv/) through the new [`modal.Image.uv_pip_install`](https://modal.com/docs/reference/modal.Image#uv_pip_install) and [`modal.Image.uv_sync`](https://modal.com/docs/reference/modal.Image#uv_sync) methods:
 
 ```python
 import modal
 
+# uv_pip_install accepts a list of packages, like pip_install, but up to 50% faster
+image = modal.Image.debian_slim().uv_pip_install("torch==2.7.1", "numpy==2.3.1")
+
+# uv_sync accepts a local `uv_project_dir` (defaulting to the local working directory)
+# and uses the pyproject.toml and uv.lock files to specify the environment
 image = modal.Image.debian_slim().uv_sync()
 ```
 
+Please note that, as these methods are new, there is some chance that future releases will need to fix bugs or address edge cases in ways that break the cache for existing Images. When using `modal.Image.uv_pip_install`, we recommend pinning dependency versions so that any necessary rebuilds produce a consistent environment.
 
-#### 1.0.6.dev12 (2025-07-03)
+This release also includes a number of other new features and bug fixes:
 
-- Adds `uv_pip_install` to install packages with `uv`, which can improve build times by 50% compared to `pip_install`. This feature is in beta as we improve it based on feedback. During the beta period, updating `modal` may cause image rebuilds.
-
-```python
-image = modal.Image.debian_slim().uv_pip_install("torch==2.7.1", "numpy")
-```
-
-
-#### 1.0.6.dev6 (2025-07-01)
-
-- Optimized handling of the `ignore` parameter to `Image.add_local_dir` and similar functions. If you e.g. `image.add_local_dir("dir", ignore=["**/venv"])`, we now prune out any `venv` directories early when evaluating which files to include, avoiding traversing through all files within.
-
-
-#### 1.0.6.dev5 (2025-07-01)
-
-- Deprecated the `namespace` parameter on `Secret`, `Function`, `Cls`, `Dict`, `Queue`, `Volume`, `NetworkFileSystem`, and `deploy_app`.
-
-
-#### 1.0.6.dev4 (2025-06-30)
-
-- allows setting build-time variables for images created from Dockerfiles
-- can pass in build_args map as an argument passed into `Image.from_dockerfile()`
-- ex: Having the image be built from `alpine:latest` base image, instead of the default of `alpine:3`
-```
-ARG IMAGE_VERSION=3
-FROM alpine:${IMAGE_VERSION}
-```
-```python
-dockerfile_image = Image.from_dockerfile(dockerfile_path, build_args={"IMAGE_VERSION": "latest"}
-```
-
-
-#### 1.0.6.dev2 (2025-06-30)
-
+- Optimized handling of the `ignore` parameter in `Image.add_local_dir` and similar methods for cases where entire directories are ignored.
 - Added a `poetry_version` parameter to `modal.Image.poetry_install_from_file`, which supports installing a specific version of `poetry`. It's also possible to set `poetry_version=None` to skip the install step, i.e. when poetry is already available in the Image.
+- Added a [`modal.Sandbox.reload_volumes`](https://modal.com/docs/reference/modal.Sandbox#reload_volumes) method, which triggers a reload of all Volumes currently mounted inside a running Sandbox.
+- Added a `build_args` parameter to `modal.Image.from_dockerfile` for passing arguments through to `ARG` instructions in the Dockerfile.
+- It's now possible to use `@modal.experimental.clustered` and `i6pn` networking with `modal.Cls`.
+- Fixed a bug where `Cls.with_options` would fail when provided with a `modal.Secret` object that was already hydrated.
+- Fixed a bug where the timeout specified in `modal.Sandbox.exec()` was not respected by `modal.Sandbox.wait()` or `modal.Sandbox.poll()`.
+- Fixed retry handling when using `modal run --detach` directly against a remote Function.
 
+Finally, this release introduces a small number of deprecations and potentially-breaking changes:
+
+- We now raise `modal.exception.NotFoundError` in all cases where Modal object lookups fail; previously some methods could leak an internal `GRPCError` with a `NOT_FOUND` status.
+- We're enforcing pre-1.0 deprecations on `modal.build`, `modal.Image.copy_local_file`, and `modal.Image.copy_local_dir`.
+- We're deprecating the `environment_name` parameter in `modal.Sandbox.create()`. A Sandbox's environment association will now be determined by its parent App. This should have no user-facing effects.
+- We've deprecated the `namespace` parameter in the `.from_name` methods of `Function`, `Cls`, `Dict`, `Queue`, `Volume`, `NetworkFileSystem`, and `Secret`, along with `modal.runner.deploy_app`. These object types do not have a concept of distinct namespaces.
 
 ### 1.0.5 (2025-06-27)
 
@@ -151,7 +121,7 @@ dockerfile_image = Image.from_dockerfile(dockerfile_path, build_args={"IMAGE_VER
 - `Sandbox.terminate` no longer waits for container shutdown to complete before returning. It still ensures that a terminated container will shutdown imminently. To restore the previous behavior (i.e., to wait until the Sandbox is actually terminated), call `sb.wait(raise_on_termination=False)` after calling `sb.terminate()`.
 - Improved performance and stability for `modal volume get`.
 - Fixed a rare race condition that could sometimes make `Function.map` and similar calls deadlock.
-- Fixed an issue where `Function.map()` and similar methods would stall for 55 seconds when passed an empty iterator as input instead of completing immediately.
+- Fixed an issue where `Function.map` and similar methods would stall for 55 seconds when passed an empty iterator as input instead of completing immediately.
 - We now raise an error during App setup when using interactive mode without the `modal.enable_output` context manager. Previously, this would run the App but raise when `modal.interact()` was called.
 
 ### 1.0.2 (2025-05-26)
@@ -172,7 +142,7 @@ With this release, we're beginning to enforce the deprecations discussed in the 
 
 - Previously, Modal containers would automatically include the source for local Python packages that were imported by your Modal App. Going forward, it will be necessary to explicitly include such packages in the Image (i.e., with `modal.Image.add_local_python_source`).
 - Support for the `automount` configuration (`MODAL_AUTOMOUNT`) has been removed; this environment variable will no longer have any effect.
-- Modal will continue to automatically include the Python module or package where the Function is defined. This is narrower in scope than the old automounting behavior: it's limited to at most a single package, and it includes only `.py` files. The limited automounting can also be disabled in cases where your Image definition already includes the package defining the App: set `include_source=False` in the `modal.App` constructor or `@app.function` decorator.
+- Modal will continue to automatically include the Python module or package where the Function is defined. If the Function is defined within a package, the entire directory tree containing the package will be mounted. This limited automounting can also be disabled in cases where your Image definition already includes the package defining the Function: set `include_source=False` in the `modal.App` constructor or `@app.function` decorator.
 
 Additionally, we have enforced a number of previously-introduced deprecations:
 

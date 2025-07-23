@@ -322,34 +322,34 @@ def later():
     return "hello"
 
 
-def test_function_future(client, servicer):
+def test_function_spawn(client, servicer):
     app = App()
 
     servicer.function_body(later)
     later_modal = app.function()(later)
     with app.run(client=client):
-        future = later_modal.spawn()
-        assert isinstance(future, FunctionCall)
+        function_call = later_modal.spawn()
+        assert isinstance(function_call, FunctionCall)
 
         servicer.function_is_running = True
-        assert future.object_id == "fc-1"
+        assert function_call.object_id == "fc-1"
 
         with pytest.raises(TimeoutError):
-            future.get(0.01)
+            function_call.get(0.01)
 
         servicer.function_is_running = False
-        assert future.get(0.01) == "hello"
-        assert future.object_id not in servicer.cleared_function_calls
+        assert function_call.get(0.01) == "hello"
+        assert function_call.object_id not in servicer.cleared_function_calls
 
-        future = later_modal.spawn()
+        function_call = later_modal.spawn()
 
         servicer.function_is_running = True
-        assert future.object_id == "fc-2"
+        assert function_call.object_id == "fc-2"
 
-        future.cancel()
+        function_call.cancel()
         assert "fc-2" in servicer.cancelled_calls
 
-        assert future.object_id not in servicer.cleared_function_calls
+        assert function_call.object_id not in servicer.cleared_function_calls
 
 
 @pytest.mark.asyncio
@@ -1125,10 +1125,12 @@ def test_from_name_web_url(servicer, set_env_client):
 @pytest.mark.parametrize(
     ["app_constructor_value", "function_decorator_value", "expected_mounts"],
     [
-        (None, None, 1),
+        ("True", None, 1),
         ("False", None, 0),
+        ("False", "False", 0),
         ("False", "True", 1),
         ("True", "False", 0),
+        ("True", "True", 1),
     ],
 )
 def test_include_source_mode(

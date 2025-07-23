@@ -1,5 +1,7 @@
 # Copyright Modal Labs 2024
+import asyncio
 import pytest
+import time
 
 from grpclib import Status
 from grpclib.exceptions import GRPCError
@@ -282,3 +284,46 @@ async def test_stream_reader_container_process_retry(servicer, client):
                 output.append(line)
 
             assert output == [f"msg{i}\n" for i in range(6)]
+
+
+@pytest.mark.asyncio
+async def test_stream_reader_timeout(servicer, client):
+    """Test that StreamReader stops reading messages after the given deadline, and that
+    messages are received within the deadline"""
+
+    time_first_send = 0.0
+
+    async def container_exec_get_output(servicer, stream):
+        nonlocal time_first_send
+        await stream.recv_message()
+        # Send three messages, third one heavily delayed
+        for i in range(3):
+            if i == 2:
+                await asyncio.sleep(3)
+            await stream.send_message(
+                api_pb2.RuntimeOutputBatch(
+                    batch_index=i,
+                    items=[api_pb2.RuntimeOutputMessage(message_bytes=f"msg{i}\n".encode())],
+                )
+            )
+            if i == 0:
+                time_first_send = time.monotonic()
+        await stream.send_message(api_pb2.RuntimeOutputBatch(exit_code=0))
+
+    with servicer.intercept() as ctx:
+        ctx.set_responder("ContainerExecGetOutput", container_exec_get_output)
+        with enable_output():
+            stdout: StreamReader[str] = StreamReader(
+                file_descriptor=api_pb2.FILE_DESCRIPTOR_STDOUT,
+                object_id="tp-123",
+                object_type="container_process",
+                client=client,
+                by_line=True,
+                deadline=time.monotonic() + 2,  # use a 2-second timeout
+            )
+            output: list[str] = []
+            async for line in stdout:
+                output.append(line)
+            # message 3 should not be received, due to the timeout
+            assert output == [f"msg{i}\n" for i in range(2)]
+            assert time.monotonic() - time_first_send <= 4

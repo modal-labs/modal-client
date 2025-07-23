@@ -1,5 +1,6 @@
 # Copyright Modal Labs 2022
 import asyncio
+import time
 from collections.abc import AsyncGenerator, AsyncIterator
 from typing import (
     TYPE_CHECKING,
@@ -50,6 +51,7 @@ async def _container_process_logs_iterator(
     file_descriptor: "api_pb2.FileDescriptor.ValueType",
     client: _Client,
     last_index: int,
+    deadline: Optional[float] = None,
 ) -> AsyncGenerator[tuple[Optional[bytes], int], None]:
     req = api_pb2.ContainerExecGetOutputRequest(
         exec_id=process_id,
@@ -58,7 +60,18 @@ async def _container_process_logs_iterator(
         get_raw_bytes=True,
         last_batch_index=last_index,
     )
-    async for batch in client.stub.ContainerExecGetOutput.unary_stream(req):
+
+    stream = client.stub.ContainerExecGetOutput.unary_stream(req)
+    while True:
+        # Check deadline before attempting to receive the next batch
+        try:
+            remaining = (deadline - time.monotonic()) if deadline else None
+            batch = await asyncio.wait_for(stream.__anext__(), timeout=remaining)
+        except asyncio.TimeoutError:
+            yield None, -1
+            break
+        except StopAsyncIteration:
+            break
         if batch.HasField("exit_code"):
             yield None, batch.batch_index
             break
@@ -102,6 +115,7 @@ class _StreamReader(Generic[T]):
         stream_type: StreamType = StreamType.PIPE,
         text: bool = True,
         by_line: bool = False,
+        deadline: Optional[float] = None,
     ) -> None:
         """mdmd:hidden"""
         self._file_descriptor = file_descriptor
@@ -111,6 +125,7 @@ class _StreamReader(Generic[T]):
         self._stream = None
         self._last_entry_id: str = ""
         self._line_buffer = b""
+        self._deadline = deadline
 
         # Sandbox logs are streamed to the client as strings, so StreamReaders reading
         # them must have text mode enabled.
@@ -187,11 +202,12 @@ class _StreamReader(Generic[T]):
         retries_remaining = 10
         last_index = 0
         while not completed:
+            if self._deadline and time.monotonic() >= self._deadline:
+                break
             try:
                 iterator = _container_process_logs_iterator(
-                    self._object_id, self._file_descriptor, self._client, last_index
+                    self._object_id, self._file_descriptor, self._client, last_index, self._deadline
                 )
-
                 async for message, batch_index in iterator:
                     if self._stream_type == StreamType.STDOUT and message:
                         print(message.decode("utf-8"), end="")
@@ -271,10 +287,10 @@ class _StreamReader(Generic[T]):
                     if skip_empty_messages and message == b"":
                         continue
 
-                    yield message
                     if message is None:
                         completed = True
                         self.eof = True
+                    yield message
 
             except (GRPCError, StreamTerminatedError) as exc:
                 if retries_remaining > 0:

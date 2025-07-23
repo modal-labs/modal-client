@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 from typing_extensions import assert_type
 
+import modal.experimental
 import modal.partial_function
 from modal import App, Cls, Function, Image, Volume, enter, exit, method
 from modal._partial_function import (
@@ -1315,3 +1316,55 @@ def test_cls_namespace_deprecated(servicer, client):
     # Filter out any unrelated warnings
     namespace_warnings = [w for w in record if "namespace" in str(w.message).lower()]
     assert len(namespace_warnings) == 0
+
+
+clustered_app = App()
+
+
+def test_clustered_cls(client, servicer):
+    @clustered_app.cls(serialized=True)
+    @modal.experimental.clustered(size=3, rdma=True)  # type: ignore
+    class ClusteredClass:
+        @method()
+        def run_task(self, x):
+            return x * 2
+
+    @clustered_app.cls(serialized=True)
+    class RegularClass:
+        @method()
+        def regular_method(self, x):
+            return x * 4
+
+    with clustered_app.run(client=client):
+        assert len(servicer.app_functions) == 2
+
+        class_function = servicer.function_by_name("ClusteredClass.*")
+        assert class_function._experimental_group_size == 3
+        assert class_function.i6pn_enabled is True  # clustered implies i6pn
+
+        obj = ClusteredClass()
+        assert hasattr(obj, "run_task")
+
+        regular_function = servicer.function_by_name("RegularClass.*")
+        assert regular_function._experimental_group_size == 0  # or not set
+        assert regular_function.i6pn_enabled is False
+
+
+invalid_clustered_app = App()
+
+
+def test_clustered_cls_with_multiple_methods(client, servicer):
+    with pytest.raises(
+        InvalidError, match="Modal class ClusteredClassMixed cannot have multiple methods when clustered."
+    ):
+
+        @invalid_clustered_app.cls(serialized=True)
+        @modal.experimental.clustered(size=2)  # type: ignore
+        class ClusteredClassMixed:
+            @method()
+            def clustered_method(self, x):
+                return x * 3
+
+            @method()
+            def second_clustered_method(self, x):
+                return x * 3

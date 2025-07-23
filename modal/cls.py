@@ -642,14 +642,14 @@ More information on class parameterization can be found here: https://modal.com/
             )
             try:
                 response = await retry_transient_errors(resolver.client.stub.ClassGet, request)
+            except NotFoundError as exc:
+                env_context = f" (in the '{environment_name}' environment)" if environment_name else ""
+                raise NotFoundError(
+                    f"Lookup failed for Cls '{name}' from the '{app_name}' app{env_context}: {exc}."
+                ) from None
             except GRPCError as exc:
-                if exc.status == Status.NOT_FOUND:
-                    env_context = f" (in the '{environment_name}' environment)" if environment_name else ""
-                    raise NotFoundError(
-                        f"Lookup failed for Cls '{name}' from the '{app_name}' app{env_context}: {exc.message}."
-                    )
-                elif exc.status == Status.FAILED_PRECONDITION:
-                    raise InvalidError(exc.message)
+                if exc.status == Status.FAILED_PRECONDITION:
+                    raise InvalidError(exc.message) from None
                 else:
                     raise
 

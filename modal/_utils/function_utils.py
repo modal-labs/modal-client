@@ -1,6 +1,5 @@
 # Copyright Modal Labs 2022
 import asyncio
-import enum
 import inspect
 import os
 from collections.abc import AsyncGenerator
@@ -386,9 +385,19 @@ def callable_has_non_self_non_default_params(f: Callable[..., Any]) -> bool:
 
 
 async def _stream_function_call_data(
-    client, function_call_id: str, variant: Literal["data_in", "data_out"]
+    client,
+    stub,
+    function_call_id: Optional[str],
+    variant: Literal["data_in", "data_out"],
+    attempt_token: Optional[str] = None,
 ) -> AsyncGenerator[Any, None]:
     """Read from the `data_in` or `data_out` stream of a function call."""
+    if function_call_id is None and attempt_token is None:
+        raise ValueError("function_call_id or attempt_token is required for data_out stream")
+
+    if stub is None:
+        stub = client.stub
+
     last_index = 0
 
     # TODO(gongy): generalize this logic as util for unary streams
@@ -396,14 +405,18 @@ async def _stream_function_call_data(
     delay_ms = 1
 
     if variant == "data_in":
-        stub_fn = client.stub.FunctionCallGetDataIn
+        stub_fn = stub.FunctionCallGetDataIn
     elif variant == "data_out":
-        stub_fn = client.stub.FunctionCallGetDataOut
+        stub_fn = stub.FunctionCallGetDataOut
     else:
         raise ValueError(f"Invalid variant {variant}")
 
     while True:
-        req = api_pb2.FunctionCallGetDataRequest(function_call_id=function_call_id, last_index=last_index)
+        req = api_pb2.FunctionCallGetDataRequest(
+            function_call_id=function_call_id,
+            last_index=last_index,
+            attempt_token=attempt_token,
+        )
         try:
             async for chunk in stub_fn.unary_stream(req):
                 if chunk.index <= last_index:
@@ -550,7 +563,7 @@ async def _create_input(
     args_serialized = serialize((args, kwargs))
 
     if should_upload(len(args_serialized), max_object_size_bytes, function_call_invocation_type):
-        args_blob_id, r2_failed, r2_latency_ms = await blob_upload_with_r2_failure_info(args_serialized, stub)
+        args_blob_id, r2_failed, r2_throughput_bytes_s = await blob_upload_with_r2_failure_info(args_serialized, stub)
         return api_pb2.FunctionPutInputsItem(
             input=api_pb2.FunctionInput(
                 args_blob_id=args_blob_id,
@@ -559,7 +572,7 @@ async def _create_input(
             ),
             idx=idx,
             r2_failed=r2_failed,
-            r2_latency_ms=r2_latency_ms,
+            r2_throughput_bytes_s=r2_throughput_bytes_s,
         )
     else:
         return api_pb2.FunctionPutInputsItem(
@@ -657,30 +670,3 @@ class FunctionCreationStatus:
                                 f"Custom domain for {method_definition.function_name} => [magenta underline]"
                                 f"{custom_domain.url}[/magenta underline]"
                             )
-
-
-class IncludeSourceMode(enum.Enum):
-    INCLUDE_NOTHING = False  # can only be set in source, can't be set in config
-    INCLUDE_MAIN_PACKAGE = True  # Default behavior
-
-
-def get_include_source_mode(function_or_app_specific) -> IncludeSourceMode:
-    """Which "automount" behavior should a function use
-
-    function_or_app_specific: explicit value given in the @function or @cls decorator, in an App constructor, or None
-
-    If function_or_app_specific is specified, validate and return the IncludeSourceMode
-    If function_or_app_specific is None, infer it from config
-    """
-    if function_or_app_specific is not None:
-        if not isinstance(function_or_app_specific, bool):
-            raise ValueError(
-                f"Invalid `include_source` value: {function_or_app_specific}. Use one of:\n"
-                f"True - include function's package source\n"
-                f"False - include no Python source (module expected to be present in Image)\n"
-            )
-
-        # explicitly set in app/function
-        return IncludeSourceMode(function_or_app_specific)
-
-    return IncludeSourceMode.INCLUDE_MAIN_PACKAGE

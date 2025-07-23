@@ -47,12 +47,10 @@ from ._utils.function_utils import (
     OUTPUTS_TIMEOUT,
     FunctionCreationStatus,
     FunctionInfo,
-    IncludeSourceMode,
     _create_input,
     _process_result,
     _stream_function_call_data,
     get_function_type,
-    get_include_source_mode,
     is_async,
 )
 from ._utils.grpc_utils import RetryWarningMessage, retry_transient_errors
@@ -334,7 +332,7 @@ class _Invocation:
         items_total: Union[int, None] = None
         async with aclosing(
             async_merge(
-                _stream_function_call_data(self.client, self.function_call_id, variant="data_out"),
+                _stream_function_call_data(self.client, None, self.function_call_id, variant="data_out"),
                 callable_to_agen(self.run_function),
             )
         ) as streamer:
@@ -452,6 +450,33 @@ class _InputPlaneInvocation:
                 return await _process_result(
                     await_response.output.result, await_response.output.data_format, control_plane_stub, self.client
                 )
+
+    async def run_generator(self):
+        items_received = 0
+        # populated when self.run_function() completes
+        items_total: Union[int, None] = None
+        async with aclosing(
+            async_merge(
+                _stream_function_call_data(
+                    self.client,
+                    self.stub,
+                    "",
+                    variant="data_out",
+                    attempt_token=self.attempt_token,
+                ),
+                callable_to_agen(self.run_function),
+            )
+        ) as streamer:
+            async for item in streamer:
+                if isinstance(item, api_pb2.GeneratorDone):
+                    items_total = item.items_total
+                else:
+                    yield item
+                    items_received += 1
+                # The comparison avoids infinite loops if a non-deterministic generator is retried
+                # and produces less data in the second run than what was already sent.
+                if items_total is not None and items_received >= items_total:
+                    break
 
     @staticmethod
     async def _get_metadata(input_plane_region: str, client: _Client) -> list[tuple[str, str]]:
@@ -598,8 +623,7 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
         rdma: Optional[bool] = None,
         max_inputs: Optional[int] = None,
         ephemeral_disk: Optional[int] = None,
-        # current default: first-party, future default: main-package
-        include_source: Optional[bool] = None,
+        include_source: bool = True,
         experimental_options: Optional[dict[str, str]] = None,
         _experimental_proxy_ip: Optional[str] = None,
         _experimental_custom_scaling_factor: Optional[float] = None,
@@ -624,15 +648,10 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             assert not webhook_config
             assert not schedule
 
-        include_source_mode = get_include_source_mode(include_source)
-        if include_source_mode != IncludeSourceMode.INCLUDE_NOTHING:
-            entrypoint_mounts = info.get_entrypoint_mount()
-        else:
-            entrypoint_mounts = {}
-
+        entrypoint_mount = info.get_entrypoint_mount() if include_source else {}
         all_mounts = [
             _get_client_mount(),
-            *entrypoint_mounts.values(),
+            *entrypoint_mount.values(),
         ]
 
         retry_policy = _parse_retries(
@@ -1245,14 +1264,12 @@ class _Function(typing.Generic[P, ReturnType, OriginalReturnType], _Object, type
             )
             try:
                 response = await retry_transient_errors(resolver.client.stub.FunctionGet, request)
-            except GRPCError as exc:
-                if exc.status == Status.NOT_FOUND:
-                    env_context = f" (in the '{environment_name}' environment)" if environment_name else ""
-                    raise NotFoundError(
-                        f"Lookup failed for Function '{name}' from the '{app_name}' app{env_context}: {exc.message}."
-                    )
-                else:
-                    raise
+            except NotFoundError as exc:
+                # refine the error message
+                env_context = f" (in the '{environment_name}' environment)" if environment_name else ""
+                raise NotFoundError(
+                    f"Lookup failed for Function '{name}' from the '{app_name}' app{env_context}: {exc}."
+                ) from None
 
             print_server_warnings(response.server_warnings)
 
@@ -1554,13 +1571,24 @@ Use the `Function.get_web_url()` method instead.
     @live_method_gen
     @synchronizer.no_input_translation
     async def _call_generator(self, args, kwargs):
-        invocation = await _Invocation.create(
-            self,
-            args,
-            kwargs,
-            client=self.client,
-            function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY,
-        )
+        invocation: Union[_Invocation, _InputPlaneInvocation]
+        if self._input_plane_url:
+            invocation = await _InputPlaneInvocation.create(
+                self,
+                args,
+                kwargs,
+                client=self.client,
+                input_plane_url=self._input_plane_url,
+                input_plane_region=self._input_plane_region,
+            )
+        else:
+            invocation = await _Invocation.create(
+                self,
+                args,
+                kwargs,
+                client=self.client,
+                function_call_invocation_type=api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC_LEGACY,
+            )
         async for res in invocation.run_generator():
             yield res
 
