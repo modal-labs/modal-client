@@ -1299,7 +1299,7 @@ class _MapItemsManager:
         del self._item_context[item_idx]
         self._inputs_outstanding.release()
 
-    def get_item_context(self, item_idx: int) -> _MapItemContext | None:
+    def get_item_context(self, item_idx: int) -> _MapItemContext:
         return self._item_context.get(item_idx)
 
     def handle_put_continue_response(
