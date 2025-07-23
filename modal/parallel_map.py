@@ -748,7 +748,7 @@ async def _map_invocation_inputplane(
         while True:
             log_stats()
             try:
-                await asyncio.sleep(1)
+                await asyncio.sleep(10)
             except asyncio.CancelledError:
                 # Log final stats before exiting
                 log_stats()
@@ -1121,21 +1121,26 @@ class _MapItemContext:
         # a race condition where we could receive outputs before we have
         # recorded the input ID and JWT in `pending_outputs`.
         self.input_jwt = self._event_loop.create_future()
+        # Unused. But important, this is not set for inputplane invocations.
+        self.input_id = self._event_loop.create_future()
         self._input_plane_instance = input_plane_instance
 
-    def handle_put_inputs_response(self, item: api_pb2.FunctionPutInputsResponseItem | str):
-        if isinstance(item, api_pb2.FunctionPutInputsResponseItem):
-            input_jwt = item.input_jwt
-        else:
-            input_jwt = item
-
+    def handle_map_start_or_continue_response(self, attempt_token: str):
         if not self.input_jwt.done():
-            self.input_jwt.set_result(input_jwt)
+            self.input_jwt.set_result(attempt_token)
         else:
             # Create a new future for the next value
             self.input_jwt = asyncio.Future()
-            self.input_jwt.set_result(input_jwt)
+            self.input_jwt.set_result(attempt_token)
 
+        # Set state to WAITING_FOR_OUTPUT only if current state is SENDING. If state is
+        # RETRYING, WAITING_TO_RETRY, or COMPLETE, then we already got the output.
+        if self.state == _MapItemState.SENDING:
+            self.state = _MapItemState.WAITING_FOR_OUTPUT
+
+    def handle_put_inputs_response(self, item: api_pb2.FunctionPutInputsResponseItem):
+        self.input_jwt.set_result(item.input_jwt)
+        self.input_id.set_result(item.input_id)
         # Set state to WAITING_FOR_OUTPUT only if current state is SENDING. If state is
         # RETRYING, WAITING_TO_RETRY, or COMPLETE, then we already got the output.
         if self.state == _MapItemState.SENDING:
@@ -1158,14 +1163,14 @@ class _MapItemContext:
         if self.state == _MapItemState.COMPLETE:
             logger.debug(
                 f"Received output for input marked as complete. Must be duplicate, so ignoring. "
-                f"idx={item.idx}, retry_count={item.retry_count}"
+                f"idx={item.idx}, input_id={item.input_id}, retry_count={item.retry_count}"
             )
             return _OutputType.ALREADY_COMPLETE_DUPLICATE
         # If the item's retry count doesn't match our retry count, this is probably a duplicate of an old output.
         if item.retry_count != self.retry_manager.retry_count:
             logger.debug(
                 f"Received output with stale retry_count, so ignoring. "
-                f"idx={item.idx}, retry_count={item.retry_count} "
+                f"idx={item.idx}, input_id={item.input_id}, retry_count={item.retry_count} "
                 f"expected_retry_count={self.retry_manager.retry_count}"
             )
             return _OutputType.STALE_RETRY_DUPLICATE
@@ -1206,13 +1211,11 @@ class _MapItemContext:
 
         self.state = _MapItemState.WAITING_TO_RETRY
 
-        # TODO(ben-okeefe): Handle retrying inputs.
+        now = time.time()
         if self._input_plane_instance:
             retry_item = await self.create_map_start_or_continue_item(item.idx)
-            now = time.time()
             await retry_queue.put(now + delay_ms / 1_000, retry_item)
         else:
-            now = time.time()
             await retry_queue.put(now + delay_ms / 1_000, item.idx)
 
         return _OutputType.RETRYING
@@ -1270,9 +1273,8 @@ class _MapItemsManager:
         for item in items:
             # acquire semaphore to limit the number of inputs in progress
             # (either queued to be sent, waiting for completion, or retrying)
-
             if isinstance(item, api_pb2.MapStartOrContinueItem):
-                if item.attempt_token != "":
+                if item.attempt_token != "":  # if it is a retry item
                     self._item_context[item.input.idx].state = _MapItemState.SENDING
                     continue
                 await self._inputs_outstanding.acquire()
@@ -1309,7 +1311,7 @@ class _MapItemsManager:
         """
         Returns a list of input_idxs for inputs that are waiting for output.
         """
-        # Doesn't need future because idx is set by client and not server.
+        # Idx doesn't need a future because it is set by client and not server.
         return [
             (idx, ctx.input_jwt.result())
             for idx, ctx in self._item_context.items()
@@ -1320,25 +1322,22 @@ class _MapItemsManager:
         del self._item_context[item_idx]
         self._inputs_outstanding.release()
 
-    def get_item_context(self, item_idx: int) -> _MapItemContext:
+    def get_item_context(self, item_idx: int) -> _MapItemContext | None:
         return self._item_context.get(item_idx)
 
     def handle_put_continue_response(
         self,
-        items: list[tuple[int, str]],
+        items: list[tuple[int, str]],  # idx, input_jwt
     ):
         for index, item in items:
             ctx = self._item_context.get(index, None)
             # If the context is None, then get_all_outputs() has already received a successful
             # output, and deleted the context. This happens if FunctionGetOutputs completes
-            # before FunctionPutContinueResponse is received.
+            # before MapStartOrContinueResponse is received.
             if ctx is not None:
-                ctx.handle_put_inputs_response(item)
+                ctx.handle_map_start_or_continue_response(item)
 
-    def handle_put_inputs_response(
-        self,
-        items: list[api_pb2.FunctionPutInputsResponseItem],
-    ):
+    def handle_put_inputs_response(self, items: list[api_pb2.FunctionPutInputsResponseItem]):
         for item in items:
             ctx = self._item_context.get(item.idx, None)
             # If the context is None, then get_all_outputs() has already received a successful
@@ -1374,7 +1373,7 @@ class _MapItemsManager:
             # This can happen because the worker can sometimes send duplicate outputs.
             logger.debug(
                 f"Received output that does not have entry in item_context map, so ignoring. "
-                f"idx={item.idx} retry_count={item.retry_count} "
+                f"idx={item.idx} input_id={item.input_id}, retry_count={item.retry_count} "
             )
             return _OutputType.NO_CONTEXT_DUPLICATE
         output_type = await ctx.handle_get_outputs_response(
