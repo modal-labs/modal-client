@@ -60,7 +60,7 @@ class CudaCheckpointProcess:
                 # Use exponential backoff for retries
                 sleep_time = min(0.1 * (2**retry_count), 1.0)
                 time.sleep(sleep_time)
-                retry_count = 0  # Reset on successful command
+                retry_count = 0
             except CudaCheckpointException as e:
                 retry_count += 1
                 if retry_count >= max_retries:
@@ -68,7 +68,7 @@ class CudaCheckpointProcess:
                         f"PID: {self.pid} Failed to toggle state after {max_retries} retries: {e}"
                     )
                 logger.debug(f"PID: {self.pid} Retry {retry_count}/{max_retries} after error: {e}")
-                time.sleep(0.5 * retry_count)  # Increasing delay between retries
+                time.sleep(0.5 * retry_count)
 
         logger.debug(f"PID: {self.pid} Target state {target_state.value} reached")
 
