@@ -1208,18 +1208,12 @@ class _MapItemContext:
 
         # TODO(ben-okeefe): Handle retrying inputs.
         if self._input_plane_instance:
-            attempt_token = await self.input_jwt
-            retry_item = api_pb2.MapStartOrContinueItem(
-                input=api_pb2.FunctionPutInputsItem(
-                    input=self.input,
-                    idx=item.idx,
-                ),
-                attempt_token=attempt_token,
-            )
-            now_seconds = time.time()
-            await retry_queue.put(now_seconds + (delay_ms / 1000), retry_item)
+            retry_item = await self.create_map_start_or_continue_item(item.idx)
+            now = time.time()
+            await retry_queue.put(now + delay_ms / 1_000, retry_item)
         else:
-            await retry_queue.put(now_seconds + (delay_ms / 1000), item.idx)
+            now = time.time()
+            await retry_queue.put(now + delay_ms / 1_000, item.idx)
 
         return _OutputType.RETRYING
 
@@ -1237,6 +1231,16 @@ class _MapItemContext:
     def handle_retry_response(self, input_jwt: str):
         self.input_jwt.set_result(input_jwt)
         self.state = _MapItemState.WAITING_FOR_OUTPUT
+
+    async def create_map_start_or_continue_item(self, idx: int) -> api_pb2.MapStartOrContinueItem:
+        attempt_token = await self.input_jwt
+        return api_pb2.MapStartOrContinueItem(
+            input=api_pb2.FunctionPutInputsItem(
+                input=self.input,
+                idx=idx,
+            ),
+            attempt_token=attempt_token,
+        )
 
 
 class _MapItemsManager:
@@ -1269,6 +1273,7 @@ class _MapItemsManager:
 
             if isinstance(item, api_pb2.MapStartOrContinueItem):
                 if item.attempt_token != "":
+                    self._item_context[item.input.idx].state = _MapItemState.SENDING
                     continue
                 await self._inputs_outstanding.acquire()
                 input = item.input
@@ -1356,9 +1361,11 @@ class _MapItemsManager:
         for idx, lost in response:
             ctx = self._item_context.get(idx, None)
             if ctx is not None:
-                ctx.state = _MapItemState.WAITING_TO_RETRY
                 if lost:
-                    await self._retry_queue.put(int(time.time()), idx)
+                    ctx.state = _MapItemState.WAITING_TO_RETRY
+                    retry_item = await ctx.create_map_start_or_continue_item(idx)
+                    delay_ms = ctx.retry_manager.get_delay_ms()
+                    await self._retry_queue.put(time.time() + delay_ms / 1_000, retry_item)
 
     async def handle_get_outputs_response(self, item: api_pb2.FunctionGetOutputsItem, now_seconds: int) -> _OutputType:
         ctx = self._item_context.get(item.idx, None)
