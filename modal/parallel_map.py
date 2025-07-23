@@ -436,13 +436,14 @@ async def _map_invocation_inputplane(
 
     This is analogous to `_map_invocation`, but instead of the control-plane
     `FunctionMap` / `FunctionPutInputs` / `FunctionGetOutputs` RPCs it speaks
-    the input-plane protocol consisting of `MapStartOrContinue` and `MapAwait`.
+    the input-plane protocol consisting of `MapStartOrContinue`, `MapAwait`, and `MapCheckInputs`.
     """
 
     assert function._input_plane_url, "_map_invocation_inputplane should only be used for input-plane backed functions"
 
     input_plane_stub = await client.get_stub(function._input_plane_url)
 
+    # Required for _create_input.
     assert client.stub, "Client must be hydrated with a stub for _map_invocation_inputplane"
 
     # ------------------------------------------------------------
@@ -476,6 +477,7 @@ async def _map_invocation_inputplane(
     # any reason).
     max_inputs_outstanding = MAX_INPUTS_OUTSTANDING_DEFAULT
 
+    # Input plane does not yet return a retry policy. So we set a default.
     retry_policy = api_pb2.FunctionRetryPolicy(
         retries=15,
         initial_delay_ms=1000,
@@ -490,10 +492,6 @@ async def _map_invocation_inputplane(
         max_inputs_outstanding=MAX_INPUTS_OUTSTANDING_DEFAULT,
         input_plane_instance=True,
     )
-
-    # ------------------------------------------------------------
-    # Helper functions
-    # ------------------------------------------------------------
 
     def update_counters(created_delta: int = 0, completed_delta: int = 0, set_have_all_inputs: bool | None = None):
         nonlocal inputs_created, outputs_completed, have_all_inputs
@@ -525,10 +523,6 @@ async def _map_invocation_inputplane(
         )
         return api_pb2.MapStartOrContinueItem(input=put_item)
 
-    # ------------------------------------------------------------
-    # Coroutine: drain user input iterator, upload blobs, enqueue for sending
-    # ------------------------------------------------------------
-
     async def input_iter():
         while True:
             raw_input = await raw_input_queue.get()
@@ -548,10 +542,6 @@ async def _map_invocation_inputplane(
         update_counters(set_have_all_inputs=True)
         yield
 
-    # ------------------------------------------------------------
-    # Coroutine: send queued items to the input-plane server
-    # ------------------------------------------------------------
-
     async def pump_inputs():
         nonlocal function_call_id, max_inputs_outstanding
         async for batch in queue_batch_iterator(queue, max_batch_size=MAP_INVOCATION_CHUNK_SIZE):
@@ -559,7 +549,9 @@ async def _map_invocation_inputplane(
             request_items: list[api_pb2.MapStartOrContinueItem] = [
                 api_pb2.MapStartOrContinueItem(input=qi.input, attempt_token=qi.attempt_token) for qi in batch
             ]
+
             await map_items_manager.add_items_inputplane(request_items)
+
             # Build request
             request = api_pb2.MapStartOrContinueRequest(
                 function_id=function.object_id,
@@ -588,13 +580,8 @@ async def _map_invocation_inputplane(
                 max_inputs_outstanding = response.max_inputs_outstanding or MAX_INPUTS_OUTSTANDING_DEFAULT
         yield
 
-    # ------------------------------------------------------------
-    # Coroutine: **stub** – retry handling will be added in the future
-    # ------------------------------------------------------------
-
-    async def retry_inputs():
+    async def check_lost_inputs():
         nonlocal last_entry_id  # shared with get_all_outputs
-        """Temporary stub for retrying inputs. Retry handling will be added in the future."""
         try:
             while not map_done_event.is_set():
                 if function_call_id is None:
@@ -603,7 +590,7 @@ async def _map_invocation_inputplane(
 
                 await asyncio.sleep(1)
 
-                # check_inputs (idx, attempt_token)
+                # check_inputs = [(idx, attempt_token), ...]
                 check_inputs = map_items_manager.get_input_idxs_waiting_for_output()
                 attempt_tokens = [attempt_token for _, attempt_token in check_inputs]
                 request = api_pb2.MapCheckInputsRequest(
@@ -619,14 +606,11 @@ async def _map_invocation_inputplane(
                 check_inputs_response = [
                     (check_inputs[resp_idx][0], response.lost[resp_idx]) for resp_idx, _ in enumerate(response.lost)
                 ]
+                # check_inputs_response = [(idx, lost: bool), ...]
                 await map_items_manager.handle_check_inputs_response(check_inputs_response)
             yield
         except asyncio.CancelledError:
             pass
-
-    # ------------------------------------------------------------
-    # Coroutine: stream outputs via MapAwait
-    # ------------------------------------------------------------
 
     async def get_all_outputs():
         nonlocal \
@@ -689,10 +673,6 @@ async def _map_invocation_inputplane(
             await queue.close()
             pass
 
-    # ------------------------------------------------------------
-    # Coroutine: convert FunctionGetOutputsItem → actual result value
-    # ------------------------------------------------------------
-
     async def fetch_output(item: api_pb2.FunctionGetOutputsItem) -> tuple[int, Any]:
         try:
             output_val = await _process_result(item.result, item.data_format, input_plane_stub, client)
@@ -732,9 +712,6 @@ async def _map_invocation_inputplane(
 
         assert len(received_outputs) == 0
 
-    # ------------------------------------------------------------
-    # Debug-logging helper
-    # ------------------------------------------------------------
     async def log_debug_stats():
         def log_stats():
             logger.debug(
@@ -754,13 +731,11 @@ async def _map_invocation_inputplane(
                 log_stats()
                 break
 
-    # ------------------------------------------------------------
-    # Run the four coroutines concurrently and yield results as they arrive
-    # ------------------------------------------------------------
-
     log_task = asyncio.create_task(log_debug_stats())
 
-    async with aclosing(async_merge(drain_input_generator(), pump_inputs(), poll_outputs(), retry_inputs())) as merged:
+    async with aclosing(
+        async_merge(drain_input_generator(), pump_inputs(), poll_outputs(), check_lost_inputs())
+    ) as merged:
         async for maybe_output in merged:
             if maybe_output is not None:  # ignore None sentinels
                 yield maybe_output.value
