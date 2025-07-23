@@ -2108,7 +2108,6 @@ message MapCheckInputsResponse {
   repeated bool lost = 1;
 }
 
-
 message MapStartOrContinueItem {
   FunctionPutInputsItem input = 1;
   optional string attempt_token = 2; // None if this is a fresh input, otherwise it is the attempt token for a retry.
