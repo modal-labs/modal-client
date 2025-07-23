@@ -607,8 +607,6 @@ async def _map_invocation_inputplane(
                 check_inputs = map_items_manager.get_input_idxs_waiting_for_output()
                 attempt_tokens = [attempt_token for _, attempt_token in check_inputs]
                 request = api_pb2.MapCheckInputsRequest(
-                    function_id=function.object_id,
-                    function_call_id=function_call_id,
                     last_entry_id=last_entry_id,
                     timeout=0,  # Non-blocking read
                     attempt_tokens=attempt_tokens,
