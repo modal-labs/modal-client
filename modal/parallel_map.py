@@ -575,7 +575,10 @@ async def _map_invocation_inputplane(
             )
 
             # match response items to the corresponding request item index
-            response_items_idx_tuple = [(request_items[idx].input.idx, item) for idx, item in enumerate(response.items)]
+            response_items_idx_tuple = [
+                (request_items[idx].input.idx, attempt_token)
+                for idx, attempt_token in enumerate(response.attempt_tokens)
+            ]
 
             map_items_manager.handle_put_continue_response(response_items_idx_tuple)
 
@@ -1122,13 +1125,11 @@ class _MapItemContext:
         self.input_jwt = self._event_loop.create_future()
         self._input_plane_instance = input_plane_instance
 
-    def handle_put_inputs_response(
-        self, item: api_pb2.FunctionPutInputsResponseItem | api_pb2.MapStartOrContinueResponseItem
-    ):
+    def handle_put_inputs_response(self, item: api_pb2.FunctionPutInputsResponseItem | str):
         if isinstance(item, api_pb2.FunctionPutInputsResponseItem):
             input_jwt = item.input_jwt
         else:
-            input_jwt = item.attempt_token
+            input_jwt = item
 
         if not self.input_jwt.done():
             self.input_jwt.set_result(input_jwt)
@@ -1321,7 +1322,7 @@ class _MapItemsManager:
 
     def handle_put_continue_response(
         self,
-        items: list[tuple[int, api_pb2.MapStartOrContinueResponseItem]],
+        items: list[tuple[int, str]],
     ):
         for index, item in items:
             ctx = self._item_context.get(index, None)

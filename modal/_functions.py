@@ -1517,7 +1517,7 @@ Use the `Function.get_web_url()` method instead.
             count_update_callback = None
 
         # TODO(ben-okeefe): Feature gating for input plane map until feature is enabled.
-        if self._input_plane_url and False:
+        if self._input_plane_url:
             async with aclosing(
                 _map_invocation_inputplane(
                     self,
