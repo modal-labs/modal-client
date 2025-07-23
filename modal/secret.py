@@ -73,7 +73,7 @@ class _Secret(_Object, type_prefix="st"):
                 if exc.status == Status.FAILED_PRECONDITION:
                     raise InvalidError(exc.message)
                 raise
-            self._hydrate(resp.secret_id, resolver.client, None)
+            self._hydrate(resp.secret_id, resolver.client, resp.metadata)
 
         rep = f"Secret.from_dict([{', '.join(env_dict.keys())}])"
         return _Secret._from_loader(_load, rep, hydrate_lazily=True)
@@ -157,7 +157,7 @@ class _Secret(_Object, type_prefix="st"):
             )
             resp = await resolver.client.stub.SecretGetOrCreate(req)
 
-            self._hydrate(resp.secret_id, resolver.client, None)
+            self._hydrate(resp.secret_id, resolver.client, resp.metadata)
 
         return _Secret._from_loader(_load, "Secret.from_dotenv()", hydrate_lazily=True)
 
@@ -200,7 +200,7 @@ class _Secret(_Object, type_prefix="st"):
                     raise NotFoundError(exc.message)
                 else:
                     raise
-            self._hydrate(response.secret_id, resolver.client, None)
+            self._hydrate(response.secret_id, resolver.client, response.metadata)
 
         return _Secret._from_loader(_load, "Secret()", hydrate_lazily=True)
 
