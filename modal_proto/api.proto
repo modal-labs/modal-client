@@ -2663,6 +2663,25 @@ message SandboxRestoreResponse {
   string sandbox_id = 1;
 }
 
+message SandboxSnapshotFsAsyncGetRequest {
+  string image_id = 1;
+}
+
+message SandboxSnapshotFsAsyncGetResponse {
+  string image_id = 1;
+  GenericResult result = 2;
+  ImageMetadata image_metadata = 3;
+}
+
+message SandboxSnapshotFsAsyncRequest {
+  string sandbox_id = 1;
+  float timeout = 2;
+}
+
+message SandboxSnapshotFsAsyncResponse {
+  string image_id = 1;
+}
+
 message SandboxSnapshotFsRequest {
   string sandbox_id = 1;
   float timeout = 2;
@@ -3474,6 +3493,8 @@ service ModalClient {
   rpc SandboxRestore(SandboxRestoreRequest) returns (SandboxRestoreResponse);
   rpc SandboxSnapshot(SandboxSnapshotRequest) returns (SandboxSnapshotResponse);
   rpc SandboxSnapshotFs(SandboxSnapshotFsRequest) returns (SandboxSnapshotFsResponse);
+  rpc SandboxSnapshotFsAsync(SandboxSnapshotFsAsyncRequest) returns (SandboxSnapshotFsAsyncResponse);
+  rpc SandboxSnapshotFsAsyncGet(SandboxSnapshotFsAsyncGetRequest) returns (SandboxSnapshotFsAsyncGetResponse);
   rpc SandboxSnapshotGet(SandboxSnapshotGetRequest) returns (SandboxSnapshotGetResponse);
   rpc SandboxSnapshotWait(SandboxSnapshotWaitRequest) returns (SandboxSnapshotWaitResponse);
   rpc SandboxStdinWrite(SandboxStdinWriteRequest) returns (SandboxStdinWriteResponse);
