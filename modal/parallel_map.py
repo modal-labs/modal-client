@@ -559,7 +559,7 @@ async def _map_invocation_inputplane(
             request_items: list[api_pb2.MapStartOrContinueItem] = [
                 api_pb2.MapStartOrContinueItem(input=qi.input, attempt_token=qi.attempt_token) for qi in batch
             ]
-            await map_items_manager.add_items(request_items)
+            await map_items_manager.add_items_inputplane(request_items)
             # Build request
             request = api_pb2.MapStartOrContinueRequest(
                 function_id=function.object_id,
@@ -1267,27 +1267,27 @@ class _MapItemsManager:
         self._sync_client_retries_enabled = sync_client_retries_enabled
         self._input_plane_instance = input_plane_instance
 
-    async def add_items(
-        self, items: list[api_pb2.FunctionPutInputsItem] | list[api_pb2.MapStartOrContinueItem]
-    ) -> None:
+    async def add_items(self, items: list[api_pb2.FunctionPutInputsItem]):
         for item in items:
             # acquire semaphore to limit the number of inputs in progress
             # (either queued to be sent, waiting for completion, or retrying)
-            if isinstance(item, api_pb2.MapStartOrContinueItem):
-                if item.attempt_token != "":  # if it is a retry item
-                    self._item_context[item.input.idx].state = _MapItemState.SENDING
-                    continue
-                await self._inputs_outstanding.acquire()
-                input = item.input
-                idx = input.idx
-                input_data = input.input
-            else:
-                await self._inputs_outstanding.acquire()
-                idx = item.idx
-                input_data = item.input
+            await self._inputs_outstanding.acquire()
+            self._item_context[item.idx] = _MapItemContext(
+                input=item.input,
+                retry_manager=RetryManager(self._retry_policy),
+                sync_client_retries_enabled=self._sync_client_retries_enabled,
+            )
 
-            self._item_context[idx] = _MapItemContext(
-                input=input_data,
+    async def add_items_inputplane(self, items: list[api_pb2.MapStartOrContinueItem]):
+        for item in items:
+            # acquire semaphore to limit the number of inputs in progress
+            # (either queued to be sent, waiting for completion, or retrying)
+            if item.attempt_token != "":  # if it is a retry item
+                self._item_context[item.input.idx].state = _MapItemState.SENDING
+                continue
+            await self._inputs_outstanding.acquire()
+            self._item_context[item.input.idx] = _MapItemContext(
+                input=item.input.input,
                 retry_manager=RetryManager(self._retry_policy),
                 sync_client_retries_enabled=self._sync_client_retries_enabled,
                 input_plane_instance=self._input_plane_instance,
@@ -1373,7 +1373,7 @@ class _MapItemsManager:
             # This can happen because the worker can sometimes send duplicate outputs.
             logger.debug(
                 f"Received output that does not have entry in item_context map, so ignoring. "
-                f"idx={item.idx} input_id={item.input_id}, retry_count={item.retry_count} "
+                f"idx={item.idx} input_id={item.input_id} retry_count={item.retry_count} "
             )
             return _OutputType.NO_CONTEXT_DUPLICATE
         output_type = await ctx.handle_get_outputs_response(
