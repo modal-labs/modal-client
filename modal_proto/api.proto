@@ -2098,6 +2098,17 @@ message MapAwaitResponse {
   string last_entry_id = 2;
 }
 
+message MapCheckInputsRequest {
+  string last_entry_id = 1;
+  float timeout = 2;
+  repeated string attempt_tokens = 3;  
+}
+
+message MapCheckInputsResponse {
+  repeated bool lost = 1;
+}
+
+
 message MapStartOrContinueItem {
   FunctionPutInputsItem input = 1;
   optional string attempt_token = 2; // None if this is a fresh input, otherwise it is the attempt token for a retry.
@@ -3464,6 +3475,7 @@ service ModalClient {
 
   // Input Plane Map
   rpc MapAwait(MapAwaitRequest) returns (MapAwaitResponse);
+  rpc MapCheckInputs(MapCheckInputsRequest) returns (MapCheckInputsResponse);
   rpc MapStartOrContinue(MapStartOrContinueRequest) returns (MapStartOrContinueResponse);
 
   // Mounts
