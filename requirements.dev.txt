@@ -29,7 +29,7 @@ types-setuptools~=57.4.11
 types-six==1.16.21
 types-toml~=0.10.4
 twine~=6.1.0
-wheel~=0.37.1
+wheel~=0.38.1
 nbclient==0.6.8
 notebook==6.5.1
 jupytext==1.14.1
