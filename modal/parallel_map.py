@@ -1193,7 +1193,7 @@ class _MapItemContext:
             retry_item = await self.create_map_start_or_continue_item(item.idx)
             await retry_queue.put(now + delay_ms / 1_000, retry_item)
         else:
-            await retry_queue.put(now + delay_ms / 1_000, item.idx)
+            await retry_queue.put(int(now) + delay_ms / 1_000, item.idx)
 
         return _OutputType.RETRYING
 
