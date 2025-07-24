@@ -2665,6 +2665,7 @@ message SandboxRestoreResponse {
 
 message SandboxSnapshotFsAsyncGetRequest {
   string image_id = 1;
+  float timeout = 2;
 }
 
 message SandboxSnapshotFsAsyncGetResponse {
