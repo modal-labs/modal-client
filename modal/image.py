@@ -1189,11 +1189,11 @@ class _Image(_Object, type_prefix="im"):
             else:
                 commands.append(f"COPY --from=ghcr.io/astral-sh/uv:{uv_version} /uv {UV_ROOT}/uv")
 
-            # NOTE: Using `which python` assumes:
+            # NOTE: Using `command -v python` assumes:
             # - python is on the PATH and uv is installing into the first python in the PATH
             # - the shell supports backticks for substitution
-            # - `which` command is on the PATH
-            uv_pip_args = ["--python `which python`", "--compile-bytecode"]
+            # - `command` command is on the PATH
+            uv_pip_args = ["--python `command -v python`", "--compile-bytecode"]
             context_files = {}
 
             if find_links:
