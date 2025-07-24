@@ -47,7 +47,7 @@ dummy_other_module_file = "x = 42"
 
 
 def _run(args: list[str], expected_exit_code: int = 0, expected_stderr: str = "", expected_error: str = ""):
-    runner = click.testing.CliRunner(mix_stderr=False)
+    runner = click.testing.CliRunner()
     # DEBUGGING TIP: this runs the CLI in a separate subprocess, and output from it is not echoed by default,
     # including from the mock fixtures. Print res.stdout and res.stderr for debugging tests.
     with mock.patch.object(sys, "argv", args):
