@@ -226,24 +226,25 @@ def test_image_uv_python_packages(builder_version, servicer, client, test_dir):
     with app.run(client=client):
         layers = get_image_layers(image.object_id, servicer)
         assert any(
-            "/.uv/uv pip install --python `command -v python` --compile-bytecode 'sklearn[xyz]'" in cmd
+            "/.uv/uv pip install --python $(command -v python) --compile-bytecode 'sklearn[xyz]'" in cmd
             for cmd in layers[4].dockerfile_commands
         )
         assert any(
-            "/.uv/uv pip install --python `command -v python` --compile-bytecode "
+            "/.uv/uv pip install --python $(command -v python) --compile-bytecode "
             "--find-links 'https://abc?q=123' --extra-index-url https://xyz --prerelease allow numpy scipy" in cmd
             for cmd in layers[3].dockerfile_commands
         )
         assert any(
-            "/.uv/uv pip install --python `command -v python` --compile-bytecode --no-build-isolation flash-attn" in cmd
+            "/.uv/uv pip install --python $(command -v python) --compile-bytecode --no-build-isolation flash-attn"
+            in cmd
             for cmd in layers[2].dockerfile_commands
         )
         assert any(
-            "/.uv/uv pip install --python `command -v python` --compile-bytecode --prerelease allow pandas" in cmd
+            "/.uv/uv pip install --python $(command -v python) --compile-bytecode --prerelease allow pandas" in cmd
             for cmd in layers[1].dockerfile_commands
         )
         assert any(
-            "/.uv/uv pip install --python `command -v python` --compile-bytecode --requirements "
+            "/.uv/uv pip install --python $(command -v python) --compile-bytecode --requirements "
             "/.uv/0/test-requirements.txt" in cmd
             for cmd in layers[0].dockerfile_commands
         )
@@ -1597,10 +1598,10 @@ def test_image_stability_on_2023_12(force_2023_12, servicer, client, test_dir):
     assert get_hash(img) == "a25dd4cc2e8d88f92bfdaf2e82b9d74144d1928926bf6be2ca1cdfbbf562189e"
 
     img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
-    assert get_hash(img) == "71184c18513eafb894b8904d8d7c94d94179c034681739043d4a970c30b65768"
+    assert get_hash(img) == "4255e224cc4b05589efdfe227a06659ca2dc64b053f43e57808d04e34da94738"
 
     img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
-    assert get_hash(img) == "7b9580f1ec3d1122d7a46dc6ae5a6ab7dc5945ef656423ae499f2f9ccdccf009"
+    assert get_hash(img) == "fb1ea2563fad89d3e6d00abf1c91a3835b6ba897693a61cdfe29dc1e5ea01c33"
 
     img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
     assert get_hash(img) == "6c9f3debe511508a99ec70212ff79dcfc01ec95be9400c63edfb36c9035be9de"
@@ -1674,10 +1675,10 @@ def test_image_stability_on_2024_04(force_2024_04, servicer, client, test_dir):
     assert get_hash(img) == "bfce5811c04c1243f12cbb9cca1522cb901f52410986925bcfa3b3c2d7adc7a0"
 
     img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
-    assert get_hash(img) == "847e48d3575c890f7b21446941b0eb4e32f10a494478708392fa694e9965b2f9"
+    assert get_hash(img) == "f96d8a1dac1cb5a65f5b83a7f63cc60dce671ee08749f7c12ec9dc13743da0e9"
 
     img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
-    assert get_hash(img) == "05a8294d60e320c65efd8b602c5a215512c37cfe8df1069318fe8c35aea40e82"
+    assert get_hash(img) == "1b45416b4a1563a0522047e1faa124c8132fc068720299445c3d7b6204b696f9"
 
     img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
     assert get_hash(img) == "925054c1aed3a194de979389eeacb5a842695316f7a9f889e314de5c51a62760"
@@ -1751,10 +1752,10 @@ def test_image_stability_on_2024_10(force_2024_10, servicer, client, test_dir):
     assert get_hash(img) == "78d579f243c21dcaa59e5daf97f732e2453b004bc2122de692617d4d725c6184"
 
     img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
-    assert get_hash(img) == "b2cfbcb17d7c9ca1bfa0669b08c0023fdb9180f723dac9db1343d5ccf09de953"
+    assert get_hash(img) == "e4927f14fcd09e1d3b8a73a17a25392e1988ee4232e5130ea8fddce80b49f5e1"
 
     img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
-    assert get_hash(img) == "adaec244be0bdffd88fb8dc69969faa4576d9e963c986c942eca47f3de506e0c"
+    assert get_hash(img) == "166413c4c2a08decd03092a328aca9b34f85b5e77eb50a584aebd8f754523412"
 
     img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
     assert get_hash(img) == "2b6cd5b524ac796cafdabe8b95bf626a765f28c909d23f6051fc4329d6edbc0b"
@@ -1828,10 +1829,10 @@ def test_image_stability_on_2025_06(force_2025_06, servicer, client, test_dir):
     assert get_hash(img) == "0b1dabc063d6525a0cf21abe5c72f3ac4bffd6d49067ba6e0e7172537963c02b"
 
     img = base.uv_pip_install("torch~=2.2", "transformers==4.23.0", pre=True, index_url="agi.se")
-    assert get_hash(img) == "c79908e844708986e6ba0735f44fec47a739bd5b65bc9f9548e17505c8b17dab"
+    assert get_hash(img) == "718e540692f813ee6f71623636ef813648ffff2515e4dfe312abd602ea5bf122"
 
     img = base.uv_pip_install(requirements=[test_dir / "supports" / "test-requirements.txt"])
-    assert get_hash(img) == "de2d903b91bb0fe653846bf67cd8abc3536f80433e63edef889e1a182f713b70"
+    assert get_hash(img) == "1ceaf730b03f1b068e5c66f0fb701ce932eaa555cbc91fa1823c1ed7cc8bc687"
 
     img = base.uv_sync(test_dir / "supports" / "uv_lock_project")
     assert get_hash(img) == "60304d4a13826e0a450248cb37bc0192020b83dd20bcb2dbea058e0149d54532"
