@@ -882,7 +882,7 @@ async def _create_single_client_dependency_mount(
 
     with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmpd:
         print(f"📦 Building {mount_name}.")
-        requirements = os.path.join(os.path.dirname(__file__), f"requirements/{builder_version}.txt")
+        requirements = os.path.join(os.path.dirname(__file__), f"builder/{builder_version}.txt")
         cmd = " ".join(
             [
                 "uv",
