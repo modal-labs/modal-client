@@ -71,7 +71,7 @@ SUPPORTED_PYTHON_SERIES: dict[ImageBuilderVersion, list[str]] = {
     "2023.12": ["3.9", "3.10", "3.11", "3.12"],
 }
 
-LOCAL_REQUIREMENTS_DIR = Path(__file__).parent / "requirements"
+LOCAL_REQUIREMENTS_DIR = Path(__file__).parent / "builder"
 CONTAINER_REQUIREMENTS_PATH = "/modal_requirements.txt"
 
 

@@ -162,7 +162,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r modal/requirements/${{ matrix.image-builder-version }}.txt
+          pip install -r modal/builder/${{ matrix.image-builder-version }}.txt
           pip install synchronicity
 
       - name: Compile protos
