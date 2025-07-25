@@ -47,7 +47,12 @@ dummy_other_module_file = "x = 42"
 
 
 def _run(args: list[str], expected_exit_code: int = 0, expected_stderr: str = "", expected_error: str = ""):
-    runner = click.testing.CliRunner(mix_stderr=False)
+    if sys.version_info < (3, 10):
+        # mix_stderr was removed in Click 8.2 which also removed support for Python 3.9
+        # The desired behavior is the same across verisons, but we need to explicitly enable it on Python 3.9
+        runner = click.testing.CliRunner(mix_stderr=False)
+    else:
+        runner = click.testing.CliRunner()
     # DEBUGGING TIP: this runs the CLI in a separate subprocess, and output from it is not echoed by default,
     # including from the mock fixtures. Print res.stdout and res.stderr for debugging tests.
     with mock.patch.object(sys, "argv", args):
