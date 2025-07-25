@@ -50,7 +50,7 @@ include = ["modal", "modal.*", "modal_docs", "modal_docs.*", "modal_version", "m
 exclude = ["test*", "modal_global_objects"]
 
 [tool.setuptools.package-data]
-modal = ["requirements/*.md", "requirements/*.txt", "requirements/*.json", "py.typed", "*.pyi"]
+modal = ["builder/*.md", "builder/*.txt", "builder/*.json", "py.typed", "*.pyi"]
 modal_proto = ["*.proto", "py.typed", "*.pyi"]
 
 [tool.setuptools.dynamic]
