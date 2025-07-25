@@ -309,7 +309,7 @@ class _Dict(_Object, type_prefix="di"):
         """Remove a key from the Dict, returning the value if it exists."""
         req = api_pb2.DictPopRequest(dict_id=self.object_id, key=serialize(key))
         resp = await retry_transient_errors(self._client.stub.DictPop, req)
-        if not resp.found:
+        if not resp or not resp.found:
             raise KeyError(f"{key} not in dict {self.object_id}")
         return deserialize(resp.value, self._client)
 
