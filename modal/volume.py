@@ -4,13 +4,11 @@ import concurrent.futures
 import enum
 import functools
 import multiprocessing
-import os
-import platform
-import re
 import time
 import typing
 from collections.abc import AsyncGenerator, AsyncIterator, Generator, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from typing import (
@@ -92,6 +90,18 @@ class FileEntry:
         )
 
 
+@dataclass
+class VolumeInfo:
+    """Information about the Volume object."""
+
+    # This dataclass should be limited to information that is unchanging over the lifetime of the Volume,
+    # since it is transmitted from the server when the object is hydrated and could be stale when accessed.
+
+    name: Optional[str] = None
+    created_at: Optional[datetime] = None
+    created_by: Optional[str] = None
+
+
 class _Volume(_Object, type_prefix="vo"):
     """A writeable volume that can be used to share files between one or more Modal functions.
 
@@ -167,6 +177,20 @@ class _Volume(_Object, type_prefix="vo"):
         obj = _Volume._from_loader(_load, "Volume()", hydrate_lazily=True, deps=lambda: [self])
         return obj
 
+    @property
+    def name(self) -> Optional[str]:
+        return self._name
+
+    def _hydrate_metadata(self, metadata: Optional[Message]):
+        if metadata and isinstance(metadata, api_pb2.VolumeMetadata):
+            self._metadata = metadata
+            self._name = metadata.name
+        else:
+            raise TypeError("_hydrate_metadata() requires an `api_pb2.VolumeMetadata` to determine volume version")
+
+    def _get_metadata(self) -> Optional[Message]:
+        return self._metadata
+
     async def _get_lock(self):
         # To (mostly*) prevent multiple concurrent operations on the same volume, which can cause problems under
         # some unlikely circumstances.
@@ -180,6 +204,14 @@ class _Volume(_Object, type_prefix="vo"):
         if self._lock is None:
             self._lock = asyncio.Lock()
         return self._lock
+
+    @property
+    def _is_v1(self) -> bool:
+        return self._metadata.version in [
+            None,
+            api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_UNSPECIFIED,
+            api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_V1,
+        ]
 
     @staticmethod
     def from_name(
@@ -220,24 +252,7 @@ class _Volume(_Object, type_prefix="vo"):
             response = await resolver.client.stub.VolumeGetOrCreate(req)
             self._hydrate(response.volume_id, resolver.client, response.metadata)
 
-        return _Volume._from_loader(_load, "Volume()", hydrate_lazily=True)
-
-    def _hydrate_metadata(self, metadata: Optional[Message]):
-        if metadata and isinstance(metadata, api_pb2.VolumeMetadata):
-            self._metadata = metadata
-        else:
-            raise TypeError("_hydrate_metadata() requires an `api_pb2.VolumeMetadata` to determine volume version")
-
-    def _get_metadata(self) -> Optional[Message]:
-        return self._metadata
-
-    @property
-    def _is_v1(self) -> bool:
-        return self._metadata.version in [
-            None,
-            api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_UNSPECIFIED,
-            api_pb2.VolumeFsVersion.VOLUME_FS_VERSION_V1,
-        ]
+        return _Volume._from_loader(_load, "Volume()", hydrate_lazily=True, name=name)
 
     @classmethod
     @asynccontextmanager
@@ -337,6 +352,19 @@ class _Volume(_Object, type_prefix="vo"):
         )
         resp = await retry_transient_errors(client.stub.VolumeGetOrCreate, request)
         return resp.volume_id
+
+    @live_method
+    async def info(self) -> VolumeInfo:
+        """Return information about the Volume object."""
+        metadata = self._get_metadata()
+        if not metadata:
+            return VolumeInfo()
+        creation_info = metadata.creation_info
+        return VolumeInfo(
+            name=metadata.name or None,
+            created_at=datetime.fromtimestamp(creation_info.created_at) if creation_info.created_at else None,
+            created_by=creation_info.created_by or None,
+        )
 
     @live_method
     async def _do_reload(self, lock=True):
@@ -1072,51 +1100,30 @@ async def _put_missing_blocks(
         put_responses[digest] = resp
 
 
-def _open_files_error_annotation(mount_path: str) -> Optional[str]:
-    if platform.system() != "Linux":
-        return None
+def _open_files_error_annotation(vol_path: str) -> Optional[str]:
+    """Attempt to identify open files for a volume and return an annotation string.
 
-    self_pid = os.readlink("/proc/self")
+    This is a best-effort function that may not catch all open files, but should help
+    with common cases.
+    """
+    try:
+        import psutil
 
-    def find_open_file_for_pid(pid: str) -> Optional[str]:
-        # /proc/{pid}/cmdline is null separated
-        with open(f"/proc/{pid}/cmdline", "rb") as f:
-            raw = f.read()
-            parts = raw.split(b"\0")
-            cmdline = " ".join([part.decode() for part in parts]).rstrip(" ")
-
-        cwd = PurePosixPath(os.readlink(f"/proc/{pid}/cwd"))
-        if cwd.is_relative_to(mount_path):
-            if pid == self_pid:
-                return "cwd is inside volume"
-            else:
-                return f"cwd of '{cmdline}' is inside volume"
-
-        for fd in os.listdir(f"/proc/{pid}/fd"):
+        open_files = []
+        for proc in psutil.process_iter(["pid", "open_files"]):
             try:
-                path = PurePosixPath(os.readlink(f"/proc/{pid}/fd/{fd}"))
-                try:
-                    rel_path = path.relative_to(mount_path)
-                    if pid == self_pid:
-                        return f"path {rel_path} is open"
-                    else:
-                        return f"path {rel_path} is open from '{cmdline}'"
-                except ValueError:
-                    pass
+                if proc.info["open_files"]:
+                    for file_info in proc.info["open_files"]:
+                        if vol_path in file_info.path:
+                            open_files.append(f"{proc.info['pid']}:{file_info.path}")
+                            if len(open_files) >= 3:  # Limit to avoid very long error messages
+                                break
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
 
-            except FileNotFoundError:
-                # File was closed
-                pass
-        return None
-
-    pid_re = re.compile("^[1-9][0-9]*$")
-    for dirent in os.listdir("/proc/"):
-        if pid_re.match(dirent):
-            try:
-                annotation = find_open_file_for_pid(dirent)
-                if annotation:
-                    return annotation
-            except (FileNotFoundError, PermissionError):
-                pass
+        if open_files:
+            return f"Open files: {', '.join(open_files[:3])}"
+    except ImportError:
+        pass
 
     return None

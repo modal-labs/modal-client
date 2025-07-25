@@ -7,8 +7,16 @@ from modal.exception import DeprecationError, InvalidError, NotFoundError
 from modal_proto import api_pb2
 
 
-def test_dict_app(servicer, client):
-    d = Dict.from_name("my-amazing-dict", create_if_missing=True).hydrate(client)
+def test_dict_named(servicer, client):
+    name = "my-amazing-dict"
+    d = Dict.from_name(name, create_if_missing=True)
+    assert d.name == name
+
+    d.hydrate(client)
+    info = d.info()
+    assert info.name == name
+    assert info.created_by == servicer.default_username
+
     d["xyz"] = 123
     d["foo"] = 42
     d["foo"] += 5

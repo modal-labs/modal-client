@@ -3,8 +3,11 @@ import queue  # The system library
 import time
 import warnings
 from collections.abc import AsyncGenerator, AsyncIterator
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Optional
 
+from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -19,6 +22,18 @@ from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
 from .client import _Client
 from .exception import InvalidError, RequestSizeError
+
+
+@dataclass
+class QueueInfo:
+    """Information about the Queue object."""
+
+    # This dataclass should be limited to information that is unchanging over the lifetime of the Queue,
+    # since it is transmitted from the server when the object is hydrated and could be stale when accessed.
+
+    name: Optional[str] = None
+    created_at: Optional[datetime] = None
+    created_by: Optional[str] = None
 
 
 class _Queue(_Object, type_prefix="qu"):
@@ -94,9 +109,24 @@ class _Queue(_Object, type_prefix="qu"):
     Partition keys must be non-empty and must not exceed 64 bytes.
     """
 
+    _metadata: Optional[api_pb2.QueueMetadata] = None
+
     def __init__(self):
         """mdmd:hidden"""
         raise RuntimeError("Queue() is not allowed. Please use `Queue.from_name(...)` or `Queue.ephemeral()` instead.")
+
+    @property
+    def name(self) -> Optional[str]:
+        return self._name
+
+    def _hydrate_metadata(self, metadata: Optional[Message]):
+        if metadata:
+            self._metadata = metadata
+            self._name = metadata.name
+
+    def _get_metadata(self) -> api_pb2.QueueMetadata:
+        assert self._metadata
+        return self._metadata
 
     @staticmethod
     def validate_partition_key(partition: Optional[str]) -> bytes:
@@ -142,7 +172,7 @@ class _Queue(_Object, type_prefix="qu"):
         async with TaskContext() as tc:
             request = api_pb2.QueueHeartbeatRequest(queue_id=response.queue_id)
             tc.infinite_loop(lambda: client.stub.QueueHeartbeat(request), sleep=_heartbeat_sleep)
-            yield cls._new_hydrated(response.queue_id, client, None, is_another_app=True)
+            yield cls._new_hydrated(response.queue_id, client, response.metadata, is_another_app=True)
 
     @staticmethod
     def from_name(
@@ -175,7 +205,7 @@ class _Queue(_Object, type_prefix="qu"):
             response = await resolver.client.stub.QueueGetOrCreate(req)
             self._hydrate(response.queue_id, resolver.client, response.metadata)
 
-        return _Queue._from_loader(_load, "Queue()", is_another_app=True, hydrate_lazily=True)
+        return _Queue._from_loader(_load, "Queue()", is_another_app=True, hydrate_lazily=True, name=name)
 
     @staticmethod
     async def lookup(
@@ -221,6 +251,17 @@ class _Queue(_Object, type_prefix="qu"):
         obj = await _Queue.from_name(name, environment_name=environment_name).hydrate(client)
         req = api_pb2.QueueDeleteRequest(queue_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.QueueDelete, req)
+
+    @live_method
+    async def info(self) -> QueueInfo:
+        """Return information about the Queue object."""
+        metadata = self._get_metadata()
+        creation_info = metadata.creation_info
+        return QueueInfo(
+            name=metadata.name or None,
+            created_at=datetime.fromtimestamp(creation_info.created_at) if creation_info.created_at else None,
+            created_by=creation_info.created_by or None,
+        )
 
     async def _get_nonblocking(self, partition: Optional[str], n_values: int) -> list[Any]:
         request = api_pb2.QueueGetRequest(
