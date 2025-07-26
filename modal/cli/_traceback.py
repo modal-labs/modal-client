@@ -6,12 +6,13 @@ import re
 import warnings
 from typing import Optional
 
-from rich.console import Console, RenderResult, group
+from rich.console import RenderResult, group
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.text import Text
 from rich.traceback import PathHighlighter, Stack, Traceback, install
 
+from .._output import make_console
 from ..exception import DeprecationError, PendingDeprecationError, ServerWarning
 
 
@@ -193,7 +194,7 @@ def highlight_modal_warnings() -> None:
                 title=title,
                 title_align="left",
             )
-            Console().print(panel)
+            make_console().print(panel)
         else:
             base_showwarning(warning, category, filename, lineno, file=None, line=None)
 

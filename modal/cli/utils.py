@@ -7,13 +7,12 @@ from typing import Optional, Union
 import typer
 from click import UsageError
 from grpclib import GRPCError, Status
-from rich.console import Console
 from rich.table import Column, Table
 from rich.text import Text
 
 from modal_proto import api_pb2
 
-from .._output import OutputManager, get_app_logs_loop
+from .._output import OutputManager, get_app_logs_loop, make_console
 from .._utils.async_utils import synchronizer
 from ..client import _Client
 from ..environments import ensure_env
@@ -66,7 +65,7 @@ def _plain(text: Union[Text, str]) -> str:
 
 
 def is_tty() -> bool:
-    return Console().is_terminal
+    return make_console().is_terminal
 
 
 def display_table(
@@ -78,7 +77,7 @@ def display_table(
     def col_to_str(col: Union[Column, str]) -> str:
         return str(col.header) if isinstance(col, Column) else col
 
-    console = Console()
+    console = make_console()
     if json:
         json_data = [{col_to_str(col): _plain(row[i]) for i, col in enumerate(columns)} for row in rows]
         console.print_json(dumps(json_data))

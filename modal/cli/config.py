@@ -1,7 +1,7 @@
 # Copyright Modal Labs 2022
 import typer
-from rich.console import Console
 
+from modal._output import make_console
 from modal.config import _profile, _store_user_config, config
 from modal.environments import Environment
 
@@ -24,7 +24,7 @@ def show(redact: bool = typer.Option(True, help="Redact the `token_secret` value
     if redact and config_dict.get("token_secret"):
         config_dict["token_secret"] = "***"
 
-    console = Console()
+    console = make_console()
     console.print(config_dict)
 
 

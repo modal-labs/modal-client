@@ -2,10 +2,10 @@
 from typing import Optional, Union
 
 import typer
-from rich.console import Console
 from rich.text import Text
 
 from modal._object import _get_environment_name
+from modal._output import make_console
 from modal._pty import get_pty_info
 from modal._utils.async_utils import synchronizer
 from modal._utils.time_utils import timestamp_to_local
@@ -62,7 +62,7 @@ async def shell(
     if len(res.cluster.task_ids) <= rank:
         raise typer.Abort(f"No node with rank {rank} in cluster {cluster_id}")
     task_id = res.cluster.task_ids[rank]
-    console = Console()
+    console = make_console()
     is_main = "(main)" if rank == 0 else ""
     console.print(
         f"Opening shell to node {rank} {is_main} of cluster {cluster_id} (container {task_id})", style="green"

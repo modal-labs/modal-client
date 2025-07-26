@@ -7,14 +7,13 @@ from typing import Optional
 import typer
 from click import UsageError
 from grpclib import GRPCError, Status
-from rich.console import Console
 from rich.syntax import Syntax
 from rich.table import Table
 from typer import Argument, Typer
 
 import modal
 from modal._location import display_location
-from modal._output import OutputManager, ProgressHandler
+from modal._output import OutputManager, ProgressHandler, make_console
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
 from modal._utils.time_utils import timestamp_to_local
@@ -66,7 +65,7 @@ def create(
 ):
     ensure_env(env)
     modal.NetworkFileSystem.create_deployed(name, environment_name=env)
-    console = Console()
+    console = make_console()
     console.print(f"Created volume '{name}'. \n\nCode example:\n")
     usage = Syntax(gen_usage_code(name), "python")
     console.print(usage)
@@ -93,7 +92,7 @@ async def ls(
         raise
 
     if sys.stdout.isatty():
-        console = Console()
+        console = make_console()
         console.print(f"Directory listing of '{path}' in '{volume_name}'")
         table = Table()
 
@@ -131,7 +130,7 @@ async def put(
     volume = _NetworkFileSystem.from_name(volume_name)
     if remote_path.endswith("/"):
         remote_path = remote_path + os.path.basename(local_path)
-    console = Console()
+    console = make_console()
 
     if Path(local_path).is_dir():
         progress_handler = ProgressHandler(type="upload", console=console)
@@ -184,7 +183,7 @@ async def get(
     ensure_env(env)
     destination = Path(local_destination)
     volume = _NetworkFileSystem.from_name(volume_name)
-    console = Console()
+    console = make_console()
     progress_handler = ProgressHandler(type="download", console=console)
     with progress_handler.live:
         await _volume_download(volume, remote_path, destination, force, progress_cb=progress_handler.progress)
@@ -203,7 +202,7 @@ async def rm(
 ):
     ensure_env(env)
     volume = _NetworkFileSystem.from_name(volume_name)
-    console = Console()
+    console = make_console()
     try:
         await volume.remove_file(remote_path, recursive=recursive)
         console.print(OutputManager.step_completed(f"{remote_path} was deleted successfully!"))

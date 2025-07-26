@@ -19,9 +19,9 @@ from pathlib import Path
 from typing import Optional, Union, cast
 
 import click
-from rich.console import Console
 from rich.markdown import Markdown
 
+from modal._output import make_console
 from modal._utils.deprecation import deprecation_warning
 from modal.app import App, LocalEntrypoint
 from modal.cls import Cls
@@ -258,7 +258,7 @@ def import_app_from_ref(import_ref: ImportRef, base_cmd: str = "") -> App:
     app = getattr(module, object_path)
 
     if app is None:
-        error_console = Console(stderr=True)
+        error_console = make_console(stderr=True)
         error_console.print(f"[bold red]Could not find Modal app '{object_path}' in {import_path}.[/bold red]")
 
         if not object_path:
@@ -282,7 +282,7 @@ def import_app_from_ref(import_ref: ImportRef, base_cmd: str = "") -> App:
 def _show_function_ref_help(app_ref: ImportRef, base_cmd: str) -> None:
     object_path = app_ref.object_path
     import_path = app_ref.file_or_module
-    error_console = Console(stderr=True)
+    error_console = make_console(stderr=True)
     if object_path:
         error_console.print(
             f"[bold red]Could not find Modal function or local entrypoint"
