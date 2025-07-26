@@ -63,25 +63,6 @@ class FunctionQueuingColumn(ProgressColumn):
         return Text(str(delta), style="progress.elapsed")
 
 
-def download_progress_bar() -> Progress:
-    """
-    Returns a progress bar suitable for showing file download progress.
-    Requires passing a `path: str` data field for rendering.
-    """
-    return Progress(
-        TextColumn("[bold white]{task.fields[path]}", justify="right"),
-        BarColumn(bar_width=None),
-        "[progress.percentage]{task.percentage:>3.1f}%",
-        "•",
-        DownloadColumn(),
-        "•",
-        TransferSpeedColumn(),
-        "•",
-        TimeRemainingColumn(),
-        transient=True,
-    )
-
-
 class LineBufferedOutput:
     """Output stream that buffers lines and passes them to a callback."""
 
@@ -214,8 +195,7 @@ class OutputManager:
         self._show_image_logs = True
 
     @property
-    def function_progress(self) -> Progress:
-        """Creates a `rich.Progress` instance with custom columns for function progress,
+s()        """Creates a `rich.Progress` instance with custom columns for function progress,
         and adds it to the current render group."""
         if not self._function_progress:
             self._function_progress = Progress(
