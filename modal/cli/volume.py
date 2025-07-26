@@ -7,12 +7,11 @@ from typing import Optional
 import typer
 from click import UsageError
 from grpclib import GRPCError, Status
-from rich.console import Console
 from rich.syntax import Syntax
 from typer import Argument, Option, Typer
 
 import modal
-from modal._output import OutputManager, ProgressHandler
+from modal._output import OutputManager, ProgressHandler, make_console
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
 from modal._utils.time_utils import timestamp_to_local
@@ -64,7 +63,7 @@ def some_func():
     os.listdir("/my_vol")
 """
 
-    console = Console()
+    console = make_console()
     console.print(f"Created Volume '{name}' in environment '{env_name}'. \n\nCode example:\n")
     usage = Syntax(usage_code, "python")
     console.print(usage)
@@ -96,7 +95,7 @@ async def get(
     ensure_env(env)
     destination = Path(local_destination)
     volume = _Volume.from_name(volume_name, environment_name=env)
-    console = Console()
+    console = make_console()
     progress_handler = ProgressHandler(type="download", console=console)
     with progress_handler.live:
         await _volume_download(volume, remote_path, destination, force, progress_cb=progress_handler.progress)
@@ -197,7 +196,7 @@ async def put(
 
     if remote_path.endswith("/"):
         remote_path = remote_path + os.path.basename(local_path)
-    console = Console()
+    console = make_console()
     progress_handler = ProgressHandler(type="upload", console=console)
 
     if Path(local_path).is_dir():
@@ -245,7 +244,7 @@ async def rm(
 ):
     ensure_env(env)
     volume = _Volume.from_name(volume_name, environment_name=env)
-    console = Console()
+    console = make_console()
     try:
         await volume.remove_file(remote_path, recursive=recursive)
         console.print(OutputManager.step_completed(f"{remote_path} was deleted successfully!"))

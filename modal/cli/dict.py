@@ -2,9 +2,9 @@
 from typing import Optional
 
 import typer
-from rich.console import Console
 from typer import Argument, Option, Typer
 
+from modal._output import make_console
 from modal._resolver import Resolver
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
@@ -85,7 +85,7 @@ async def get(name: str, key: str, *, env: Optional[str] = ENV_OPTION):
     Note: When using the CLI, keys are always interpreted as having a string type.
     """
     d = _Dict.from_name(name, environment_name=env)
-    console = Console()
+    console = make_console()
     val = await d.get(key)
     console.print(val)
 

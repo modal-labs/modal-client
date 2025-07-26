@@ -6,11 +6,11 @@ from collections.abc import AsyncGenerator
 from typing import Optional
 
 import aiohttp.web
-from rich.console import Console
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
 
+from ._output import make_console
 from ._utils.async_utils import synchronize_api
 from ._utils.http_utils import run_temporary_http_server
 from .client import _Client
@@ -76,7 +76,7 @@ async def _new_token(
 ):
     server_url = config.get("server_url", profile=profile)
 
-    console = Console()
+    console = make_console()
 
     result: Optional[api_pb2.TokenFlowWaitResponse] = None
     async with _Client.anonymous(server_url) as client:
@@ -133,7 +133,7 @@ async def _set_token(
 ):
     # TODO add server_url as a parameter for verification?
     server_url = config.get("server_url", profile=profile)
-    console = Console()
+    console = make_console()
     if verify:
         console.print(f"Verifying token against [blue]{server_url}[/blue]")
         await _Client.verify(server_url, (token_id, token_secret))

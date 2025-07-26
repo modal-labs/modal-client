@@ -6,6 +6,7 @@ from typing import Generic, Optional, TypeVar
 
 from modal_proto import api_pb2
 
+from ._output import make_console
 from ._utils.async_utils import TaskContext, synchronize_api
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.shell_utils import stream_from_stdin, write_to_fd
@@ -144,9 +145,7 @@ class _ContainerProcess(Generic[T]):
             print("interactive exec is not currently supported on Windows.")
             return
 
-        from rich.console import Console
-
-        console = Console()
+        console = make_console()
 
         connecting_status = console.status("Connecting...")
         connecting_status.start()

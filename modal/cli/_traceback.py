@@ -6,7 +6,7 @@ import re
 import warnings
 from typing import Optional
 
-from rich.console import Console, RenderResult, group
+from rich.console import RenderResult, group
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.text import Text
@@ -166,6 +166,8 @@ def highlight_modal_warnings() -> None:
     base_showwarning = warnings.showwarning
 
     def showwarning(warning, category, filename, lineno, file=None, line=None):
+        from .._output import make_console
+
         if issubclass(category, (DeprecationError, PendingDeprecationError, ServerWarning)):
             content = str(warning)
             if re.match(r"^\d{4}-\d{2}-\d{2}", content):
@@ -193,7 +195,7 @@ def highlight_modal_warnings() -> None:
                 title=title,
                 title_align="left",
             )
-            Console().print(panel)
+            make_console().print(panel)
         else:
             base_showwarning(warning, category, filename, lineno, file=None, line=None)
 
