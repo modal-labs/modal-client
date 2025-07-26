@@ -195,7 +195,8 @@ class OutputManager:
         self._show_image_logs = True
 
     @property
-s()        """Creates a `rich.Progress` instance with custom columns for function progress,
+    def function_progress(self) -> Progress:
+        """Creates a `rich.Progress` instance with custom columns for function progress,
         and adds it to the current render group."""
         if not self._function_progress:
             self._function_progress = Progress(
