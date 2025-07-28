@@ -31,9 +31,9 @@ class QueueInfo:
     # This dataclass should be limited to information that is unchanging over the lifetime of the Queue,
     # since it is transmitted from the server when the object is hydrated and could be stale when accessed.
 
-    name: Optional[str] = None
-    created_at: Optional[datetime] = None
-    created_by: Optional[str] = None
+    name: Optional[str]
+    created_at: datetime
+    created_by: Optional[str]
 
 
 class _Queue(_Object, type_prefix="qu"):
@@ -260,7 +260,7 @@ class _Queue(_Object, type_prefix="qu"):
         creation_info = metadata.creation_info
         return QueueInfo(
             name=metadata.name or None,
-            created_at=datetime.fromtimestamp(creation_info.created_at) if creation_info.created_at else None,
+            created_at=datetime.fromtimestamp(creation_info.created_at),
             created_by=creation_info.created_by or None,
         )
 

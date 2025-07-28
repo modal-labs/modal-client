@@ -100,9 +100,9 @@ class VolumeInfo:
     # This dataclass should be limited to information that is unchanging over the lifetime of the Volume,
     # since it is transmitted from the server when the object is hydrated and could be stale when accessed.
 
-    name: Optional[str] = None
-    created_at: Optional[datetime] = None
-    created_by: Optional[str] = None
+    name: Optional[str]
+    created_at: datetime
+    created_by: Optional[str]
 
 
 class _Volume(_Object, type_prefix="vo"):
