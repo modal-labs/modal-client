@@ -2458,7 +2458,7 @@ message QueueListResponse {
     int32 num_partitions = 3;
     int32 total_size = 4;
     string queue_id = 5;
-    QueueMetadata metadata = 5;
+    QueueMetadata metadata = 6;
   }
 
   repeated QueueInfo queues = 1;
