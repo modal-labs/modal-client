@@ -4,6 +4,9 @@ import concurrent.futures
 import enum
 import functools
 import multiprocessing
+import os
+import platform
+import re
 import time
 import typing
 from collections.abc import AsyncGenerator, AsyncIterator, Generator, Sequence
@@ -1100,30 +1103,51 @@ async def _put_missing_blocks(
         put_responses[digest] = resp
 
 
-def _open_files_error_annotation(vol_path: str) -> Optional[str]:
-    """Attempt to identify open files for a volume and return an annotation string.
+def _open_files_error_annotation(mount_path: str) -> Optional[str]:
+    if platform.system() != "Linux":
+        return None
 
-    This is a best-effort function that may not catch all open files, but should help
-    with common cases.
-    """
-    try:
-        import psutil
+    self_pid = os.readlink("/proc/self")
 
-        open_files = []
-        for proc in psutil.process_iter(["pid", "open_files"]):
+    def find_open_file_for_pid(pid: str) -> Optional[str]:
+        # /proc/{pid}/cmdline is null separated
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            raw = f.read()
+            parts = raw.split(b"\0")
+            cmdline = " ".join([part.decode() for part in parts]).rstrip(" ")
+
+        cwd = PurePosixPath(os.readlink(f"/proc/{pid}/cwd"))
+        if cwd.is_relative_to(mount_path):
+            if pid == self_pid:
+                return "cwd is inside volume"
+            else:
+                return f"cwd of '{cmdline}' is inside volume"
+
+        for fd in os.listdir(f"/proc/{pid}/fd"):
             try:
-                if proc.info["open_files"]:
-                    for file_info in proc.info["open_files"]:
-                        if vol_path in file_info.path:
-                            open_files.append(f"{proc.info['pid']}:{file_info.path}")
-                            if len(open_files) >= 3:  # Limit to avoid very long error messages
-                                break
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
+                path = PurePosixPath(os.readlink(f"/proc/{pid}/fd/{fd}"))
+                try:
+                    rel_path = path.relative_to(mount_path)
+                    if pid == self_pid:
+                        return f"path {rel_path} is open"
+                    else:
+                        return f"path {rel_path} is open from '{cmdline}'"
+                except ValueError:
+                    pass
 
-        if open_files:
-            return f"Open files: {', '.join(open_files[:3])}"
-    except ImportError:
-        pass
+            except FileNotFoundError:
+                # File was closed
+                pass
+        return None
+
+    pid_re = re.compile("^[1-9][0-9]*$")
+    for dirent in os.listdir("/proc/"):
+        if pid_re.match(dirent):
+            try:
+                annotation = find_open_file_for_pid(dirent)
+                if annotation:
+                    return annotation
+            except (FileNotFoundError, PermissionError):
+                pass
 
     return None
