@@ -52,6 +52,18 @@ def setup_app_and_function(servicer):
     return app, f
 
 
+def fetch_input_plane_request_counts(ctx):
+    retried_requests = 0
+    first_time_requests = 0
+    for request in ctx.get_requests("MapStartOrContinue"):
+        for item in request.items:
+            if item.attempt_token == "":
+                first_time_requests += 1
+            else:
+                retried_requests += 1
+    return first_time_requests, retried_requests
+
+
 @pytest.fixture
 def setup_app_and_function_inputplane(servicer):
     app = App()
@@ -186,7 +198,10 @@ def test_map_all_retries_fail_raises_error_inputplane(client, setup_app_and_func
             with pytest.raises(FunctionCallCountException) as exc_info:
                 list(f.map([999]))
             assert exc_info.value.function_call_count == 9
-    assert len(ctx.get_requests("MapStartOrContinue")) == 9
+
+    first_time_requests, retried_requests = fetch_input_plane_request_counts(ctx)
+    assert first_time_requests == 1
+    assert retried_requests == 8
 
 
 def test_map_failures_followed_by_success(client, setup_app_and_function, servicer):
@@ -208,7 +223,9 @@ def test_map_failures_followed_by_success_inputplane(client, setup_app_and_funct
             results = list(f.map([3, 3, 3]))
             assert set(results) == {3, 4, 5}
 
-    assert len(ctx.get_requests("MapStartOrContinue")) == 3
+    first_time_requests, retried_requests = fetch_input_plane_request_counts(ctx)
+    assert first_time_requests == 3
+    assert retried_requests == 2
 
 
 def test_map_no_retries_when_first_call_succeeds(client, setup_app_and_function, servicer):
@@ -227,9 +244,9 @@ def test_map_no_retries_when_first_call_succeeds_inputplane(client, setup_app_an
             results = list(f.map([1, 1, 1]))
             assert set(results) == {1, 2, 3}
 
-    # This is 2 because a MapStartOrContinue is attempted once there is a single input.
-    # Then there is a MapStartOrContinue that tries the rest of a batch.
-    assert len(ctx.get_requests("MapStartOrContinue")) == 2
+    first_time_requests, retried_requests = fetch_input_plane_request_counts(ctx)
+    assert first_time_requests == 3
+    assert retried_requests == 0
 
 
 def test_map_lost_inputs_retried(client, setup_app_and_function, servicer):
@@ -249,12 +266,9 @@ def test_map_lost_inputs_retried_inputplane(client, setup_app_and_function_input
     # The client should retry if it receives a internal failure status.
     servicer.failure_status = api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE
 
-    with servicer.intercept() as ctx:
-        with app.run(client=client):
-            results = list(f.map([3, 3, 3]))
-            assert set(results) == {3, 4, 5}
-
-    assert len(ctx.get_requests("MapStartOrContinue")) == 3
+    with app.run(client=client):
+        results = list(f.map([3, 3, 3]))
+        assert set(results) == {3, 4, 5}
 
 
 def test_map_cancelled_inputs_not_retried(client, setup_app_and_function, servicer):
@@ -320,4 +334,6 @@ def test_map_cancelled_inputs_not_retried_inputplane(client, setup_app_and_funct
             with pytest.raises(RemoteError, match="cancelled"):
                 list(f.map([3, 3, 3]))
 
-        assert len(ctx.get_requests("MapStartOrContinue")) == 1
+        first_time_requests, retried_requests = fetch_input_plane_request_counts(ctx)
+        assert first_time_requests == 1
+        assert retried_requests == 0

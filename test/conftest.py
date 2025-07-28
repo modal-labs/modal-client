@@ -2249,6 +2249,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def MapStartOrContinue(self, stream):
         request: api_pb2.MapStartOrContinueRequest = await stream.recv_message()
+        # print(f"MapStartOrContinue: request: {request}")
 
         # If function_call_id is provided, this is a continue request, otherwise it's a start
         if request.function_call_id:
@@ -2285,6 +2286,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         # Inhereted variable name from python code PutInputs
         if self.slow_put_inputs:
             await asyncio.sleep(0.001)
+        # print(f"MapStartOrContinue: response: {response}")
         await stream.send_message(response)
 
     async def MapAwait(self, stream):
