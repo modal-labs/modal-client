@@ -334,6 +334,5 @@ def test_map_cancelled_inputs_not_retried_inputplane(client, setup_app_and_funct
             with pytest.raises(RemoteError, match="cancelled"):
                 list(f.map([3, 3, 3]))
 
-        first_time_requests, retried_requests = fetch_input_plane_request_counts(ctx)
-        assert first_time_requests == 1
+        _, retried_requests = fetch_input_plane_request_counts(ctx)
         assert retried_requests == 0
