@@ -19,6 +19,11 @@ def test_dict_app(servicer, client):
     assert sorted(d.values()) == [47, 123]
     assert sorted(d.items()) == [("foo", 47), ("xyz", 123)]
 
+    assert str(d) == "Dict.from_name('my-amazing-dict')"
+
+    d = Dict.from_name("my-other-dict", create_if_missing=True, environment_name="my-env").hydrate(client)
+    assert str(d) == "Dict.from_name('my-other-dict', environment_name='my-env')"
+
     d.clear()
     assert d.len() == 0
     with pytest.raises(KeyError):
@@ -50,6 +55,7 @@ def test_dict_lazy_hydrate_named(set_env_client, servicer):
         d["foo"] = 42
         assert d["foo"] == 42
         assert len(ctx.get_requests("DictGetOrCreate")) == 1  # just sanity check that object is only hydrated once...
+        assert str(d) == "Dict.from_name('foo')"
 
 
 @pytest.mark.parametrize("name", ["has space", "has/slash", "a" * 65])
