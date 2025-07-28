@@ -144,9 +144,9 @@ class _ContainerProcess(Generic[T]):
             print("interactive exec is not currently supported on Windows.")
             return
 
-        from rich.console import Console
+        from ._output import make_console
 
-        console = Console()
+        console = make_console()
 
         connecting_status = console.status("Connecting...")
         connecting_status.start()

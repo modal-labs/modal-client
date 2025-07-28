@@ -3,9 +3,9 @@ import subprocess
 from typing import Optional
 
 import typer
-from rich.console import Console
 from rich.rule import Rule
 
+from modal._output import make_console
 from modal._utils.async_utils import synchronizer
 
 from . import run
@@ -71,7 +71,7 @@ def check_path():
             "You may need to give it permissions or use `[white]python -m modal[/white]` as a workaround.[/red]\n"
         )
     text += f"See more information here:\n\n[link={url}]{url}[/link]\n"
-    console = Console()
+    console = make_console()
     console.print(text)
     console.print(Rule(style="white"))
 

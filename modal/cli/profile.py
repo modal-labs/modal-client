@@ -5,10 +5,10 @@ import os
 from typing import Optional
 
 import typer
-from rich.console import Console
 from rich.json import JSON
 from rich.table import Table
 
+from modal._output import make_console
 from modal._utils.async_utils import synchronizer
 from modal.config import Config, _lookup_workspace, _profile, config_profiles, config_set_active_profile
 from modal.exception import AuthError
@@ -69,7 +69,7 @@ async def list_(json: Optional[bool] = False):
         except AuthError:
             env_based_workspace = "Unknown (authentication failure)"
 
-    console = Console()
+    console = make_console()
     highlight = "bold green" if env_based_workspace is None else "yellow"
     if json:
         json_data = []
