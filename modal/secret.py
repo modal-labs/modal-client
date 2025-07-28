@@ -1,12 +1,15 @@
 # Copyright Modal Labs 2022
 import os
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Optional, Union
 
+from google.protobuf.message import Message
 from grpclib import GRPCError, Status
 
 from modal_proto import api_pb2
 
-from ._object import _get_environment_name, _Object
+from ._object import _get_environment_name, _Object, live_method
 from ._resolver import Resolver
 from ._runtime.execution_context import is_local
 from ._utils.async_utils import synchronize_api
@@ -19,6 +22,18 @@ from .exception import InvalidError, NotFoundError
 ENV_DICT_WRONG_TYPE_ERR = "the env_dict argument to Secret has to be a dict[str, Union[str, None]]"
 
 
+@dataclass
+class SecretInfo:
+    """Information about the Secret object."""
+
+    # This dataclass should be limited to information that is unchanging over the lifetime of the Secret,
+    # since it is transmitted from the server when the object is hydrated and could be stale when accessed.
+
+    name: Optional[str]
+    created_at: datetime
+    created_by: Optional[str]
+
+
 class _Secret(_Object, type_prefix="st"):
     """Secrets provide a dictionary of environment variables for images.
 
@@ -28,6 +43,22 @@ class _Secret(_Object, type_prefix="st"):
 
     See [the secrets guide page](https://modal.com/docs/guide/secrets) for more information.
     """
+
+    _metadata: Optional[api_pb2.SecretMetadata] = None
+
+    @property
+    def name(self) -> Optional[str]:
+        return self._name
+
+    def _hydrate_metadata(self, metadata: Optional[Message]):
+        if metadata:
+            assert isinstance(metadata, api_pb2.SecretMetadata)
+            self._metadata = metadata
+            self._name = metadata.name
+
+    def _get_metadata(self) -> api_pb2.SecretMetadata:
+        assert self._metadata
+        return self._metadata
 
     @staticmethod
     def from_dict(
@@ -202,7 +233,7 @@ class _Secret(_Object, type_prefix="st"):
                     raise
             self._hydrate(response.secret_id, resolver.client, response.metadata)
 
-        return _Secret._from_loader(_load, "Secret()", hydrate_lazily=True)
+        return _Secret._from_loader(_load, "Secret()", hydrate_lazily=True, name=name)
 
     @staticmethod
     async def lookup(
@@ -260,6 +291,17 @@ class _Secret(_Object, type_prefix="st"):
         )
         resp = await retry_transient_errors(client.stub.SecretGetOrCreate, request)
         return resp.secret_id
+
+    @live_method
+    async def info(self) -> SecretInfo:
+        """Return information about the Secret object."""
+        metadata = self._get_metadata()
+        creation_info = metadata.creation_info
+        return SecretInfo(
+            name=metadata.name or None,
+            created_at=datetime.fromtimestamp(creation_info.created_at),
+            created_by=creation_info.created_by or None,
+        )
 
 
 Secret = synchronize_api(_Secret)

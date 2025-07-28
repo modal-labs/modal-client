@@ -75,11 +75,18 @@ def test_secret_from_dict_none(servicer, client):
 
 def test_secret_from_name(servicer, client):
     # Deploy secret
-    secret_id = Secret.create_deployed("my-secret", {"FOO": "123"}, client=client)
+    name = "my-secret"
+    secret_id = Secret.create_deployed(name, {"FOO": "123"}, client=client)
 
     # Look up secret
-    secret = Secret.from_name("my-secret").hydrate(client)
+    secret = Secret.from_name(name)
+    assert secret.name == name
+    secret.hydrate(client)
     assert secret.object_id == secret_id
+
+    info = secret.info()
+    assert info.name == name
+    assert info.created_by == servicer.default_username
 
     # Look up secret through app
     app = App()
