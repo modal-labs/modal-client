@@ -2,10 +2,11 @@
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from google.protobuf.message import Message
 from grpclib import GRPCError
+from synchronicity import classproperty
 from synchronicity.async_wrap import asynccontextmanager
 
 from modal_proto import api_pb2
@@ -29,7 +30,7 @@ def _serialize_dict(data):
 
 @dataclass
 class DictInfo:
-    """Information about the Dict object."""
+    """Information about a Dict object."""
 
     # This dataclass should be limited to information that is unchanging over the lifetime of the Dict,
     # since it is transmitted from the server when the object is hydrated and could be stale when accessed.
@@ -37,6 +38,30 @@ class DictInfo:
     name: Optional[str]
     created_at: datetime
     created_by: Optional[str]
+
+
+class _DictManager:
+    """Namespace with methods that manage named Dict objects."""
+
+    @staticmethod
+    async def list(
+        *,
+        max_objects: int = 50,
+        created_before: Optional[Union[datetime, str]] = None,
+        client: Optional[_Client] = None,
+        environment_name: str = "",
+    ) -> list["_Dict"]:
+        """Return a list of hydrated Dict objects."""
+        if client is None:
+            client = await _Client.from_env()
+        # TODO handle str typed created_before and add tz localization?
+        pagination = api_pb2.ListPagination(max_objects=max_objects, created_before=created_before)
+        req = api_pb2.DictListRequest(environment_name=environment_name, pagination=pagination)
+        resp = await retry_transient_errors(client.stub.DictList, req)
+        return [_Dict._new_hydrated(item.dict_id, client, item.metadata, is_another_app=True) for item in resp.dicts]
+
+
+DictManager = synchronize_api(_DictManager)
 
 
 class _Dict(_Object, type_prefix="di"):
@@ -89,6 +114,10 @@ class _Dict(_Object, type_prefix="di"):
         raise RuntimeError(
             "`Dict(...)` constructor is not allowed. Please use `Dict.from_name` or `Dict.ephemeral` instead"
         )
+
+    @classproperty
+    def objects(cls) -> _DictManager:
+        return _DictManager
 
     @property
     def name(self) -> Optional[str]:

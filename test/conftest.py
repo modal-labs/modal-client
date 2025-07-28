@@ -929,7 +929,16 @@ class MockClientServicer(api_grpc.ModalClientBase):
         await stream.send_message(api_pb2.DictLenResponse(len=len(self.dicts[request.dict_id])))
 
     async def DictList(self, stream):
-        dicts = [api_pb2.DictListResponse.DictInfo(name=name, created_at=1) for name, _ in self.deployed_dicts]
+        request: api_pb2.DictListRequest = await stream.recv_message()
+        dicts = []
+        for (name, environment_name), obj_id in self.deployed_dicts.items():
+            if request.environment_name and environment_name != request.environment_name:
+                continue
+            creation_info = api_pb2.CreationInfo(created_by=self.default_username)  # TODO make more realistic
+            metadata = api_pb2.DictMetadata(name=name, creation_info=creation_info)
+            dicts.append(api_pb2.DictListResponse.DictInfo(name=name, dict_id=obj_id, metadata=metadata))
+            if request.pagination.max_objects and len(dicts) >= request.pagination.max_objects:
+                break
         await stream.send_message(api_pb2.DictListResponse(dicts=dicts))
 
     async def DictUpdate(self, stream):
