@@ -218,6 +218,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.files_sha2data = files_sha2data
         self.function_id_for_function_call = {}
         self.function_call_inputs = {}
+        self.inputplane_function_call_inputs = {}
         self.function_call_inputs_update_event = asyncio.Event()
         self.sync_client_retries_enabled = False
         self.function_is_running = False
@@ -1185,7 +1186,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
         function_call_id = f"fc-{self.fcidx}"
         self.function_id_for_function_call[function_call_id] = request.function_id
         fn_definition = self.app_functions.get(request.function_id)
-        retry_policy = fn_definition.retry_policy if fn_definition else None
+        retry_policy = None
+        if fn_definition and hasattr(fn_definition, "retry_policy"):
+            retry_policy = fn_definition.retry_policy
         function_call_jwt = encode_function_call_jwt(request.function_id, function_call_id)
 
         response_inputs = []
@@ -1254,7 +1257,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
             await asyncio.sleep(0.001)
         await stream.send_message(api_pb2.FunctionPutInputsResponse(inputs=response_items))
 
-    def add_function_call_input(self, function_call_id, item, input_id, retry_count):
+    def add_function_call_input(self, function_call_id, item: api_pb2.FunctionPutInputsItem, input_id, retry_count):
         if item.input.WhichOneof("args_oneof") == "args":
             args, kwargs = deserialize(item.input.args, None)
         else:
@@ -2243,6 +2246,141 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     async def AttemptRetry(self, stream):
         await stream.send_message(api_pb2.AttemptRetryResponse(attempt_token="bogus_retry_token"))
+
+    async def MapStartOrContinue(self, stream):
+        request: api_pb2.MapStartOrContinueRequest = await stream.recv_message()
+
+        # If function_call_id is provided, this is a continue request, otherwise it's a start
+        if request.function_call_id:
+            function_call_id = request.function_call_id
+        else:
+            self.fcidx += 1
+            function_call_id = f"fc-{self.fcidx}"
+            self.function_id_for_function_call[function_call_id] = request.function_id
+
+        # Process inputs and store them for MapAwait to pick up later
+        attempt_tokens = []
+        for index, item in enumerate(request.items):
+            retry_count = 0
+            if item.attempt_token != "":
+                retry_count = int(item.attempt_token.split(":")[1]) + 1
+            attempt_tokens.append(f"bogus-attempt-token-{item.input.idx}:{retry_count}")
+            # Store inputs for MapAwait to process
+            input_id = f"in-{self.n_inputs}"
+            self.n_inputs += 1
+            self.add_function_call_input(function_call_id, item.input, input_id, retry_count)
+
+        # Get retry policy from function definition if available
+        fn_definition = self.app_functions.get(request.function_id)
+        retry_policy = fn_definition.retry_policy if fn_definition else None
+
+        response = api_pb2.MapStartOrContinueResponse(
+            function_id=request.function_id,
+            function_call_id=function_call_id,
+            max_inputs_outstanding=1000,
+            attempt_tokens=attempt_tokens,
+            retry_policy=retry_policy,
+        )
+
+        # Inhereted variable name from python code PutInputs
+        if self.slow_put_inputs:
+            await asyncio.sleep(0.001)
+        await stream.send_message(response)
+
+    async def MapAwait(self, stream):
+        request: api_pb2.MapAwaitRequest = await stream.recv_message()
+
+        # Check if we have any function call inputs for this function call
+        fc_inputs = self.function_call_inputs.setdefault(request.function_call_id, [])
+        outputs = []
+
+        if fc_inputs and not self.function_is_running:
+            popidx = len(fc_inputs) // 2  # simulate that results don't always come in order
+            (idx, input_id, retry_count), (args, kwargs) = fc_inputs.pop(popidx)
+            output_exc = None
+            try:
+                res = self._function_body(*args, **kwargs)
+
+                if inspect.iscoroutine(res):
+                    result = await res
+                    result_data_format = api_pb2.DATA_FORMAT_PICKLE
+                elif inspect.isgenerator(res):
+                    count = 0
+                    for item in res:
+                        count += 1
+                        await self.fc_data_out[request.function_call_id].put(
+                            api_pb2.DataChunk(
+                                data_format=api_pb2.DATA_FORMAT_PICKLE,
+                                data=serialize_data_format(item, api_pb2.DATA_FORMAT_PICKLE),
+                                index=count,
+                            )
+                        )
+                    result = api_pb2.GeneratorDone(items_total=count)
+                    result_data_format = api_pb2.DATA_FORMAT_GENERATOR_DONE
+                else:
+                    result = res
+                    result_data_format = api_pb2.DATA_FORMAT_PICKLE
+            except Exception as exc:
+                serialized_exc = cloudpickle.dumps(exc)
+                result = api_pb2.GenericResult(
+                    status=self.failure_status,
+                    data=serialized_exc,
+                    exception=repr(exc),
+                    traceback="".join(traceback.format_exception(type(exc), exc, exc.__traceback__)),
+                )
+                output_exc = api_pb2.FunctionGetOutputsItem(
+                    input_id=input_id,
+                    idx=idx,
+                    result=result,
+                    data_format=api_pb2.DATA_FORMAT_PICKLE,
+                    retry_count=retry_count,
+                )
+
+            if output_exc:
+                outputs.append(output_exc)
+            else:
+                serialized_data = serialize_data_format(result, result_data_format)
+                if self.use_blob_outputs:
+                    blob_id = await self.next_blob_id()
+                    self.blobs[blob_id] = serialized_data
+                    data_kwargs = {
+                        "data_blob_id": blob_id,
+                    }
+                else:
+                    data_kwargs = {"data": serialized_data}
+                outputs.append(
+                    api_pb2.FunctionGetOutputsItem(
+                        input_id=input_id,
+                        idx=idx,
+                        result=api_pb2.GenericResult(
+                            status=api_pb2.GenericResult.GENERIC_STATUS_SUCCESS, **data_kwargs
+                        ),
+                        data_format=result_data_format,
+                        retry_count=retry_count,
+                    )
+                )
+
+        else:
+            # wait for there to be at least one input, since that will allow a subsequent call to
+            # get the associated output using the above branch
+            if not len(fc_inputs):
+                try:
+                    await asyncio.wait_for(self.function_call_inputs_update_event.wait(), timeout=request.timeout)
+                except asyncio.TimeoutError:
+                    pass
+                self.function_call_inputs_update_event.clear()
+
+        response = api_pb2.MapAwaitResponse(outputs=outputs, last_entry_id=str(len(outputs)))
+        await stream.send_message(response)
+
+    async def MapCheckInputs(self, stream):
+        request: api_pb2.MapCheckInputsRequest = await stream.recv_message()
+
+        # For testing purposes, assume no inputs are lost unless specifically configured
+        # Return False (not lost) for all attempt tokens
+        lost = [False] * len(request.attempt_tokens)
+
+        await stream.send_message(api_pb2.MapCheckInputsResponse(lost=lost))
 
 
 @pytest.fixture

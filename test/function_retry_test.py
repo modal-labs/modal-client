@@ -52,6 +52,24 @@ def setup_app_and_function(servicer):
     return app, f
 
 
+@pytest.fixture
+def setup_app_and_function_inputplane(servicer):
+    app = App()
+    servicer.function_body(counting_function)
+    # Custom retries are not supported for inputplane functions yet
+    # Reference default retry policy
+    """
+     retry_policy = api_pb2.FunctionRetryPolicy(
+        retries=INPUTS_RETRY_MAX_RETRIES,
+        initial_delay_ms=1000,
+        max_delay_ms=1000,
+        backoff_coefficient=1.0,
+    )
+    """
+    f = app.function(experimental_options={"input_plane_region": "us-east"})(counting_function)
+    return app, f
+
+
 def test_all_retries_fail_raises_error(client, setup_app_and_function, servicer):
     servicer.sync_client_retries_enabled = True
     app, f = setup_app_and_function
@@ -158,6 +176,19 @@ def test_map_all_retries_fail_raises_error(client, setup_app_and_function, servi
     assert len(ctx.get_requests("FunctionRetryInputs")) == 3
 
 
+# This test is unideal because we only don't set retries for inputplane functions.
+# That means this test must run 16 calls with a 1 second delay between each call.
+def test_map_all_retries_fail_raises_error_inputplane(client, setup_app_and_function_inputplane, servicer):
+    servicer.sync_client_retries_enabled = True
+    app, f = setup_app_and_function_inputplane
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            with pytest.raises(FunctionCallCountException) as exc_info:
+                list(f.map([999]))
+            assert exc_info.value.function_call_count == 9
+    assert len(ctx.get_requests("MapStartOrContinue")) == 9
+
+
 def test_map_failures_followed_by_success(client, setup_app_and_function, servicer):
     servicer.sync_client_retries_enabled = True
     app, f = setup_app_and_function
@@ -169,12 +200,36 @@ def test_map_failures_followed_by_success(client, setup_app_and_function, servic
     assert len(ctx.get_requests("FunctionRetryInputs")) == 2
 
 
+def test_map_failures_followed_by_success_inputplane(client, setup_app_and_function_inputplane, servicer):
+    servicer.sync_client_retries_enabled = True
+    app, f = setup_app_and_function_inputplane
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            results = list(f.map([3, 3, 3]))
+            assert set(results) == {3, 4, 5}
+
+    assert len(ctx.get_requests("MapStartOrContinue")) == 3
+
+
 def test_map_no_retries_when_first_call_succeeds(client, setup_app_and_function, servicer):
     servicer.sync_client_retries_enabled = True
     app, f = setup_app_and_function
     with app.run(client=client):
         results = list(f.map([1, 1, 1]))
         assert set(results) == {1, 2, 3}
+
+
+def test_map_no_retries_when_first_call_succeeds_inputplane(client, setup_app_and_function_inputplane, servicer):
+    servicer.sync_client_retries_enabled = True
+    app, f = setup_app_and_function_inputplane
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            results = list(f.map([1, 1, 1]))
+            assert set(results) == {1, 2, 3}
+
+    # This is 2 because a MapStartOrContinue is attempted once there is a single input.
+    # Then there is a MapStartOrContinue that tries the rest of a batch.
+    assert len(ctx.get_requests("MapStartOrContinue")) == 2
 
 
 def test_map_lost_inputs_retried(client, setup_app_and_function, servicer):
@@ -186,6 +241,20 @@ def test_map_lost_inputs_retried(client, setup_app_and_function, servicer):
     with app.run(client=client):
         results = list(f.map([3, 3, 3]))
         assert set(results) == {3, 4, 5}
+
+
+def test_map_lost_inputs_retried_inputplane(client, setup_app_and_function_inputplane, servicer):
+    servicer.sync_client_retries_enabled = True
+    app, f = setup_app_and_function_inputplane
+    # The client should retry if it receives a internal failure status.
+    servicer.failure_status = api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE
+
+    with servicer.intercept() as ctx:
+        with app.run(client=client):
+            results = list(f.map([3, 3, 3]))
+            assert set(results) == {3, 4, 5}
+
+    assert len(ctx.get_requests("MapStartOrContinue")) == 3
 
 
 def test_map_cancelled_inputs_not_retried(client, setup_app_and_function, servicer):
@@ -218,3 +287,37 @@ def test_map_cancelled_inputs_not_retried(client, setup_app_and_function, servic
                 list(f.map([3, 3, 3]))
 
         assert ctx.get_requests("FunctionRetryInputs") == []
+
+
+def test_map_cancelled_inputs_not_retried_inputplane(client, setup_app_and_function_inputplane, servicer):
+    servicer.sync_client_retries_enabled = True
+    app, f = setup_app_and_function_inputplane
+    # The client should retry if it receives a internal failure status.
+    servicer.failure_status = api_pb2.GenericResult.GENERIC_STATUS_INTERNAL_FAILURE
+
+    with servicer.intercept() as ctx:
+
+        async def MapAwait(servicer, stream):
+            # don't send response until an input arrives - otherwise it could cause a race
+            await servicer.function_call_inputs_update_event.wait()
+            await stream.send_message(
+                api_pb2.MapAwaitResponse(
+                    outputs=[
+                        api_pb2.FunctionGetOutputsItem(
+                            idx=1,
+                            result=api_pb2.GenericResult(
+                                status=api_pb2.GenericResult.GENERIC_STATUS_TERMINATED, exception="cancelled"
+                            ),
+                        )
+                    ],
+                    last_entry_id="1",
+                )
+            )
+
+        ctx.set_responder("MapAwait", MapAwait)
+
+        with app.run(client=client):
+            with pytest.raises(RemoteError, match="cancelled"):
+                list(f.map([3, 3, 3]))
+
+        assert len(ctx.get_requests("MapStartOrContinue")) == 1

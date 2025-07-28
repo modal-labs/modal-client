@@ -48,6 +48,7 @@ if typing.TYPE_CHECKING:
 PUMP_INPUTS_RETRYABLE_GRPC_STATUS_CODES = RETRYABLE_GRPC_STATUS_CODES + [Status.RESOURCE_EXHAUSTED]
 PUMP_INPUTS_MAX_RETRIES = 8
 PUMP_INPUTS_MAX_RETRY_DELAY = 15
+INPUTS_RETRY_MAX_RETRIES = 8
 
 
 class _SynchronizedQueue:
@@ -430,6 +431,7 @@ async def _map_invocation_inputplane(
     client: "modal.client._Client",
     order_outputs: bool,
     return_exceptions: bool,
+    wrap_returned_exceptions: bool,
     count_update_callback: Optional[Callable[[int, int], None]],
 ) -> typing.AsyncGenerator[Any, None]:
     """Input-plane implementation of a function map invocation.
@@ -479,7 +481,7 @@ async def _map_invocation_inputplane(
 
     # Input plane does not yet return a retry policy. So we set a default.
     retry_policy = api_pb2.FunctionRetryPolicy(
-        retries=15,
+        retries=INPUTS_RETRY_MAX_RETRIES,
         initial_delay_ms=1000,
         max_delay_ms=1000,
         backoff_coefficient=1.0,
@@ -634,13 +636,29 @@ async def _map_invocation_inputplane(
                 timeout=OUTPUTS_TIMEOUT,
             )
             metadata = await client.get_input_plane_metadata(function._input_plane_region)
-            response: api_pb2.MapAwaitResponse = await retry_transient_errors(
-                input_plane_stub.MapAwait,
-                request,
-                max_retries=20,
-                attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
-                metadata=metadata,
+            get_response_task = asyncio.create_task(
+                retry_transient_errors(
+                    input_plane_stub.MapAwait,
+                    request,
+                    max_retries=20,
+                    attempt_timeout=OUTPUTS_TIMEOUT + ATTEMPT_TIMEOUT_GRACE_PERIOD,
+                    metadata=metadata,
+                )
             )
+            map_done_task = asyncio.create_task(map_done_event.wait())
+            try:
+                done, pending = await asyncio.wait([get_response_task, map_done_task], return_when=FIRST_COMPLETED)
+                if get_response_task in done:
+                    map_done_task.cancel()
+                    response = get_response_task.result()
+                else:
+                    assert map_done_event.is_set()
+                    # map is done - no more outputs, so return early
+                    return
+            finally:
+                # clean up tasks, in case of cancellations etc.
+                get_response_task.cancel()
+                map_done_task.cancel()
             last_entry_id = response.last_entry_id
 
             for output_item in response.outputs:
@@ -660,7 +678,7 @@ async def _map_invocation_inputplane(
                 else:
                     raise Exception(f"Unknown output type: {output_type}")
 
-                if output_type == _OutputType.SUCCESSFUL_COMPLETION:
+                if output_type == _OutputType.SUCCESSFUL_COMPLETION or output_type == _OutputType.FAILED_COMPLETION:
                     update_counters(completed_delta=1)
                     yield output_item
 
@@ -675,14 +693,19 @@ async def _map_invocation_inputplane(
 
     async def fetch_output(item: api_pb2.FunctionGetOutputsItem) -> tuple[int, Any]:
         try:
-            output_val = await _process_result(item.result, item.data_format, input_plane_stub, client)
-        except Exception as exc:
+            output = await _process_result(item.result, item.data_format, input_plane_stub, client)
+        except Exception as e:
             if return_exceptions:
-                output_val = exc
+                if wrap_returned_exceptions:
+                    # Prior to client 1.0.4 there was a bug where return_exceptions would wrap
+                    # any returned exceptions in a synchronicity.UserCodeException. This adds
+                    # deprecated non-breaking compatibility bandaid for migrating away from that:
+                    output = modal.exception.UserCodeException(e)
+                else:
+                    output = e
             else:
-                raise exc
-
-        return (item.idx, output_val)
+                raise e
+        return (item.idx, output)
 
     async def poll_outputs():
         # map to store out-of-order outputs received

@@ -1524,6 +1524,7 @@ Use the `Function.get_web_url()` method instead.
                     self.client,
                     order_outputs,
                     return_exceptions,
+                    wrap_returned_exceptions,
                     count_update_callback,
                 )
             ) as stream:
