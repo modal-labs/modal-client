@@ -185,11 +185,10 @@ class _Volume(_Object, type_prefix="vo"):
         return self._name
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
-        if metadata and isinstance(metadata, api_pb2.VolumeMetadata):
+        if metadata:
+            assert isinstance(metadata, api_pb2.VolumeMetadata)
             self._metadata = metadata
             self._name = metadata.name
-        else:
-            raise TypeError("_hydrate_metadata() requires an `api_pb2.VolumeMetadata` to determine volume version")
 
     def _get_metadata(self) -> Optional[Message]:
         return self._metadata

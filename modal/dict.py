@@ -95,6 +95,7 @@ class _Dict(_Object, type_prefix="di"):
 
     def _hydrate_metadata(self, metadata: Optional[Message]):
         if metadata:
+            assert isinstance(metadata, api_pb2.DictMetadata)
             self._metadata = metadata
             self._name = metadata.name
 
