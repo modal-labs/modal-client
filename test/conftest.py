@@ -159,6 +159,7 @@ class MockClientServicer(api_grpc.ModalClientBase):
 
     def __init__(self, blob_host, blobs, blocks, files_sha2data, credentials, port):
         self.default_published_client_mount = "mo-123"
+        self.default_username = "test-user"
         self.use_blob_outputs = False
         self.put_outputs_barrier = threading.Barrier(
             1, timeout=10
@@ -899,7 +900,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.dicts[dict_id] = {entry.key: entry.value for entry in request.data}
         else:
             raise GRPCError(Status.NOT_FOUND, f"Dict {k} not found")
-        await stream.send_message(api_pb2.DictGetOrCreateResponse(dict_id=dict_id))
+        creation_info = api_pb2.CreationInfo(created_by=self.default_username)
+        metadata = api_pb2.DictMetadata(name=request.deployment_name, creation_info=creation_info)
+        await stream.send_message(api_pb2.DictGetOrCreateResponse(dict_id=dict_id, metadata=metadata))
 
     async def DictHeartbeat(self, stream):
         await stream.recv_message()
@@ -1542,7 +1545,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             queue_id = f"qu-{self.n_queues}"
         else:
             raise GRPCError(Status.NOT_FOUND, f"Queue {k} not found")
-        await stream.send_message(api_pb2.QueueGetOrCreateResponse(queue_id=queue_id))
+        creation_info = api_pb2.CreationInfo(created_by=self.default_username)
+        metadata = api_pb2.QueueMetadata(name=request.deployment_name, creation_info=creation_info)
+        await stream.send_message(api_pb2.QueueGetOrCreateResponse(queue_id=queue_id, metadata=metadata))
 
     async def QueueDelete(self, stream):
         request: api_pb2.QueueDeleteRequest = await stream.recv_message()
@@ -1768,7 +1773,9 @@ class MockClientServicer(api_grpc.ModalClientBase):
             self.secrets[secret_id] = request.env_dict
             self.deployed_secrets[k] = secret_id
 
-        await stream.send_message(api_pb2.SecretGetOrCreateResponse(secret_id=secret_id))
+        creation_info = api_pb2.CreationInfo(created_by=self.default_username)
+        metadata = api_pb2.SecretMetadata(name=request.deployment_name, creation_info=creation_info)
+        await stream.send_message(api_pb2.SecretGetOrCreateResponse(secret_id=secret_id, metadata=metadata))
 
     async def SecretList(self, stream):
         await stream.recv_message()
@@ -1926,7 +1933,10 @@ class MockClientServicer(api_grpc.ModalClientBase):
         else:
             raise GRPCError(Status.INVALID_ARGUMENT, "unsupported object creation type")
 
-        metadata = api_pb2.VolumeMetadata(version=request.version)
+        creation_info = api_pb2.CreationInfo(created_by=self.default_username)
+        metadata = api_pb2.VolumeMetadata(
+            name=request.deployment_name, creation_info=creation_info, version=request.version
+        )
         response = api_pb2.VolumeGetOrCreateResponse(volume_id=volume_id, version=request.version, metadata=metadata)
         await stream.send_message(response)
 

@@ -48,6 +48,10 @@ class _Object:
     _is_hydrated: bool
     _is_rehydrated: bool
 
+    # Not all object subclasses have a meaningful "name" concept
+    # So whether they expose this is a matter of having a name property
+    _name: Optional[str]
+
     @classmethod
     def __init_subclass__(cls, type_prefix: Optional[str] = None):
         super().__init_subclass__()
@@ -68,6 +72,7 @@ class _Object:
         hydrate_lazily: bool = False,
         deps: Optional[Callable[..., Sequence["_Object"]]] = None,
         deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
+        name: Optional[str] = None,
     ):
         self._local_uuid = str(uuid.uuid4())
         self._load = load
@@ -82,6 +87,8 @@ class _Object:
         self._client = None
         self._is_hydrated = False
         self._is_rehydrated = False
+
+        self._name = name
 
         self._initialize_from_empty()
 
@@ -163,10 +170,11 @@ class _Object:
         hydrate_lazily: bool = False,
         deps: Optional[Callable[..., Sequence["_Object"]]] = None,
         deduplication_key: Optional[Callable[[], Awaitable[Hashable]]] = None,
+        name: Optional[str] = None,
     ):
         # TODO(erikbern): flip the order of the two first arguments
         obj = _Object.__new__(cls)
-        obj._init(rep, load, is_another_app, preload, hydrate_lazily, deps, deduplication_key)
+        obj._init(rep, load, is_another_app, preload, hydrate_lazily, deps, deduplication_key, name)
         return obj
 
     @staticmethod
