@@ -279,7 +279,8 @@ class TimestampPriorityQueue(Generic[T]):
 
     def __init__(self, maxsize: int = 0):
         self.condition = asyncio.Condition()
-        self._queue: asyncio.PriorityQueue[tuple[float, Union[T, None]]] = asyncio.PriorityQueue(maxsize=maxsize)
+        self._queue: asyncio.PriorityQueue[tuple[float, int, Union[T, None]]] = asyncio.PriorityQueue(maxsize=maxsize)
+        self._counter = itertools.count()
 
     async def close(self):
         await self.put(self._MAX_PRIORITY, None)
@@ -288,7 +289,7 @@ class TimestampPriorityQueue(Generic[T]):
         """
         Add an item to the queue to be processed at a specific timestamp.
         """
-        await self._queue.put((timestamp, item))
+        await self._queue.put((timestamp, next(self._counter), item))
         async with self.condition:
             self.condition.notify_all()  # notify any waiting coroutines
 
@@ -301,7 +302,7 @@ class TimestampPriorityQueue(Generic[T]):
                 while self.empty():
                     await self.condition.wait()
                 # peek at the next item
-                timestamp, item = await self._queue.get()
+                timestamp, counter, item = await self._queue.get()
                 now = time.time()
                 if timestamp < now:
                     return item
@@ -309,7 +310,7 @@ class TimestampPriorityQueue(Generic[T]):
                     return None
                 # not ready yet, calculate sleep time
                 sleep_time = timestamp - now
-                self._queue.put_nowait((timestamp, item))  # put it back
+                self._queue.put_nowait((timestamp, counter, item))  # put it back
                 # wait until either the timeout or a new item is added
                 try:
                     await asyncio.wait_for(self.condition.wait(), timeout=sleep_time)

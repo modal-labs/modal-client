@@ -467,7 +467,7 @@ async def _map_invocation_inputplane(
     last_entry_id = ""
 
     # The input-plane server returns this after the first request.
-    function_call_id: str | None = None
+    function_call_id = None
     function_call_id_received = asyncio.Event()
 
     # Single priority queue that holds *both* fresh inputs (timestamp == now)
@@ -495,7 +495,7 @@ async def _map_invocation_inputplane(
         input_plane_instance=True,
     )
 
-    def update_counters(created_delta: int = 0, completed_delta: int = 0, set_have_all_inputs: bool | None = None):
+    def update_counters(created_delta: int = 0, completed_delta: int = 0, set_have_all_inputs=None):
         nonlocal inputs_created, outputs_completed, have_all_inputs
 
         if created_delta:
@@ -1211,12 +1211,11 @@ class _MapItemContext:
 
         self.state = _MapItemState.WAITING_TO_RETRY
 
-        now = time.time()
         if self._input_plane_instance:
             retry_item = await self.create_map_start_or_continue_item(item.idx)
-            await retry_queue.put(now + delay_ms / 1_000, retry_item)
+            await retry_queue.put(now_seconds + delay_ms / 1_000, retry_item)
         else:
-            await retry_queue.put(int(now) + delay_ms / 1_000, item.idx)
+            await retry_queue.put(now_seconds + delay_ms / 1_000, item.idx)
 
         return _OutputType.RETRYING
 
