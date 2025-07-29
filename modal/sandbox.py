@@ -60,15 +60,15 @@ if TYPE_CHECKING:
     import modal.app
 
 
-def _validate_exec_args(entrypoint_args: Sequence[str]) -> None:
+def _validate_exec_args(cmd: Sequence[str]) -> None:
     # Entrypoint args must be strings.
-    if not all(isinstance(arg, str) for arg in entrypoint_args):
+    if not all(isinstance(arg, str) for arg in cmd):
         raise InvalidError("All entrypoint arguments must be strings")
     # Avoid "[Errno 7] Argument list too long" errors.
-    total_arg_len = sum(len(arg) for arg in entrypoint_args)
+    total_arg_len = sum(len(arg) for arg in cmd)
     if total_arg_len > ARG_MAX_BYTES:
         raise InvalidError(
-            f"Total length of entrypoint arguments must be less than {ARG_MAX_BYTES} bytes (ARG_MAX). "
+            f"Total length of CMD arguments must be less than {ARG_MAX_BYTES} bytes (ARG_MAX). "
             f"Got {total_arg_len} bytes."
         )
 
@@ -104,7 +104,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @staticmethod
     def _new(
-        entrypoint_args: Sequence[str],
+        args: Sequence[str],
         image: _Image,
         secrets: Sequence[_Secret],
         name: Optional[str] = None,
@@ -208,7 +208,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
             ephemeral_disk = None  # Ephemeral disk requests not supported on Sandboxes.
             definition = api_pb2.Sandbox(
-                entrypoint_args=entrypoint_args,
+                entrypoint_args=args,
                 image_id=image.object_id,
                 mount_ids=[mount.object_id for mount in mounts] + [mount.object_id for mount in image._mount_layers],
                 secret_ids=[secret.object_id for secret in secrets],
@@ -250,7 +250,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @staticmethod
     async def create(
-        *entrypoint_args: str,
+        *cmd: str,  # Set the CMD of the Sandbox, overriding any CMD of the container image.
         # Associate the sandbox with an app. Required unless creating from a container.
         app: Optional["modal.app._App"] = None,
         name: Optional[str] = None,  # Optionally give the sandbox a name. Unique within an app.
@@ -316,7 +316,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
 
         return await _Sandbox._create(
-            *entrypoint_args,
+            *cmd,
             app=app,
             name=name,
             image=image,
@@ -346,7 +346,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @staticmethod
     async def _create(
-        *entrypoint_args: str,
+        *cmd: str,  # Set the CMD of the Sandbox, overriding any CMD of the container image.
         # Associate the sandbox with an app. Required unless creating from a container.
         app: Optional["modal.app._App"] = None,
         name: Optional[str] = None,  # Optionally give the sandbox a name. Unique within an app.
@@ -395,11 +395,11 @@ class _Sandbox(_Object, type_prefix="sb"):
         # sandbox that runs the shell session
         from .app import _App
 
-        _validate_exec_args(entrypoint_args)
+        _validate_exec_args(cmd)
 
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
-            entrypoint_args,
+            cmd,
             image=image or _default_image,
             secrets=secrets,
             name=name,
