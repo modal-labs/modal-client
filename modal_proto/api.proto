@@ -240,6 +240,13 @@ enum SystemErrorCode {
   SYSTEM_ERROR_CODE_NOSPC = 28;         // ENOSPC: No space left on device
 }
 
+enum TaskSnapshotBehavior {
+  TASK_SNAPSHOT_BEHAVIOR_UNSPECIFIED = 0;
+  TASK_SNAPSHOT_BEHAVIOR_SNAPSHOT = 1;
+  TASK_SNAPSHOT_BEHAVIOR_RESTORE = 2;
+  TASK_SNAPSHOT_BEHAVIOR_NONE = 3;
+}
+
 enum TaskState {
   TASK_STATE_UNSPECIFIED = 0;
   TASK_STATE_CREATED = 6;
@@ -1035,6 +1042,13 @@ message ContainerStopRequest {
 message ContainerStopResponse {
 }
 
+
+message CreationInfo {
+  // This message is used in metadata for resource objects like Dict, Queue, Volume, etc.
+  double created_at = 1;  // Timestamp of resource creation
+  string created_by = 2;  // User name or service name
+}
+
 message CustomDomainConfig {
   string name = 1;
 }
@@ -1099,6 +1113,7 @@ message DictGetOrCreateRequest {
 
 message DictGetOrCreateResponse {
   string dict_id = 1;
+  DictMetadata metadata = 2;
 }
 
 message DictGetRequest {
@@ -1134,6 +1149,11 @@ message DictListResponse {
   }
 
   repeated DictInfo dicts = 1;
+}
+
+message DictMetadata {
+  string name = 1;
+  CreationInfo creation_info = 2;
 }
 
 message DictPopRequest {
@@ -2085,6 +2105,16 @@ message MapAwaitResponse {
   string last_entry_id = 2;
 }
 
+message MapCheckInputsRequest {
+  string last_entry_id = 1;
+  float timeout = 2;
+  repeated string attempt_tokens = 3;  
+}
+
+message MapCheckInputsResponse {
+  repeated bool lost = 1;
+}
+
 message MapStartOrContinueItem {
   FunctionPutInputsItem input = 1;
   optional string attempt_token = 2; // None if this is a fresh input, otherwise it is the attempt token for a retry.
@@ -2376,6 +2406,7 @@ message QueueGetOrCreateRequest {
 
 message QueueGetOrCreateResponse {
   string queue_id = 1;
+  QueueMetadata metadata = 2;
 }
 
 message QueueGetRequest {
@@ -2423,6 +2454,11 @@ message QueueListResponse {
   }
 
   repeated QueueInfo queues = 1;
+}
+
+message QueueMetadata {
+  string name = 1;
+  CreationInfo creation_info = 2;
 }
 
 message QueueNextItemsRequest {
@@ -2820,6 +2856,7 @@ message SecretGetOrCreateRequest {
 
 message SecretGetOrCreateResponse {
   string secret_id = 1;
+  SecretMetadata metadata = 2;
 }
 
 message SecretListItem {
@@ -2838,6 +2875,13 @@ message SecretListResponse {
   repeated SecretListItem items = 1;
   string environment_name = 2; // the environment that was listed (useful when relying on "default" logic)
 }
+
+message SecretMetadata {
+  string name = 1;
+  CreationInfo creation_info = 2;
+}
+
+// SharedVolume in the backend corresponds to NetworkFileSystem in the current API
 
 message SharedVolumeDeleteRequest {
   string shared_volume_id = 1;
@@ -2937,8 +2981,9 @@ message TaskClusterHelloRequest {
 message TaskClusterHelloResponse {
   string cluster_id = 1;
   uint32 cluster_rank = 2;
-  // All IP addresses in cluster, ordered by cluster rank
+  // All IPv6 addresses in cluster, ordered by cluster rank
   repeated string container_ips = 3;
+  repeated string container_ipv4_ips = 4;
 }
 
 message TaskCurrentInputsResponse {
@@ -2953,6 +2998,7 @@ message TaskInfo {
   double enqueued_at = 5;
   string gpu_type = 6;
   string sandbox_id = 7;
+  TaskSnapshotBehavior snapshot_behavior = 8;
 }
 
 message TaskListRequest {
@@ -3146,7 +3192,7 @@ message VolumeGetOrCreateRequest {
 
 message VolumeGetOrCreateResponse {
   string volume_id = 1;
-  VolumeFsVersion version = 2;
+  VolumeFsVersion version = 2;  // Not used directly; version is part of the metadata
   VolumeMetadata metadata = 3;
 }
 
@@ -3193,6 +3239,8 @@ message VolumeListResponse {
 
 message VolumeMetadata {
   VolumeFsVersion version = 1;
+  string name = 2;
+  CreationInfo creation_info = 3;
 }
 
 message VolumeMount {
@@ -3454,6 +3502,7 @@ service ModalClient {
 
   // Input Plane Map
   rpc MapAwait(MapAwaitRequest) returns (MapAwaitResponse);
+  rpc MapCheckInputs(MapCheckInputsRequest) returns (MapCheckInputsResponse);
   rpc MapStartOrContinue(MapStartOrContinueRequest) returns (MapStartOrContinueResponse);
 
   // Mounts

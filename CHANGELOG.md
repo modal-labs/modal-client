@@ -6,6 +6,16 @@ This changelog documents user-facing updates (features, enhancements, fixes, and
 
 <!-- NEW CONTENT GENERATED BELOW. PLEASE PRESERVE THIS COMMENT. -->
 
+#### 1.1.1.dev28 (2025-07-28)
+
+- Added a `.name` property and a `.info()` method to `modal.Dict`, `modal.Queue`, `modal.Volume`, and `modal.Secret` objects.
+
+
+#### 1.1.1.dev26 (2025-07-28)
+
+- Uses terminal output in Jupyter to improve rendering
+
+
 #### 1.1.1.dev13 (2025-07-22)
 
 - Surface task result exceptions during image build termination events to prevent ambiguous termination conditions.

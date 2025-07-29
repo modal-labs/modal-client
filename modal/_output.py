@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import functools
-import io
 import platform
 import re
 import socket
@@ -46,6 +45,16 @@ else:
     default_spinner = "dots"
 
 
+def make_console(*, stderr: bool = False, highlight: bool = True) -> Console:
+    """Create a rich Console tuned for Modal CLI output."""
+    return Console(
+        stderr=stderr,
+        highlight=highlight,
+        # CLI does not work with auto-detected Jupyter HTML display_data.
+        force_jupyter=False,
+    )
+
+
 class FunctionQueuingColumn(ProgressColumn):
     """Renders time elapsed, including task.completed as additional elapsed time."""
 
@@ -61,25 +70,6 @@ class FunctionQueuingColumn(ProgressColumn):
             elapsed = task.elapsed + self.lag
         delta = timedelta(seconds=int(elapsed))
         return Text(str(delta), style="progress.elapsed")
-
-
-def download_progress_bar() -> Progress:
-    """
-    Returns a progress bar suitable for showing file download progress.
-    Requires passing a `path: str` data field for rendering.
-    """
-    return Progress(
-        TextColumn("[bold white]{task.fields[path]}", justify="right"),
-        BarColumn(bar_width=None),
-        "[progress.percentage]{task.percentage:>3.1f}%",
-        "•",
-        DownloadColumn(),
-        "•",
-        TransferSpeedColumn(),
-        "•",
-        TimeRemainingColumn(),
-        transient=True,
-    )
 
 
 class LineBufferedOutput:
@@ -147,12 +137,11 @@ class OutputManager:
     def __init__(
         self,
         *,
-        stdout: io.TextIOWrapper | None = None,
         status_spinner_text: str = "Running app...",
         show_timestamps: bool = False,
     ):
-        self._stdout = stdout or sys.stdout
-        self._console = Console(file=stdout, highlight=False)
+        self._stdout = sys.stdout
+        self._console = make_console(highlight=False)
         self._task_states = {}
         self._task_progress_items = {}
         self._current_render_group = None

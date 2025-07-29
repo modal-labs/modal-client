@@ -27,6 +27,17 @@ def dummy():
     pass
 
 
+def test_volume_info(servicer, client):
+    name = "super-important-data"
+    vol = modal.Volume.from_name(name, create_if_missing=True)
+    assert vol.name == name
+
+    vol.hydrate(client)
+    info = vol.info()
+    assert info.name == name
+    assert info.created_by == servicer.default_username
+
+
 @pytest.mark.parametrize("read_only", [True, False])
 @pytest.mark.parametrize("version", VERSIONS)
 def test_volume_mount(client, servicer, version, read_only):

@@ -75,6 +75,7 @@ from .parallel_map import (
     _for_each_sync,
     _map_async,
     _map_invocation,
+    _map_invocation_inputplane,
     _map_sync,
     _spawn_map_async,
     _spawn_map_sync,
@@ -399,7 +400,8 @@ class _InputPlaneInvocation:
             parent_input_id=current_input_id() or "",
             input=input_item,
         )
-        metadata = await _InputPlaneInvocation._get_metadata(input_plane_region, client)
+
+        metadata = await client.get_input_plane_metadata(input_plane_region)
         response = await retry_transient_errors(stub.AttemptStart, request, metadata=metadata)
         attempt_token = response.attempt_token
 
@@ -415,7 +417,7 @@ class _InputPlaneInvocation:
                 timeout_secs=OUTPUTS_TIMEOUT,
                 requested_at=time.time(),
             )
-            metadata = await self._get_metadata(self.input_plane_region, self.client)
+            metadata = await self.client.get_input_plane_metadata(self.input_plane_region)
             await_response: api_pb2.AttemptAwaitResponse = await retry_transient_errors(
                 self.stub.AttemptAwait,
                 await_request,
@@ -1514,20 +1516,36 @@ Use the `Function.get_web_url()` method instead.
         else:
             count_update_callback = None
 
-        async with aclosing(
-            _map_invocation(
-                self,
-                input_queue,
-                self.client,
-                order_outputs,
-                return_exceptions,
-                wrap_returned_exceptions,
-                count_update_callback,
-                api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
-            )
-        ) as stream:
-            async for item in stream:
-                yield item
+        # TODO(ben-okeefe): Feature gating for input plane map until feature is enabled.
+        if self._input_plane_url and False:
+            async with aclosing(
+                _map_invocation_inputplane(
+                    self,
+                    input_queue,
+                    self.client,
+                    order_outputs,
+                    return_exceptions,
+                    wrap_returned_exceptions,
+                    count_update_callback,
+                )
+            ) as stream:
+                async for item in stream:
+                    yield item
+        else:
+            async with aclosing(
+                _map_invocation(
+                    self,
+                    input_queue,
+                    self.client,
+                    order_outputs,
+                    return_exceptions,
+                    wrap_returned_exceptions,
+                    count_update_callback,
+                    api_pb2.FUNCTION_CALL_INVOCATION_TYPE_SYNC,
+                )
+            ) as stream:
+                async for item in stream:
+                    yield item
 
     async def _call_function(self, args, kwargs) -> ReturnType:
         invocation: Union[_Invocation, _InputPlaneInvocation]

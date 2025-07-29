@@ -1,7 +1,10 @@
 # Copyright Modal Labs 2022
 from collections.abc import AsyncIterator, Mapping
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Optional
 
+from google.protobuf.message import Message
 from grpclib import GRPCError
 from synchronicity.async_wrap import asynccontextmanager
 
@@ -21,6 +24,18 @@ from .exception import RequestSizeError
 
 def _serialize_dict(data):
     return [api_pb2.DictEntry(key=serialize(k), value=serialize(v)) for k, v in data.items()]
+
+
+@dataclass
+class DictInfo:
+    """Information about the Dict object."""
+
+    # This dataclass should be limited to information that is unchanging over the lifetime of the Dict,
+    # since it is transmitted from the server when the object is hydrated and could be stale when accessed.
+
+    name: Optional[str]
+    created_at: datetime
+    created_by: Optional[str]
 
 
 class _Dict(_Object, type_prefix="di"):
@@ -65,11 +80,28 @@ class _Dict(_Object, type_prefix="di"):
     For more examples, see the [guide](https://modal.com/docs/guide/dicts-and-queues#modal-dicts).
     """
 
+    _name: Optional[str] = None
+    _metadata: Optional[api_pb2.DictMetadata] = None
+
     def __init__(self, data={}):
         """mdmd:hidden"""
         raise RuntimeError(
             "`Dict(...)` constructor is not allowed. Please use `Dict.from_name` or `Dict.ephemeral` instead"
         )
+
+    @property
+    def name(self) -> Optional[str]:
+        return self._name
+
+    def _hydrate_metadata(self, metadata: Optional[Message]):
+        if metadata:
+            assert isinstance(metadata, api_pb2.DictMetadata)
+            self._metadata = metadata
+            self._name = metadata.name
+
+    def _get_metadata(self) -> api_pb2.DictMetadata:
+        assert self._metadata
+        return self._metadata
 
     @classmethod
     @asynccontextmanager
@@ -112,7 +144,7 @@ class _Dict(_Object, type_prefix="di"):
         async with TaskContext() as tc:
             request = api_pb2.DictHeartbeatRequest(dict_id=response.dict_id)
             tc.infinite_loop(lambda: client.stub.DictHeartbeat(request), sleep=_heartbeat_sleep)
-            yield cls._new_hydrated(response.dict_id, client, None, is_another_app=True)
+            yield cls._new_hydrated(response.dict_id, client, response.metadata, is_another_app=True)
 
     @staticmethod
     def from_name(
@@ -153,9 +185,9 @@ class _Dict(_Object, type_prefix="di"):
             )
             response = await resolver.client.stub.DictGetOrCreate(req)
             logger.debug(f"Created dict with id {response.dict_id}")
-            self._hydrate(response.dict_id, resolver.client, None)
+            self._hydrate(response.dict_id, resolver.client, response.metadata)
 
-        return _Dict._from_loader(_load, "Dict()", is_another_app=True, hydrate_lazily=True)
+        return _Dict._from_loader(_load, "Dict()", is_another_app=True, hydrate_lazily=True, name=name)
 
     @staticmethod
     async def lookup(
@@ -208,6 +240,17 @@ class _Dict(_Object, type_prefix="di"):
         obj = await _Dict.from_name(name, environment_name=environment_name).hydrate(client)
         req = api_pb2.DictDeleteRequest(dict_id=obj.object_id)
         await retry_transient_errors(obj._client.stub.DictDelete, req)
+
+    @live_method
+    async def info(self) -> DictInfo:
+        """Return information about the Dict object."""
+        metadata = self._get_metadata()
+        creation_info = metadata.creation_info
+        return DictInfo(
+            name=metadata.name or None,
+            created_at=datetime.fromtimestamp(creation_info.created_at),
+            created_by=creation_info.created_by or None,
+        )
 
     @live_method
     async def clear(self) -> None:

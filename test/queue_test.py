@@ -10,9 +10,18 @@ from modal_proto import api_pb2
 from .supports.skip import skip_macos, skip_windows
 
 
-def test_queue(servicer, client):
-    q = Queue.from_name("some-random-queue", create_if_missing=True).hydrate(client)
+def test_queue_named(servicer, client):
+    name = "some-random-queue"
+    q = Queue.from_name(name, create_if_missing=True)
     assert isinstance(q, Queue)
+    assert q.name == name
+
+    q.hydrate(client)
+
+    info = q.info()
+    assert info.name == name
+    assert info.created_by == servicer.default_username
+
     assert q.len() == 0
     q.put(42)
     assert q.len() == 1
