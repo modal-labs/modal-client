@@ -1561,7 +1561,7 @@ class _Image(_Object, type_prefix="im"):
         self,
         entrypoint_commands: list[str],
     ) -> "_Image":
-        """Set the entrypoint for the image."""
+        """Set the ENTRYPOINT for the image."""
         if not isinstance(entrypoint_commands, list) or not all(isinstance(x, str) for x in entrypoint_commands):
             raise InvalidError("entrypoint_commands must be a list of strings.")
         args_str = _flatten_str_args("entrypoint", "entrypoint_commands", entrypoint_commands)
