@@ -2237,7 +2237,9 @@ class _Image(_Object, type_prefix="im"):
         )
 
     def cmd(self, cmd: list[str]) -> "_Image":
-        """Set the default entrypoint argument (`CMD`) for the image.
+        """Set the default command (`CMD`) to run when a container is started.
+
+        Used with `modal.Sandbox`. Has no effect on `modal.Function`.
 
         **Example**
 
