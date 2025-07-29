@@ -60,12 +60,12 @@ if TYPE_CHECKING:
     import modal.app
 
 
-def _validate_exec_args(cmd: Sequence[str]) -> None:
+def _validate_exec_args(args: Sequence[str]) -> None:
     # Entrypoint args must be strings.
-    if not all(isinstance(arg, str) for arg in cmd):
+    if not all(isinstance(arg, str) for arg in args):
         raise InvalidError("All entrypoint arguments must be strings")
     # Avoid "[Errno 7] Argument list too long" errors.
-    total_arg_len = sum(len(arg) for arg in cmd)
+    total_arg_len = sum(len(arg) for arg in args)
     if total_arg_len > ARG_MAX_BYTES:
         raise InvalidError(
             f"Total length of CMD arguments must be less than {ARG_MAX_BYTES} bytes (ARG_MAX). "
@@ -250,7 +250,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @staticmethod
     async def create(
-        *cmd: str,  # Set the CMD of the Sandbox, overriding any CMD of the container image.
+        *args: str,  # Set the CMD of the Sandbox, overriding any CMD of the container image.
         # Associate the sandbox with an app. Required unless creating from a container.
         app: Optional["modal.app._App"] = None,
         name: Optional[str] = None,  # Optionally give the sandbox a name. Unique within an app.
@@ -316,7 +316,7 @@ class _Sandbox(_Object, type_prefix="sb"):
             )
 
         return await _Sandbox._create(
-            *cmd,
+            *args,
             app=app,
             name=name,
             image=image,
@@ -346,7 +346,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     @staticmethod
     async def _create(
-        *cmd: str,  # Set the CMD of the Sandbox, overriding any CMD of the container image.
+        *args: str,  # Set the CMD of the Sandbox, overriding any CMD of the container image.
         # Associate the sandbox with an app. Required unless creating from a container.
         app: Optional["modal.app._App"] = None,
         name: Optional[str] = None,  # Optionally give the sandbox a name. Unique within an app.
@@ -395,11 +395,11 @@ class _Sandbox(_Object, type_prefix="sb"):
         # sandbox that runs the shell session
         from .app import _App
 
-        _validate_exec_args(cmd)
+        _validate_exec_args(args)
 
         # TODO(erikbern): Get rid of the `_new` method and create an already-hydrated object
         obj = _Sandbox._new(
-            cmd,
+            args,
             image=image or _default_image,
             secrets=secrets,
             name=name,
@@ -648,7 +648,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     @overload
     async def exec(
         self,
-        *cmds: str,
+        *args: str,
         pty_info: Optional[api_pb2.PTYInfo] = None,
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
@@ -663,7 +663,7 @@ class _Sandbox(_Object, type_prefix="sb"):
     @overload
     async def exec(
         self,
-        *cmds: str,
+        *args: str,
         pty_info: Optional[api_pb2.PTYInfo] = None,
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
@@ -677,7 +677,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
     async def exec(
         self,
-        *cmds: str,
+        *args: str,
         pty_info: Optional[api_pb2.PTYInfo] = None,  # Deprecated: internal use only
         stdout: StreamType = StreamType.PIPE,
         stderr: StreamType = StreamType.PIPE,
@@ -713,7 +713,7 @@ class _Sandbox(_Object, type_prefix="sb"):
 
         if workdir is not None and not workdir.startswith("/"):
             raise InvalidError(f"workdir must be an absolute path, got: {workdir}")
-        _validate_exec_args(cmds)
+        _validate_exec_args(args)
 
         # Force secret resolution so we can pass the secret IDs to the backend.
         secret_coros = [secret.hydrate(client=self._client) for secret in secrets]
@@ -722,7 +722,7 @@ class _Sandbox(_Object, type_prefix="sb"):
         task_id = await self._get_task_id()
         req = api_pb2.ContainerExecRequest(
             task_id=task_id,
-            command=cmds,
+            command=args,
             pty_info=_pty_info or pty_info,
             runtime_debug=config.get("function_runtime_debug"),
             timeout_secs=timeout or 0,
