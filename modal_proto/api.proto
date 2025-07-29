@@ -1140,8 +1140,7 @@ message DictLenResponse {
 
 message DictListRequest {
   string environment_name = 1;
-  int32 max_objects = 2;
-  double created_before = 3;
+  ListPagination pagination = 2;
 }
 
 message DictListResponse {
@@ -2098,6 +2097,11 @@ message InputInfo {
   bool task_first_input = 7;
 }
 
+message ListPagination {
+  int32 max_objects = 1;
+  double created_before = 2;
+}
+
 message MapAwaitRequest {
   string function_call_id = 1;
   string last_entry_id = 2;
@@ -2447,8 +2451,7 @@ message QueueLenResponse {
 message QueueListRequest {
   string environment_name = 1;
   int32 total_size_limit = 2;  // Limit on "number of partitions" reported, since checking them is costly
-  int32 max_objects = 3;
-  double created_before = 4;
+  ListPagination pagination = 3;
 }
 
 message QueueListResponse {
@@ -2879,8 +2882,7 @@ message SecretListItem {
 
 message SecretListRequest {
   string environment_name = 1;
-  int32 max_objects = 2;
-  double created_before = 3;
+  ListPagination pagination = 2;
 }
 
 message SecretListResponse {
@@ -3243,8 +3245,7 @@ message VolumeListItem {
 
 message VolumeListRequest {
   string environment_name = 1;
-  int32 max_objects = 2;
-  double created_before = 3;
+  ListPagination pagination = 2;
 }
 
 message VolumeListResponse {
