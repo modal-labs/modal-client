@@ -1140,15 +1140,19 @@ message DictLenResponse {
 
 message DictListRequest {
   string environment_name = 1;
+  ListPagination pagination = 2;
 }
 
 message DictListResponse {
   message DictInfo {
     string name = 1;
-    double created_at = 2;
+    double created_at = 2;  // Superseded by metadata, used by clients up to 1.1.1
+    string dict_id = 3;
+    DictMetadata metadata = 4;
   }
 
   repeated DictInfo dicts = 1;
+  string environment_name = 2;
 }
 
 message DictMetadata {
@@ -2093,6 +2097,11 @@ message InputInfo {
   bool task_first_input = 7;
 }
 
+message ListPagination {
+  int32 max_objects = 1;
+  double created_before = 2;
+}
+
 message MapAwaitRequest {
   string function_call_id = 1;
   string last_entry_id = 2;
@@ -2441,19 +2450,22 @@ message QueueLenResponse {
 
 message QueueListRequest {
   string environment_name = 1;
-  // Allow client to report a bounded total size to reduce the number of partitions that need to be checked
-  int32 total_size_limit = 2;
+  int32 total_size_limit = 2;  // Limit on "number of partitions" reported, since checking them is costly
+  ListPagination pagination = 3;
 }
 
 message QueueListResponse {
   message QueueInfo {
     string name = 1;
-    double created_at = 2;
+    double created_at = 2;  // Superseded by metadata, used by clients up to 1.1.1
     int32 num_partitions = 3;
     int32 total_size = 4;
+    string queue_id = 5;
+    QueueMetadata metadata = 6;
   }
 
   repeated QueueInfo queues = 1;
+  string environment_name = 2;
 }
 
 message QueueMetadata {
@@ -2861,19 +2873,21 @@ message SecretGetOrCreateResponse {
 
 message SecretListItem {
   string label = 1;
-  double created_at = 2;
+  double created_at = 2;  // Superseded by metadata, used by clients up to 1.1.1
   double last_used_at = 3;
-  string environment_name = 4;
+  string environment_name = 4;  // Unused by client
   string secret_id = 5;
+  SecretMetadata metadata = 6;
 }
 
 message SecretListRequest {
-  string environment_name = 1; // leaving empty will assume a singular environment
+  string environment_name = 1;
+  ListPagination pagination = 2;
 }
 
 message SecretListResponse {
   repeated SecretListItem items = 1;
-  string environment_name = 2; // the environment that was listed (useful when relying on "default" logic)
+  string environment_name = 2;
 }
 
 message SecretMetadata {
@@ -3225,11 +3239,13 @@ message VolumeListFilesResponse {
 message VolumeListItem {
   string label = 1;  // app name of object entity app
   string volume_id = 2;
-  double created_at = 3;
+  double created_at = 3;  // Superseded by metadata, used by clients up to 1.1.1
+  VolumeMetadata metadata = 4;
 }
 
 message VolumeListRequest {
   string environment_name = 1;
+  ListPagination pagination = 2;
 }
 
 message VolumeListResponse {
