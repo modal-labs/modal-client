@@ -1561,7 +1561,7 @@ class _Image(_Object, type_prefix="im"):
         self,
         entrypoint_commands: list[str],
     ) -> "_Image":
-        """Set the entrypoint for the image."""
+        """Set the ENTRYPOINT for the image."""
         if not isinstance(entrypoint_commands, list) or not all(isinstance(x, str) for x in entrypoint_commands):
             raise InvalidError("entrypoint_commands must be a list of strings.")
         args_str = _flatten_str_args("entrypoint", "entrypoint_commands", entrypoint_commands)
@@ -2237,7 +2237,9 @@ class _Image(_Object, type_prefix="im"):
         )
 
     def cmd(self, cmd: list[str]) -> "_Image":
-        """Set the default entrypoint argument (`CMD`) for the image.
+        """Set the default command (`CMD`) to run when a container is started.
+
+        Used with `modal.Sandbox`. Has no effect on `modal.Function`.
 
         **Example**
 
