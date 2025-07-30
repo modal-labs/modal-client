@@ -6,7 +6,7 @@ import time
 import typing
 from asyncio import FIRST_COMPLETED
 from dataclasses import dataclass
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Union
 
 from grpclib import Status
 
@@ -494,7 +494,9 @@ async def _map_invocation_inputplane(
         is_input_plane_instance=True,
     )
 
-    def update_counters(created_delta: int = 0, completed_delta: int = 0, set_have_all_inputs=None):
+    def update_counters(
+        created_delta: int = 0, completed_delta: int = 0, set_have_all_inputs: Union[bool, None] = None
+    ):
         nonlocal inputs_created, outputs_completed, have_all_inputs
 
         if created_delta:
