@@ -188,20 +188,19 @@ def test_map_all_retries_fail_raises_error(client, setup_app_and_function, servi
     assert len(ctx.get_requests("FunctionRetryInputs")) == 3
 
 
-# This test is unideal because we only don't set retries for inputplane functions.
-# That means this test must run 16 calls with a 1 second delay between each call.
-def test_map_all_retries_fail_raises_error_inputplane(client, setup_app_and_function_inputplane, servicer):
-    servicer.sync_client_retries_enabled = True
-    app, f = setup_app_and_function_inputplane
-    with servicer.intercept() as ctx:
-        with app.run(client=client):
-            with pytest.raises(FunctionCallCountException) as exc_info:
-                list(f.map([999]))
-            assert exc_info.value.function_call_count == 9
+# TODO(ben-okeefe): Add when there is a retry policy for inputplane functions.
+# def test_map_all_retries_fail_raises_error_inputplane(client, setup_app_and_function_inputplane, servicer):
+#     servicer.sync_client_retries_enabled = True
+#     app, f = setup_app_and_function_inputplane
+#     with servicer.intercept() as ctx:
+#         with app.run(client=client):
+#             with pytest.raises(FunctionCallCountException) as exc_info:
+#                 list(f.map([999]))
+#             assert exc_info.value.function_call_count == 1
 
-    first_time_requests, retried_requests = fetch_input_plane_request_counts(ctx)
-    assert first_time_requests == 1
-    assert retried_requests == 8
+#     first_time_requests, retried_requests = fetch_input_plane_request_counts(ctx)
+#     assert first_time_requests == 1
+#     assert retried_requests == 0  # No retry policy yet for the input plane
 
 
 def test_map_failures_followed_by_success(client, setup_app_and_function, servicer):
@@ -215,17 +214,18 @@ def test_map_failures_followed_by_success(client, setup_app_and_function, servic
     assert len(ctx.get_requests("FunctionRetryInputs")) == 2
 
 
-def test_map_failures_followed_by_success_inputplane(client, setup_app_and_function_inputplane, servicer):
-    servicer.sync_client_retries_enabled = True
-    app, f = setup_app_and_function_inputplane
-    with servicer.intercept() as ctx:
-        with app.run(client=client):
-            results = list(f.map([3, 3, 3]))
-            assert set(results) == {3, 4, 5}
+# TODO(ben-okeefe): Add when there is a retry policy for inputplane functions.
+# def test_map_failures_followed_by_success_inputplane(client, setup_app_and_function_inputplane, servicer):
+#     servicer.sync_client_retries_enabled = True
+#     app, f = setup_app_and_function_inputplane
+#     with servicer.intercept() as ctx:
+#         with app.run(client=client):
+#             results = list(f.map([3, 3, 3]))
+#             assert set(results) == {3, 4, 5}
 
-    first_time_requests, retried_requests = fetch_input_plane_request_counts(ctx)
-    assert first_time_requests == 3
-    assert retried_requests == 2
+#     first_time_requests, retried_requests = fetch_input_plane_request_counts(ctx)
+#     assert first_time_requests == 3
+#     assert retried_requests == 2
 
 
 def test_map_no_retries_when_first_call_succeeds(client, setup_app_and_function, servicer):
