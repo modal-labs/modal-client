@@ -51,7 +51,7 @@ class _FlashManager:
                     timeout=10,
                 )
                 if first_registration:
-                    logger.warning(f"[Modal Flash] Listening at {resp.url}")
+                    logger.warning(f"[Modal Flash] Listening at {resp.url} over {self.tunnel.url}")
                     first_registration = False
             except asyncio.CancelledError:
                 logger.warning("[Modal Flash] Shutting down...")
