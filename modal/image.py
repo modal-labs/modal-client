@@ -1356,6 +1356,8 @@ class _Image(_Object, type_prefix="im"):
         image = modal.Image.debian_slim().uv_sync()
         ```
 
+        The `pyproject.toml` and `uv.lock` in `uv_project_dir` are automatically added to the build context.
+
         Added in v1.1.0.
         """
 
