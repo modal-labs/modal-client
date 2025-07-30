@@ -15,7 +15,7 @@ from modal.client import _Client
 from modal.environments import ensure_env
 from modal_proto import api_pb2
 
-from .._utils.time_utils import timestamp_to_local
+from .._utils.time_utils import timestamp_to_localized_str
 from .utils import ENV_OPTION, display_table, get_app_id_from_name, stream_app_logs
 
 APP_IDENTIFIER = Argument("", help="App name or ID")
@@ -71,8 +71,8 @@ async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
                 app_stats.description,
                 state,
                 str(app_stats.n_running_tasks),
-                timestamp_to_local(app_stats.created_at, json),
-                timestamp_to_local(app_stats.stopped_at, json),
+                timestamp_to_localized_str(app_stats.created_at, json),
+                timestamp_to_localized_str(app_stats.stopped_at, json),
             ]
         )
 
@@ -217,7 +217,7 @@ async def history(
 
         row = [
             Text(f"v{app_stats.version}", style=style),
-            Text(timestamp_to_local(app_stats.deployed_at, json), style=style),
+            Text(timestamp_to_localized_str(app_stats.deployed_at, json), style=style),
             Text(app_stats.client_version, style=style),
             Text(app_stats.deployed_by, style=style),
         ]

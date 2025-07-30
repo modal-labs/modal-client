@@ -31,7 +31,7 @@ from rich.progress import (
 from rich.spinner import Spinner
 from rich.text import Text
 
-from modal._utils.time_utils import timestamp_to_local
+from modal._utils.time_utils import timestamp_to_localized_str
 from modal_proto import api_pb2
 
 from ._utils.grpc_utils import RETRYABLE_GRPC_STATUS_CODES, retry_transient_errors
@@ -91,7 +91,7 @@ class LineBufferedOutput:
 
         if self._show_timestamps:
             for i in range(0, len(chunks) - 1, 2):
-                chunks[i] = f"{timestamp_to_local(log.timestamp)} {chunks[i]}"
+                chunks[i] = f"{timestamp_to_localized_str(log.timestamp)} {chunks[i]}"
 
         completed_lines = "".join(chunks[:-1])
         remainder = chunks[-1]
