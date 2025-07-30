@@ -865,7 +865,7 @@ message ContainerArguments {  // This is used to pass data from the worker to th
   string environment_name = 13;
   optional string checkpoint_id = 14;
   AppLayout app_layout = 15;
-  optional string input_plane_server_url = 16;
+  string input_plane_server_url = 16;
 }
 
 message ContainerCheckpointRequest {
