@@ -1488,6 +1488,7 @@ message FunctionBindParamsRequest {
   bytes serialized_params = 2;
   FunctionOptions function_options = 3;
   string environment_name = 4;
+  string auth_secret = 5; // Only used for the input plane.
 }
 
 message FunctionBindParamsResponse {
