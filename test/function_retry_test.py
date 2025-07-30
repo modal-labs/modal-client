@@ -196,11 +196,11 @@ def test_map_all_retries_fail_raises_error(client, setup_app_and_function, servi
 #         with app.run(client=client):
 #             with pytest.raises(FunctionCallCountException) as exc_info:
 #                 list(f.map([999]))
-#             assert exc_info.value.function_call_count == 1
+#             assert exc_info.value.function_call_count == 4
 
 #     first_time_requests, retried_requests = fetch_input_plane_request_counts(ctx)
 #     assert first_time_requests == 1
-#     assert retried_requests == 0  # No retry policy yet for the input plane
+#     assert retried_requests == 3
 
 
 def test_map_failures_followed_by_success(client, setup_app_and_function, servicer):
