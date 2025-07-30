@@ -41,21 +41,51 @@ class DictInfo:
 
 
 class _DictManager:
-    """Namespace with methods that manage named Dict objects."""
+    """Namespace with methods for managing named Dict objects."""
 
     @staticmethod
     async def list(
         *,
-        max_objects: int = 50,
-        created_before: Optional[Union[datetime, str]] = None,
-        client: Optional[_Client] = None,
-        environment_name: str = "",
+        max_objects: int = 50,  # Paginate requests to this size
+        created_before: Optional[Union[datetime, str]] = None,  # Limit results based on age
+        environment_name: str = "",  # Uses default environment if not specified
+        client: Optional[_Client] = None,  # Optional client with Modal credentials
     ) -> list["_Dict"]:
-        """Return a list of hydrated Dict objects."""
+        """Return a list of hydrated Dict objects.
+
+        **Examples:**
+
+        ```python
+        dicts = modal.Dict.objects.list()
+        print([d.name for d in dicts])
+        ```
+
+        Results are paginated; you can retrieve all Dicts iteratively:
+
+        ```python
+        all_dicts = modal.Dict.objects.list()
+        while True:
+            new_dicts = modal.Dict.objects.list(created_before=all_dicts[-1].info().created_at)
+            if new_dicts:
+                all_dicts.extend(new_dicts)
+            else:
+                break
+        ```
+
+        Dicts will be retreived from the default environment, or one can be specified:
+
+        ```python
+        dev_dicts = modal.Dict.objects.list(environment_name="dev")
+        ```
+
+        """
         if client is None:
             client = await _Client.from_env()
-        # TODO handle str typed created_before and add tz localization?
-        pagination = api_pb2.ListPagination(max_objects=max_objects, created_before=created_before)
+        if isinstance(created_before, str):
+            created_before = datetime.fromisoformat(created_before)
+        elif created_before is None:
+            created_before = datetime.now()  # TODO timezone localization
+        pagination = api_pb2.ListPagination(max_objects=max_objects, created_before=created_before.timestamp())
         req = api_pb2.DictListRequest(environment_name=environment_name, pagination=pagination)
         resp = await retry_transient_errors(client.stub.DictList, req)
         return [_Dict._new_hydrated(item.dict_id, client, item.metadata, is_another_app=True) for item in resp.dicts]
