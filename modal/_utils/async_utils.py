@@ -280,6 +280,7 @@ class TimestampPriorityQueue(Generic[T]):
     def __init__(self, maxsize: int = 0):
         self.condition = asyncio.Condition()
         self._queue: asyncio.PriorityQueue[tuple[float, int, Union[T, None]]] = asyncio.PriorityQueue(maxsize=maxsize)
+        # Used to tiebreak items with the same timestamp that are not comparable. (eg. protos)
         self._counter = itertools.count()
 
     async def close(self):

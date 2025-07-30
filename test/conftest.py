@@ -218,7 +218,6 @@ class MockClientServicer(api_grpc.ModalClientBase):
         self.files_sha2data = files_sha2data
         self.function_id_for_function_call = {}
         self.function_call_inputs = {}
-        self.inputplane_function_call_inputs = {}
         self.function_call_inputs_update_event = asyncio.Event()
         self.sync_client_retries_enabled = False
         self.function_is_running = False
