@@ -89,9 +89,33 @@ def test_map(client, servicer, slow_put_inputs):
         assert len(servicer.cleared_function_calls) == 2
 
 
+@pytest.mark.parametrize("slow_put_inputs", [False, True])
+@pytest.mark.timeout(120)
+def test_map_inputplane(client, servicer, slow_put_inputs):
+    servicer.slow_put_inputs = slow_put_inputs
+
+    app = App()
+    dummy_modal = app.function(experimental_options={"input_plane_region": "us-east"})(dummy)
+
+    assert len(servicer.cleared_function_calls) == 0
+    with app.run(client=client):
+        assert list(dummy_modal.map([5, 2], [4, 3])) == [41, 13]
+        assert set(dummy_modal.map([5, 2], [4, 3], order_outputs=False)) == {13, 41}
+
+
 def test_nested_map(client):
     app = App()
     dummy_modal = app.function()(dummy)
+
+    with app.run(client=client):
+        res1 = dummy_modal.map([1, 2])
+        final_results = list(dummy_modal.map(res1))
+        assert final_results == [1, 16]
+
+
+def test_nested_map_inputplane(client):
+    app = App()
+    dummy_modal = app.function(experimental_options={"input_plane_region": "us-east"})(dummy)
 
     with app.run(client=client):
         res1 = dummy_modal.map([1, 2])
@@ -121,10 +145,44 @@ def test_exception_in_input_iterator(client, map_type):
                 dummy_modal.spawn_map(input_gen())
 
 
+@pytest.mark.parametrize("map_type", ["map", "starmap"])
+def test_exception_in_input_iterator_inputplane(client, map_type):
+    class CustomException(Exception):
+        pass
+
+    def input_gen():
+        yield 1
+        raise CustomException()
+
+    app = App()
+    dummy_modal = app.function(experimental_options={"input_plane_region": "us-east"})(dummy)
+
+    with app.run(client=client):
+        with pytest.raises(CustomException):
+            if map_type == "map":
+                list(dummy_modal.map(input_gen()))
+            elif map_type == "starmap":
+                list(dummy_modal.starmap(input_gen()))
+
+
 @pytest.mark.asyncio
 async def test_map_async_generator(client):
     app = App()
     dummy_modal = app.function()(dummy)
+
+    async def gen_num():
+        yield 2
+        yield 3
+
+    async with app.run(client=client):
+        res = [num async for num in dummy_modal.map.aio(gen_num())]
+        assert res == [4, 9]
+
+
+@pytest.mark.asyncio
+async def test_map_async_generator_inputplane(client):
+    app = App()
+    dummy_modal = app.function(experimental_options={"input_plane_region": "us-east"})(dummy)
 
     async def gen_num():
         yield 2
@@ -242,6 +300,15 @@ def test_map_none_values(client, servicer):
     app = App()
     servicer.function_body(custom_function)
     custom_function_modal = app.function()(custom_function)
+
+    with app.run(client=client):
+        assert list(custom_function_modal.map(range(4))) == [0, None, 2, None]
+
+
+def test_map_none_values_inputplane(client, servicer):
+    app = App()
+    servicer.function_body(custom_function)
+    custom_function_modal = app.function(experimental_options={"input_plane_region": "us-east"})(custom_function)
 
     with app.run(client=client):
         assert list(custom_function_modal.map(range(4))) == [0, None, 2, None]
@@ -425,6 +492,27 @@ def test_generator_map_invalid(client, servicer):
             later_gen_modal.for_each([1, 2, 3])
 
 
+# This test is somewhat redundant, but it's good to have when we remove the old python server.
+def test_generator_map_invalid_inputplane(client, servicer):
+    app = App()
+
+    later_gen_modal = app.function(experimental_options={"input_plane_region": "us-east"})(later_gen)
+
+    def dummy(x):
+        yield x
+
+    servicer.function_body(dummy)
+
+    with app.run(client=client):
+        with pytest.raises(InvalidError, match="A generator function cannot be called with"):
+            # Support for .map() on generators was removed in version 0.57
+            for _ in later_gen_modal.map([1, 2, 3]):
+                pass
+
+        with pytest.raises(InvalidError, match="A generator function cannot be called with"):
+            later_gen_modal.for_each([1, 2, 3])
+
+
 @pytest.mark.asyncio
 async def test_generator_async(client, servicer):
     app = App()
@@ -557,12 +645,57 @@ def test_map_exceptions(client, servicer):
         assert type(res[4]) is CustomException and "bad" in str(res[4])
 
 
+def test_map_exceptions_inputplane(client, servicer):
+    app = App()
+
+    servicer.function_body(custom_exception_function)
+    custom_function_modal = app.function(experimental_options={"input_plane_region": "us-east"})(
+        custom_exception_function
+    )
+
+    with app.run(client=client):
+        assert list(custom_function_modal.map(range(4))) == [0, 1, 4, 9]
+
+        with pytest.raises(CustomException) as excinfo:
+            list(custom_function_modal.map(range(6)))
+        assert "bad" in str(excinfo.value)
+
+        with pytest.warns(DeprecationError) as warnings:
+            res = list(custom_function_modal.map(range(6), return_exceptions=True))
+            assert len(warnings) == 1
+            assert "f.map(..., return_exceptions=True, wrap_returned_exceptions=False)" in str(warnings[0].message)
+        assert res[:4] == [0, 1, 4, 9] and res[5] == 25
+        assert type(res[4]) is UserCodeException and "bad" in str(res[4])
+
+        res = list(custom_function_modal.map(range(6), return_exceptions=True, wrap_returned_exceptions=False))
+        assert res[:4] == [0, 1, 4, 9] and res[5] == 25
+        assert type(res[4]) is CustomException and "bad" in str(res[4])
+
+
 @pytest.mark.asyncio
 async def test_async_map_wrapped_exception_warning(client, servicer):
     app = App()
 
     servicer.function_body(custom_exception_function)
     custom_function_modal = app.function()(custom_exception_function)
+
+    with app.run(client=client):
+        with pytest.warns(DeprecationError) as warnings:
+            async for _ in custom_function_modal.map.aio(range(6), return_exceptions=True):
+                pass
+            assert len(warnings) == 1
+            assert "f.map.aio(..., return_exceptions=True, wrap_returned_exceptions=False)" in str(warnings[0].message)
+
+
+# This test is somewhat redundant, but it's good to have when we remove the old python server.
+@pytest.mark.asyncio
+async def test_async_map_wrapped_exception_warning_inputplane(client, servicer):
+    app = App()
+
+    servicer.function_body(custom_exception_function)
+    custom_function_modal = app.function(experimental_options={"input_plane_region": "us-east"})(
+        custom_exception_function
+    )
 
     with app.run(client=client):
         with pytest.warns(DeprecationError) as warnings:
@@ -1007,6 +1140,26 @@ async def test_map_large_inputs(client, servicer, monkeypatch, blob_server):
 @pytest.mark.asyncio
 async def test_non_aio_map_in_async_caller_error(client):
     dummy_function = app.function()(dummy)
+
+    with app.run(client=client):
+        with pytest.raises(InvalidError, match=".map.aio"):
+            for _ in dummy_function.map([1, 2, 3]):
+                pass
+
+        # using .aio should be ok:
+        res = [r async for r in dummy_function.map.aio([1, 2, 3])]
+        assert res == [1, 4, 9]
+
+        # we might want to deprecate this syntax (async for ... in map without .aio),
+        # but we support it for backwards compatibility for now:
+        res = [r async for r in dummy_function.map([1, 2, 4])]
+        assert res == [1, 4, 16]
+
+
+# This test is somewhat redundant, but it's good to have when we remove the old python server.
+@pytest.mark.asyncio
+async def test_non_aio_map_in_async_caller_error_inputplane(client):
+    dummy_function = app.function(experimental_options={"input_plane_region": "us-east"})(dummy)
 
     with app.run(client=client):
         with pytest.raises(InvalidError, match=".map.aio"):
