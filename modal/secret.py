@@ -16,6 +16,7 @@ from ._utils.async_utils import synchronize_api
 from ._utils.deprecation import deprecation_warning, warn_if_passing_namespace
 from ._utils.grpc_utils import retry_transient_errors
 from ._utils.name_utils import check_object_name
+from ._utils.time_utils import timestamp_to_localized_dt
 from .client import _Client
 from .exception import InvalidError, NotFoundError
 
@@ -299,7 +300,7 @@ class _Secret(_Object, type_prefix="st"):
         creation_info = metadata.creation_info
         return SecretInfo(
             name=metadata.name or None,
-            created_at=datetime.fromtimestamp(creation_info.created_at),
+            created_at=timestamp_to_localized_dt(creation_info.created_at),
             created_by=creation_info.created_by or None,
         )
 

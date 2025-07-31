@@ -8,7 +8,7 @@ from modal._object import _get_environment_name
 from modal._pty import get_pty_info
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
-from modal._utils.time_utils import timestamp_to_local
+from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli.utils import ENV_OPTION, display_table, is_tty, stream_app_logs
 from modal.client import _Client
 from modal.config import config
@@ -40,7 +40,7 @@ async def list_(env: Optional[str] = ENV_OPTION, json: bool = False):
                 task_stats.task_id,
                 task_stats.app_id,
                 task_stats.app_description,
-                timestamp_to_local(task_stats.started_at, json) if task_stats.started_at else "Pending",
+                timestamp_to_localized_str(task_stats.started_at, json) if task_stats.started_at else "Pending",
             ]
         )
 

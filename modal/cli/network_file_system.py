@@ -16,7 +16,7 @@ from modal._location import display_location
 from modal._output import OutputManager, ProgressHandler, make_console
 from modal._utils.async_utils import synchronizer
 from modal._utils.grpc_utils import retry_transient_errors
-from modal._utils.time_utils import timestamp_to_local
+from modal._utils.time_utils import timestamp_to_localized_str
 from modal.cli._download import _volume_download
 from modal.cli.utils import ENV_OPTION, YES_OPTION, display_table
 from modal.client import _Client
@@ -44,7 +44,7 @@ async def list_(env: Optional[str] = ENV_OPTION, json: Optional[bool] = False):
             [
                 item.label,
                 display_location(item.cloud_provider),
-                timestamp_to_local(item.created_at, json),
+                timestamp_to_localized_str(item.created_at, json),
             ]
         )
     display_table(column_names, rows, json, title=f"Shared Volumes{env_part}")
