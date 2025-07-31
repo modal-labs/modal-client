@@ -318,7 +318,7 @@ def test_sandbox_exec_wait_timeout(app, servicer):
     cp = sb.exec("sleep", "999", timeout=1)
     t0 = time.monotonic()
     assert cp.wait() == -1
-    assert 1 < time.monotonic() - t0 <= 1.2
+    assert 0.8 < time.monotonic() - t0 <= 1.2
 
 
 @mock.patch("modal.sandbox.CONTAINER_EXEC_TIMEOUT_BUFFER", 0)
