@@ -209,6 +209,11 @@ class CudaCheckpointSession:
 
         return None
 
+    @property
+    def running_cuda_sessions_count(self) -> int:
+        """Get the number of currently running CUDA sessions."""
+        return len([s for s in self._check_cuda_session() if s.state == CudaCheckpointState.RUNNING])
+
     def checkpoint(self) -> None:
         """Checkpoint all CUDA processes, moving GPU memory to CPU."""
         if not self.cuda_processes:
@@ -246,6 +251,11 @@ class CudaCheckpointSession:
                 raise CudaCheckpointException(
                     f"Failed to checkpoint {len(exceptions)} processes: {'; '.join(str(e) for e in exceptions)}"
                 )
+
+        # Catches race condition where new CUDA sessions have been created after we
+        # initiated the checkpointing process.
+        if self.running_cuda_sessions_count > 0:
+            raise CudaCheckpointException("New CUDA sessions created after checkpointing started")
 
         elapsed = time.perf_counter() - start
         logger.debug(f"Checkpointing {len(self.cuda_processes)} CUDA sessions took => {elapsed:.3f}s")
@@ -289,15 +299,3 @@ class CudaCheckpointSession:
 
         elapsed = time.perf_counter() - start
         logger.debug(f"Restoring {len(self.cuda_processes)} CUDA session(s) took => {elapsed:.3f}s")
-
-    def get_process_count(self) -> int:
-        """Get the number of CUDA processes managed by this session."""
-        return len(self.cuda_processes)
-
-    def get_process_states(self) -> List[tuple[int, CudaCheckpointState]]:
-        """Get current states of all managed processes."""
-        states = []
-        for proc in self.cuda_processes:
-            proc.refresh_state()
-            states.append((proc.pid, proc.state))
-        return states
