@@ -1395,26 +1395,26 @@ class _Image(_Object, type_prefix="im"):
 
             try:
                 dependencies = pyproject_toml_content["project"]["dependencies"]
-
-                for group in groups:
-                    if (
-                        "dependency-groups" in pyproject_toml_content
-                        and group in pyproject_toml_content["dependency-groups"]
-                    ):
-                        dependencies += pyproject_toml_content["dependency-groups"][group]
-
-                for extra in extras:
-                    if (
-                        "project" in pyproject_toml_content
-                        and "optional-dependencies" in pyproject_toml_content["project"]
-                        and extra in pyproject_toml_content["project"]["optional-dependencies"]
-                    ):
-                        dependencies += pyproject_toml_content["project"]["optional-dependencies"][extra]
             except KeyError as e:
                 raise InvalidError(
                     f"Invalid pyproject.toml file: missing key {e!r} in {pyproject_toml}. "
                     "See https://packaging.python.org/en/latest/guides/writing-pyproject-toml for guidelines."
                 )
+
+            for group in groups:
+                if (
+                    "dependency-groups" in pyproject_toml_content
+                    and group in pyproject_toml_content["dependency-groups"]
+                ):
+                    dependencies += pyproject_toml_content["dependency-groups"][group]
+
+            for extra in extras:
+                if (
+                    "project" in pyproject_toml_content
+                    and "optional-dependencies" in pyproject_toml_content["project"]
+                    and extra in pyproject_toml_content["project"]["optional-dependencies"]
+                ):
+                    dependencies += pyproject_toml_content["project"]["optional-dependencies"][extra]
 
             PACKAGE_REGEX = re.compile(r"^[\w-]+")
 
