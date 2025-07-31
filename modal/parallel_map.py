@@ -135,6 +135,8 @@ async def _map_invocation(
         retry_policy, function_call_invocation_type, retry_queue, sync_client_retries_enabled, max_inputs_outstanding
     )
 
+    print("HELLO!")
+
     async def create_input(argskwargs):
         idx = inputs_created
         update_state(set_inputs_created=inputs_created + 1)
