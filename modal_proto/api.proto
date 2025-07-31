@@ -1877,6 +1877,7 @@ message FunctionPutOutputsItem {
 message FunctionPutOutputsRequest {
   repeated FunctionPutOutputsItem outputs = 4;
   double requested_at = 5; // Used for waypoints.
+  optional int32 total_number_of_inputs = 6; // Only set on the final output.
 }
 
 message FunctionRetryInputsItem {
