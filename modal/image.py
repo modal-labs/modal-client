@@ -1397,7 +1397,7 @@ class _Image(_Object, type_prefix="im"):
                 dependencies = pyproject_toml_content["project"]["dependencies"]
             except KeyError as e:
                 raise InvalidError(
-                    f"Invalid pyproject.toml file: missing key {e!r} in {pyproject_toml}. "
+                    f"Invalid pyproject.toml file: missing key {e} in {pyproject_toml}. "
                     "See https://packaging.python.org/en/latest/guides/writing-pyproject-toml for guidelines."
                 )
 
