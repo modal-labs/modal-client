@@ -3008,6 +3008,7 @@ message TaskInfo {
   string gpu_type = 6;
   string sandbox_id = 7;
   TaskSnapshotBehavior snapshot_behavior = 8;
+  GPUConfig gpu_config = 9;
 }
 
 message TaskListRequest {
