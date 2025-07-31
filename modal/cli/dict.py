@@ -38,16 +38,10 @@ async def create(name: str, *, env: Optional[str] = ENV_OPTION):
 async def list_(*, json: bool = False, env: Optional[str] = ENV_OPTION):
     """List all named Dicts."""
     env = ensure_env(env)
-    client = await _Client.from_env()
-    # request = api_pb2.DictListRequest(environment_name=env)
-    # response = await retry_transient_errors(client.stub.DictList, request)
-    # rows = [(d.name, timestamp_to_local(d.created_at, json)) for d in response.dicts]
-
-    dicts = await _Dict.objects.list(client=client, environment_name=env)  # TODO expose pagination
+    dicts = await _Dict.objects.list(environment_name=env)  # TODO expose pagination?
     rows = []
     for obj in dicts:
         info = await obj.info()
-        # TODO decide what to do about time zone localization in the info API
         rows.append((info.name, timestamp_to_localized_str(info.created_at.timestamp(), json), info.created_by))
 
     display_table(["Name", "Created at", "Created by"], rows, json)
