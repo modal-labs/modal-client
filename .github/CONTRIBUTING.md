@@ -12,3 +12,4 @@
 1. Compile protobuf files: `inv protoc`
 1. Install the repo in editable mode: `pip install -e .`
 1. Build type Python stubs and check types: `inv type-check`
+1. Install pre-commit: `pre-commit install`
